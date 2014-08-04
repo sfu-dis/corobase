@@ -1,0 +1,61 @@
+\documentclass[preprint]{sig-alternate-nocprt}
+\usepackage[nocapsections,obey,smallbib]{fixacm}
+
+%\usepackage{color}
+\usepackage{graphicx}
+%\usepackage{balance}
+%\usepackage{subcaption}
+%\usepackage{setspace}
+\usepackage[hyphens]{url}
+
+\usepackage[bookmarks=false,hidelinks,pdftitle={Design Tradeoffs for Fast, Robust Database Systems}]{hyperref}
+
+\pagestyle{empty}
+
+\begin{document}
+%\captionsetup[figure]{labelfont=bf,textfont=bf}
+%\captionsetup[subfigure]{labelfont=normalfont,textfont=normalfont}
+
+\title{Design Tradeoffs for Fast and Robust Database Systems}
+
+\numberofauthors{2}
+\author{
+\alignauthor
+%Tianzheng Wang\\
+%       \affaddr{Department of Computer Science}\\
+%       \affaddr{University of Toronto}\\
+%       \email{{\large \sf tzwang@cs.toronto.edu}}
+%\alignauthor
+%Ryan Johnson\\
+%       \affaddr{Department of Computer Science}\\
+%       \affaddr{University of Toronto}\\
+%       \email{{\large \sf ryan.johnson@cs.utoronto.ca}}
+}
+
+\maketitle
+%\begin{}
+%\section{Introduction}
+The recent shift to main-memory databases has led to many new OLTP systems~\cite{HStore,Hyper,Hekaton,Silo} which focus on extracting the most performance benefits from large main memories at the terabyte and petabyte levels and massively parallel processors. These systems utilize spacious main memory to fit the whole working set in DRAM with simplified, memory-friendly data structures, and takes advantage of multicore and multi-socket hardware to allow a much higher level of parallelism compared to conventional database systems.
+
+Orthogonal to software and hardware changes, database workloads are also evolving to become increasingly heterogeneous; the dichotomy between online transaction processing (OLTP) and analytical processing (OLAP) is disappearing. OLTP and OLAP workloads are often mixed, showing a higher read to write ratio. A transaction might well include some large amount of reads, and then a small amount of writes to the database. This trend is also reflected by the latest TPC-E~\cite{TPC-E} benchmark which shows a read to write ratio of 9.7:1, while the number for TPC-C is 1.9:1~\cite{TPC-Compare}. Though recent OLTP systems have adapted their architectures for higher performance, none of them is robust to such heterogeneous workloads. Some systems can only handle small transactions well~\cite{HStore}, others~\cite{Hyper,Hekaton,Silo} can interleave small updates with large queries but are less effective in the face of larger update transactions, such as those present in TPC-E.
+
+Future database systems should be able to handle this kind of workloads with high performance and more importantly, robustness. We argue that the basic system architecture decisions strongly constrain the types of CC schemes the system can support, and that it will be difficult or impossible to retrofit more intelligent schemes efficiently into existing systems. In this talk, we identify two major areas of tradeoffs for handling heterogeneous workloads: logging/recovery and concurrency control.
+%\end{}
+
+%\section{Concurrency Control}
+
+%\textbf{Object indirection.}
+
+%\textbf{Serializable snapshot isolation.}
+
+%\section{Logging and Recovery}
+In recent systems, approaches to logging and recovery include conventional (Hekaton~\cite{Hekaton}) and single-threaded (Hyper~\cite{Hyper}) centralized logging, request shipping and replication (HStore/VoltDB~\cite{HStore}), and epoch-based per-thread level distributed logging (Silo~\cite{Silo}). Traditionally, a centralized logging has been criticized as not able to scale gracefully on massively parallel hardware~\cite{AetherJournal} due to long critical sections, while it gives the nice feature of totally ordered log sequence numbers (LSNs) which simplifies both recovery and forward processing. To this end, we propose a disk-based centralized log that needs only a single compare-and-swap (CAS) to generate a totally ordered LSN. Transaction threads leave the critical section as long as they have acquired the log space. Using a single CAS, we not only avoid the long critical section problem, but also preserve the totally ordered LSN. Such an architecture with a totally ordered LSN enables us to do smarter concurrency control.
+
+Each of the recent OLTP systems has a different architecture and approach to concurrency control. But they all share a common weakness that concurrency control is effectively an optimistically single-versioned scheme: \textit{any version overwritten before the reader commits leads to an abort}. For example, Silo improves on optimistic concurrency control for serializability, but also adopted all the drawbacks of two-phase locking. Moreover, it has been shown that none of the main stream concurrency control schemes can maintain good performance at a core count as high as one thousand~\cite{CCAbyss}.
+
+With our new logging architecture, we adopt and improve serializable snapshot isolation~\cite{SSI} to tackle this problem. Transactions can be aborted as soon as conflicts are found, instead of waiting until the validation step. A transaction only acquires an LSN before pre-commit begins and does not write log records until a pre-commit succeeds. Only committed transactions' log records will be written in the log. This allows a decentralized validation step that multiple validations can proceed in parallel. In our system, all versions are accessed through a per-table indirection array that stores the object ID of each tuple's head version. Since log records are not written to the log until pre-commit succeeds, the log itself is the ``database'' in our system. Upon system restart, the recovery mechanism only needs to scan the log headers and refresh the indirection arrays from the latest checkpoint to get a fully working system.
+
+
+\bibliographystyle{abbrv}
+\bibliography{ref}
+\end{document}
