@@ -6,12 +6,21 @@
  pages = {298--309},
 }
 
-@article{Silo,
+@inproceedings{Silo,
  author = {Tu, Stephen and Zheng, Wenting and Kohler, Eddie and Liskov, Barbara and Madden, Samuel},
  title = {Speedy Transactions in Multicore In-memory Databases},
- journal = {SOSP},
+ booktitle = {Proceedings of the Twenty-Fourth ACM Symposium on Operating Systems Principles},
+ series = {SOSP '13},
  year = {2013},
+ isbn = {978-1-4503-2388-8},
+ location = {Farminton, Pennsylvania},
  pages = {18--32},
+ numpages = {15},
+ url = {http://doi.acm.org/10.1145/2517349.2522713},
+ doi = {10.1145/2517349.2522713},
+ acmid = {2522713},
+ publisher = {ACM},
+ address = {New York, NY, USA},
 }
 
 @article{TPC-Compare,
@@ -22,7 +31,7 @@
  pages = {5--10},
 }
 
-@article{TPC-E,
+@misc{TPC-E,
  author = {{Transaction Processing Performance Council}},
  title = {The {TPC-E} benchmark},
  journal = {http://www.tpc.org/tpce},
@@ -38,14 +47,21 @@
  pages = {1496--1499},
 }
 
-@article{Hyper,
-author={Kemper, A and Neumann, T.},
-booktitle={ICDE},
-title={HyPer: A hybrid {OLTP} amp; {OLAP} main memory database system based on virtual memory snapshots},
-year={2011},
-pages={195-206},
-}
-
+@inproceedings{Hyper,
+ author = {Kemper, Alfons and Neumann, Thomas},
+ title = {{HyPer}: A Hybrid {OLTP}\&{OLAP} Main Memory Database System Based on Virtual Memory Snapshots},
+ booktitle = {Proceedings of the 2011 {IEEE} 27th International Conference on Data Engineering},
+ series = {ICDE '11},
+ year = {2011},
+ isbn = {978-1-4244-8959-6},
+ pages = {195--206},
+ numpages = {12},
+ url = {http://dx.doi.org/10.1109/ICDE.2011.5767867},
+ doi = {10.1109/ICDE.2011.5767867},
+ acmid = {2005619},
+ publisher = {IEEE Computer Society},
+ address = {Washington, DC, USA},
+} 
 @article{AetherJournal,
  author = {Johnson, Ryan and Pandis, Ippokratis and Stoica, Radu and Athanassoulis, Manos and Ailamaki, Anastasia},
  title = {Scalability of write-ahead logging on multicore and multisocket hardware},
@@ -62,10 +78,11 @@ pages={195-206},
  pages = {729--738},
 }
 
-@article{CCAbyss,
+@techreport{CCAbyss,
   title={Staring into the Abyss: An Evaluation of Concurrency Control with One Thousand Cores},
   author={Yu, Xiangyao and Bezerra, George and Pavlo, Andrew and Devadas, Srinivas and Stonebraker, Michael},
-  journal={VoltDB Whitepaper},
+  year={2014},
+  institution={MIT CSAIL}
 }
 
 @article{ScalableSSI,
@@ -81,3 +98,17 @@ author={{LogicBlox}},
 title={http://www.logicblox.com/},
 year={2014},
 }
+
+@inproceedings{frt91,
+ author = {Franaszek, Peter A. and Robinson, John T. and Thomasian, Alexander},
+ title = {Wait Depth Limited Concurrency Control},
+ booktitle = {Proc. of the Seventh International Conference on Data Engineering},
+ year = {1991},
+ isbn = {0-8186-2138-9},
+ pages = {92--101},
+ numpages = {10},
+ url = {http://dl.acm.org/citation.cfm?id=645476.654470},
+ acmid = {654470},
+ publisher = {IEEE Computer Society},
+ address = {Washington, DC, USA},
+} 
