@@ -128,12 +128,12 @@ SRCFILES = allocator.cc \
 	memory.cc \
 	stats_server.cc \
 	thread.cc \
-	ticker.cc \
 	tuple.cc \
 	txn_btree.cc \
 	txn.cc \
 	txn_proto2_impl.cc \
 	varint.cc
+#ticker.cc \
 #rcu.cc \
 #allocator.cc \
 
