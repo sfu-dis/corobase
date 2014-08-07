@@ -21,7 +21,7 @@
 #include "macros.h"
 #include "prefetch.h"
 #include "amd64.h"
-#include "rcu.h"
+#include "rcu-wrapper.h"
 #include "util.h"
 #include "small_vector.h"
 #include "ownership_checker.h"
@@ -904,7 +904,7 @@ private:
     static inline leaf_node*
     alloc()
     {
-      void * const p = rcu::s_instance.alloc(LeafNodeAllocSize);
+      void * const p = RCU::rcu_alloc(LeafNodeAllocSize);
       INVARIANT(p);
       return new (p) leaf_node;
     }
@@ -916,7 +916,9 @@ private:
       INVARIANT(n->is_deleting());
       INVARIANT(!n->is_locked());
       n->~leaf_node();
-      rcu::s_instance.dealloc(p, LeafNodeAllocSize);
+      // FIXME: tzwang: dealloc to slab
+      RCU::rcu_free(p);
+      //rcu::s_instance.dealloc(p, LeafNodeAllocSize);
     }
 
     static inline void
@@ -925,7 +927,8 @@ private:
       if (unlikely(!n))
         return;
       n->mark_deleting();
-      rcu::s_instance.free_with_fn(n, deleter);
+      // FIXME: tzwang: free with fn
+      RCU::free_with_fn(n, deleter);
     }
 
   };
@@ -1015,7 +1018,7 @@ private:
     static inline internal_node*
     alloc()
     {
-      void * const p = rcu::s_instance.alloc(InternalNodeAllocSize);
+      void * const p = RCU::rcu_alloc(InternalNodeAllocSize);
       INVARIANT(p);
       return new (p) internal_node;
     }
@@ -1027,7 +1030,9 @@ private:
       INVARIANT(n->is_deleting());
       INVARIANT(!n->is_locked());
       n->~internal_node();
-      rcu::s_instance.dealloc(p, InternalNodeAllocSize);
+      // FIXME: tzwang: dealloc to slab
+      RCU::rcu_free(p);
+      //rcu::s_instance.dealloc(p, InternalNodeAllocSize);
     }
 
     static inline void
@@ -1036,7 +1041,7 @@ private:
       if (unlikely(!n))
         return;
       n->mark_deleting();
-      rcu::s_instance.free_with_fn(n, deleter);
+      RCU::free_with_fn(n, deleter);
     }
 
   } PACKED;

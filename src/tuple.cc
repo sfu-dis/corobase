@@ -44,7 +44,7 @@ dbtuple::~dbtuple()
 void
 dbtuple::gc_this()
 {
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active());
   INVARIANT(!is_latest());
   release(this);
 }

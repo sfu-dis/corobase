@@ -31,13 +31,14 @@ public:
   // however, read only txns and GC are tied to multiples of the ticker
   // subsystem's tick
 
-#ifdef CHECK_INVARIANTS
-  static const uint64_t ReadOnlyEpochMultiplier = 10; /* 10 * 1 ms */
-#else
-  static const uint64_t ReadOnlyEpochMultiplier = 25; /* 25 * 40 ms */
-  static_assert(ticker::tick_us * ReadOnlyEpochMultiplier == 1000000, "");
-#endif
-
+  // tzwang: remove silo's epoch
+//#ifdef CHECK_INVARIANTS
+//  static const uint64_t ReadOnlyEpochMultiplier = 10; /* 10 * 1 ms */
+//#else
+//  static const uint64_t ReadOnlyEpochMultiplier = 25; /* 25 * 40 ms */
+//  static_assert(ticker::tick_us * ReadOnlyEpochMultiplier == 1000000, "");
+//#endif
+/*
   static_assert(ReadOnlyEpochMultiplier >= 1, "XX");
 
   static const uint64_t ReadOnlyEpochUsec =
@@ -48,7 +49,7 @@ public:
   {
     return epoch_tick / ReadOnlyEpochMultiplier;
   }
-
+*/
   // in this protocol, the version number is:
   // (note that for tid_t's, the top bit is reserved and
   // *must* be set to zero
@@ -68,6 +69,7 @@ public:
     return (v & NumIdMask) >> NumIdShift;
   }
 
+/*
   static inline ALWAYS_INLINE
   uint64_t EpochId(uint64_t v)
   {
@@ -92,10 +94,12 @@ public:
       nop_pause();
     COMPILER_MEMORY_FENCE;
   }
-
+*/
   static uint64_t
   ComputeReadOnlyTid(uint64_t global_tick_ex)
   {
+    // FIXME: tzwang: return dummy now for removing silo's epoch, need our tidmgr
+    /*
     const uint64_t a = (global_tick_ex / ReadOnlyEpochMultiplier);
     const uint64_t b = a * ReadOnlyEpochMultiplier;
 
@@ -104,6 +108,8 @@ public:
       return MakeTid(0, 0, 0);
     else
       return MakeTid(CoreMask, NumIdMask >> NumIdShift, b - 1);
+    */
+    return MakeTid(0, 0, 0);
   }
 
   static const uint64_t NBitsNumber = 24;
@@ -230,8 +236,8 @@ protected:
 #endif
     {
       ALWAYS_ASSERT(((uintptr_t)this % CACHELINE_SIZE) == 0);
-      queue_.alloc_freelist(rcu::NQueueGroups);
-      scratch_.alloc_freelist(rcu::NQueueGroups);
+      queue_.alloc_freelist(RCU::NQueueGroups);
+      scratch_.alloc_freelist(RCU::NQueueGroups);
     }
   };
 
@@ -288,15 +294,17 @@ public:
                      typename Traits::StringAllocator &sa)
     : transaction<transaction_proto2, Traits>(flags, sa)
   {
+    /* FIXME: tzwang: nothing todo due to epoch removal.
     if (this->get_flags() & transaction_base::TXN_FLAG_READ_ONLY) {
       const uint64_t global_tick_ex =
         this->rcu_guard_->guard()->impl().global_last_tick_exclusive();
       u_.last_consistent_tid = ComputeReadOnlyTid(global_tick_ex);
     }
+    */
 #ifdef TUPLE_LOCK_OWNERSHIP_CHECKING
     dbtuple::TupleLockRegionBegin();
 #endif
-    INVARIANT(rcu::s_instance.in_rcu_region());
+    INVARIANT(RCU::rcu_is_active());
   }
 
   ~transaction_proto2()
@@ -304,12 +312,14 @@ public:
 #ifdef TUPLE_LOCK_OWNERSHIP_CHECKING
     dbtuple::AssertAllTupleLocksReleased();
 #endif
-    INVARIANT(rcu::s_instance.in_rcu_region());
+    INVARIANT(RCU::rcu_is_active());
   }
 
+// FIXME: tzwang: broken b/c epoch removal
   inline bool
   can_overwrite_record_tid(tid_t prev, tid_t cur) const
   {
+    /*
     INVARIANT(prev <= cur);
 
 #ifdef PROTO2_CAN_DISABLE_SNAPSHOTS
@@ -325,6 +335,8 @@ public:
     return (to_read_only_tick(EpochId(prev)) ==
             to_read_only_tick(EpochId(cur))) ||
            !prev;
+           */
+    return true;
   }
 
   // can only read elements in this epoch or previous epochs
@@ -369,9 +381,12 @@ public:
         << g_proto_version_str(u_.last_consistent_tid) << std::endl;
   }
 
+// FIXME: tzwang: need our tidmgr. Returns dummy due to epoch removal.
   transaction_base::tid_t
   gen_commit_tid(const dbtuple_write_info_vec &write_tuples)
   {
+    return MakeTid(0, 0, 0);
+    /*
     const size_t my_core_id = this->rcu_guard_->guard()->core();
     threadctx &ctx = g_threadctxs.get(my_core_id);
     INVARIANT(!this->is_snapshot());
@@ -439,6 +454,7 @@ public:
     // and could potentially be aborted - but it's ok to increase this #, since
     // subsequent txns on this core will read this # anyways
     return (ctx.last_commit_tid_ = ret);
+    */
   }
 
   inline ALWAYS_INLINE void
@@ -449,7 +465,7 @@ public:
       return;
 #endif
 
-    INVARIANT(rcu::s_instance.in_rcu_region());
+    INVARIANT(RCU::rcu_is_active());
     INVARIANT(!tuple->is_latest());
 
     // >= not > only b/c of the special case of inserting a new tuple +
@@ -464,6 +480,8 @@ public:
       return;
     }
 
+// FIXME: tzwang: epoch removal
+/*
     const uint64_t ro_tick = to_read_only_tick(this->u_.commit_epoch);
     INVARIANT(to_read_only_tick(EpochId(tuple->version)) <= ro_tick);
 
@@ -479,6 +497,7 @@ public:
         delete_entry(tuple_ahead, tuple_ahead->version,
           tuple, marked_ptr<std::string>(), nullptr),
         ro_tick);
+    */
   }
 
   inline ALWAYS_INLINE void
@@ -495,8 +514,8 @@ public:
     INVARIANT(tuple->is_latest());
     INVARIANT(tuple->is_deleting());
     INVARIANT(!tuple->size);
-    INVARIANT(rcu::s_instance.in_rcu_region());
-
+    INVARIANT(RCU::rcu_is_active());
+/* FIXME: tzwang: need our own tuple handling. No-op due to epoch removal.
     const uint64_t ro_tick = to_read_only_tick(this->u_.commit_epoch);
     threadctx &ctx = g_threadctxs.my();
 
@@ -536,11 +555,17 @@ public:
           delete_entry(nullptr, tuple->version, tuple, mpx, btr),
           ro_tick);
     }
+    */
   }
 
+  // tzwang: so i guess this one is actually rcu_queisce
+  // Silo uses it in txn's dtor via the scoped_rcu_guard
+  // We do rcu-queisce in scoped_rcu_guard instead
+  // So i'll make it a no-op for now
   void
   on_post_rcu_region_completion()
   {
+    /*
 #ifdef PROTO2_CAN_DISABLE_GC
     if (!IsGCEnabled())
       return;
@@ -559,6 +584,7 @@ public:
     const uint64_t ro_tick_geq = ro_tick_ex - 1;
     threadctx &ctx = g_threadctxs.my();
     clean_up_to_including(ctx, ro_tick_geq);
+    */
   }
 
 private:
@@ -590,7 +616,8 @@ struct txn_epoch_sync<transaction_proto2> : public transaction_proto2_static {
   static void
   sync()
   {
-    wait_an_epoch();
+    // FIXME: tzwang: no-op due to epoch removal
+    // wait_an_epoch();
   }
   static void
   finish()

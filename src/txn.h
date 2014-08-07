@@ -17,7 +17,7 @@
 #include <tuple>
 
 #include <unordered_map>
-
+#include "rcu-wrapper.h"
 #include "amd64.h"
 #include "btree_choice.h"
 #include "core.h"
@@ -25,7 +25,6 @@
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
-#include "rcu.h"
 #include "thread.h"
 #include "spinlock.h"
 #include "small_unordered_map.h"

@@ -17,8 +17,8 @@
 #include "bdb_wrapper.h"
 #include "ndb_wrapper.h"
 #include "ndb_wrapper_impl.h"
-#include "kvdb_wrapper.h"
-#include "kvdb_wrapper_impl.h"
+//#include "kvdb_wrapper.h"
+//#include "kvdb_wrapper_impl.h"
 #if !NO_MYSQL
 #include "mysql_wrapper.h"
 #endif
@@ -193,10 +193,11 @@ main(int argc, char **argv)
       abort();
     }
   }
-
-  if (bench_type == "ycsb")
+// FIXME: tzwang: don't bother for ycsb now
+/* if (bench_type == "ycsb")
     test_fn = ycsb_do_test;
-  else if (bench_type == "tpcc")
+  else */
+  if (bench_type == "tpcc")
     test_fn = tpcc_do_test;
   else if (bench_type == "queue")
     test_fn = queue_do_test;
@@ -232,6 +233,7 @@ main(int argc, char **argv)
   }
 #endif
 
+/* FIXME: tzwang: we're not really using this for now
   // initialize the numa allocator
   if (numa_memory > 0) {
     const size_t maxpercpu = util::iceil(
@@ -239,6 +241,7 @@ main(int argc, char **argv)
     numa_memory = maxpercpu * nthreads;
     ::allocator::Initialize(nthreads, maxpercpu);
   }
+*/
 
   const set<string> can_persist({"ndb-proto2"});
   if (!logfiles.empty() && !can_persist.count(db_type)) {
@@ -302,7 +305,10 @@ main(int argc, char **argv)
     if (disable_snapshots)
       transaction_proto2_static::DisableSnapshots();
 #endif
-  } else if (db_type == "kvdb") {
+  } 
+  // FIXME: tzwang: don't bother other benches for now...
+  /*
+  else if (db_type == "kvdb") {
     db = new kvdb_wrapper<true>;
   } else if (db_type == "kvdb-st") {
     db = new kvdb_wrapper<false>;
@@ -311,7 +317,8 @@ main(int argc, char **argv)
     string dbdir = basedir + "/mysql-db";
     db = new mysql_wrapper(dbdir, bench_type);
 #endif
-  } else
+  } */
+  else
     ALWAYS_ASSERT(false);
 
 #ifdef DEBUG

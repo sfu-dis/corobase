@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "ndb_wrapper.h"
 #include "../counter.h"
-#include "../rcu.h"
+#include "../rcu/rcu.h"
 #include "../varkey.h"
 #include "../macros.h"
 #include "../util.h"
