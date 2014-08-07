@@ -10,7 +10,7 @@ template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type &sa)
   : transaction_base(flags), sa(&sa)
 {
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active());
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
@@ -22,13 +22,11 @@ transaction<Protocol, Traits>::~transaction()
   // transaction shouldn't fall out of scope w/o resolution
   // resolution means TXN_EMBRYO, TXN_COMMITED, and TXN_ABRT
   INVARIANT(state != TXN_ACTIVE);
-  INVARIANT(rcu::s_instance.in_rcu_region());
-  const unsigned cur_depth = rcu_guard_->sync()->depth();
-  rcu_guard_.destroy();
-  if (cur_depth == 1) {
-    INVARIANT(!rcu::s_instance.in_rcu_region());
-    cast()->on_post_rcu_region_completion();
-  }
+  INVARIANT(RCU::rcu_is_active());
+  // tzwang: the rest silo's original code (removed) basically
+  // calls on_post_rcu_region_completion(in scoped_rcu_region)
+  // to trigger rcu for cleanup. I did a queisce in my own
+  // scoped_rcu_region instead.
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif

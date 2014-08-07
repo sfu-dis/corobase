@@ -716,7 +716,8 @@ namespace mp_stress_test_allocator_ns {
     ~worker() {}
     virtual void run()
     {
-      rcu::s_instance.pin_current_thread(id);
+      // FIXME: tzwang: no-op for pin thread for now
+      // rcu::s_instance.pin_current_thread(id);
       fast_random r(reinterpret_cast<unsigned long>(this));
       string v;
       while (running.load()) {
@@ -753,7 +754,8 @@ mp_stress_test_allocator()
   using namespace mp_stress_test_allocator_ns;
   txn_btree<TxnType> btr;
   {
-    rcu::s_instance.pin_current_thread(0);
+    // FIXME: tzwang: no-op for pin thread
+    // rcu::s_instance.pin_current_thread(0);
     typename Traits::StringAllocator arena;
     TxnType<Traits> t(0, arena);
     for (size_t i = 0; i < nkeys; i++)

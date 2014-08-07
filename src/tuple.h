@@ -16,7 +16,8 @@
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
-#include "rcu.h"
+#include "rcu-wrapper.h"
+#include "allocator.h"
 #include "thread.h"
 #include "spinlock.h"
 #include "small_unordered_map.h"
@@ -1000,7 +1001,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sz),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(rcu::s_instance.alloc(alloc_sz));
+    char *p = reinterpret_cast<char *>(RCU::rcu_alloc(alloc_sz));
     INVARIANT(p);
     INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
     return new (p) dbtuple(
@@ -1016,7 +1017,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + base->size),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(rcu::s_instance.alloc(alloc_sz));
+    char *p = reinterpret_cast<char *>(RCU::rcu_alloc(alloc_sz));
     INVARIANT(p);
     return new (p) dbtuple(
         version, base, alloc_sz - sizeof(dbtuple), set_latest);
@@ -1038,7 +1039,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + needed_sz),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(rcu::s_instance.alloc(alloc_sz));
+    char *p = reinterpret_cast<char *>(RCU::rcu_alloc(alloc_sz));
     INVARIANT(p);
     return new (p) dbtuple(
         version, value, oldsz, newsz,
@@ -1050,9 +1051,10 @@ private:
   static inline void
   destruct_and_free(dbtuple *n)
   {
-    const size_t alloc_sz = n->alloc_size + sizeof(*n);
+    //const size_t alloc_sz = n->alloc_size + sizeof(*n);
     n->~dbtuple();
-    rcu::s_instance.dealloc(n, alloc_sz);
+    // FIXME: tzwang: this was dealloc to slab
+    RCU::rcu_free(n);
   }
 
 public:
@@ -1073,7 +1075,7 @@ public:
       return;
     INVARIANT(n->is_locked());
     INVARIANT(!n->is_latest());
-    rcu::s_instance.free_with_fn(n, deleter);
+    RCU::free_with_fn(n, deleter);
   }
 
   static inline void

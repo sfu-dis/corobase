@@ -9,7 +9,7 @@
 #include <limits>
 
 #include "macros.h"
-#include "rcu.h"
+#include "rcu-wrapper.h"
 #include "util.h"
 #include "counter.h"
 
@@ -99,8 +99,10 @@ private:
   release()
   {
     if (likely(p)) {
+      // FIXME: tzwang: disable this for now
       if (RCU)
-        rcu::s_instance.free_array(p);
+        INVARIANT(false);
+        //rcu::s_instance.free_array(p);
       else
         delete [] p;
     }

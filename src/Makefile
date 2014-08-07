@@ -126,7 +126,6 @@ SRCFILES = allocator.cc \
 	core.cc \
 	counter.cc \
 	memory.cc \
-	rcu.cc \
 	stats_server.cc \
 	thread.cc \
 	ticker.cc \
@@ -135,6 +134,8 @@ SRCFILES = allocator.cc \
 	txn.cc \
 	txn_proto2_impl.cc \
 	varint.cc
+#rcu.cc \
+#allocator.cc \
 
 RCU_SRCFILES = rcu/sm-log.cpp \
 	rcu/sm-tx-log.cpp \
@@ -174,8 +175,8 @@ BENCH_SRCFILES = benchmarks/bdb_wrapper.cc \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
-	benchmarks/tpcc.cc \
-	benchmarks/ycsb.cc
+	benchmarks/tpcc.cc
+#	benchmarks/ycsb.cc FIXME: tzwang: don't bother non-tpcc for now
 
 ifeq ($(MYSQL_S),1)
 BENCH_CXXFLAGS += -DMYSQL_SHARE_DIR=\"$(MYSQL_SHARE_DIR)\"

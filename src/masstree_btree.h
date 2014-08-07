@@ -21,10 +21,11 @@
 #include "macros.h"
 #include "prefetch.h"
 #include "amd64.h"
-#include "rcu.h"
 #include "util.h"
 #include "small_vector.h"
 #include "ownership_checker.h"
+
+#include "rcu-wrapper.h"
 
 #include "masstree/masstree_scan.hh"
 #include "masstree/masstree_insert.hh"
@@ -33,8 +34,6 @@
 #include "masstree/timestamp.hh"
 #include "masstree/mtcounters.hh"
 #include "masstree/circular_int.hh"
-
-#include "rcu/rcu.h"
 
 class simple_threadinfo {
  public:
@@ -124,35 +123,38 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-        return rcu::s_instance.alloc(sz);
+        return RCU::rcu_alloc(sz);
     }
     void deallocate(void* p, size_t sz, memtag) {
 	// in C++ allocators, 'p' must be nonnull
-        rcu::s_instance.dealloc(p, sz);
+        // XXX: tzwang: this should be returning the memory to slab actually
+        RCU::rcu_free(p);
     }
     void deallocate_rcu(void *p, size_t sz, memtag) {
 	assert(p);
-        rcu::s_instance.dealloc_rcu(p, sz);
+        RCU::rcu_free(p);
     }
 
     void* pool_allocate(size_t sz, memtag) {
 	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        return rcu::s_instance.alloc(nl * CACHE_LINE_SIZE);
+        return RCU::rcu_alloc(nl * CACHE_LINE_SIZE);
     }
     void pool_deallocate(void* p, size_t sz, memtag) {
-	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        rcu::s_instance.dealloc(p, nl * CACHE_LINE_SIZE);
+	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
+        // XXX: tzwang: this should be returning the memory to slab actually
+        RCU::rcu_free(p);
     }
     void pool_deallocate_rcu(void* p, size_t sz, memtag) {
 	assert(p);
-	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        rcu::s_instance.dealloc_rcu(p, nl * CACHE_LINE_SIZE);
+	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
+        RCU::rcu_free(p);
     }
 
     // RCU
     void rcu_register(rcu_callback *cb) {
-      scoped_rcu_base<false> guard;
-      rcu::s_instance.free_with_fn(cb, rcu_callback_function);
+      // FIXME: tzwang
+      //scoped_rcu_base<false> guard;
+      //rcu::s_instance.free_with_fn(cb, rcu_callback_function);
     }
 
   private:
@@ -163,7 +165,7 @@ struct masstree_params : public Masstree::nodeparams<> {
   typedef uint8_t* value_type;
   typedef Masstree::value_print<value_type> value_print_type;
   typedef simple_threadinfo threadinfo_type;
-  enum { RcuRespCaller = false };
+  enum { RcuRespCaller = true }; // FIXME: tzwang: should be false. Now set to true to disable rcu for silo 
 };
 
 struct masstree_single_threaded_params : public masstree_params {
@@ -503,7 +505,7 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
 template <typename P>
 void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
   rcu_region guard;
-  INVARIANT(rcu::s_instance.in_rcu_region()); // tzwang: bug? because gurad could be disabled
+  INVARIANT(RCU::rcu_is_active()); // FIXME: tzwang: bug? because gurad could be disabled
   std::vector<node_base_type *> q, layers;
   q.push_back(table_.root());
   while (!q.empty()) {

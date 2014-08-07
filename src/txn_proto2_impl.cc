@@ -26,6 +26,8 @@ transaction_proto2_static::InitGC()
   g_flags->g_gc_init.store(true, memory_order_release);
 }
 
+// FIXME: tzwang: no-op due to epoch removal
+/*
 static void
 sleep_ro_epoch()
 {
@@ -35,16 +37,18 @@ sleep_ro_epoch()
   t.tv_nsec = sleep_ns % ONE_SECOND_NS;
   nanosleep(&t, nullptr);
 }
+*/
 
-// tzwang: this is never used??
+// FIXME: tzwang: this is never used??
 void
 transaction_proto2_static::PurgeThreadOutstandingGCTasks()
 {
+  /*
 #ifdef PROTO2_CAN_DISABLE_GC
   if (!IsGCEnabled())
     return;
 #endif
-  INVARIANT(!rcu::s_instance.in_rcu_region());
+  INVARIANT(!RCU::rcu_is_active());
   threadctx &ctx = g_threadctxs.my();
   uint64_t e;
   if (!ctx.queue_.get_latest_epoch(e))
@@ -66,6 +70,7 @@ transaction_proto2_static::PurgeThreadOutstandingGCTasks()
   }
   clean_up_to_including(ctx, e);
   INVARIANT(ctx.queue_.empty());
+  */
 }
 
 //#ifdef CHECK_INVARIANTS
@@ -89,7 +94,7 @@ transaction_proto2_static::PurgeThreadOutstandingGCTasks()
 void
 transaction_proto2_static::clean_up_to_including(threadctx &ctx, uint64_t ro_tick_geq)
 {
-  INVARIANT(!rcu::s_instance.in_rcu_region());
+  INVARIANT(!RCU::rcu_is_active());
   INVARIANT(ctx.last_reaped_epoch_ <= ro_tick_geq);
   INVARIANT(ctx.scratch_.empty());
   if (ctx.last_reaped_epoch_ == ro_tick_geq)
@@ -106,15 +111,20 @@ transaction_proto2_static::clean_up_to_including(threadctx &ctx, uint64_t ro_tic
   ctx.last_reaped_epoch_ = ro_tick_geq;
 
 #ifdef CHECK_INVARIANTS
+  /* FIXME: tzwang: no ticker for epoch removal
   const uint64_t last_tick_ex = ticker::s_instance.global_last_tick_exclusive();
   INVARIANT(last_tick_ex);
   const uint64_t last_consistent_tid = ComputeReadOnlyTid(last_tick_ex - 1);
   const uint64_t computed_last_tick_ex = ticker::s_instance.compute_global_last_tick_exclusive();
   INVARIANT(last_tick_ex <= computed_last_tick_ex);
   INVARIANT(to_read_only_tick(last_tick_ex) > ro_tick_geq);
+  */
 #endif
 
   // XXX: hacky
+  // FIXME: tzwang: see if the do_cleanup really matters, currently seems not
+  // so just use my own simple scoped_rcu_region.
+  /*
   char rcu_guard[sizeof(scoped_rcu_base<false>)] = {0};
   const size_t max_niters_with_rcu = 128;
 #define ENTER_RCU() \
@@ -126,6 +136,20 @@ transaction_proto2_static::clean_up_to_including(threadctx &ctx, uint64_t ro_tic
       scoped_rcu_base<false> *px = (scoped_rcu_base<false> *) &rcu_guard[0]; \
       px->~scoped_rcu_base<false>(); \
     } while (0)
+  */
+
+  char rcu_guard[sizeof(scoped_rcu_region)] = {0};
+  const size_t max_niters_with_rcu = 128;
+#define ENTER_RCU() \
+    do { \
+      new (&rcu_guard[0]) scoped_rcu_region(); \
+    } while (0)
+#define EXIT_RCU() \
+    do { \
+      scoped_rcu_region *px = (scoped_rcu_region *) &rcu_guard[0]; \
+      px->~scoped_rcu_region(); \
+    } while (0)
+
 
   ctx.scratch_.empty_accept_from(ctx.queue_, ro_tick_geq);
   ctx.scratch_.transfer_freelist(ctx.queue_);
@@ -139,26 +163,28 @@ transaction_proto2_static::clean_up_to_including(threadctx &ctx, uint64_t ro_tic
     INVARIANT(delent.tuple()->opaque.load(std::memory_order_acquire) == 1);
     if (!delent.key_.get_flags()) {
       // guaranteed to be gc-able now (even w/o RCU)
-#ifdef CHECK_INVARIANTS
-      if (delent.trigger_tid_ > last_consistent_tid /*|| !IsBlocked(delent.tuple_ahead_, delent.tuple(), last_consistent_tid) */) {
-        cerr << "tuple ahead     : " << g_proto_version_str(delent.tuple_ahead_->version) << endl;
-        cerr << "tuple ahead     : " << *delent.tuple_ahead_ << endl;
-        cerr << "trigger tid     : " << g_proto_version_str(delent.trigger_tid_) << endl;
-        cerr << "tuple           : " << g_proto_version_str(delent.tuple()->version) << endl;
-        cerr << "last_consist_tid: " << g_proto_version_str(last_consistent_tid) << endl;
-        cerr << "last_tick_ex    : " << last_tick_ex << endl;
-        cerr << "ro_tick_geq     : " << ro_tick_geq << endl;
-        cerr << "rcu_block_tick  : " << it.tick() << endl;
-      }
-      INVARIANT(delent.trigger_tid_ <= last_consistent_tid);
-      delent.tuple()->opaque.store(0, std::memory_order_release);
-#endif
+// FIXME: tzwang: no last_consistent_tid for now sorry
+//#ifdef CHECK_INVARIANTS
+//      if (delent.trigger_tid_ > last_consistent_tid /*|| !IsBlocked(delent.tuple_ahead_, delent.tuple(), last_consistent_tid) */) {
+//        cerr << "tuple ahead     : " << g_proto_version_str(delent.tuple_ahead_->version) << endl;
+//        cerr << "tuple ahead     : " << *delent.tuple_ahead_ << endl;
+//        cerr << "trigger tid     : " << g_proto_version_str(delent.trigger_tid_) << endl;
+//        cerr << "tuple           : " << g_proto_version_str(delent.tuple()->version) << endl;
+//        cerr << "last_consist_tid: " << g_proto_version_str(last_consistent_tid) << endl;
+//        cerr << "last_tick_ex    : " << last_tick_ex << endl;
+//        cerr << "ro_tick_geq     : " << ro_tick_geq << endl;
+//        cerr << "rcu_block_tick  : " << it.tick() << endl;
+//      }
+//      INVARIANT(delent.trigger_tid_ <= last_consistent_tid);
+//      delent.tuple()->opaque.store(0, std::memory_order_release);
+//#endif
       dbtuple::release_no_rcu(delent.tuple());
     } else {
       INVARIANT(!delent.tuple_ahead_);
       INVARIANT(delent.btr_);
       // check if an element preceeds the (deleted) tuple before doing the delete
       ::lock_guard<dbtuple> lg_tuple(delent.tuple(), false);
+/* FIXME: tzwang: no last_consistent_tid for now sorry
 #ifdef CHECK_INVARIANTS
       if (!delent.tuple()->is_not_behind(last_consistent_tid)) {
         cerr << "trigger tid     : " << g_proto_version_str(delent.trigger_tid_) << endl;
@@ -172,8 +198,10 @@ transaction_proto2_static::clean_up_to_including(threadctx &ctx, uint64_t ro_tic
       INVARIANT(delent.tuple()->is_not_behind(last_consistent_tid));
       INVARIANT(delent.tuple()->is_deleting());
 #endif
+      */
       if (unlikely(!delent.tuple()->is_latest())) {
         // requeue it up, except this time as a regular delete
+        /* FIXME: tzwang no ticker due to epoch removal
         const uint64_t my_ro_tick = to_read_only_tick(
             ticker::s_instance.global_current_tick());
         ctx.queue_.enqueue(
@@ -190,6 +218,7 @@ transaction_proto2_static::clean_up_to_including(threadctx &ctx, uint64_t ro_tic
         if (unlikely(spx))
           ctx.pool_.emplace_back(spx);
         continue;
+        */
       }
 #ifdef CHECK_INVARIANTS
       delent.tuple()->opaque.store(0, std::memory_order_release);
@@ -233,7 +262,7 @@ transaction_proto2_static::clean_up_to_including(threadctx &ctx, uint64_t ro_tic
 
   if (in_rcu)
     EXIT_RCU();
-  INVARIANT(!rcu::s_instance.in_rcu_region());
+  INVARIANT(!RCU::rcu_is_active());
 }
 
 aligned_padded_elem<transaction_proto2_static::hackstruct>

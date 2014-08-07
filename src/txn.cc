@@ -31,9 +31,10 @@ static string
 proto2_version_str(uint64_t v)
 {
   ostringstream b;
-  b << "[core=" << transaction_proto2_static::CoreId(v) << " | n="
-    << transaction_proto2_static::NumId(v) << " | epoch="
-    << transaction_proto2_static::EpochId(v) << "]";
+  // FIXME: no-op due to epoch removal
+  //b << "[core=" << transaction_proto2_static::CoreId(v) << " | n="
+  //  << transaction_proto2_static::NumId(v) << " | epoch="
+  //  << transaction_proto2_static::EpochId(v) << "]";
   return b.str();
 }
 

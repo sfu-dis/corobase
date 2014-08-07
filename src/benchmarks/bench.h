@@ -13,7 +13,7 @@
 #include "../thread.h"
 #include "../util.h"
 #include "../spinbarrier.h"
-#include "../rcu.h"
+#include "../rcu-wrapper.h"
 
 extern void ycsb_do_test(abstract_db *db, int argc, char **argv);
 extern void tpcc_do_test(abstract_db *db, int argc, char **argv);
