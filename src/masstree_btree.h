@@ -34,6 +34,8 @@
 #include "masstree/mtcounters.hh"
 #include "masstree/circular_int.hh"
 
+#include "rcu/rcu.h"
+
 class simple_threadinfo {
  public:
     simple_threadinfo()
@@ -161,7 +163,7 @@ struct masstree_params : public Masstree::nodeparams<> {
   typedef uint8_t* value_type;
   typedef Masstree::value_print<value_type> value_print_type;
   typedef simple_threadinfo threadinfo_type;
-  enum { RcuRespCaller = true };
+  enum { RcuRespCaller = false };
 };
 
 struct masstree_single_threaded_params : public masstree_params {
@@ -501,7 +503,7 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
 template <typename P>
 void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
   rcu_region guard;
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(rcu::s_instance.in_rcu_region()); // tzwang: bug? because gurad could be disabled
   std::vector<node_base_type *> q, layers;
   q.push_back(table_.root());
   while (!q.empty()) {
