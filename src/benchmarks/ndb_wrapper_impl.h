@@ -132,11 +132,6 @@ ndb_wrapper<Transaction>::ndb_wrapper(
   if (logfiles.empty())
     return;
   std::vector<std::vector<unsigned>> assignments_used;
-  txn_logger::Init(
-      nthreads, logfiles, assignments_given, &assignments_used,
-      call_fsync,
-      use_compression,
-      fake_writes);
   if (verbose) {
     std::cerr << "[logging subsystem]" << std::endl;
     std::cerr << "  assignments: " << assignments_used << std::endl;
