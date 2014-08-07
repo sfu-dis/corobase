@@ -1750,7 +1750,7 @@ tpcc_worker::txn_payment()
                        paymentAmount,
                        v_c.c_data.c_str());
       v_c_new.c_data.resize_junk(
-          min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
+          std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
       NDB_MEMCPY((void *) v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
     }
 
@@ -1764,7 +1764,7 @@ tpcc_worker::txn_payment()
                      "%.10s    %.10s",
                      v_w->w_name.c_str(),
                      v_d->d_name.c_str());
-    v_h.h_data.resize_junk(min(static_cast<size_t>(n), v_h.h_data.max_size()));
+    v_h.h_data.resize_junk(std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
 
     const size_t history_sz = Size(v_h);
     tbl_history(warehouse_id)->insert(txn, Encode(str(), k_h), Encode(str(), v_h));
