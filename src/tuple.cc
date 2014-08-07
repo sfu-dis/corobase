@@ -68,7 +68,7 @@ static ostream &
 format_tuple(ostream &o, const dbtuple &t)
 {
   string truncated_contents(
-      (const char *) &t.value_start[0], min(static_cast<size_t>(t.size), 16UL));
+      (const char *) &t.value_start[0], std::min(static_cast<size_t>(t.size), 16UL));
   o << &t << " [tid=" << g_proto_version_str(t.version)
     << ", size=" << t.size
     << ", contents=0x" << hexify(truncated_contents) << (t.size > 16 ? "..." : "")
