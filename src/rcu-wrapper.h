@@ -101,6 +101,20 @@ namespace RCU {
 */
 
   void free_with_fn(void *p, deleter_t fn);
+
+  template <typename T>
+  static inline void
+  deleter_array(void *p)
+  {
+    delete [] (T *) p;
+  }
+
+  template <typename T>
+  inline void
+  free_array(T *p)
+  {
+    free_with_fn(p, deleter_array<T>);
+  }
 };
 class disabled_rcu_region {};
 #endif
