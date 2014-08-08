@@ -19,6 +19,10 @@
 #include "str.hh"
 #include "ksearch.hh"
 
+#ifdef HACK_SILO
+#include "../object.h"
+#endif
+
 namespace Masstree {
 using lcdf::Str;
 using lcdf::String;
@@ -82,8 +86,51 @@ class basic_table {
 
     inline void print(FILE* f = 0, int indent = 0) const;
 
+#ifdef HACK_SILO
+	typedef object_vector<value_type> tuple_vector_type;
+	typedef object_vector<node_type*> node_vector_type;
+
+	inline oid_type insert_tuple( value_type val )
+	{
+		assert( tuple_vector );
+		return tuple_vector->insert( val );
+	}
+
+	inline void update_tuple( oid_type oid, value_type val )
+	{
+		assert( tuple_vector );
+		tuple_vector->put( oid, val );
+	}
+	inline value_type fetch_tuple( oid_type oid ) const
+	{
+		assert( tuple_vector );
+		return tuple_vector->get( oid );
+	}
+
+	inline oid_type insert_node( node_type* node )
+	{
+		assert( node_vector );
+		return node_vector->insert( node );
+	}
+
+	inline void update_node( oid_type oid, node_type* node )
+	{
+		assert( node_vector );
+		node_vector->put( oid, node );
+	}
+	inline node_type* fetch_node( oid_type oid ) const
+	{
+		assert( node_vector );
+		return node_vector->get( oid );
+	}
+#endif
+
   private:
     node_type* root_;
+#ifdef HACK_SILO
+	tuple_vector_type* tuple_vector;
+	node_vector_type* node_vector;
+#endif
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,

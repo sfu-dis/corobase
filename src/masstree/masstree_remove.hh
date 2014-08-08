@@ -65,7 +65,11 @@ bool tcursor<P>::gc_layer(threadinfo& ti)
 	    return false;
 	}
 
+#ifdef HACK_SILO
+	node_type *child = in->fetch_node(in->child_oid_[0]);
+#else
 	node_type *child = in->child_[0];
+#endif
 	child->set_parent(node_type::parent_for_layer_root(n_));
 	n_->lv_[kp_] = child;
 	in->mark_split();
@@ -205,7 +209,11 @@ bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
 		--p->nkeys_;
 	    } else
 		p->ikey0_[kp - 1] = reshape_ikey;
+#ifdef HACK_SILO
+	    if (kp > 1 || p->child_oid_[0]) {
+#else
 	    if (kp > 1 || p->child_[0]) {
+#endif
 		if (p->size() == 0)
 		    collapse(p, ikey, root, prefix, ti);
 		else
@@ -221,7 +229,11 @@ bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
 	    } else {
 		reshaping = true;
 		reshape_ikey = p->ikey0_[0];
+#ifdef HACK_SILO
+		p->child_oid_[0] = 0;
+#else
 		p->child_[0] = 0;
+#endif
 	    }
 	}
 
@@ -247,9 +259,15 @@ void tcursor<P>::collapse(internode_type* p, ikey_type ikey,
 	}
 
 	int kp = key_upper_bound(ikey, *gp);
+#ifdef HACK_SILO
+	masstree_invariant(gp->fetch_node(gp->child_oid_[kp]) == p);
+	gp->child_oid_[kp] = p->child_oid_[0];
+	p->fetch_node(p->child_oid_[0])->set_parent(gp);
+#else
 	masstree_invariant(gp->child_[kp] == p);
 	gp->child_[kp] = p->child_[0];
 	p->child_[0]->set_parent(gp);
+#endif
 
 	p->mark_deleted();
 	p->unlock();
@@ -331,8 +349,13 @@ void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
         } else {
             internode_type* in = static_cast<internode_type*>(n);
             for (int i = 0; i != in->size() + 1; ++i)
+#ifdef HACK_SILO
+                if (in->child_oid_[i])
+                    enqueue(in->fetch_node(in->child_oid_[i]), tailp);
+#else
                 if (in->child_[i])
                     enqueue(in->child_[i], tailp);
+#endif
             in->deallocate(ti);
         }
     }

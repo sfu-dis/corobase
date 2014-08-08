@@ -35,6 +35,11 @@
 #include "masstree/mtcounters.hh"
 #include "masstree/circular_int.hh"
 
+#ifdef HACK_SILO
+#include "object.h"
+#include "tuple.h"
+#endif
+
 class simple_threadinfo {
  public:
     simple_threadinfo()
@@ -243,6 +248,39 @@ public:
     threadinfo ti;
     table_.destroy(ti);
   }
+
+#ifdef HACK_SILO
+  typedef object_vector<value_type> tuple_vector_type;
+  typedef object_vector<node_base_type*> node_vector_type;
+
+  inline oid_type insert_tuple( value_type val )
+  {
+	  return table_.insert_tuple( val );
+  }
+
+  inline void update_tuple( oid_type oid, value_type val )
+  {
+	  table_.update_tuple( oid, val );
+  }
+  inline value_type fetch_tuple( oid_type oid ) const
+  {
+	  return table_.fetch_tuple( oid );
+  }
+
+  inline oid_type insert_node( node_base_type* val )
+  {
+	  return table_.insert_node( val );
+  }
+
+  inline void update_node( oid_type oid, node_base_type* val )
+  {
+	  table_.update_node( oid, val );
+  }
+  inline node_base_type* fetch_node( oid_type oid ) const
+  {
+	  return table_.fetch_node( oid );
+  }
+#endif
 
   /**
    * NOT THREAD SAFE
@@ -496,7 +534,11 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
       return static_cast<leaf_type*>(cur);
     internode_type *in = static_cast<internode_type*>(cur);
     nodeversion_type version = cur->stable();
+#ifdef HACK_SILO
+    node_base_type *child = in->fetch_node(in->child_oid_[0]);
+#else
     node_base_type *child = in->child_[0];
+#endif
     if (unlikely(in->has_changed(version)))
       continue;
     cur = child;
@@ -594,7 +636,13 @@ inline bool mbtree<P>::search(const key_type &k, value_type &v,
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_unlocked(ti);
   if (found)
+#ifdef HACK_SILO
+  {
+	  v = fetch_tuple((oid_type)(lp.value()));
+  }
+#else
     v = lp.value();
+#endif
   if (search_info)
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   return found;
@@ -633,7 +681,13 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, value_type v,
   bool found = lp.find_insert(ti);
   if (!found) {
     ti.advance_timestamp(lp.node_timestamp());
+#ifdef HACK_SILO
+	dbtuple* tuple_ptr = reinterpret_cast<dbtuple*>(v);
+	tuple_ptr->oid =  insert_tuple(v);
+	lp.value() = (value_type)(tuple_ptr->oid);
+#else
     lp.value() = v;
+#endif
     if (insert_info) {
       insert_info->node = lp.node();
       insert_info->old_version = lp.previous_full_version_value();
@@ -658,7 +712,14 @@ inline bool mbtree<P>::remove(const key_type &k, value_type *old_v)
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
   if (found && old_v)
+#ifdef HACK_SILO
+  {
+	  *old_v = fetch_tuple( (oid_type)lp.value() );
+	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
+  }
+#else
     *old_v = lp.value();
+#endif
   lp.finish(found ? -1 : 0, ti);
   return found;
 }

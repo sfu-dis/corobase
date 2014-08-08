@@ -344,12 +344,21 @@ int basic_table<P>::scan(H helper,
     while (1) {
 	switch (state) {
 	case mystack_type::scan_emit:
+		{
 	    ++scancount;
+#ifdef HACK_SILO
+		value_type v;
+		v = fetch_tuple((oid_type)(entry.value()));
+	    if (!scanner.visit_value(ka, v, ti))
+			goto done;
+#else
 	    if (!scanner.visit_value(ka, entry.value(), ti))
-		goto done;
+			goto done;
+#endif
 	    stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
             state = stack[stackpos].find_next(helper, ka, entry);
-            break;
+		}
+		break;
 
 	case mystack_type::scan_find_next:
         find_next:
