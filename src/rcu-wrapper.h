@@ -3,7 +3,6 @@
 
 #include "macros.h"
 #include "rcu/rcu.h"
-//#include "pxqueue.h"  // tzwang: maybe don't need this
 
 // things won't work directly:
 // free_with_fn()
