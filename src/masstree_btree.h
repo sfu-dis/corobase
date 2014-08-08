@@ -166,7 +166,7 @@ struct masstree_params : public Masstree::nodeparams<> {
   typedef uint8_t* value_type;
   typedef Masstree::value_print<value_type> value_print_type;
   typedef simple_threadinfo threadinfo_type;
-  enum { RcuRespCaller = true }; // FIXME: tzwang: should be false. Now set to true to disable rcu for silo 
+  enum { RcuRespCaller = true }; // FIXME: tzwang: OK, silo's original code also set it to true
 };
 
 struct masstree_single_threaded_params : public masstree_params {

@@ -2,6 +2,7 @@
 #define __RCU_WRAPPER_
 
 #include "macros.h"
+#include "core.h"
 #include "rcu/rcu.h"
 
 // things won't work directly:
@@ -10,15 +11,37 @@
 // silo's rcu_register()
 
 class scoped_rcu_region {
+private:
+  // tls depth field to flag when we should do deregister and exit
+  // (inherited from silo's depth_ field of the sync class)
+  static percore_lazy<int> _depths;
+
 public:
   scoped_rcu_region()
   {
-    RCU::rcu_register();
-    RCU::rcu_enter();
+    int &d = scoped_rcu_region::_depths.my();
+    ++d;
+    INVARIANT(d > 0);
+    if (d == 1) {
+      if (!RCU::rcu_is_registered())
+        RCU::rcu_register();
+      if (!RCU::rcu_is_active())
+        RCU::rcu_enter();
+    }
   }
+
   ~scoped_rcu_region()
   {
-    RCU::rcu_quiesce();
+    INVARIANT(RCU::rcu_is_active());
+    int &d = _depths.my();
+    --d;
+    INVARIANT(d >= 0);
+    if (d == 0) {
+      RCU::rcu_exit();  // or should do rcu_quiesce()?
+      RCU::rcu_gc_info info = RCU::rcu_get_gc_info();
+      fprintf(stderr, "RCU subsystem freed %zd objects in %zd passes\n",
+              info.objects_freed, info.gc_passes);
+    }
   }
 };
 
