@@ -1,4 +1,5 @@
 #include "rcu-wrapper.h"
+percore_lazy<int> scoped_rcu_region::_depths;
 
 void
 RCU::free_with_fn(void *p, deleter_t fn)
