@@ -134,15 +134,25 @@ int internode<P>::split_into(internode<P> *nr, int p, ikey_type ka,
     nr->nkeys_ = this->width + 1 - (mid + 1);
 
     if (p < mid) {
+#ifdef HACK_SILO
+	nr->child_oid_[0] = this->child_oid_[mid];
+#else
 	nr->child_[0] = this->child_[mid];
+#endif
 	nr->shift_from(0, this, mid, this->width - mid);
 	split_ikey = this->ikey0_[mid - 1];
     } else if (p == mid) {
+#ifdef HACK_SILO
+	nr->child_oid_[0] = value->oid;
+#else
 	nr->child_[0] = value;
+#endif
 	nr->shift_from(0, this, mid, this->width - mid);
 	split_ikey = ka;
     } else {
-	nr->child_[0] = this->child_[mid + 1];
+#ifdef HACK_SILO
+	nr->child_oid_[0] = this->child_oid_[mid + 1];
+#endif
 	nr->shift_from(0, this, mid + 1, p - (mid + 1));
 	nr->assign(p - (mid + 1), ka, value);
 	nr->shift_from(p + 1 - (mid + 1), this, p, this->width - p);
@@ -150,7 +160,11 @@ int internode<P>::split_into(internode<P> *nr, int p, ikey_type ka,
     }
 
     for (int i = 0; i <= nr->nkeys_; ++i)
+#ifdef HACK_SILO
+	nr->fetch_node(nr->child_oid_[i])->set_parent(nr);
+#else
 	nr->child_[i]->set_parent(nr);
+#endif
 
     this->mark_split();
     if (p < mid) {
@@ -167,7 +181,11 @@ template <typename P>
 node_base<P>* tcursor<P>::finish_split(threadinfo& ti)
 {
     node_type *n = n_;
+#ifdef HACK_SILO
+    node_type *child = leaf_type::make(n_->ksuf_size(), n_->node_ts_, ti, n_->table_);
+#else
     node_type *child = leaf_type::make(n_->ksuf_size(), n_->node_ts_, ti);
+#endif
     child->assign_version(*n_);
     ikey_type xikey[2];
     int split_type = n_->split_into(static_cast<leaf_type *>(child),
@@ -181,8 +199,13 @@ node_base<P>* tcursor<P>::finish_split(threadinfo& ti)
 	internode_type *p = n->locked_parent(ti);
 
 	if (!node_type::parent_exists(p)) {
+#ifdef HACK_SILO
+	    internode_type *nn = internode_type::make(ti, n->table_);
+		nn->child_oid_[0] = n->oid;
+#else
 	    internode_type *nn = internode_type::make(ti);
 	    nn->child_[0] = n;
+#endif
 	    nn->assign(0, xikey[sense], child);
 	    nn->nkeys_ = 1;
 	    nn->parent_ = p;
@@ -195,7 +218,11 @@ node_base<P>* tcursor<P>::finish_split(threadinfo& ti)
 	    if (p->size() < p->width)
 		p->mark_insert();
 	    else {
+#ifdef HACK_SILO
+		next_child = internode_type::make(ti, p->table_);
+#else
 		next_child = internode_type::make(ti);
+#endif
 		next_child->assign_version(*p);
 		next_child->mark_nonroot();
 		kp = p->split_into(next_child, kp, xikey[sense],

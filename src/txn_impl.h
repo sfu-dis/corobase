@@ -4,6 +4,10 @@
 #include "txn.h"
 #include "lockguard.h"
 
+#ifdef HACK_SILO
+#include "object.h"
+#endif
+
 // base definitions
 
 template <template <typename> class Protocol, typename Traits>
@@ -407,6 +411,11 @@ transaction<Protocol, Traits>::commit(bool doThrow)
             tuple->write_record_at(
                 cast(), commit_tid.second,
                 it->get_value(), it->get_writer());
+#ifdef HACK_SILO
+		  ret.head_->oid = tuple->oid;		// for a case where ret.head is newly allocated
+		  it->get_btree()->update_tuple( ret.head_->oid, reinterpret_cast<typename concurrent_btree::value_type>(ret.head_) );
+
+#endif
           bool unlock_head = false;
           if (unlikely(ret.head_ != tuple)) {
             // tuple was replaced by ret.head_
@@ -416,12 +425,16 @@ transaction<Protocol, Traits>::commit(bool doThrow)
             unlock_head = true;
             // need to unlink tuple from underlying btree, replacing
             // with ret.rest_ (atomically)
+
+#ifndef HACK_SILO		// Notes. we go by multiversioning, we don't need to worry about in-plae update failure
+
             typename concurrent_btree::value_type old_v = 0;
             if (it->get_btree()->insert(
                   varkey(it->get_key()), (typename concurrent_btree::value_type) ret.head_, &old_v, NULL))
               // should already exist in tree
               INVARIANT(false);
             INVARIANT(old_v == (typename concurrent_btree::value_type) tuple);
+#endif
             // we don't RCU free this, because it is now part of the chain
             // (the cleaners will take care of this)
             ++evt_dbtuple_latest_replacement;

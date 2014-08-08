@@ -18,6 +18,10 @@
 #include "masstree_struct.hh"
 #include <stdio.h>
 
+#ifdef HACK_SILO
+#include "../object.h"
+#endif
+
 namespace Masstree {
 
 template <typename T>
@@ -133,8 +137,13 @@ void internode<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
     }
     fputc('\n', f);
     for (int p = 0; p < copy.size(); ++p) {
+#ifdef HACK_SILO
+	if (copy.child_oid_[p])
+	    copy.fetch_node(copy.child_oid_[p])->print(f, prefix, indent + 4, kdepth);
+#else
 	if (copy.child_[p])
 	    copy.child_[p]->print(f, prefix, indent + 4, kdepth);
+#endif
 	else
 	    fprintf(f, "%s%*s[]\n", prefix, indent + 4, "");
         int l;
@@ -144,8 +153,13 @@ void internode<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
             l = copy.get_key(p).unparse(keybuf, sizeof(keybuf));
 	fprintf(f, "%s%*s%.*s\n", prefix, indent + 2, "", l, keybuf);
     }
+#ifdef HACK_SILO
+    if (copy.child_oid_[copy.size()])
+	copy.fetch_node(copy.child_oid_[copy.size()])->print(f, prefix, indent + 4, kdepth);
+#else
     if (copy.child_[copy.size()])
 	copy.child_[copy.size()]->print(f, prefix, indent + 4, kdepth);
+#endif
     else
 	fprintf(f, "%s%*s[]\n", prefix, indent + 4, "");
 }

@@ -24,6 +24,10 @@
 #include "prefetch.h"
 #include "ownership_checker.h"
 
+#ifdef HACK_SILO
+#include "object.h"
+#endif
+
 // debugging tool
 //#define TUPLE_LOCK_OWNERSHIP_CHECKING
 
@@ -52,6 +56,10 @@ public:
   typedef const uint8_t * const_record_type;
   typedef size_t size_type;
   typedef std::string string_type;
+
+#ifdef HACK_SILO
+  oid_type oid;
+#endif
 
   static const tid_t MIN_TID = 0;
   static const tid_t MAX_TID = (tid_t) -1;

@@ -42,7 +42,11 @@ inline node_base<P>* tcursor<P>::check_leaf_insert(node_type* root,
 		+ n_->iksuf_[0].overhead(n_->width);
 	else
 	    ksufsize = 0;
+#ifdef HACK_SILO
+	leaf_type *nl = leaf_type::make_root(ksufsize, n_, ti, n_->table_);
+#else
 	leaf_type *nl = leaf_type::make_root(ksufsize, n_, ti);
+#endif
 	nl->assign_initialize(0, kc <= 0 ? oka : ka_, ti);
 	if (kc != 0)
 	    nl->assign_initialize(1, kc <= 0 ? ka_ : oka, ti);
