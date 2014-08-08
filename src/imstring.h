@@ -99,10 +99,9 @@ private:
   release()
   {
     if (likely(p)) {
-      // FIXME: tzwang: disable this for now
+      // TODO: tzwang: test if this new free_array works
       if (RCU)
-        INVARIANT(false);
-        //rcu::s_instance.free_array(p);
+        RCU::free_array(p);
       else
         delete [] p;
     }
