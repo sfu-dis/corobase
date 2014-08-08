@@ -927,7 +927,6 @@ private:
       if (unlikely(!n))
         return;
       n->mark_deleting();
-      // FIXME: tzwang: free with fn
       RCU::free_with_fn(n, deleter);
     }
 

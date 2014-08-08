@@ -176,6 +176,8 @@ public:
 #endif
 
 protected:
+// FIXME: tzwang: removed with our new free_with_fn
+/*
   struct delete_entry {
 #ifdef CHECK_INVARIANTS
     dbtuple *tuple_ahead_;
@@ -240,9 +242,11 @@ protected:
       scratch_.alloc_freelist(RCU::NQueueGroups);
     }
   };
+*/
 
-  static void
-  clean_up_to_including(threadctx &ctx, uint64_t ro_tick_geq);
+  // FIXME: tzwang: removed with silo's epoch
+  //static void
+  //clean_up_to_including(threadctx &ctx, uint64_t ro_tick_geq);
 
   struct hackstruct {
     std::atomic<bool> status_;
@@ -261,7 +265,8 @@ protected:
   };
   static util::aligned_padded_elem<flags> g_flags;
 
-  static percore_lazy<threadctx> g_threadctxs;
+  // FIXME: tzwang: removed with silo's epoch
+  //static percore_lazy<threadctx> g_threadctxs;
 
   static event_counter g_evt_worker_thread_wait_log_buffer;
   static event_counter g_evt_dbtuple_no_space_for_delkey;
