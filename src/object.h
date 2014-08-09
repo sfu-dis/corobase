@@ -34,7 +34,9 @@ public:
 
 	void put( oid_type oid, T item )
 	{
-		assert( oid <= _size );
+		//assert( oid <= _size );
+		if( oid >= _size || oid == 0 )
+			abort();
 
 retry:
 		object_type* old_desc = _obj_table[oid];
@@ -51,6 +53,8 @@ retry:
 	{
 		oid_type oid = alloc();
 		assert( not _obj_table[oid] );
+		if( oid >= _size || oid == 0 )
+			abort();
 		put( oid, item );
 		return oid;
 	}
@@ -58,6 +62,8 @@ retry:
 	inline T get( oid_type oid )
 	{
 		assert( oid <= _size );
+		if( oid >= _size || oid == 0 )
+			abort();
 		object_type* desc= _obj_table[oid];
 		return desc->_data;
 	}

@@ -86,6 +86,23 @@ class node_base : public make_nodeversion<P>::type {
 	    return static_cast<const internode_type*>(this)->size();
     }
 
+#ifdef HACK_SILO
+    inline base_type* parent() const {
+        // almost always an internode
+	if (this->isleaf())
+	{
+		if (static_cast<const leaf_type*>(this)->parent_oid_)
+	    return this->fetch_node(static_cast<const leaf_type*>(this)->parent_oid_);
+	}
+	else
+	{
+		if (static_cast<const internode_type*>(this)->parent_oid_)
+	    return this->fetch_node(static_cast<const internode_type*>(this)->parent_oid_);
+	}
+
+	return 0;
+    }
+#else
     inline base_type* parent() const {
         // almost always an internode
 	if (this->isleaf())
@@ -93,6 +110,7 @@ class node_base : public make_nodeversion<P>::type {
 	else
 	    return static_cast<const internode_type*>(this)->parent_;
     }
+#endif
     static inline base_type* parent_for_layer_root(base_type* higher_layer) {
         (void) higher_layer;
         return 0;
@@ -104,12 +122,33 @@ class node_base : public make_nodeversion<P>::type {
         return parent_exists(parent());
     }
     inline internode_type* locked_parent(threadinfo& ti) const;
+#ifdef HACK_SILO
+    inline void set_parent(base_type* p) {
+	if (this->isleaf())
+	{
+	    if ( parent_exists(p) )
+			static_cast<leaf_type*>(this)->parent_oid_ = p->oid;
+		else
+			static_cast<leaf_type*>(this)->parent_oid_ = 0;
+
+	}
+	else
+	{
+	    if ( parent_exists(p) )
+			static_cast<internode_type*>(this)->parent_oid_ = p->oid;
+		else
+			static_cast<internode_type*>(this)->parent_oid_ = 0;
+
+	}
+    }
+#else
     inline void set_parent(base_type* p) {
 	if (this->isleaf())
 	    static_cast<leaf_type*>(this)->parent_ = p;
 	else
 	    static_cast<internode_type*>(this)->parent_ = p;
     }
+#endif
     inline base_type* unsplit_ancestor() const {
 	base_type* x = const_cast<base_type*>(this), *p;
 	while (x->has_split() && (p = x->parent()))
@@ -159,15 +198,17 @@ class internode : public node_base<P> {
 	typedef object_vector<node_base<P>*> node_vector_type;
 	oid_type child_oid_[width + 1];
 	oid_type parent_oid_;
-    node_base<P>* parent_;			// TODO. replace with oid
+    internode()
+	: node_base<P>(false), nkeys_(0), parent_oid_() {
+    }
 #else
     node_base<P>* child_[width + 1];
     node_base<P>* parent_;
-#endif
-
     internode()
 	: node_base<P>(false), nkeys_(0), parent_() {
     }
+#endif
+
 
 #ifdef HACK_SILO
     static internode<P>* make(threadinfo& ti, basic_table<P>* table) {
@@ -181,7 +222,6 @@ class internode : public node_base<P> {
 	n->table_ = table;
 	n->oid = table->insert_node( n );
 	memset( n->child_oid_, 0, sizeof(oid_type)*width+1 );
-	n->parent_oid_ = 0;
 	return n;
     }
 #else
@@ -361,11 +401,26 @@ class leaf : public node_base<P> {
 	uintptr_t x;
     } next_;
     leaf<P>* prev_;
+#ifdef HACK_SILO
+	oid_type parent_oid_;
+#else
     node_base<P>* parent_;
+#endif
     kvtimestamp_t node_ts_;
     kvtimestamp_t created_at_[P::debug_level > 0];
     stringbag<uint16_t> iksuf_[0];
 
+#ifdef HACK_SILO
+    leaf(size_t sz, kvtimestamp_t node_ts)
+	: node_base<P>(true), nremoved_(0),
+	  permutation_(permuter_type::make_empty()),
+	  ksuf_(), parent_oid_(), node_ts_(node_ts), iksuf_{} {
+	masstree_precondition(sz % 64 == 0 && sz / 64 < 128);
+	extrasize64_ = (int(sz) >> 6) - ((int(sizeof(*this)) + 63) >> 6);
+	if (extrasize64_ > 0)
+	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
+    }
+#else
     leaf(size_t sz, kvtimestamp_t node_ts)
 	: node_base<P>(true), nremoved_(0),
 	  permutation_(permuter_type::make_empty()),
@@ -375,6 +430,7 @@ class leaf : public node_base<P> {
 	if (extrasize64_ > 0)
 	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
     }
+#endif
 
 #ifdef HACK_SILO
     static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti, basic_table<P>* table) {
@@ -393,7 +449,7 @@ class leaf : public node_base<P> {
     static leaf<P>* make_root(int ksufsize, leaf<P>* parent, threadinfo& ti, basic_table<P>* table) {
         leaf<P>* n = make(ksufsize, parent ? parent->node_ts_ : 0, ti, table);
         n->next_.ptr = n->prev_ = 0;
-        n->parent_ = node_base<P>::parent_for_layer_root(parent);
+        n->parent_oid_ = reinterpret_cast<oid_type>(node_base<P>::parent_for_layer_root(parent));
         n->mark_root();
         return n;
     }
@@ -595,8 +651,8 @@ void basic_table<P>::initialize(threadinfo& ti) {
 
 #ifdef HACK_SILO
 	// FIXME. initial vector size parameter!
-	tuple_vector = new object_vector<value_type>( 10000000 );
-	node_vector = new object_vector<node_type*>( 1000000 );
+	tuple_vector = new object_vector<value_type>( 100000000 );
+	node_vector = new object_vector<node_type*>( 10000000 );
     root_ = node_type::leaf_type::make_root(0, 0, ti, this);
 #else
     root_ = node_type::leaf_type::make_root(0, 0, ti);
