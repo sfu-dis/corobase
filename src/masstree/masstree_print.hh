@@ -74,7 +74,11 @@ void leaf<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
             v.version_value(), perm.unparse().c_str());
     if (nremoved_)
 	fprintf(f, "removed %d, ", nremoved_);
+#ifdef HACK_SILO
+    fprintf(f, "parent %llu, prev %p, next %p ", parent_oid_, prev_, next_.ptr);
+#else
     fprintf(f, "parent %p, prev %p, next %p ", parent_, prev_, next_.ptr);
+#endif
     if (ksuf_ && extrasize64_ < -1)
 	fprintf(f, "[ksuf i%dx%d] ", -extrasize64_ - 1, ksuf_->allocated_size() / 64);
     else if (ksuf_)
@@ -128,9 +132,15 @@ void internode<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
 	memcpy(&copy, this, sizeof(copy));
 
     char keybuf[MASSTREE_MAXKEYLEN];
+#ifdef HACK_SILO
+    fprintf(f, "%s%*sinternode %p%s: %d keys, version %x, parent %llu",
+	    prefix, indent, "", this, this->deleted() ? " [DELETED]" : "",
+	    copy.size(), copy.version_value(), copy.parent_oid_);
+#else
     fprintf(f, "%s%*sinternode %p%s: %d keys, version %x, parent %p",
 	    prefix, indent, "", this, this->deleted() ? " [DELETED]" : "",
 	    copy.size(), copy.version_value(), copy.parent_);
+#endif
     if (P::debug_level > 0) {
 	kvtimestamp_t cts = timestamp_sub(created_at_[0], initial_timestamp);
 	fprintf(f, " @" PRIKVTSPARTS, KVTS_HIGHPART(cts), KVTS_LOWPART(cts));

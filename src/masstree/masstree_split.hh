@@ -152,6 +152,8 @@ int internode<P>::split_into(internode<P> *nr, int p, ikey_type ka,
     } else {
 #ifdef HACK_SILO
 	nr->child_oid_[0] = this->child_oid_[mid + 1];
+#else
+	nr->child_[0] = this->child_[mid + 1];
 #endif
 	nr->shift_from(0, this, mid + 1, p - (mid + 1));
 	nr->assign(p - (mid + 1), ka, value);
@@ -208,7 +210,11 @@ node_base<P>* tcursor<P>::finish_split(threadinfo& ti)
 #endif
 	    nn->assign(0, xikey[sense], child);
 	    nn->nkeys_ = 1;
+#ifdef HACK_SILO
+	    nn->parent_oid_ = 0;
+#else
 	    nn->parent_ = p;
+#endif
 	    nn->mark_root();
 	    fence();
 	    n->set_parent(nn);

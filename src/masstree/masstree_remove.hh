@@ -298,6 +298,7 @@ struct destroy_rcu_callback : public P::threadinfo_type::rcu_callback {
     static inline void enqueue(node_base<P>* n, node_base<P>**& tailp);
 };
 
+#ifndef HACK_SILO
 template <typename P>
 inline node_base<P>** destroy_rcu_callback<P>::link_ptr(node_base<P>* n) {
     if (n->isleaf())
@@ -312,9 +313,13 @@ inline void destroy_rcu_callback<P>::enqueue(node_base<P>* n,
     *tailp = n;
     tailp = link_ptr(n);
 }
+#endif
 
 template <typename P>
 void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
+#ifdef HACK_SILO
+	return;
+#else
     if (++count_ == 1) {
         root_ = root_->unsplit_ancestor();
         root_->lock();
@@ -360,6 +365,7 @@ void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
         }
     }
     ti.deallocate(this, sizeof(this), memtag_masstree_gc);
+#endif
 }
 
 template <typename P>
