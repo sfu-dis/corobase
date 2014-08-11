@@ -35,6 +35,19 @@ template <typename N> struct btree_leaflink<N, true> {
     static inline bool is_marked(N *n) {
 	return reinterpret_cast<uintptr_t>(n) & 1;
     }
+#ifdef HACK_SILO
+    template <typename SF>
+    static inline N *lock_next(N *n, SF spin_function) {
+	while (1) {
+		bool locked = n->next_lock_;
+	    if (!n->next_oid_
+		|| (!locked
+		    && bool_cmpxchg(&n->next_lock_, locked, true)))			// locking n node
+		return reinterpret_cast<N*>(n->fetch_node(n->next_oid_));
+	    spin_function();
+	}
+    }
+#else
     template <typename SF>
     static inline N *lock_next(N *n, SF spin_function) {
 	while (1) {
@@ -46,6 +59,7 @@ template <typename N> struct btree_leaflink<N, true> {
 	    spin_function();
 	}
     }
+#endif
 
   public:
     /** @brief Insert a new node @a nr at the right of node @a n.
@@ -57,6 +71,36 @@ template <typename N> struct btree_leaflink<N, true> {
 	link_split(n, nr, relax_fence_function());
     }
     /** @overload */
+#ifdef HACK_SILO
+    template <typename SF>
+    static void link_split(N *n, N *nr, SF spin_function) {
+	if( n )
+		nr->prev_oid_ = n->oid;
+	else
+		nr->prev_oid_ = 0;
+
+	N *next = lock_next(n, spin_function);
+	if( next )
+		nr->next_oid_ = next->oid;
+	else
+		nr->next_oid_ = 0;
+
+	if (next)
+	{
+		if( nr )
+			next->prev_oid_ = nr->oid;
+		else
+			next->prev_oid_ = 0;
+	}
+
+	fence();
+	if( nr )
+		n->next_oid_ = nr->oid;
+	else
+		n->next_oid_ = 0;
+	n->next_lock_ = false;				// unlocking n node ( locked in lock_next )
+    }
+#else
     template <typename SF>
     static void link_split(N *n, N *nr, SF spin_function) {
 	nr->prev_ = n;
@@ -67,6 +111,7 @@ template <typename N> struct btree_leaflink<N, true> {
 	fence();
 	n->next_.ptr = nr;
     }
+#endif
 
     /** @brief Unlink @a n from the list.
 	@pre @a n is locked.
@@ -81,6 +126,26 @@ template <typename N> struct btree_leaflink<N, true> {
     static void unlink(N *n, SF spin_function) {
 	// Assume node order A <-> N <-> B. Since n is locked, n cannot split;
 	// next node will always be B or one of its successors.
+#ifdef HACK_SILO
+	N *next = lock_next(n, spin_function);				// locking n node
+	N *prev;
+	while (1) {
+	    prev = reinterpret_cast<N*>(n->fetch_node(n->prev_oid_));
+		bool locked = prev->next_lock_;
+	    if (bool_cmpxchg(&prev->next_lock_, locked, true))			// locking prev node
+		break;
+	    spin_function();
+	}
+	if (next)
+		next->prev_oid_ = prev->oid;
+	fence();
+	if( next )
+		prev->next_oid_ = next->oid;
+	else
+		prev->next_oid_ = 0;
+	prev->next_lock_ = false;			// unlocking prev node
+    }
+#else
 	N *next = lock_next(n, spin_function);
 	N *prev;
 	while (1) {
@@ -94,6 +159,7 @@ template <typename N> struct btree_leaflink<N, true> {
 	fence();
 	prev->next_.ptr = next;
     }
+#endif
 };
 
 
@@ -102,6 +168,25 @@ template <typename N> struct btree_leaflink<N, false> {
     static void link_split(N *n, N *nr) {
 	link_split(n, nr, do_nothing());
     }
+#ifdef HACK_SILO
+    template <typename SF>
+    static void link_split(N *n, N *nr, SF) {
+	if( n )
+		nr->prev_oid_ = n->oid;
+	else
+		nr->prev_oid_ = 0;
+
+	nr->next_oid_ = n->next_oid_;
+
+	if( nr )
+		n->next_oid_ = nr->oid;
+	else
+		n->next_oid_ = 0;
+
+	if (nr->next_oid_)
+	    reinterpret_cast<N*>(nr->fetch_node(nr->next_oid_))->prev_oid_ = nr->oid;
+    }
+#else
     template <typename SF>
     static void link_split(N *n, N *nr, SF) {
 	nr->prev_ = n;
@@ -110,15 +195,27 @@ template <typename N> struct btree_leaflink<N, false> {
 	if (nr->next_.ptr)
 	    nr->next_.ptr->prev_ = nr;
     }
+#endif
     static void unlink(N *n) {
 	unlink(n, do_nothing());
     }
+#ifdef HACK_SILO
+    template <typename SF>
+    static void unlink(N *n, SF) {
+	if (n->next_oid_)
+	{
+		reinterpret_cast<N*>(n->fetch_node( n->next_oid_ ))->prev_oid_ = n->prev_oid_;
+	}
+	reinterpret_cast<N*>(n->fetch_node(n->prev_oid_))->next_oid_ = n->next_oid_;
+    }
+#else
     template <typename SF>
     static void unlink(N *n, SF) {
 	if (n->next_.ptr)
 	    n->next_.ptr->prev_ = n->prev_;
 	n->prev_->next_.ptr = n->next_.ptr;
     }
+#endif
 };
 
 #endif

@@ -66,8 +66,12 @@ namespace RCU {
           INVARIANT(action > 0);
       }
       void run() {
-          if (action < 0)
-              RCU::rcu_free(ptr); // FIXME: tzwang: should be back to slab
+          if (action < 0) {
+              // FIXME: tzwang: should dealloc to slab
+              RCU::rcu_pointer u = {ptr};
+              --u.p;
+              std::free(u.v);
+          }
           else
               (*reinterpret_cast<deleter_t>(action))(ptr);
       }

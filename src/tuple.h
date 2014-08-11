@@ -1062,7 +1062,9 @@ private:
     //const size_t alloc_sz = n->alloc_size + sizeof(*n);
     n->~dbtuple();
     // FIXME: tzwang: this was dealloc to slab
-    RCU::rcu_free(n);
+    RCU::rcu_pointer u = {n};
+    --u.p;
+    std::free(u.v);
   }
 
 public:

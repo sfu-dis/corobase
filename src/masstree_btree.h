@@ -133,11 +133,15 @@ class simple_threadinfo {
     void deallocate(void* p, size_t sz, memtag) {
 	// in C++ allocators, 'p' must be nonnull
         // XXX: tzwang: this should be returning the memory to slab actually
-        RCU::rcu_free(p);
+        RCU::rcu_pointer u = {p};
+        --u.p;
+        std::free(u.v);
+        std::cout << "DEALLOC" << std::endl;
     }
     void deallocate_rcu(void *p, size_t sz, memtag) {
 	assert(p);
         RCU::rcu_free(p);
+        std::cout << "DEALLOC RCU" << std::endl;
     }
 
     void* pool_allocate(size_t sz, memtag) {
@@ -147,12 +151,16 @@ class simple_threadinfo {
     void pool_deallocate(void* p, size_t sz, memtag) {
 	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
         // XXX: tzwang: this should be returning the memory to slab actually
-        RCU::rcu_free(p);
+        RCU::rcu_pointer u = {p};
+        --u.p;
+        free(u.v);
+        std::cout << "DEALLOC" << std::endl;
     }
     void pool_deallocate_rcu(void* p, size_t sz, memtag) {
 	assert(p);
 	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
         RCU::rcu_free(p);
+        std::cout << "DEALLOC RCU" << std::endl;
     }
 
     // RCU
