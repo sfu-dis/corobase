@@ -136,12 +136,10 @@ class simple_threadinfo {
         RCU::rcu_pointer u = {p};
         --u.p;
         std::free(u.v);
-        std::cout << "DEALLOC" << std::endl;
     }
     void deallocate_rcu(void *p, size_t sz, memtag) {
 	assert(p);
         RCU::rcu_free(p);
-        std::cout << "DEALLOC RCU" << std::endl;
     }
 
     void* pool_allocate(size_t sz, memtag) {
@@ -154,13 +152,11 @@ class simple_threadinfo {
         RCU::rcu_pointer u = {p};
         --u.p;
         free(u.v);
-        std::cout << "DEALLOC" << std::endl;
     }
     void pool_deallocate_rcu(void* p, size_t sz, memtag) {
 	assert(p);
 	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
         RCU::rcu_free(p);
-        std::cout << "DEALLOC RCU" << std::endl;
     }
 
     // RCU
