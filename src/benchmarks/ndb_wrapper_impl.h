@@ -122,22 +122,28 @@ struct hint_tpcc_stock_level_read_only_traits : public hint_read_only_traits {};
   x(abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY, hint_tpcc_stock_level_read_only_traits)
 
 template <template <typename> class Transaction>
-ndb_wrapper<Transaction>::ndb_wrapper(
-    const std::vector<std::string> &logfiles,
-    const std::vector<std::vector<unsigned>> &assignments_given,
-    bool call_fsync,
-    bool use_compression,
-    bool fake_writes)
+sm_log* ndb_wrapper<Transaction>::lm = NULL;
+
+template <template <typename> class Transaction>
+ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
+    size_t segsize,
+    size_t bufsize)
 {
-  if (logfiles.empty())
-    return;
-  std::vector<std::vector<unsigned>> assignments_used;
+  ALWAYS_ASSERT(logdir);
+  INVARIANT(!lm);
+
+  // FIXME: tzwang: dummy recovery for now
+  scoped_rcu_region scope;
+  auto no_recover = [](sm_log_scan_mgr*, LSN, LSN, void*)->void {
+      SPAM("Log recovery is a no-op here\n");
+  };
+  lm = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
+
   if (verbose) {
     std::cerr << "[logging subsystem]" << std::endl;
-    std::cerr << "  assignments: " << assignments_used << std::endl;
-    std::cerr << "  call fsync : " << call_fsync       << std::endl;
-    std::cerr << "  compression: " << use_compression  << std::endl;
-    std::cerr << "  fake_writes: " << fake_writes      << std::endl;
+    std::cerr << "  lordir : " << logdir << std::endl;
+    std::cerr << "  segment size : " << segsize << std::endl;
+    std::cerr << "  buffer size : " << bufsize << std::endl;
   }
 }
 

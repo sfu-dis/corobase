@@ -280,9 +280,9 @@ event_counter
 event_counter
   transaction_proto2_static::g_evt_proto_gc_delete_requeue(
       "proto_gc_delete_requeue");
-event_avg_counter
-  transaction_proto2_static::g_evt_avg_log_entry_size(
-      "avg_log_entry_size");
+//event_avg_counter
+//  transaction_proto2_static::g_evt_avg_log_entry_size(
+//      "avg_log_entry_size");
 event_avg_counter
   transaction_proto2_static::g_evt_avg_proto_gc_queue_len(
       "avg_proto_gc_queue_len");

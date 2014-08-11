@@ -68,13 +68,11 @@ main(int argc, char **argv)
   size_t numa_memory = 0;
   free(curdir);
   int saw_run_spec = 0;
-  int nofsync = 0;
-  int do_compress = 0;
-  int fake_writes = 0;
   int disable_gc = 0;
   int disable_snapshots = 0;
-  vector<string> logfiles;
-  vector<vector<unsigned>> assignments;
+  string *log_dir = NULL;
+  size_t log_segsize = 256 * 1024 * 1024; // log segment size
+  size_t log_bufsize = 64 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
   while (1) {
     static struct option long_options[] =
@@ -95,11 +93,9 @@ main(int argc, char **argv)
       {"ops-per-worker"             , required_argument , 0                          , 'n'} ,
       {"bench-opts"                 , required_argument , 0                          , 'o'} ,
       {"numa-memory"                , required_argument , 0                          , 'm'} , // implies --pin-cpus
-      {"logfile"                    , required_argument , 0                          , 'l'} ,
-      {"assignment"                 , required_argument , 0                          , 'a'} ,
-      {"log-nofsync"                , no_argument       , &nofsync                   , 1}   ,
-      {"log-compress"               , no_argument       , &do_compress               , 1}   ,
-      {"log-fake-writes"            , no_argument       , &fake_writes               , 1}   ,
+      {"log-dir"                    , required_argument , 0                          , 'l'} ,
+      {"log-segsize"                , required_argument , 0                          , 'e'} ,
+      {"log-bufsize"                , required_argument , 0                          , 'u'} ,
       {"disable-gc"                 , no_argument       , &disable_gc                , 1}   ,
       {"disable-snapshots"          , no_argument       , &disable_snapshots         , 1}   ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
@@ -173,13 +169,16 @@ main(int argc, char **argv)
       break;
 
     case 'l':
-      logfiles.emplace_back(optarg);
+      log_dir = new string(optarg);
       break;
 
-    case 'a':
-      assignments.emplace_back(
-          ParseCSVString<unsigned, RangeAwareParser<unsigned>>(optarg));
-      break;
+    case 'e':
+      log_segsize = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(log_segsize > 0);
+
+    case 'u':
+      log_bufsize = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(log_bufsize > 0);
 
     case 'x':
       stats_server_sockfile = optarg;
@@ -208,23 +207,9 @@ main(int argc, char **argv)
   else
     ALWAYS_ASSERT(false);
 
-  if (do_compress && logfiles.empty()) {
-    cerr << "[ERROR] --log-compress specified without logging enabled" << endl;
+  if (!log_dir) {
+    cerr << "[ERROR] no log dir specified" << endl;
     return 1;
-  }
-
-  if (fake_writes && logfiles.empty()) {
-    cerr << "[ERROR] --log-fake-writes specified without logging enabled" << endl;
-    return 1;
-  }
-
-  if (nofsync && logfiles.empty()) {
-    cerr << "[ERROR] --log-nofsync specified without logging enabled" << endl;
-    return 1;
-  }
-
-  if (fake_writes && nofsync) {
-    cerr << "[WARNING] --log-nofsync has no effect with --log-fake-writes enabled" << endl;
   }
 
 #ifndef ENABLE_EVENT_COUNTERS
@@ -242,13 +227,6 @@ main(int argc, char **argv)
     ::allocator::Initialize(nthreads, maxpercpu);
   }
 */
-
-  const set<string> can_persist({"ndb-proto2"});
-  if (!logfiles.empty() && !can_persist.count(db_type)) {
-    cerr << "[ERROR] benchmark " << db_type
-         << " does not have persistence implemented" << endl;
-    return 1;
-  }
 
 #ifdef PROTO2_CAN_DISABLE_GC
   const set<string> has_gc({"ndb-proto1", "ndb-proto2"});
@@ -285,8 +263,7 @@ main(int argc, char **argv)
     db = new bdb_wrapper("db", bench_type + ".db");
   } else if (db_type == "ndb-proto1") {
     // XXX: hacky simulation of proto1
-    db = new ndb_wrapper<transaction_proto2>(
-        logfiles, assignments, !nofsync, do_compress, fake_writes);
+    db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
     transaction_proto2_static::set_hack_status(true);
     ALWAYS_ASSERT(transaction_proto2_static::get_hack_status());
 #ifdef PROTO2_CAN_DISABLE_GC
@@ -294,8 +271,7 @@ main(int argc, char **argv)
       transaction_proto2_static::InitGC();
 #endif
   } else if (db_type == "ndb-proto2") {
-    db = new ndb_wrapper<transaction_proto2>(
-        logfiles, assignments, !nofsync, do_compress, fake_writes);
+    db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
     ALWAYS_ASSERT(!transaction_proto2_static::get_hack_status());
 #ifdef PROTO2_CAN_DISABLE_GC
     if (!disable_gc)
@@ -373,8 +349,9 @@ main(int argc, char **argv)
     } else {
       cerr << "  numa-memory : disabled"                    << endl;
     }
-    cerr << "  logfiles : " << logfiles                     << endl;
-    cerr << "  assignments : " << assignments               << endl;
+    cerr << "  log-dir : " << *log_dir                      << endl;
+    cerr << "  log-segsize : " << log_segsize               << endl;
+    cerr << "  log-bufsize : " << log_bufsize               << endl;
     cerr << "  disable-gc : " << disable_gc                 << endl;
     cerr << "  disable-snapshots : " << disable_snapshots   << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
