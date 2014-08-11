@@ -3,6 +3,7 @@
 
 #include "abstract_db.h"
 #include "../txn_btree.h"
+#include "../rcu/sm-log.h"
 
 namespace private_ {
   struct ndbtxn {
@@ -33,18 +34,14 @@ namespace private_ {
 template <template <typename> class Transaction>
 class ndb_wrapper : public abstract_db {
 protected:
+  static sm_log *lm;
   typedef private_::ndbtxn ndbtxn;
   template <typename Traits>
     using cast = private_::cast_base<Transaction, Traits>;
 
 public:
 
-  ndb_wrapper(
-      const std::vector<std::string> &logfiles,
-      const std::vector<std::vector<unsigned>> &assignments_given,
-      bool call_fsync,
-      bool use_compression,
-      bool fake_writes);
+  ndb_wrapper(const char *logdir, size_t segsize, size_t bufsize);
 
   virtual ssize_t txn_max_batch_size() const OVERRIDE { return 100; }
 
@@ -72,6 +69,7 @@ public:
     txn_epoch_sync<Transaction>::thread_end();
   }
 
+  /* FIXME: tzwang: remove silo's log
   virtual std::tuple<uint64_t, uint64_t, double>
   get_ntxn_persisted() const
   {
@@ -83,6 +81,7 @@ public:
   {
     txn_epoch_sync<Transaction>::reset_ntxn_persisted();
   }
+  */
 
   virtual size_t
   sizeof_txn_object(uint64_t txn_flags) const;

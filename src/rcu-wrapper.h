@@ -30,12 +30,15 @@ public:
     }
   }
 
+/* Notes on silo's RCU: it seems to be just doing GC, anything more? */
+
   ~scoped_rcu_region()
   {
     INVARIANT(RCU::rcu_is_active());
     int &d = _depths.my();
     --d;
     INVARIANT(d >= 0);
+    RCU::rcu_quiesce();  // ?
     if (d == 0) {
       RCU::rcu_exit();  // or should do rcu_quiesce()?
       RCU::rcu_gc_info info = RCU::rcu_get_gc_info();

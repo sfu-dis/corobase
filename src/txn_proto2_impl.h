@@ -271,7 +271,7 @@ protected:
   static event_counter g_evt_worker_thread_wait_log_buffer;
   static event_counter g_evt_dbtuple_no_space_for_delkey;
   static event_counter g_evt_proto_gc_delete_requeue;
-  static event_avg_counter g_evt_avg_log_entry_size;
+  // static event_avg_counter g_evt_avg_log_entry_size;
   static event_avg_counter g_evt_avg_proto_gc_queue_len;
 };
 
@@ -636,6 +636,7 @@ struct txn_epoch_sync<transaction_proto2> : public transaction_proto2_static {
   thread_end()
   {
   }
+  /* FIXME: tzwang: remove silo's log
   static std::tuple<uint64_t, uint64_t, double>
   compute_ntxn_persisted()
   {
@@ -645,6 +646,7 @@ struct txn_epoch_sync<transaction_proto2> : public transaction_proto2_static {
   reset_ntxn_persisted()
   {
   }
+  */
 };
 
 #endif /* _NDB_TXN_PROTO2_IMPL_H_ */
