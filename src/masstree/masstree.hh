@@ -121,7 +121,10 @@ class basic_table {
 	inline node_type* fetch_node( oid_type oid ) const
 	{
 		assert( node_vector );
-		return node_vector->get( oid );
+		if( oid )
+			return node_vector->get( oid );
+		else
+			return NULL;
 	}
 #endif
 

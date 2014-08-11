@@ -65,10 +65,17 @@ int leaf<P>::split_into(leaf<P>* nr, int p, const key_type& ka,
 
     int width = this->size();	// == this->width or this->width - 1
     int mid = this->width / 2 + 1;
+#ifdef HACK_SILO
+    if (p == 0 && !this->prev_oid_)
+	mid = 1;
+    else if (p == width && !this->next_oid_)
+	mid = width;
+#else
     if (p == 0 && !this->prev_)
 	mid = 1;
     else if (p == width && !this->next_.ptr)
 	mid = width;
+#endif
 
     // Never separate keys with the same ikey0.
     permuter_type perml(this->permutation_);

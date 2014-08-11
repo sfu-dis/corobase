@@ -152,7 +152,14 @@ struct reverse_scan_helper {
     N *advance(const N *n, K &k) const {
 	k.assign_store_ikey(n->ikey_bound());
 	k.assign_store_length(0);
+#ifdef HACK_SILO
+	if( n )
+		return reinterpret_cast<N*>(n->fetch_node( n->prev_oid_ ) );
+	else
+		return NULL;
+#else
 	return n->prev_;
+#endif
     }
     template <typename N, typename K>
     typename N::nodeversion_type stable(N *&n, const K &k) const {

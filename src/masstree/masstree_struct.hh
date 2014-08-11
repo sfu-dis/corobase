@@ -396,14 +396,17 @@ class leaf : public node_base<P> {
     leafvalue_type lv_[width];
     stringbag<uint32_t>* ksuf_;	// a real rockstar would save this space
 				// when it is unsed
+#ifdef HACK_SILO
+	oid_type parent_oid_;
+	oid_type next_oid_;
+	bool next_lock_;
+	oid_type prev_oid_;
+#else
     union {
 	leaf<P>* ptr;
 	uintptr_t x;
     } next_;
     leaf<P>* prev_;
-#ifdef HACK_SILO
-	oid_type parent_oid_;
-#else
     node_base<P>* parent_;
 #endif
     kvtimestamp_t node_ts_;
@@ -443,12 +446,13 @@ class leaf : public node_base<P> {
 
 	n->table_ = table;
 	n->oid = table->insert_node( n );
+	n->next_lock_ = false;
 	return n;
     }
 
     static leaf<P>* make_root(int ksufsize, leaf<P>* parent, threadinfo& ti, basic_table<P>* table) {
         leaf<P>* n = make(ksufsize, parent ? parent->node_ts_ : 0, ti, table);
-        n->next_.ptr = n->prev_ = 0;
+        n->next_oid_ = n->prev_oid_ = 0;
         n->parent_oid_ = reinterpret_cast<oid_type>(node_base<P>::parent_for_layer_root(parent));
         n->mark_root();
         return n;
@@ -466,7 +470,6 @@ class leaf : public node_base<P> {
 
     static leaf<P>* make_root(int ksufsize, leaf<P>* parent, threadinfo& ti) {
         leaf<P>* n = make(ksufsize, parent ? parent->node_ts_ : 0, ti);
-        n->next_.ptr = n->prev_ = 0;
         n->parent_ = node_base<P>::parent_for_layer_root(parent);
         n->mark_root();
         return n;
@@ -587,9 +590,15 @@ class leaf : public node_base<P> {
 
     void print(FILE* f, const char* prefix, int indent, int kdepth);
 
+#ifdef HACK_SILO
+    leaf<P>* safe_next() const {
+	return reinterpret_cast<leaf<P>*>(this->fetch_node( next_oid_ ));
+    }
+#else
     leaf<P>* safe_next() const {
 	return reinterpret_cast<leaf<P>*>(next_.x & ~(uintptr_t) 1);
     }
+#endif
 
     void deallocate(threadinfo& ti) {
 	if (ksuf_)

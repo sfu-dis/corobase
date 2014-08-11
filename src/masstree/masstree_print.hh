@@ -75,7 +75,7 @@ void leaf<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
     if (nremoved_)
 	fprintf(f, "removed %d, ", nremoved_);
 #ifdef HACK_SILO
-    fprintf(f, "parent %llu, prev %p, next %p ", parent_oid_, prev_, next_.ptr);
+    fprintf(f, "parent %llu, prev %llu, next %llu ", parent_oid_, prev_oid_, next_oid_);
 #else
     fprintf(f, "parent %p, prev %p, next %p ", parent_, prev_, next_.ptr);
 #endif
@@ -91,7 +91,11 @@ void leaf<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
     }
     fputc('\n', f);
 
+#ifdef HACK_SILO
+    if (v.deleted() || (perm[0] != 0 && prev_oid_))
+#else
     if (v.deleted() || (perm[0] != 0 && prev_))
+#endif
 	fprintf(f, "%s%*s%s = [] #0\n", prefix, indent + 2, "", key_type(ikey_bound()).unparse().c_str());
 
     char xbuf[15];

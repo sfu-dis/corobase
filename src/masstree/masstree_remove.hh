@@ -92,7 +92,11 @@ bool tcursor<P>::gc_layer(threadinfo& ti)
     }
 
     // child is an empty leaf: kill it
+#ifdef HACK_SILO
+    masstree_invariant(!lf->prev_oid_ && !lf->next_oid_);
+#else
     masstree_invariant(!lf->prev_ && !lf->next_.ptr);
+#endif
     masstree_invariant(!lf->deleted());
     masstree_invariant(!lf->deleted_layer());
     if (circular_int<kvtimestamp_t>::less(n_->node_ts_, lf->node_ts_))
@@ -123,6 +127,7 @@ struct gc_layer_rcu_callback : public P::threadinfo_type::rcu_callback {
 template <typename P>
 void gc_layer_rcu_callback<P>::operator()(threadinfo& ti)
 {
+#ifdef HACK_SILO
     root_ = root_->unsplit_ancestor();
     if (!root_->deleted()) {    // if not destroying tree...
         tcursor<P> lp(root_, s_, len_);
@@ -131,17 +136,20 @@ void gc_layer_rcu_callback<P>::operator()(threadinfo& ti)
             lp.n_->unlock();
         ti.deallocate(this, size(), memtag_masstree_gc);
     }
+#endif
 }
 
 template <typename P>
 void gc_layer_rcu_callback<P>::make(node_base<P>* root, Str prefix,
                                     threadinfo& ti)
 {
+#ifdef HACK_SILO
     size_t sz = prefix.len + sizeof(gc_layer_rcu_callback<P>);
     void *data = ti.allocate(sz, memtag_masstree_gc);
     gc_layer_rcu_callback<P> *cb =
         new(data) gc_layer_rcu_callback<P>(root, prefix);
     ti.rcu_register(cb);
+#endif
 }
 
 template <typename P>
@@ -161,11 +169,19 @@ template <typename P>
 bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
                              Str prefix, threadinfo& ti)
 {
+#ifdef HACK_SILO
+    if (!leaf->prev_oid_) {
+	if (!leaf->next_oid_ && !prefix.empty())
+	    gc_layer_rcu_callback<P>::make(root, prefix, ti);
+	return false;
+    }
+#else
     if (!leaf->prev_) {
 	if (!leaf->next_.ptr && !prefix.empty())
 	    gc_layer_rcu_callback<P>::make(root, prefix, ti);
 	return false;
     }
+#endif
 
     // mark leaf deleted, RCU-free
     leaf->mark_deleted();
@@ -174,14 +190,27 @@ bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
     // Ensure node that becomes responsible for our keys has its node_ts_ kept
     // up to date
     while (1) {
+#ifdef HACK_SILO
+	leaf_type *prev;
+		if( leaf )
+			prev = reinterpret_cast<leaf_type*>(leaf->fetch_node( leaf->prev_oid_ ));
+		else
+			prev = NULL;
+#else
 	leaf_type *prev = leaf->prev_;
+#endif
 	kvtimestamp_t prev_ts = prev->node_ts_;
 	while (circular_int<kvtimestamp_t>::less(prev_ts, leaf->node_ts_)
 	       && !bool_cmpxchg(&prev->node_ts_, prev_ts, leaf->node_ts_))
 	    prev_ts = prev->node_ts_;
 	fence();
+#ifdef HACK_SILO
+	if (prev == reinterpret_cast<leaf_type*>(leaf->fetch_node( leaf->prev_oid_)))
+	    break;
+#else
 	if (prev == leaf->prev_)
 	    break;
+#endif
     }
 
     // Unlink leaf from doubly-linked leaf list

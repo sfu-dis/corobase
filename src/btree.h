@@ -917,7 +917,9 @@ private:
       INVARIANT(!n->is_locked());
       n->~leaf_node();
       // FIXME: tzwang: dealloc to slab
-      RCU::rcu_free(p);
+      RCU::rcu_pointer u = {p};
+      --u.p;
+      free(u.v);
       //rcu::s_instance.dealloc(p, LeafNodeAllocSize);
     }
 
@@ -1030,7 +1032,9 @@ private:
       INVARIANT(!n->is_locked());
       n->~internal_node();
       // FIXME: tzwang: dealloc to slab
-      RCU::rcu_free(p);
+      RCU::rcu_pointer u = {p};
+      --u.p;
+      std::free(u.v);
       //rcu::s_instance.dealloc(p, InternalNodeAllocSize);
     }
 
