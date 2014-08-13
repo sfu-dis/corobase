@@ -78,7 +78,7 @@ endif
 CXXFLAGS := -Wall -std=c++0x  -g -gdwarf-2 -DHACK_SILO
 CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(DEBUG_S),1)
-        CXXFLAGS += -fno-omit-frame-pointer -DDEBUG -fsanitize=address
+        CXXFLAGS += -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
 else
         CXXFLAGS += -O2 -funroll-loops -fno-omit-frame-pointer
         #CXXFLAGS += -Werror -O2 -funroll-loops -fno-omit-frame-pointer
@@ -99,9 +99,9 @@ endif
 
 TOP     := $(shell echo $${PWD-`pwd`})
 LDFLAGS := -lpthread -lnuma -lrt
-ifeq ($(DEBUG_S),1)
-	LDFLAGS += -lasan
-endif
+#ifeq ($(DEBUG_S),1)
+#	LDFLAGS += -lasan
+#endif
 
 LZ4LDFLAGS := -Lthird-party/lz4 -llz4 -Wl,-rpath,$(TOP)/third-party/lz4
 

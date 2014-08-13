@@ -91,7 +91,7 @@ class node_base : public make_nodeversion<P>::type {
         // almost always an internode
 	if (this->isleaf())
 	{
-		if (static_cast<const leaf_type*>(this)->parent_oid_)
+		if (static_cast<const leaf_type*>(this)->parent_oid_) 
 	    return this->fetch_node(static_cast<const leaf_type*>(this)->parent_oid_);
 	}
 	else
@@ -192,9 +192,9 @@ class internode : public node_base<P> {
 
 #ifdef HACK_SILO
 	typedef basic_table<P> basic_table_type;
-	typedef object_vector<node_base<P>*> node_vector_type;
+	typedef object_vector<node_base<P>*> node_vector_type; 
 	oid_type child_oid_[width + 1];
-	oid_type parent_oid_;
+	oid_type parent_oid_; 
     internode()
 	: node_base<P>(false), nkeys_(0), parent_oid_() {
     }
@@ -410,7 +410,7 @@ class leaf : public node_base<P> {
     stringbag<uint32_t>* ksuf_;	// a real rockstar would save this space
 				// when it is unsed
 #ifdef HACK_SILO
-	oid_type parent_oid_;
+	oid_type parent_oid_; 
 	oid_type next_oid_;
 	bool next_lock_;
 	oid_type prev_oid_;
@@ -664,14 +664,16 @@ class leaf : public node_base<P> {
 
 template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
-    masstree_precondition(!root_);
 
 #ifdef HACK_SILO
+    masstree_precondition(!root_oid_);
 	// FIXME. initial vector size parameter!
 	tuple_vector = new object_vector<value_type>( 100000000 );
 	node_vector = new object_vector<node_type*>( 10000000 );
-    root_ = node_type::leaf_type::make_root(0, 0, ti, this);
+    node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
+	root_oid_ = root->oid;
 #else
+    masstree_precondition(!root_);
     root_ = node_type::leaf_type::make_root(0, 0, ti);
 #endif
 }
@@ -887,16 +889,34 @@ void leaf<P>::hard_assign_ksuf(int p, Str s, bool initializing,
                           memtag_masstree_ksuffixes);
 }
 
+#ifdef HACK_SILO
+template <typename P>
+inline basic_table<P>::basic_table()
+    : root_oid_(0) {
+}
+template <typename P>
+inline node_base<P>* basic_table<P>::root() const {
+    return fetch_node(root_oid_);
+}
+template <typename P>
+inline node_base<P>* basic_table<P>::fix_root() {
+    node_base<P>* root = fetch_node(root_oid_);
+    if (unlikely(root->has_split())) {
+        root = root->unsplit_ancestor();
+		if( root->oid != root_oid_ )
+			root_oid_ = root->oid;
+    }
+    return root;
+}
+#else
 template <typename P>
 inline basic_table<P>::basic_table()
     : root_(0) {
 }
-
 template <typename P>
 inline node_base<P>* basic_table<P>::root() const {
     return root_;
 }
-
 template <typename P>
 inline node_base<P>* basic_table<P>::fix_root() {
     node_base<P>* root = root_;
@@ -907,6 +927,7 @@ inline node_base<P>* basic_table<P>::fix_root() {
     }
     return root;
 }
+#endif
 
 } // namespace Masstree
 #endif

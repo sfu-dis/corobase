@@ -184,7 +184,9 @@ void internode<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
 
 template <typename P>
 void basic_table<P>::print(FILE *f, int indent) const {
+#ifndef HACK_SILO
     root_->print(f ? f : stdout, "", indent, 0);
+#endif
 }
 
 } // namespace Masstree

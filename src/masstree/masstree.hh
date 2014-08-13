@@ -87,8 +87,8 @@ class basic_table {
     inline void print(FILE* f = 0, int indent = 0) const;
 
 #ifdef HACK_SILO
-	typedef object_vector<value_type> tuple_vector_type;
-	typedef object_vector<node_type*> node_vector_type;
+	typedef object_vector<value_type> tuple_vector_type; 
+	typedef object_vector<node_type*> node_vector_type; 
 
 	inline oid_type insert_tuple( value_type val )
 	{
@@ -129,10 +129,12 @@ class basic_table {
 #endif
 
   private:
-    node_type* root_;
 #ifdef HACK_SILO
-	tuple_vector_type* tuple_vector;
-	node_vector_type* node_vector;
+	oid_type root_oid_;
+	tuple_vector_type* tuple_vector; 
+	node_vector_type* node_vector; 
+#else
+    node_type* root_;
 #endif
 
     template <typename H, typename F>
