@@ -135,6 +135,7 @@ SRCFILES = allocator.cc \
 	tuple.cc \
 	txn_btree.cc \
 	txn.cc \
+	txn_table.cc \
 	txn_proto2_impl.cc \
 	varint.cc
 #ticker.cc \
@@ -156,7 +157,8 @@ RCU_SRCFILES = rcu/sm-log.cpp \
 	rcu/epoch.cpp \
 	rcu/adler.cpp \
 	rcu/w_rand.cpp \
-	rcu/size-encode.cpp
+	rcu/size-encode.cpp \
+	rcu/xid.cpp
 
 ifeq ($(MASSTREE_S),1)
 MASSTREE_SRCFILES = masstree/compiler.cc \
