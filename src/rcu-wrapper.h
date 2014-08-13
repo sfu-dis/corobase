@@ -6,6 +6,7 @@
 #include "pxqueue.h"
 #include "rcu/rcu.h"
 
+// FIXME: tzwang: seems to be working, but still memleak (2014/08/12)
 // things won't work directly:
 // free_with_fn()
 // free_array() (used by imstring)

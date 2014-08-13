@@ -123,7 +123,6 @@ ifneq ($(strip $(CUSTOM_LDPATH)), )
 endif
 
 SRCFILES = allocator.cc \
-	btree.cc \
 	core.cc \
 	counter.cc \
 	memory.cc \
@@ -138,6 +137,7 @@ SRCFILES = allocator.cc \
 #ticker.cc \
 #rcu.cc \
 #allocator.cc \
+#btree.cc \
 
 RCU_SRCFILES = rcu/sm-log.cpp \
 	rcu/sm-tx-log.cpp \
