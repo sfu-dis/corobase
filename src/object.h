@@ -68,7 +68,7 @@ retry:
 		return desc->_data;
 	}
 
-	// TODO. delete ( atomic deletion with CAS and pass dummies to RCU?
+	// TODO. delete ( atomic deletion with CAS and pass dummies to RCU? 
 
 private:
 	std::vector<object_type*> 		_obj_table;

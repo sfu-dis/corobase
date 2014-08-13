@@ -18,6 +18,9 @@
 #include "masstree_get.hh"
 #include "btree_leaflink.hh"
 #include "circular_int.hh"
+#ifdef HACK_SILO
+#include <queue>
+#endif
 namespace Masstree {
 
 template <typename P>
@@ -48,9 +51,18 @@ bool tcursor<P>::gc_layer(threadinfo& ti)
     // remove redundant internode layers
     node_type *layer;
     while (1) {
+#ifdef HACK_SILO
+	layer = n_->fetch_node(n_->lv_[kp_].layer());
+	if (layer->has_split())
+	{
+		layer = layer->unsplit_ancestor();
+	    n_->lv_[kp_] = layer->oid;
+	}
+#else
 	layer = n_->lv_[kp_].layer();
 	if (layer->has_split())
 	    n_->lv_[kp_] = layer = layer->unsplit_ancestor();
+#endif
 	if (layer->isleaf())
 	    break;
 
@@ -67,11 +79,13 @@ bool tcursor<P>::gc_layer(threadinfo& ti)
 
 #ifdef HACK_SILO
 	node_type *child = in->fetch_node(in->child_oid_[0]);
+	child->set_parent(node_type::parent_for_layer_root(n_));
+	n_->lv_[kp_] = child ? child->oid : 0;
 #else
 	node_type *child = in->child_[0];
-#endif
 	child->set_parent(node_type::parent_for_layer_root(n_));
 	n_->lv_[kp_] = child;
+#endif
 	in->mark_split();
 	in->set_parent(child);	// ensure concurrent reader finds true root
 				// NB: now p->parent() might weirdly be a LEAF!
@@ -127,7 +141,7 @@ struct gc_layer_rcu_callback : public P::threadinfo_type::rcu_callback {
 template <typename P>
 void gc_layer_rcu_callback<P>::operator()(threadinfo& ti)
 {
-#ifdef HACK_SILO
+#ifndef HACK_SILO
     root_ = root_->unsplit_ancestor();
     if (!root_->deleted()) {    // if not destroying tree...
         tcursor<P> lp(root_, s_, len_);
@@ -143,7 +157,7 @@ template <typename P>
 void gc_layer_rcu_callback<P>::make(node_base<P>* root, Str prefix,
                                     threadinfo& ti)
 {
-#ifdef HACK_SILO
+#ifndef HACK_SILO
     size_t sz = prefix.len + sizeof(gc_layer_rcu_callback<P>);
     void *data = ti.allocate(sz, memtag_masstree_gc);
     gc_layer_rcu_callback<P> *cb =
@@ -189,29 +203,30 @@ bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
 
     // Ensure node that becomes responsible for our keys has its node_ts_ kept
     // up to date
-    while (1) {
 #ifdef HACK_SILO
+    while (1) {
 	leaf_type *prev;
-		if( leaf )
-			prev = reinterpret_cast<leaf_type*>(leaf->fetch_node( leaf->prev_oid_ ));
-		else
-			prev = NULL;
-#else
-	leaf_type *prev = leaf->prev_;
-#endif
+	prev = leaf? reinterpret_cast<leaf_type*>(leaf->fetch_node( leaf->prev_oid_ )) : NULL;
 	kvtimestamp_t prev_ts = prev->node_ts_;
 	while (circular_int<kvtimestamp_t>::less(prev_ts, leaf->node_ts_)
 	       && !bool_cmpxchg(&prev->node_ts_, prev_ts, leaf->node_ts_))
 	    prev_ts = prev->node_ts_;
 	fence();
-#ifdef HACK_SILO
 	if (prev == reinterpret_cast<leaf_type*>(leaf->fetch_node( leaf->prev_oid_)))
 	    break;
+    }
 #else
+    while (1) {
+	leaf_type *prev = leaf->prev_;
+	kvtimestamp_t prev_ts = prev->node_ts_;
+	while (circular_int<kvtimestamp_t>::less(prev_ts, leaf->node_ts_)
+	       && !bool_cmpxchg(&prev->node_ts_, prev_ts, leaf->node_ts_))
+	    prev_ts = prev->node_ts_;
+	fence();
 	if (prev == leaf->prev_)
 	    break;
-#endif
     }
+#endif
 
     // Unlink leaf from doubly-linked leaf list
     btree_leaflink<leaf_type>::unlink(leaf);
@@ -344,11 +359,45 @@ inline void destroy_rcu_callback<P>::enqueue(node_base<P>* n,
 }
 #endif
 
+#ifdef HACK_SILO
 template <typename P>
 void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
-#ifdef HACK_SILO
-	return;
+    if (++count_ == 1) {
+        root_ = root_->unsplit_ancestor();
+        root_->lock();
+        root_->mark_deleted_tree(); // i.e., deleted but not splitting
+        root_->unlock();
+        ti.rcu_register(this);
+        return;
+    }
+
+	std::queue<node_base<P>*> workq;
+	workq.push( root_ );
+    while ( !workq.empty()) {
+		node_base<P>* n = workq.front();
+        if (n->isleaf()) {
+            leaf_type* l = static_cast<leaf_type*>(n);
+            typename leaf_type::permuter_type perm = l->permutation();
+            for (int i = 0; i != l->size(); ++i) {
+                int p = perm[i];
+                if (l->value_is_layer(p))
+                    workq.push(l->fetch_node(l->lv_[p].layer()));
+            }
+            l->deallocate(ti);
+        } else {
+            internode_type* in = static_cast<internode_type*>(n);
+            for (int i = 0; i != in->size() + 1; ++i)
+                if (in->child_oid_[i])
+                    workq.push(in->fetch_node( in->child_oid_[i]));
+            in->deallocate(ti);
+        }
+		workq.pop();
+    }
+    ti.deallocate(this, sizeof(this), memtag_masstree_gc);
+}
 #else
+template <typename P>
+void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
     if (++count_ == 1) {
         root_ = root_->unsplit_ancestor();
         root_->lock();
@@ -383,19 +432,14 @@ void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
         } else {
             internode_type* in = static_cast<internode_type*>(n);
             for (int i = 0; i != in->size() + 1; ++i)
-#ifdef HACK_SILO
-                if (in->child_oid_[i])
-                    enqueue(in->fetch_node(in->child_oid_[i]), tailp);
-#else
                 if (in->child_[i])
                     enqueue(in->child_[i], tailp);
-#endif
             in->deallocate(ti);
         }
     }
     ti.deallocate(this, sizeof(this), memtag_masstree_gc);
-#endif
 }
+#endif
 
 template <typename P>
 void basic_table<P>::destroy(threadinfo& ti) {

@@ -137,7 +137,7 @@ ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
   auto no_recover = [](sm_log_scan_mgr*, LSN, LSN, void*)->void {
       SPAM("Log recovery is a no-op here\n");
   };
-  lm = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
+  //lm = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
 
   if (verbose) {
     std::cerr << "[logging subsystem]" << std::endl;

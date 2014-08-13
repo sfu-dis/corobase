@@ -222,7 +222,11 @@ int scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
     if (kp >= 0) {
 	if (n_->keylenx_is_layer(keylenx)) {
 	    if (likely(n_->keylenx_is_stable_layer(keylenx))) {
+#ifdef HACK_SILO
+		this[1].root_ = n_->fetch_node(entry.layer());
+#else
 		this[1].root_ = entry.layer();
+#endif
 		return scan_down;
 	    } else
 		goto retry_entry;
@@ -290,7 +294,11 @@ int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
 	ka.assign_store_ikey(ikey);
 	helper.found();
 	if (n_->keylenx_is_layer(keylenx)) {
+#ifdef HACK_SILO
+	    this[1].root_ = n_->fetch_node(entry.layer());
+#else
 	    this[1].root_ = entry.layer();
+#endif
 	    return scan_down;
 	} else {
 	    ka.assign_store_length(keylen);
