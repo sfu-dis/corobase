@@ -167,9 +167,6 @@ class simple_threadinfo {
 
     // RCU
     void rcu_register(rcu_callback *cb) {
-      // FIXME: tzwang: not sure if this guard is needed really.
-      //scoped_rcu_region guard;
-      //scoped_rcu_base<false> guard;
       RCU::free_with_fn(cb, rcu_callback_function);
     }
 
