@@ -331,12 +331,12 @@ protected: \
   {
     const unsigned int partid = PartitionId(wid);
     ALWAYS_ASSERT(partid < nthreads);
-    // const unsigned int pinid  = partid;
-    if (verbose)
-      cerr << "PinToWarehouseId(): coreid=" << coreid::core_id()
-           << " pinned to whse=" << wid << " (partid=" << partid << ")"
-           << endl;
     // FIXME: tzwang: no pin thread or fault region b/c no allocator
+    // const unsigned int pinid  = partid;
+    //if (verbose)
+    //  cerr << "PinToWarehouseId(): coreid=" << coreid::core_id()
+    //       << " pinned to whse=" << wid << " (partid=" << partid << ")"
+    //       << endl;
     //rcu::s_instance.pin_current_thread(pinid);
     //rcu::s_instance.fault_region();
   }
