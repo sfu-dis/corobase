@@ -74,30 +74,16 @@ template <typename N> struct btree_leaflink<N, true> {
 #ifdef HACK_SILO
     template <typename SF>
     static void link_split(N *n, N *nr, SF spin_function) {
-	if( n )
-		nr->prev_oid_ = n->oid;
-	else
-		nr->prev_oid_ = 0;
+	nr->prev_oid_ = n ? n->oid : 0;
 
 	N *next = lock_next(n, spin_function);
-	if( next )
-		nr->next_oid_ = next->oid;
-	else
-		nr->next_oid_ = 0;
+	nr->next_oid_ = next ? next->oid : 0;
 
 	if (next)
-	{
-		if( nr )
-			next->prev_oid_ = nr->oid;
-		else
-			next->prev_oid_ = 0;
-	}
+		next->prev_oid_ = next ? nr->oid : 0;
 
 	fence();
-	if( nr )
-		n->next_oid_ = nr->oid;
-	else
-		n->next_oid_ = 0;
+	n->next_oid_ = nr ? nr->oid : 0;
 	n->next_lock_ = false;				// unlocking n node ( locked in lock_next )
     }
 #else
@@ -139,10 +125,7 @@ template <typename N> struct btree_leaflink<N, true> {
 	if (next)
 		next->prev_oid_ = prev->oid;
 	fence();
-	if( next )
-		prev->next_oid_ = next->oid;
-	else
-		prev->next_oid_ = 0;
+	prev->next_oid_ = next ? next->oid : 0;
 	prev->next_lock_ = false;			// unlocking prev node
     }
 #else
@@ -171,20 +154,23 @@ template <typename N> struct btree_leaflink<N, false> {
 #ifdef HACK_SILO
     template <typename SF>
     static void link_split(N *n, N *nr, SF) {
-	if( n )
-		nr->prev_oid_ = n->oid;
-	else
-		nr->prev_oid_ = 0;
-
+	nr->prev_oid_ = n ? n->oid : 0;
 	nr->next_oid_ = n->next_oid_;
-
-	if( nr )
-		n->next_oid_ = nr->oid;
-	else
-		n->next_oid_ = 0;
+	n->next_oid_ = nr ? nr->oid : 0;
 
 	if (nr->next_oid_)
 	    reinterpret_cast<N*>(nr->fetch_node(nr->next_oid_))->prev_oid_ = nr->oid;
+    }
+    static void unlink(N *n) {
+	unlink(n, do_nothing());
+    }
+    template <typename SF>
+    static void unlink(N *n, SF) {
+	if (n->next_oid_)
+	{
+		reinterpret_cast<N*>(n->fetch_node( n->next_oid_ ))->prev_oid_ = n->prev_oid_;
+	}
+	reinterpret_cast<N*>(n->fetch_node(n->prev_oid_))->next_oid_ = n->next_oid_;
     }
 #else
     template <typename SF>
@@ -195,20 +181,9 @@ template <typename N> struct btree_leaflink<N, false> {
 	if (nr->next_.ptr)
 	    nr->next_.ptr->prev_ = nr;
     }
-#endif
     static void unlink(N *n) {
 	unlink(n, do_nothing());
     }
-#ifdef HACK_SILO
-    template <typename SF>
-    static void unlink(N *n, SF) {
-	if (n->next_oid_)
-	{
-		reinterpret_cast<N*>(n->fetch_node( n->next_oid_ ))->prev_oid_ = n->prev_oid_;
-	}
-	reinterpret_cast<N*>(n->fetch_node(n->prev_oid_))->next_oid_ = n->next_oid_;
-    }
-#else
     template <typename SF>
     static void unlink(N *n, SF) {
 	if (n->next_.ptr)

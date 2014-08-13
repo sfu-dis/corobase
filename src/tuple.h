@@ -140,6 +140,7 @@ public:
 #endif
 
   // uninterpreted TID
+  // FIXME: tzwang: need more look on this
   tid_t version;
 
   // small sizes on purpose
@@ -1059,15 +1060,28 @@ private:
   static inline void
   destruct_and_free(dbtuple *n)
   {
+    // FIXME: tzwang: this was dealloc to slab
+    scoped_rcu_region guard;
     //const size_t alloc_sz = n->alloc_size + sizeof(*n);
     n->~dbtuple();
-    // FIXME: tzwang: this was dealloc to slab
+#ifdef CHECK_INVARIANTS
+    // caller can't be rcu_delete
     RCU::rcu_pointer u = {n};
     --u.p;
-    std::free(u.v);
+    intptr_t fn = u.p->size >> 8;
+    INVARIANT(!fn);
+#endif
+    RCU::rcu_delete(n);
+  }
+
+  static inline void
+  destruct(dbtuple *n)
+  {
+    n->~dbtuple();
   }
 
 public:
+  // FIXME: tzwang: caller must be rcu_delete
   static void
   deleter(void *p)
   {
@@ -1075,7 +1089,8 @@ public:
     INVARIANT(!n->is_latest());
     INVARIANT(!n->is_locked());
     INVARIANT(!n->is_modifying());
-    destruct_and_free(n);
+    // only destruct, b/c the caller rcu_delete is doing the real delete
+    destruct(n);
   }
 
   static inline void

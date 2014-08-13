@@ -27,10 +27,12 @@ transaction<Protocol, Traits>::~transaction()
   // resolution means TXN_EMBRYO, TXN_COMMITED, and TXN_ABRT
   INVARIANT(state != TXN_ACTIVE);
   INVARIANT(RCU::rcu_is_active());
-  // tzwang: the rest silo's original code (removed) basically
-  // calls on_post_rcu_region_completion(in scoped_rcu_region)
-  // to trigger rcu for cleanup. I did a queisce in my own
-  // scoped_rcu_region instead.
+  const unsigned cur_depth = rcu_guard_->depth();
+  rcu_guard_.destroy();
+  if (cur_depth == 1) {
+    INVARIANT(!RCU::rcu_is_active());
+    cast()->on_post_rcu_region_completion();
+  }
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif

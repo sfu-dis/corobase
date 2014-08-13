@@ -102,27 +102,6 @@ class node_base : public make_nodeversion<P>::type {
 
 	return 0;
     }
-#else
-    inline base_type* parent() const {
-        // almost always an internode
-	if (this->isleaf())
-	    return static_cast<const leaf_type*>(this)->parent_;
-	else
-	    return static_cast<const internode_type*>(this)->parent_;
-    }
-#endif
-    static inline base_type* parent_for_layer_root(base_type* higher_layer) {
-        (void) higher_layer;
-        return 0;
-    }
-    static inline bool parent_exists(base_type* p) {
-        return p != 0;
-    }
-    inline bool has_parent() const {
-        return parent_exists(parent());
-    }
-    inline internode_type* locked_parent(threadinfo& ti) const;
-#ifdef HACK_SILO
     inline void set_parent(base_type* p) {
 	if (this->isleaf())
 	{
@@ -142,6 +121,13 @@ class node_base : public make_nodeversion<P>::type {
 	}
     }
 #else
+    inline base_type* parent() const {
+        // almost always an internode
+	if (this->isleaf())
+	    return static_cast<const leaf_type*>(this)->parent_;
+	else
+	    return static_cast<const internode_type*>(this)->parent_;
+    }
     inline void set_parent(base_type* p) {
 	if (this->isleaf())
 	    static_cast<leaf_type*>(this)->parent_ = p;
@@ -149,6 +135,17 @@ class node_base : public make_nodeversion<P>::type {
 	    static_cast<internode_type*>(this)->parent_ = p;
     }
 #endif
+    static inline base_type* parent_for_layer_root(base_type* higher_layer) {
+        (void) higher_layer;
+        return 0;
+    }
+    static inline bool parent_exists(base_type* p) {
+        return p != 0;
+    }
+    inline bool has_parent() const {
+        return parent_exists(parent());
+    }
+    inline internode_type* locked_parent(threadinfo& ti) const;
     inline base_type* unsplit_ancestor() const {
 	base_type* x = const_cast<base_type*>(this), *p;
 	while (x->has_split() && (p = x->parent()))
@@ -270,46 +267,42 @@ class internode : public node_base<P> {
 	child_oid_[p+1] = child->oid;
 	ikey0_[p] = ikey;
     }
-#else
-    void assign(int p, ikey_type ikey, node_base<P>* child) {
-	child->set_parent(this);
-	child_[p + 1] = child;
-	ikey0_[p] = ikey;
-    }
-#endif
-
     void shift_from(int p, const internode<P>* x, int xp, int n) {
 	masstree_precondition(x != this);
 	if (n) {
 	    memcpy(ikey0_ + p, x->ikey0_ + xp, sizeof(ikey0_[0]) * n);
-#ifdef HACK_SILO
 	    memcpy(child_oid_ + p + 1, x->child_oid_ + xp + 1, sizeof(child_oid_[0]) * n);
-#else
-	    memcpy(child_ + p + 1, x->child_ + xp + 1, sizeof(child_[0]) * n);
-#endif
 	}
     }
-#ifdef HACK_SILO
+
     void shift_up(int p, int xp, int n) {
 	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
 	for (oid_type* a = child_oid_ + p + n, *b = child_oid_ + xp + n; n; --a, --b, --n)
 	    *a = *b;
     }
-#else
-    void shift_up(int p, int xp, int n) {
-	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
-	for (node_base<P> **a = child_ + p + n, **b = child_ + xp + n; n; --a, --b, --n)
-	    *a = *b;
-    }
-#endif
-
-#ifdef HACK_SILO
     void shift_down(int p, int xp, int n) {
 	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
 	for (oid_type* a = child_oid_ + p + 1, * b = child_oid_ + xp+ 1; n; ++a, ++b, --n)
 	    *a = *b;
     }
 #else
+    void assign(int p, ikey_type ikey, node_base<P>* child) {
+	child->set_parent(this);
+	child_[p + 1] = child;
+	ikey0_[p] = ikey;
+    }
+    void shift_from(int p, const internode<P>* x, int xp, int n) {
+	masstree_precondition(x != this);
+	if (n) {
+	    memcpy(ikey0_ + p, x->ikey0_ + xp, sizeof(ikey0_[0]) * n);
+	    memcpy(child_ + p + 1, x->child_ + xp + 1, sizeof(child_[0]) * n);
+	}
+    }
+    void shift_up(int p, int xp, int n) {
+	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
+	for (node_base<P> **a = child_ + p + n, **b = child_ + xp + n; n; --a, --b, --n)
+	    *a = *b;
+    }
     void shift_down(int p, int xp, int n) {
 	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
 	for (node_base<P> **a = child_ + p + 1, **b = child_ + xp + 1; n; ++a, ++b, --n)
@@ -338,6 +331,12 @@ class leafvalue {
 	u_.x = reinterpret_cast<uintptr_t>(n);
     }
 
+#ifdef HACK_SILO
+	leafvalue(oid_type oid)
+	{
+		u_.o = oid;
+	}
+#endif
     static leafvalue<P> make_empty() {
 	return leafvalue<P>(value_type());
     }
@@ -357,21 +356,35 @@ class leafvalue {
 	return u_.v;
     }
 
+#ifdef HACK_SILO
+    oid_type layer() const {
+	return u_.o;
+    }
+#else
     node_base<P>* layer() const {
 	return reinterpret_cast<node_base<P>*>(u_.x);
     }
+#endif
 
     void prefetch(int keylenx) const {
 	if (keylenx < 128)
 	    prefetcher_type()(u_.v);
 	else
-	    u_.n->prefetch_full();
+#ifdef HACK_SILO
+		;
+#else
+	    u_.n->prefetch_full();	// TODO. deal with prefetch later
+#endif
     }
 
   private:
     union {
-	node_base<P>* n;
-	value_type v;
+#ifdef HACK_SILO
+	oid_type o;					// Node objects
+#else
+	node_base<P>* n;			
+#endif
+	value_type v;				// Record objects
 	uintptr_t x;
     } u_;
 };
@@ -423,19 +436,6 @@ class leaf : public node_base<P> {
 	if (extrasize64_ > 0)
 	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
     }
-#else
-    leaf(size_t sz, kvtimestamp_t node_ts)
-	: node_base<P>(true), nremoved_(0),
-	  permutation_(permuter_type::make_empty()),
-	  ksuf_(), parent_(), node_ts_(node_ts), iksuf_{} {
-	masstree_precondition(sz % 64 == 0 && sz / 64 < 128);
-	extrasize64_ = (int(sz) >> 6) - ((int(sizeof(*this)) + 63) >> 6);
-	if (extrasize64_ > 0)
-	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
-    }
-#endif
-
-#ifdef HACK_SILO
     static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti, basic_table<P>* table) {
 	size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
 	void* ptr = ti.pool_allocate(sz, memtag_masstree_leaf);
@@ -458,6 +458,15 @@ class leaf : public node_base<P> {
         return n;
     }
 #else
+    leaf(size_t sz, kvtimestamp_t node_ts)
+	: node_base<P>(true), nremoved_(0),
+	  permutation_(permuter_type::make_empty()),
+	  ksuf_(), parent_(), node_ts_(node_ts), iksuf_{} {
+	masstree_precondition(sz % 64 == 0 && sz / 64 < 128);
+	extrasize64_ = (int(sz) >> 6) - ((int(sizeof(*this)) + 63) >> 6);
+	if (extrasize64_ > 0)
+	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
+    }
     static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti) {
 	size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
 	void* ptr = ti.pool_allocate(sz, memtag_masstree_leaf);
@@ -475,7 +484,6 @@ class leaf : public node_base<P> {
         return n;
     }
 #endif
-
 
     size_t allocated_size() const {
 	int es = (extrasize64_ >= 0 ? extrasize64_ : -extrasize64_ - 1);

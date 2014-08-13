@@ -73,7 +73,11 @@ inline node_base<P>* tcursor<P>::check_leaf_insert(node_type* root,
 	// need compiler barriers.
 	n_->keylenx_[kp_] = sizeof(n_->ikey0_[0]) + 65;
 	fence();
+#ifdef HACK_SILO
+	n_->lv_[kp_] = nl->oid;
+#else
 	n_->lv_[kp_] = nl;
+#endif
 	fence();
 	n_->keylenx_[kp_] = sizeof(n_->ikey0_[0]) + 129;
 	n_->unlock(v);

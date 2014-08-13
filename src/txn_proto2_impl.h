@@ -12,6 +12,7 @@
 #include "txn_impl.h"
 #include "txn_btree.h"
 #include "macros.h"
+#include "pxqueue.h"
 #include "circbuf.h"
 #include "spinbarrier.h"
 #include "record/serializer.h"
@@ -176,12 +177,12 @@ public:
 #endif
 
 protected:
-// FIXME: tzwang: removed with our new free_with_fn
-/*
+  // FIXME: tzwang: this is different from the one in RCU namespace!
+  // (used by clean_up_memory().)
+  // FIXME: tzwang: todo: see how to use trigger_tid (actually tuple's version field).
   struct delete_entry {
 #ifdef CHECK_INVARIANTS
     dbtuple *tuple_ahead_;
-    uint64_t trigger_tid_;
 #endif
 
     dbtuple *tuple_;
@@ -192,21 +193,18 @@ protected:
       :
 #ifdef CHECK_INVARIANTS
         tuple_ahead_(nullptr),
-        trigger_tid_(0),
 #endif
         tuple_(),
         key_(),
         btr_(nullptr) {}
 
     delete_entry(dbtuple *tuple_ahead,
-                 uint64_t trigger_tid,
                  dbtuple *tuple,
                  const marked_ptr<std::string> &key,
                  concurrent_btree *btr)
       :
 #ifdef CHECK_INVARIANTS
         tuple_ahead_(tuple_ahead),
-        trigger_tid_(trigger_tid),
 #endif
         tuple_(tuple),
         key_(key),
@@ -221,32 +219,45 @@ protected:
 
   typedef basic_px_queue<delete_entry, 4096> px_queue;
 
+  // FIXME: tzwang: removed all tid/epoch stuff and only keep the basic
+  // tuple tracking queues here.
   struct threadctx {
-    uint64_t last_commit_tid_;
-    unsigned last_reaped_epoch_;
-#ifdef ENABLE_EVENT_COUNTERS
-    uint64_t last_reaped_timestamp_us_;
-#endif
     px_queue queue_;
     px_queue scratch_;
     std::deque<std::string *> pool_;
-    threadctx() :
-        last_commit_tid_(0)
-      , last_reaped_epoch_(0)
-#ifdef ENABLE_EVENT_COUNTERS
-      , last_reaped_timestamp_us_(0)
-#endif
-    {
+    threadctx() {
       ALWAYS_ASSERT(((uintptr_t)this % CACHELINE_SIZE) == 0);
       queue_.alloc_freelist(RCU::NQueueGroups);
       scratch_.alloc_freelist(RCU::NQueueGroups);
     }
   };
-*/
 
-  // FIXME: tzwang: removed with silo's epoch
-  //static void
-  //clean_up_to_including(threadctx &ctx, uint64_t ro_tick_geq);
+  // FIXME: tzwang: this was clean_up_to_including. We use it to just
+  // 1. free malloc'd memory (basically tuples) and
+  // 2. rcu_free rcu_alloc'd memory
+  // (while silo used this one to do the cleaning of tuples allocated
+  // up to a specified tick (epoch)). We don't have the epochs as in
+  // silo, so we just need threadctx, which records all the memory
+  // we allocated along the tx execution.
+  //
+  // P.S., Q: why do need this? (shouldn't rcu handle it already?)
+  //       A: tx calls alloc and alloc_rcu on tuples, and it needs a
+  //          way to reclaim them when they become garbage. In silo
+  //          this was done by 1. recording all allocs in threadctx's
+  //          queues, and 2. clean them up in this function. To my
+  //          understanding, for rcu allocated ones, silo checks the
+  //          epoch and if it's safe to reclaim, call dealloc_rcu.
+  //          If it's not rcu allocated, i.e., it's just from the slab
+  //          allocator, then just call dealloc. Similarly, we don't
+  //          have the epoch stuff, and we aren't really using a slab
+  //          allocator, either, so what do based on silo's approach
+  //          is just to track those memory in the queues. Then for
+  //          rcu-allocated memory, we just do an rcu_free; for others
+  //          we can only do delete or free now because we don't have
+  //          a fancy slab allocator. (so back to the question, actually
+  //          before we can do rcu_free or free, we need to keep track
+  //          of those memory allocated first.)
+  static void clean_up_memory(threadctx &ctx);
 
   struct hackstruct {
     std::atomic<bool> status_;
@@ -265,8 +276,8 @@ protected:
   };
   static util::aligned_padded_elem<flags> g_flags;
 
-  // FIXME: tzwang: removed with silo's epoch
-  //static percore_lazy<threadctx> g_threadctxs;
+  // FIXME: tzwang: needed by clean_up_mmeory
+  static percore_lazy<threadctx> g_threadctxs;
 
   static event_counter g_evt_worker_thread_wait_log_buffer;
   static event_counter g_evt_dbtuple_no_space_for_delkey;
@@ -489,7 +500,7 @@ public:
 /*
     const uint64_t ro_tick = to_read_only_tick(this->u_.commit_epoch);
     INVARIANT(to_read_only_tick(EpochId(tuple->version)) <= ro_tick);
-
+*/
 #ifdef CHECK_INVARIANTS
     uint64_t exp = 0;
     INVARIANT(tuple->opaque.compare_exchange_strong(exp, 1, std::memory_order_acq_rel));
@@ -499,12 +510,10 @@ public:
     // then we can safely remove tuple
     threadctx &ctx = g_threadctxs.my();
     ctx.queue_.enqueue(
-        delete_entry(tuple_ahead, tuple_ahead->version,
-          tuple, marked_ptr<std::string>(), nullptr),
-        ro_tick);
-    */
+        delete_entry(tuple_ahead, tuple, marked_ptr<std::string>(), nullptr));
   }
 
+  // FIXME: tzwang: removed tick related stuff
   inline ALWAYS_INLINE void
   on_logical_delete(dbtuple *tuple, const std::string &key, concurrent_btree *btr)
   {
@@ -520,8 +529,7 @@ public:
     INVARIANT(tuple->is_deleting());
     INVARIANT(!tuple->size);
     INVARIANT(RCU::rcu_is_active());
-/* FIXME: tzwang: need our own tuple handling. No-op due to epoch removal.
-    const uint64_t ro_tick = to_read_only_tick(this->u_.commit_epoch);
+
     threadctx &ctx = g_threadctxs.my();
 
 #ifdef CHECK_INVARIANTS
@@ -537,9 +545,7 @@ public:
       marked_ptr<std::string> mpx;
       mpx.set_flags(0x1);
 
-      ctx.queue_.enqueue(
-          delete_entry(nullptr, tuple->version, tuple, mpx, btr),
-          ro_tick);
+      ctx.queue_.enqueue(delete_entry(nullptr, tuple, mpx, btr));
     } else {
       // this is a rare event
       ++g_evt_dbtuple_no_space_for_delkey;
@@ -556,21 +562,16 @@ public:
       marked_ptr<std::string> mpx(spx);
       mpx.set_flags(0x1);
 
-      ctx.queue_.enqueue(
-          delete_entry(nullptr, tuple->version, tuple, mpx, btr),
-          ro_tick);
+      ctx.queue_.enqueue(delete_entry(nullptr, tuple, mpx, btr));
     }
-    */
   }
 
-  // tzwang: so i guess this one is actually rcu_queisce
-  // Silo uses it in txn's dtor via the scoped_rcu_guard
-  // We do rcu-queisce in scoped_rcu_guard instead
-  // So i'll make it a no-op for now
+  // FIXME: tzwang: so after removed all tid/epoch stuff, the only
+  // thing left is clean up allocated memory when the tx finishes.
   void
   on_post_rcu_region_completion()
   {
-    /*
+    /* FIXME: tzwang: remove tid/epoch related
 #ifdef PROTO2_CAN_DISABLE_GC
     if (!IsGCEnabled())
       return;
@@ -587,9 +588,9 @@ public:
       return;
     // all reads happening at >= ro_tick_geq
     const uint64_t ro_tick_geq = ro_tick_ex - 1;
-    threadctx &ctx = g_threadctxs.my();
-    clean_up_to_including(ctx, ro_tick_geq);
     */
+    threadctx &ctx = g_threadctxs.my();
+    clean_up_memory(ctx);
   }
 
 private:
