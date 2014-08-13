@@ -340,7 +340,11 @@ int basic_table<P>::scan(H helper,
     typedef scanstackelt<param_type> mystack_type;
     mystack_type stack[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
     int stackpos = 0;
+#ifdef HACK_SILO
+    stack[0].root_ = fetch_node(root_oid_);
+#else
     stack[0].root_ = root_;
+#endif
     leafvalue_type entry = leafvalue_type::make_empty();
 
     int scancount = 0;

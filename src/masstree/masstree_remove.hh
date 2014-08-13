@@ -141,7 +141,6 @@ struct gc_layer_rcu_callback : public P::threadinfo_type::rcu_callback {
 template <typename P>
 void gc_layer_rcu_callback<P>::operator()(threadinfo& ti)
 {
-#ifndef HACK_SILO
     root_ = root_->unsplit_ancestor();
     if (!root_->deleted()) {    // if not destroying tree...
         tcursor<P> lp(root_, s_, len_);
@@ -150,20 +149,17 @@ void gc_layer_rcu_callback<P>::operator()(threadinfo& ti)
             lp.n_->unlock();
         ti.deallocate(this, size(), memtag_masstree_gc);
     }
-#endif
 }
 
 template <typename P>
 void gc_layer_rcu_callback<P>::make(node_base<P>* root, Str prefix,
                                     threadinfo& ti)
 {
-#ifndef HACK_SILO
     size_t sz = prefix.len + sizeof(gc_layer_rcu_callback<P>);
     void *data = ti.allocate(sz, memtag_masstree_gc);
     gc_layer_rcu_callback<P> *cb =
         new(data) gc_layer_rcu_callback<P>(root, prefix);
     ti.rcu_register(cb);
-#endif
 }
 
 template <typename P>
@@ -443,11 +439,11 @@ void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
 
 template <typename P>
 void basic_table<P>::destroy(threadinfo& ti) {
-    if (root_) {
+    if (root_oid_) {
         void* data = ti.allocate(sizeof(destroy_rcu_callback<P>), memtag_masstree_gc);
-        destroy_rcu_callback<P>* cb = new(data) destroy_rcu_callback<P>(root_);
+        destroy_rcu_callback<P>* cb = new(data) destroy_rcu_callback<P>(fetch_node(root_oid_));
         ti.rcu_register(cb);
-        root_ = 0;
+        root_oid_ = 0;
     }
 }
 
