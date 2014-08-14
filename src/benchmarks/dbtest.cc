@@ -40,17 +40,23 @@ split_ws(const string &s)
 static size_t
 parse_memory_spec(const string &s)
 {
-  string x(s);
+  std::string x(s);
   size_t mult = 1;
   if (x.back() == 'G') {
     mult = static_cast<size_t>(1) << 30;
-    x.pop_back();
+    // IP: pop_back is supported from gcc4.7 onwards (and it is a c++11).
+    //     Since it is pretty much the same with substr, I changed it to
+    //     compile on my dev env.
+    //x.pop_back();
+    x = x.substr(0,x.size()-1);
   } else if (x.back() == 'M') {
     mult = static_cast<size_t>(1) << 20;
-    x.pop_back();
+    //x.pop_back();
+    x = x.substr(0,x.size()-1);    
   } else if (x.back() == 'K') {
     mult = static_cast<size_t>(1) << 10;
-    x.pop_back();
+    //x.pop_back();
+    x = x.substr(0,x.size()-1);
   }
   return strtoul(x.c_str(), nullptr, 10) * mult;
 }
@@ -380,12 +386,12 @@ main(int argc, char **argv)
   }
 
   vector<string> bench_toks = split_ws(bench_opts);
-  int argc = 1 + bench_toks.size();
-  char *argv[argc];
-  argv[0] = (char *) bench_type.c_str();
+  argc = 1 + bench_toks.size();
+  char *new_argv[argc];
+  new_argv[0] = (char *) bench_type.c_str();
   for (size_t i = 1; i <= bench_toks.size(); i++)
-    argv[i] = (char *) bench_toks[i - 1].c_str();
-  test_fn(db, argc, argv);
+    new_argv[i] = (char *) bench_toks[i - 1].c_str();
+  test_fn(db, argc, new_argv);
   delete db;
   return 0;
 }
