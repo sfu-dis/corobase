@@ -135,10 +135,10 @@ SRCFILES = allocator.cc \
 	tuple.cc \
 	txn_btree.cc \
 	txn.cc \
-	txn_table.cc \
 	txn_proto2_impl.cc \
 	varint.cc
 #ticker.cc \
+#txn_table.cc \
 #rcu.cc \
 #allocator.cc \
 #btree.cc \

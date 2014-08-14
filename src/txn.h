@@ -18,6 +18,8 @@
 
 #include <unordered_map>
 #include "rcu-wrapper.h"
+#include "rcu/xid.h"
+#include "rcu/sm-log.h"
 #include "amd64.h"
 #include "btree_choice.h"
 #include "core.h"
@@ -35,7 +37,8 @@
 #include "scopedperf.hh"
 #include "marked_ptr.h"
 #include "ndb_type_traits.h"
-#include "txn_table.h"
+
+using namespace TXN;
 
 // forward decl
 template <template <typename> class Transaction, typename P>
@@ -52,11 +55,12 @@ class transaction_base {
   template <template <typename> class T, typename P>
     friend class base_txn_btree;
 public:
+  static sm_log *logger;
 
-  typedef txn_table::txn_descriptor txn_descriptor;
   typedef dbtuple::tid_t tid_t;
   typedef dbtuple::size_type size_type;
   typedef dbtuple::string_type string_type;
+  typedef TXN::txn_state txn_state;
 
   enum {
     // use the low-level scan protocol for checking scan consistency,
@@ -105,7 +109,7 @@ public:
 
   // FIXME: tzwang: allocate td here
   transaction_base(uint64_t flags)
-    : txn_desc(txn_table::instance.td_alloc()),
+    : xid(TXN::xid_alloc()),
       reason(ABORT_REASON_NONE),
       flags(flags) {}
 
@@ -137,7 +141,7 @@ public:
 
   inline txn_state state() const
   {
-    return txn_desc->state;
+    return TXN::xid_get_context(xid)->state;
   }
 
   // only fires during invariant checking
@@ -145,7 +149,7 @@ public:
   ensure_active()
   {
     if (state() == TXN_EMBRYO)
-      txn_desc->state = TXN_ACTIVE;
+      xid_get_context(xid)->state = TXN_ACTIVE;
     INVARIANT(state() == TXN_ACTIVE);
   }
 
@@ -345,9 +349,9 @@ protected:
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
 
-  // FIXME: tzwang: move state to txn_desc.
-  //txn_state state;
-  txn_descriptor *txn_desc;
+  // FIXME: tzwang: use xid
+  XID xid;
+
   abort_reason reason;
   const uint64_t flags;
 };

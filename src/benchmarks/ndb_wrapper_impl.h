@@ -121,8 +121,7 @@ struct hint_tpcc_stock_level_read_only_traits : public hint_read_only_traits {};
   x(abstract_db::HINT_TPCC_STOCK_LEVEL, hint_tpcc_stock_level_traits) \
   x(abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY, hint_tpcc_stock_level_read_only_traits)
 
-template <template <typename> class Transaction>
-sm_log* ndb_wrapper<Transaction>::lm = NULL;
+sm_log* transaction_base::logger = NULL;
 
 template <template <typename> class Transaction>
 ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
@@ -130,14 +129,14 @@ ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
     size_t bufsize)
 {
   ALWAYS_ASSERT(logdir);
-  INVARIANT(!lm);
+  INVARIANT(!transaction_base::logger);
 
   // FIXME: tzwang: dummy recovery for now
   scoped_rcu_region scope;
-  auto no_recover = [](sm_log_scan_mgr*, LSN, LSN, void*)->void {
+  auto no_recover = [](void*, sm_log_scan_mgr*, LSN, LSN)->void {
       SPAM("Log recovery is a no-op here\n");
   };
-  //lm = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
+  transaction_base::logger = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
 
   if (verbose) {
     std::cerr << "[logging subsystem]" << std::endl;
