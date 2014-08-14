@@ -8,6 +8,8 @@
 #include "object.h"
 #endif
 
+using namespace TXN;
+
 // base definitions
 
 template <template <typename> class Protocol, typename Traits>
@@ -15,10 +17,13 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   : transaction_base(flags), sa(&sa)
 {
   INVARIANT(RCU::rcu_is_active());
-  INVARIANT(state() == TXN_EMBRYO);
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
+  xid_context *xc = xid_get_context(xid);
+  xc->begin = logger->cur_lsn();
+  xc->end = INVALID_LSN;
+  xc->state = TXN_EMBRYO;
 }
 
 template <template <typename> class Protocol, typename Traits>
@@ -30,7 +35,7 @@ transaction<Protocol, Traits>::~transaction()
   INVARIANT(RCU::rcu_is_active());
 
   // FIXME: tzwang: free txn desc.
-  txn_table::instance.td_free(txn_desc, state());
+  xid_free(xid);
   const unsigned cur_depth = rcu_guard_->depth();
   rcu_guard_.destroy();
   if (cur_depth == 1) {
@@ -67,7 +72,7 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
   case TXN_COMMITTING:
     throw transaction_unusable_exception();
   }
-  txn_desc->state = TXN_ABRTD;
+  xid_get_context(xid)->state = TXN_ABRTD;
   this->reason = reason;
 
   // on abort, we need to go over all insert nodes and
@@ -471,7 +476,7 @@ transaction<Protocol, Traits>::commit(bool doThrow)
     }
   }
   // FIXME: tzwang: need our own commit protocol
-  txn_desc->state = TXN_CMMTD;
+  xid_get_context(xid)->state = TXN_CMMTD;
   if (commit_tid.first)
     cast()->on_tid_finish(commit_tid.second);
   clear();
@@ -500,7 +505,7 @@ do_abort:
     }
   }
 
-  txn_desc->state = TXN_ABRTD;
+  xid_get_context(xid)->state = TXN_ABRTD;
   if (commit_tid.first)
     cast()->on_tid_finish(commit_tid.second);
   clear();

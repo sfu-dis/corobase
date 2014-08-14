@@ -34,7 +34,6 @@ namespace private_ {
 template <template <typename> class Transaction>
 class ndb_wrapper : public abstract_db {
 protected:
-  static sm_log *lm;
   typedef private_::ndbtxn ndbtxn;
   template <typename Traits>
     using cast = private_::cast_base<Transaction, Traits>;
