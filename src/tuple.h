@@ -26,7 +26,10 @@
 
 #ifdef HACK_SILO
 #include "object.h"
+#include "rcu/xid.h"
 #endif
+
+using namespace TXN;
 
 // debugging tool
 //#define TUPLE_LOCK_OWNERSHIP_CHECKING
@@ -58,6 +61,9 @@ public:
   typedef std::string string_type;
 
 #ifdef HACK_SILO
+  XID xid;
+  LSN clsn;
+// FIXME: tzwang: not used?
   oid_type oid;
 #endif
 
