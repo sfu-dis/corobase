@@ -12,6 +12,8 @@
 #include <type_traits>
 #include <memory>
 
+using namespace TXN;
+
 // each Transaction implementation should specialize this for special
 // behavior- the default implementation is just nops
 template <template <typename> class Transaction>
@@ -353,6 +355,7 @@ retry:
   if (!px) {
     // do regular search
     typename concurrent_btree::value_type bv = 0;
+    // FIXME: tzwang: so this should be the head of chain, i.e., dirty data ?
     if (!this->underlying_btree.search(varkey(*k), bv)) {
       // XXX(stephentu): if we are removing a key and we can't find it, then we
       // should just treat this as a read [of an empty-value], instead of
@@ -364,11 +367,45 @@ retry:
   }
   INVARIANT(px);
   if (!insert) {
+    // FIXME: tzwang: see if we can do update (insert to chain)
+    //
+    // if px's clsn is valid then
+    //    px is not dirty, and it's xid_context might be gone
+    //    if px's clsn <= t.begin then
+    //       we can update (insert a tuple in the chain)
+    //    else
+    //       abort
+    // else
+    //    px is probably dirty, and px's xid_context must be available
+    //    if px's xid_context->state == committed and our begin ts >= px's clsn then
+    //       we can update (insert a tuple in the chain)
+    //    else
+    //       abort
+    // (also one invariant: px's xid is always valid, even if it's dirty)
+    // the above translates to:
+    if (px->clsn == INVALID_LSN) {
+      xid_context *px_xc = xid_get_context(px->xid);
+      if (px_xc->state != TXN_CMMTD) {
+        // ABORT
+        t.abort();
+        return;
+      }
+    }
+
+#ifdef CHECK_INVARIANTS
+    xid_context *my_xc = xid_get_context(t.xid);
+    INVARIANT((px->clsn == INVALID_LSN && xid_get_context(px->xid)->state == TXN_CMMTD) ||
+              px->clsn <= my_xc->begin);
+#endif
     // add to write set normally, as non-insert
+    // FIXME: tzwang: chain? (this write_set is needed anyway tho)
     t.write_set.emplace_back(px, k, v, writer, &this->underlying_btree, false);
   } else {
     // should already exist in write set as insert
     // (because of try_insert_new_tuple())
+
+    // FIXME: tzwang: our system is better at this: just insert a new tuple in the chain
+    // if the latest dirty tuple has a same xid as t.xid.
 
     // too expensive to be a practical check
     //INVARIANT(t.find_write_set(px) != t.write_set.end());
