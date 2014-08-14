@@ -8,12 +8,13 @@ txn_table::td_alloc()
   unsigned int& idx = next_descs_.my();
   txn_descriptor* td = my_table() + idx;
 
+  INVARIANT(idx < tds_per_core());
   INVARIANT(!td->in_use);
 
   td->in_use = true;
   td->xid = xid_alloc();
-  td->state = TXN_ACTIVE;
-  std::cout << "NEW TXN " << td->xid._val << std::endl;
+  td->state = TXN_EMBRYO;
+  //std::cout << "NEW TXN " << idx << " " << td->xid.epoch() << " " << td->xid.local() << std::endl;
 
   txn_descriptor* next_td = NULL;
   do {
@@ -29,7 +30,8 @@ txn_table::td_alloc()
 void
 txn_table::td_free(txn_descriptor *td, txn_state ts)
 {
+  //std::cout << "END TXN " << td->xid.epoch() << " " << td->xid.local() << std::endl;
   td->state = ts;
+  xid_free(td->xid);
   td->in_use = false;
-  std::cout << "END TXN " << td->xid._val << std::endl;
 }

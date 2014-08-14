@@ -331,13 +331,13 @@ protected: \
   {
     const unsigned int partid = PartitionId(wid);
     ALWAYS_ASSERT(partid < nthreads);
-    // FIXME: tzwang: no pin thread or fault region b/c no allocator
-    // const unsigned int pinid  = partid;
-    //if (verbose)
-    //  cerr << "PinToWarehouseId(): coreid=" << coreid::core_id()
-    //       << " pinned to whse=" << wid << " (partid=" << partid << ")"
-    //       << endl;
-    //rcu::s_instance.pin_current_thread(pinid);
+    const unsigned int pinid  = partid;
+    if (verbose)
+      cerr << "PinToWarehouseId(): coreid=" << coreid::core_id()
+           << " pinned to whse=" << wid << " (partid=" << partid << ")"
+           << endl;
+    RCU::pin_current_thread(pinid);
+    // FIXME: tzwang: no slab, no fault region
     //rcu::s_instance.fault_region();
   }
 
@@ -679,10 +679,10 @@ protected:
   {
     if (!pin_cpus)
       return;
-    // FIXME: tzwang: no pin thread or fault region b/c no allocator
-    //const size_t a = worker_id % coreid::num_cpus_online();
-    //const size_t b = a % nthreads;
-    //rcu::s_instance.pin_current_thread(b);
+    const size_t a = worker_id % coreid::num_cpus_online();
+    const size_t b = a % nthreads;
+    RCU::pin_current_thread(b);
+    // FIXME: tzwang: no fault region b/c no allocator
     //rcu::s_instance.fault_region();
   }
 
