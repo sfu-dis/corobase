@@ -9,6 +9,7 @@
 #include <list>
 #include <utility>
 
+#include "silo-allocator.h"
 #include "allocator.h"
 #include "counter.h"
 #include "spinlock.h"

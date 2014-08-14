@@ -5,6 +5,9 @@
 #include <set>
 #include <unistd.h>
 
+#include "rcu-wrapper.h"
+#include "silo-rcu.h"
+
 #include "circbuf.h"
 #include "pxqueue.h"
 #include "core.h"
@@ -73,10 +76,10 @@ namespace pxqueuetest {
     return (void *) n;
   }
 
-  static inline rcu::deleter_t
+  static inline RCU::deleter_t
   N2D(uint64_t n)
   {
-    return (rcu::deleter_t) n;
+    return (RCU::deleter_t) n;
   }
 
   struct sorter {
@@ -103,7 +106,7 @@ namespace pxqueuetest {
       uint64_t i = 0;
       for (auto &p : q0) {
         ALWAYS_ASSERT(p.ptr == N2P(i));
-        ALWAYS_ASSERT((rcu::deleter_t) p.action == N2D(i));
+        ALWAYS_ASSERT((RCU::deleter_t) p.action == N2D(i));
         i++;
       }
       ALWAYS_ASSERT(i == 14);
@@ -115,11 +118,11 @@ namespace pxqueuetest {
       auto q1_it = q1.begin();
       ALWAYS_ASSERT(q1_it != q1.end());
       ALWAYS_ASSERT(q1_it->ptr == N2P(123));
-      ALWAYS_ASSERT((rcu::deleter_t) q1_it->action == N2D(543));
+      ALWAYS_ASSERT((RCU::deleter_t) q1_it->action == N2D(543));
       ++q1_it;
       ALWAYS_ASSERT(q1_it != q1.end());
       ALWAYS_ASSERT(q1_it->ptr == N2P(12345));
-      ALWAYS_ASSERT((rcu::deleter_t) q1_it->action == N2D(54321));
+      ALWAYS_ASSERT((RCU::deleter_t) q1_it->action == N2D(54321));
       ++q1_it;
       ALWAYS_ASSERT(q1_it == q1.end());
     }
@@ -985,7 +988,7 @@ public:
     //small_vector_ns::Test();
     //small_map_ns::Test();
     //recordtest::Test();
-    //rcu::Test();
+    //RCU::Test();
     extern void TestConcurrentBtreeFast();
     extern void TestConcurrentBtreeSlow();
     // either tests Masstree or Silotree, depending on NDB_MASSTREE
