@@ -1,6 +1,7 @@
 #ifndef __RCU_WRAPPER_
 #define __RCU_WRAPPER_
 
+#include <numa.h>
 #include "macros.h"
 #include "core.h"
 #include "pxqueue.h"
@@ -37,6 +38,8 @@ namespace RCU {
   {
     free_with_fn(p, deleter_array<T>);
   }
+
+  void pin_current_thread(size_t cpu);
 };
 
 class scoped_rcu_region {

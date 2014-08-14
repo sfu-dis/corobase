@@ -35,6 +35,7 @@
 #include "scopedperf.hh"
 #include "marked_ptr.h"
 #include "ndb_type_traits.h"
+#include "txn_table.h"
 
 // forward decl
 template <template <typename> class Transaction, typename P>
@@ -52,13 +53,10 @@ class transaction_base {
     friend class base_txn_btree;
 public:
 
+  typedef txn_table::txn_descriptor txn_descriptor;
   typedef dbtuple::tid_t tid_t;
   typedef dbtuple::size_type size_type;
   typedef dbtuple::string_type string_type;
-
-  // TXN_EMBRYO - the transaction object has been allocated but has not
-  // done any operations yet
-  enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITED, TXN_ABRT, };
 
   enum {
     // use the low-level scan protocol for checking scan consistency,
@@ -105,8 +103,9 @@ public:
     return 0;
   }
 
+  // FIXME: tzwang: allocate td here
   transaction_base(uint64_t flags)
-    : state(TXN_EMBRYO),
+    : txn_desc(txn_table::instance.td_alloc()),
       reason(ABORT_REASON_NONE),
       flags(flags) {}
 
@@ -136,13 +135,18 @@ protected:
 
 public:
 
+  inline txn_state state() const
+  {
+    return txn_desc->state;
+  }
+
   // only fires during invariant checking
   inline void
   ensure_active()
   {
-    if (state == TXN_EMBRYO)
-      state = TXN_ACTIVE;
-    INVARIANT(state == TXN_ACTIVE);
+    if (state() == TXN_EMBRYO)
+      txn_desc->state = TXN_ACTIVE;
+    INVARIANT(state() == TXN_ACTIVE);
   }
 
   inline uint64_t
@@ -341,7 +345,9 @@ protected:
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
 
-  txn_state state;
+  // FIXME: tzwang: move state to txn_desc.
+  //txn_state state;
+  txn_descriptor *txn_desc;
   abort_reason reason;
   const uint64_t flags;
 };

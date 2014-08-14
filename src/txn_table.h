@@ -8,11 +8,17 @@
 
 using namespace RCU;
 
-class txn_table {
-  static const unsigned int TXN_TABLE_SIZE = 5000;
-  // FIXME: tzwang: TXN_COMMITTING = getting CLSN.
-  enum txn_state { TXN_ACTIVE, TXN_COMMITTING, TXN_ABORTED, TXN_COMMITTED};
+// TXN_EMBRYO - the transaction object has been allocated but has not
+// done any operations yet
+// TXN_COMMITTING - getting CLSN
+enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD };
 
+class txn_table {
+  // FIXME: tzwang: got "invalid argument" at xid_free if table size
+  // is as large as 8192
+  static const unsigned int TXN_TABLE_SIZE = 960;
+public:
+  // FIXME: tzwang: use xid_context?
   typedef struct txn_descriptor {
     XID xid;
     LSN start_lsn;
@@ -22,10 +28,11 @@ class txn_table {
     // FIXME: tzwang: add tx-log
   } txn_descriptor;
 
+private:
   // FIXME: tzwang: each core owns a subset of the whole table, and
   // only finds free space in its own subset at td_alloc.
   txn_descriptor txn_descs_[TXN_TABLE_SIZE];
-  percore<unsigned int> next_descs_;
+  percore_lazy<unsigned int> next_descs_;
 
   inline unsigned int tds_per_core()
   {

@@ -15,6 +15,7 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   : transaction_base(flags), sa(&sa)
 {
   INVARIANT(RCU::rcu_is_active());
+  INVARIANT(state() == TXN_EMBRYO);
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
@@ -24,9 +25,12 @@ template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::~transaction()
 {
   // transaction shouldn't fall out of scope w/o resolution
-  // resolution means TXN_EMBRYO, TXN_COMMITED, and TXN_ABRT
-  INVARIANT(state != TXN_ACTIVE);
+  // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
+  INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
   INVARIANT(RCU::rcu_is_active());
+
+  // FIXME: tzwang: free txn desc.
+  txn_table::instance.td_free(txn_desc, state());
   const unsigned cur_depth = rcu_guard_->depth();
   rcu_guard_.destroy();
   if (cur_depth == 1) {
@@ -53,16 +57,17 @@ void
 transaction<Protocol, Traits>::abort_impl(abort_reason reason)
 {
   abort_trap(reason);
-  switch (state) {
+  switch (state()) {
   case TXN_EMBRYO:
   case TXN_ACTIVE:
     break;
-  case TXN_ABRT:
+  case TXN_ABRTD:
     return;
-  case TXN_COMMITED:
+  case TXN_CMMTD:
+  case TXN_COMMITTING:
     throw transaction_unusable_exception();
   }
-  state = TXN_ABRT;
+  txn_desc->state = TXN_ABRTD;
   this->reason = reason;
 
   // on abort, we need to go over all insert nodes and
@@ -109,13 +114,14 @@ transaction<Protocol, Traits>::cleanup_inserted_tuple_marker(
 
 namespace {
   inline const char *
-  transaction_state_to_cstr(transaction_base::txn_state state)
+  transaction_state_to_cstr(txn_state state)
   {
     switch (state) {
-    case transaction_base::TXN_EMBRYO: return "TXN_EMBRYO";
-    case transaction_base::TXN_ACTIVE: return "TXN_ACTIVE";
-    case transaction_base::TXN_ABRT: return "TXN_ABRT";
-    case transaction_base::TXN_COMMITED: return "TXN_COMMITED";
+    case TXN_EMBRYO: return "TXN_EMBRYO";
+    case TXN_ACTIVE: return "TXN_ACTIVE";
+    case TXN_ABRTD: return "TXN_ABRTD";
+    case TXN_CMMTD: return "TXN_CMMTD";
+    case TXN_COMMITTING: return "TXN_COMMITTING";
     }
     ALWAYS_ASSERT(false);
     return 0;
@@ -146,7 +152,7 @@ void
 transaction<Protocol, Traits>::dump_debug_info() const
 {
   std::cerr << "Transaction (obj=" << util::hexify(this) << ") -- state "
-       << transaction_state_to_cstr(state) << std::endl;
+       << transaction_state_to_cstr(state()) << std::endl;
   std::cerr << "  Abort Reason: " << AbortReasonStr(reason) << std::endl;
   std::cerr << "  Flags: " << transaction_flags_to_str(flags) << std::endl;
   std::cerr << "  Read/Write sets:" << std::endl;
@@ -245,13 +251,14 @@ transaction<Protocol, Traits>::commit(bool doThrow)
         std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
 
-  switch (state) {
+  switch (state()) {
   case TXN_EMBRYO:
   case TXN_ACTIVE:
     break;
-  case TXN_COMMITED:
+  case TXN_CMMTD:
+  case TXN_COMMITTING:  // FIXME: tzwang: correct?
     return true;
-  case TXN_ABRT:
+  case TXN_ABRTD:
     if (doThrow)
       throw transaction_abort_exception(reason);
     return false;
@@ -463,7 +470,8 @@ transaction<Protocol, Traits>::commit(bool doThrow)
       }
     }
   }
-  state = TXN_COMMITED;
+  // FIXME: tzwang: need our own commit protocol
+  txn_desc->state = TXN_CMMTD;
   if (commit_tid.first)
     cast()->on_tid_finish(commit_tid.second);
   clear();
@@ -492,7 +500,7 @@ do_abort:
     }
   }
 
-  state = TXN_ABRT;
+  txn_desc->state = TXN_ABRTD;
   if (commit_tid.first)
     cast()->on_tid_finish(commit_tid.second);
   clear();
