@@ -1,6 +1,7 @@
 #ifndef __RCU_WRAPPER_
 #define __RCU_WRAPPER_
 
+#include <type_traits>
 #include <numa.h>
 #include "macros.h"
 #include "core.h"

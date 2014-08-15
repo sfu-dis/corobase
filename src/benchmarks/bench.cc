@@ -358,7 +358,7 @@ bench_runner::run()
     cerr << "printing jemalloc stats..." << endl;
     malloc_stats_print(write_cb, NULL, "");
 #endif
-#ifdef USE_TCMALLOC
+#ifdef XX_USE_TCMALLOC
     HeapProfilerDump("before-exit");
 #endif
   }

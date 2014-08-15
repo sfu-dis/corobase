@@ -1,6 +1,10 @@
 -include config.mk
 
 ### Options ###
+#CXX=icc
+#CXX=clang
+#CXX=/home/ipandis/apps/bin/gcc483/g++
+#CXX=g++
 
 DEBUG ?= 0
 CHECK_INVARIANTS ?= 0
@@ -35,6 +39,7 @@ USE_MALLOC_MODE_S=$(strip $(USE_MALLOC_MODE))
 MODE_S=$(strip $(MODE))
 MASSTREE_S=$(strip $(MASSTREE))
 MASSTREE_CONFIG:=--enable-max-key-len=1024
+MASSTREE_LDFLAGS:=
 
 ifeq ($(DEBUG_S),1)
 	OSUFFIX_D=.debug
@@ -105,13 +110,17 @@ LDFLAGS := -lpthread -lnuma -lrt
 
 LZ4LDFLAGS := -Lthird-party/lz4 -llz4 -Wl,-rpath,$(TOP)/third-party/lz4
 
+GPERFTOOLS :=
+
 ifeq ($(USE_MALLOC_MODE_S),1)
         CXXFLAGS+=-DUSE_JEMALLOC
         LDFLAGS+=-ljemalloc
 	MASSTREE_CONFIG+=--with-malloc=jemalloc
 else ifeq ($(USE_MALLOC_MODE_S),2)
-        CXXFLAGS+=-DUSE_TCMALLOC
-        LDFLAGS+=-ltcmalloc
+	GPERFTOOLS+=/home/ipandis/GITPROJECTS/Impala/thirdparty/gperftools-2.0
+        CXXFLAGS+=-DUSE_TCMALLOC -I$(GPERFTOOLS)/src/
+        LDFLAGS+="-L$(GPERFTOOLS) -ltcmalloc"
+	MASSTREE_LDFLAGS="-L$(GPERFTOOLS)/.libs/ "
 	MASSTREE_CONFIG+=--with-malloc=tcmalloc
 else ifeq ($(USE_MALLOC_MODE_S),3)
         CXXFLAGS+=-DUSE_FLOW
@@ -239,7 +248,7 @@ $(O)/test: $(O)/test.o $(OBJFILES) $(RCU_OBJFILES) $(MASSTREE_OBJFILES) third-pa
 persist_test: $(O)/persist_test
 
 $(O)/persist_test: $(O)/persist_test.o third-party/lz4/liblz4.so
-	$(CXX) -o $(O)/persist_test $(O)/persist_test.o $(LDFLAGS) $(LZ4LDFLAGS)
+	$(CXX) -o $(O)/persist_test $(O)/persist_test.o  $(LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: stats_client
 stats_client: $(O)/stats_client
@@ -249,7 +258,7 @@ $(O)/stats_client: $(O)/stats_client.o
 
 masstree/config.h: $(O)/buildstamp.masstree masstree/configure masstree/config.h.in
 	rm -f $@
-	cd masstree; ./configure $(MASSTREE_CONFIG)
+	cd masstree; LDFLAGS=$(MASSTREE_LDFLAGS) ./configure $(MASSTREE_CONFIG)
 	if test -f $@; then touch $@; fi
 
 masstree/configure masstree/config.h.in: masstree/configure.ac
