@@ -183,9 +183,7 @@ protected:
   friend std::ostream &
   operator<<(std::ostream &o, const read_record_t &r);
 
-  // the write set is logically a mapping from (tuple -> value_to_write).
-  // FIXME: tzwang: this is the silo's original write record; we actually
-  // need a much simpler one - same as the read_record_t.
+  // We need a much simpler write_record than silo does - same as the read_record_t.
   struct write_record_t {
     constexpr write_record_t() : tuple() {}
     constexpr write_record_t(dbtuple *tuple)
@@ -195,93 +193,19 @@ protected:
     {
       return tuple;
     }
+    inline dbtuple *
+    get_tuple() const
+    {
+      return tuple;
+    }
   private:
     // FIXME: tzwang: also in here we'll need it to be non-const b/c
     // we change tuple.clsn upon commit.
     dbtuple *tuple;
   };
 
-  struct silo_write_record_t {
-    enum {
-      FLAGS_INSERT  = 0x1,
-      FLAGS_DOWRITE = 0x1 << 1,
-    };
-
-    constexpr inline silo_write_record_t()
-      : tuple(), k(), r(), w(), btr()
-    {}
-
-    // all inputs are assumed to be stable
-    inline silo_write_record_t(dbtuple *tuple,
-                          const string_type *k,
-                          const void *r,
-                          dbtuple::tuple_writer_t w,
-                          concurrent_btree *btr,
-                          bool insert)
-      : tuple(tuple),
-        k(k),
-        r(r),
-        w(w),
-        btr(btr)
-    {
-      this->btr.set_flags(insert ? FLAGS_INSERT : 0);
-    }
-    inline dbtuple *
-    get_tuple()
-    {
-      return tuple;
-    }
-    inline const dbtuple *
-    get_tuple() const
-    {
-      return tuple;
-    }
-    inline bool
-    is_insert() const
-    {
-      return btr.get_flags() & FLAGS_INSERT;
-    }
-    inline bool
-    do_write() const
-    {
-      return btr.get_flags() & FLAGS_DOWRITE;
-    }
-    inline void
-    set_do_write()
-    {
-      INVARIANT(!do_write());
-      btr.or_flags(FLAGS_DOWRITE);
-    }
-    inline concurrent_btree *
-    get_btree() const
-    {
-      return btr.get();
-    }
-    inline const string_type &
-    get_key() const
-    {
-      return *k;
-    }
-    inline const void *
-    get_value() const
-    {
-      return r;
-    }
-    inline dbtuple::tuple_writer_t
-    get_writer() const
-    {
-      return w;
-    }
-  private:
-    dbtuple *tuple;
-    const string_type *k;
-    const void *r;
-    dbtuple::tuple_writer_t w;
-    marked_ptr<concurrent_btree> btr; // first bit for inserted, 2nd for dowrite
-  };
-
   friend std::ostream &
-  operator<<(std::ostream &o, write_record_t &r);
+  operator<<(std::ostream &o, const write_record_t &r);
 
   // the absent set is a mapping from (btree_node -> version_number).
   struct absent_record_t { uint64_t version; };
@@ -290,19 +214,9 @@ protected:
   operator<<(std::ostream &o, const absent_record_t &r);
 
   struct dbtuple_write_info {
-    enum {
-      FLAGS_LOCKED = 0x1,
-      FLAGS_INSERT = 0x1 << 1,
-    };
     dbtuple_write_info() : tuple(), entry(nullptr) {}
     dbtuple_write_info(dbtuple *tuple, write_record_t *entry)
       : tuple(tuple), entry(entry) {}
-      /*
-    {
-      if (is_insert)
-        this->tuple.set_flags(FLAGS_LOCKED | FLAGS_INSERT);
-    }
-    */
     // XXX: for searching only
     explicit dbtuple_write_info(const dbtuple *tuple)
       : tuple(const_cast<dbtuple *>(tuple)), entry() {}
@@ -311,36 +225,8 @@ protected:
     {
       return tuple.get();
     }
-    /* FIXME: tzwang: no lock needed in our system
-    inline ALWAYS_INLINE void
-    mark_locked()
-    {
-      INVARIANT(!is_locked());
-      tuple.or_flags(FLAGS_LOCKED);
-      INVARIANT(is_locked());
-    }
-    inline ALWAYS_INLINE bool
-    is_locked() const
-    {
-      return tuple.get_flags() & FLAGS_LOCKED;
-    }
-    inline ALWAYS_INLINE bool
-    is_insert() const
-    {
-      return tuple.get_flags() & FLAGS_INSERT;
-    }
-    inline ALWAYS_INLINE
-    bool operator<(const dbtuple_write_info &o) const
-    {
-      // the unique key is [tuple, !is_insert, pos]
-      return tuple < o.tuple ||
-             (tuple == o.tuple && !is_insert() < !o.is_insert()) ||
-             (tuple == o.tuple && !is_insert() == !o.is_insert() && pos < o.pos);
-    }
-    */
     marked_ptr<dbtuple> tuple;
     write_record_t *entry;
-    //size_t pos;
   };
 
 
@@ -395,7 +281,6 @@ namespace private_ {
 inline ALWAYS_INLINE std::ostream &
 operator<<(std::ostream &o, const transaction_base::read_record_t &r)
 {
-  //o << "[tuple=" << util::hexify(r.get_tuple())
   o << "[tuple=" << *r.get_tuple()
     << "]";
   return o;
@@ -404,14 +289,9 @@ operator<<(std::ostream &o, const transaction_base::read_record_t &r)
 inline ALWAYS_INLINE std::ostream &
 operator<<(
     std::ostream &o,
-    transaction_base::write_record_t &r)
+    const transaction_base::write_record_t &r)
 {
   o << "[tuple=" << r.get_tuple()
-    //<< ", key=" << util::hexify(r.get_key())
-    //<< ", value=" << util::hexify(r.get_value())
-    //<< ", insert=" << r.is_insert()
-    //<< ", do_write=" << r.do_write()
-    //<< ", btree=" << r.get_btree()
     << "]";
   return o;
 }
@@ -509,17 +389,6 @@ public:
   // call to operator(), if it returns true, then the value returned from
   // results() should remain valid and stable until the next call to
   // operator().
-
-  //typedef typename P::Key key_type;
-  //typedef typename P::Value value_type;
-  //typedef typename P::ValueInfo value_info_type;
-
-  //typedef typename P::KeyWriter key_writer_type;
-  //typedef typename P::ValueWriter value_writer_type;
-
-  //typedef typename P::KeyReader key_reader_type;
-  //typedef typename P::SingleValueReader single_value_reader_type;
-  //typedef typename P::ValueReader value_reader_type;
 
   typedef Traits traits_type;
   typedef typename Traits::StringAllocator string_allocator_type;
@@ -626,20 +495,7 @@ protected:
       traits_type::hard_expected_sizes,
       dbtuple_write_info_vec_static, dbtuple_write_info_vec_small>::type
     dbtuple_write_info_vec;
-/*
-  static inline bool
-  sorted_dbtuples_contains(
-      const dbtuple_write_info_vec &dbtuples,
-      const dbtuple *tuple)
-  {
-    // XXX: skip binary search for small-sized dbtuples?
-    return std::binary_search(
-        dbtuples.begin(), dbtuples.end(),
-        dbtuple_write_info(tuple),
-        [](const dbtuple_write_info &lhs, const dbtuple_write_info &rhs)
-          { return lhs.get_tuple() < rhs.get_tuple(); });
-  }
-*/
+
 public:
 
   inline transaction(uint64_t flags, string_allocator_type &sa);
@@ -751,11 +607,6 @@ protected:
 public:
   // expected public overrides
 
-  /**
-   * Can we overwrite prev with cur?
-   */
-  //bool can_overwrite_record_tid(tid_t prev, tid_t cur) const;
-
   inline string_allocator_type &
   string_allocator()
   {
@@ -763,33 +614,6 @@ public:
   }
 
 protected:
-  // expected protected overrides
-
-  /**
-   * create a new, unique TID for a txn. at the point which gen_commit_tid(),
-   * it still has not been decided whether or not this txn will commit
-   * successfully
-   */
-//  tid_t gen_commit_tid(const dbtuple_write_info_vec &write_tuples);
-
-//  bool can_read_tid(tid_t t) const;
-
-  // For GC handlers- note that on_dbtuple_spill() is called
-  // with the lock on ln held, to simplify GC code
-  //
-  // Is also called within an RCU read region
-  void on_dbtuple_spill(dbtuple *tuple_ahead, dbtuple *tuple);
-
-  // Called when the latest value written to ln is an empty
-  // (delete) marker. The protocol can then decide how to schedule
-  // the logical node for actual deletion
-  void on_logical_delete(dbtuple *tuple, const std::string &key, concurrent_btree *btr);
-
-  // if gen_commit_tid() is called, then on_tid_finish() will be called
-  // with the commit tid. before on_tid_finish() is called, state is updated
-  // with the resolution (commited, aborted) of this txn
-  void on_tid_finish();
-
   void on_post_rcu_region_completion();
 
 protected:

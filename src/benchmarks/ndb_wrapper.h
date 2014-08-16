@@ -47,40 +47,22 @@ public:
   virtual void
   do_txn_epoch_sync() const
   {
-    txn_epoch_sync<Transaction>::sync();
   }
 
   virtual void
   do_txn_finish() const
   {
-    txn_epoch_sync<Transaction>::finish();
   }
 
   virtual void
   thread_init(bool loader)
   {
-    txn_epoch_sync<Transaction>::thread_init(loader);
   }
 
   virtual void
   thread_end()
   {
-    txn_epoch_sync<Transaction>::thread_end();
   }
-
-  /* FIXME: tzwang: remove silo's log
-  virtual std::tuple<uint64_t, uint64_t, double>
-  get_ntxn_persisted() const
-  {
-    return txn_epoch_sync<Transaction>::compute_ntxn_persisted();
-  }
-
-  virtual void
-  reset_ntxn_persisted()
-  {
-    txn_epoch_sync<Transaction>::reset_ntxn_persisted();
-  }
-  */
 
   virtual size_t
   sizeof_txn_object(uint64_t txn_flags) const;

@@ -26,7 +26,6 @@ template <template <typename> class Transaction, typename P>
 class base_txn_btree {
 public:
 
-  //typedef transaction_base::tid_t tid_t;
   typedef transaction_base::size_type size_type;
   typedef transaction_base::string_type string_type;
   typedef concurrent_btree::string_type keystring_type;
@@ -85,8 +84,6 @@ private:
     virtual void on_node_begin(const typename concurrent_btree::node_opaque_t *n);
     virtual void on_node_success();
     virtual void on_node_failure();
-
-    // FIXME: tzwang: stats removed.
 
   private:
     std::vector< std::pair<typename concurrent_btree::value_type, bool> > spec_values;
@@ -228,15 +225,7 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
     dbtuple *tuple = (dbtuple *) spec_values[i].first;
     INVARIANT(tuple);
     if (base_txn_btree_handler<Transaction>::has_background_task) {
-// FIXME: tzwang: I guess this wound't matter in our system. We don't
-// even have the lock in tuple.
-//#ifdef CHECK_INVARIANTS
-//      lock_guard<dbtuple> l(tuple, false);
-//#endif
       if (!tuple->size == 0) {
-        //INVARIANT(tuple->is_latest());
-        //tuple->clear_latest();
-        //tuple->mark_deleting();
         dbtuple::release(tuple);
       } else {
         // enqueued already to background gc by the writer of the delete
