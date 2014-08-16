@@ -297,7 +297,7 @@ class transaction_proto2 : public transaction<transaction_proto2, Traits>,
 public:
 
   typedef Traits traits_type;
-  typedef transaction_base::tid_t tid_t;
+  //typedef transaction_base::tid_t tid_t;
   typedef transaction_base::string_type string_type;
   typedef typename super_type::dbtuple_write_info dbtuple_write_info;
   typedef typename super_type::dbtuple_write_info_vec dbtuple_write_info_vec;
@@ -310,32 +310,19 @@ public:
                      typename Traits::StringAllocator &sa)
     : transaction<transaction_proto2, Traits>(flags, sa)
   {
-    /* FIXME: tzwang: nothing todo due to epoch removal.
-    if (this->get_flags() & transaction_base::TXN_FLAG_READ_ONLY) {
-      const uint64_t global_tick_ex =
-        this->rcu_guard_->guard()->impl().global_last_tick_exclusive();
-      u_.last_consistent_tid = ComputeReadOnlyTid(global_tick_ex);
-    }
-    */
-#ifdef TUPLE_LOCK_OWNERSHIP_CHECKING
-    dbtuple::TupleLockRegionBegin();
-#endif
     INVARIANT(RCU::rcu_is_active());
   }
 
   ~transaction_proto2()
   {
-#ifdef TUPLE_LOCK_OWNERSHIP_CHECKING
-    dbtuple::AssertAllTupleLocksReleased();
-#endif
     INVARIANT(RCU::rcu_is_active());
   }
 
 // FIXME: tzwang: broken b/c epoch removal
+/*
   inline bool
   can_overwrite_record_tid(tid_t prev, tid_t cur) const
   {
-    /*
     INVARIANT(prev <= cur);
 
 #ifdef PROTO2_CAN_DISABLE_SNAPSHOTS
@@ -351,25 +338,26 @@ public:
     return (to_read_only_tick(EpochId(prev)) ==
             to_read_only_tick(EpochId(cur))) ||
            !prev;
-           */
     return true;
   }
+           */
 
   // can only read elements in this epoch or previous epochs
-  inline bool
-  can_read_tid(tid_t t) const
-  {
-    return true;
-  }
+  //inline bool
+  //can_read_tid(tid_t t) const
+  //{
+  //  return true;
+  //}
 
   inline void
-  on_tid_finish(tid_t commit_tid)
+  on_tid_finish()
   {
     // FIXME: tzwang: this was the entrance of logging, now disabled to get our log
   }
 
 public:
 
+/*
   inline ALWAYS_INLINE bool is_snapshot() const {
     return this->get_flags() & transaction_base::TXN_FLAG_READ_ONLY;
   }
@@ -396,13 +384,13 @@ public:
       std::cerr << "  last_consistent_tid: "
         << g_proto_version_str(u_.last_consistent_tid) << std::endl;
   }
-
+*/
 // FIXME: tzwang: need our tidmgr. Returns dummy due to epoch removal.
-  transaction_base::tid_t
+  //transaction_base::tid_t
+/*
   gen_commit_tid(const dbtuple_write_info_vec &write_tuples)
   {
     return MakeTid(0, 0, 0);
-    /*
     const size_t my_core_id = this->rcu_guard_->guard()->core();
     threadctx &ctx = g_threadctxs.get(my_core_id);
     INVARIANT(!this->is_snapshot());
@@ -470,8 +458,8 @@ public:
     // and could potentially be aborted - but it's ok to increase this #, since
     // subsequent txns on this core will read this # anyways
     return (ctx.last_commit_tid_ = ret);
-    */
   }
+    */
 
   inline ALWAYS_INLINE void
   on_dbtuple_spill(dbtuple *tuple_ahead, dbtuple *tuple)
@@ -480,9 +468,10 @@ public:
     if (!IsGCEnabled())
       return;
 #endif
-
+// FIXME: tzwang: disabled with transaction::commit
+/*
     INVARIANT(RCU::rcu_is_active());
-    INVARIANT(!tuple->is_latest());
+    //INVARIANT(!tuple->is_latest());
 
     // >= not > only b/c of the special case of inserting a new tuple +
     // overwriting the newly inserted record with a longer sequence of bytes in
@@ -497,10 +486,9 @@ public:
     }
 
 // FIXME: tzwang: epoch removal
-/*
-    const uint64_t ro_tick = to_read_only_tick(this->u_.commit_epoch);
-    INVARIANT(to_read_only_tick(EpochId(tuple->version)) <= ro_tick);
-*/
+//    const uint64_t ro_tick = to_read_only_tick(this->u_.commit_epoch);
+//    INVARIANT(to_read_only_tick(EpochId(tuple->version)) <= ro_tick);
+
 #ifdef CHECK_INVARIANTS
     uint64_t exp = 0;
     INVARIANT(tuple->opaque.compare_exchange_strong(exp, 1, std::memory_order_acq_rel));
@@ -511,6 +499,7 @@ public:
     threadctx &ctx = g_threadctxs.my();
     ctx.queue_.enqueue(
         delete_entry(tuple_ahead, tuple, marked_ptr<std::string>(), nullptr));
+    */
   }
 
   // FIXME: tzwang: removed tick related stuff
@@ -522,11 +511,11 @@ public:
       return;
 #endif
 
-    INVARIANT(tuple->is_locked());
-    INVARIANT(tuple->is_lock_owner());
-    INVARIANT(tuple->is_write_intent());
-    INVARIANT(tuple->is_latest());
-    INVARIANT(tuple->is_deleting());
+    //INVARIANT(tuple->is_locked());
+    //INVARIANT(tuple->is_lock_owner());
+    //INVARIANT(tuple->is_write_intent());
+    //INVARIANT(tuple->is_latest());
+    //INVARIANT(tuple->is_deleting());
     INVARIANT(!tuple->size);
     INVARIANT(RCU::rcu_is_active());
 

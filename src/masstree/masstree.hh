@@ -21,6 +21,8 @@
 
 #ifdef HACK_SILO
 #include "../object.h"
+#include "../tuple.h"
+#include "../rcu/xid.h"
 #endif
 
 namespace Masstree {
@@ -101,10 +103,82 @@ class basic_table {
 		assert( tuple_vector );
 		tuple_vector->put( oid, val );
 	}
+
+	std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
+	{
+		object<value_type>* ptr = tuple_vector[oid];
+		xid_context *visitor = xid_get_context(xid);
+		dbtuple* version = reinterpret_cast<dbtuple*>(ptr->data);
+
+		// check dirty writes 
+		if( version->is_xid )
+		{
+			//xid tracking
+			xid_context *holder= xid_get_context(version->v_.xid);
+
+			// visibility test
+			if( holder->end == INVALID_LSN 					// invalid entry XXX. we don't need to check state field, right?
+					|| holder->end > visitor->begin )		// to prevent version branch( or lost update)
+				return std::make_pair(false, NULL );
+
+			// in-place update case ( multiple updates on the same record )
+			if( holder->owner == visitor->owner )
+			{
+				ptr->data_ = val;
+				return std::make_pair( true, version );
+			}
+		}
+		else 
+		{
+			// Okay. There's no dirty data in this chain.
+			if( version->v_.clsn > visitor->begin )
+				return std::make_pair( false, NULL );
+		}
+
+		// install a new version
+		if(!tuple_vector->put( oid, val ))
+			return std::make_pair(false, NULL);
+		return std::make_pair(true, NULL);
+	}
+
 	inline value_type fetch_tuple( oid_type oid ) const
 	{
 		assert( tuple_vector );
 		return tuple_vector->get( oid );
+	}
+	value_type fetch_version( oid_type oid, XID xid ) const
+	{
+		xid_context *visitor= xid_get_context(xid);
+
+		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
+		for( object<value_type>* ptr = tuple_vector[oid]; ptr; ptr = ptr->next_ )
+		{
+			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->data_);
+
+			// xid tracking & status check
+			if( version->is_xid )
+			{
+				xid_context *holder = xid_get_context(version->v_.xid);
+
+				// invalid data
+				if( holder->state != TXN_ABRTD && holder->state != TXN_CMMTD)
+					continue;
+
+				if( holder->end > visitor->begin  			// committed(but invisible) data, 
+						|| holder->end == INVALID_LSN)		// aborted data
+					continue;
+				return version;
+			}
+			else
+			{
+				if( version->v_.clsn > visitor->begin ) 	// invisible
+					continue;
+				return version;
+			}
+		}
+
+		// No Visible records
+		return 0;
 	}
 
 	inline oid_type insert_node( node_type* node )
