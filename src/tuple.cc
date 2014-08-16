@@ -12,8 +12,8 @@ event_avg_counter dbtuple::g_evt_avg_dbtuple_read_retries
   ("avg_dbtuple_read_retries");
 
 event_counter dbtuple::g_evt_dbtuple_creates("dbtuple_creates");
-event_counter dbtuple::g_evt_dbtuple_logical_deletes("dbtuple_logical_deletes");
-event_counter dbtuple::g_evt_dbtuple_physical_deletes("dbtuple_physical_deletes");
+//event_counter dbtuple::g_evt_dbtuple_logical_deletes("dbtuple_logical_deletes");
+//event_counter dbtuple::g_evt_dbtuple_physical_deletes("dbtuple_physical_deletes");
 event_counter dbtuple::g_evt_dbtuple_bytes_allocated("dbtuple_bytes_allocated");
 event_counter dbtuple::g_evt_dbtuple_bytes_freed("dbtuple_bytes_freed");
 event_counter dbtuple::g_evt_dbtuple_spills("dbtuple_spills");
@@ -26,17 +26,17 @@ static event_avg_counter evt_avg_dbtuple_chain_length("avg_dbtuple_chain_len");
 dbtuple::~dbtuple()
 {
   CheckMagic();
-  INVARIANT(!is_locked());
-  INVARIANT(!is_latest());
-  INVARIANT(!is_write_intent());
-  INVARIANT(!is_modifying());
+  //INVARIANT(!is_locked());
+  //INVARIANT(!is_latest());
+  //INVARIANT(!is_write_intent());
+  //INVARIANT(!is_modifying());
 
   VERBOSE(cerr << "dbtuple: " << hexify(intptr_t(this)) << " is being deleted" << endl);
 
   // only free this instance
 
   // stats-keeping
-  ++g_evt_dbtuple_physical_deletes;
+  //++g_evt_dbtuple_physical_deletes;
   g_evt_dbtuple_bytes_freed += (alloc_size + sizeof(dbtuple));
 
 }
@@ -45,7 +45,7 @@ void
 dbtuple::gc_this()
 {
   INVARIANT(RCU::rcu_is_active());
-  INVARIANT(!is_latest());
+  //INVARIANT(!is_latest());
   release(this);
 }
 
@@ -53,40 +53,44 @@ string
 dbtuple::VersionInfoStr(version_t v)
 {
   ostringstream buf;
-  buf << "[";
-  buf << (IsLocked(v) ? "LOCKED" : "-") << " | ";
-  buf << (IsDeleting(v) ? "DEL" : "-") << " | ";
-  buf << (IsWriteIntent(v) ? "WR" : "-") << " | ";
-  buf << (IsModifying(v) ? "MOD" : "-") << " | ";
-  buf << (IsLatest(v) ? "LATEST" : "-") << " | ";
-  buf << Version(v);
-  buf << "]";
+  //buf << "[";
+  //buf << (IsLocked(v) ? "LOCKED" : "-") << " | ";
+  //buf << (IsDeleting(v) ? "DEL" : "-") << " | ";
+  //buf << (IsWriteIntent(v) ? "WR" : "-") << " | ";
+  //buf << (IsModifying(v) ? "MOD" : "-") << " | ";
+  //buf << (IsLatest(v) ? "LATEST" : "-") << " | ";
+  //buf << Version(v);
+  //buf << "]";
   return buf.str();
 }
 
+// FIXME: tzwang: commented out with print
+/*
 static ostream &
 format_tuple(ostream &o, const dbtuple &t)
 {
   string truncated_contents(
       (const char *) &t.value_start[0], std::min(static_cast<size_t>(t.size), 16UL));
-  o << &t << " [tid=" << g_proto_version_str(t.version)
-    << ", size=" << t.size
-    << ", contents=0x" << hexify(truncated_contents) << (t.size > 16 ? "..." : "")
-    << ", next=" << t.next << "]";
+  //o << &t << " [tid=" << g_proto_version_str(t.version)
+  //  << ", size=" << t.size
+  //  << ", contents=0x" << hexify(truncated_contents) << (t.size > 16 ? "..." : "")
+  //  << ", next=" << t.next << "]";
   return o;
 }
-
+*/
 void
 dbtuple::print(ostream &o, unsigned len) const
 {
-  o << "dbtuple:" << endl
-    << "  hdr=" << VersionInfoStr(unstable_version())
+  //o << "dbtuple:" << endl
+    //<< "  hdr=" << VersionInfoStr(unstable_version())
 #ifdef TUPLE_CHECK_KEY
-    << endl << "  key=" << hexify(key)
-    << endl << "  tree=" << tree
+    //<< endl << "  key=" << hexify(key)
+    //<< endl << "  tree=" << tree
 #endif
-    << endl;
+    //<< endl;
 
+// FIXME: tzwang: we don't have next, lol
+  /*
   size_t n = 0;
   for (const dbtuple *p = this;
        p && n < len;
@@ -95,6 +99,7 @@ dbtuple::print(ostream &o, unsigned len) const
     format_tuple(o, *p);
     o << endl;
   }
+  */
 }
 
 ostream &
