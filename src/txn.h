@@ -776,8 +776,6 @@ protected:
   void on_post_rcu_region_completion();
 
 protected:
-  inline void clear();
-
   // SLOW accessor methods- used for invariant checking
 
   typename read_set_map::iterator
