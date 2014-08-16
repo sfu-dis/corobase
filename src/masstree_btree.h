@@ -264,7 +264,14 @@ public:
   {
 	  return table_.insert_tuple( val );
   }
-
+  std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
+  {
+	  table_.update_version( oid, val );
+  }
+  value_type fetch_version( oid_type oid, XID xid ) const
+  {
+	  return table_.fetch_version( oid );
+  }
   inline void update_tuple( oid_type oid, value_type val )
   {
 	  table_.update_tuple( oid, val );
