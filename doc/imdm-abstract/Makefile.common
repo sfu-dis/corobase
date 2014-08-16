@@ -1,0 +1,13 @@
+## Common variables for Latex Makefiles
+
+PAPER_TMSTAMP = imdm-cc-abstract-`date +%F`.pdf
+PAPERPS_TMSTAMP = imdm-cc-abstract-`date +%F`.ps
+
+# Specifying full paths here breaks the Makefile because each machine installs at a different path.
+# Rely on the users $PATH instead
+#
+LATEX = /usr/texbin/latex
+BIBTEX = /usr/texbin/bibtex
+PDFLATEX = /usr/texbin/pdflatex
+PYTHONEXEC = /opt/anaconda/bin/python
+#PYTHONEXEC = /cygdrive/c/Anaconda/python
