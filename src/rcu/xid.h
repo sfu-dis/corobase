@@ -2,7 +2,6 @@
 #pragma once
 
 #include "sm-common.h"
-#include "sm-log.h"
 
 namespace TXN {
 
@@ -13,7 +12,6 @@ struct xid_context {
     LSN begin;
     LSN end;
     txn_state state;
-    sm_tx_log* tx_log;
 };
 
 /* Request a new XID and an associated context. The former is globally

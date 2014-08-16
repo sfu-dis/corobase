@@ -299,8 +299,8 @@ public:
   typedef Traits traits_type;
   //typedef transaction_base::tid_t tid_t;
   typedef transaction_base::string_type string_type;
-  typedef typename super_type::dbtuple_write_info dbtuple_write_info;
-  typedef typename super_type::dbtuple_write_info_vec dbtuple_write_info_vec;
+  //typedef typename super_type::dbtuple_write_info dbtuple_write_info;
+  //typedef typename super_type::dbtuple_write_info_vec dbtuple_write_info_vec;
   typedef typename super_type::read_set_map read_set_map;
   typedef typename super_type::absent_set_map absent_set_map;
   typedef typename super_type::write_set_map write_set_map;
