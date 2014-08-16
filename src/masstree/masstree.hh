@@ -161,7 +161,7 @@ class basic_table {
 				xid_context *holder = xid_get_context(version->v_.xid);
 
 				// invalid data
-				if( holder->state != TXN_ABRTD && holder->state != TXN_CMMTD)
+				if( holder->state != TXN_CMMTD)       // only see committed data.
 					continue;
 
 				if( holder->end > visitor->begin  			// committed(but invisible) data, 

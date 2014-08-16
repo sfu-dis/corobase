@@ -362,7 +362,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // update should be very rare. This could be avoided too (with the cost of
   // checking a valid bit at commit time). See comments next.
 
-  // FIXME: tzwang: todo: check return value
+  // check return value
   if (ret.first) { // succeeded
     dbtuple* ret_tuple = reinterpret_cast<dbtuple*>(ret.second);
     if (ret_tuple) {  // in-place update
@@ -381,7 +381,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     throw transaction_abort_exception(r);
   }
 
-  // FIXME: tzwang: todo: put to write-set, done.
+  // put to write-set, done.
   // todo: look at emplace_back, i think we shouldn't even need to pass writer,
   // btree, etc. at all. Just tuple is enough.
   t.write_set.emplace_back(tuple, k, v, writer, &this->underlying_btree, false);
