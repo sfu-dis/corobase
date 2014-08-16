@@ -65,51 +65,11 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
   xid_get_context(xid)->state = TXN_ABRTD;
   this->reason = reason;
 
-  // on abort, we need to go over all insert nodes and
-  // release the locks
-  /*
-  typename write_set_map::iterator it     = write_set.begin();
-  typename write_set_map::iterator it_end = write_set.end();
-  for (; it != it_end; ++it) {
-    dbtuple * const tuple = it->get_tuple();
-    //if (it->is_insert()) {
-      //INVARIANT(tuple->is_locked());
-      //this->cleanup_inserted_tuple_marker(tuple, it->get_key(), it->get_btree());
-      //tuple->unlock();
-    //}
-  }
-  */
   // FIXME: tzwang: discard log - very important to really release memory
+  // But is this everything we need?
   log->discard();
 }
 
-/*
-template <template <typename> class Protocol, typename Traits>
-void
-transaction<Protocol, Traits>::cleanup_inserted_tuple_marker(
-    dbtuple *marker, const std::string &key, concurrent_btree *btr)
-{
-  // XXX: this code should really live in txn_proto2_impl.h
-  //INVARIANT(marker->version == dbtuple::MAX_TID);
-  //INVARIANT(marker->is_locked());
-  //INVARIANT(marker->is_lock_owner());
-  typename concurrent_btree::value_type removed = 0;
-  const bool did_remove = btr->remove(varkey(key), &removed);
-  if (unlikely(!did_remove)) {
-#ifdef CHECK_INVARIANTS
-    std::cerr << " *** could not remove key: " << util::hexify(key)  << std::endl;
-#ifdef TUPLE_CHECK_KEY
-    std::cerr << " *** original key        : " << util::hexify(marker->key) << std::endl;
-#endif
-#endif
-    ALWAYS_ASSERT(false);
-  }
-  INVARIANT(removed == (typename concurrent_btree::value_type) marker);
-  //INVARIANT(marker->is_latest());
-  //marker->clear_latest();
-  //dbtuple::release(marker); // rcu free
-}
-*/
 namespace {
   inline const char *
   transaction_state_to_cstr(txn_state state)
@@ -160,13 +120,13 @@ transaction<Protocol, Traits>::dump_debug_info() const
   for (typename read_set_map::const_iterator rs_it = read_set.begin();
        rs_it != read_set.end(); ++rs_it)
     std::cerr << *rs_it << std::endl;
-/*
+
   std::cerr << "      === Write Set ===" << std::endl;
   // write-set
   for (typename write_set_map::const_iterator ws_it = write_set.begin();
        ws_it != write_set.end(); ++ws_it)
     std::cerr << *ws_it << std::endl;
-*/
+
   std::cerr << "      === Absent Set ===" << std::endl;
   // absent-set
   for (typename absent_set_map::const_iterator as_it = absent_set.begin();
@@ -354,24 +314,7 @@ transaction<Protocol, Traits>::do_tuple_read(
 {
   INVARIANT(tuple);
   ++evt_local_search_lookups;
-/*
 
-  if (Traits::read_own_writes) {
-    // this is why read_own_writes is not performant, because we have
-    // to do linear scan
-    auto write_set_it = find_write_set(const_cast<dbtuple *>(tuple));
-    if (unlikely(write_set_it != write_set.end())) {
-      ++evt_local_search_write_set_hits;
-      if (!write_set_it->get_value())
-        return false;
-      const typename ValueReader::value_type * const px =
-        reinterpret_cast<const typename ValueReader::value_type *>(
-            write_set_it->get_value());
-      value_reader.dup(*px, this->string_allocator());
-      return true;
-    }
-  }
-*/
   // do the actual tuple read
   dbtuple::ReadStatus stat;
   {
@@ -379,8 +322,6 @@ transaction<Protocol, Traits>::do_tuple_read(
     ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
     tuple->prefetch();
     stat = tuple->stable_read(value_reader, this->string_allocator());
-    // FIXME: tzwang: bug? is_snapshot_txn is actually allow_write_intent in stable_read
-    //stat = tuple->stable_read(snapshot_tid, start_t, value_reader, this->string_allocator(), is_snapshot_txn);
     // FIXME: tzwang: give better reason here, basically for not-visible
     if (unlikely(stat == dbtuple::READ_FAILED)) {
       const transaction_base::abort_reason r = transaction_base::ABORT_REASON_UNSTABLE_READ;
@@ -388,13 +329,6 @@ transaction<Protocol, Traits>::do_tuple_read(
       throw transaction_abort_exception(r);
     }
   }
-  /* FIXME: tzwang: handled above
-  if (unlikely(!cast()->can_read_tid(start_t))) {
-    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_FUTURE_TID_READ;
-    abort_impl(r);
-    throw transaction_abort_exception(r);
-  }
-  */
   INVARIANT(stat == dbtuple::READ_EMPTY ||
             stat == dbtuple::READ_RECORD);
   const bool v_empty = (stat == dbtuple::READ_EMPTY);

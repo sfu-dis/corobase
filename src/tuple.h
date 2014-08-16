@@ -321,7 +321,6 @@ public:
   write_record_at(const Transaction *txn,
                   const void *v, tuple_writer_t writer)
   {
-//#ifndef DISABLE_OVERWRITE_IN_PLACE
     CheckMagic();
 
     const size_t new_sz =
@@ -331,7 +330,6 @@ public:
     const size_t old_sz = size;
 
     // try to overwrite this record
-    //if (likely(txn->can_overwrite_record_tid(version, t) && old_sz)) {
     if (likely(size)) {
       // see if we have enough space
       if (likely(new_sz <= alloc_size)) {
@@ -459,7 +457,6 @@ private:
   {
     // FIXME: tzwang: this was dealloc to slab
     scoped_rcu_region guard;
-    //const size_t alloc_sz = n->alloc_size + sizeof(*n);
     n->~dbtuple();
 #ifdef CHECK_INVARIANTS
     // caller can't be rcu_delete
