@@ -271,18 +271,14 @@ void base_txn_btree<Transaction, P>::do_tree_put(
                                // for now [since this would indicate a suboptimality]
   t.ensure_active();
 
-  if (expect_new) {
-    // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
-    // it fails if somebody else acted faster to insert new, we then
-    // (fall back to) with the normal update procedure.
-    // Note: the original return value of try_insert_new_tuple is:
-    // <tuple, should_abort>. Here we use it as <tuple, failed>.
-    // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-    bool ret = t.try_insert_new_tuple(this->underlying_btree, k, v, writer);
-    //INVARIANT(!ret.second || ret.first);
-    if (ret)  // we're done
-      return;
-  }
+  // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
+  // it fails if somebody else acted faster to insert new, we then
+  // (fall back to) with the normal update procedure.
+  // Note: the original return value of try_insert_new_tuple is:
+  // <tuple, should_abort>. Here we use it as <tuple, failed>.
+  // try_insert_new_tuple should add tuple to write-set too, if succeeded.
+  if (expect_new && t.try_insert_new_tuple(this->underlying_btree, k, v, writer))
+    return;
 
 #ifdef CHECK_INVARIANTS
   // do regular search
@@ -310,6 +306,9 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     writer(dbtuple::TUPLE_WRITER_DO_WRITE, v, tuple->get_value_start(), 0);
 
   INVARIANT(tuple);
+
+  tuple->is_xid = true;
+  tuple->v_.xid = t.xid;
 
   // FIXME: tzwang: need object.h APIs here to try CAS with px
   // Supposedly the API provided should do this:
@@ -372,7 +371,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
       // happened, because the write set just holds the pointer to tuples. During
       // commit we'll need to check this bit and rcu_free tuples in the write-set
       // with valid=false.
-      ret_tuple->valid = false;
+      ret_tuple->overwritten = false;
     } // else we're done.
   }
   else {  // somebody else acted faster than we did
