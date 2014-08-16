@@ -57,7 +57,6 @@ class transaction_base {
 public:
   static sm_log *logger;
 
-  typedef dbtuple::tid_t tid_t;
   typedef dbtuple::size_type size_type;
   typedef dbtuple::string_type string_type;
   typedef TXN::txn_state txn_state;
@@ -164,23 +163,19 @@ protected:
   // the read set is a mapping from (tuple -> tid_read).
   // "write_set" is used to indicate if this read tuple
   // also belongs in the write set.
+  // FIXME: tzwang: now the read-set is just a set of tuples,
+  // which are the most recent committed visible record.
   struct read_record_t {
-    constexpr read_record_t() : tuple(), t() {}
-    constexpr read_record_t(const dbtuple *tuple, tid_t t)
-      : tuple(tuple), t(t) {}
+    constexpr read_record_t() : tuple() {}
+    constexpr read_record_t(const dbtuple *tuple)
+      : tuple(tuple) {}
     inline const dbtuple *
     get_tuple() const
     {
       return tuple;
     }
-    inline tid_t
-    get_tid() const
-    {
-      return t;
-    }
   private:
     const dbtuple *tuple;
-    tid_t t;
   };
 
   friend std::ostream &
@@ -384,7 +379,6 @@ operator<<(std::ostream &o, const transaction_base::read_record_t &r)
 {
   //o << "[tuple=" << util::hexify(r.get_tuple())
   o << "[tuple=" << *r.get_tuple()
-    << ", tid_read=" << g_proto_version_str(r.get_tid())
     << "]";
   return o;
 }
@@ -719,7 +713,8 @@ protected:
   //
   // NOTE: !ret.first => !ret.second
   // NOTE: assumes key/value are stable
-  std::pair< dbtuple *, bool >
+  //std::pair< dbtuple *, bool >
+  bool
   try_insert_new_tuple(
       concurrent_btree &btr,
       const std::string *key,
@@ -741,7 +736,7 @@ public:
   /**
    * Can we overwrite prev with cur?
    */
-  bool can_overwrite_record_tid(tid_t prev, tid_t cur) const;
+  //bool can_overwrite_record_tid(tid_t prev, tid_t cur) const;
 
   inline string_allocator_type &
   string_allocator()
@@ -757,9 +752,9 @@ protected:
    * it still has not been decided whether or not this txn will commit
    * successfully
    */
-  tid_t gen_commit_tid(const dbtuple_write_info_vec &write_tuples);
+//  tid_t gen_commit_tid(const dbtuple_write_info_vec &write_tuples);
 
-  bool can_read_tid(tid_t t) const;
+//  bool can_read_tid(tid_t t) const;
 
   // For GC handlers- note that on_dbtuple_spill() is called
   // with the lock on ln held, to simplify GC code
@@ -775,7 +770,7 @@ protected:
   // if gen_commit_tid() is called, then on_tid_finish() will be called
   // with the commit tid. before on_tid_finish() is called, state is updated
   // with the resolution (commited, aborted) of this txn
-  void on_tid_finish(tid_t commit_tid);
+  void on_tid_finish();
 
   void on_post_rcu_region_completion();
 
