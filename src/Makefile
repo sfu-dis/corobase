@@ -5,6 +5,7 @@
 #CXX=clang
 #CXX=/home/ipandis/apps/bin/gcc483/g++
 #CXX=g++
+CXX=g++491
 
 DEBUG ?= 0
 CHECK_INVARIANTS ?= 0
