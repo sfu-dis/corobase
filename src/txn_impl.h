@@ -196,65 +196,79 @@ template <template <typename> class Protocol, typename Traits>
 bool
 transaction<Protocol, Traits>::commit(bool doThrow)
 {
+  xid_context* xc = xid_get_context(xid);
+
+  PERF_DECL(
+      static std::string probe0_name(
+        std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
+  ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
+
+  switch (state()) {
+  case TXN_EMBRYO:
+  case TXN_ACTIVE:
+    xc->state = TXN_COMMITTING;
+    break;
+  case TXN_CMMTD:
+  case TXN_COMMITTING:  // FIXME: tzwang: correct?
+    INVARIANT(false);
+  case TXN_ABRTD:
+    if (doThrow)
+      throw transaction_abort_exception(reason);
+    return false;
+  }
+
+  // avoid cross init after goto do_abort
+  typename write_set_map::iterator it     = write_set.begin();
+  typename write_set_map::iterator it_end = write_set.end();
+
+  // get clsn and tx_log, abort if failed
+  xc->tx_log = transaction_base::logger->new_tx_log();
+  xc->end = xc->tx_log->get_clsn();
+  if (xc->end == INVALID_LSN)// || !xc->tx_log)
+    goto do_abort;
+
+  // install clsn to tuples
+  // (traverse write-tuple)
+  // stuff clsn in tuples in write-set
+  for (; it != it_end; ++it) {
+    dbtuple* tuple = it->get_tuple();
+    if (tuple->overwritten) {
+      tuple->v_.clsn = xc->end;
+      tuple->is_xid = false;  // must be the last change
+      // todo: insert to log
+    }
+    else {
+      // FIXME: tzwang: add this callback to adjust pointers in version chain
+      //RCU::free_with_fn(tuple, tuple_remove_callback);
+    }
+  }
+
+  // change state
+  xid_get_context(xid)->state = TXN_CMMTD;
+
+  // done
+  xid_free(xid);
   return true;
-// FIXME: tzwang: basically needs re-write
 
-#ifdef TUPLE_MAGIC
-      try {
-#endif
+do_abort:
+  VERBOSE(std::cerr << "aborting txn" << std::endl);
+  xid_get_context(xid)->state = TXN_ABRTD;
 
-      PERF_DECL(
-          static std::string probe0_name(
-            std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-      ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
+  // rcu-free write-set, set clsn in tuples to invalid_lsn
+  it     = write_set.begin();
+  it_end = write_set.end();
+  for (; it != it_end; ++it) {
+    dbtuple* tuple = it->get_tuple();
+    tuple->overwritten = false;
+    tuple->v_.clsn = INVALID_LSN;
+    tuple->is_xid = false;  // must be the last change
+    // FIXME: tzwang: add this callback to adjust pointers in version chain
+    //RCU::free_with_fn(tuple, tuple_remove_callback);
+  }
 
-      switch (state()) {
-      case TXN_EMBRYO:
-      case TXN_ACTIVE:
-        xid_get_context(xid)->state = TXN_COMMITTING;
-        break;
-      case TXN_CMMTD:
-      case TXN_COMMITTING:  // FIXME: tzwang: correct?
-        INVARIANT(false);
-      case TXN_ABRTD:
-        if (doThrow)
-          throw transaction_abort_exception(reason);
-        return false;
-      }
-
-      // get clsn and tx_log, abort if failed
-      //bool failed = get_XXX;
-      //if (failed)
-      //  goto do_abort;
-
-      // change state
-      xid_get_context(xid)->state = TXN_CMMTD;
-
-      // install clsn to tuples
-      // (traverse write-tuple)
-
-      // done
-      xid_free(xid);
-
-      return true;
-
-    //do_abort:
-      // XXX: these values are possibly un-initialized
-      VERBOSE(std::cerr << "aborting txn" << std::endl);
-      xid_get_context(xid)->state = TXN_ABRTD;
-
-      // rcu-free write-set, set clsn in tuples to invalid_lsn
-
-      if (doThrow)
-        throw transaction_abort_exception(reason);
-      return false;
-
-#ifdef TUPLE_MAGIC
-      } catch (dbtuple::magic_failed_exception &) {
-        dump_debug_info();
-        ALWAYS_ASSERT(false);
-      }
-#endif
+  if (doThrow)
+    throw transaction_abort_exception(reason);
+  return false;
 }
 
 // FIXME: tzwang: note: we only try once in this function. If it
@@ -299,6 +313,8 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   // update write_set
   // FIXME: tzwang: so the caller shouldn't do this again if we returned true here.
   write_set.emplace_back(tuple, key, value, writer, &btr, true);
+  // insert to log
+  //xid_get_context(this->xid)->tx_log->log_insert(1, tuple->oid, fat_ptr::make );
 
   // update node #s
   INVARIANT(insert_info.node);
@@ -328,10 +344,6 @@ transaction<Protocol, Traits>::do_tuple_read(
   INVARIANT(tuple);
   ++evt_local_search_lookups;
 /*
-  const bool is_snapshot_txn = is_snapshot();
-  const transaction_base::tid_t snapshot_tid = is_snapshot_txn ?
-    cast()->snapshot_tid() : static_cast<transaction_base::tid_t>(dbtuple::MAX_TID);
-  transaction_base::tid_t start_t = 0;
 
   if (Traits::read_own_writes) {
     // this is why read_own_writes is not performant, because we have
