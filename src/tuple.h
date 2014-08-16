@@ -61,9 +61,11 @@ public:
   typedef std::string string_type;
 
 #ifdef HACK_SILO
-  XID xid;
+  union{
   LSN clsn;
-// FIXME: tzwang: not used?
+  XID xid;
+  } v_;
+  bool is_xid;
   oid_type oid;
 #endif
 

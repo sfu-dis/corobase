@@ -383,20 +383,7 @@ retry:
     //       abort
     // (also one invariant: px's xid is always valid, even if it's dirty)
     // the above translates to:
-    if (px->clsn == INVALID_LSN) {
-      xid_context *px_xc = xid_get_context(px->xid);
-      if (px_xc->state != TXN_CMMTD) {
-        // ABORT
-        t.abort();
-        return;
-      }
-    }
 
-#ifdef CHECK_INVARIANTS
-    xid_context *my_xc = xid_get_context(t.xid);
-    INVARIANT((px->clsn == INVALID_LSN && xid_get_context(px->xid)->state == TXN_CMMTD) ||
-              px->clsn <= my_xc->begin);
-#endif
     // add to write set normally, as non-insert
     // FIXME: tzwang: chain? (this write_set is needed anyway tho)
     t.write_set.emplace_back(px, k, v, writer, &this->underlying_btree, false);
