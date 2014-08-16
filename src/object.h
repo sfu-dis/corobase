@@ -23,7 +23,6 @@ class object_vector
 	typedef object<T> object_type;
 
 public:
-
 	object_vector( unsigned long long capacity)
 	{
 		_nallocated= 0;
@@ -32,21 +31,20 @@ public:
 		_size = capacity;
 	}
 
-	void put( oid_type oid, T item )
+	bool put( oid_type oid, T item )
 	{
-		//assert( oid <= _size );
 		if( oid >= _size || oid == 0 )
 			abort();
 
-retry:
 		object_type* old_desc = _obj_table[oid];
 		object_type* new_desc = new object_type( item, old_desc );
 
 		if( not __sync_bool_compare_and_swap( &_obj_table[oid], old_desc, new_desc ) )
 		{
 			delete new_desc;
-			goto retry;
+			return false;
 		}
+		return true;
 	}
 
 	oid_type insert( T item )
@@ -55,8 +53,9 @@ retry:
 		assert( not _obj_table[oid] );
 		if( oid >= _size || oid == 0 )
 			abort();
-		put( oid, item );
-		return oid;
+		if( put( oid, item ) )
+			return oid;
+		else return 0;
 	}
 
 	inline T get( oid_type oid )
@@ -66,6 +65,16 @@ retry:
 			abort();
 		object_type* desc= _obj_table[oid];
 		return desc->_data;
+	}
+
+	inline object_type* begin( oid_type oid )
+	{
+		return _obj_table[oid];
+	}
+
+	inline object_type* next( oid_type oid, object_type* cur )
+	{
+		return cur->_next;
 	}
 
 	// TODO. delete ( atomic deletion with CAS and pass dummies to RCU? 

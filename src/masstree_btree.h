@@ -266,15 +266,15 @@ public:
   }
   std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
   {
-	  table_.update_version( oid, val );
+	  return table_.update_version( oid, val, xid );
   }
   value_type fetch_version( oid_type oid, XID xid ) const
   {
-	  return table_.fetch_version( oid );
+	  return table_.fetch_version( oid, xid );
   }
-  inline void update_tuple( oid_type oid, value_type val )
+  inline bool update_tuple( oid_type oid, value_type val )
   {
-	  table_.update_tuple( oid, val );
+	  return table_.update_tuple( oid, val );
   }
   inline value_type fetch_tuple( oid_type oid ) const
   {
