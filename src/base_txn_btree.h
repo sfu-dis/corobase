@@ -363,6 +363,15 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   // check return value
   if (ret.first) { // succeeded
+    INVARIANT(log);
+    // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
+    // pointers, instead of doing memcpy here (looks like this is the case unless
+    // the record is tooooo large).
+    t.log->log_update(1,
+                      tuple->oid,
+                      fat_ptr::make(tuple, encode_size(tuple->size)),
+                      DEFAULT_ALIGNMENT_BITS,
+                      NULL);
     dbtuple* ret_tuple = reinterpret_cast<dbtuple*>(ret.second);
     if (ret_tuple) {  // in-place update
       INVARIANT(ret_tuple != tuple);
@@ -383,7 +392,8 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // put to write-set, done.
   // todo: look at emplace_back, i think we shouldn't even need to pass writer,
   // btree, etc. at all. Just tuple is enough.
-  t.write_set.emplace_back(tuple, k, v, writer, &this->underlying_btree, false);
+  //t.write_set.emplace_back(tuple, k, v, writer, &this->underlying_btree, false);
+  t.write_set.emplace_back(tuple);
 }
 
 template <template <typename> class Transaction, typename P>

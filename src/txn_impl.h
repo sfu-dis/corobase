@@ -67,18 +67,23 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
 
   // on abort, we need to go over all insert nodes and
   // release the locks
+  /*
   typename write_set_map::iterator it     = write_set.begin();
   typename write_set_map::iterator it_end = write_set.end();
   for (; it != it_end; ++it) {
     dbtuple * const tuple = it->get_tuple();
-    if (it->is_insert()) {
+    //if (it->is_insert()) {
       //INVARIANT(tuple->is_locked());
-      this->cleanup_inserted_tuple_marker(tuple, it->get_key(), it->get_btree());
+      //this->cleanup_inserted_tuple_marker(tuple, it->get_key(), it->get_btree());
       //tuple->unlock();
-    }
+    //}
   }
+  */
+  // FIXME: tzwang: discard log - very important to really release memory
+  log->discard();
 }
 
+/*
 template <template <typename> class Protocol, typename Traits>
 void
 transaction<Protocol, Traits>::cleanup_inserted_tuple_marker(
@@ -104,7 +109,7 @@ transaction<Protocol, Traits>::cleanup_inserted_tuple_marker(
   //marker->clear_latest();
   //dbtuple::release(marker); // rcu free
 }
-
+*/
 namespace {
   inline const char *
   transaction_state_to_cstr(txn_state state)
@@ -155,13 +160,13 @@ transaction<Protocol, Traits>::dump_debug_info() const
   for (typename read_set_map::const_iterator rs_it = read_set.begin();
        rs_it != read_set.end(); ++rs_it)
     std::cerr << *rs_it << std::endl;
-
+/*
   std::cerr << "      === Write Set ===" << std::endl;
   // write-set
   for (typename write_set_map::const_iterator ws_it = write_set.begin();
        ws_it != write_set.end(); ++ws_it)
     std::cerr << *ws_it << std::endl;
-
+*/
   std::cerr << "      === Absent Set ===" << std::endl;
   // absent-set
   for (typename absent_set_map::const_iterator as_it = absent_set.begin();
@@ -221,10 +226,10 @@ transaction<Protocol, Traits>::commit(bool doThrow)
   typename write_set_map::iterator it     = write_set.begin();
   typename write_set_map::iterator it_end = write_set.end();
 
-  // get clsn and tx_log, abort if failed
-  xc->tx_log = transaction_base::logger->new_tx_log();
-  xc->end = xc->tx_log->get_clsn();
-  if (xc->end == INVALID_LSN)// || !xc->tx_log)
+  INVARIANT(log);
+  // get clsn, abort if failed
+  xc->end = log->pre_commit();
+  if (xc->end == INVALID_LSN)
     goto do_abort;
 
   // install clsn to tuples
@@ -310,11 +315,17 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   }
   VERBOSE(std::cerr << "insert_if_absent suceeded for key: " << util::hexify(key) << std::endl
                     << "  new dbtuple is " << util::hexify(tuple) << std::endl);
+  // insert to log
+  // FIXME: tzwang: leave pdest as null and FID is always 1 now.
+  INVARIANT(log);
+  log->log_insert(1,
+                  tuple->oid,
+                  fat_ptr::make(tuple, encode_size(tuple->size)),
+                  DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
   // FIXME: tzwang: so the caller shouldn't do this again if we returned true here.
-  write_set.emplace_back(tuple, key, value, writer, &btr, true);
-  // insert to log
-  //xid_get_context(this->xid)->tx_log->log_insert(1, tuple->oid, fat_ptr::make );
+  //write_set.emplace_back(tuple, key, value, writer, &btr, true);
+  write_set.emplace_back(tuple);
 
   // update node #s
   INVARIANT(insert_info.node);

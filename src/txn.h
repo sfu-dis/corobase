@@ -110,6 +110,7 @@ public:
   // FIXME: tzwang: allocate td here
   transaction_base(uint64_t flags)
     : xid(TXN::xid_alloc()),
+      log(logger->new_tx_log()),
       reason(ABORT_REASON_NONE),
       flags(flags) {}
 
@@ -183,18 +184,35 @@ protected:
   operator<<(std::ostream &o, const read_record_t &r);
 
   // the write set is logically a mapping from (tuple -> value_to_write).
+  // FIXME: tzwang: this is the silo's original write record; we actually
+  // need a much simpler one - same as the read_record_t.
   struct write_record_t {
+    constexpr write_record_t() : tuple() {}
+    constexpr write_record_t(dbtuple *tuple)
+      : tuple(tuple) {}
+    inline dbtuple *
+    get_tuple()
+    {
+      return tuple;
+    }
+  private:
+    // FIXME: tzwang: also in here we'll need it to be non-const b/c
+    // we change tuple.clsn upon commit.
+    dbtuple *tuple;
+  };
+
+  struct silo_write_record_t {
     enum {
       FLAGS_INSERT  = 0x1,
       FLAGS_DOWRITE = 0x1 << 1,
     };
 
-    constexpr inline write_record_t()
+    constexpr inline silo_write_record_t()
       : tuple(), k(), r(), w(), btr()
     {}
 
     // all inputs are assumed to be stable
-    inline write_record_t(dbtuple *tuple,
+    inline silo_write_record_t(dbtuple *tuple,
                           const string_type *k,
                           const void *r,
                           dbtuple::tuple_writer_t w,
@@ -263,7 +281,7 @@ protected:
   };
 
   friend std::ostream &
-  operator<<(std::ostream &o, const write_record_t &r);
+  operator<<(std::ostream &o, write_record_t &r);
 
   // the absent set is a mapping from (btree_node -> version_number).
   struct absent_record_t { uint64_t version; };
@@ -276,27 +294,24 @@ protected:
       FLAGS_LOCKED = 0x1,
       FLAGS_INSERT = 0x1 << 1,
     };
-    dbtuple_write_info() : tuple(), entry(nullptr), pos() {}
-    dbtuple_write_info(dbtuple *tuple, write_record_t *entry,
-                       bool is_insert, size_t pos)
-      : tuple(tuple), entry(entry), pos(pos)
+    dbtuple_write_info() : tuple(), entry(nullptr) {}
+    dbtuple_write_info(dbtuple *tuple, write_record_t *entry)
+      : tuple(tuple), entry(entry) {}
+      /*
     {
       if (is_insert)
         this->tuple.set_flags(FLAGS_LOCKED | FLAGS_INSERT);
     }
+    */
     // XXX: for searching only
     explicit dbtuple_write_info(const dbtuple *tuple)
-      : tuple(const_cast<dbtuple *>(tuple)), entry(), pos() {}
+      : tuple(const_cast<dbtuple *>(tuple)), entry() {}
     inline dbtuple *
     get_tuple()
     {
       return tuple.get();
     }
-    inline const dbtuple *
-    get_tuple() const
-    {
-      return tuple.get();
-    }
+    /* FIXME: tzwang: no lock needed in our system
     inline ALWAYS_INLINE void
     mark_locked()
     {
@@ -322,9 +337,10 @@ protected:
              (tuple == o.tuple && !is_insert() < !o.is_insert()) ||
              (tuple == o.tuple && !is_insert() == !o.is_insert() && pos < o.pos);
     }
+    */
     marked_ptr<dbtuple> tuple;
     write_record_t *entry;
-    size_t pos;
+    //size_t pos;
   };
 
 
@@ -347,6 +363,7 @@ protected:
 
   // FIXME: tzwang: use xid
   XID xid;
+  sm_tx_log* log;
 
   abort_reason reason;
   const uint64_t flags;
@@ -387,14 +404,14 @@ operator<<(std::ostream &o, const transaction_base::read_record_t &r)
 inline ALWAYS_INLINE std::ostream &
 operator<<(
     std::ostream &o,
-    const transaction_base::write_record_t &r)
+    transaction_base::write_record_t &r)
 {
   o << "[tuple=" << r.get_tuple()
-    << ", key=" << util::hexify(r.get_key())
-    << ", value=" << util::hexify(r.get_value())
-    << ", insert=" << r.is_insert()
-    << ", do_write=" << r.do_write()
-    << ", btree=" << r.get_btree()
+    //<< ", key=" << util::hexify(r.get_key())
+    //<< ", value=" << util::hexify(r.get_value())
+    //<< ", insert=" << r.is_insert()
+    //<< ", do_write=" << r.do_write()
+    //<< ", btree=" << r.get_btree()
     << "]";
   return o;
 }
@@ -609,7 +626,7 @@ protected:
       traits_type::hard_expected_sizes,
       dbtuple_write_info_vec_static, dbtuple_write_info_vec_small>::type
     dbtuple_write_info_vec;
-
+/*
   static inline bool
   sorted_dbtuples_contains(
       const dbtuple_write_info_vec &dbtuples,
@@ -622,7 +639,7 @@ protected:
         [](const dbtuple_write_info &lhs, const dbtuple_write_info &rhs)
           { return lhs.get_tuple() < rhs.get_tuple(); });
   }
-
+*/
 public:
 
   inline transaction(uint64_t flags, string_allocator_type &sa);
