@@ -91,6 +91,7 @@ class basic_table {
 #ifdef HACK_SILO
 	typedef object_vector<value_type> tuple_vector_type; 
 	typedef object_vector<node_type*> node_vector_type; 
+	typedef object<value_type> object_type;
 
 	inline oid_type insert_tuple( value_type val )
 	{
@@ -106,9 +107,9 @@ class basic_table {
 
 	std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
 	{
-		object<value_type>* ptr = tuple_vector[oid];
+		object_type* ptr = tuple_vector->begin(oid);
 		xid_context *visitor = xid_get_context(xid);
-		dbtuple* version = reinterpret_cast<dbtuple*>(ptr->data);
+		dbtuple* version = reinterpret_cast<dbtuple*>(ptr);
 
 		// check dirty writes 
 		if( version->is_xid )
@@ -119,26 +120,26 @@ class basic_table {
 			// visibility test
 			if( holder->end == INVALID_LSN 					// invalid entry XXX. we don't need to check state field, right?
 					|| holder->end > visitor->begin )		// to prevent version branch( or lost update)
-				return std::make_pair(false, NULL );
+				return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
 
 			// in-place update case ( multiple updates on the same record )
 			if( holder->owner == visitor->owner )
 			{
-				ptr->data_ = val;
-				return std::make_pair( true, version );
+				ptr->_data = val;
+				return std::make_pair( true, reinterpret_cast<value_type>(version) );
 			}
 		}
 		else 
 		{
 			// Okay. There's no dirty data in this chain.
 			if( version->v_.clsn > visitor->begin )
-				return std::make_pair( false, NULL );
+				return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
 		}
 
 		// install a new version
 		if(!tuple_vector->put( oid, val ))
-			return std::make_pair(false, NULL);
-		return std::make_pair(true, NULL);
+			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
+		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 	}
 
 	inline value_type fetch_tuple( oid_type oid ) const
@@ -151,9 +152,8 @@ class basic_table {
 		xid_context *visitor= xid_get_context(xid);
 
 		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
-		for( object<value_type>* ptr = tuple_vector[oid]; ptr; ptr = ptr->next_ )
-		{
-			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->data_);
+		for( object_type* ptr = tuple_vector->begin(oid); ptr; ptr = ptr->next() ) {
+			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->_data);
 
 			// xid tracking & status check
 			if( version->is_xid )
@@ -187,10 +187,10 @@ class basic_table {
 		return node_vector->insert( node );
 	}
 
-	inline void update_node( oid_type oid, node_type* node )
+	inline bool update_node( oid_type oid, node_type* node )
 	{
 		assert( node_vector );
-		node_vector->put( oid, node );
+		return node_vector->put( oid, node );
 	}
 	inline node_type* fetch_node( oid_type oid ) const
 	{

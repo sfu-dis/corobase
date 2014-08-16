@@ -62,6 +62,7 @@ public:
   XID xid;
   } v_;
   bool is_xid;
+  bool valid; // false => commit will ignore this tuple
   oid_type oid;
 #endif
 public:
@@ -125,7 +126,8 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      size(CheckBounds(size))
+      valid(true)
+      , size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
       , key()
@@ -151,7 +153,8 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      size(base->size)
+      valid(true)
+      , size(base->size)
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
       , key()
@@ -178,7 +181,8 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      size(CheckBounds(new_size))
+      valid(true)
+      , size(CheckBounds(new_size))
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
       , key()

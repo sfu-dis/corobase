@@ -185,12 +185,14 @@ base_txn_btree<Transaction, P>::do_search(
   // search the underlying btree to map k=>(btree_node|tuple)
   typename concurrent_btree::value_type underlying_v{};
   concurrent_btree::versioned_node_t search_info;
+  // FIXME: tzwang: so this search function (or the lowest responsible function) should be aware
+  // of the versions.
   const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, &search_info);
   if (found) {
     const dbtuple * const tuple = reinterpret_cast<const dbtuple *>(underlying_v);
     return t.do_tuple_read(tuple, value_reader);
   } else {
-    // FIXME: tzwan: what's this
+    // FIXME: tzwang: what's this?
     // not found, add to absent_set
     t.do_node_read(search_info.first, search_info.second);
     return false;
@@ -271,7 +273,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   if (expect_new) {
     // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
-    // it fails if somebody else acted faster to insert new, we then continue
+    // it fails if somebody else acted faster to insert new, we then
     // (fall back to) with the normal update procedure.
     // Note: the original return value of try_insert_new_tuple is:
     // <tuple, should_abort>. Here we use it as <tuple, failed>.
@@ -327,7 +329,10 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // Here we just call the provided update_tulpe function which returns the
   // result (either succeeded or failed, i.e., need to abort).
 
-  // FIXME: tzwang: todo: use the above function
+  std::pair<bool, concurrent_btree::value_type> ret =
+                          this->underlying_btree.update_version(tuple->oid,
+                          reinterpret_cast<concurrent_btree::value_type>(tuple),
+                          t.xid);
 
   // FIXME: tzwang: now the above update returns a pair:
   // <dbtuple*, bool>, bool indicates if the update op has succeeded or not.
@@ -354,38 +359,32 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   //
   // For now we stick to the pointer (former) way because it's simple, and
   // silo's write-set infrastructure is already in that format, pluse in-place
-  // update should be very rare.
+  // update should be very rare. This could be avoided too (with the cost of
+  // checking a valid bit at commit time). See comments next.
 
   // FIXME: tzwang: todo: check return value
-
-  /*
-    if (unlikely(ret.second)) {
-      const transaction_base::abort_reason r = transaction_base::ABORT_REASON_WRITE_NODE_INTERFERENCE;
-      t.abort_impl(r);
-      throw transaction_abort_exception(r);
-    }
-    px = ret.first;
-    if (px)
-      insert = true;
+  if (ret.first) { // succeeded
+    dbtuple* ret_tuple = reinterpret_cast<dbtuple*>(ret.second);
+    if (ret_tuple) {  // in-place update
+      INVARIANT(ret_tuple != tuple);
+      // Even simpler, if we have a valid bit in dbtuple header, we don't need
+      // to traverse the write-set. Just mark it as invalid if in-place update
+      // happened, because the write set just holds the pointer to tuples. During
+      // commit we'll need to check this bit and rcu_free tuples in the write-set
+      // with valid=false.
+      ret_tuple->valid = false;
+    } // else we're done.
   }
-  */
+  else {  // somebody else acted faster than we did
+    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
+    t.abort_impl(r);
+    throw transaction_abort_exception(r);
+  }
 
   // FIXME: tzwang: todo: put to write-set, done.
   // todo: look at emplace_back, i think we shouldn't even need to pass writer,
   // btree, etc. at all. Just tuple is enough.
   t.write_set.emplace_back(tuple, k, v, writer, &this->underlying_btree, false);
-  //}
-  //else {
-    // should already exist in write set as insert
-    // (because of try_insert_new_tuple())
-
-    // FIXME: tzwang: our system is better at this: just replace the head of the chain
-    // if the latest dirty tuple has a same xid as t.xid.
-
-    // too expensive to be a practical check
-    //INVARIANT(t.find_write_set(px) != t.write_set.end());
-    //INVARIANT(t.find_write_set(px)->is_insert());
-  //}
 }
 
 template <template <typename> class Transaction, typename P>

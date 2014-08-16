@@ -549,6 +549,9 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
     writer(dbtuple::TUPLE_WRITER_DO_WRITE,
         value, tuple->get_value_start(), 0);
 
+  tuple->is_xid = true;
+  tuple->v_.xid = this->xid;
+
   // XXX: underlying btree api should return the existing value if insert
   // fails- this would allow us to avoid having to do another search
   // FIXME: tzwang: didn't look like so, returns nullptr. bug?
