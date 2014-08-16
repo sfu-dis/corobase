@@ -132,10 +132,12 @@ transaction_proto2_static::clean_up_memory(threadctx &ctx)
       INVARIANT(!delent.tuple_ahead_);
       INVARIANT(delent.btr_);
       // check if an element preceeds the (deleted) tuple before doing the delete
-      ::lock_guard<dbtuple> lg_tuple(delent.tuple(), false);
+      // FIXME: tzwang: we don't need to lock.
+      //::lock_guard<dbtuple> lg_tuple(delent.tuple(), false);
 #ifdef CHECK_INVARIANTS
-      INVARIANT(delent.tuple()->is_deleting());
+      //INVARIANT(delent.tuple()->is_deleting());
 #endif
+      /* FIXME: tzwang: maybe by checking size=0?
       if (unlikely(!delent.tuple()->is_latest())) {
         // requeue it up, except this time as a regular delete
         ctx.queue_.enqueue(delete_entry(nullptr,
@@ -149,6 +151,7 @@ transaction_proto2_static::clean_up_memory(threadctx &ctx)
           ctx.pool_.emplace_back(spx);
         continue;
       }
+      */
 #ifdef CHECK_INVARIANTS
       delent.tuple()->opaque.store(0, std::memory_order_release);
 #endif
@@ -176,7 +179,7 @@ transaction_proto2_static::clean_up_memory(threadctx &ctx)
       const bool did_remove = delent.btr_->remove(k, &removed);
       ALWAYS_ASSERT(did_remove);
       INVARIANT(removed == (typename concurrent_btree::value_type) delent.tuple());
-      delent.tuple()->clear_latest();
+      //delent.tuple()->clear_latest();
       dbtuple::release(delent.tuple()); // rcu free it
     }
     if (in_rcu && niters_with_rcu >= max_niters_with_rcu) {
