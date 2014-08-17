@@ -367,7 +367,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
       // happened, because the write set just holds the pointer to tuples. During
       // commit we'll need to check this bit and rcu_free tuples in the write-set
       // with valid=false.
-      ret_tuple->overwritten = false;
+      ret_tuple->overwritten = true;
     } // else we're done.
   }
   else {  // somebody else acted faster than we did

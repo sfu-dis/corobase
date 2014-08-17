@@ -35,7 +35,6 @@ transaction<Protocol, Traits>::~transaction()
   INVARIANT(RCU::rcu_is_active());
 
   // FIXME: tzwang: free txn desc.
-  xid_free(xid);
   const unsigned cur_depth = rcu_guard_->depth();
   rcu_guard_.destroy();
   if (cur_depth == 1) {
@@ -63,6 +62,7 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
     throw transaction_unusable_exception();
   }
   xid_get_context(xid)->state = TXN_ABRTD;
+  xid_free(xid);
   this->reason = reason;
 
   // FIXME: tzwang: discard log - very important to really release memory
@@ -210,6 +210,7 @@ transaction<Protocol, Traits>::commit(bool doThrow)
 do_abort:
   VERBOSE(std::cerr << "aborting txn" << std::endl);
   xid_get_context(xid)->state = TXN_ABRTD;
+  xid_free(xid);
 
   log->discard();
   // rcu-free write-set, set clsn in tuples to invalid_lsn
