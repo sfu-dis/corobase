@@ -275,14 +275,9 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   typename concurrent_btree::value_type bv = 0;
   // FIXME: tzwang: this need to return the latest, visible, committed value.
   if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
-    // XXX(stephentu): if we are removing a key and we can't find it, then we
-    // should just treat this as a read [of an empty-value], instead of
-    // explicitly inserting an empty node...
-
-    // FIXME: tzwang: it must be either (1) try_insert_new failed; or (2) this
-    // is update if we reached here. So if the search failed, should we abort
-    // or what??? So I guess this shouldn't happen at all. So messed up, doomed.
-    INVARIANT(false);
+    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
+    t.abort_impl(r);
+    throw transaction_abort_exception(r);
   }
 
   // FIXME: tzwang: prepare new tuple
