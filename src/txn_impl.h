@@ -67,6 +67,7 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
 
   // FIXME: tzwang: discard log - very important to really release memory
   // But is this everything we need?
+  log->pre_commit();
   log->discard();
 }
 
@@ -115,12 +116,6 @@ transaction<Protocol, Traits>::dump_debug_info() const
   std::cerr << "  Flags: " << transaction_flags_to_str(flags) << std::endl;
   std::cerr << "  Read/Write sets:" << std::endl;
 
-  std::cerr << "      === Read Set ===" << std::endl;
-  // read-set
-  for (typename read_set_map::const_iterator rs_it = read_set.begin();
-       rs_it != read_set.end(); ++rs_it)
-    std::cerr << *rs_it << std::endl;
-
   std::cerr << "      === Write Set ===" << std::endl;
   // write-set
   for (typename write_set_map::const_iterator ws_it = write_set.begin();
@@ -141,10 +136,6 @@ std::map<std::string, uint64_t>
 transaction<Protocol, Traits>::get_txn_counters() const
 {
   std::map<std::string, uint64_t> ret;
-
-  // max_read_set_size
-  ret["read_set_size"] = read_set.size();;
-  ret["read_set_is_large?"] = !read_set.is_small_type();
 
   // max_absent_set_size
   ret["absent_set_size"] = absent_set.size();
@@ -278,9 +269,11 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   // insert to log
   // FIXME: tzwang: leave pdest as null and FID is always 1 now.
   INVARIANT(log);
+  auto record_size = align_up(sz);
+  auto size_code = encode_size_aligned(record_size);
   log->log_insert(1,
                   tuple->oid,
-                  fat_ptr::make(tuple, encode_size(tuple->size)),
+                  fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
   // FIXME: tzwang: so the caller shouldn't do this again if we returned true here.
@@ -334,10 +327,6 @@ transaction<Protocol, Traits>::do_tuple_read(
   const bool v_empty = (stat == dbtuple::READ_EMPTY);
   if (v_empty)
     ++transaction_base::g_evt_read_logical_deleted_node_search;
-  //if (!is_snapshot_txn)
-    // read-only txns do not need read-set tracking
-    // (b/c we know the values are consistent)
-  read_set.emplace_back(tuple);
   return !v_empty;
 }
 
@@ -347,8 +336,6 @@ transaction<Protocol, Traits>::do_node_read(
     const typename concurrent_btree::node_opaque_t *n, uint64_t v)
 {
   INVARIANT(n);
-  if (is_snapshot())
-    return;
   auto it = absent_set.find(n);
   if (it == absent_set.end()) {
     absent_set[n].version = v;

@@ -304,7 +304,6 @@ operator<<(std::ostream &o, const transaction_base::absent_record_t &r)
 }
 
 struct default_transaction_traits {
-  static const size_t read_set_expected_size = SMALL_SIZE_MAP;
   static const size_t absent_set_expected_size = EXTRA_SMALL_SIZE_MAP;
   static const size_t write_set_expected_size = SMALL_SIZE_MAP;
   static const bool stable_input_memory = false;
@@ -416,9 +415,6 @@ protected:
 
   // small types
   typedef small_vector<
-    read_record_t,
-    traits_type::read_set_expected_size> read_set_map_small;
-  typedef small_vector<
     write_record_t,
     traits_type::write_set_expected_size> write_set_map_small;
   typedef small_unordered_map<
@@ -426,9 +422,6 @@ protected:
     traits_type::absent_set_expected_size> absent_set_map_small;
 
   // static types
-  typedef static_vector<
-    read_record_t,
-    traits_type::read_set_expected_size> read_set_map_static;
   typedef static_vector<
     write_record_t,
     traits_type::write_set_expected_size> write_set_map_static;
@@ -448,10 +441,6 @@ protected:
   typedef
     typename std::conditional<
       traits_type::hard_expected_sizes,
-      read_set_map_static, read_set_map_small>::type read_set_map;
-  typedef
-    typename std::conditional<
-      traits_type::hard_expected_sizes,
       write_set_map_static, write_set_map_small>::type write_set_map;
   typedef
     typename std::conditional<
@@ -463,7 +452,6 @@ protected:
       write_set_u32_vec_static, write_set_u32_vec_small>::type write_set_u32_vec;
 
 #else
-  typedef std::vector<read_record_t> read_set_map;
   typedef std::vector<write_record_t> write_set_map;
   typedef std::vector<absent_record_t> absent_set_map;
   typedef std::vector<uint32_t> write_set_u32_vec;
@@ -533,19 +521,6 @@ public:
 #endif
 
   std::map<std::string, uint64_t> get_txn_counters() const;
-
-  inline ALWAYS_INLINE bool
-  is_snapshot() const
-  {
-    return get_flags() & TXN_FLAG_READ_ONLY;
-  }
-
-  // for debugging purposes only
-  inline const read_set_map &
-  get_read_set() const
-  {
-    return read_set;
-  }
 
   inline const write_set_map &
   get_write_set() const
@@ -618,26 +593,6 @@ protected:
 
 protected:
   // SLOW accessor methods- used for invariant checking
-
-  typename read_set_map::iterator
-  find_read_set(const dbtuple *tuple)
-  {
-    // linear scan- returns the *first* entry found
-    // (a tuple can exist in the read_set more than once)
-    typename read_set_map::iterator it     = read_set.begin();
-    typename read_set_map::iterator it_end = read_set.end();
-    for (; it != it_end; ++it)
-      if (it->get_tuple() == tuple)
-        break;
-    return it;
-  }
-
-  inline typename read_set_map::const_iterator
-  find_read_set(const dbtuple *tuple) const
-  {
-    return const_cast<transaction *>(this)->find_read_set(tuple);
-  }
-
   typename write_set_map::iterator
   find_write_set(dbtuple *tuple)
   {
@@ -661,7 +616,6 @@ protected:
   handle_last_tuple_in_group(
       dbtuple_write_info &info, bool did_group_insert);
 
-  read_set_map read_set;
   write_set_map write_set;
   absent_set_map absent_set;
 

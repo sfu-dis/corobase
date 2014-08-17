@@ -4,6 +4,7 @@
 #include <atomic>
 #include <vector>
 #include <cassert>
+#include "macros.h"
 
 typedef unsigned long long oid_type;
 
@@ -33,9 +34,7 @@ public:
 
 	bool put( oid_type oid, T item )
 	{
-		if( oid >= _size || oid == 0 )
-			abort();
-
+		ALWAYS_ASSERT( oid > 0 && oid <= _size );
 		object_type* old_desc = _obj_table[oid];
 		object_type* new_desc = new object_type( item, old_desc );
 
@@ -50,19 +49,18 @@ public:
 	oid_type insert( T item )
 	{
 		oid_type oid = alloc();
-		assert( not _obj_table[oid] );
-		if( oid >= _size || oid == 0 )
-			abort();
+		ALWAYS_ASSERT( not _obj_table[oid] );
+		ALWAYS_ASSERT( oid > 0 && oid <= _size );
 		if( put( oid, item ) )
 			return oid;
-		else return 0;
+		else 
+			return 0;
 	}
 
 	inline T get( oid_type oid )
 	{
-		assert( oid <= _size );
-		if( oid >= _size || oid == 0 )
-			abort();
+		ALWAYS_ASSERT( oid <= _size );
+		ALWAYS_ASSERT( oid > 0 && oid <= _size );
 		object_type* desc= _obj_table[oid];
 		return desc->_data;
 	}
@@ -70,11 +68,6 @@ public:
 	inline object_type* begin( oid_type oid )
 	{
 		return _obj_table[oid];
-	}
-
-	inline object_type* next( oid_type oid, object_type* cur )
-	{
-		return cur->_next;
 	}
 
 	// TODO. delete ( atomic deletion with CAS and pass dummies to RCU? 
