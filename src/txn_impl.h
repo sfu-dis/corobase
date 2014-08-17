@@ -199,6 +199,7 @@ transaction<Protocol, Traits>::commit(bool doThrow)
     }
   }
 
+  log->commit(NULL);
   // change state
   xid_get_context(xid)->state = TXN_CMMTD;
 
@@ -210,6 +211,7 @@ do_abort:
   VERBOSE(std::cerr << "aborting txn" << std::endl);
   xid_get_context(xid)->state = TXN_ABRTD;
 
+  log->discard();
   // rcu-free write-set, set clsn in tuples to invalid_lsn
   it     = write_set.begin();
   it_end = write_set.end();
