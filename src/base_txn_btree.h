@@ -462,7 +462,7 @@ base_txn_btree<Transaction, P>::do_search_range_call(
     uppervk = varkey(*upper_str);
   this->underlying_btree.search_range_call(
       varkey(*lower_str), upper_str ? &uppervk : nullptr,
-      c, t.string_allocator()());
+      c, t.xid, t.string_allocator()());
 }
 
 template <template <typename> class Transaction, typename P>
@@ -498,7 +498,7 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
     lowervk = varkey(*lower_str);
   this->underlying_btree.rsearch_range_call(
       varkey(*upper_str), lower_str ? &lowervk : nullptr,
-      c, t.string_allocator()());
+      c,t.xid, t.string_allocator()());
 }
 
 #endif /* _NDB_BASE_TXN_BTREE_H_ */

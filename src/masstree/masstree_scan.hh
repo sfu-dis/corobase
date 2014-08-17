@@ -17,6 +17,8 @@
 #define MASSTREE_SCAN_HH
 #include "masstree_tcursor.hh"
 #include "masstree_struct.hh"
+#include "../rcu/xid.h"
+
 namespace Masstree {
 
 template <typename P>
@@ -324,6 +326,7 @@ template <typename P> template <typename H, typename F>
 int basic_table<P>::scan(H helper,
                          Str firstkey, bool emit_firstkey,
                          F& scanner,
+						 XID xid,
                          threadinfo& ti) const
 {
     typedef typename P::ikey_type ikey_type;
@@ -367,7 +370,7 @@ int basic_table<P>::scan(H helper,
 	    ++scancount;
 #ifdef HACK_SILO
 		value_type v;
-		v = fetch_tuple((oid_type)(entry.value()));
+		v = fetch_version((oid_type)(entry.value()), xid);
 	    if (!scanner.visit_value(ka, v, ti))
 			goto done;
 #else
@@ -414,17 +417,19 @@ int basic_table<P>::scan(H helper,
 template <typename P> template <typename F>
 int basic_table<P>::scan(Str firstkey, bool emit_firstkey,
                          F& scanner,
+						 XID xid,
                          threadinfo& ti) const
 {
-    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, ti);
+    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xid, ti);
 }
 
 template <typename P> template <typename F>
 int basic_table<P>::rscan(Str firstkey, bool emit_firstkey,
                           F& scanner,
+						  XID xid,
                           threadinfo& ti) const
 {
-    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, ti);
+    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xid, ti);
 }
 
 } // namespace Masstree
