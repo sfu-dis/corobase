@@ -106,7 +106,7 @@ endif
 TOP     := $(shell echo $${PWD-`pwd`})
 LDFLAGS := -lpthread -lnuma -lrt
 #ifeq ($(DEBUG_S),1)
-#	LDFLAGS += -lasan
+#LDFLAGS += -lasan
 #endif
 
 LZ4LDFLAGS := -Lthird-party/lz4 -llz4 -Wl,-rpath,$(TOP)/third-party/lz4

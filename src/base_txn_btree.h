@@ -266,10 +266,16 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // Note: the original return value of try_insert_new_tuple is:
   // <tuple, should_abort>. Here we use it as <tuple, failed>.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-  if (expect_new && t.try_insert_new_tuple(this->underlying_btree, k, v, writer))
-    return;
+  if (expect_new) {
+    if (!t.try_insert_new_tuple(this->underlying_btree, k, v, writer)) {
+      const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
+      t.abort_impl(r);
+      throw transaction_abort_exception(r);
+    }
+    else
+      return;
+  }
 
-#ifdef CHECK_INVARIANTS
   // do regular search
   typename concurrent_btree::value_type bv = 0;
   // FIXME: tzwang: this need to return the latest, visible, committed value.
@@ -283,7 +289,6 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // or what??? So I guess this shouldn't happen at all. So messed up, doomed.
     INVARIANT(false);
   }
-#endif
 
   // FIXME: tzwang: prepare new tuple
   const size_t sz =
@@ -298,6 +303,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   tuple->is_xid = true;
   tuple->v_.xid = t.xid;
+  tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
 
   // FIXME: tzwang: need object.h APIs here to try CAS with px
   // Supposedly the API provided should do this:
@@ -356,9 +362,11 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
     // the record is tooooo large).
+    auto record_size = align_up(sz);
+    auto size_code = encode_size_aligned(record_size);
     t.log->log_update(1,
                       tuple->oid,
-                      fat_ptr::make(tuple, encode_size(tuple->size)),
+                      fat_ptr::make(tuple, size_code),
                       DEFAULT_ALIGNMENT_BITS,
                       NULL);
     dbtuple* ret_tuple = reinterpret_cast<dbtuple*>(ret.second);
@@ -379,9 +387,6 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   }
 
   // put to write-set, done.
-  // todo: look at emplace_back, i think we shouldn't even need to pass writer,
-  // btree, etc. at all. Just tuple is enough.
-  //t.write_set.emplace_back(tuple, k, v, writer, &this->underlying_btree, false);
   t.write_set.emplace_back(tuple);
 }
 

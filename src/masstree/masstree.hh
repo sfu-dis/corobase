@@ -23,6 +23,7 @@
 #include "../object.h"
 #include "../tuple.h"
 #include "../rcu/xid.h"
+#include "../macros.h"
 #endif
 
 namespace Masstree {
@@ -95,45 +96,70 @@ class basic_table {
 
 	inline oid_type insert_tuple( value_type val )
 	{
-		assert( tuple_vector );
+		INVARIANT( tuple_vector );
 		return tuple_vector->insert( val );
-	}
-
-	inline void update_tuple( oid_type oid, value_type val )
-	{
-		assert( tuple_vector );
-		tuple_vector->put( oid, val );
 	}
 
 	std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
 	{
+		INVARIANT( tuple_vector );
 		object_type* ptr = tuple_vector->begin(oid);
 		xid_context *visitor = xid_get_context(xid);
-		dbtuple* version = reinterpret_cast<dbtuple*>(ptr);
+		dbtuple* version;
 
-		// check dirty writes 
-		if( version->is_xid )
+		for( ; ptr; ptr = ptr->_next )
 		{
-			//xid tracking
-			xid_context *holder= xid_get_context(version->v_.xid);
-
-			// visibility test
-			if( holder->end == INVALID_LSN 					// invalid entry XXX. we don't need to check state field, right?
-					|| holder->end > visitor->begin )		// to prevent version branch( or lost update)
-				return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
-
-			// in-place update case ( multiple updates on the same record )
-			if( holder->owner == visitor->owner )
+			version = reinterpret_cast<dbtuple*>(ptr->_data);
+			if( version->is_xid )
 			{
-				ptr->_data = val;
-				return std::make_pair( true, reinterpret_cast<value_type>(version) );
+				//xid tracking
+				xid_context *holder= xid_get_context(version->v_.xid);
+				switch (holder->state)
+				{
+					// if committed and newer data, abort. if not, keep traversing
+					case TXN_CMMTD:
+						{
+							if ( holder->end > visitor->begin )		// to prevent version branch( or lost update)
+								return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+							else
+								continue;
+						}
+
+					// aborted data. ignore
+					case TXN_ABRTD:
+						continue;
+
+					// dirty data
+					case TXN_EMBRYO:
+					case TXN_ACTIVE:
+					case TXN_COMMITTING:
+						{
+							// in-place update case ( multiple updates on the same record )
+							if( holder->owner == visitor->owner )
+							{
+								ptr->_data = val;
+								return std::make_pair( true, reinterpret_cast<value_type>(version) );
+							}
+							else
+								return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+						}
+					default:
+						ALWAYS_ASSERT( false );
+				}
 			}
-		}
-		else 
-		{
-			// Okay. There's no dirty data in this chain.
-			if( version->v_.clsn > visitor->begin )
-				return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
+			// check dirty writes 
+			else 
+			{
+				// make sure this is valid committed data, or aborted data that is not reclaimed yet.
+				// aborted, but not yet reclaimed.
+				if( version->v_.clsn == INVALID_LSN )
+					continue;
+				// newer version. fall back
+				else if ( version->v_.clsn > visitor->begin )
+					return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
+				else
+					continue;
+			}
 		}
 
 		// install a new version
@@ -144,15 +170,16 @@ class basic_table {
 
 	inline value_type fetch_tuple( oid_type oid ) const
 	{
-		assert( tuple_vector );
+		INVARIANT( tuple_vector );
 		return tuple_vector->get( oid );
 	}
 	value_type fetch_version( oid_type oid, XID xid ) const
 	{
+		INVARIANT( tuple_vector );
 		xid_context *visitor= xid_get_context(xid);
 
 		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
-		for( object_type* ptr = tuple_vector->begin(oid); ptr; ptr = ptr->next() ) {
+		for( object_type* ptr = tuple_vector->begin(oid); ptr; ptr = ptr->_next ) {
 			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->_data);
 
 			// xid tracking & status check
@@ -167,13 +194,13 @@ class basic_table {
 				if( holder->end > visitor->begin  			// committed(but invisible) data, 
 						|| holder->end == INVALID_LSN)		// aborted data
 					continue;
-				return version;
+				return (value_type)version;
 			}
 			else
 			{
 				if( version->v_.clsn > visitor->begin ) 	// invisible
 					continue;
-				return version;
+				return (value_type)version;
 			}
 		}
 
@@ -183,18 +210,18 @@ class basic_table {
 
 	inline oid_type insert_node( node_type* node )
 	{
-		assert( node_vector );
+		INVARIANT( node_vector );
 		return node_vector->insert( node );
 	}
 
 	inline bool update_node( oid_type oid, node_type* node )
 	{
-		assert( node_vector );
+		INVARIANT( node_vector );
 		return node_vector->put( oid, node );
 	}
 	inline node_type* fetch_node( oid_type oid ) const
 	{
-		assert( node_vector );
+		INVARIANT( node_vector );
 		if( oid )
 			return node_vector->get( oid );
 		else

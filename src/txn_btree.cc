@@ -112,6 +112,7 @@ template <template <typename> class TxnType, typename Traits>
 static void
 test1()
 {
+#if 0
   for (size_t txn_flags_idx = 0;
        txn_flags_idx < ARRAY_NELEMS(TxnFlags);
        txn_flags_idx++) {
@@ -219,6 +220,7 @@ test1()
     txn_epoch_sync<TxnType>::sync();
     txn_epoch_sync<TxnType>::finish();
   }
+#endif
 }
 
 struct bufrec { char buf[256]; };
