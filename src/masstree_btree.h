@@ -389,6 +389,7 @@ public:
   search_range_call(const key_type &lower,
                     const key_type *upper,
                     low_level_search_range_callback &callback,
+					XID xid,
                     std::string *buf = nullptr) const;
 
   // (lower, upper]
@@ -396,6 +397,7 @@ public:
   rsearch_range_call(const key_type &upper,
                      const key_type *lower,
                      low_level_search_range_callback &callback,
+					 XID xid,
                      std::string *buf = nullptr) const;
 
   class search_range_callback : public low_level_search_range_callback {
@@ -426,6 +428,7 @@ public:
   search_range(const key_type &lower,
                const key_type *upper,
                F& callback,
+			   XID xid,
                std::string *buf = nullptr) const;
 
   /**
@@ -439,6 +442,7 @@ public:
   rsearch_range(const key_type &upper,
                 const key_type *lower,
                 F& callback,
+				XID xid,
                 std::string *buf = nullptr) const;
 
   /**
@@ -823,42 +827,46 @@ template <typename P>
 inline void mbtree<P>::search_range_call(const key_type &lower,
                                          const key_type *upper,
                                          low_level_search_range_callback &callback,
+										 XID xid,
                                          std::string*) const {
   low_level_search_range_scanner<false> scanner(upper, callback);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
 }
 
 template <typename P>
 inline void mbtree<P>::rsearch_range_call(const key_type &upper,
                                           const key_type *lower,
                                           low_level_search_range_callback &callback,
+										  XID xid,
                                           std::string*) const {
   low_level_search_range_scanner<true> scanner(lower, callback);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::search_range(const key_type &lower,
                                     const key_type *upper,
                                     F& callback,
+									XID xid,
                                     std::string*) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(upper, wrapper);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::rsearch_range(const key_type &upper,
                                      const key_type *lower,
                                      F& callback,
+									 XID xid,
                                      std::string*) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(lower, wrapper);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
 }
 
 template <typename P>
