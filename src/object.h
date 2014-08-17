@@ -54,7 +54,8 @@ public:
 		if( put( oid, item ) )
 			return oid;
 		else 
-			return 0;
+			ALWAYS_ASSERT(false);
+		return 0;	// shouldn't reach here
 	}
 
 	inline T get( oid_type oid )

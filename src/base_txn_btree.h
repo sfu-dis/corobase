@@ -267,13 +267,8 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // <tuple, should_abort>. Here we use it as <tuple, failed>.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
   if (expect_new) {
-    if (!t.try_insert_new_tuple(this->underlying_btree, k, v, writer)) {
-      const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-      t.abort_impl(r);
-      throw transaction_abort_exception(r);
-    }
-    else
-      return;
+    if (t.try_insert_new_tuple(this->underlying_btree, k, v, writer)) 
+		return;
   }
 
   // do regular search
