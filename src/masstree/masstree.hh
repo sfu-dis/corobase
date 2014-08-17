@@ -176,6 +176,7 @@ class basic_table {
 	value_type fetch_version( oid_type oid, XID xid ) const
 	{
 		INVARIANT( tuple_vector );
+		ALWAYS_ASSERT( oid );
 		xid_context *visitor= xid_get_context(xid);
 
 		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )

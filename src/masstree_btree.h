@@ -659,7 +659,11 @@ inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
   bool found = lp.find_unlocked(ti);
   if (found)
 #ifdef HACK_SILO
+  {
 	  v = fetch_version((oid_type)(lp.value()), xid);
+	  if( !v )
+		  found = false;
+  }
 #else
     v = lp.value();
 #endif
