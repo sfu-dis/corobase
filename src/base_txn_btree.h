@@ -184,7 +184,7 @@ base_txn_btree<Transaction, P>::do_search(
   concurrent_btree::versioned_node_t search_info;
   // FIXME: tzwang: so this search function (or the lowest responsible function) should be aware
   // of the versions.
-  const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, &search_info);
+  const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, t.xid, &search_info);
   if (found) {
     const dbtuple * const tuple = reinterpret_cast<const dbtuple *>(underlying_v);
     return t.do_tuple_read(tuple, value_reader);
@@ -274,7 +274,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // do regular search
   typename concurrent_btree::value_type bv = 0;
   // FIXME: tzwang: this need to return the latest, visible, committed value.
-  if (!this->underlying_btree.search(varkey(*k), bv)) {
+  if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
     // XXX(stephentu): if we are removing a key and we can't find it, then we
     // should just treat this as a read [of an empty-value], instead of
     // explicitly inserting an empty node...

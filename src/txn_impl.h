@@ -340,7 +340,7 @@ transaction<Protocol, Traits>::do_node_read(
   INVARIANT(n);
   auto it = absent_set.find(n);
   if (it == absent_set.end()) {
-   // absent_set[n].version = v;			// FIXME. just for convinience
+   // absent_set[n].version = v;			// FIXME. just for convenience
 	  ;
   } else if (it->second.version != v) {
     const transaction_base::abort_reason r =
