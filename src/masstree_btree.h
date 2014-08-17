@@ -313,7 +313,7 @@ public:
           /** NOTE: the public interface assumes that the caller has taken care
            * of setting up RCU */
 
-  inline bool search(const key_type &k, value_type &v,
+  inline bool search(const key_type &k, value_type &v, XID xid,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -650,7 +650,7 @@ inline size_t mbtree<P>::size() const
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, value_type &v,
+inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
                               versioned_node_t *search_info) const
 {
   rcu_region guard;
@@ -659,7 +659,7 @@ inline bool mbtree<P>::search(const key_type &k, value_type &v,
   bool found = lp.find_unlocked(ti);
   if (found)
 #ifdef HACK_SILO
-	  v = fetch_tuple((oid_type)(lp.value()));
+	  v = fetch_version((oid_type)(lp.value()), xid);
 #else
     v = lp.value();
 #endif
