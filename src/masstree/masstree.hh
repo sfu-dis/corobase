@@ -103,66 +103,65 @@ class basic_table {
 	std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
 	{
 		INVARIANT( tuple_vector );
-		object_type* ptr = tuple_vector->begin(oid);
-		object_type* head = ptr;
+		object_type* head = tuple_vector->begin(oid);
+		object_type* ptr = head;
 		xid_context *visitor = xid_get_context(xid);
 		dbtuple* version;
 
-		for( ; ptr; ptr = ptr->_next )
+		version = reinterpret_cast<dbtuple*>(ptr->_data);
+		if( version->is_xid )
 		{
-			version = reinterpret_cast<dbtuple*>(ptr->_data);
-			if( version->is_xid )
+			//xid tracking
+			xid_context *holder= xid_get_context(version->v_.xid);
+			switch (holder->state)
 			{
-				//xid tracking
-				xid_context *holder= xid_get_context(version->v_.xid);
-				switch (holder->state)
-				{
-					// if committed and newer data, abort. if not, keep traversing
-					case TXN_CMMTD:
-						{
-							if ( holder->end > visitor->begin )		// to prevent version branch( or lost update)
-								return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
-							else
-								continue;
-						}
+				// if committed and newer data, abort. if not, keep traversing
+				case TXN_CMMTD:
+					{
+						if ( holder->end > visitor->begin )		// to prevent version branch( or lost update)
+							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+						else
+							goto install;
+					}
 
 					// aborted data. ignore
-					case TXN_ABRTD:
-						continue;
+				case TXN_ABRTD:
+					goto install;
 
 					// dirty data
-					case TXN_EMBRYO:
-					case TXN_ACTIVE:
-					case TXN_COMMITTING:
+				case TXN_EMBRYO:
+				case TXN_ACTIVE:
+				case TXN_COMMITTING:
+					// TODO. help holder's getting CLSN when it's committing.
+					{
+						// in-place update case ( multiple updates on the same record )
+						if( holder->owner == visitor->owner )
 						{
-							// in-place update case ( multiple updates on the same record )
-							if( holder->owner == visitor->owner )
-							{
-								ptr->_data = val;
-								return std::make_pair( true, reinterpret_cast<value_type>(version) );
-							}
-							else
-								return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+							ptr->_data = val;
+							return std::make_pair( true, reinterpret_cast<value_type>(version) );
 						}
-					default:
-						ALWAYS_ASSERT( false );
-				}
-			}
-			// check dirty writes 
-			else 
-			{
-				// make sure this is valid committed data, or aborted data that is not reclaimed yet.
-				// aborted, but not yet reclaimed.
-				if( version->v_.clsn == INVALID_LSN )
-					continue;
-				// newer version. fall back
-				else if ( version->v_.clsn > visitor->begin )
-					return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
-				else
-					continue;
+						else
+							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+					}
+				default:
+					ALWAYS_ASSERT( false );
 			}
 		}
+		// check dirty writes 
+		else 
+		{
+			// make sure this is valid committed data, or aborted data that is not reclaimed yet.
+			// aborted, but not yet reclaimed.
+			if( version->v_.clsn == INVALID_LSN )
+				goto install;
+			// newer version. fall back
+			else if ( version->v_.clsn > visitor->begin )
+				return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
+			else
+				goto install;
+		}
 
+install:
 		// install a new version
 		if(!tuple_vector->put( oid, head, val ))
 			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
@@ -219,8 +218,7 @@ class basic_table {
 	inline bool update_node( oid_type oid, node_type* node )
 	{
 		INVARIANT( node_vector );
-		object_type* head = node_vector->begin(oid);
-		return node_vector->put( oid, head, node );
+		return node_vector->put( oid, node );
 	}
 	inline node_type* fetch_node( oid_type oid ) const
 	{
