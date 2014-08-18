@@ -32,10 +32,22 @@ public:
 		_size = capacity;
 	}
 
-	bool put( oid_type oid, object_type* old_desc, T item )
+	bool put( oid_type oid, object_type* head, T item )
 	{
 		ALWAYS_ASSERT( oid > 0 && oid <= _size );
-//		object_type* old_desc = _obj_table[oid];
+		object_type* new_desc = new object_type( item, head );
+
+		if( not __sync_bool_compare_and_swap( &_obj_table[oid], head, new_desc ) )
+		{
+			delete new_desc;
+			return false;
+		}
+		return true;
+	}
+	bool put( oid_type oid, T item )
+	{
+		ALWAYS_ASSERT( oid > 0 && oid <= _size );
+		object_type* old_desc = _obj_table[oid];
 		object_type* new_desc = new object_type( item, old_desc );
 
 		if( not __sync_bool_compare_and_swap( &_obj_table[oid], old_desc, new_desc ) )
@@ -51,15 +63,16 @@ public:
 		oid_type oid = alloc();
 		ALWAYS_ASSERT( not _obj_table[oid] );
 		ALWAYS_ASSERT( oid > 0 && oid <= _size );
-		if( put( oid, _obj_table[oid],item ) )
+		if( put( oid, item ) )
 			return oid;
 		else 
-			ALWAYS_ASSERT(false);			// FIXME. multiple insert try can make loser, falling to here
+			ALWAYS_ASSERT(false);
 		return 0;	// shouldn't reach here
 	}
 
 	inline T get( oid_type oid )
 	{
+		ALWAYS_ASSERT( oid <= _size );
 		ALWAYS_ASSERT( oid > 0 && oid <= _size );
 		object_type* desc= _obj_table[oid];
 		return desc->_data;
