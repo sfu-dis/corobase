@@ -59,7 +59,7 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
     return;
   case TXN_CMMTD:
   case TXN_COMMITTING:
-    throw transaction_unusable_exception();
+	ALWAYS_ASSERT(false);
   }
   xid_get_context(xid)->state = TXN_ABRTD;
   xid_free(xid);

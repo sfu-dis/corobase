@@ -104,6 +104,7 @@ class basic_table {
 	{
 		INVARIANT( tuple_vector );
 		object_type* ptr = tuple_vector->begin(oid);
+		object_type* head = ptr;
 		xid_context *visitor = xid_get_context(xid);
 		dbtuple* version;
 
@@ -163,7 +164,7 @@ class basic_table {
 		}
 
 		// install a new version
-		if(!tuple_vector->put( oid, val ))
+		if(!tuple_vector->put( oid, head, val ))
 			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
 		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 	}
@@ -218,7 +219,8 @@ class basic_table {
 	inline bool update_node( oid_type oid, node_type* node )
 	{
 		INVARIANT( node_vector );
-		return node_vector->put( oid, node );
+		object_type* head = node_vector->begin(oid);
+		return node_vector->put( oid, head, node );
 	}
 	inline node_type* fetch_node( oid_type oid ) const
 	{
