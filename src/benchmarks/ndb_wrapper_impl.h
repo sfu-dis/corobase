@@ -194,7 +194,7 @@ Destroy(T *t)
 }
 
 template <template <typename> class Transaction>
-bool
+void
 ndb_wrapper<Transaction>::commit_txn(void *txn)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
@@ -202,9 +202,9 @@ ndb_wrapper<Transaction>::commit_txn(void *txn)
   case a: \
     { \
       auto t = cast< b >()(p); \
-      const bool ret = t->commit(); \
+      t->commit();             \
       Destroy(t); \
-      return ret; \
+      return; \
     }
   switch (p->hint) {
     TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -212,7 +212,6 @@ ndb_wrapper<Transaction>::commit_txn(void *txn)
     ALWAYS_ASSERT(false);
   }
 #undef MY_OP_X
-  return false;
 }
 
 template <template <typename> class Transaction>
@@ -224,7 +223,7 @@ ndb_wrapper<Transaction>::abort_txn(void *txn)
   case a: \
     { \
       auto t = cast< b >()(p); \
-      t->abort(); \
+      t->abort();                 \
       Destroy(t); \
       return; \
     }

@@ -276,8 +276,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
     // only version is uncommitted -> cannot overwrite it
     const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-    t.abort_impl(r);
-    throw transaction_abort_exception(r);
+    t.signal_abort(r);
   }
 
   // create new version
@@ -365,8 +364,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   }
   else {  // somebody else acted faster than we did
     const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-    t.abort_impl(r);
-    throw transaction_abort_exception(r);
+    t.signal_abort(r);
   }
 
   // put to write-set, done.

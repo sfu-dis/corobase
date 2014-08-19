@@ -76,6 +76,7 @@ public:
 
 #define ABORT_REASONS(x) \
     x(ABORT_REASON_NONE) \
+    x(ABORT_REASON_INTERNAL) \
     x(ABORT_REASON_USER) \
     x(ABORT_REASON_UNSTABLE_READ) \
     x(ABORT_REASON_FUTURE_TID_READ) \
@@ -502,16 +503,21 @@ public:
   inline transaction(uint64_t flags, string_allocator_type &sa);
   inline ~transaction();
 
-  // returns TRUE on successful commit, FALSE on abort
-  // if doThrow, signals success by returning true, and
-  // failure by throwing an abort exception
-  bool commit(bool doThrow = false);
+  // returns on successful commit.
+  // signals failure by throwing an abort exception
+  void commit();
 
-  // abort() always succeeds
+  // signal the caller that an abort is necessary by throwing an abort
+  // exception. 
+  void __attribute__((noreturn))
+  signal_abort(abort_reason r=ABORT_REASON_USER);
+  
+  // if an abort has been signaled, perform the actual abort and clean
+  // up. always succeeds, so caller should rethrow if needed.
   inline void
   abort()
   {
-    abort_impl(ABORT_REASON_USER);
+    abort_impl();
   }
 
   void dump_debug_info() const;
@@ -548,7 +554,7 @@ public:
   }
 
 protected:
-  inline void abort_impl(abort_reason r);
+  void abort_impl();
 
   // assumes lock on marker is held on marker by caller, and marker is the
   // latest: removes marker from tree, and clears latest
