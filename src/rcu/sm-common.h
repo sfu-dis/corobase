@@ -189,6 +189,11 @@ struct fat_ptr {
     }
 };
 
+static inline
+fat_ptr volatile_read(fat_ptr volatile &p) {
+    return fat_ptr{volatile_read(p._ptr)};
+}
+
 // The equivalent of a NULL pointer
 static fat_ptr const NULL_PTR = {0};
 
@@ -250,6 +255,9 @@ struct LSN {
     bool operator!=(LSN const &other) const { return not (*this == other); }
 };
 
+static inline
+LSN volatile_read(LSN volatile &x) { return LSN{volatile_read(x._val)}; }
+
 static LSN const INVALID_LSN = {0};
 
 /* Transaction ids uniquely identify each transaction in the system
@@ -265,13 +273,13 @@ static LSN const INVALID_LSN = {0};
  */
 struct XID {
     static
-    XID make(uint32_t e, uint16_t i, uint16_t flags=0) {
+    XID make(uint32_t e, uint16_t i) {
         uint64_t x = e;
         x <<= 16;
         x |= i;
         x <<= 16;
-        x |= flags;
         x |= fat_ptr::ASI_XID_FLAG;
+        x |= INVALID_SIZE_CODE;
         return XID{x};
     }
 
@@ -286,6 +294,9 @@ struct XID {
     // synthesized comparison operators
     bool operator!=(XID const &other) const { return not (*this == other); }
 };
+
+static inline
+XID volatile_read(XID volatile &x) { return XID{volatile_read(x._val)}; }
 
 static XID const INVALID_XID = {fat_ptr::ASI_XID_FLAG};
 
