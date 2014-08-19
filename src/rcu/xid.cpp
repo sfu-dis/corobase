@@ -231,7 +231,9 @@ void xid_free(XID x) {
 xid_context *
 xid_get_context(XID x) {
     auto *ctx = &contexts[x.local()];
-    THROW_IF(ctx->owner != x, illegal_argument, "Invalid XID");
+    THROW_IF(ctx->owner.epoch() < x.epoch()
+             or ctx->owner.epoch() >= x.epoch()+3,
+             illegal_argument, "Invalid XID");
     return ctx;
 }
 } // end of namespace
