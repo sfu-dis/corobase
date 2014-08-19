@@ -78,8 +78,7 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
 	if( !tuple->overwritten )
 		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
 
-	// TODO. rcu-free
-    //RCU::free_with_fn(tuple, tuple_remove_callback);
+    dbtuple::release_no_rcu(tuple);
   }
 
   // log discard
@@ -88,6 +87,8 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
 
   // now. safe to free XID
   xid_free(xid);
+  
+  RCU::rcu_quiesce();
 
   // throw
   throw transaction_abort_exception(reason);
@@ -220,10 +221,12 @@ transaction<Protocol, Traits>::commit(bool doThrow)
     } 
     else {
       // FIXME: tzwang: add this callback to adjust pointers in version chain
+      dbtuple::release_no_rcu(tuple);
       //RCU::free_with_fn(tuple, tuple_remove_callback);
     }
   }
 
+  RCU::rcu_quiesce();
   // done
   xid_free(xid);
   return true;
@@ -247,10 +250,11 @@ do_abort:
     if(not tuple->overwritten )
         btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
 
-    // TODO. rcu-free
-    //RCU::free_with_fn(tuple, tuple_remove_callback);
+    // not RCU managed, so just free
+    dbtuple::release_no_rcu(tuple);
   }
   
+  RCU::rcu_quiesce();
   xid_free(xid);
   if (doThrow)
     throw transaction_abort_exception(reason);
@@ -290,6 +294,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
           varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
     dbtuple::release_no_rcu(tuple);
+    RCU::rcu_quiesce();
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
     return false;
   }
