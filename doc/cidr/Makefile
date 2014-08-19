@@ -35,11 +35,6 @@ include Makefile.common
 #%.eps: %.pdf
 #	pdftops -eps $< $@
 
-#not used anymore
-#format:
-#	sort -t' ' -k18,18 -n gccResults.factBig2B.times  | sort -t' ' -k14,14 -n | sort -t' ' -k20,20 | awk -F' ' '{print $1, $4, ($4-$22), $22}' > gccResults.factBig2B.times.op
-
-
 ## From: http://ghostscript.com/doc/current/Ps2pdf.htm
 ## To disable the automatic orientation selection algorithm use: -dAutoRotatePages=/None
 ##
@@ -50,12 +45,12 @@ include Makefile.common
 ## using Ghostscript directly but cannot be set in ps2pdf.
 ##	ps2pdf -dEPSCrop -dAutoRotatePages=/None $< $@
 %.pdf: %.eps
-	ps2pdf -dEPSCrop $< $@
+	${PS2PDF} -dEPSCrop $< $@
 	cp $*.pdf figure-sources/$*.pdf.in
 
 %.dvi: %.tex ../common/biblio.bib Makefile
 	$(LATEX) $* < /dev/null
-	bibtex $* </dev/null 
+	$(BIBTEX) $* </dev/null 
 	$(LATEX) $* < /dev/null
 	$(LATEX) $* < /dev/null
 
@@ -67,9 +62,9 @@ include Makefile.common
 SPAM_FILTER = awk '$$0 ~ /^Warning: pdflatex/ {moreskip=2; next} moreskip > 0 { moreskip--; next } {print}'
 %.pdf:: %.tex ../common/biblio.bib Makefile.common Makefile
 	$(LATEX) $* < /dev/null
-	bibtex $* </dev/null 
-	pdflatex $* < /dev/null | $(SPAM_FILTER)
-	pdflatex $* < /dev/null| $(SPAM_FILTER)
+	$(BIBTEX) $* </dev/null 
+	$(PDFLATEX) $* < /dev/null | $(SPAM_FILTER)
+	$(PDFLATEX) $* < /dev/null| $(SPAM_FILTER)
 	cp $*.pdf $(PAPER_TMSTAMP) ; echo $(PAPER_TMSTAMP)
 
 

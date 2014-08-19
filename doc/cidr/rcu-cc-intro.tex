@@ -1,0 +1,80 @@
+%% -*- tex-main-file:"rcu-cc.tex" -*-
+
+\section{Introduction}
+\seclabel{intro}
+
+\ippo{Some points we want to make in addition to those below: (a) We prefer non-partitioning-based solutions because the easy to partition data would have already been running on a separate set of physical nodes, and there are systems and recent research that show excellent scaling on easy to partition workloads, e.g.} \cite{Corbett+12,BailisFHGS14,ThomsonA10}. 
+
+\labeledfigure{fig-write-ratio}{Normalized throughput of a memory-efficient OLTP engine with lightweight concurrency control mechanism, as the ratio of writes/reads increases for different transaction footprints.}
+
+In \figref{fig-write-ratio} we demonstrate how the performance of an OLTP engine with lightweight concurrency control can drop.
+
+%1. new hw trend has led to new systems
+Modern systems with large main memories and massively parallel processors have inspired many new high-performance OLTP systems \cite{Kallman+08,KemperN11,LarsonBDFPZ11,TuZKLM13}, often referred to as ``main memory DBMS'' (MMDBMS). These systems leverage spacious main memory to fit the whole working set in DRAM with streamlined, memory-friendly data structures; further, optimizations for multicore and multi-socket hardware allow a much higher level of parallelism compared to conventional database systems. With disk overheads and delays removed, transaction latencies drop precipitously and worker threads can usually execute transactions to completion without interruption. The result is a welcome reduction in contention and less pressure on whatever concurrency control (CC) scheme might be in place.
+
+%2. how current workloads make cc important again.
+Meanwhile, database workloads are evolving to become increasingly heterogeneous, blending the gap between transaction and analytical processing. This trend is at least partly enabled by the improved concurrency and reduced contention offered by MMDBMS. Mixed workloads have two significant impacts on CC, however. First, the read/write ratio increases from 2:1 (e.g. TPC-C) to 10:1 or higher \cite{Chen+10,TozunPKJA13}, usually by increasing the number of reads as the number of writes remains stable. Second, workloads frequently include some fraction of large transactions that are read-mostly rather than read-only---a trend reflected in the TPC-E \cite{TPCE} benchmark. Unfortunately, both of these workload properties mean an increase in effective concurrency control footprints, and increased pressure on the CC scheme. As is usually the case, it appears that our workloads stand ready to absorb any and all concurrency gains the MMDBMS has to offer.
+
+%3. current schemes: 2PL blocks + deadlock issues. existing schemes in new systems (mostly OCC) suffer (1) long tx with other tx going on can't commit (2) write clobber read
+In this talk, we argue that the shift to heterogenous workloads means effective and robust CC schemes will become increasingly important for main-memory DBMS going forward. A growing body of research shows that the CC schemes currently in vogue with MMDBMS are not robust under contention, particularly when short write-intensive transactions coexist with longer read-mostly transactions. For example, the two most common families of approaches can be loosely classified as two-phase locking (2PL) and optimistic concurrency control (OCC). 2PL is common in traditional disk-oriented systems, and is often criticized because of high overheads, its policy of blocking transactions (leading to deadlocks and other scheduling problems), and a tendency to ``lock up'' (performance crash) once the aggregate transactional footprint grows too large (a state quickly attained when large transactions enter the system). OCC, on the other hand, never blocks readers---and may not even block writers---thus avoiding most scheduling issues. Although they differ in details, the rising generation of MMDMBS almost universally adopts a form of OCC that is effectively single-versioned, with read footprint validation at pre-commit \cite{LarsonBDFPZ11,TuZKLM13}. This type of approach suffers badly in high-parallelism systems \cite{YuBPDS14} because transactions must abort if any portion of their read footprint is overwritten before they commit. Some systems \cite{Kallman+08,KemperN11} sidestep the issue entirely by adopting a single-threaded transaction execution model, but that introduces a different set problems for mixed workloads.
+
+%4. attempts on new schemes such as SI/SSI, and 2PL+ wait depth limit
+In light of the weaknesses in 2PL and the common flavors of OCC, we next highlight several alternative approaches to concurrency control. Some are lesser-known (and worth taking more seriously); others are imperfect or still in progress, but promising (and good candidates for further refinement); and we round out the discussion with a few approaches that are new, unproven, and perhaps even a little crazy (but worth exploring because they are so different they---or something else just as wacky---might just work).
+% first set: 2PL+WDL, 2PL+PLP, 2PL+CLV
+% second set: volt timestamp ordering, SSI and SSN preview
+% third set: logicblox, sharedb, causality vs. serializability
+
+Finally, we close with a discussion of low-level issues (latching, thread scheduling, etc.) and design decisions---particularly at the system architecture level---that strongly influence the system's ability to provide robust and effective CC. The form of logging used, the storage management architecture, and scheduling policies for worker threads can impose drastic constraints on which forms of CC can be implemented at all, let alone efficiently. We examine several existing systems and show how their choice of CC is largely dictated by their system architecture---for better or for worse---and that it can be difficult or impossible to adopt a different CC scheme without significant changes to the rest of the system. The point is not that such design choices should be avoided, but rather that they should be made only with a full awareness of the consequences for concurrency control. Time permitting, we will report on some early progress in designing a MMDBMS from the ground up to support efficient concurrency control, and how the resulting architecture does not necessarily sacrifice performance in other areas.
+
+The remaining of this document is structured as follows. In \secref{desired} we discuss the properties we believe a transaction processing system architecture should exhibit, for high and more robust performance without compromises in the application; and in \secref{design} we present one such design. In \secref{eval} we compare the performance of a prototype of this architecture against a representative of the new camp of high-performing, but with relatively weak concurrency control mechanisms, transaction processing systems; and in \secref{conclusion} we conclude. 
+
+\section{Desired Properties}
+\seclabel{desired}
+
+In this section we briefly discuss our desired properties of a transaction processing system architecture. We primarily focus on three areas: the concurrency control mechanism that determines the interaction between concurrent transactions at the logical level; the mechanism that controls the interaction/communication of threads at the physical level; and recovery. 
+
+{\bf Concurrency control:} 
+-- CC properties:
+- pessimistic beats optimistic if we manage to keep the implementation overhead of pessimistic in same ballpark with optimistic's
+  - Looking magnifying glass gave an estimate of 25% overhead for pessimistic, that's is a lot of slack for OCC to outperform pessimistic 
+  - Especially if you are willing to lose some of the peak perf, if you think about it, it is ok to lose say 15% of the peak perf if that is measures in millions of xcts per sec. 
+- if retries immediately they will run to the save issues, safe retries are desireable 
+  - validation at the end is extremely opportunistic, and very vunerlable to workloads
+  - we want to find the glaring phases early enough and not during pre-commit.
+- Safe retries -- you don't want to hit the same conflict again if you retry -- pgSQL SI paper 
+  - low false positive in case of optimistic
+  - non-robust lightweight CC (e.g. Hekaton, Silo)
+- there are no systems out there, that are both fast enough and have the appropriate infrastucture to support the implementation of proper, robust CC schemes 
+  - infrastucture matters terribly, it decides whether you can even implement a particular CC scheme, and whether that would be practical. Many of the design decisions described in \secref{design} were specifically taken in order not limit the impl of CC schemes in some way.
+    - makes it either impossible to implement or impractical
+  - SSI -- they had to write a ton of code in pgSQL in order to bake in a lock manager in pgSQL
+    - SSN was easy to implement afterwards 
+
+{\bf Interactions at the physical level:} 
+-- On the physical layer:
+-- We need a storage management system to build on top of and there are not systems that provide the properties
+- indirection array (Mohammed) 
+  - benefiting of the observations of both
+  - anti-caching
+  - gives us many desirable properties wrt to physical layer inderaction between threads:
+  - as Mo pointed: you have less chatter in to the log, you update your entry and that's it, otherwise you may have updates that go up to the root. Not having to update every reference
+    - silo updates in place, it is effectively a single committed version with a private copy system for all practical purposes. so is Hekaton.
+    - it is MVCC only for read-only xct, safe snapshots
+    - read footprint validation
+  - easier physical implementation of CC for multi-versioned systems, a single CAS installs a new version
+  - anti-caching becomes easier! e.g. in the vanilla anti-caching algorithm all the auxilliary indexes had to be updated, whenever a record was evicted from memory, with the indirection array, only one place has to be updated.
+    - essentially a much lighter bufferpool
+  - kind of esoteric reason detailed in \secref{design:oid}: space management becomes easier, as it becomes easier to implement cache-friendly compact index structures, such as CSBs, as long as we can tolerate the extra dereference -- those come from free. Nice side-benefit.
+- no partial orders, SILO had partial orders, the central log establishes the commit order
+  - recovery becomes drastically simplified, no need for undo at all, redo is trivial just need log analysis pass to restore in-memory data structures.
+  - need checkpoint plus log analysis to recover!
+
+{\bf Recovery:} 
+-- Recovery has also to be a first class citizen
+- having a log that requires just one central communication, through a CAS
+- lots of hand-wavvy claims
+- you need to have to recovery story shorted out before you start
+- voltdb -- does log shipping
+- silo -- does not even implement recovery
+- hekaton -- hand-wavvy description
+

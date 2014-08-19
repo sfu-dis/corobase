@@ -1,0 +1,21 @@
+%% -*- tex-main-file:"rcu-cc.tex" -*-
+
+\section{Fast main-memory OLTP with rcu-based concurency control}
+\seclabel{design}
+
+\ippo{Perhaps come up with a name.}
+
+
+\subsection{Concurrency control}
+\seclabel{design:cc}
+
+\subsection{Indirection arrays}
+\seclabel{design:oid}
+
+\subsection{Recovery}
+\seclabel{design:recovery}
+
+\subsection{Prototype Implementation}
+\seclabel{design:prototype}
+
+We implement a prototype of the RIA architecture and measure its performance.  For the implementation of the prototype we use a large fraction of the publicly available Silo codebase~\footnote{Silo's codebase can be downloaded from: https://github.com/stephentu/silo.} Silo uses the Masstree \cite{MaoKM12} as a cache-efficient index structure. 
