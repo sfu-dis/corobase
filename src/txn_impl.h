@@ -37,10 +37,8 @@ transaction<Protocol, Traits>::~transaction()
   // FIXME: tzwang: free txn desc.
   const unsigned cur_depth = rcu_guard_->depth();
   rcu_guard_.destroy();
-  if (cur_depth == 1) {
+  if (cur_depth == 1)
     INVARIANT(!RCU::rcu_is_active());
-    cast()->on_post_rcu_region_completion();
-  }
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
