@@ -159,7 +159,7 @@ class basic_table {
 					// dirty data
 				case TXN_EMBRYO:
 				case TXN_ACTIVE:
-					// TODO. help holder's getting CLSN when it's committing.
+				case TXN_COMMITTING:
 					{
 						// in-place update case ( multiple updates on the same record )
 						if( holder_xid == xid )
@@ -170,8 +170,6 @@ class basic_table {
 						else
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
 					}
-				case TXN_COMMITTING:
-					// not allowed to write during pre-commit!
 				default:
 					ALWAYS_ASSERT( false );
 			}
