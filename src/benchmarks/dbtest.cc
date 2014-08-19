@@ -283,10 +283,6 @@ main(int argc, char **argv)
     if (!disable_gc)
       transaction_proto2_static::InitGC();
 #endif
-#ifdef PROTO2_CAN_DISABLE_SNAPSHOTS
-    if (disable_snapshots)
-      transaction_proto2_static::DisableSnapshots();
-#endif
   } 
   // FIXME: tzwang: don't bother other benches for now...
   /*

@@ -5,7 +5,6 @@
 #include <numa.h>
 #include "macros.h"
 #include "core.h"
-#include "pxqueue.h"
 #include "rcu/rcu.h"
 
 // FIXME: tzwang: seems to be working, but still memleak (2014/08/12)
