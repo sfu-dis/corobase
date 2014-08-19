@@ -122,7 +122,7 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      overwritten(true)
+      overwritten(false)
       , size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
@@ -149,7 +149,7 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      overwritten(true)
+      overwritten(false)
       , size(base->size)
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
