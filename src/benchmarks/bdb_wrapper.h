@@ -23,7 +23,7 @@ public:
       str_arena &arena,
       void *buf,
       TxnProfileHint hint);
-  virtual bool commit_txn(void *txn);
+  virtual void commit_txn(void *txn);
   virtual void abort_txn(void *txn);
 
   virtual abstract_ordered_index *

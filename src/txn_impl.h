@@ -46,23 +46,21 @@ transaction<Protocol, Traits>::~transaction()
 
 template <template <typename> class Protocol, typename Traits>
 void
-transaction<Protocol, Traits>::abort_impl(abort_reason reason)
+transaction<Protocol, Traits>::signal_abort(abort_reason reason)
 {
   abort_trap(reason);
-  switch (state()) {
-  case TXN_EMBRYO:
-  case TXN_ACTIVE:
-    break;
-  case TXN_ABRTD:
-    return;
-  case TXN_CMMTD:
-  case TXN_COMMITTING:
-	ALWAYS_ASSERT(false);
-  }
-
+  
   // atomic state change. after this, write-sets are invisible.
   volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
-
+  throw transaction_abort_exception(reason);
+}
+  
+template <template <typename> class Protocol, typename Traits>
+void
+transaction<Protocol, Traits>::abort_impl()
+{
+  INVARIANT(state() == TXN_ABRTD);
+  
   // write-set uninstall
   //	1. unlink from version chain
   //	2. rcu-free the out-of-chain versions for rcu callback to reclaim them.
@@ -88,8 +86,6 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
   
   RCU::rcu_quiesce();
 
-  // throw
-  throw transaction_abort_exception(reason);
 }
 
 namespace {
@@ -170,8 +166,8 @@ transaction<Protocol, Traits>::get_txn_counters() const
 }
 
 template <template <typename> class Protocol, typename Traits>
-bool
-transaction<Protocol, Traits>::commit(bool doThrow)
+void
+transaction<Protocol, Traits>::commit()
 {
   xid_context* xc = xid_get_context(xid);
 
@@ -186,14 +182,11 @@ transaction<Protocol, Traits>::commit(bool doThrow)
     xc->state = TXN_COMMITTING;
     break;
   case TXN_CMMTD:
-  case TXN_COMMITTING:  // FIXME: tzwang: correct?
-    INVARIANT(false);
+  case TXN_COMMITTING: 
   case TXN_ABRTD:
-    if (doThrow)
-      throw transaction_abort_exception(reason);
-    return false;
+    INVARIANT(false);
   }
-
+  
   // avoid cross init after goto do_abort
   typename write_set_map::iterator it     = write_set.begin();
   typename write_set_map::iterator it_end = write_set.end();
@@ -202,7 +195,7 @@ transaction<Protocol, Traits>::commit(bool doThrow)
   // get clsn, abort if failed
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
-    goto do_abort;
+      signal_abort(ABORT_REASON_INTERNAL);
 
   log->commit(NULL);
   // change state
@@ -227,36 +220,6 @@ transaction<Protocol, Traits>::commit(bool doThrow)
   RCU::rcu_quiesce();
   // done
   xid_free(xid);
-  return true;
-
-do_abort:
-  VERBOSE(std::cerr << "aborting txn" << std::endl);
-  xid_get_context(xid)->state = TXN_ABRTD;
-
-  log->discard();
-  // rcu-free write-set, set clsn in tuples to invalid_lsn
-  it     = write_set.begin();
-  it_end = write_set.end();
-  for (; it != it_end; ++it) {
-    dbtuple* tuple = it->get_tuple();
-    tuple->overwritten = false;
-    // FIXME: tzwang: add this callback to adjust pointers in version chain
-    //RCU::free_with_fn(tuple, tuple_remove_callback);
-    concurrent_btree* btr = it->get_table();
-
-    // overwritten tuple is already out of chain
-    if(not tuple->overwritten )
-        btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
-
-    // not RCU managed, so just free
-    dbtuple::release_no_rcu(tuple);
-  }
-  
-  RCU::rcu_quiesce();
-  xid_free(xid);
-  if (doThrow)
-    throw transaction_abort_exception(reason);
-  return false;
 }
 
 // FIXME: tzwang: note: we only try once in this function. If it
@@ -350,8 +313,7 @@ transaction<Protocol, Traits>::do_tuple_read(
     // FIXME: tzwang: give better reason here, basically for not-visible
     if (unlikely(stat == dbtuple::READ_FAILED)) {
       const transaction_base::abort_reason r = transaction_base::ABORT_REASON_UNSTABLE_READ;
-      abort_impl(r);
-      throw transaction_abort_exception(r);
+      signal_abort(r);
     }
   }
   INVARIANT(stat == dbtuple::READ_EMPTY ||
@@ -375,8 +337,7 @@ transaction<Protocol, Traits>::do_node_read(
   } else if (it->second.version != v) {
     const transaction_base::abort_reason r =
       transaction_base::ABORT_REASON_NODE_SCAN_READ_VERSION_CHANGED;
-    abort_impl(r);
-    throw transaction_abort_exception(r);
+    signal_abort(r);
   }
 }
 
