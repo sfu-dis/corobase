@@ -273,22 +273,19 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   // do regular search
   typename concurrent_btree::value_type bv = 0;
-  // FIXME: tzwang: this need to return the latest, visible, committed value.
   if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
+    // only version is uncommitted -> cannot overwrite it
     const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
     t.abort_impl(r);
     throw transaction_abort_exception(r);
   }
 
-  // FIXME: tzwang: prepare new tuple
+  // create new version
   const size_t sz =
     v ? writer(dbtuple::TUPLE_WRITER_COMPUTE_NEEDED, v, nullptr, 0) : 0;
-
-  // perf: ~900 tsc/alloc on istc11.csail.mit.edu
   dbtuple * const tuple = dbtuple::alloc_first(sz);
   if (v)
     writer(dbtuple::TUPLE_WRITER_DO_WRITE, v, tuple->get_value_start(), 0);
-
   INVARIANT(tuple);
 
 
@@ -296,12 +293,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   tuple->clsn = t.xid.to_ptr();		// XID state is set
   tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
 
-  // FIXME: tzwang: need object.h APIs here to try CAS with px
-  // Supposedly the API provided should do this:
-  //
-  // update procedure: (insert to chain)
   // After read the latest committed, and holding the version:
-  //
   // if the latest tuple in the chained is dirty then abort
   // else
   //   if the latest tuple in the chain is clean but latter than my ts then abort
