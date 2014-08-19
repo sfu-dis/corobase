@@ -103,22 +103,50 @@ class basic_table {
 	std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
 	{
 		INVARIANT( tuple_vector );
+		
+		int attempts = 0;
+	start_over:
 		object_type* head = tuple_vector->begin(oid);
 		object_type* ptr = head;
 		xid_context *visitor = xid_get_context(xid);
+		INVARIANT(visitor->owner == xid);
 		dbtuple* version;
 
 		version = reinterpret_cast<dbtuple*>(ptr->_data);
-		if( version->is_xid )
+		auto clsn = volatile_read(version->clsn);
+		if( clsn.asi_type() == fat_ptr::ASI_XID )
 		{
+			/* Grab the context for this XID. If we're too slow,
+			   the context might be recycled for a different XID,
+			   perhaps even *while* we are reading the
+			   context. Copy everything we care about and then
+			   (last) check the context's XID for a mismatch that
+			   would indicate an inconsistent read. If this
+			   occurs, just start over---the version we cared
+			   about is guaranteed to have a LSN now.
+			 */
 			//xid tracking
-			xid_context *holder= xid_get_context(version->v_.xid);
-			switch (holder->state)
+			auto holder_xid = XID::from_ptr(clsn);
+			xid_context *holder= xid_get_context(holder_xid);
+			INVARIANT(holder);
+                        auto end = volatile_read(holder->end);
+                        auto state = volatile_read(holder->state);
+			auto owner = volatile_read(holder->owner);
+			holder = NULL; // use cached values instead!
+
+			// context still valid for this XID?
+                        if ( unlikely(owner != holder_xid) ) {
+				ASSERT(attempts < 2);
+				attempts++;
+				goto start_over;
+			}
+			
+			switch (state)
 			{
 				// if committed and newer data, abort. if not, keep traversing
 				case TXN_CMMTD:
 					{
-						if ( holder->end > visitor->begin )		// to prevent version branch( or lost update)
+						if ( end > visitor->begin )		// to prevent version branch( or lost update)
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
 						else
 							goto install;
@@ -131,11 +159,10 @@ class basic_table {
 					// dirty data
 				case TXN_EMBRYO:
 				case TXN_ACTIVE:
-				case TXN_COMMITTING:
 					// TODO. help holder's getting CLSN when it's committing.
 					{
 						// in-place update case ( multiple updates on the same record )
-						if( holder->owner == visitor->owner )
+						if( holder_xid == xid )
 						{
 							ptr->_data = val;
 							return std::make_pair( true, reinterpret_cast<value_type>(version) );
@@ -143,6 +170,8 @@ class basic_table {
 						else
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
 					}
+				case TXN_COMMITTING:
+					// not allowed to write during pre-commit!
 				default:
 					ALWAYS_ASSERT( false );
 			}
@@ -152,10 +181,11 @@ class basic_table {
 		{
 			// make sure this is valid committed data, or aborted data that is not reclaimed yet.
 			// aborted, but not yet reclaimed.
-			if( version->v_.clsn == INVALID_LSN )
+			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+			if( LSN::from_ptr(clsn) == INVALID_LSN )
 				goto install;
 			// newer version. fall back
-			else if ( version->v_.clsn > visitor->begin )
+			else if ( LSN::from_ptr(clsn) > visitor->begin )
 				return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
 			else
 				goto install;
@@ -178,28 +208,52 @@ install:
 		INVARIANT( tuple_vector );
 		ALWAYS_ASSERT( oid );
 		xid_context *visitor= xid_get_context(xid);
+		INVARIANT(visitor->owner == xid);
 
 		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
+		int attempts = 0;
+	start_over:
 		for( object_type* ptr = tuple_vector->begin(oid); ptr; ptr = ptr->_next ) {
 			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->_data);
-
+			auto clsn = volatile_read(version->clsn);
 			// xid tracking & status check
-			if( version->is_xid )
+			if( clsn.asi_type() == fat_ptr::ASI_XID )
 			{
-				xid_context *holder = xid_get_context(version->v_.xid);
+				/* Same as above: grab and verify XID context,
+				   starting over if it has been recycled
+				 */
+				auto holder_xid = XID::from_ptr(clsn);
+				xid_context *holder = xid_get_context(holder_xid);
+				INVARIANT(holder);
 
+				auto state = volatile_read(holder->state);
+				auto end = volatile_read(holder->end);
+				auto owner = volatile_read(holder->owner);
+				holder = NULL; // use cached values instead!
+				
+				// context still valid for this XID?
+				if( unlikely(owner != holder_xid) ) {
+					ASSERT(attempts < 2);
+					attempts++;
+					goto start_over;
+				}
+
+				// dirty data made by me is visible!
+				if( owner == xid )
+					return (value_type)version;
+				
 				// invalid data
-				if( holder->state != TXN_CMMTD)       // only see committed data.
+				if( state != TXN_CMMTD)	   // only see committed data.
 					continue;
 
-				if( holder->end > visitor->begin  			// committed(but invisible) data, 
-						|| holder->end == INVALID_LSN)		// aborted data
+				if( end > visitor->begin  			// committed(but invisible) data, 
+						|| end == INVALID_LSN)		// aborted data
 					continue;
 				return (value_type)version;
 			}
 			else
 			{
-				if( version->v_.clsn > visitor->begin ) 	// invisible
+				if( LSN::from_ptr(clsn) > visitor->begin ) 	// invisible
 					continue;
 				return (value_type)version;
 			}

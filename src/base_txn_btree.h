@@ -291,8 +291,9 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   INVARIANT(tuple);
 
-  tuple->is_xid = true;
-  tuple->v_.xid = t.xid;
+
+  // initialize the version
+  tuple->clsn = t.xid.to_ptr();		// XID state is set
   tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
 
   // FIXME: tzwang: need object.h APIs here to try CAS with px

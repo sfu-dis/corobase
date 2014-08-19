@@ -231,6 +231,7 @@ void xid_free(XID x) {
 xid_context *
 xid_get_context(XID x) {
     auto *ctx = &contexts[x.local()];
+    ASSERT(ctx->owner.local() == x.local());
     THROW_IF(ctx->owner.epoch() < x.epoch()
              or ctx->owner.epoch() >= x.epoch()+3,
              illegal_argument, "Invalid XID");
