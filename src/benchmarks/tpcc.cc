@@ -869,19 +869,18 @@ protected:
     for (uint w = w_start; w <= w_end; w++) {
       const size_t batchsize =
         (db->txn_max_batch_size() == -1) ? NumItems() : db->txn_max_batch_size();
-      const size_t nbatches = (batchsize > NumItems()) ? 1 : (NumItems() / batchsize);
 
       if (pin_cpus)
         PinToWarehouseId(w);
 
-      for (uint b = 0; b < nbatches;) {
+      for(size_t i=0; i < NumItems(); ) {
+        size_t iend = std::min(i+batchsize, NumItems());
         scoped_str_arena s_arena(arena);
         void * const txn = db->new_txn(txn_flags, arena, txn_buf());
         try {
-          const size_t iend = std::min((b + 1) * batchsize + 1, NumItems());
-          for (uint i = (b * batchsize + 1); i <= iend; i++) {
-            const stock::key k(w, i);
-            const stock_data::key k_data(w, i);
+          for (uint j=i+1; j <= iend; j++) {
+            const stock::key k(w, j);
+            const stock_data::key k_data(w, j);
 
             stock::value v;
             v.s_quantity = RandomNumber(r, 10, 100);
@@ -930,6 +929,9 @@ protected:
           if (verbose)
             cerr << "[WARNING] stock loader loading abort" << endl;
         }
+
+        // loop update
+        i = iend;
       }
     }
 
