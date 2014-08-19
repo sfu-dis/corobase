@@ -281,6 +281,11 @@ public:
 	  return table_.fetch_tuple( oid );
   }
 
+  inline void unlink_tuple( oid_type oid, value_type item )
+  {
+	  table_.unlink_tuple( oid, item );
+  }
+
   inline oid_type insert_node( node_base_type* val )
   {
 	  return table_.insert_node( val );

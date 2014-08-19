@@ -83,7 +83,18 @@ public:
 		return volatile_read(_obj_table[oid]);
 	}
 
-	// TODO. delete ( atomic deletion with CAS and pass dummies to RCU? 
+	void unlink( oid_type oid, T item )
+	{
+		// Assuming target is always the first element
+		object_type* target = begin( oid );
+		INVARIANT( oid );
+		INVARIANT( item == target->_data );
+
+		// Atomic change
+		if( not __sync_bool_compare_and_swap( &_obj_table[oid], target, target->_next))
+			ALWAYS_ASSERT( false );			// shouldn't happen
+
+	}
 
 private:
 	std::vector<object_type*> 		_obj_table;

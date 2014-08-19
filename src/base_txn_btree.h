@@ -378,7 +378,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   }
 
   // put to write-set, done.
-  t.write_set.emplace_back(tuple);
+  t.write_set.emplace_back(tuple, &this->underlying_btree);
 }
 
 template <template <typename> class Transaction, typename P>
