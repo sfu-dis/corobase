@@ -1,0 +1,406 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2add880f6000, 0x2ae5082f6000)
+cpu0 owns [0x2add88200000, 0x2addc4200000)
+cpu1 owns [0x2addc4200000, 0x2ade00200000)
+cpu2 owns [0x2ade00200000, 0x2ade3c200000)
+cpu3 owns [0x2ade3c200000, 0x2ade78200000)
+cpu4 owns [0x2ade78200000, 0x2adeb4200000)
+cpu5 owns [0x2adeb4200000, 0x2adef0200000)
+cpu6 owns [0x2adef0200000, 0x2adf2c200000)
+cpu7 owns [0x2adf2c200000, 0x2adf68200000)
+cpu8 owns [0x2adf68200000, 0x2adfa4200000)
+cpu9 owns [0x2adfa4200000, 0x2adfe0200000)
+cpu10 owns [0x2adfe0200000, 0x2ae01c200000)
+cpu11 owns [0x2ae01c200000, 0x2ae058200000)
+cpu12 owns [0x2ae058200000, 0x2ae094200000)
+cpu13 owns [0x2ae094200000, 0x2ae0d0200000)
+cpu14 owns [0x2ae0d0200000, 0x2ae10c200000)
+cpu15 owns [0x2ae10c200000, 0x2ae148200000)
+cpu16 owns [0x2ae148200000, 0x2ae184200000)
+cpu17 owns [0x2ae184200000, 0x2ae1c0200000)
+cpu18 owns [0x2ae1c0200000, 0x2ae1fc200000)
+cpu19 owns [0x2ae1fc200000, 0x2ae238200000)
+cpu20 owns [0x2ae238200000, 0x2ae274200000)
+cpu21 owns [0x2ae274200000, 0x2ae2b0200000)
+cpu22 owns [0x2ae2b0200000, 0x2ae2ec200000)
+cpu23 owns [0x2ae2ec200000, 0x2ae328200000)
+cpu24 owns [0x2ae328200000, 0x2ae364200000)
+cpu25 owns [0x2ae364200000, 0x2ae3a0200000)
+cpu26 owns [0x2ae3a0200000, 0x2ae3dc200000)
+cpu27 owns [0x2ae3dc200000, 0x2ae418200000)
+cpu28 owns [0x2ae418200000, 0x2ae454200000)
+cpu29 owns [0x2ae454200000, 0x2ae490200000)
+cpu30 owns [0x2ae490200000, 0x2ae4cc200000)
+cpu31 owns [0x2ae4cc200000, 0x2ae508200000)
+Database Benchmark:
+  pid: 12011
+settings:
+  par-loading : 0
+  pin-cpus    : 1
+  slow-exit   : 0
+  retry-txns  : 0
+  backoff-txns: 0
+  bench       : tpcc
+  scale       : 32
+  num-cpus    : 48
+  num-threads : 32
+  db-type     : ndb-proto2
+  basedir     : /home/tzwang/mmdb/silo-microbench
+  txn-flags   : 0
+  runtime     : 60
+  var-encode  : yes
+  allocator   : tcmalloc
+  numa-memory : 32212254720
+  logfiles : []
+  assignments : []
+  disable-gc : 0
+  disable-snapshots : 0
+  stats-server-sockfile: 
+system properties:
+  btree_internal_node_size: 264
+  btree_leaf_node_size    : 312
+  tuple_prefetch          : no
+  btree_node_prefetch     : yes
+Will do microbenchmark, set workload_mix to microbench only
+tpcc settings:
+  cross_partition_transactions : 1
+  read_only_snapshots          : 1
+  partition_locks              : 0
+  separate_tree_per_partition  : 0
+  new_order_remote_item_pct    : 1
+  new_order_fast_id_gen        : 0
+  uniform_item_dist            : 0
+  order_status_scan_hack       : 0
+  microbench_static            : 0
+  microbench_random            : 1
+  microbench rows            : 10000
+  microbench wr ratio (%)    : 0
+  microbench wr rows         : 1000
+  workload_mix                 : [0, 0, 0, 0, 0, 0, 0, 100]
+PinToWarehouseId(): coreid=6 pinned to whse=1 (partid=0)
+num batches: 30
+PinToWarehouseId(): coreid=4 pinned to whse=1 (partid=0)
+PinToWarehouseId(): coreid=3 pinned to whse=1 (partid=0)
+PinToWarehouseId(): coreid=5 pinned to whse=1 (partid=0)
+cpu0 starting faulting region (1006632960 bytes / 480 hugepgs)
+[INFO] finished loading warehouse
+[INFO]   * average warehouse record length: 97 bytes
+[INFO] finished loading item
+[INFO]   * average item record length: 84.1739 bytes
+cpu0 finished faulting region in 709.409 ms
+PinToWarehouseId(): coreid=5 pinned to whse=2 (partid=1)
+cpu1 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=2 (partid=1)
+cpu1 finished faulting region in 704.225 ms
+PinToWarehouseId(): coreid=5 pinned to whse=3 (partid=2)
+cpu2 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=6 pinned to whse=3 (partid=2)
+cpu2 finished faulting region in 709.534 ms
+PinToWarehouseId(): coreid=5 pinned to whse=4 (partid=3)
+cpu3 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=4 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=6 pinned to whse=4 (partid=3)
+cpu3 finished faulting region in 720.119 ms
+PinToWarehouseId(): coreid=5 pinned to whse=5 (partid=4)
+cpu4 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=6 pinned to whse=5 (partid=4)
+cpu4 finished faulting region in 701.363 ms
+PinToWarehouseId(): coreid=5 pinned to whse=6 (partid=5)
+cpu5 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=6 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=4 pinned to whse=5 (partid=4)
+cpu5 finished faulting region in 694.896 ms
+PinToWarehouseId(): coreid=5 pinned to whse=7 (partid=6)
+cpu6 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=7 (partid=6)
+PinToWarehouseId(): coreid=4 pinned to whse=6 (partid=5)
+cpu6 finished faulting region in 704.067 ms
+PinToWarehouseId(): coreid=5 pinned to whse=8 (partid=7)
+cpu7 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=6 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=4 pinned to whse=7 (partid=6)
+cpu7 finished faulting region in 708.16 ms
+PinToWarehouseId(): coreid=5 pinned to whse=9 (partid=8)
+cpu8 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=9 (partid=8)
+cpu8 finished faulting region in 700.589 ms
+PinToWarehouseId(): coreid=5 pinned to whse=10 (partid=9)
+cpu9 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=6 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=3 pinned to whse=5 (partid=4)
+cpu9 finished faulting region in 683.558 ms
+PinToWarehouseId(): coreid=5 pinned to whse=11 (partid=10)
+cpu10 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=9 (partid=8)
+PinToWarehouseId(): coreid=6 pinned to whse=11 (partid=10)
+cpu10 finished faulting region in 694.523 ms
+PinToWarehouseId(): coreid=5 pinned to whse=12 (partid=11)
+cpu11 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=12 (partid=11)
+PinToWarehouseId(): coreid=4 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=3 pinned to whse=6 (partid=5)
+cpu11 finished faulting region in 726.874 ms
+PinToWarehouseId(): coreid=5 pinned to whse=13 (partid=12)
+cpu12 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=13 (partid=12)
+PinToWarehouseId(): coreid=4 pinned to whse=11 (partid=10)
+cpu12 finished faulting region in 692.403 ms
+PinToWarehouseId(): coreid=5 pinned to whse=14 (partid=13)
+cpu13 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=14 (partid=13)
+cpu13 finished faulting region in 681.849 ms
+PinToWarehouseId(): coreid=5 pinned to whse=15 (partid=14)
+PinToWarehouseId(): coreid=3 pinned to whse=7 (partid=6)
+cpu14 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=12 (partid=11)
+PinToWarehouseId(): coreid=6 pinned to whse=15 (partid=14)
+cpu14 finished faulting region in 691.04 ms
+PinToWarehouseId(): coreid=5 pinned to whse=16 (partid=15)
+cpu15 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=13 (partid=12)
+PinToWarehouseId(): coreid=6 pinned to whse=16 (partid=15)
+cpu15 finished faulting region in 691.724 ms
+PinToWarehouseId(): coreid=5 pinned to whse=17 (partid=16)
+cpu16 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=4 pinned to whse=14 (partid=13)
+PinToWarehouseId(): coreid=6 pinned to whse=17 (partid=16)
+cpu16 finished faulting region in 680.665 ms
+PinToWarehouseId(): coreid=5 pinned to whse=18 (partid=17)
+cpu17 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=18 (partid=17)
+PinToWarehouseId(): coreid=4 pinned to whse=15 (partid=14)
+cpu17 finished faulting region in 680.136 ms
+PinToWarehouseId(): coreid=5 pinned to whse=19 (partid=18)
+cpu18 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=9 (partid=8)
+PinToWarehouseId(): coreid=6 pinned to whse=19 (partid=18)
+PinToWarehouseId(): coreid=4 pinned to whse=16 (partid=15)
+cpu18 finished faulting region in 684.604 ms
+PinToWarehouseId(): coreid=5 pinned to whse=20 (partid=19)
+cpu19 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=20 (partid=19)
+cpu19 finished faulting region in 785.508 ms
+PinToWarehouseId(): coreid=5 pinned to whse=21 (partid=20)
+cpu20 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=17 (partid=16)
+PinToWarehouseId(): coreid=3 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=6 pinned to whse=21 (partid=20)
+cpu20 finished faulting region in 700.773 ms
+PinToWarehouseId(): coreid=5 pinned to whse=22 (partid=21)
+cpu21 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=18 (partid=17)
+PinToWarehouseId(): coreid=6 pinned to whse=22 (partid=21)
+cpu21 finished faulting region in 847.259 ms
+PinToWarehouseId(): coreid=5 pinned to whse=23 (partid=22)
+cpu22 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=11 (partid=10)
+PinToWarehouseId(): coreid=4 pinned to whse=19 (partid=18)
+PinToWarehouseId(): coreid=6 pinned to whse=23 (partid=22)
+cpu22 finished faulting region in 843.248 ms
+PinToWarehouseId(): coreid=5 pinned to whse=24 (partid=23)
+cpu23 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=24 (partid=23)
+PinToWarehouseId(): coreid=4 pinned to whse=20 (partid=19)
+cpu23 finished faulting region in 814.667 ms
+PinToWarehouseId(): coreid=5 pinned to whse=25 (partid=24)
+cpu24 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=12 (partid=11)
+PinToWarehouseId(): coreid=6 pinned to whse=25 (partid=24)
+PinToWarehouseId(): coreid=4 pinned to whse=21 (partid=20)
+cpu24 finished faulting region in 774.28 ms
+PinToWarehouseId(): coreid=5 pinned to whse=26 (partid=25)
+cpu25 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=26 (partid=25)
+PinToWarehouseId(): coreid=4 pinned to whse=22 (partid=21)
+cpu25 finished faulting region in 686.49 ms
+PinToWarehouseId(): coreid=5 pinned to whse=27 (partid=26)
+cpu26 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=13 (partid=12)
+PinToWarehouseId(): coreid=6 pinned to whse=27 (partid=26)
+PinToWarehouseId(): coreid=4 pinned to whse=23 (partid=22)
+cpu26 finished faulting region in 684.927 ms
+PinToWarehouseId(): coreid=5 pinned to whse=28 (partid=27)
+cpu27 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=28 (partid=27)
+PinToWarehouseId(): coreid=4 pinned to whse=24 (partid=23)
+cpu27 finished faulting region in 794.341 ms
+PinToWarehouseId(): coreid=5 pinned to whse=29 (partid=28)
+cpu28 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=3 pinned to whse=14 (partid=13)
+PinToWarehouseId(): coreid=6 pinned to whse=29 (partid=28)
+cpu28 finished faulting region in 778.004 ms
+PinToWarehouseId(): coreid=4 pinned to whse=25 (partid=24)
+PinToWarehouseId(): coreid=5 pinned to whse=30 (partid=29)
+cpu29 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=30 (partid=29)
+cpu29 finished faulting region in 691.033 ms
+PinToWarehouseId(): coreid=5 pinned to whse=31 (partid=30)
+cpu30 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=26 (partid=25)
+PinToWarehouseId(): coreid=3 pinned to whse=15 (partid=14)
+PinToWarehouseId(): coreid=6 pinned to whse=31 (partid=30)
+cpu30 finished faulting region in 688.476 ms
+PinToWarehouseId(): coreid=5 pinned to whse=32 (partid=31)
+cpu31 starting faulting region (1006632960 bytes / 480 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=27 (partid=26)
+PinToWarehouseId(): coreid=6 pinned to whse=32 (partid=31)
+cpu31 finished faulting region in 794.297 ms
+[INFO] finished loading district
+[INFO]   * average district record length: 99 bytes
+PinToWarehouseId(): coreid=3 pinned to whse=16 (partid=15)
+PinToWarehouseId(): coreid=4 pinned to whse=28 (partid=27)
+[INFO] finished loading order
+[INFO]   * average order_line record length: 11.3049 bytes
+[INFO]   * average oorder record length: 7.9618 bytes
+[INFO]   * average new_order record length: 12 bytes
+PinToWarehouseId(): coreid=4 pinned to whse=29 (partid=28)
+PinToWarehouseId(): coreid=3 pinned to whse=17 (partid=16)
+PinToWarehouseId(): coreid=4 pinned to whse=30 (partid=29)
+PinToWarehouseId(): coreid=4 pinned to whse=31 (partid=30)
+PinToWarehouseId(): coreid=3 pinned to whse=18 (partid=17)
+PinToWarehouseId(): coreid=4 pinned to whse=32 (partid=31)
+[INFO] finished loading customer
+[INFO]   * average customer record length: 656.991 bytes 
+PinToWarehouseId(): coreid=3 pinned to whse=19 (partid=18)
+PinToWarehouseId(): coreid=3 pinned to whse=20 (partid=19)
+PinToWarehouseId(): coreid=3 pinned to whse=21 (partid=20)
+PinToWarehouseId(): coreid=3 pinned to whse=22 (partid=21)
+PinToWarehouseId(): coreid=3 pinned to whse=23 (partid=22)
+PinToWarehouseId(): coreid=3 pinned to whse=24 (partid=23)
+PinToWarehouseId(): coreid=3 pinned to whse=25 (partid=24)
+PinToWarehouseId(): coreid=3 pinned to whse=26 (partid=25)
+PinToWarehouseId(): coreid=3 pinned to whse=27 (partid=26)
+PinToWarehouseId(): coreid=3 pinned to whse=28 (partid=27)
+PinToWarehouseId(): coreid=3 pinned to whse=29 (partid=28)
+PinToWarehouseId(): coreid=3 pinned to whse=30 (partid=29)
+PinToWarehouseId(): coreid=3 pinned to whse=31 (partid=30)
+PinToWarehouseId(): coreid=3 pinned to whse=32 (partid=31)
+[INFO] finished loading stock
+[INFO]   * average stock record length: 8 bytes
+timed region dataloading took 48527.8 ms
+DB size: 31484.4 MB
+wait_an_epoch(): consistent reads happening in e-1: 14
+[0, 0, 0] txns persisted in loading phase
+table customer_0 size 960000
+table customer_name_idx_0 size 960000
+table district_0 size 320
+table history_0 size 960000
+table item_0 size 100000
+table new_order_0 size 288000
+table oorder_0 size 960000
+table oorder_c_id_idx_0 size 960000
+table order_line_0 size 9602444
+table stock_0 size 3200000
+table stock_data_0 size 3200000
+table warehouse_0 size 32
+starting benchmark...
+tpcc: worker id 48 => warehouses [1, 2)
+tpcc: worker id 49 => warehouses [2, 3)
+tpcc: worker id 50 => warehouses [3, 4)
+tpcc: worker id 51 => warehouses [4, 5)
+tpcc: worker id 52 => warehouses [5, 6)
+tpcc: worker id 53 => warehouses [6, 7)
+tpcc: worker id 54 => warehouses [7, 8)
+tpcc: worker id 55 => warehouses [8, 9)
+tpcc: worker id 56 => warehouses [9, 10)
+tpcc: worker id 57 => warehouses [10, 11)
+tpcc: worker id 58 => warehouses [11, 12)
+tpcc: worker id 59 => warehouses [12, 13)
+tpcc: worker id 60 => warehouses [13, 14)
+tpcc: worker id 61 => warehouses [14, 15)
+tpcc: worker id 62 => warehouses [15, 16)
+tpcc: worker id 63 => warehouses [16, 17)
+tpcc: worker id 64 => warehouses [17, 18)
+tpcc: worker id 65 => warehouses [18, 19)
+tpcc: worker id 66 => warehouses [19, 20)
+tpcc: worker id 67 => warehouses [20, 21)
+tpcc: worker id 68 => warehouses [21, 22)
+tpcc: worker id 69 => warehouses [22, 23)
+tpcc: worker id 70 => warehouses [23, 24)
+tpcc: worker id 71 => warehouses [24, 25)
+tpcc: worker id 72 => warehouses [25, 26)
+tpcc: worker id 73 => warehouses [26, 27)
+tpcc: worker id 74 => warehouses [27, 28)
+tpcc: worker id 75 => warehouses [28, 29)
+tpcc: worker id 76 => warehouses [29, 30)
+tpcc: worker id 77 => warehouses [30, 31)
+tpcc: worker id 78 => warehouses [31, 32)
+tpcc: worker id 79 => warehouses [32, 33)
+--- table statistics ---
+table customer_0 size 960000 (+0 records)
+table customer_name_idx_0 size 960000 (+0 records)
+table district_0 size 320 (+0 records)
+table history_0 size 960000 (+0 records)
+table item_0 size 100000 (+0 records)
+table new_order_0 size 288000 (+0 records)
+table oorder_0 size 960000 (+0 records)
+table oorder_c_id_idx_0 size 960000 (+0 records)
+table order_line_0 size 9602444 (+0 records)
+table stock_0 size 3210720 (+10720 records)
+table stock_data_0 size 3200000 (+0 records)
+table warehouse_0 size 32 (+0 records)
+--- benchmark statistics ---
+runtime: 60.0612 sec
+memory delta: 98.1641 MB
+memory delta rate: 1.6344 MB/sec
+logical memory delta: 0 MB
+logical memory delta rate: 0 MB/sec
+agg_nosync_throughput: 764.536 ops/sec
+avg_nosync_per_core_throughput: 23.8918 ops/sec/core
+agg_throughput: 764.536 ops/sec
+avg_per_core_throughput: 23.8918 ops/sec/core
+agg_persist_throughput: 764.536 ops/sec
+avg_per_core_persist_throughput: 23.8918 ops/sec/core
+avg_latency: 39.7421 ms
+avg_persist_latency: 0 ms
+agg_abort_rate: 71.5603 aborts/sec
+avg_per_core_abort_rate: 2.23626 aborts/sec/core
+txn breakdown: [[MicroBenchRandom, 50217]]
+--- system counters (for benchmark) ---
+--- perf counters (if enabled, for benchmark) ---
+--- allocator stats ---
+[allocator] ncpus=32
+[allocator] cpu=0 fully_faulted?=1 remaining=912261120 bytes
+[allocator] cpu=1 fully_faulted?=1 remaining=905969664 bytes
+[allocator] cpu=2 fully_faulted?=1 remaining=916455424 bytes
+[allocator] cpu=3 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=4 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=5 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=6 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=7 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=8 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=9 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=10 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=11 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=12 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=13 fully_faulted?=1 remaining=912261120 bytes
+[allocator] cpu=14 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=15 fully_faulted?=1 remaining=897581056 bytes
+[allocator] cpu=16 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=17 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=18 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=19 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=20 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=21 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=22 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=23 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=24 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=25 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=26 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=27 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=28 fully_faulted?=1 remaining=912261120 bytes
+[allocator] cpu=29 fully_faulted?=1 remaining=918552576 bytes
+[allocator] cpu=30 fully_faulted?=1 remaining=905969664 bytes
+[allocator] cpu=31 fully_faulted?=1 remaining=903872512 bytes
+---------------------------------------
+764.536 764.536 39.7421 0 71.5603
+45919 commits, 4298 aborts
