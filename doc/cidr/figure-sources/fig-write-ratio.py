@@ -14,7 +14,7 @@ from pylab import *
 data100 = MyData("../silo-microbench-results/rand-100K.csv", header_str="Reads", delimiter=' ');
 data200 = MyData("../silo-microbench-results/rand-200K.csv", header_str="Reads", delimiter=' ');
 data300 = MyData("../silo-microbench-results/rand-300K.csv", header_str="Reads", delimiter=' ');
-dataTPCC = MyData("../silo-microbench-results/silo-tpcc.csv", header_str="sf", delimiter=' ');
+dataTPCC = MyData("../silo-microbench-results/silo-tpcc.csv", header_str="LOG", delimiter=' ');
 
 #########################################
 # START OF FIGURE
@@ -23,7 +23,7 @@ dataTPCC = MyData("../silo-microbench-results/silo-tpcc.csv", header_str="sf", d
 ## 1-column width is ~3.4
 ## 2-column (label wide) is ~6.8
 #rcParams['figure.figsize'] = 3.35, 2.2
-rcParams['figure.figsize'] = 6.8, 1.9
+rcParams['figure.figsize'] = 7.3, 1.9
 
 # font size
 matplotlib.rcParams.update({'font.size': 9})
@@ -35,7 +35,7 @@ writes300 = (3, 30, 300, 3000, 30000)
 #writeratio = (0.001, 0.01, 0.1, 1, 10)
 writeratio = (0.00001, 0.0001, 0.001, 0.01, 0.1)
 #attrs = ('c^:', 'rd-', 'yo--', 'gs-.', 'b<-', 'c>-')
-attrs = ('b^-', 'rd-', 'yo--', 'gs-.', 'b<-')
+attrs = ('b^-', 'rd-', 'yo--', 'gs-.', 'b<-', 'b^:')
 
 def drawLinesPayload(ax, ymax=1.5, showLegend=False):
     ## Prepare commits/aborts figure
@@ -99,21 +99,36 @@ def drawTPCC(ax, ymax=650, showLegend=True):
     ## Prepare commits/aborts figure
     xvalues=[32, 16, 8, 4]
     plots=[]
-    plotsLabel=['Commits/s','Aborts/s']
+    plotsLabel=['Commits','Aborts', 'Commits no log','Aborts no log']
 
-    # Read TPS
+    # Read TPS w. logging
     Xs, Ys = \
-        dataTPCC.filterSelect(xcol='sf', ycol='tps', xvalues=xvalues)
+        dataTPCC.filterSelect(xcol='sf', ycol='tps', xvalues=xvalues, include={'LOG':1})
     NormYs = [Y/1000 for Y in Ys]    
     print "Silo tps", Xs, Ys, NormYs
-    plots.append( ax.plot(xvalues, NormYs, attrs[0])[0] )
+    plots.append( ax.plot(xvalues, NormYs, 'b^-')[0] )
 
-    # Read Aborts
+    # Read Aborts w. logging
     Xs, Ys = \
-        dataTPCC.filterSelect(xcol='sf', ycol='abt/s', xvalues=xvalues)
+        dataTPCC.filterSelect(xcol='sf', ycol='abt/s', xvalues=xvalues, include={'LOG':1})
     NormYs = [Y/1000 for Y in Ys]    
     print "Silo abt", Xs, Ys, NormYs
-    plots.append( ax.plot(xvalues, NormYs, attrs[1])[0] )
+    plots.append( ax.plot(xvalues, NormYs, 'rd-')[0] )
+
+    # Read TPS w/o logging
+    Xs, Ys = \
+        dataTPCC.filterSelect(xcol='sf', ycol='tps', xvalues=xvalues, include={'LOG':0})
+    NormYs = [Y/1000 for Y in Ys]    
+    print "Silo w/o log tps", Xs, Ys, NormYs
+    plots.append( ax.plot(xvalues, NormYs, 'b^:')[0] )
+
+    # Read Aborts w. logging
+    Xs, Ys = \
+        dataTPCC.filterSelect(xcol='sf', ycol='abt/s', xvalues=xvalues, include={'LOG':0})
+    NormYs = [Y/1000 for Y in Ys]    
+    print "Silo w/o logging abt", Xs, Ys, NormYs
+    plots.append( ax.plot(xvalues, NormYs, 'rd:')[0] )
+
  
     #ax.set_xscale('log')
     ax.set_xlim(32, 4)
@@ -134,7 +149,8 @@ def drawTPCC(ax, ymax=650, showLegend=True):
     if showLegend:
         # Legend locations: [upper lower center] [left right center]  or best  or center
         #algosDisp = [algo.upper() for algo in algos]
-        ax.legend(plots, plotsLabel, 'center left', fontsize=8)
+        # , bbox_to_anchor=(1, 0.5))
+        ax.legend(plots, plotsLabel, fontsize=7,loc='center left')
         leg = ax.get_legend()
         leg.set_frame_on(False)
 
@@ -142,8 +158,8 @@ def drawTPCC(ax, ymax=650, showLegend=True):
 
 
 ## Two plots not sharing the Y-axis
-fig, (axTPCC, ax) = plt.subplots(1, 2, sharey=False)
-fig.subplots_adjust(left=0.15, bottom=0.22, right=0.9, top=0.87, wspace=0.5)
+fig, (ax, axTPCC) = plt.subplots(1, 2, sharey=False)
+fig.subplots_adjust(left=0.1, bottom=0.2, right=0.9, top=0.87, wspace=0.7)
 # no timestamp
 # fig.suptitle('Plot '+sys.argv[0]+' '+str(datetime.datetime.now()), fontsize=8)
 

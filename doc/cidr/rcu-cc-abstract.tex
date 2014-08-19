@@ -4,11 +4,11 @@
 
 The emergence of systems with large main memories and massively parallel processors has triggered a resurgence of new high-performance transaction processing systems. 
 Many of these systems adopt lightweight optimistic concurrency control schemes that are suitable only for a small fraction of transactional workloads.
-We examine existing systems and argue that---for better or for worse---it is their system architecture that largely dictates the choice of concurrency control they employ;
-and it is quite difficult, if not impossible, to adopt a different concurrency control scheme without significant changes to the rest of the system. 
-Their architecture also determines how recovery is ensured and how the physical conflicts between concurrent threads is dealt.  
+We examine existing systems and argue that---for better or for worse---it is their system architecture that largely dictates the choice of concurrency control they employ.
+Therefore, it is quite difficult, if not impossible, to adopt a different concurrency control scheme without significant changes to the rest of the system. 
+The architecture also largely determines how the physical conflicts between concurrent threads is dealt, and how recovery is achieved.
 
-We argue that system designers should build transaction processing systems from the ground up having three important goal in their mind: provide flexible and powerful concurrency control the logical interactions between transactions, address the physical interactions between threads, and have a clear recovery methodology.  
+We argue that transaction processing systems should be designed from the ground up with four basic requirements: to not heavily rely on partitioning; to provide flexible and powerful concurrency control the logical interactions between transactions; to address the physical interactions between threads in a scalable way; and to have a clear recovery methodology.  
 We report on some early progress in designing a system from the ground up to support the requirements we lay out, and show how the resulting architecture does not necessarily sacrifice performance in other areas.
 
 \end{abstract}

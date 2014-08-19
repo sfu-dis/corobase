@@ -9,6 +9,7 @@ Serializable snapshot isolation, for example as this is implemented in Postgres 
 The indirection map, which is central to RIA's design, is a well-known technique, for example presented in \cite{SadoghiRCB13}.
 
 With the continuous increase in size of main memories and decrease of their cost as well as the emergence of multi-core and multi-socket hardware, there has been a resurgence of research in the area of in-memory transaction processing systems.  
+To deal with logical conflicts between transactions, many of these systems adopt lightweight optimistic concurrency control schemes that are suitable only for a small fraction of transactional workloads.
 The designs can be categorized in three categories: non-partitioning- and partitioning-based systems and clustered solutions. 
 
 %% \ippo{Non-partitioning}
