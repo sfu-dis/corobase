@@ -183,7 +183,11 @@ transaction<Protocol, Traits>::commit(bool doThrow)
   if (xc->end == INVALID_LSN)
     goto do_abort;
 
-  // install clsn to tuples
+  log->commit(NULL);
+  // change state
+  volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
+
+  // post-commit cleanup: install clsn to tuples
   // (traverse write-tuple)
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
@@ -197,10 +201,6 @@ transaction<Protocol, Traits>::commit(bool doThrow)
       //RCU::free_with_fn(tuple, tuple_remove_callback);
     }
   }
-
-  log->commit(NULL);
-  // change state
-  xid_get_context(xid)->state = TXN_CMMTD;
 
   // done
   xid_free(xid);
