@@ -227,9 +227,21 @@ struct LSN {
         uintptr_t flags = segnum << fat_ptr::ASI_START_BIT;
         return (LSN) { (val << fat_ptr::VALUE_START_BIT) | flags | size_code };
     };
+
+    static
+    LSN from_ptr(fat_ptr const &p) {
+        THROW_IF(p.asi_type() != fat_ptr::ASI_LOG
+                 and p.asi_type() != fat_ptr::ASI_EXT,
+                 illegal_argument,
+                 "Attempt to convert non-LSN fat_ptr to LSN");
+        return LSN{p._ptr};
+    }
     
     uint64_t _val;
 
+    fat_ptr to_log_ptr() const { return fat_ptr{_val | fat_ptr::ASI_LOG_FLAG}; }
+    fat_ptr to_ext_ptr() const { return fat_ptr{_val | fat_ptr::ASI_EXT_FLAG}; }
+    
     uintptr_t offset() const { return _val >> fat_ptr::VALUE_START_BIT; }
     uint16_t flags() const { return _val & fat_ptr::ASI_FLAG_MASK; }
     uint32_t segment() const { return (_val >> fat_ptr::ASI_START_BIT) & fat_ptr::ASI_SEGMENT_MASK; }
@@ -283,7 +295,16 @@ struct XID {
         return XID{x};
     }
 
+    static
+    XID from_ptr(fat_ptr const &p) {
+        THROW_IF(p.asi_type() != fat_ptr::ASI_XID, illegal_argument,
+                 "Attempt to convert non-XID fat_ptr to XID");
+        return XID{p._ptr};
+    }
+
     uint64_t _val;
+
+    fat_ptr to_ptr() const { return fat_ptr{_val | INVALID_SIZE_CODE}; }
     uint32_t epoch() const { return _val >> 32; }
     uint16_t local() const { return _val >> 16; }
     uint16_t flags() const { return _val & fat_ptr::FLAG_MASK; }
