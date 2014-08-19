@@ -61,14 +61,36 @@ transaction<Protocol, Traits>::abort_impl(abort_reason reason)
   case TXN_COMMITTING:
 	ALWAYS_ASSERT(false);
   }
-  xid_get_context(xid)->state = TXN_ABRTD;
-  xid_free(xid);
-  this->reason = reason;
 
-  // FIXME: tzwang: discard log - very important to really release memory
-  // But is this everything we need?
+  // atomic state change. after this, write-sets are invisible.
+  volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
+
+  // write-set uninstall
+  //	1. unlink from version chain
+  //	2. rcu-free the out-of-chain versions for rcu callback to reclaim them.
+  typename write_set_map::iterator it     = write_set.begin();
+  typename write_set_map::iterator it_end = write_set.end();
+  for (; it != it_end; ++it) {
+    dbtuple* tuple = it->get_tuple();
+	concurrent_btree* btr = it->get_table();
+
+	// overwritten tuple is already out of chain
+	if( !tuple->overwritten )
+		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
+
+	// TODO. rcu-free
+    //RCU::free_with_fn(tuple, tuple_remove_callback);
+  }
+
+  // log discard
   log->pre_commit();
   log->discard();
+
+  // now. safe to free XID
+  xid_free(xid);
+
+  // throw
+  throw transaction_abort_exception(reason);
 }
 
 namespace {
@@ -209,7 +231,6 @@ transaction<Protocol, Traits>::commit(bool doThrow)
 do_abort:
   VERBOSE(std::cerr << "aborting txn" << std::endl);
   xid_get_context(xid)->state = TXN_ABRTD;
-  xid_free(xid);
 
   log->discard();
   // rcu-free write-set, set clsn in tuples to invalid_lsn
@@ -220,8 +241,17 @@ do_abort:
     tuple->overwritten = false;
     // FIXME: tzwang: add this callback to adjust pointers in version chain
     //RCU::free_with_fn(tuple, tuple_remove_callback);
-  }
+    concurrent_btree* btr = it->get_table();
 
+    // overwritten tuple is already out of chain
+    if(not tuple->overwritten )
+        btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
+
+    // TODO. rcu-free
+    //RCU::free_with_fn(tuple, tuple_remove_callback);
+  }
+  
+  xid_free(xid);
   if (doThrow)
     throw transaction_abort_exception(reason);
   return false;
@@ -277,7 +307,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   // update write_set
   // FIXME: tzwang: so the caller shouldn't do this again if we returned true here.
   //write_set.emplace_back(tuple, key, value, writer, &btr, true);
-  write_set.emplace_back(tuple);
+  write_set.emplace_back(tuple, &btr);
 
   // update node #s
   INVARIANT(insert_info.node);

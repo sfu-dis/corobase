@@ -282,6 +282,13 @@ install:
 		else
 			return NULL;
 	}
+
+	inline void unlink_tuple( oid_type oid, value_type item )
+	{
+		INVARIANT( tuple_vector );
+		INVARIANT( oid );
+		return tuple_vector->unlink( oid, item );
+	}
 #endif
 
   private:
