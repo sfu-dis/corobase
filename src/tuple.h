@@ -502,7 +502,7 @@ public:
 }
 #if !defined(TUPLE_CHECK_KEY) && \
     !defined(CHECK_INVARIANTS)
-PACKED
+//PACKED
 #endif
 ;
 
