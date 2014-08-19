@@ -14,6 +14,7 @@ from pylab import *
 data100 = MyData("../silo-microbench-results/rand-100K.csv", header_str="Reads", delimiter=' ');
 data200 = MyData("../silo-microbench-results/rand-200K.csv", header_str="Reads", delimiter=' ');
 data300 = MyData("../silo-microbench-results/rand-300K.csv", header_str="Reads", delimiter=' ');
+dataTPCC = MyData("../silo-microbench-results/silo-tpcc.csv", header_str="sf", delimiter=' ');
 
 #########################################
 # START OF FIGURE
@@ -22,7 +23,7 @@ data300 = MyData("../silo-microbench-results/rand-300K.csv", header_str="Reads",
 ## 1-column width is ~3.4
 ## 2-column (label wide) is ~6.8
 #rcParams['figure.figsize'] = 3.35, 2.2
-rcParams['figure.figsize'] = 3, 1.9
+rcParams['figure.figsize'] = 6.8, 1.9
 
 # font size
 matplotlib.rcParams.update({'font.size': 9})
@@ -93,11 +94,61 @@ def drawLinesPayload(ax, ymax=1.5, showLegend=False):
 
     return plots
 
-## Two plots sharing the Y-axis
-fig, (ax) = plt.subplots(1, 1, sharey=True)
-fig.subplots_adjust(left=0.15, bottom=0.22, right=0.9, top=0.87, wspace=0.4)
+
+def drawTPCC(ax, ymax=650, showLegend=True):
+    ## Prepare commits/aborts figure
+    xvalues=[32, 16, 8, 4]
+    plots=[]
+    plotsLabel=['Commits/s','Aborts/s']
+
+    # Read TPS
+    Xs, Ys = \
+        dataTPCC.filterSelect(xcol='sf', ycol='tps', xvalues=xvalues)
+    NormYs = [Y/1000 for Y in Ys]    
+    print "Silo tps", Xs, Ys, NormYs
+    plots.append( ax.plot(xvalues, NormYs, attrs[0])[0] )
+
+    # Read Aborts
+    Xs, Ys = \
+        dataTPCC.filterSelect(xcol='sf', ycol='abt/s', xvalues=xvalues)
+    NormYs = [Y/1000 for Y in Ys]    
+    print "Silo abt", Xs, Ys, NormYs
+    plots.append( ax.plot(xvalues, NormYs, attrs[1])[0] )
+ 
+    #ax.set_xscale('log')
+    ax.set_xlim(32, 4)
+    ax.set_xticks(xvalues, minor=False)
+
+    # If shared axis then get_ylim not avail
+    #ax.set_ylim(0, ax.get_ylim()[1]*1.1) # Add pad above for appearance
+    ax.set_ylim(0, ymax)
+    # Print ratio in the title
+    sTitle = "TPC-C w. 32 clients"
+    ax.set_title(sTitle, fontsize=9)
+    ax.set_xlabel('# Warehouses')
+    for tick in ax.xaxis.get_major_ticks():
+        tick.label.set_fontsize(9)
+    for tick in ax.yaxis.get_major_ticks():
+        tick.label.set_fontsize(9)
+
+    if showLegend:
+        # Legend locations: [upper lower center] [left right center]  or best  or center
+        #algosDisp = [algo.upper() for algo in algos]
+        ax.legend(plots, plotsLabel, 'center left', fontsize=8)
+        leg = ax.get_legend()
+        leg.set_frame_on(False)
+
+    return plots
+
+
+## Two plots not sharing the Y-axis
+fig, (axTPCC, ax) = plt.subplots(1, 2, sharey=False)
+fig.subplots_adjust(left=0.15, bottom=0.22, right=0.9, top=0.87, wspace=0.5)
 # no timestamp
 # fig.suptitle('Plot '+sys.argv[0]+' '+str(datetime.datetime.now()), fontsize=8)
+
+plotsTPCC = drawTPCC(axTPCC, showLegend=True)
+axTPCC.set_ylabel('Transaction rate (KTps)', fontsize=9)
 
 plotsNorm = drawLinesPayload(ax, showLegend=True)
 ax.set_ylabel('Norm. performance', fontsize=9)

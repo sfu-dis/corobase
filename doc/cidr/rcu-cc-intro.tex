@@ -5,7 +5,10 @@
 
 \ippo{Some points we want to make in addition to those below: (a) We prefer non-partitioning-based solutions because the easy to partition data would have already been running on a separate set of physical nodes, and there are systems and recent research that show excellent scaling on easy to partition workloads, e.g.} \cite{Corbett+12,BailisFHGS14,ThomsonA10}. 
 
-\labeledfigure{fig-write-ratio}{Normalized throughput of a memory-efficient OLTP engine with lightweight concurrency control mechanism, as the ratio of writes/reads increases for different transaction footprints.}
+To deal with logical conflicts between transactions, many of these systems adopt lightweight optimistic concurrency control schemes that are suitable only for a small fraction of transactional workloads.
+
+
+\labeledfigurewide{fig-write-ratio}{Normalized throughput of a memory-efficient OLTP engine with lightweight concurrency control mechanism, as the ratio of writes/reads increases for different transaction footprints.}
 
 In \figref{fig-write-ratio} we demonstrate how the performance of an OLTP engine with lightweight concurrency control can drop.
 
