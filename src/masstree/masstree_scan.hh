@@ -371,8 +371,10 @@ int basic_table<P>::scan(H helper,
 #ifdef HACK_SILO
 		value_type v;
 		v = fetch_version((oid_type)(entry.value()), xid);
-	    if (!scanner.visit_value(ka, v, ti))
-			goto done;
+		if (v) {
+			if (!scanner.visit_value(ka, v, ti))
+				goto done;
+		}
 #else
 	    if (!scanner.visit_value(ka, entry.value(), ti))
 			goto done;
