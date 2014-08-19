@@ -104,7 +104,7 @@ else
 endif
 
 TOP     := $(shell echo $${PWD-`pwd`})
-LDFLAGS := -lpthread -lnuma -lrt
+LDFLAGS := -lpthread -lnuma -lrt -static-libstdc++
 #ifeq ($(DEBUG_S),1)
 #LDFLAGS += -lasan
 #endif
