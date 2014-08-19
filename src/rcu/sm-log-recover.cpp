@@ -213,9 +213,13 @@ sm_log_recover_mgr::load_ext_pointer(fat_ptr ext_ptr)
     fat_ptr p = fat_ptr::make(ext_ptr.offset(), sz, flags);
     ASSERT(decode_size(sz) == 1);
     static_assert(sizeof(fat_ptr) <= DEFAULT_ALIGNMENT, "Buffer size too small!");
-    char LOG_ALIGN buf[DEFAULT_ALIGNMENT];
+    union LOG_ALIGN {
+        char buf[DEFAULT_ALIGNMENT];
+        fat_ptr rval;
+    };
+    
     load_object(buf, sizeof(buf), p);
-    return *(fat_ptr*) buf;
+    return rval;
 }
 
 
