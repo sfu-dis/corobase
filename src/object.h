@@ -80,7 +80,7 @@ public:
 
 	inline object_type* begin( oid_type oid )
 	{
-		return _obj_table[oid];
+		return volatile_read(_obj_table[oid]);
 	}
 
 	// TODO. delete ( atomic deletion with CAS and pass dummies to RCU? 
