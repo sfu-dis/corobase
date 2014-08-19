@@ -188,11 +188,10 @@ transaction<Protocol, Traits>::commit(bool doThrow)
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
     dbtuple* tuple = it->get_tuple();
-    if (tuple->overwritten) {
-      tuple->v_.clsn = xc->end;
-      tuple->is_xid = false;  // must be the last change
-      // todo: insert to log
-    }
+    if (not tuple->overwritten) {
+      tuple->clsn = xc->end.to_log_ptr();
+      INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+    } 
     else {
       // FIXME: tzwang: add this callback to adjust pointers in version chain
       //RCU::free_with_fn(tuple, tuple_remove_callback);
@@ -219,8 +218,6 @@ do_abort:
   for (; it != it_end; ++it) {
     dbtuple* tuple = it->get_tuple();
     tuple->overwritten = false;
-    tuple->v_.clsn = INVALID_LSN;
-    tuple->is_xid = false;  // must be the last change
     // FIXME: tzwang: add this callback to adjust pointers in version chain
     //RCU::free_with_fn(tuple, tuple_remove_callback);
   }
@@ -252,8 +249,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
     writer(dbtuple::TUPLE_WRITER_DO_WRITE,
         value, tuple->get_value_start(), 0);
 
-  tuple->is_xid = true;
-  tuple->v_.xid = this->xid;
+  tuple->clsn = this->xid.to_ptr();
 
   // XXX: underlying btree api should return the existing value if insert
   // fails- this would allow us to avoid having to do another search

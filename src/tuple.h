@@ -57,11 +57,7 @@ public:
   typedef std::string string_type;
 
 #ifdef HACK_SILO
-  union{
-  LSN clsn;
-  XID xid;
-  } v_;
-  bool is_xid;
+  fat_ptr clsn;
   bool overwritten; // false => commit will ignore this tuple
   oid_type oid;
 #endif
