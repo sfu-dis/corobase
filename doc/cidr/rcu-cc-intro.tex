@@ -6,7 +6,7 @@
 %1. new hw trend has led to new systems
 Modern systems with large main memories and massively parallel processors have inspired a new breed of high-performance memory-optimized OLTP systems \cite{Kallman+08,PandisJHA10,KemperN11,LarsonBDFPZ11,TuZKLM13}. These systems leverage spacious main memory to fit the whole working set in DRAM with streamlined, memory-friendly data structures. Further, optimizations for multicore and multi-socket hardware allow a much higher level of parallelism compared to conventional database systems. With disk overheads and delays removed, transaction latencies drop precipitously and worker threads can usually execute transactions to completion without interruption. The result is a welcome reduction in contention at the logical level and less pressure on whatever concurrency control (CC) scheme might be in place. A not very welcome result is an increasing pressure for scalable data structures and algorithms to cope with the increasing number of worker threads that concurrently execute transactions and need to communicate.
 
-\labeledfigurewide{fig-write-ratio}{Performance of a memory-efficient OLTP engine with lightweight concurrency control mechanism, as the ratio of writes increases (left); and as the size of the database decreases (right).}
+\labeledfigurewide{fig-write-ratio}{Performance of a memory-efficient OLTP engine with lightweight optimistic concurrency control, as the ratio of writes increases (left); and as the size of the database decreases (right).}
 
 \vspace{2mm}
 {\bf Interactions at the logical level.} 
@@ -56,23 +56,20 @@ At least to our knowledge, there are no (publicly available) systems, that are b
 
 \vspace{2mm}
 {\bf Interactions at the physical level:} 
-- those interactions are typically handled by a low-level component of the system called the storage manager. The storage engine
-At the physical layer, we need a storage management system to build on top of and there are not systems that provide the properties
-- indirection array (Mohammed) 
-  - benefiting of the observations of both
-  - anti-caching
-  - gives us many desirable properties wrt to physical layer inderaction between threads:
-  - as Mo pointed: you have less chatter in to the log, you update your entry and that's it, otherwise you may have updates that go up to the root. Not having to update every reference
-    - silo updates in place, it is effectively a single committed version with a private copy system for all practical purposes. so is Hekaton.
-    - it is MVCC only for read-only xct, safe snapshots
-    - read footprint validation
-  - easier physical implementation of CC for multi-versioned systems, a single CAS installs a new version
-  - anti-caching becomes easier! e.g. in the vanilla anti-caching algorithm all the auxilliary indexes had to be updated, whenever a record was evicted from memory, with the indirection array, only one place has to be updated.
-    - essentially a much lighter bufferpool
-  - kind of esoteric reason detailed in \secref{design:oid}: space management becomes easier, as it becomes easier to implement cache-friendly compact index structures, such as CSBs, as long as we can tolerate the extra dereference -- those come from free. Nice side-benefit.
-- no partial orders, SILO had partial orders, the central log establishes the commit order
-  - recovery becomes drastically simplified, no need for undo at all, redo is trivial just need log analysis pass to restore in-memory data structures.
-  - need checkpoint plus log analysis to recover!
+The interactions at the physical level are typically handled by a low-level component of any transaction processing system called the storage manager. 
+One very promising technique for storage managers that provides desirable properties is the indirection array, as for example it is presented in \cite{SadoghiRCB13} and also used by Hekaton \cite{Diaconu+13}.
+For example, with an indirection array there is less chatter into the log. In a record update only the corresponding entry in the array needs to be updated. Otherwise, an update may result cascading updates that may propagate up to the root. Additionally, on record updates the system does not have to update every reference to that record, say from secondary indexes. 
+
+As a comparison, Silo does not employ indirection arrays but instead it performs in place updates. That is, for all practical purposes in Silo there is effectively a single committed version of an object with perhaps a private copy. So is Hekaton. Both systems are multi-versioned only for read-only transactions.
+
+The indirection arrays are suitable for the physical implementation of CC for multi-versioned systems, as a single compare-and-swap (CAS) operation installs a new version of an object. 
+With indirection arrays even the anti-caching technique \cite{DeBrabantPTSZ13} is largely simplified. That is, in the vanilla anti-caching algorithm all the secondary indexes have to be updated, whenever a record is evicted from memory with some considerable overhead. With the indirection array there is no need for more than one update. 
+In some sense the indirection array is a lightweight bufferpool. 
+
+There are also some sort of esoteric reasons, detailed in \secref{design:oid}, for using indirection arrays: space management becomes easier, as it becomes easier to implement cache-friendly compact index structures, such as CSBs \cite{RaoR00}, as long as we can tolerate the extra level of indirection. That is, since for the aforementioned reasons we are inclined to employ the indirection array, those benefits  come from free. 
+
+The flexibility in implementing CC schemes is greatly enhanced is we can establish total orders. Therefore we prefer the system to have a centralized log, which can be used for establishing the transaction commit order. 
+In contrast, Silo employs a epoch-based ordering that is only partial. 
 
 {\bf Recovery:} 
 -- Recovery has also to be a first class citizen
@@ -82,4 +79,7 @@ At the physical layer, we need a storage management system to build on top of an
 - voltdb -- does log shipping
 - silo -- does not even implement recovery
 - hekaton -- hand-wavvy description
+
+
+The combination of indirection arrays and centralized logging drastically simplifies recovery. There is no need for undo at all, redo is trivial just need log analysis pass to restore in-memory data structures. That is, need checkpoint plus log analysis to recover!
 
