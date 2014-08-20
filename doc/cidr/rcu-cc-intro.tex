@@ -34,9 +34,9 @@ The point is not that such design choices should be avoided, but rather that the
 Therefore, we focus on the performance of non-partitioning-based memory-optimized engines within a single node.
 
 \vspace{2mm}
-{\bf ERMIA.} 
+{\bf Organization.} 
 In \secref{desired} we lay out the design principles that we believe are critical for transaction processing engines in the environment of highly-parallel servers with ample main memory. Next, on \secref{design}, we present {\em ERMIA}, a memory-optimized transaction processing architecture that carefully combines several techniques---epoch-based resource management, indirection arrays \cite{SadoghiRCB13}, anti-caching \cite{DeBrabantPTSZ13}, and a specially-designed log manager---to enable robust CC, scalable thread interactions, and easy recovery.  
-\secref{eval} compares the performance of an ERMIA prototype against a representative of the new breed of memory-optimized shared-everything transaction processing systems, and shows how the resulting architecture achieves its goals without necessarily sacrificing performance in other areas.
+\secref{eval} underlines some weaknesses of a representative of the new breed of memory-optimized shared-everything transaction processing systems; and \secref{conclusions} conludes.
 
 
 \section{Design directions}
