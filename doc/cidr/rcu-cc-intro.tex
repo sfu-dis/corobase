@@ -71,8 +71,9 @@ There are also some sort of esoteric reasons, detailed in \secref{design:oid}, f
 The flexibility in implementing CC schemes is greatly enhanced is we can establish total orders. Therefore we prefer the system to have a centralized log, which can be used for establishing the transaction commit order. 
 In contrast, Silo employs a epoch-based ordering that is only partial. 
 
+\vspace{2mm}
 {\bf Recovery:} 
--- Recovery has also to be a first class citizen
+Recovery has also to be a first class citizen when designing a transaction processing system.
 - having a log that requires just one central communication, through a CAS
 - lots of hand-wavvy claims
 - you need to have to recovery story shorted out before you start
