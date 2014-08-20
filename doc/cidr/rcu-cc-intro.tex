@@ -31,7 +31,7 @@ The point is not that such design choices should be avoided, but rather that the
 
 \vspace{2mm}
 {\bf Physical partitioning.} Some systems sidestep the issues of logical and physical contention entirely---along with the accompanying implementation complexity---by adopting physical partitioning and a single-threaded transaction execution model \cite{Kallman+08,KemperN11}. This execution model introduces a different set problems for mixed workloads and for workloads that are inherently difficult to partition.  Given the developments in scaling-out the performance of distributed OLTP systems, especially for easy-to-partition workloads, e.g. \cite{BailisFHGS14}, as well as for high availability and cost-effectiveness reasons, we predict that the successful architectures will combine scale-out solutions build on top of non-partitioning-based scale-up engines within each node.
-Therefore, we focus on the performance of non-partitioning-based memory-optimized engines within a single node.
+Therefore, we focus on the performance of non-partitioning-based engines.
 
 \vspace{2mm}
 {\bf Organization.} 

@@ -8,13 +8,15 @@ We want to show that the recent proposals for main-memory OLTP solutions with li
 We use a 4-socket server with 6-core Intel Xeon E7-4807 processors, for a total of 24 physical cores and 48 hyperthreads. The machine has 64GB of RAM. 
 For our comparison we use Silo.  Silo's SLAB allocator is given 32GB of memory and its logging is disabled. We use the TPC-C database with 32 Warehouses (scaling factor of 32). We use the Stock table for the transactions.  The Stock table has 100K*Warehouses (3.2M) records. Each transaction randomly peaks a number of records to read and a smaller fraction of records to update.  We run each experiment for 60secs.
 
+\figref{fig-write-ratio}(left) shows the performance of Silo when we increase the ratio of writes in transactions of increasingly larger footprint. It just takes 0.1\% or 1\% of writes for the performance to drop by almost an order of magnitude.
+\figref{fig-write-ratio}(right) shows the performance of Silo when 32 clients run the TPC-C benchmark in an increasingly smaller database. At 4 Warehouses the abort increases almost exponentially.
+
 \labeledfigurewide{fig-rand-100}{Rate of committed and aborted transactions for Silo as the number of concurrent threads increases, for an increasing ratio of writes. Each transaction performs 100K random reads.}
 
 \labeledfigurewide{fig-rand-300}{Rate of committed and aborted transactions for Silo as the number of concurrent threads increases, for an increasing ratio of writes. Each transaction performs 300K random reads.}
 
 \figref{fig-rand-100} shows the performance of Silo as the number of concurrent threads increases, for an increasing ratio of writes, when each transaction performs 100K random reads.
-This experiment
-
+The noticeable trend is the quickly increasing rate of aborts with the number of concurrent threads.
 Things get even worse as we increase the read footprint of the transactions. For example, \figref{fig-rand-300} shows the performance of Silo as the number of concurrent threads increases, for an increasing ratio of writes, when each transaction is three times larger, performing 300K random reads.
 
 
