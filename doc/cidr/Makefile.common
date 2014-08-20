@@ -6,19 +6,19 @@ PAPERPS_TMSTAMP = rcu-cc-`date +%F`.ps
 # Specifying full paths here breaks the Makefile because each machine installs at a different path.
 # Rely on the users $PATH instead
 #
-# LATEX = /usr/texbin/latex
-# BIBTEX = /usr/texbin/bibtex
-# PDFLATEX = /usr/texbin/pdflatex
-# PYTHONEXEC = /anaconda/bin/python
-# #PYTHONEXEC = /opt/anaconda/bin/python
-# #PYTHONEXEC = /cygdrive/c/Anaconda/python
-# PS2PDF = /usr/local/bin/ps2pdf
+LATEX = /usr/texbin/latex
+BIBTEX = /usr/texbin/bibtex
+PDFLATEX = /usr/texbin/pdflatex
+PYTHONEXEC = /anaconda/bin/python
+#PYTHONEXEC = /opt/anaconda/bin/python
+#PYTHONEXEC = /cygdrive/c/Anaconda/python
+PS2PDF = /usr/local/bin/ps2pdf
 
-LATEX = latex
-BIBTEX = bibtex
-PDFLATEX = pdflatex
-PYTHONEXEC = python
-PS2PDF = ps2pdf
+# LATEX = latex
+# BIBTEX = bibtex
+# PDFLATEX = pdflatex
+# PYTHONEXEC = python
+# PS2PDF = ps2pdf
 
 ##PYTHON_DEPS = figure-sources/results.py results/vldb_experiment.dat results/vldb_experiment_bal.dat
 
