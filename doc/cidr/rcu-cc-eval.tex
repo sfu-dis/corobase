@@ -3,10 +3,7 @@
 \section{Evaluation}
 \seclabel{eval}
 
-The purpose of this evaluation section is twofold.  First, we want to show that the recent proposals for main-memory OLTP solutions with light-weight optimistic concurrency control schemes, such as Silo, can perform well and are suitable for only on a limited subset of transactional applications, primarily due to limitations imposed by their (tightly-integrated) concurrency control mechanism.  Second, that the proposed ERMIA design offers a more efficient concurrency control, which allows its performance to remain high for a larger spectrum of workloads.  At the same time, RIA does not suffer significant sacrifices in performance, even in workloads where the specialized solutions shine.  We are not attempting a detailed evaluation, as this would be more suitable for a longer document.
-
-\subsection{Experimental setup}
-\seclabel{eval:setup}
+We want to show that the recent proposals for main-memory OLTP solutions with light-weight optimistic concurrency control schemes, such as Silo, can perform well and are suitable for only on a limited subset of transactional applications, primarily due to limitations imposed by their (tightly-integrated) concurrency control mechanism.  We are not attempting a detailed evaluation, as this would be more suitable for a longer document.
 
 We use a 4-socket server with 6-core Intel Xeon E7-4807 processors, for a total of 24 physical cores and 48 hyperthreads. The machine has 64GB of RAM. 
 For our comparison we use Silo.  Silo's SLAB allocator is given 32GB of memory and its logging is disabled. We use the TPC-C database with 32 Warehouses (scaling factor of 32). We use the Stock table for the transactions.  The Stock table has 100K*Warehouses (3.2M) records. Each transaction randomly peaks a number of records to read and a smaller fraction of records to update.  We run each experiment for 60secs.
@@ -15,10 +12,8 @@ For our comparison we use Silo.  Silo's SLAB allocator is given 32GB of memory a
 
 \labeledfigurewide{fig-rand-300}{Rate of committed and aborted transactions for Silo as the number of concurrent threads increases, for an increasing ratio of writes. Each transaction performs 300K random reads.}
 
-\subsection{Performance as contention increases}
-\seclabel{eval:contention}
-
 \figref{fig-rand-100} shows the performance of Silo as the number of concurrent threads increases, for an increasing ratio of writes, when each transaction performs 100K random reads.
+This experiment
 
 Things get even worse as we increase the read footprint of the transactions. For example, \figref{fig-rand-300} shows the performance of Silo as the number of concurrent threads increases, for an increasing ratio of writes, when each transaction is three times larger, performing 300K random reads.
 
