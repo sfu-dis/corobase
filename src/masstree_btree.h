@@ -709,6 +709,8 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, value_type v,
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_insert(ti);
   if (!found) {
+insert_new:
+	found = false;
     ti.advance_timestamp(lp.node_timestamp());
 #ifdef HACK_SILO
 	dbtuple* tuple_ptr = reinterpret_cast<dbtuple*>(v);
@@ -722,6 +724,14 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, value_type v,
       insert_info->old_version = lp.previous_full_version_value();
       insert_info->new_version = lp.next_full_version_value(1);
     }
+  }
+  else
+  {
+	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data. we check that here. and if it's the first case, version should be empty, then we retry insert.
+	  if( fetch_tuple( (oid_type)lp.value() ) )
+		  found = true;
+	  else
+		  goto insert_new;
   }
   lp.finish(!found, ti);
   return !found;

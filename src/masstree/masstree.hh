@@ -199,6 +199,8 @@ install:
 	inline value_type fetch_tuple( oid_type oid ) const
 	{
 		INVARIANT( tuple_vector );
+		if( !tuple_vector->begin(oid) )
+			return NULL;
 		return tuple_vector->get( oid );
 	}
 	value_type fetch_version( oid_type oid, XID xid ) const
