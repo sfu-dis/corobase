@@ -3,17 +3,43 @@
 \section{Fast main-memory OLTP with rcu-based concurency control}
 \seclabel{design}
 
-\ippo{Perhaps come up with a name.}
+In tis section we describe in more detail several key pieces of the system we are developing, with a focus on why we choose the design trade-offs we do.
 
+\subsection{Log manager}
 
-\subsection{Concurrency control}
-\seclabel{design:cc}
+The log manager is a pivotal piece of most database engines. It provides---if anything does---a centralized point of coordination that other pieces of the system build off of and depend on. We have developed a logging scheme that  generates a commit LSN for the transaction and reserves buffer space for the transaction's log records with a single global atomic operation. Achieving this required two key insights: first, the transaction can combine its log records into large blocks, avoiding the redundancy of writing individual log record headers and reducing the number of trips to the log. Second, the LSN space need not be contiguous as long as we can still convert easily from LSN to disk address and back.
+
+The first property arises from our use of append-only storage. We achieve the second property by assigning each LSN to a ``segment'' and storing its segment number in the low order bits; the LSN's position on disk can be determined by looking up, and subtracting off, its segment's starting offset (read-only). Transactions race to ``open'' a new segment if they obtain an LSN past the end of the current one, and unlucky transactions holding a LSN in the gap between two segments simply discard it and request a new one. Segments can be 100GB or more in size, however, so overflows are quite rare. Once an LSN and segment have been assigned, the transaction verifies availability of space in the log's circular memory buffer (again, read-only); only in case the buffer is full will transactions have to block pending space, but high-end disk arrays readily absorb the fully sequential write-only I/O stream.
+
+An additional feature of the log is that transactions acquire a commit LSN before entering pre-commit, allowing validation of multiple transactions to proceed smoothly in parallel; depending on the outcome of pre-commit, a transaction either writes its log entries or a skip record aborts to the reserved log block.
+
+Finally, because the shared counter is implemented as a wait-free linked list, the transaction can notify the log writer that its block is ready to flush by simply flagging its node as ``dead'' (a blind store). The log writer periodically scans the list and writes out all log blocks that precede the oldest ``live'' buffer allocation; transactions do not touch each others' nodes, and the log writer only reads them and flags dead nodes for the garbage collector.
+
+\subsection{Epoch-based resource management}
+We have developed a lightweight epoch management system that can track multiple timelines (of differing granularities) in parallel. A multi-transaction-scale epoch manager implements garbage collection of dead versions and deleted records, a medium-scale epoch implements a read-copy-update (RCU) mechanism that manages physical memory and data structure usage\cite{RCU}, and a very short timescale epoch manager tracks transaction IDS, which we recycle aggressively (see below).
+
+The key to efficiency here is to avoid flagging stragglers unless it is absolutely necessary (because coordinating with non-responsive threads is very expensive). To avoid this, the system does not attempt to reclaim resource for epoch $N$ until epoch $N+2$ begins. This way, potential stragglers have all of epoch $N+1$ to quiesce without penalty; however, epoch $N+3$ cannot begin until the last straggler from epoch $N$ completes. This four-phase scheme communicates far less with stragglers than the traditional two-phase approach while maintaining the same worst-case timing bound. It allows us to track epochs at a very fine granularity when necessary. 
+
+\subsection{Transaction management}
+
+Each transactions in the system is assigned a slot in a global transaction state table when it begins. This fixed-size table holds its begin time (which is the log's end LSN at the time it started), status, and end time (if applicable). Transaction ids are a combination of table offset and epoch, with an epoch manager to prevent entries from being recycled too soon. Update transactions write their XID into each version they create, change their status to pre-commit, acquire a commit LSN (or are given one by an impatient peer), and finally commit atomically by changing their status to ``committed.'' A post-commit cleanup step involves replacing XID stamps with the transaction's commit LSN, at which point the state table entry is no longer needed can be recycled by the epoch manager. Other transactions that encounter an XID in a version can reliably verify its commit status and age by visiting the XID table, and---if necessary---will help a peer enter pre-commit by racing to acquire a log block on its behalf. 
 
 \subsection{Indirection arrays}
 \seclabel{design:oid}
 
+The indirection arrays used in ERMIA are very similar to the ones proposed in the literature. In short, all logical objects are identified by an object ID (OID) that maps to a slot in an OID array that contains the physical pointer. The pointer may reference disk, or a chain of versions stored in memory. As with Hekaton, uncommitted versions are never written to disk, but unlike Hekaton, we dispense with delta records (too expensive to apply) and use pure copy-on-write. New versions can be installed by an atomic compare-and-swap operation, and an uncommitted record at the head of the chain constitutes a write lock for CC schemes that care to track W-W conflicts (as most do). 
+
+\ippo{Perhaps come up with a name.}
+
+\subsection{Concurrency control}
+\seclabel{design:cc}
+
+The system has been designed from the ground up to allow efficient implementations of a variety of concurrency control mechanisms. It can use read set validation (like SILO and Hekaton), but can also provide snapshot isolation to writers and even efficient implementations of serializable snapshot isolation that have been proposed recently\cite{Fekete}. We are also in the process of developing new CC schemes which promise lower abort rates than SSI with lower overhead and reduced implementation complexity. The other components in the system work together to make efficent CC possible: efficient (but optional) multi-versioning allowed by the indirection arrays, the total commit ordering afforded by the log, and the ability to determine easily the age of a version thanks to the transaction manager. Only the first (MVCC via indirection array) is available in other systems, and the other two features are key enablers of the new CC schemes we are developing.
+
 \subsection{Recovery}
 \seclabel{design:recovery}
+
+Recovery is straightforward because the log contains only committed work. OID arrays are the only real source of complexity, as they are volatile in-memory structures that make it possible to find all other objects in the system. It turns out that logical objects (records) are physically logged, while physical data (allocator state and OID array contents) use logical logging.  OID arrays are themselves objects stored in a master OID array, but they are updated in place to avoid overloading the log, with changes replayed by a log analysis step that reads only log block headers. This analysis step is very fast, because the skipped-over log payloads account for 90\% or more of the total log. In order to support efficient recovery, system transactions occasionally checkpoint the OID arrays using a fuzzy checkpointing mechanism to minimize the impact on user transactions. Because the log is the database, recovery only needs to rebuild the OID arrays in memory; anti-caching will take care of loading the actual data, though background pre-loading is highly recommended to minimize cold start effects.
 
 \subsection{Prototype Implementation}
 \seclabel{design:prototype}
