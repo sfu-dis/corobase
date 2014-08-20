@@ -22,7 +22,7 @@ include Makefile.common
 	cygstart -p -d $(*D) $*.pdf
 
 
-%.eps: %.eps.in
+%.eps: figure-sources/%.eps.in
 	cp figure-sources/$*.eps.in $*.eps
 
 #IP: the -w parameter is not working with Office2003.
