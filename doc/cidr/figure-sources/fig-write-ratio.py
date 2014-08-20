@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from pylab import *
 
 # Load the results
+data1 = MyData("../silo-microbench-results/rand-1K.csv", header_str="Reads", delimiter=' ');
+data10 = MyData("../silo-microbench-results/rand-10K.csv", header_str="Reads", delimiter=' ');
 data100 = MyData("../silo-microbench-results/rand-100K.csv", header_str="Reads", delimiter=' ');
 data200 = MyData("../silo-microbench-results/rand-200K.csv", header_str="Reads", delimiter=' ');
 data300 = MyData("../silo-microbench-results/rand-300K.csv", header_str="Reads", delimiter=' ');
@@ -29,21 +31,40 @@ rcParams['figure.figsize'] = 7.3, 1.9
 matplotlib.rcParams.update({'font.size': 9})
 
 ## Get the entries for:
+writes1 = (1, 10, 100)
+writes10 = (1, 10, 100, 1000)
 writes100 = (1, 10, 100, 1000, 10000)
 writes200 = (2, 20, 200, 2000, 20000)
 writes300 = (3, 30, 300, 3000, 30000)
 #writeratio = (0.001, 0.01, 0.1, 1, 10)
 writeratio = (0.00001, 0.0001, 0.001, 0.01, 0.1)
+writeratio1 = (0.001, 0.01, 0.1)
+writeratio10 = (0.0001, 0.001, 0.01, 0.1)
 #attrs = ('c^:', 'rd-', 'yo--', 'gs-.', 'b<-', 'c>-')
-attrs = ('b^-', 'rd-', 'yo--', 'gs-.', 'b<-', 'b^:')
+attrs = ('b^-', 'rd-', 'yo--', 'gs-.', 'k<-', 'm^:')
 
 def drawLinesPayload(ax, ymax=1.5, showLegend=False):
     ## Prepare commits/aborts figure
-    xvalues=[0.00001,0.0001,0.001,0.01,0.1]
+    xvalues=[0.00001,0.0001,0.001,0.01,0.1]    
     plots=[]
-    plotsLabel=['100K','200K', '300K']
+    plotsLabel=['1K', '10K', '100K','200K', '300K']
 
-    #for write, attr in zip(writes, attrs):
+    # Read Commits/s for 100K
+    Xs, Ys = \
+        data1.filterSelect(xcol='Writes', ycol='Commits/s', xvalues=writes1,
+                             include={'Threads':32})
+    NormYs = [Y/Ys[0] for Y in Ys]
+    print "1K", Xs, Ys, NormYs
+    plots.append( ax.plot(writeratio1, NormYs, attrs[0])[0] )
+
+    # Read Commits/s for 10K
+    Xs, Ys = \
+        data10.filterSelect(xcol='Writes', ycol='Commits/s', xvalues=writes10,
+                             include={'Threads':32})
+    NormYs = [Y/Ys[0] for Y in Ys]
+    print "100K", Xs, Ys, NormYs
+    plots.append( ax.plot(writeratio10, NormYs, attrs[1])[0] )
+
     # Read Commits/s for 100K
     Xs, Ys = \
         data100.filterSelect(xcol='Writes', ycol='Commits/s', xvalues=writes100,
@@ -78,7 +99,7 @@ def drawLinesPayload(ax, ymax=1.5, showLegend=False):
 
     # Print ratio in the title
     # sTitle = "Norm. perf
-    # ax.set_title(sTitle, fontsize=9)
+    ax.set_title("Read/write benchmark (32 threads)", fontsize=9)
     ax.set_xlabel('Ratio of Writes/Reads')
     for tick in ax.xaxis.get_major_ticks():
         tick.label.set_fontsize(9)
@@ -88,7 +109,7 @@ def drawLinesPayload(ax, ymax=1.5, showLegend=False):
     if showLegend:
         # Legend locations: [upper lower center] [left right center]  or best  or center
         #algosDisp = [algo.upper() for algo in algos]
-        ax.legend(plots, plotsLabel, 'upper right', fontsize=8)
+        ax.legend(plots, plotsLabel, 'lower left', fontsize=7)
         leg = ax.get_legend()
         leg.set_frame_on(False)
 
@@ -167,6 +188,6 @@ plotsTPCC = drawTPCC(axTPCC, showLegend=True)
 axTPCC.set_ylabel('Transaction rate (KTps)', fontsize=9)
 
 plotsNorm = drawLinesPayload(ax, showLegend=True)
-ax.set_ylabel('Norm. performance', fontsize=9)
+ax.set_ylabel('Norm. throughput', fontsize=9)
 
 MyData.MyShow(plt) # show or save plot

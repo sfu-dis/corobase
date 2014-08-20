@@ -6,7 +6,7 @@
 In terms of concurrency control, one of the most important studies has been \cite{AgrawalCL87}, where it was shown that if the overhead of pessimistic two-phase locking can be comparable to the overhead of optimistic methods then the pessimistic one is superior. The same study showed that it is beneficial to abort transactions that are going to abort as soon as possible. We corroborate these findings. 
 Serializable snapshot isolation, for example as this is implemented in Postgres \cite{PortsG12}. 
  
-The indirection map, which is central to RIA's design, is a well-known technique, for example presented in \cite{SadoghiRCB13}.
+The indirection map, which is central to ERMIA's design, is a well-known technique, for example presented in \cite{SadoghiRCB13}.
 
 With the continuous increase in size of main memories and decrease of their cost as well as the emergence of multi-core and multi-socket hardware, there has been a resurgence of research in the area of in-memory transaction processing systems.  
 To deal with logical conflicts between transactions, many of these systems adopt lightweight optimistic concurrency control schemes that are suitable only for a small fraction of transactional workloads.
