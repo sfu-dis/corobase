@@ -84,15 +84,26 @@ public:
 
 	void unlink( oid_type oid, T item )
 	{
-		object_type* target = begin( oid );
+		object_type* target = _obj_table[oid];
+		object_type** prev = &_obj_table[oid];
 		INVARIANT( oid );
 
-		if( _obj_table[oid]->_data == item )
-			_obj_table[oid] = _obj_table[oid]->_next;
-		else if( _obj_table[oid]->_next->_data == item )
-			_obj_table[oid]->_next = _obj_table[oid]->_next->_next;
-		else
+		while( target )
+		{
+			if( target->_data == item )
+			{
+				*prev = target->_next;
+				break;
+			}
+			prev = &target->_next;
+			target = target->_next;
+		}
+
+		if( !target )
+		{
+			// we can't find target. something is wrong.
 			ALWAYS_ASSERT(false);
+		}
 	}
 
 private:

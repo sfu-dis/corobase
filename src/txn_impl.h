@@ -70,6 +70,9 @@ transaction<Protocol, Traits>::abort_impl()
     dbtuple* tuple = it->get_tuple();
 	concurrent_btree* btr = it->get_table();
 
+	// TODO. update to INVALID LSN
+	// INVALID_LSN -> FATPTR needed
+
 	// overwritten tuple is already out of chain
 	if( !tuple->overwritten )
 		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
