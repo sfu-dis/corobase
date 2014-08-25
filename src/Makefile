@@ -81,7 +81,7 @@ else
 	$(error invalid mode)
 endif
 
-CXXFLAGS := -Wall -std=c++0x  -g -gdwarf-2 -DHACK_SILO
+CXXFLAGS := -Wall -std=c++0x -DHACK_SILO
 CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(DEBUG_S),1)
         CXXFLAGS += -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
