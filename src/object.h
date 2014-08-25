@@ -46,7 +46,7 @@ public:
 	}
 	bool put( oid_type oid, T item )
 	{
-		ALWAYS_ASSERT( oid > 0 && oid <= _size );
+		ALWAYS_ASSERT( oid > 0 && oid < _size );
 		object_type* old_desc = _obj_table[oid];
 		object_type* new_desc = new object_type( item, old_desc );
 
@@ -62,7 +62,6 @@ public:
 	{
 		oid_type oid = alloc();
 		ALWAYS_ASSERT( not _obj_table[oid] );
-		ALWAYS_ASSERT( oid > 0 && oid <= _size );
 		if( put( oid, item ) )
 			return oid;
 		else 
@@ -85,15 +84,15 @@ public:
 
 	void unlink( oid_type oid, T item )
 	{
-		// Assuming target is always the first element
 		object_type* target = begin( oid );
 		INVARIANT( oid );
-		INVARIANT( item == target->_data );
 
-		// Atomic change
-		if( not __sync_bool_compare_and_swap( &_obj_table[oid], target, target->_next))
-			ALWAYS_ASSERT( false );			// shouldn't happen
-
+		if( _obj_table[oid]->_data == item )
+			_obj_table[oid] = _obj_table[oid]->_next;
+		else if( _obj_table[oid]->_next->_data == item )
+			_obj_table[oid]->_next = _obj_table[oid]->_next->_next;
+		else
+			ALWAYS_ASSERT(false);
 	}
 
 private:

@@ -198,7 +198,7 @@ install:
 
 	inline value_type fetch_tuple( oid_type oid ) const
 	{
-		INVARIANT( tuple_vector );
+		ALWAYS_ASSERT( tuple_vector );
 		if( !tuple_vector->begin(oid) )
 			return NULL;
 		return tuple_vector->get( oid );

@@ -728,7 +728,8 @@ insert_new:
   else
   {
 	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data. we check that here. and if it's the first case, version should be empty, then we retry insert.
-	  if( fetch_tuple( (oid_type)lp.value() ) )
+	  oid_type oid = (oid_type)lp.value();
+	  if( fetch_tuple( oid ) )
 		  found = true;
 	  else
 		  goto insert_new;
