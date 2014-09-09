@@ -159,17 +159,22 @@ class basic_table {
 					// dirty data
 				case TXN_EMBRYO:
 				case TXN_ACTIVE:
-				case TXN_COMMITTING:
 					{
 						// in-place update case ( multiple updates on the same record )
 						if( holder_xid == xid )
 						{
+							dbtuple* old;
+							volatile_write( old, version);
 							ptr->_data = val;
-							return std::make_pair( true, reinterpret_cast<value_type>(version) );
+							return std::make_pair( true, reinterpret_cast<value_type>(old) );
 						}
 						else
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
 					}
+
+					// If this TX is committing, we shouldn't install new version!
+				case TXN_COMMITTING:
+					return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
 				default:
 					ALWAYS_ASSERT( false );
 			}
