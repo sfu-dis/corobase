@@ -74,7 +74,7 @@ public:
 		ALWAYS_ASSERT( oid <= _size );
 		ALWAYS_ASSERT( oid > 0 && oid <= _size );
 		object_type* desc= _obj_table[oid];
-		return desc->_data;
+		return desc ? desc->_data : 0;
 	}
 
 	inline object_type* begin( oid_type oid )
@@ -84,26 +84,29 @@ public:
 
 	void unlink( oid_type oid, T item )
 	{
-		object_type* target = _obj_table[oid];
-		object_type** prev = &_obj_table[oid];
+		object_type* target;
+		object_type** prev;
 		INVARIANT( oid );
 
+retry:
+		prev = &_obj_table[oid];			// constant value. doesn't need to be volatile_read
+		target = *prev;
 		while( target )
 		{
 			if( target->_data == item )
 			{
-				*prev = target->_next;
-				break;
+				if( not __sync_bool_compare_and_swap( prev, target, target->_next ) )
+					goto retry;
+
+				//TODO. dealloc version container
+				return;
 			}
-			prev = &target->_next;
-			target = target->_next;
+			prev = &target->_next;	// only can be modified by current TX. volatile_read is not needed
+			target = *prev;
 		}
 
 		if( !target )
-		{
-			// we can't find target. something is wrong.
 			ALWAYS_ASSERT(false);
-		}
 	}
 
 private:

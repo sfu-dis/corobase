@@ -163,10 +163,8 @@ class basic_table {
 						// in-place update case ( multiple updates on the same record )
 						if( holder_xid == xid )
 						{
-							dbtuple* old;
-							volatile_write( old, version);
 							ptr->_data = val;
-							return std::make_pair( true, reinterpret_cast<value_type>(old) );
+							return std::make_pair( true, reinterpret_cast<value_type>(version) );
 						}
 						else
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );

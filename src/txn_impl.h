@@ -77,7 +77,7 @@ transaction<Protocol, Traits>::abort_impl()
 	if( !tuple->overwritten )
 		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
 
-    dbtuple::release_no_rcu(tuple);
+//    dbtuple::release_no_rcu(tuple);
   }
 
   // log discard
