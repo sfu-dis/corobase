@@ -77,7 +77,7 @@ transaction<Protocol, Traits>::abort_impl()
 	if( !tuple->overwritten )
 		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
 
-//    dbtuple::release_no_rcu(tuple);
+    dbtuple::release(tuple);
   }
 
   // log discard
@@ -215,7 +215,7 @@ transaction<Protocol, Traits>::commit()
     } 
     else {
       // FIXME: tzwang: add this callback to adjust pointers in version chain
-      dbtuple::release_no_rcu(tuple);
+      dbtuple::release(tuple);
       //RCU::free_with_fn(tuple, tuple_remove_callback);
     }
   }
