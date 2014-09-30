@@ -71,7 +71,6 @@ main(int argc, char **argv)
   char *curdir = get_current_dir_name();
   string basedir = curdir;
   string bench_opts;
-  size_t numa_memory = 0;
   free(curdir);
   int saw_run_spec = 0;
   int disable_gc = 0;
@@ -165,15 +164,6 @@ main(int argc, char **argv)
       bench_opts = optarg;
       break;
 
-    case 'm':
-      {
-        pin_cpus = 1;
-        const size_t m = parse_memory_spec(optarg);
-        ALWAYS_ASSERT(m > 0);
-        numa_memory = m;
-      }
-      break;
-
     case 'l':
       log_dir = new string(optarg);
       break;
@@ -223,16 +213,6 @@ main(int argc, char **argv)
     cerr << "[WARNING] --stats-server-sockfile with no event counters enabled is useless" << endl;
   }
 #endif
-
-/* FIXME: tzwang: we're not really using this for now
-  // initialize the numa allocator
-  if (numa_memory > 0) {
-    const size_t maxpercpu = util::iceil(
-        numa_memory / nthreads, ::allocator::GetHugepageSize());
-    numa_memory = maxpercpu * nthreads;
-    ::allocator::Initialize(nthreads, maxpercpu);
-  }
-*/
 
 #ifdef PROTO2_CAN_DISABLE_GC
   const set<string> has_gc({"ndb-proto1", "ndb-proto2"});
@@ -346,11 +326,6 @@ main(int argc, char **argv)
 #else
     cerr << "  allocator   : libc"                          << endl;
 #endif
-    if (numa_memory > 0) {
-      cerr << "  numa-memory : " << numa_memory             << endl;
-    } else {
-      cerr << "  numa-memory : disabled"                    << endl;
-    }
     cerr << "  log-dir : " << *log_dir                      << endl;
     cerr << "  log-segsize : " << log_segsize               << endl;
     cerr << "  log-bufsize : " << log_bufsize               << endl;
