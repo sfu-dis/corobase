@@ -71,3 +71,6 @@ masstree/doc/*_[0-9]*.pdf
 masstree/doc/!GNUmakefile
 masstree/doc/mpxerr.tex
 masstree/doc/spec.pdf
+
+src/build.sh
+src/run.sh
