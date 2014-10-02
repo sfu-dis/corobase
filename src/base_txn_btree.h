@@ -311,7 +311,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
                           t.xid);
 
   // FIXME: tzwang: now the above update returns a pair:
-  // <dbtuple*, bool>, bool indicates if the update op has succeeded or not.
+  // <bool, dbtuple*>, bool indicates if the update op has succeeded or not.
   // dbtuple*'s value dependes on if the update is in-place or out-of-place.
   // Though we do multi-version, we do in-place update if the tx is repeatedly
   // updating its own data. If it's normal insert-to-chain, i.e., out-of-place
@@ -334,7 +334,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // (such as a hash table).
   //
   // For now we stick to the pointer (former) way because it's simple, and
-  // silo's write-set infrastructure is already in that format, pluse in-place
+  // silo's write-set infrastructure is already in that format, plus in-place
   // update should be very rare. This could be avoided too (with the cost of
   // checking a valid bit at commit time). See comments next.
 

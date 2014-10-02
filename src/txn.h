@@ -562,26 +562,6 @@ protected:
       dbtuple *marker, const std::string &key,
       concurrent_btree *btr);
 
-  // low-level API for txn_btree
-
-  // try to insert a new "tentative" tuple into the underlying
-  // btree associated with the given context.
-  //
-  // if return.first is not null, then this function will
-  //   1) mutate the transaction such that the absent_set is aware of any
-  //      mutating changes made to the underlying btree.
-  //   2) add the new tuple to the write_set
-  //
-  // if return.second is true, then this txn should abort, because a conflict
-  // was detected w/ the absent_set.
-  //
-  // if return.first is not null, the returned tuple is locked()!
-  //
-  // if the return.first is null, then this function has no side effects.
-  //
-  // NOTE: !ret.first => !ret.second
-  // NOTE: assumes key/value are stable
-  //std::pair< dbtuple *, bool >
   bool
   try_insert_new_tuple(
       concurrent_btree &btr,
