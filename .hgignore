@@ -4,6 +4,12 @@ syntax: glob
 *.swp
 *.heap
 *.so
+doc/cidr/*.bbl
+doc/cidr/*.log
+doc/cidr/*.aux
+doc/cidr/*.blg
+doc/cidr/*.pdf
+doc/cidr/*.dvi
 core
 tags
 config.mk
