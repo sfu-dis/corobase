@@ -143,12 +143,6 @@ transaction<Protocol, Traits>::dump_debug_info() const
     std::cerr << *ws_it << std::endl;
 
   std::cerr << "      === Absent Set ===" << std::endl;
-  // absent-set
-  for (typename absent_set_map::const_iterator as_it = absent_set.begin();
-       as_it != absent_set.end(); ++as_it)
-    std::cerr << "      B-tree Node " << util::hexify(as_it->first)
-              << " : " << as_it->second << std::endl;
-
 }
 
 template <template <typename> class Protocol, typename Traits>
@@ -156,10 +150,6 @@ std::map<std::string, uint64_t>
 transaction<Protocol, Traits>::get_txn_counters() const
 {
   std::map<std::string, uint64_t> ret;
-
-  // max_absent_set_size
-  ret["absent_set_size"] = absent_set.size();
-  ret["absent_set_is_large?"] = !absent_set.is_small_type();
 
   // max_write_set_size
   ret["write_set_size"] = write_set.size();
@@ -249,21 +239,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
 
   tuple->clsn = this->xid.to_ptr();
 
-  // XXX: underlying btree api should return the existing value if insert
-  // fails- this would allow us to avoid having to do another search
-  // FIXME: tzwang: didn't look like so, returns nullptr. bug?
-  typename concurrent_btree::insert_info_t insert_info;
-  // FIXME: tzwang: this is aware of object.h already?
-  if (unlikely(!btr.insert_if_absent(
-          varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
-    VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
-    dbtuple::release_no_rcu(tuple);
-    RCU::rcu_quiesce();
-    ++transaction_base::g_evt_dbtuple_write_insert_failed;
-    return false;
-  }
-  VERBOSE(std::cerr << "insert_if_absent suceeded for key: " << util::hexify(key) << std::endl
-                    << "  new dbtuple is " << util::hexify(tuple) << std::endl);
   // insert to log
   // FIXME: tzwang: leave pdest as null and FID is always 1 now.
   INVARIANT(log);
@@ -278,22 +253,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   //write_set.emplace_back(tuple, key, value, writer, &btr, true);
   write_set.emplace_back(tuple, &btr);
 
-  // update node #s
-  INVARIANT(insert_info.node);
-  if (!absent_set.empty()) {
-    auto it = absent_set.find(insert_info.node);
-    if (it != absent_set.end()) {
-      if (unlikely(it->second.version != insert_info.old_version)) {
-        abort_trap((reason = ABORT_REASON_WRITE_NODE_INTERFERENCE));
-        return true;
-      }
-      VERBOSE(std::cerr << "bump node=" << util::hexify(it->first) << " from v=" << insert_info.old_version
-                        << " -> v=" << insert_info.new_version << std::endl);
-      // otherwise, bump the version
-      it->second.version = insert_info.new_version;
-      SINGLE_THREADED_INVARIANT(concurrent_btree::ExtractVersionNumber(it->first) == it->second);
-    }
-  }
   return true;
 }
 
@@ -325,23 +284,6 @@ transaction<Protocol, Traits>::do_tuple_read(
   if (v_empty)
     ++transaction_base::g_evt_read_logical_deleted_node_search;
   return !v_empty;
-}
-
-template <template <typename> class Protocol, typename Traits>
-void
-transaction<Protocol, Traits>::do_node_read(
-    const typename concurrent_btree::node_opaque_t *n, uint64_t v)
-{
-  INVARIANT(n);
-  auto it = absent_set.find(n);
-  if (it == absent_set.end()) {
-   // absent_set[n].version = v;			// FIXME. just for convenience
-	  ;
-  } else if (it->second.version != v) {
-    const transaction_base::abort_reason r =
-      transaction_base::ABORT_REASON_NODE_SCAN_READ_VERSION_CHANGED;
-    signal_abort(r);
-  }
 }
 
 #endif /* _NDB_TXN_IMPL_H_ */
