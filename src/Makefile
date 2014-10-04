@@ -138,6 +138,7 @@ endif
 SRCFILES = allocator.cc \
 	core.cc \
 	counter.cc \
+	gc.cc \
 	memory.cc \
 	rcu-wrapper.cc \
 	stats_server.cc \

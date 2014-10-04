@@ -7,14 +7,13 @@
 #include "core.h"
 #include "rcu/rcu.h"
 
-// FIXME: tzwang: seems to be working, but still memleak (2014/08/12)
+// FIXME: tzwang: seems to be working
 // things won't work directly:
 // free_with_fn()
 // free_array() (used by imstring)
 // silo's rcu_register()
 
 namespace RCU {
-  static const size_t NQueueGroups = 32;
   typedef void (*deleter_t)(void *);
 
   template <typename T>
