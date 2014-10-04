@@ -37,6 +37,7 @@ split_ws(const string &s)
   return r;
 }
 
+/*
 static size_t
 parse_memory_spec(const string &s)
 {
@@ -60,6 +61,7 @@ parse_memory_spec(const string &s)
   }
   return strtoul(x.c_str(), nullptr, 10) * mult;
 }
+*/
 
 int
 main(int argc, char **argv)

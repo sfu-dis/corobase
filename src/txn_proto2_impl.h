@@ -75,7 +75,6 @@ public:
 
   typedef Traits traits_type;
   typedef transaction_base::string_type string_type;
-  typedef typename super_type::absent_set_map absent_set_map;
   typedef typename super_type::write_set_map write_set_map;
   typedef typename super_type::write_set_u32_vec write_set_u32_vec;
 

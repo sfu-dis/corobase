@@ -189,9 +189,6 @@ base_txn_btree<Transaction, P>::do_search(
     const dbtuple * const tuple = reinterpret_cast<const dbtuple *>(underlying_v);
     return t.do_tuple_read(tuple, value_reader);
   } else {
-    // FIXME: tzwang: what's this?
-    // not found, add to absent_set
-    t.do_node_read(search_info.first, search_info.second);
     return false;
   }
 }
@@ -383,7 +380,7 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "on_resp_node(): <node=0x" << util::hexify(intptr_t(n))
                << ", version=" << version << ">" << std::endl);
   VERBOSE(std::cerr << "  " << concurrent_btree::NodeStringify(n) << std::endl);
-  t->do_node_read(n, version);
+  //t->do_node_read(n, version);
 }
 
 template <template <typename> class Transaction, typename P>

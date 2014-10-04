@@ -221,12 +221,6 @@ protected:
   friend std::ostream &
   operator<<(std::ostream &o, const write_record_t &r);
 
-  // the absent set is a mapping from (btree_node -> version_number).
-  struct absent_record_t { uint64_t version; };
-
-  friend std::ostream &
-  operator<<(std::ostream &o, const absent_record_t &r);
-
   struct dbtuple_write_info {
     dbtuple_write_info() : tuple(), entry(nullptr) {}
     dbtuple_write_info(dbtuple *tuple, write_record_t *entry)
@@ -282,11 +276,6 @@ namespace private_ {
   };
 
   template <>
-  struct is_trivially_destructible<transaction_base::absent_record_t> {
-    static const bool value = true;
-  };
-
-  template <>
   struct is_trivially_destructible<transaction_base::dbtuple_write_info> {
     static const bool value = true;
   };
@@ -310,15 +299,7 @@ operator<<(
   return o;
 }
 
-inline ALWAYS_INLINE std::ostream &
-operator<<(std::ostream &o, const transaction_base::absent_record_t &r)
-{
-  o << "[v=" << r.version << "]";
-  return o;
-}
-
 struct default_transaction_traits {
-  static const size_t absent_set_expected_size = EXTRA_SMALL_SIZE_MAP;
   static const size_t write_set_expected_size = SMALL_SIZE_MAP;
   static const bool stable_input_memory = false;
   static const bool hard_expected_sizes = false; // true if the expected sizes are hard maximums
@@ -431,17 +412,11 @@ protected:
   typedef small_vector<
     write_record_t,
     traits_type::write_set_expected_size> write_set_map_small;
-  typedef small_unordered_map<
-    const typename concurrent_btree::node_opaque_t *, absent_record_t,
-    traits_type::absent_set_expected_size> absent_set_map_small;
 
   // static types
   typedef static_vector<
     write_record_t,
     traits_type::write_set_expected_size> write_set_map_static;
-  typedef static_unordered_map<
-    const typename concurrent_btree::node_opaque_t *, absent_record_t,
-    traits_type::absent_set_expected_size> absent_set_map_static;
 
   // helper types for log writing
   typedef small_vector<
@@ -459,15 +434,10 @@ protected:
   typedef
     typename std::conditional<
       traits_type::hard_expected_sizes,
-      absent_set_map_static, absent_set_map_small>::type absent_set_map;
-  typedef
-    typename std::conditional<
-      traits_type::hard_expected_sizes,
       write_set_u32_vec_static, write_set_u32_vec_small>::type write_set_u32_vec;
 
 #else
   typedef std::vector<write_record_t> write_set_map;
-  typedef std::vector<absent_record_t> absent_set_map;
   typedef std::vector<uint32_t> write_set_u32_vec;
 #endif
 
@@ -547,12 +517,6 @@ public:
     return write_set;
   }
 
-  inline const absent_set_map &
-  get_absent_set() const
-  {
-    return absent_set;
-  }
-
 protected:
   void abort_impl();
 
@@ -616,7 +580,6 @@ protected:
       dbtuple_write_info &info, bool did_group_insert);
 
   write_set_map write_set;
-  absent_set_map absent_set;
 
   string_allocator_type *sa;
 
