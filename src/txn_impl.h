@@ -141,8 +141,6 @@ transaction<Protocol, Traits>::dump_debug_info() const
   for (typename write_set_map::const_iterator ws_it = write_set.begin();
        ws_it != write_set.end(); ++ws_it)
     std::cerr << *ws_it << std::endl;
-
-  std::cerr << "      === Absent Set ===" << std::endl;
 }
 
 template <template <typename> class Protocol, typename Traits>
