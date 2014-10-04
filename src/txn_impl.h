@@ -237,6 +237,22 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
 
   tuple->clsn = this->xid.to_ptr();
 
+  // XXX: underlying btree api should return the existing value if insert
+  // fails- this would allow us to avoid having to do another search
+  // FIXME: tzwang: didn't look like so, returns nullptr. bug?
+  typename concurrent_btree::insert_info_t insert_info;
+  // FIXME: tzwang: this is aware of object.h already?
+  if (unlikely(!btr.insert_if_absent(
+          varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
+    VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
+    dbtuple::release_no_rcu(tuple);
+    RCU::rcu_quiesce();
+    ++transaction_base::g_evt_dbtuple_write_insert_failed;
+    return false;
+  }
+  VERBOSE(std::cerr << "insert_if_absent suceeded for key: " << util::hexify(key) << std::endl
+                    << "  new dbtuple is " << util::hexify(tuple) << std::endl);
+
   // insert to log
   // FIXME: tzwang: leave pdest as null and FID is always 1 now.
   INVARIANT(log);
