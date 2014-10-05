@@ -904,7 +904,7 @@ private:
     static inline leaf_node*
     alloc()
     {
-      void * const p = RCU::rcu_alloc(LeafNodeAllocSize);
+      void * const p = RCU::allocate(LeafNodeAllocSize);
       INVARIANT(p);
       return new (p) leaf_node;
     }
@@ -1019,7 +1019,7 @@ private:
     static inline internal_node*
     alloc()
     {
-      void * const p = RCU::rcu_alloc(InternalNodeAllocSize);
+      void * const p = RCU::allocate(InternalNodeAllocSize);
       INVARIANT(p);
       return new (p) internal_node;
     }
