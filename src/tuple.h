@@ -405,7 +405,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sz),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(RCU::rcu_alloc(alloc_sz));
+    char *p = reinterpret_cast<char *>(RCU::allocate(alloc_sz));
     INVARIANT(p);
     INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
     return new (p) dbtuple(sz, alloc_sz - sizeof(dbtuple));
@@ -420,7 +420,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + base->size),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(RCU::rcu_alloc(alloc_sz));
+    char *p = reinterpret_cast<char *>(RCU::allocate(alloc_sz));
     INVARIANT(p);
     return new (p) dbtuple(base, alloc_sz - sizeof(dbtuple));
   }
@@ -440,7 +440,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + needed_sz),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(RCU::rcu_alloc(alloc_sz));
+    char *p = reinterpret_cast<char *>(RCU::allocate(alloc_sz));
     INVARIANT(p);
     return new (p) dbtuple(value, oldsz, newsz,
         alloc_sz - sizeof(dbtuple), copy_old_value);

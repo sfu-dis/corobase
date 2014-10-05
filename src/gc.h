@@ -2,23 +2,39 @@
 #define __ERMIA_GC_
 
 #include <type_traits>
-#include<numa.h>
+#include <thread>
+#include <numa.h>
 #include "macros.h"
 #include "core.h"
-#include "rcu/rcu.h"
+#include "util.h"
 
 /*
  * The garbage collector for ERMIA to remove dead tuple versions.
  */
 
-namespace ERMIA_GC {
+namespace GC {
   // percore memory allocation counter for GC
-  static percore_lazy<size_t> _allocated_memory;
-};
+  extern percore<size_t, false, false> allocated_memory;
 
-class gc_thread {
-private:
+  // if _allocated_memory reaches this many, start GC
+  static const size_t WATERMARK = 65536; // in bytes
   size_t sum_allocated_memory();
-};
 
+  class gc_thread {
+    public:
+      gc_thread();
+    private:
+      static void do_gc();
+      static void gc_func();
+  };
+
+  extern gc_thread GC_thread;
+
+  inline void
+  record_mem_alloc(size_t nbytes)
+  {
+    allocated_memory.my() += nbytes;
+  }
+};  // end of namespace
 #endif
+

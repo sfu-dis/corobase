@@ -128,7 +128,7 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-        return RCU::rcu_alloc(sz);
+        return RCU::allocate(sz);
     }
     void deallocate(void* p, size_t sz, memtag) {
 	// in C++ allocators, 'p' must be nonnull
@@ -147,7 +147,7 @@ class simple_threadinfo {
 
     void* pool_allocate(size_t sz, memtag) {
 	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        return RCU::rcu_alloc(nl * CACHE_LINE_SIZE);
+        return RCU::allocate(nl * CACHE_LINE_SIZE);
     }
     void pool_deallocate(void* p, size_t sz, memtag) {
 	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
