@@ -21,10 +21,11 @@
 #include "macros.h"
 #include "prefetch.h"
 #include "amd64.h"
-#include "rcu.h"
 #include "util.h"
 #include "small_vector.h"
 #include "ownership_checker.h"
+
+#include "rcu-wrapper.h"
 
 #include "masstree/masstree_scan.hh"
 #include "masstree/masstree_insert.hh"
@@ -33,6 +34,11 @@
 #include "masstree/timestamp.hh"
 #include "masstree/mtcounters.hh"
 #include "masstree/circular_int.hh"
+
+#ifdef HACK_SILO
+#include "object.h"
+#include "tuple.h"
+#endif
 
 class simple_threadinfo {
  public:
@@ -122,35 +128,46 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-        return rcu::s_instance.alloc(sz);
+        return RCU::allocate(sz);
     }
     void deallocate(void* p, size_t sz, memtag) {
 	// in C++ allocators, 'p' must be nonnull
-        rcu::s_instance.dealloc(p, sz);
+        // XXX: tzwang: this should be returning the memory to slab actually
+        scoped_rcu_region guard;
+        RCU::rcu_free(p);
+        //RCU::rcu_pointer u = {p};
+        //--u.p;
+        //std::free(u.v);
     }
     void deallocate_rcu(void *p, size_t sz, memtag) {
 	assert(p);
-        rcu::s_instance.dealloc_rcu(p, sz);
+        scoped_rcu_region guard;
+        RCU::rcu_free(p);
     }
 
     void* pool_allocate(size_t sz, memtag) {
 	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        return rcu::s_instance.alloc(nl * CACHE_LINE_SIZE);
+        return RCU::allocate(nl * CACHE_LINE_SIZE);
     }
     void pool_deallocate(void* p, size_t sz, memtag) {
-	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        rcu::s_instance.dealloc(p, nl * CACHE_LINE_SIZE);
+	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
+        // XXX: tzwang: this should be returning the memory to slab actually
+        scoped_rcu_region guard;
+        RCU::rcu_free(p);
+        //RCU::rcu_pointer u = {p};
+        //--u.p;
+        //std::free(u.v);
     }
     void pool_deallocate_rcu(void* p, size_t sz, memtag) {
 	assert(p);
-	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        rcu::s_instance.dealloc_rcu(p, nl * CACHE_LINE_SIZE);
+	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
+        scoped_rcu_region guard;
+        RCU::rcu_free(p);
     }
 
     // RCU
     void rcu_register(rcu_callback *cb) {
-      scoped_rcu_base<false> guard;
-      rcu::s_instance.free_with_fn(cb, rcu_callback_function);
+      RCU::free_with_fn(cb, rcu_callback_function);
     }
 
   private:
@@ -161,7 +178,7 @@ struct masstree_params : public Masstree::nodeparams<> {
   typedef uint8_t* value_type;
   typedef Masstree::value_print<value_type> value_print_type;
   typedef simple_threadinfo threadinfo_type;
-  enum { RcuRespCaller = true };
+  enum { RcuRespCaller = true }; // FIXME: tzwang: OK, silo's original code also set it to true
 };
 
 struct masstree_single_threaded_params : public masstree_params {
@@ -239,6 +256,51 @@ public:
     table_.destroy(ti);
   }
 
+#ifdef HACK_SILO
+  typedef object_vector<value_type> tuple_vector_type;
+  typedef object_vector<node_base_type*> node_vector_type;
+
+  inline oid_type insert_tuple( value_type val )
+  {
+	  return table_.insert_tuple( val );
+  }
+  std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
+  {
+	  return table_.update_version( oid, val, xid );
+  }
+  value_type fetch_version( oid_type oid, XID xid ) const
+  {
+	  return table_.fetch_version( oid, xid );
+  }
+  inline bool update_tuple( oid_type oid, value_type val )
+  {
+	  return table_.update_tuple( oid, val );
+  }
+  inline value_type fetch_tuple( oid_type oid ) const
+  {
+	  return table_.fetch_tuple( oid );
+  }
+
+  inline void unlink_tuple( oid_type oid, value_type item )
+  {
+	  table_.unlink_tuple( oid, item );
+  }
+
+  inline oid_type insert_node( node_base_type* val )
+  {
+	  return table_.insert_node( val );
+  }
+
+  inline void update_node( oid_type oid, node_base_type* val )
+  {
+	  table_.update_node( oid, val );
+  }
+  inline node_base_type* fetch_node( oid_type oid ) const
+  {
+	  return table_.fetch_node( oid );
+  }
+#endif
+
   /**
    * NOT THREAD SAFE
    */
@@ -256,7 +318,7 @@ public:
           /** NOTE: the public interface assumes that the caller has taken care
            * of setting up RCU */
 
-  inline bool search(const key_type &k, value_type &v,
+  inline bool search(const key_type &k, value_type &v, XID xid,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -332,6 +394,7 @@ public:
   search_range_call(const key_type &lower,
                     const key_type *upper,
                     low_level_search_range_callback &callback,
+					XID xid,
                     std::string *buf = nullptr) const;
 
   // (lower, upper]
@@ -339,6 +402,7 @@ public:
   rsearch_range_call(const key_type &upper,
                      const key_type *lower,
                      low_level_search_range_callback &callback,
+					 XID xid,
                      std::string *buf = nullptr) const;
 
   class search_range_callback : public low_level_search_range_callback {
@@ -369,6 +433,7 @@ public:
   search_range(const key_type &lower,
                const key_type *upper,
                F& callback,
+			   XID xid,
                std::string *buf = nullptr) const;
 
   /**
@@ -382,6 +447,7 @@ public:
   rsearch_range(const key_type &upper,
                 const key_type *lower,
                 F& callback,
+				XID xid,
                 std::string *buf = nullptr) const;
 
   /**
@@ -491,7 +557,11 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
       return static_cast<leaf_type*>(cur);
     internode_type *in = static_cast<internode_type*>(cur);
     nodeversion_type version = cur->stable();
+#ifdef HACK_SILO
+    node_base_type *child = in->fetch_node(in->child_oid_[0]);
+#else
     node_base_type *child = in->child_[0];
+#endif
     if (unlikely(in->has_changed(version)))
       continue;
     cur = child;
@@ -501,7 +571,7 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
 template <typename P>
 void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
   rcu_region guard;
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active()); // FIXME: tzwang: bug? because gurad could be disabled
   std::vector<node_base_type *> q, layers;
   q.push_back(table_.root());
   while (!q.empty()) {
@@ -517,7 +587,11 @@ void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
       auto perm = leaf->permutation();
       for (int i = 0; i != perm.size(); ++i)
         if (leaf->value_is_layer(perm[i]))
+#ifdef HACK_SILO
+          layers.push_back(leaf->fetch_node(leaf->lv_[perm[i]].layer()));
+#else
           layers.push_back(leaf->lv_[perm[i]].layer());
+#endif
       leaf_type *next = leaf->safe_next();
       callback.on_node_begin(leaf);
       if (unlikely(leaf->has_changed(version))) {
@@ -581,7 +655,7 @@ inline size_t mbtree<P>::size() const
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, value_type &v,
+inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
                               versioned_node_t *search_info) const
 {
   rcu_region guard;
@@ -589,7 +663,15 @@ inline bool mbtree<P>::search(const key_type &k, value_type &v,
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_unlocked(ti);
   if (found)
+#ifdef HACK_SILO
+  {
+	  v = fetch_version((oid_type)(lp.value()), xid);
+	  if( !v )
+		  found = false;
+  }
+#else
     v = lp.value();
+#endif
   if (search_info)
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   return found;
@@ -627,13 +709,30 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, value_type v,
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_insert(ti);
   if (!found) {
+insert_new:
+	found = false;
     ti.advance_timestamp(lp.node_timestamp());
+#ifdef HACK_SILO
+	dbtuple* tuple_ptr = reinterpret_cast<dbtuple*>(v);
+	tuple_ptr->oid =  insert_tuple(v);
+	lp.value() = (value_type)(tuple_ptr->oid);
+#else
     lp.value() = v;
+#endif
     if (insert_info) {
       insert_info->node = lp.node();
       insert_info->old_version = lp.previous_full_version_value();
       insert_info->new_version = lp.next_full_version_value(1);
     }
+  }
+  else
+  {
+	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data. we check that here. and if it's the first case, version should be empty, then we retry insert.
+	  oid_type oid = (oid_type)lp.value();
+	  if( fetch_tuple( oid ) )
+		  found = true;
+	  else
+		  goto insert_new;
   }
   lp.finish(!found, ti);
   return !found;
@@ -653,7 +752,12 @@ inline bool mbtree<P>::remove(const key_type &k, value_type *old_v)
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
   if (found && old_v)
+#ifdef HACK_SILO
+	  *old_v = fetch_tuple( (oid_type)lp.value() );
+	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
+#else
     *old_v = lp.value();
+#endif
   lp.finish(found ? -1 : 0, ti);
   return found;
 }
@@ -743,42 +847,46 @@ template <typename P>
 inline void mbtree<P>::search_range_call(const key_type &lower,
                                          const key_type *upper,
                                          low_level_search_range_callback &callback,
+										 XID xid,
                                          std::string*) const {
   low_level_search_range_scanner<false> scanner(upper, callback);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
 }
 
 template <typename P>
 inline void mbtree<P>::rsearch_range_call(const key_type &upper,
                                           const key_type *lower,
                                           low_level_search_range_callback &callback,
+										  XID xid,
                                           std::string*) const {
   low_level_search_range_scanner<true> scanner(lower, callback);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::search_range(const key_type &lower,
                                     const key_type *upper,
                                     F& callback,
+									XID xid,
                                     std::string*) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(upper, wrapper);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::rsearch_range(const key_type &upper,
                                      const key_type *lower,
                                      F& callback,
+									 XID xid,
                                      std::string*) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(lower, wrapper);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
 }
 
 template <typename P>

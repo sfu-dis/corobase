@@ -334,8 +334,8 @@ public:
       return b->ref().second;
     if (unlikely(n == SmallSize)) {
       large_elems = new large_table_type;
-      for (size_t n = 0; n < SmallSize; n++) {
-        bucket &b = small_elems[n];
+      for (size_t sn = 0; sn < SmallSize; sn++) {
+        bucket &b = small_elems[sn];
 #if GCC_AT_LEAST_47
         large_elems->emplace(std::move(b.ref()));
 #else

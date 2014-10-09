@@ -18,6 +18,10 @@
 #include "masstree_struct.hh"
 #include <stdio.h>
 
+#ifdef HACK_SILO
+#include "../object.h"
+#endif
+
 namespace Masstree {
 
 template <typename T>
@@ -70,7 +74,11 @@ void leaf<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
             v.version_value(), perm.unparse().c_str());
     if (nremoved_)
 	fprintf(f, "removed %d, ", nremoved_);
+#ifdef HACK_SILO
+    fprintf(f, "parent %llu, prev %llu, next %llu ", parent_oid_, prev_oid_, next_oid_);
+#else
     fprintf(f, "parent %p, prev %p, next %p ", parent_, prev_, next_.ptr);
+#endif
     if (ksuf_ && extrasize64_ < -1)
 	fprintf(f, "[ksuf i%dx%d] ", -extrasize64_ - 1, ksuf_->allocated_size() / 64);
     else if (ksuf_)
@@ -83,7 +91,11 @@ void leaf<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
     }
     fputc('\n', f);
 
+#ifdef HACK_SILO
+    if (v.deleted() || (perm[0] != 0 && prev_oid_))
+#else
     if (v.deleted() || (perm[0] != 0 && prev_))
+#endif
 	fprintf(f, "%s%*s%s = [] #0\n", prefix, indent + 2, "", key_type(ikey_bound()).unparse().c_str());
 
     char xbuf[15];
@@ -102,7 +114,11 @@ void leaf<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
 	    fprintf(f, "%s%*s%.*s = []%s\n", prefix, indent + 2, "", l, keybuf, xbuf);
 	else if (value_is_layer(p)) {
 	    fprintf(f, "%s%*s%.*s = SUBTREE%s\n", prefix, indent + 2, "", l, keybuf, xbuf);
+#ifdef HACK_SILO
+	    node_base<P> *n = this->fetch_node(lv.layer())->unsplit_ancestor();
+#else
 	    node_base<P> *n = lv.layer()->unsplit_ancestor();
+#endif
 	    n->print(f, prefix, indent + 4, kdepth + key_type::ikey_size);
 	} else {
 	    typename P::value_type tvx = lv.value();
@@ -124,17 +140,28 @@ void internode<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
 	memcpy(&copy, this, sizeof(copy));
 
     char keybuf[MASSTREE_MAXKEYLEN];
+#ifdef HACK_SILO
+    fprintf(f, "%s%*sinternode %p%s: %d keys, version %x, parent %llu",
+	    prefix, indent, "", this, this->deleted() ? " [DELETED]" : "",
+	    copy.size(), copy.version_value(), copy.parent_oid_);
+#else
     fprintf(f, "%s%*sinternode %p%s: %d keys, version %x, parent %p",
 	    prefix, indent, "", this, this->deleted() ? " [DELETED]" : "",
 	    copy.size(), copy.version_value(), copy.parent_);
+#endif
     if (P::debug_level > 0) {
 	kvtimestamp_t cts = timestamp_sub(created_at_[0], initial_timestamp);
 	fprintf(f, " @" PRIKVTSPARTS, KVTS_HIGHPART(cts), KVTS_LOWPART(cts));
     }
     fputc('\n', f);
     for (int p = 0; p < copy.size(); ++p) {
+#ifdef HACK_SILO
+	if (copy.child_oid_[p])
+	    copy.fetch_node(copy.child_oid_[p])->print(f, prefix, indent + 4, kdepth);
+#else
 	if (copy.child_[p])
 	    copy.child_[p]->print(f, prefix, indent + 4, kdepth);
+#endif
 	else
 	    fprintf(f, "%s%*s[]\n", prefix, indent + 4, "");
         int l;
@@ -144,15 +171,22 @@ void internode<P>::print(FILE *f, const char *prefix, int indent, int kdepth)
             l = copy.get_key(p).unparse(keybuf, sizeof(keybuf));
 	fprintf(f, "%s%*s%.*s\n", prefix, indent + 2, "", l, keybuf);
     }
+#ifdef HACK_SILO
+    if (copy.child_oid_[copy.size()])
+	copy.fetch_node(copy.child_oid_[copy.size()])->print(f, prefix, indent + 4, kdepth);
+#else
     if (copy.child_[copy.size()])
 	copy.child_[copy.size()]->print(f, prefix, indent + 4, kdepth);
+#endif
     else
 	fprintf(f, "%s%*s[]\n", prefix, indent + 4, "");
 }
 
 template <typename P>
 void basic_table<P>::print(FILE *f, int indent) const {
+#ifndef HACK_SILO
     root_->print(f ? f : stdout, "", indent, 0);
+#endif
 }
 
 } // namespace Masstree

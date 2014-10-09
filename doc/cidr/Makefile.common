@@ -1,46 +1,47 @@
 ## Common variables for Latex Makefiles
 
-PAPER_TMSTAMP = catjoin-`date +%F`.pdf
-PAPERPS_TMSTAMP = catjoin-`date +%F`.ps
+PAPER_TMSTAMP = rcu-cc-`date +%F`.pdf
+PAPERPS_TMSTAMP = rcu-cc-`date +%F`.ps
 
 # Specifying full paths here breaks the Makefile because each machine installs at a different path.
 # Rely on the users $PATH instead
 #
-# LATEX = /usr/texbin/latex
-# BIBTEX = /usr/texbin/bibtex
-# PDFLATEX = /usr/texbin/pdflatex
-# PYTHONEXEC = /opt/anaconda/bin/python
+LATEX = /usr/texbin/latex
+BIBTEX = /usr/texbin/bibtex
+PDFLATEX = /usr/texbin/pdflatex
+PYTHONEXEC = /anaconda/bin/python
+#PYTHONEXEC = /opt/anaconda/bin/python
 #PYTHONEXEC = /cygdrive/c/Anaconda/python
+PS2PDF = /usr/local/bin/ps2pdf
 
-LATEX = latex
-BIBTEX = bibtex
-PDFLATEX = pdflatex
-PYTHONEXEC = python
+# LATEX = latex
+# BIBTEX = bibtex
+# PDFLATEX = pdflatex
+# PYTHONEXEC = python
+# PS2PDF = ps2pdf
 
-PYTHON_DEPS = figure-sources/results.py results/vldb_experiment.dat results/vldb_experiment_bal.dat
+##PYTHON_DEPS = figure-sources/results.py results/vldb_experiment.dat results/vldb_experiment_bal.dat
 
 TEX_EXT_TO_CLEAN = aux bbl blg brf dvi lof log lot out toc spl
 FIG_EXT_TO_CLEAN = prn raw.eps raw.pdf cropped.pdf
 
-FIGURES = fig-htcomp fig-dira-vs-ddra fig-cht fig-part fig-jflt fig-mem-jflt
-FIGURES += fig-pipedpart fig-chtplan fig-probeLatency fig-multiJoin
-FIGURES += fig-hashXor fig-totalMemory fig-joinMemOuter fig-totalLatency
-FIGURES += fig-threadsScaling fig-vtune fig-ioLatency fig-density fig-ioSpeed
+#FIGURES = fig-htcomp
+FIGURES = fig-rand-100 fig-rand-300 fig-write-ratio
 
 ## Testing the python / matplotlib
 # FIGURES += demo-barchart
 
-SECTIONS = abstract intro background cht fastjoin eval related conclusions
+SECTIONS = abstract intro design eval related conclusions
 
-CSVFILES = fig-density.csv
+#CSVFILES = fig-density.csv
 
-TEXFILES = $(SECTIONS:%=catjoin-%.tex)
+TEXFILES = $(SECTIONS:%=rcu-cc-%.tex)
 
-FILES_TO_CLEAN = $(TEX_EXT_TO_CLEAN:%=catjoin.%)
+FILES_TO_CLEAN = $(TEX_EXT_TO_CLEAN:%=rcu-cc.%)
 FILES_TO_CLEAN += $(foreach ext,$(FIG_EXT_TO_CLEAN),$(FIGURES:%=%.$(ext)))
 
 EXTRA_FILES_TO_CLEAN = $(foreach ext, pdf eps, $(FIGURES:%=%.$(ext)))
-EXTRA_FILES_TO_CLEAN += catjoin.ps catjoin.pdf
+EXTRA_FILES_TO_CLEAN += rcu-cc.ps rcu-cc.pdf
 
 %.eps.in: figure-sources/%.py ${PYTHON_DEPS}
 	echo "${PYTHONEXEC} figure-sources/$*.py eps"
@@ -48,11 +49,11 @@ EXTRA_FILES_TO_CLEAN += catjoin.ps catjoin.pdf
 
 
 
-catjoin.pdf: $(FIGURES:%=%.eps) $(FIGURES:%=%.pdf) $(TEXFILES)
+rcu-cc.pdf: $(FIGURES:%=%.eps) $(FIGURES:%=%.pdf) $(TEXFILES)
 
-catjoin.ps:
+rcu-cc.ps:
 
-catjoin.dvi:  $(FIGURES:%=%.eps) $(TEXFILES)
+rcu-cc.dvi:  $(FIGURES:%=%.eps) $(TEXFILES)
 
 figures: $(FIGURES:%=%.eps) $(FIGURES:%=%.pdf)
 

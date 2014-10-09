@@ -347,8 +347,9 @@ bench_runner::run()
       cerr << it->first << ": " << it->second << endl;
     cerr << "--- perf counters (if enabled, for benchmark) ---" << endl;
     PERF_EXPR(scopedperf::perfsum_base::printall());
-    cerr << "--- allocator stats ---" << endl;
-    ::allocator::DumpStats();
+    // FIXME: tzwang: no real allocator for now
+    // cerr << "--- allocator stats ---" << endl;
+    // ::allocator::DumpStats();
     cerr << "---------------------------------------" << endl;
 
 #ifdef USE_JEMALLOC
@@ -357,7 +358,7 @@ bench_runner::run()
     cerr << "printing jemalloc stats..." << endl;
     malloc_stats_print(write_cb, NULL, "");
 #endif
-#ifdef USE_TCMALLOC
+#ifdef XX_USE_TCMALLOC
     HeapProfilerDump("before-exit");
 #endif
   }

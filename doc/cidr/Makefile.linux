@@ -32,7 +32,7 @@ PDFTOPSEXEC = /usr/bin/pdftops
 
 
 %.pdf: %.eps
-	ps2pdf -dEPSCrop $< $@
+	${PS2PDF} -dEPSCrop $< $@
 	cp $*.pdf figure-sources/$*.pdf.in
 
 %.pdf: figure-sources/%.pdf.in

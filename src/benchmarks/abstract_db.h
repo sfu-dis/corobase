@@ -25,7 +25,7 @@ public:
    * behavior).  Also if thrown, subsequently calling get()/put() will also
    * result in undefined behavior)
    */
-  class abstract_abort_exception {};
+  class abstract_abort_exception : public std::exception { };
 
   // ctor should open db
   abstract_db() {}
@@ -111,15 +111,16 @@ public:
   }
 
   /**
-   * Returns true on successful commit.
+   * Returns if successful commit. The transaction has been deleted
+   * and should not be accessed again.
    *
-   * On failure, can either throw abstract_abort_exception, or
-   * return false- caller should be prepared to deal with both cases
+   * On failure, throw abstract_abort_exception. The transaction has
+   * *not* been deleted, and caller is responsible to call abort_txn.
    */
-  virtual bool commit_txn(void *txn) = 0;
+  virtual void commit_txn(void *txn) = 0;
 
   /**
-   * XXX
+   * Abort the transaction and delete it. 
    */
   virtual void abort_txn(void *txn) = 0;
 

@@ -17,6 +17,8 @@
 #define MASSTREE_SCAN_HH
 #include "masstree_tcursor.hh"
 #include "masstree_struct.hh"
+#include "../rcu/xid.h"
+
 namespace Masstree {
 
 template <typename P>
@@ -152,7 +154,14 @@ struct reverse_scan_helper {
     N *advance(const N *n, K &k) const {
 	k.assign_store_ikey(n->ikey_bound());
 	k.assign_store_length(0);
+#ifdef HACK_SILO
+	if( n )
+		return reinterpret_cast<N*>(n->fetch_node( n->prev_oid_ ) );
+	else
+		return NULL;
+#else
 	return n->prev_;
+#endif
     }
     template <typename N, typename K>
     typename N::nodeversion_type stable(N *&n, const K &k) const {
@@ -215,7 +224,11 @@ int scanstackelt<P>::find_initial(H& helper, key_type& ka, bool emit_equal,
     if (kp >= 0) {
 	if (n_->keylenx_is_layer(keylenx)) {
 	    if (likely(n_->keylenx_is_stable_layer(keylenx))) {
+#ifdef HACK_SILO
+		this[1].root_ = n_->fetch_node(entry.layer());
+#else
 		this[1].root_ = entry.layer();
+#endif
 		return scan_down;
 	    } else
 		goto retry_entry;
@@ -283,7 +296,11 @@ int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry)
 	ka.assign_store_ikey(ikey);
 	helper.found();
 	if (n_->keylenx_is_layer(keylenx)) {
+#ifdef HACK_SILO
+	    this[1].root_ = n_->fetch_node(entry.layer());
+#else
 	    this[1].root_ = entry.layer();
+#endif
 	    return scan_down;
 	} else {
 	    ka.assign_store_length(keylen);
@@ -309,6 +326,7 @@ template <typename P> template <typename H, typename F>
 int basic_table<P>::scan(H helper,
                          Str firstkey, bool emit_firstkey,
                          F& scanner,
+						 XID xid,
                          threadinfo& ti) const
 {
     typedef typename P::ikey_type ikey_type;
@@ -325,7 +343,11 @@ int basic_table<P>::scan(H helper,
     typedef scanstackelt<param_type> mystack_type;
     mystack_type stack[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
     int stackpos = 0;
+#ifdef HACK_SILO
+    stack[0].root_ = fetch_node(root_oid_);
+#else
     stack[0].root_ = root_;
+#endif
     leafvalue_type entry = leafvalue_type::make_empty();
 
     int scancount = 0;
@@ -344,12 +366,23 @@ int basic_table<P>::scan(H helper,
     while (1) {
 	switch (state) {
 	case mystack_type::scan_emit:
+		{
 	    ++scancount;
+#ifdef HACK_SILO
+		value_type v;
+		v = fetch_version((oid_type)(entry.value()), xid);
+		if (v) {
+			if (!scanner.visit_value(ka, v, ti))
+				goto done;
+		}
+#else
 	    if (!scanner.visit_value(ka, entry.value(), ti))
-		goto done;
+			goto done;
+#endif
 	    stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
             state = stack[stackpos].find_next(helper, ka, entry);
-            break;
+		}
+		break;
 
 	case mystack_type::scan_find_next:
         find_next:
@@ -386,17 +419,19 @@ int basic_table<P>::scan(H helper,
 template <typename P> template <typename F>
 int basic_table<P>::scan(Str firstkey, bool emit_firstkey,
                          F& scanner,
+						 XID xid,
                          threadinfo& ti) const
 {
-    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, ti);
+    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xid, ti);
 }
 
 template <typename P> template <typename F>
 int basic_table<P>::rscan(Str firstkey, bool emit_firstkey,
                           F& scanner,
+						  XID xid,
                           threadinfo& ti) const
 {
-    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, ti);
+    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xid, ti);
 }
 
 } // namespace Masstree
