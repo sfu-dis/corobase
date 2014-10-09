@@ -42,7 +42,11 @@ inline node_base<P>* tcursor<P>::check_leaf_insert(node_type* root,
 		+ n_->iksuf_[0].overhead(n_->width);
 	else
 	    ksufsize = 0;
+#ifdef HACK_SILO
+	leaf_type *nl = leaf_type::make_root(ksufsize, n_, ti, n_->table_);
+#else
 	leaf_type *nl = leaf_type::make_root(ksufsize, n_, ti);
+#endif
 	nl->assign_initialize(0, kc <= 0 ? oka : ka_, ti);
 	if (kc != 0)
 	    nl->assign_initialize(1, kc <= 0 ? ka_ : oka, ti);
@@ -69,7 +73,11 @@ inline node_base<P>* tcursor<P>::check_leaf_insert(node_type* root,
 	// need compiler barriers.
 	n_->keylenx_[kp_] = sizeof(n_->ikey0_[0]) + 65;
 	fence();
+#ifdef HACK_SILO
+	n_->lv_[kp_] = nl->oid;
+#else
 	n_->lv_[kp_] = nl;
+#endif
 	fence();
 	n_->keylenx_[kp_] = sizeof(n_->ikey0_[0]) + 129;
 	n_->unlock(v);
@@ -86,7 +94,11 @@ inline node_base<P>* tcursor<P>::check_leaf_insert(node_type* root,
     if (n_->size() + n_->nremoved_ < n_->width) {
 	kp_ = permuter_type(n_->permutation_).back();
 	// watch out for attempting to use position 0
+#ifdef HACK_SILO
+	if (likely(kp_ != 0) || !n_->prev_oid_ || n_->ikey_bound() == ka_.ikey()) {
+#else
 	if (likely(kp_ != 0) || !n_->prev_ || n_->ikey_bound() == ka_.ikey()) {
+#endif
 	    n_->assign(kp_, ka_, ti);
 	    return insert_marker();
 	}
@@ -106,7 +118,11 @@ inline node_base<P>* tcursor<P>::check_leaf_insert(node_type* root,
 	permuter_type perm(n_->permutation_);
 	int zeroidx = find_lowest_zero_nibble(perm.value_from(0));
 	masstree_invariant(perm[zeroidx] == 0 && zeroidx < n_->width);
+#ifdef HACK_SILO
+	if (zeroidx > perm.size() && n_->prev_oid_) {
+#else
 	if (zeroidx > perm.size() && n_->prev_) {
+#endif
 	    perm.exchange(perm.size(), zeroidx);
 	    n_->permutation_ = perm.value();
 	    fence();

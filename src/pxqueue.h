@@ -189,6 +189,45 @@ struct basic_px_queue {
     sanity_check();
   }
 
+  // FIXME: tzwang: same as enqueue, except we don't care about rcu_tick
+  // (for clean_up_memory().)
+  void
+  enqueue(const T &t)
+  {
+    INVARIANT(bool(head_) == bool(tail_));
+    INVARIANT(bool(head_) == bool(ngroups_));
+    INVARIANT(!tail_ || tail_->pxs_.size() <= px_group::GroupSize);
+    px_group *g;
+    if (unlikely(!tail_ ||
+                 tail_->pxs_.size() == px_group::GroupSize)) {
+      ensure_freelist();
+      // pop off freelist
+      g = freelist_head_;
+      freelist_head_ = g->next_;
+      if (g == freelist_tail_)
+        freelist_tail_ = nullptr;
+      g->next_ = nullptr;
+      g->pxs_.clear();
+      g->rcu_tick_ = -1;  // FIXME: tzwang: should we remove this?
+      ngroups_++;
+
+      // adjust ptrs
+      if (!head_) {
+        head_ = tail_ = g;
+      } else {
+        tail_->next_ = g;
+        tail_ = g;
+      }
+    } else {
+      g = tail_;
+    }
+    INVARIANT(g->pxs_.size() < px_group::GroupSize);
+    INVARIANT(!g->next_);
+    INVARIANT(tail_ == g);
+    g->pxs_.emplace_back(t);
+    sanity_check();
+  }
+
   void
   ensure_freelist()
   {
@@ -250,6 +289,34 @@ struct basic_px_queue {
     INVARIANT(!tail_);
     px_group *p = source.head_, *pnext;
     while (p && p->rcu_tick_ <= rcu_tick) {
+      pnext = p->next_;
+      p->next_ = nullptr;
+      if (!head_) {
+        head_ = tail_ = p;
+      } else {
+        tail_->next_ = p;
+        tail_ = p;
+      }
+      ngroups_++;
+      source.ngroups_--;
+      source.head_ = p = pnext;
+      if (!source.head_)
+        source.tail_ = nullptr;
+    }
+    sanity_check();
+    source.sanity_check();
+  }
+
+  // FIXME: tzwang: same as empty_accept_from, except this
+  // one accepts all entries (for clean_up_memory in txn dtor).
+  inline void
+  empty_accept(basic_px_queue &source)
+  {
+    ALWAYS_ASSERT(empty());
+    INVARIANT(this != &source);
+    INVARIANT(!tail_);
+    px_group *p = source.head_, *pnext;
+    while (p) {
       pnext = p->next_;
       p->next_ = nullptr;
       if (!head_) {

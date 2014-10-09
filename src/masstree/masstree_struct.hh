@@ -20,6 +20,10 @@
 #include "stringbag.hh"
 #include "mtcounters.hh"
 #include "timestamp.hh"
+
+#ifdef HACK_SILO
+#include "../object.h"
+#endif
 namespace Masstree {
 
 template <typename P>
@@ -51,6 +55,26 @@ class node_base : public make_nodeversion<P>::type {
     typedef typename make_nodeversion<P>::type nodeversion_type;
     typedef typename P::threadinfo_type threadinfo;
 
+#ifdef HACK_SILO
+	typedef basic_table<P> basic_table_type;
+	basic_table_type* table_;
+	oid_type oid;
+
+	inline oid_type insert_node( base_type* node )
+	{
+		return table_->insert_node( node );
+	}
+
+	inline void update_node( oid_type oid, base_type* node )
+	{
+		table_->update_node( oid, node );
+	}
+	inline base_type* fetch_node( oid_type oid ) const
+	{
+		return table_->fetch_node( oid );
+	}
+#endif
+
     node_base(bool isleaf)
 	: nodeversion_type(isleaf) {
     }
@@ -62,6 +86,41 @@ class node_base : public make_nodeversion<P>::type {
 	    return static_cast<const internode_type*>(this)->size();
     }
 
+#ifdef HACK_SILO
+    inline base_type* parent() const {
+        // almost always an internode
+	if (this->isleaf())
+	{
+		if (static_cast<const leaf_type*>(this)->parent_oid_) 
+	    return this->fetch_node(static_cast<const leaf_type*>(this)->parent_oid_);
+	}
+	else
+	{
+		if (static_cast<const internode_type*>(this)->parent_oid_)
+	    return this->fetch_node(static_cast<const internode_type*>(this)->parent_oid_);
+	}
+
+	return 0;
+    }
+    inline void set_parent(base_type* p) {
+	if (this->isleaf())
+	{
+	    if ( parent_exists(p) )
+			static_cast<leaf_type*>(this)->parent_oid_ = p->oid;
+		else
+			static_cast<leaf_type*>(this)->parent_oid_ = 0;
+
+	}
+	else
+	{
+	    if ( parent_exists(p) )
+			static_cast<internode_type*>(this)->parent_oid_ = p->oid;
+		else
+			static_cast<internode_type*>(this)->parent_oid_ = 0;
+
+	}
+    }
+#else
     inline base_type* parent() const {
         // almost always an internode
 	if (this->isleaf())
@@ -69,6 +128,13 @@ class node_base : public make_nodeversion<P>::type {
 	else
 	    return static_cast<const internode_type*>(this)->parent_;
     }
+    inline void set_parent(base_type* p) {
+	if (this->isleaf())
+	    static_cast<leaf_type*>(this)->parent_ = p;
+	else
+	    static_cast<internode_type*>(this)->parent_ = p;
+    }
+#endif
     static inline base_type* parent_for_layer_root(base_type* higher_layer) {
         (void) higher_layer;
         return 0;
@@ -80,12 +146,6 @@ class node_base : public make_nodeversion<P>::type {
         return parent_exists(parent());
     }
     inline internode_type* locked_parent(threadinfo& ti) const;
-    inline void set_parent(base_type* p) {
-	if (this->isleaf())
-	    static_cast<leaf_type*>(this)->parent_ = p;
-	else
-	    static_cast<internode_type*>(this)->parent_ = p;
-    }
     inline base_type* unsplit_ancestor() const {
 	base_type* x = const_cast<base_type*>(this), *p;
 	while (x->has_split() && (p = x->parent()))
@@ -96,7 +156,11 @@ class node_base : public make_nodeversion<P>::type {
         base_type* x = unsplit_ancestor();
         while (!x->isleaf()) {
             internode_type* in = static_cast<internode_type*>(x);
+#ifdef HACK_SILO
+			x = in->fetch_node(in->child_oid[0]);
+#else
             x = in->child_[0];
+#endif
         }
         return x;
     }
@@ -124,14 +188,40 @@ class internode : public node_base<P> {
 
     uint8_t nkeys_;
     ikey_type ikey0_[width];
-    node_base<P>* child_[width + 1];
-    node_base<P>* parent_;
     kvtimestamp_t created_at_[P::debug_level > 0];
 
+#ifdef HACK_SILO
+	typedef basic_table<P> basic_table_type;
+	typedef object_vector<node_base<P>*> node_vector_type; 
+	oid_type child_oid_[width + 1];
+	oid_type parent_oid_; 
+    internode()
+	: node_base<P>(false), nkeys_(0), parent_oid_() {
+    }
+#else
+    node_base<P>* child_[width + 1];
+    node_base<P>* parent_;
     internode()
 	: node_base<P>(false), nkeys_(0), parent_() {
     }
+#endif
 
+
+#ifdef HACK_SILO
+    static internode<P>* make(threadinfo& ti, basic_table<P>* table) {
+	void* ptr = ti.pool_allocate(sizeof(internode<P>),
+                                     memtag_masstree_internode);
+	internode<P>* n = new(ptr) internode<P>;
+	assert(n);
+	if (P::debug_level > 0)
+	    n->created_at_[0] = ti.operation_timestamp();
+
+	n->table_ = table;
+	n->oid = table->insert_node( n );
+	memset( n->child_oid_, 0, sizeof(oid_type)*width+1 );
+	return n;
+    }
+#else
     static internode<P>* make(threadinfo& ti) {
 	void* ptr = ti.pool_allocate(sizeof(internode<P>),
                                      memtag_masstree_internode);
@@ -141,6 +231,7 @@ class internode : public node_base<P> {
 	    n->created_at_[0] = ti.operation_timestamp();
 	return n;
     }
+#endif
 
     int size() const {
 	return nkeys_;
@@ -170,12 +261,36 @@ class internode : public node_base<P> {
     }
 
   private:
+#ifdef HACK_SILO
+    void assign(int p, ikey_type ikey, node_base<P>* child) {
+	child->set_parent(this);
+	child_oid_[p+1] = child->oid;
+	ikey0_[p] = ikey;
+    }
+    void shift_from(int p, const internode<P>* x, int xp, int n) {
+	masstree_precondition(x != this);
+	if (n) {
+	    memcpy(ikey0_ + p, x->ikey0_ + xp, sizeof(ikey0_[0]) * n);
+	    memcpy(child_oid_ + p + 1, x->child_oid_ + xp + 1, sizeof(child_oid_[0]) * n);
+	}
+    }
+
+    void shift_up(int p, int xp, int n) {
+	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
+	for (oid_type* a = child_oid_ + p + n, *b = child_oid_ + xp + n; n; --a, --b, --n)
+	    *a = *b;
+    }
+    void shift_down(int p, int xp, int n) {
+	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
+	for (oid_type* a = child_oid_ + p + 1, * b = child_oid_ + xp+ 1; n; ++a, ++b, --n)
+	    *a = *b;
+    }
+#else
     void assign(int p, ikey_type ikey, node_base<P>* child) {
 	child->set_parent(this);
 	child_[p + 1] = child;
 	ikey0_[p] = ikey;
     }
-
     void shift_from(int p, const internode<P>* x, int xp, int n) {
 	masstree_precondition(x != this);
 	if (n) {
@@ -193,6 +308,7 @@ class internode : public node_base<P> {
 	for (node_base<P> **a = child_ + p + 1, **b = child_ + xp + 1; n; ++a, ++b, --n)
 	    *a = *b;
     }
+#endif
 
     int split_into(internode<P>* nr, int p, ikey_type ka, node_base<P>* value,
                    ikey_type& split_ikey, int split_type);
@@ -215,6 +331,12 @@ class leafvalue {
 	u_.x = reinterpret_cast<uintptr_t>(n);
     }
 
+#ifdef HACK_SILO
+	leafvalue(oid_type oid)
+	{
+		u_.o = oid;
+	}
+#endif
     static leafvalue<P> make_empty() {
 	return leafvalue<P>(value_type());
     }
@@ -234,21 +356,35 @@ class leafvalue {
 	return u_.v;
     }
 
+#ifdef HACK_SILO
+    oid_type layer() const {
+	return u_.o;
+    }
+#else
     node_base<P>* layer() const {
 	return reinterpret_cast<node_base<P>*>(u_.x);
     }
+#endif
 
     void prefetch(int keylenx) const {
 	if (keylenx < 128)
 	    prefetcher_type()(u_.v);
 	else
-	    u_.n->prefetch_full();
+#ifdef HACK_SILO
+		;
+#else
+	    u_.n->prefetch_full();	// TODO. deal with prefetch later
+#endif
     }
 
   private:
     union {
-	node_base<P>* n;
-	value_type v;
+#ifdef HACK_SILO
+	oid_type o;					// Node objects
+#else
+	node_base<P>* n;			
+#endif
+	value_type v;				// Record objects
 	uintptr_t x;
     } u_;
 };
@@ -273,16 +409,55 @@ class leaf : public node_base<P> {
     leafvalue_type lv_[width];
     stringbag<uint32_t>* ksuf_;	// a real rockstar would save this space
 				// when it is unsed
+#ifdef HACK_SILO
+	oid_type parent_oid_; 
+	oid_type next_oid_;
+	bool next_lock_;
+	oid_type prev_oid_;
+#else
     union {
 	leaf<P>* ptr;
 	uintptr_t x;
     } next_;
     leaf<P>* prev_;
     node_base<P>* parent_;
+#endif
     kvtimestamp_t node_ts_;
     kvtimestamp_t created_at_[P::debug_level > 0];
     stringbag<uint16_t> iksuf_[0];
 
+#ifdef HACK_SILO
+    leaf(size_t sz, kvtimestamp_t node_ts)
+	: node_base<P>(true), nremoved_(0),
+	  permutation_(permuter_type::make_empty()),
+	  ksuf_(), parent_oid_(), node_ts_(node_ts), iksuf_{} {
+	masstree_precondition(sz % 64 == 0 && sz / 64 < 128);
+	extrasize64_ = (int(sz) >> 6) - ((int(sizeof(*this)) + 63) >> 6);
+	if (extrasize64_ > 0)
+	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
+    }
+    static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti, basic_table<P>* table) {
+	size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
+	void* ptr = ti.pool_allocate(sz, memtag_masstree_leaf);
+	leaf<P>* n = new(ptr) leaf<P>(sz, node_ts);
+	assert(n);
+	if (P::debug_level > 0)
+	    n->created_at_[0] = ti.operation_timestamp();
+
+	n->table_ = table;
+	n->oid = table->insert_node( n );
+	n->next_lock_ = false;
+	return n;
+    }
+
+    static leaf<P>* make_root(int ksufsize, leaf<P>* parent, threadinfo& ti, basic_table<P>* table) {
+        leaf<P>* n = make(ksufsize, parent ? parent->node_ts_ : 0, ti, table);
+        n->next_oid_ = n->prev_oid_ = 0;
+        n->parent_oid_ = reinterpret_cast<oid_type>(node_base<P>::parent_for_layer_root(parent));
+        n->mark_root();
+        return n;
+    }
+#else
     leaf(size_t sz, kvtimestamp_t node_ts)
 	: node_base<P>(true), nremoved_(0),
 	  permutation_(permuter_type::make_empty()),
@@ -292,7 +467,6 @@ class leaf : public node_base<P> {
 	if (extrasize64_ > 0)
 	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
     }
-
     static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti) {
 	size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
 	void* ptr = ti.pool_allocate(sz, memtag_masstree_leaf);
@@ -302,13 +476,14 @@ class leaf : public node_base<P> {
 	    n->created_at_[0] = ti.operation_timestamp();
 	return n;
     }
+
     static leaf<P>* make_root(int ksufsize, leaf<P>* parent, threadinfo& ti) {
         leaf<P>* n = make(ksufsize, parent ? parent->node_ts_ : 0, ti);
-        n->next_.ptr = n->prev_ = 0;
         n->parent_ = node_base<P>::parent_for_layer_root(parent);
         n->mark_root();
         return n;
     }
+#endif
 
     size_t allocated_size() const {
 	int es = (extrasize64_ >= 0 ? extrasize64_ : -extrasize64_ - 1);
@@ -423,9 +598,15 @@ class leaf : public node_base<P> {
 
     void print(FILE* f, const char* prefix, int indent, int kdepth);
 
+#ifdef HACK_SILO
+    leaf<P>* safe_next() const {
+	return reinterpret_cast<leaf<P>*>(this->fetch_node( next_oid_ ));
+    }
+#else
     leaf<P>* safe_next() const {
 	return reinterpret_cast<leaf<P>*>(next_.x & ~(uintptr_t) 1);
     }
+#endif
 
     void deallocate(threadinfo& ti) {
 	if (ksuf_)
@@ -483,8 +664,18 @@ class leaf : public node_base<P> {
 
 template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
+
+#ifdef HACK_SILO
+    masstree_precondition(!root_oid_);
+	// FIXME. initial vector size parameter!
+	tuple_vector = new object_vector<value_type>( 100000000 );
+	node_vector = new object_vector<node_type*>( 10000000 );
+    node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
+	root_oid_ = root->oid;
+#else
     masstree_precondition(!root_);
     root_ = node_type::leaf_type::make_root(0, 0, ti);
+#endif
 }
 
 
@@ -575,7 +766,11 @@ inline leaf<P>* node_base<P>::reach_leaf(const key_type& ka,
 	const internode<P> *in = static_cast<const internode<P> *>(n[sense]);
 	in->prefetch();
 	int kp = internode<P>::bound_type::upper(ka, *in);
+#ifdef HACK_SILO
+	n[!sense] = in->fetch_node(in->child_oid_[kp]);
+#else
 	n[!sense] = in->child_[kp];
+#endif
 	if (!n[!sense])
 	    goto retry;
 	v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
@@ -694,16 +889,34 @@ void leaf<P>::hard_assign_ksuf(int p, Str s, bool initializing,
                           memtag_masstree_ksuffixes);
 }
 
+#ifdef HACK_SILO
+template <typename P>
+inline basic_table<P>::basic_table()
+    : root_oid_(0) {
+}
+template <typename P>
+inline node_base<P>* basic_table<P>::root() const {
+    return fetch_node(root_oid_);
+}
+template <typename P>
+inline node_base<P>* basic_table<P>::fix_root() {
+    node_base<P>* root = fetch_node(root_oid_);
+    if (unlikely(root->has_split())) {
+        root = root->unsplit_ancestor();
+		if( root->oid != root_oid_ )
+			root_oid_ = root->oid;
+    }
+    return root;
+}
+#else
 template <typename P>
 inline basic_table<P>::basic_table()
     : root_(0) {
 }
-
 template <typename P>
 inline node_base<P>* basic_table<P>::root() const {
     return root_;
 }
-
 template <typename P>
 inline node_base<P>* basic_table<P>::fix_root() {
     node_base<P>* root = root_;
@@ -714,6 +927,7 @@ inline node_base<P>* basic_table<P>::fix_root() {
     }
     return root;
 }
+#endif
 
 } // namespace Masstree
 #endif

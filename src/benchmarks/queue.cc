@@ -54,14 +54,13 @@ public:
     try {
       const string k = queue_key(id, ctr);
       tbl->insert(txn, k, queue_values);
-      if (likely(db->commit_txn(txn))) {
-        ctr++;
-        return txn_result(true, queue_values.size());
-      }
+      db->commit_txn(txn);
+      ctr++;
+      return txn_result(true, queue_values.size());
     } catch (abstract_db::abstract_abort_exception &ex) {
       db->abort_txn(txn);
+      return txn_result(false, 0);
     }
-    return txn_result(false, 0);
   }
 
   static txn_result
@@ -86,12 +85,12 @@ public:
         tbl->remove(txn, k);
         ret = -queue_values.size();
       }
-      if (likely(db->commit_txn(txn)))
-        return txn_result(true, ret);
+      db->commit_txn(txn);
+      return txn_result(true, ret);
     } catch (abstract_db::abstract_abort_exception &ex) {
       db->abort_txn(txn);
+      return txn_result(false, 0);
     }
-    return txn_result(false, 0);
   }
 
   static txn_result
@@ -117,14 +116,13 @@ public:
         tbl->remove(txn, k);
         ret = -queue_values.size();
       }
-      if (likely(db->commit_txn(txn))) {
-        if (likely(found)) ctr++;
-        return txn_result(true, ret);
-      }
+      db->commit_txn(txn);
+      if (likely(found)) ctr++;
+      return txn_result(true, ret);
     } catch (abstract_db::abstract_abort_exception &ex) {
       db->abort_txn(txn);
+      return txn_result(false, 0);
     }
-    return txn_result(false, 0);
   }
 
   static txn_result
@@ -146,14 +144,13 @@ public:
         tbl->remove(txn, k);
         ret = -queue_values.size();
       }
-      if (likely(db->commit_txn(txn))) {
-        if (likely(found)) ctr++;
-        return txn_result(true, ret);
-      }
+      db->commit_txn(txn);
+      if (likely(found)) ctr++;
+      return txn_result(true, ret);
     } catch (abstract_db::abstract_abort_exception &ex) {
       db->abort_txn(txn);
+      return txn_result(false, 0);
     }
-    return txn_result(false, 0);
   }
 
   static txn_result
@@ -211,7 +208,7 @@ protected:
           }
           if (verbose)
             cerr << "batch 1/1 done" << endl;
-          ALWAYS_ASSERT(db->commit_txn(txn));
+          db->commit_txn(txn);
         } else {
           for (size_t i = 0; i < nbatches; i++) {
             size_t keyend = (i == nbatches - 1) ? nkeys : (i + 1) * batchsize;
@@ -223,7 +220,7 @@ protected:
             }
             if (verbose)
               cerr << "batch " << (i + 1) << "/" << nbatches << " done" << endl;
-            ALWAYS_ASSERT(db->commit_txn(txn));
+            db->commit_txn(txn);
           }
         }
       }

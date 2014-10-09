@@ -1,6 +1,11 @@
 -include config.mk
 
 ### Options ###
+#CXX=icc
+#CXX=clang
+#CXX=/home/ipandis/apps/bin/gcc483/g++
+CXX=g++
+#CXX=g++491
 
 DEBUG ?= 0
 CHECK_INVARIANTS ?= 0
@@ -35,6 +40,7 @@ USE_MALLOC_MODE_S=$(strip $(USE_MALLOC_MODE))
 MODE_S=$(strip $(MODE))
 MASSTREE_S=$(strip $(MASSTREE))
 MASSTREE_CONFIG:=--enable-max-key-len=1024
+MASSTREE_LDFLAGS:=
 
 ifeq ($(DEBUG_S),1)
 	OSUFFIX_D=.debug
@@ -75,12 +81,13 @@ else
 	$(error invalid mode)
 endif
 
-CXXFLAGS := -g -Wall -std=c++0x
+CXXFLAGS := -Wall -std=c++0x -DHACK_SILO -g -gdwarf-2
 CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(DEBUG_S),1)
-        CXXFLAGS += -fno-omit-frame-pointer -DDEBUG
+        CXXFLAGS += -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
 else
-        CXXFLAGS += -Werror -O2 -funroll-loops -fno-omit-frame-pointer
+        CXXFLAGS += -O2 -funroll-loops -fno-omit-frame-pointer
+        #CXXFLAGS += -Werror -O2 -funroll-loops -fno-omit-frame-pointer
 endif
 ifeq ($(CHECK_INVARIANTS_S),1)
 	CXXFLAGS += -DCHECK_INVARIANTS
@@ -97,17 +104,24 @@ else
 endif
 
 TOP     := $(shell echo $${PWD-`pwd`})
-LDFLAGS := -lpthread -lnuma -lrt
+LDFLAGS := -lpthread -lnuma -lrt -static-libstdc++
+#ifeq ($(DEBUG_S),1)
+#LDFLAGS += -lasan
+#endif
 
 LZ4LDFLAGS := -Lthird-party/lz4 -llz4 -Wl,-rpath,$(TOP)/third-party/lz4
+
+GPERFTOOLS :=
 
 ifeq ($(USE_MALLOC_MODE_S),1)
         CXXFLAGS+=-DUSE_JEMALLOC
         LDFLAGS+=-ljemalloc
 	MASSTREE_CONFIG+=--with-malloc=jemalloc
 else ifeq ($(USE_MALLOC_MODE_S),2)
-        CXXFLAGS+=-DUSE_TCMALLOC
-        LDFLAGS+=-ltcmalloc
+	GPERFTOOLS+=/home/ipandis/GITPROJECTS/Impala/thirdparty/gperftools-2.0
+        CXXFLAGS+=-DUSE_TCMALLOC -I$(GPERFTOOLS)/src/
+        LDFLAGS+="-L$(GPERFTOOLS) -ltcmalloc"
+	MASSTREE_LDFLAGS="-L$(GPERFTOOLS)/.libs/ "
 	MASSTREE_CONFIG+=--with-malloc=tcmalloc
 else ifeq ($(USE_MALLOC_MODE_S),3)
         CXXFLAGS+=-DUSE_FLOW
@@ -122,19 +136,40 @@ ifneq ($(strip $(CUSTOM_LDPATH)), )
 endif
 
 SRCFILES = allocator.cc \
-	btree.cc \
 	core.cc \
 	counter.cc \
+	gc.cc \
 	memory.cc \
-	rcu.cc \
+	rcu-wrapper.cc \
 	stats_server.cc \
 	thread.cc \
-	ticker.cc \
 	tuple.cc \
 	txn_btree.cc \
 	txn.cc \
 	txn_proto2_impl.cc \
 	varint.cc
+#ticker.cc \
+#txn_table.cc \
+#rcu.cc \
+#allocator.cc \
+#btree.cc \
+
+RCU_SRCFILES = rcu/sm-log.cpp \
+	rcu/sm-tx-log.cpp \
+	rcu/sm-log-alloc.cpp \
+	rcu/sm-log-recover.cpp \
+	rcu/sm-log-offset.cpp \
+	rcu/sm-log-file.cpp \
+	rcu/sm-exceptions.cpp \
+	rcu/sm-common.cpp \
+	rcu/window-buffer.cpp \
+	rcu/rcu-slist.cpp \
+	rcu/rcu.cpp \
+	rcu/epoch.cpp \
+	rcu/adler.cpp \
+	rcu/w_rand.cpp \
+	rcu/size-encode.cpp \
+	rcu/xid.cpp
 
 ifeq ($(MASSTREE_S),1)
 MASSTREE_SRCFILES = masstree/compiler.cc \
@@ -147,6 +182,7 @@ endif
 OBJFILES := $(patsubst %.cc, $(O)/%.o, $(SRCFILES))
 
 MASSTREE_OBJFILES := $(patsubst masstree/%.cc, $(O)/%.o, $(MASSTREE_SRCFILES))
+RCU_OBJFILES := $(patsubst rcu/%.cpp, $(O)/rcu/%.o, $(RCU_SRCFILES))
 
 BENCH_CXXFLAGS := $(CXXFLAGS)
 BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
@@ -157,8 +193,8 @@ BENCH_SRCFILES = benchmarks/bdb_wrapper.cc \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
-	benchmarks/tpcc.cc \
-	benchmarks/ycsb.cc
+	benchmarks/tpcc.cc
+#	benchmarks/ycsb.cc FIXME: tzwang: don't bother non-tpcc for now
 
 ifeq ($(MYSQL_S),1)
 BENCH_CXXFLAGS += -DMYSQL_SHARE_DIR=\"$(MYSQL_SHARE_DIR)\"
@@ -200,17 +236,21 @@ $(MASSTREE_OBJFILES) : $(O)/%.o: masstree/%.cc masstree/config.h
 third-party/lz4/liblz4.so:
 	make -C third-party/lz4 library
 
+$(RCU_OBJFILES) : $(O)/rcu/%.o: rcu/%.cpp $(OBJDEP)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 .PHONY: test
 test: $(O)/test
 
-$(O)/test: $(O)/test.o $(OBJFILES) $(MASSTREE_OBJFILES) third-party/lz4/liblz4.so
+$(O)/test: $(O)/test.o $(OBJFILES) $(RCU_OBJFILES) $(MASSTREE_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/test $^ $(LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: persist_test
 persist_test: $(O)/persist_test
 
 $(O)/persist_test: $(O)/persist_test.o third-party/lz4/liblz4.so
-	$(CXX) -o $(O)/persist_test $(O)/persist_test.o $(LDFLAGS) $(LZ4LDFLAGS)
+	$(CXX) -o $(O)/persist_test $(O)/persist_test.o  $(LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: stats_client
 stats_client: $(O)/stats_client
@@ -220,7 +260,7 @@ $(O)/stats_client: $(O)/stats_client.o
 
 masstree/config.h: $(O)/buildstamp.masstree masstree/configure masstree/config.h.in
 	rm -f $@
-	cd masstree; ./configure $(MASSTREE_CONFIG)
+	cd masstree; LDFLAGS=$(MASSTREE_LDFLAGS) ./configure $(MASSTREE_CONFIG)
 	if test -f $@; then touch $@; fi
 
 masstree/configure masstree/config.h.in: masstree/configure.ac
@@ -229,19 +269,19 @@ masstree/configure masstree/config.h.in: masstree/configure.ac
 .PHONY: dbtest
 dbtest: $(O)/benchmarks/dbtest
 
-$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) third-party/lz4/liblz4.so
+$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(RCU_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/benchmarks/dbtest $^ $(BENCH_LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: kvtest
 kvtest: $(O)/benchmarks/masstree/kvtest
 
-$(O)/benchmarks/masstree/kvtest: $(O)/benchmarks/masstree/kvtest.o $(OBJFILES) $(BENCH_OBJFILES)
+$(O)/benchmarks/masstree/kvtest: $(O)/benchmarks/masstree/kvtest.o $(OBJFILES) $(RCU_OBJFILES) $(BENCH_OBJFILES)
 	$(CXX) -o $(O)/benchmarks/masstree/kvtest $^ $(BENCH_LDFLAGS)
 
 .PHONY: newdbtest
 newdbtest: $(O)/new-benchmarks/dbtest
 
-$(O)/new-benchmarks/dbtest: $(O)/new-benchmarks/dbtest.o $(OBJFILES) $(MASSTREE_OBJFILES) $(NEWBENCH_OBJFILES) third-party/lz4/liblz4.so
+$(O)/new-benchmarks/dbtest: $(O)/new-benchmarks/dbtest.o $(OBJFILES) $(RCU_OBJFILES) $(MASSTREE_OBJFILES) $(NEWBENCH_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/new-benchmarks/dbtest $^ $(LDFLAGS) $(LZ4LDFLAGS)
 
 DEPFILES := $(wildcard $(O)/*.d $(O)/*/*.d $(O)/*/*/*.d masstree/_masstree_config.d)

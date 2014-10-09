@@ -3,6 +3,7 @@
 
 #include "abstract_db.h"
 #include "../txn_btree.h"
+#include "../rcu/sm-log.h"
 
 namespace private_ {
   struct ndbtxn {
@@ -39,49 +40,28 @@ protected:
 
 public:
 
-  ndb_wrapper(
-      const std::vector<std::string> &logfiles,
-      const std::vector<std::vector<unsigned>> &assignments_given,
-      bool call_fsync,
-      bool use_compression,
-      bool fake_writes);
+  ndb_wrapper(const char *logdir, size_t segsize, size_t bufsize);
 
   virtual ssize_t txn_max_batch_size() const OVERRIDE { return 100; }
 
   virtual void
   do_txn_epoch_sync() const
   {
-    txn_epoch_sync<Transaction>::sync();
   }
 
   virtual void
   do_txn_finish() const
   {
-    txn_epoch_sync<Transaction>::finish();
   }
 
   virtual void
   thread_init(bool loader)
   {
-    txn_epoch_sync<Transaction>::thread_init(loader);
   }
 
   virtual void
   thread_end()
   {
-    txn_epoch_sync<Transaction>::thread_end();
-  }
-
-  virtual std::tuple<uint64_t, uint64_t, double>
-  get_ntxn_persisted() const
-  {
-    return txn_epoch_sync<Transaction>::compute_ntxn_persisted();
-  }
-
-  virtual void
-  reset_ntxn_persisted()
-  {
-    txn_epoch_sync<Transaction>::reset_ntxn_persisted();
   }
 
   virtual size_t
@@ -92,7 +72,7 @@ public:
       str_arena &arena,
       void *buf,
       TxnProfileHint hint);
-  virtual bool commit_txn(void *txn);
+  virtual void commit_txn(void *txn);
   virtual void abort_txn(void *txn);
   virtual void print_txn_debug(void *txn) const;
   virtual std::map<std::string, uint64_t> get_txn_counters(void *txn) const;

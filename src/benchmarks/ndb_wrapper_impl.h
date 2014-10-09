@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "ndb_wrapper.h"
 #include "../counter.h"
-#include "../rcu.h"
+#include "../rcu/rcu.h"
 #include "../varkey.h"
 #include "../macros.h"
 #include "../util.h"
@@ -121,28 +121,28 @@ struct hint_tpcc_stock_level_read_only_traits : public hint_read_only_traits {};
   x(abstract_db::HINT_TPCC_STOCK_LEVEL, hint_tpcc_stock_level_traits) \
   x(abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY, hint_tpcc_stock_level_read_only_traits)
 
+sm_log* transaction_base::logger = NULL;
+
 template <template <typename> class Transaction>
-ndb_wrapper<Transaction>::ndb_wrapper(
-    const std::vector<std::string> &logfiles,
-    const std::vector<std::vector<unsigned>> &assignments_given,
-    bool call_fsync,
-    bool use_compression,
-    bool fake_writes)
+ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
+    size_t segsize,
+    size_t bufsize)
 {
-  if (logfiles.empty())
-    return;
-  std::vector<std::vector<unsigned>> assignments_used;
-  txn_logger::Init(
-      nthreads, logfiles, assignments_given, &assignments_used,
-      call_fsync,
-      use_compression,
-      fake_writes);
+  ALWAYS_ASSERT(logdir);
+  INVARIANT(!transaction_base::logger);
+
+  // FIXME: tzwang: dummy recovery for now
+  scoped_rcu_region scope;
+  auto no_recover = [](void*, sm_log_scan_mgr*, LSN, LSN)->void {
+      SPAM("Log recovery is a no-op here\n");
+  };
+  transaction_base::logger = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
+
   if (verbose) {
     std::cerr << "[logging subsystem]" << std::endl;
-    std::cerr << "  assignments: " << assignments_used << std::endl;
-    std::cerr << "  call fsync : " << call_fsync       << std::endl;
-    std::cerr << "  compression: " << use_compression  << std::endl;
-    std::cerr << "  fake_writes: " << fake_writes      << std::endl;
+    std::cerr << "  lordir : " << logdir << std::endl;
+    std::cerr << "  segment size : " << segsize << std::endl;
+    std::cerr << "  buffer size : " << bufsize << std::endl;
   }
 }
 
@@ -194,7 +194,7 @@ Destroy(T *t)
 }
 
 template <template <typename> class Transaction>
-bool
+void
 ndb_wrapper<Transaction>::commit_txn(void *txn)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
@@ -202,9 +202,9 @@ ndb_wrapper<Transaction>::commit_txn(void *txn)
   case a: \
     { \
       auto t = cast< b >()(p); \
-      const bool ret = t->commit(); \
+      t->commit();             \
       Destroy(t); \
-      return ret; \
+      return; \
     }
   switch (p->hint) {
     TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -212,7 +212,6 @@ ndb_wrapper<Transaction>::commit_txn(void *txn)
     ALWAYS_ASSERT(false);
   }
 #undef MY_OP_X
-  return false;
 }
 
 template <template <typename> class Transaction>
@@ -224,7 +223,7 @@ ndb_wrapper<Transaction>::abort_txn(void *txn)
   case a: \
     { \
       auto t = cast< b >()(p); \
-      t->abort(); \
+      t->abort();                 \
       Destroy(t); \
       return; \
     }

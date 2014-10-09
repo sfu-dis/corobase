@@ -17,8 +17,8 @@
 #include "bdb_wrapper.h"
 #include "ndb_wrapper.h"
 #include "ndb_wrapper_impl.h"
-#include "kvdb_wrapper.h"
-#include "kvdb_wrapper_impl.h"
+//#include "kvdb_wrapper.h"
+//#include "kvdb_wrapper_impl.h"
 #if !NO_MYSQL
 #include "mysql_wrapper.h"
 #endif
@@ -37,23 +37,31 @@ split_ws(const string &s)
   return r;
 }
 
+/*
 static size_t
 parse_memory_spec(const string &s)
 {
-  string x(s);
+  std::string x(s);
   size_t mult = 1;
   if (x.back() == 'G') {
     mult = static_cast<size_t>(1) << 30;
-    x.pop_back();
+    // IP: pop_back is supported from gcc4.7 onwards (and it is a c++11).
+    //     Since it is pretty much the same with substr, I changed it to
+    //     compile on my dev env.
+    //x.pop_back();
+    x = x.substr(0,x.size()-1);
   } else if (x.back() == 'M') {
     mult = static_cast<size_t>(1) << 20;
-    x.pop_back();
+    //x.pop_back();
+    x = x.substr(0,x.size()-1);    
   } else if (x.back() == 'K') {
     mult = static_cast<size_t>(1) << 10;
-    x.pop_back();
+    //x.pop_back();
+    x = x.substr(0,x.size()-1);
   }
   return strtoul(x.c_str(), nullptr, 10) * mult;
 }
+*/
 
 int
 main(int argc, char **argv)
@@ -65,16 +73,13 @@ main(int argc, char **argv)
   char *curdir = get_current_dir_name();
   string basedir = curdir;
   string bench_opts;
-  size_t numa_memory = 0;
   free(curdir);
   int saw_run_spec = 0;
-  int nofsync = 0;
-  int do_compress = 0;
-  int fake_writes = 0;
   int disable_gc = 0;
   int disable_snapshots = 0;
-  vector<string> logfiles;
-  vector<vector<unsigned>> assignments;
+  string *log_dir = NULL;
+  size_t log_segsize = 512 * 1024 * 1024; // log segment size
+  size_t log_bufsize = 64 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
   while (1) {
     static struct option long_options[] =
@@ -95,11 +100,9 @@ main(int argc, char **argv)
       {"ops-per-worker"             , required_argument , 0                          , 'n'} ,
       {"bench-opts"                 , required_argument , 0                          , 'o'} ,
       {"numa-memory"                , required_argument , 0                          , 'm'} , // implies --pin-cpus
-      {"logfile"                    , required_argument , 0                          , 'l'} ,
-      {"assignment"                 , required_argument , 0                          , 'a'} ,
-      {"log-nofsync"                , no_argument       , &nofsync                   , 1}   ,
-      {"log-compress"               , no_argument       , &do_compress               , 1}   ,
-      {"log-fake-writes"            , no_argument       , &fake_writes               , 1}   ,
+      {"log-dir"                    , required_argument , 0                          , 'l'} ,
+      {"log-segsize"                , required_argument , 0                          , 'e'} ,
+      {"log-bufsize"                , required_argument , 0                          , 'u'} ,
       {"disable-gc"                 , no_argument       , &disable_gc                , 1}   ,
       {"disable-snapshots"          , no_argument       , &disable_snapshots         , 1}   ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
@@ -163,23 +166,17 @@ main(int argc, char **argv)
       bench_opts = optarg;
       break;
 
-    case 'm':
-      {
-        pin_cpus = 1;
-        const size_t m = parse_memory_spec(optarg);
-        ALWAYS_ASSERT(m > 0);
-        numa_memory = m;
-      }
-      break;
-
     case 'l':
-      logfiles.emplace_back(optarg);
+      log_dir = new string(optarg);
       break;
 
-    case 'a':
-      assignments.emplace_back(
-          ParseCSVString<unsigned, RangeAwareParser<unsigned>>(optarg));
-      break;
+    case 'e':
+      log_segsize = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(log_segsize > 0);
+
+    case 'u':
+      log_bufsize = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(log_bufsize > 0);
 
     case 'x':
       stats_server_sockfile = optarg;
@@ -193,10 +190,11 @@ main(int argc, char **argv)
       abort();
     }
   }
-
-  if (bench_type == "ycsb")
+// FIXME: tzwang: don't bother for ycsb now
+/* if (bench_type == "ycsb")
     test_fn = ycsb_do_test;
-  else if (bench_type == "tpcc")
+  else */
+  if (bench_type == "tpcc")
     test_fn = tpcc_do_test;
   else if (bench_type == "queue")
     test_fn = queue_do_test;
@@ -207,23 +205,9 @@ main(int argc, char **argv)
   else
     ALWAYS_ASSERT(false);
 
-  if (do_compress && logfiles.empty()) {
-    cerr << "[ERROR] --log-compress specified without logging enabled" << endl;
+  if (!log_dir) {
+    cerr << "[ERROR] no log dir specified" << endl;
     return 1;
-  }
-
-  if (fake_writes && logfiles.empty()) {
-    cerr << "[ERROR] --log-fake-writes specified without logging enabled" << endl;
-    return 1;
-  }
-
-  if (nofsync && logfiles.empty()) {
-    cerr << "[ERROR] --log-nofsync specified without logging enabled" << endl;
-    return 1;
-  }
-
-  if (fake_writes && nofsync) {
-    cerr << "[WARNING] --log-nofsync has no effect with --log-fake-writes enabled" << endl;
   }
 
 #ifndef ENABLE_EVENT_COUNTERS
@@ -231,21 +215,6 @@ main(int argc, char **argv)
     cerr << "[WARNING] --stats-server-sockfile with no event counters enabled is useless" << endl;
   }
 #endif
-
-  // initialize the numa allocator
-  if (numa_memory > 0) {
-    const size_t maxpercpu = util::iceil(
-        numa_memory / nthreads, ::allocator::GetHugepageSize());
-    numa_memory = maxpercpu * nthreads;
-    ::allocator::Initialize(nthreads, maxpercpu);
-  }
-
-  const set<string> can_persist({"ndb-proto2"});
-  if (!logfiles.empty() && !can_persist.count(db_type)) {
-    cerr << "[ERROR] benchmark " << db_type
-         << " does not have persistence implemented" << endl;
-    return 1;
-  }
 
 #ifdef PROTO2_CAN_DISABLE_GC
   const set<string> has_gc({"ndb-proto1", "ndb-proto2"});
@@ -282,8 +251,7 @@ main(int argc, char **argv)
     db = new bdb_wrapper("db", bench_type + ".db");
   } else if (db_type == "ndb-proto1") {
     // XXX: hacky simulation of proto1
-    db = new ndb_wrapper<transaction_proto2>(
-        logfiles, assignments, !nofsync, do_compress, fake_writes);
+    db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
     transaction_proto2_static::set_hack_status(true);
     ALWAYS_ASSERT(transaction_proto2_static::get_hack_status());
 #ifdef PROTO2_CAN_DISABLE_GC
@@ -291,18 +259,16 @@ main(int argc, char **argv)
       transaction_proto2_static::InitGC();
 #endif
   } else if (db_type == "ndb-proto2") {
-    db = new ndb_wrapper<transaction_proto2>(
-        logfiles, assignments, !nofsync, do_compress, fake_writes);
+    db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
     ALWAYS_ASSERT(!transaction_proto2_static::get_hack_status());
 #ifdef PROTO2_CAN_DISABLE_GC
     if (!disable_gc)
       transaction_proto2_static::InitGC();
 #endif
-#ifdef PROTO2_CAN_DISABLE_SNAPSHOTS
-    if (disable_snapshots)
-      transaction_proto2_static::DisableSnapshots();
-#endif
-  } else if (db_type == "kvdb") {
+  } 
+  // FIXME: tzwang: don't bother other benches for now...
+  /*
+  else if (db_type == "kvdb") {
     db = new kvdb_wrapper<true>;
   } else if (db_type == "kvdb-st") {
     db = new kvdb_wrapper<false>;
@@ -311,7 +277,8 @@ main(int argc, char **argv)
     string dbdir = basedir + "/mysql-db";
     db = new mysql_wrapper(dbdir, bench_type);
 #endif
-  } else
+  } */
+  else
     ALWAYS_ASSERT(false);
 
 #ifdef DEBUG
@@ -361,13 +328,9 @@ main(int argc, char **argv)
 #else
     cerr << "  allocator   : libc"                          << endl;
 #endif
-    if (numa_memory > 0) {
-      cerr << "  numa-memory : " << numa_memory             << endl;
-    } else {
-      cerr << "  numa-memory : disabled"                    << endl;
-    }
-    cerr << "  logfiles : " << logfiles                     << endl;
-    cerr << "  assignments : " << assignments               << endl;
+    cerr << "  log-dir : " << *log_dir                      << endl;
+    cerr << "  log-segsize : " << log_segsize               << endl;
+    cerr << "  log-bufsize : " << log_bufsize               << endl;
     cerr << "  disable-gc : " << disable_gc                 << endl;
     cerr << "  disable-snapshots : " << disable_snapshots   << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
@@ -396,12 +359,12 @@ main(int argc, char **argv)
   }
 
   vector<string> bench_toks = split_ws(bench_opts);
-  int argc = 1 + bench_toks.size();
-  char *argv[argc];
-  argv[0] = (char *) bench_type.c_str();
+  argc = 1 + bench_toks.size();
+  char *new_argv[argc];
+  new_argv[0] = (char *) bench_type.c_str();
   for (size_t i = 1; i <= bench_toks.size(); i++)
-    argv[i] = (char *) bench_toks[i - 1].c_str();
-  test_fn(db, argc, argv);
+    new_argv[i] = (char *) bench_toks[i - 1].c_str();
+  test_fn(db, argc, new_argv);
   delete db;
   return 0;
 }

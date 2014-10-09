@@ -55,12 +55,12 @@ public:
     try {
       string v;
       ALWAYS_ASSERT(tbl->get(txn, k, v));
-      if (likely(db->commit_txn(txn)))
-        return txn_result(true, 0);
+      db->commit_txn(txn);
+      return txn_result(true, 0);
     } catch (abstract_db::abstract_abort_exception &ex) {
       db->abort_txn(txn);
+      return txn_result(false, 0);
     }
-    return txn_result(false, 0);
   }
 
   static txn_result
@@ -112,7 +112,7 @@ protected:
         }
         if (verbose)
           cerr << "batch 1/1 done" << endl;
-        ALWAYS_ASSERT(db->commit_txn(txn));
+        db->commit_txn(txn);
       } else {
         for (size_t i = 0; i < nbatches; i++) {
           size_t keyend = (i == nbatches - 1) ? nkeys : (i + 1) * batchsize;
@@ -127,7 +127,7 @@ protected:
           }
           if (verbose)
             cerr << "batch " << (i + 1) << "/" << nbatches << " done" << endl;
-          ALWAYS_ASSERT(db->commit_txn(txn));
+          db->commit_txn(txn);
         }
       }
     } catch (abstract_db::abstract_abort_exception &ex) {

@@ -12,6 +12,8 @@
 #include <type_traits>
 #include <memory>
 
+using namespace TXN;
+
 // each Transaction implementation should specialize this for special
 // behavior- the default implementation is just nops
 template <template <typename> class Transaction>
@@ -24,7 +26,6 @@ template <template <typename> class Transaction, typename P>
 class base_txn_btree {
 public:
 
-  typedef transaction_base::tid_t tid_t;
   typedef transaction_base::size_type size_type;
   typedef transaction_base::string_type string_type;
   typedef concurrent_btree::string_type keystring_type;
@@ -83,53 +84,6 @@ private:
     virtual void on_node_begin(const typename concurrent_btree::node_opaque_t *n);
     virtual void on_node_success();
     virtual void on_node_failure();
-#ifdef TXN_BTREE_DUMP_PURGE_STATS
-    purge_tree_walker()
-      : purge_stats_nodes(0),
-        purge_stats_nosuffix_nodes(0) {}
-    std::map<size_t, size_t> purge_stats_tuple_record_size_counts; // just the record
-    std::map<size_t, size_t> purge_stats_tuple_alloc_size_counts; // includes overhead
-    //std::map<size_t, size_t> purge_stats_tuple_chain_counts;
-    std::vector<uint16_t> purge_stats_nkeys_node;
-    size_t purge_stats_nodes;
-    size_t purge_stats_nosuffix_nodes;
-
-    std::map<std::string, uint64_t>
-    dump_stats()
-    {
-      std::map<std::string, uint64_t> ret;
-      size_t v = 0;
-      for (std::vector<uint16_t>::iterator it = purge_stats_nkeys_node.begin();
-          it != purge_stats_nkeys_node.end(); ++it)
-        v += *it;
-      const double avg_nkeys_node = double(v)/double(purge_stats_nkeys_node.size());
-      const double avg_fill_factor = avg_nkeys_node/double(concurrent_btree::NKeysPerNode);
-      std::cerr << "btree node stats" << std::endl;
-      std::cerr << "    avg_nkeys_node: " << avg_nkeys_node << std::endl;
-      std::cerr << "    avg_fill_factor: " << avg_fill_factor << std::endl;
-      std::cerr << "    num_nodes: " << purge_stats_nodes << std::endl;
-      std::cerr << "    num_nosuffix_nodes: " << purge_stats_nosuffix_nodes << std::endl;
-      std::cerr << "record size stats (nbytes => count)" << std::endl;
-      for (std::map<size_t, size_t>::iterator it = purge_stats_tuple_record_size_counts.begin();
-          it != purge_stats_tuple_record_size_counts.end(); ++it)
-        std::cerr << "    " << it->first << " => " << it->second << std::endl;
-      std::cerr << "alloc size stats  (nbytes => count)" << std::endl;
-      for (std::map<size_t, size_t>::iterator it = purge_stats_tuple_alloc_size_counts.begin();
-          it != purge_stats_tuple_alloc_size_counts.end(); ++it)
-        std::cerr << "    " << (it->first + sizeof(dbtuple)) << " => " << it->second << std::endl;
-      //std::cerr << "chain stats  (length => count)" << std::endl;
-      //for (std::map<size_t, size_t>::iterator it = purge_stats_tuple_chain_counts.begin();
-      //    it != purge_stats_tuple_chain_counts.end(); ++it) {
-      //  std::cerr << "    " << it->first << " => " << it->second << std::endl;
-      //  ret["chain_" + std::to_string(it->first)] += it->second;
-      //}
-      //std::cerr << "deleted recored stats" << std::endl;
-      //std::cerr << "    logically_removed (total): " << (purge_stats_tuple_logically_removed_no_mark + purge_stats_tuple_logically_removed_with_mark) << std::endl;
-      //std::cerr << "    logically_removed_no_mark: " << purge_stats_tuple_logically_removed_no_mark << std::endl;
-      //std::cerr << "    logically_removed_with_mark: " << purge_stats_tuple_logically_removed_with_mark << std::endl;
-      return ret;
-    }
-#endif
 
   private:
     std::vector< std::pair<typename concurrent_btree::value_type, bool> > spec_values;
@@ -228,13 +182,13 @@ base_txn_btree<Transaction, P>::do_search(
   // search the underlying btree to map k=>(btree_node|tuple)
   typename concurrent_btree::value_type underlying_v{};
   concurrent_btree::versioned_node_t search_info;
-  const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, &search_info);
+  // FIXME: tzwang: so this search function (or the lowest responsible function) should be aware
+  // of the versions.
+  const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, t.xid, &search_info);
   if (found) {
     const dbtuple * const tuple = reinterpret_cast<const dbtuple *>(underlying_v);
     return t.do_tuple_read(tuple, value_reader);
   } else {
-    // not found, add to absent_set
-    t.do_node_read(search_info.first, search_info.second);
     return false;
   }
 }
@@ -249,13 +203,7 @@ base_txn_btree<Transaction, P>::unsafe_purge(bool dump_stats)
   scoped_rcu_region guard;
   underlying_btree.tree_walk(w);
   underlying_btree.clear();
-#ifdef TXN_BTREE_DUMP_PURGE_STATS
-  if (!dump_stats)
-    return std::map<std::string, uint64_t>();
-  return w.dump_stats();
-#else
   return std::map<std::string, uint64_t>();
-#endif
 }
 
 template <template <typename> class Transaction, typename P>
@@ -273,20 +221,8 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
   for (size_t i = 0; i < spec_values.size(); i++) {
     dbtuple *tuple = (dbtuple *) spec_values[i].first;
     INVARIANT(tuple);
-#ifdef TXN_BTREE_DUMP_PURGE_STATS
-    // XXX(stephentu): should we also walk the chain?
-    purge_stats_tuple_record_size_counts[tuple->is_deleting() ? 0 : tuple->size]++;
-    purge_stats_tuple_alloc_size_counts[tuple->alloc_size]++;
-    //purge_stats_tuple_chain_counts[tuple->chain_length()]++;
-#endif
     if (base_txn_btree_handler<Transaction>::has_background_task) {
-#ifdef CHECK_INVARIANTS
-      lock_guard<dbtuple> l(tuple, false);
-#endif
-      if (!tuple->is_deleting()) {
-        INVARIANT(tuple->is_latest());
-        tuple->clear_latest();
-        tuple->mark_deleting();
+      if (!tuple->size == 0) {
         dbtuple::release(tuple);
       } else {
         // enqueued already to background gc by the writer of the delete
@@ -296,15 +232,6 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
       dbtuple::release_no_rcu(tuple);
     }
   }
-#ifdef TXN_BTREE_DUMP_PURGE_STATS
-  purge_stats_nkeys_node.push_back(spec_values.size());
-  purge_stats_nodes++;
-  for (size_t i = 0; i < spec_values.size(); i++)
-    if (spec_values[i].second)
-      goto done;
-  purge_stats_nosuffix_nodes++;
-done:
-#endif
   spec_values.clear();
 }
 
@@ -330,50 +257,115 @@ void base_txn_btree<Transaction, P>::do_tree_put(
                                // for now [since this would indicate a suboptimality]
   t.ensure_active();
 
-  if (unlikely(t.is_snapshot())) {
-    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_USER;
-    t.abort_impl(r);
-    throw transaction_abort_exception(r);
-  }
-  dbtuple *px = nullptr;
-  bool insert = false;
-retry:
+  // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
+  // it fails if somebody else acted faster to insert new, we then
+  // (fall back to) with the normal update procedure.
+  // Note: the original return value of try_insert_new_tuple is:
+  // <tuple, should_abort>. Here we use it as <tuple, failed>.
+  // try_insert_new_tuple should add tuple to write-set too, if succeeded.
   if (expect_new) {
-    auto ret = t.try_insert_new_tuple(this->underlying_btree, k, v, writer);
-    INVARIANT(!ret.second || ret.first);
-    if (unlikely(ret.second)) {
-      const transaction_base::abort_reason r = transaction_base::ABORT_REASON_WRITE_NODE_INTERFERENCE;
-      t.abort_impl(r);
-      throw transaction_abort_exception(r);
-    }
-    px = ret.first;
-    if (px)
-      insert = true;
+    if (t.try_insert_new_tuple(this->underlying_btree, k, v, writer)) 
+		return;
   }
-  if (!px) {
-    // do regular search
-    typename concurrent_btree::value_type bv = 0;
-    if (!this->underlying_btree.search(varkey(*k), bv)) {
-      // XXX(stephentu): if we are removing a key and we can't find it, then we
-      // should just treat this as a read [of an empty-value], instead of
-      // explicitly inserting an empty node...
-      expect_new = true;
-      goto retry;
-    }
-    px = reinterpret_cast<dbtuple *>(bv);
-  }
-  INVARIANT(px);
-  if (!insert) {
-    // add to write set normally, as non-insert
-    t.write_set.emplace_back(px, k, v, writer, &this->underlying_btree, false);
-  } else {
-    // should already exist in write set as insert
-    // (because of try_insert_new_tuple())
 
-    // too expensive to be a practical check
-    //INVARIANT(t.find_write_set(px) != t.write_set.end());
-    //INVARIANT(t.find_write_set(px)->is_insert());
+  // do regular search
+  typename concurrent_btree::value_type bv = 0;
+  if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
+    // only version is uncommitted -> cannot overwrite it
+    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
+    t.signal_abort(r);
   }
+
+  // create new version
+  const size_t sz =
+    v ? writer(dbtuple::TUPLE_WRITER_COMPUTE_NEEDED, v, nullptr, 0) : 0;
+  dbtuple * const tuple = dbtuple::alloc_first(sz);
+  if (v)
+    writer(dbtuple::TUPLE_WRITER_DO_WRITE, v, tuple->get_value_start(), 0);
+  INVARIANT(tuple);
+
+
+  // initialize the version
+  tuple->clsn = t.xid.to_ptr();		// XID state is set
+  tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
+
+  // After read the latest committed, and holding the version:
+  // if the latest tuple in the chained is dirty then abort
+  // else
+  //   if the latest tuple in the chain is clean but latter than my ts then abort
+  // else
+  //   if CAS my tuple to the head failed (means sb. else acted faster) then abort
+  // else
+  //   succeeded!
+  //
+  // The above is hidden in the APIs provided by abstract tree and object.h.
+  // Here we just call the provided update_tulpe function which returns the
+  // result (either succeeded or failed, i.e., need to abort).
+
+  std::pair<bool, concurrent_btree::value_type> ret =
+                          this->underlying_btree.update_version(tuple->oid,
+                          reinterpret_cast<concurrent_btree::value_type>(tuple),
+                          t.xid);
+
+  // FIXME: tzwang: now the above update returns a pair:
+  // <bool, dbtuple*>, bool indicates if the update op has succeeded or not.
+  // dbtuple*'s value dependes on if the update is in-place or out-of-place.
+  // Though we do multi-version, we do in-place update if the tx is repeatedly
+  // updating its own data. If it's normal insert-to-chain, i.e., out-of-place
+  // update, dbtuple* will be null. Otherwise it will be the older dirty tuple's
+  // address. It's like this mainly because we might have different sizes for
+  // the older and new dirty tuple. So in case of in-place update, we don't copy
+  // data provided by the tx, but rather simply use the one provided by the tx;
+  // then the older (obsolete) dirty tuple is returned here to get rcu_freed,
+  // by traversing the write-set, which contains pointers to updated tuples.
+  // So in summary, this requires a traversal of the write-set only if in-place
+  // update happened, which we anticipate to be rare.
+  //
+  // One way to avoid this traversal is to store OIDs, rather than pointers to
+  // new tuple versions in the write-set. Then we will be able to blindly add
+  // the OID of the updated tuple no matter it's an in-place or out-of-place
+  // update. During commit we just follow the OIDs to find the physical pointer
+  // to tuples and write it to the log, becaues the OID table always has the
+  // pointer to the latest updated version. But again, this might need to
+  // traverse the OID table or at least some fancy index to build the OID table
+  // (such as a hash table).
+  //
+  // For now we stick to the pointer (former) way because it's simple, and
+  // silo's write-set infrastructure is already in that format, plus in-place
+  // update should be very rare. This could be avoided too (with the cost of
+  // checking a valid bit at commit time). See comments next.
+
+  // check return value
+  if (ret.first) { // succeeded
+    INVARIANT(log);
+    // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
+    // pointers, instead of doing memcpy here (looks like this is the case unless
+    // the record is tooooo large).
+    auto record_size = align_up(sz);
+    auto size_code = encode_size_aligned(record_size);
+    t.log->log_update(1,
+                      tuple->oid,
+                      fat_ptr::make(tuple, size_code),
+                      DEFAULT_ALIGNMENT_BITS,
+                      NULL);
+    dbtuple* ret_tuple = reinterpret_cast<dbtuple*>(ret.second);
+    if (ret_tuple) {  // in-place update
+      INVARIANT(ret_tuple != tuple);
+      // Even simpler, if we have a valid bit in dbtuple header, we don't need
+      // to traverse the write-set. Just mark it as invalid if in-place update
+      // happened, because the write set just holds the pointer to tuples. During
+      // commit we'll need to check this bit and rcu_free tuples in the write-set
+      // with valid=false.
+      ret_tuple->overwritten = true;
+    } // else we're done.
+  }
+  else {  // somebody else acted faster than we did
+    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
+    t.signal_abort(r);
+  }
+
+  // put to write-set, done.
+  t.write_set.emplace_back(tuple, &this->underlying_btree);
 }
 
 template <template <typename> class Transaction, typename P>
@@ -388,7 +380,7 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "on_resp_node(): <node=0x" << util::hexify(intptr_t(n))
                << ", version=" << version << ">" << std::endl);
   VERBOSE(std::cerr << "  " << concurrent_btree::NodeStringify(n) << std::endl);
-  t->do_node_read(n, version);
+  //t->do_node_read(n, version);
 }
 
 template <template <typename> class Transaction, typename P>
@@ -453,7 +445,7 @@ base_txn_btree<Transaction, P>::do_search_range_call(
     uppervk = varkey(*upper_str);
   this->underlying_btree.search_range_call(
       varkey(*lower_str), upper_str ? &uppervk : nullptr,
-      c, t.string_allocator()());
+      c, t.xid, t.string_allocator()());
 }
 
 template <template <typename> class Transaction, typename P>
@@ -489,7 +481,7 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
     lowervk = varkey(*lower_str);
   this->underlying_btree.rsearch_range_call(
       varkey(*upper_str), lower_str ? &lowervk : nullptr,
-      c, t.string_allocator()());
+      c,t.xid, t.string_allocator()());
 }
 
 #endif /* _NDB_BASE_TXN_BTREE_H_ */

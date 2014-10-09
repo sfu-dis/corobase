@@ -336,8 +336,9 @@ protected: \
       cerr << "PinToWarehouseId(): coreid=" << coreid::core_id()
            << " pinned to whse=" << wid << " (partid=" << partid << ")"
            << endl;
-    rcu::s_instance.pin_current_thread(pinid);
-    rcu::s_instance.fault_region();
+    RCU::pin_current_thread(pinid);
+    // FIXME: tzwang: no slab, no fault region
+    //rcu::s_instance.fault_region();
   }
 
 public:
@@ -680,8 +681,9 @@ protected:
       return;
     const size_t a = worker_id % coreid::num_cpus_online();
     const size_t b = a % nthreads;
-    rcu::s_instance.pin_current_thread(b);
-    rcu::s_instance.fault_region();
+    RCU::pin_current_thread(b);
+    // FIXME: tzwang: no fault region b/c no allocator
+    //rcu::s_instance.fault_region();
   }
 
   inline ALWAYS_INLINE string &
@@ -748,7 +750,7 @@ protected:
 
         warehouses.push_back(v);
       }
-      ALWAYS_ASSERT(db->commit_txn(txn));
+      db->commit_txn(txn);
       arena.reset();
       txn = db->new_txn(txn_flags, arena, txn_buf());
       for (uint i = 1; i <= NumWarehouses(); i++) {
@@ -761,7 +763,7 @@ protected:
 
         checker::SanityCheckWarehouse(&k, v);
       }
-      ALWAYS_ASSERT(db->commit_txn(txn));
+      db->commit_txn(txn);
     } catch (abstract_db::abstract_abort_exception &ex) {
       // shouldn't abort on loading!
       ALWAYS_ASSERT(false);
@@ -818,12 +820,12 @@ protected:
         tbl_item(1)->insert(txn, Encode(k), Encode(obj_buf, v)); // this table is shared, so any partition is OK
 
         if (bsize != -1 && !(i % bsize)) {
-          ALWAYS_ASSERT(db->commit_txn(txn));
+          db->commit_txn(txn);
           txn = db->new_txn(txn_flags, arena, txn_buf());
           arena.reset();
         }
       }
-      ALWAYS_ASSERT(db->commit_txn(txn));
+      db->commit_txn(txn);
     } catch (abstract_db::abstract_abort_exception &ex) {
       // shouldn't abort on loading!
       ALWAYS_ASSERT(false);
@@ -867,19 +869,18 @@ protected:
     for (uint w = w_start; w <= w_end; w++) {
       const size_t batchsize =
         (db->txn_max_batch_size() == -1) ? NumItems() : db->txn_max_batch_size();
-      const size_t nbatches = (batchsize > NumItems()) ? 1 : (NumItems() / batchsize);
 
       if (pin_cpus)
         PinToWarehouseId(w);
 
-      for (uint b = 0; b < nbatches;) {
+      for(size_t i=0; i < NumItems(); ) {
+        size_t iend = std::min(i+batchsize, NumItems());
         scoped_str_arena s_arena(arena);
         void * const txn = db->new_txn(txn_flags, arena, txn_buf());
         try {
-          const size_t iend = std::min((b + 1) * batchsize + 1, NumItems());
-          for (uint i = (b * batchsize + 1); i <= iend; i++) {
-            const stock::key k(w, i);
-            const stock_data::key k_data(w, i);
+          for (uint j=i+1; j <= iend; j++) {
+            const stock::key k(w, j);
+            const stock_data::key k_data(w, j);
 
             stock::value v;
             v.s_quantity = RandomNumber(r, 10, 100);
@@ -915,19 +916,17 @@ protected:
             tbl_stock(w)->insert(txn, Encode(k), Encode(obj_buf, v));
             tbl_stock_data(w)->insert(txn, Encode(k_data), Encode(obj_buf1, v_data));
           }
-          if (db->commit_txn(txn)) {
-            b++;
-          } else {
-            db->abort_txn(txn);
-            if (verbose)
-              cerr << "[WARNING] stock loader loading abort" << endl;
-          }
+          db->commit_txn(txn);
+          b++;
         } catch (abstract_db::abstract_abort_exception &ex) {
           db->abort_txn(txn);
           ALWAYS_ASSERT(warehouse_id != -1);
           if (verbose)
             cerr << "[WARNING] stock loader loading abort" << endl;
         }
+
+        // loop update
+        i = iend;
       }
     }
 
@@ -991,13 +990,13 @@ protected:
           tbl_district(w)->insert(txn, Encode(k), Encode(obj_buf, v));
 
           if (bsize != -1 && !((cnt + 1) % bsize)) {
-            ALWAYS_ASSERT(db->commit_txn(txn));
+            db->commit_txn(txn);
             txn = db->new_txn(txn_flags, arena, txn_buf());
             arena.reset();
           }
         }
       }
-      ALWAYS_ASSERT(db->commit_txn(txn));
+      db->commit_txn(txn);
     } catch (abstract_db::abstract_abort_exception &ex) {
       // shouldn't abort on loading!
       ALWAYS_ASSERT(false);
@@ -1118,13 +1117,8 @@ protected:
 
               tbl_history(w)->insert(txn, Encode(k_hist), Encode(obj_buf, v_hist));
             }
-            if (db->commit_txn(txn)) {
-              batch++;
-            } else {
-              db->abort_txn(txn);
-              if (verbose)
-                cerr << "[WARNING] customer loader loading abort" << endl;
-            }
+            db->commit_txn(txn);
+            batch++;
           } catch (abstract_db::abstract_abort_exception &ex) {
             db->abort_txn(txn);
             if (verbose)
@@ -1267,14 +1261,8 @@ protected:
               n_order_lines++;
               tbl_order_line(w)->insert(txn, Encode(k_ol), Encode(obj_buf, v_ol));
             }
-            if (db->commit_txn(txn)) {
-              c++;
-            } else {
-              db->abort_txn(txn);
-              ALWAYS_ASSERT(warehouse_id != -1);
-              if (verbose)
-                cerr << "[WARNING] order loader loading abort" << endl;
-            }
+            db->commit_txn(txn);
+            c++;
           } catch (abstract_db::abstract_abort_exception &ex) {
             db->abort_txn(txn);
             ALWAYS_ASSERT(warehouse_id != -1);
@@ -1469,12 +1457,12 @@ tpcc_worker::txn_new_order()
     }
 
     measure_txn_counters(txn, "txn_new_order");
-    if (likely(db->commit_txn(txn)))
-      return txn_result(true, ret);
+    db->commit_txn(txn);
+    return txn_result(true, ret);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 class new_order_scan_callback : public abstract_ordered_index::scan_callback {
@@ -1610,12 +1598,12 @@ tpcc_worker::txn_delivery()
       tbl_customer(warehouse_id)->put(txn, Encode(str(), k_c), Encode(str(), v_c_new));
     }
     measure_txn_counters(txn, "txn_delivery");
-    if (likely(db->commit_txn(txn)))
-      return txn_result(true, ret);
+    db->commit_txn(txn);
+    return txn_result(true, ret);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 static event_avg_counter evt_avg_cust_name_idx_scan_size("avg_cust_name_idx_scan_size");
@@ -1750,7 +1738,7 @@ tpcc_worker::txn_payment()
                        paymentAmount,
                        v_c.c_data.c_str());
       v_c_new.c_data.resize_junk(
-          min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
+          std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
       NDB_MEMCPY((void *) v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
     }
 
@@ -1764,19 +1752,19 @@ tpcc_worker::txn_payment()
                      "%.10s    %.10s",
                      v_w->w_name.c_str(),
                      v_d->d_name.c_str());
-    v_h.h_data.resize_junk(min(static_cast<size_t>(n), v_h.h_data.max_size()));
+    v_h.h_data.resize_junk(std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
 
     const size_t history_sz = Size(v_h);
     tbl_history(warehouse_id)->insert(txn, Encode(str(), k_h), Encode(str(), v_h));
     ret += history_sz;
 
     measure_txn_counters(txn, "txn_payment");
-    if (likely(db->commit_txn(txn)))
-      return txn_result(true, ret);
+    db->commit_txn(txn);
+    return txn_result(true, ret);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 class order_line_nop_callback : public abstract_ordered_index::scan_callback {
@@ -1917,12 +1905,12 @@ tpcc_worker::txn_order_status()
     ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
     measure_txn_counters(txn, "txn_order_status");
-    if (likely(db->commit_txn(txn)))
-      return txn_result(true, 0);
+    db->commit_txn(txn);
+    return txn_result(true, 0);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 class order_line_scan_callback : public abstract_ordered_index::scan_callback {
@@ -2026,12 +2014,12 @@ tpcc_worker::txn_stock_level()
       // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
     }
     measure_txn_counters(txn, "txn_stock_level");
-    if (likely(db->commit_txn(txn)))
-      return txn_result(true, 0);
+    db->commit_txn(txn);
+    return txn_result(true, 0);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 // Microbenchmark for tpcc, read-only
@@ -2073,12 +2061,12 @@ tpcc_worker::txn_micro_bench_ro()
 
 finish:
     measure_txn_counters(txn, "txn_micro_bench_ro");
-    if (db->commit_txn(txn))
-      return txn_result(true, 0);
+    db->commit_txn(txn);
+    return txn_result(true, 0);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 bool compfn(unsigned long i, unsigned long j) {
@@ -2114,12 +2102,12 @@ tpcc_worker::txn_micro_bench_simple()
     tbl_order_line(1)->put(txn, Encode(k_ol), Encode(obj_v, v_ol));
 
     measure_txn_counters(txn, "txn_micro_bench_simple");
-    if (db->commit_txn(txn))
-      return txn_result(true, 0);
+    db->commit_txn(txn);
+    return txn_result(true, 0);
   } catch (abstract_db::abstract_abort_exception &ex) {
-      db->abort_txn(txn);
+    db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 // tpcc mcirobenchmark, read-write
@@ -2197,12 +2185,12 @@ tpcc_worker::txn_micro_bench_random()
 #endif
 
     measure_txn_counters(txn, "txn_micro_bench_random");
-    if (db->commit_txn(txn))
-      return txn_result(true, 0);
+    db->commit_txn(txn);
+    return txn_result(true, 0);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 // tpcc mcirobenchmark, read-write using stock table
@@ -2279,12 +2267,12 @@ tpcc_worker::txn_micro_bench_static()
 #endif
 
     measure_txn_counters(txn, "txn_micro_bench_static");
-    if (db->commit_txn(txn))
-      return txn_result(true, 0);
+    db->commit_txn(txn);
+    return txn_result(true, 0);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 tpcc_worker::txn_result
@@ -2368,12 +2356,12 @@ do_write:
     }
 
     measure_txn_counters(txn, "txn_micro_bench_order_line");
-    if (db->commit_txn(txn))
-      return txn_result(true, 0);
+    db->commit_txn(txn);
+    return txn_result(true, 0);
   } catch (abstract_db::abstract_abort_exception &ex) {
     db->abort_txn(txn);
+    return txn_result(false, 0);
   }
-  return txn_result(false, 0);
 }
 
 template <typename T>

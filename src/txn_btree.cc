@@ -65,14 +65,17 @@ template <typename P>
 static inline void
 AssertSuccessfulCommit(P &t)
 {
-  ALWAYS_ASSERT_COND_IN_TXN(t, t.commit(false));
+  DEFER_UNLESS(success, ALWAYS_ASSERT_COND_IN_TXN(t, false));
+  t.commit();
+  success = true;
 }
 
 template <typename P>
 static inline void
 AssertFailedCommit(P &t)
 {
-  ALWAYS_ASSERT_COND_IN_TXN(t, !t.commit(false));
+  t.commit();
+  ALWAYS_ASSERT_COND_IN_TXN(t, false);
 }
 
 template <typename T>
@@ -112,6 +115,7 @@ template <template <typename> class TxnType, typename Traits>
 static void
 test1()
 {
+#if 0
   for (size_t txn_flags_idx = 0;
        txn_flags_idx < ARRAY_NELEMS(TxnFlags);
        txn_flags_idx++) {
@@ -153,12 +157,13 @@ test1()
 
       AssertSuccessfulCommit(t0);
       try {
-        t1.commit(true);
+        t1.commit();
         // if we have a consistent snapshot, then this txn should not abort
         ALWAYS_ASSERT_COND_IN_TXN(t1, t1.is_snapshot());
       } catch (transaction_abort_exception &e) {
         // if we dont have a snapshot, then we expect an abort
         ALWAYS_ASSERT_COND_IN_TXN(t1, !t1.is_snapshot());
+        t1.abort();
       }
       VERBOSE(cerr << "------" << endl);
     }
@@ -219,6 +224,7 @@ test1()
     txn_epoch_sync<TxnType>::sync();
     txn_epoch_sync<TxnType>::finish();
   }
+#endif
 }
 
 struct bufrec { char buf[256]; };
@@ -716,7 +722,7 @@ namespace mp_stress_test_allocator_ns {
     ~worker() {}
     virtual void run()
     {
-      rcu::s_instance.pin_current_thread(id);
+      RCU::pin_current_thread(id);
       fast_random r(reinterpret_cast<unsigned long>(this));
       string v;
       while (running.load()) {
@@ -728,9 +734,10 @@ namespace mp_stress_test_allocator_ns {
           ALWAYS_ASSERT_COND_IN_TXN(t, this->btr->search(t, k, v));
           ((rec *) v.data())->v++;
           this->btr->put(t, k, v);
-          t.commit(true);
+          t.commit();
           commits++;
         } catch (transaction_abort_exception &e) {
+          t.abort();
           aborts++;
         }
       }
@@ -753,7 +760,7 @@ mp_stress_test_allocator()
   using namespace mp_stress_test_allocator_ns;
   txn_btree<TxnType> btr;
   {
-    rcu::s_instance.pin_current_thread(0);
+    RCU::pin_current_thread(0);
     typename Traits::StringAllocator arena;
     TxnType<Traits> t(0, arena);
     for (size_t i = 0; i < nkeys; i++)
@@ -808,8 +815,9 @@ namespace mp_stress_test_insert_removes_ns {
             this->btr->remove(t, u64_varkey(0));
             break;
           }
-          t.commit(true);
+          t.commit();
         } catch (transaction_abort_exception &e) {
+          t.abort();
         }
       }
     }
@@ -861,8 +869,9 @@ namespace mp_test1_ns {
             r.v++;
           }
           this->btr->insert_object(t, u64_varkey(0), r);
-          t.commit(true);
+          t.commit();
         } catch (transaction_abort_exception &e) {
+          t.abort();
           goto retry;
         }
       }
@@ -1076,9 +1085,10 @@ namespace mp_test2_ns {
               //did_v = ctr_rec.v;
               ctr_rec.sanity_check();
               this->btr->insert_object(t, u64_varkey(ctr_key), ctr_rec);
-              t.commit(true);
+              t.commit();
             } catch (transaction_abort_exception &e) {
               naborts++;
+              t.abort();
               goto retry;
             }
           }
@@ -1137,7 +1147,7 @@ namespace mp_test2_ns {
             // reverse values
             c.values_ = vector<uint32_t>(c.values_.rbegin(), c.values_.rend());
           }
-          t.commit(true);
+          t.commit();
 
           const control_rec *crec = (const control_rec *) v_ctr.data();
           crec->sanity_check();
@@ -1151,6 +1161,7 @@ namespace mp_test2_ns {
           VERBOSE(cerr << "successful validation" << endl);
         } catch (transaction_abort_exception &e) {
           naborts++;
+          t.abort();
           if (this->txn_flags & transaction_base::TXN_FLAG_READ_ONLY)
             // RO txns shouldn't abort
             ALWAYS_ASSERT_COND_IN_TXN(t, false);
@@ -1274,9 +1285,9 @@ namespace mp_test3_ns {
       fast_random r(seed);
       for (size_t i = 0; i < niters; i++) {
       retry:
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           uint64_t a = r.next() % naccounts;
           uint64_t b = r.next() % naccounts;
           while (unlikely(a == b))
@@ -1287,14 +1298,15 @@ namespace mp_test3_ns {
           const rec *arec = (const rec *) arecv.data();
           const rec *brec = (const rec *) brecv.data();
           if (arec->v == 0) {
-            t.abort();
+            t.signal_abort();
           } else {
             const uint64_t xfer = (arec->v > 1) ? (r.next() % (arec->v - 1) + 1) : 1;
             this->btr->insert_object(t, u64_varkey(a), rec(arec->v - xfer));
             this->btr->insert_object(t, u64_varkey(b), rec(brec->v + xfer));
-            t.commit(true);
+            t.commit();
           }
         } catch (transaction_abort_exception &e) {
+          t.abort();
           goto retry;
         }
       }
@@ -1313,15 +1325,16 @@ namespace mp_test3_ns {
     virtual void run()
     {
       while (running) {
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           sum = 0;
           this->btr->search_range_call(t, u64_varkey(0), NULL, *this);
-          t.commit(true);
+          t.commit();
           ALWAYS_ASSERT_COND_IN_TXN(t, sum == (naccounts * amount_per_person));
           validations++;
         } catch (transaction_abort_exception &e) {
+          t.abort();
           naborts++;
         }
       }
@@ -1347,16 +1360,16 @@ namespace mp_test3_ns {
     virtual void run()
     {
       while (running) {
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           uint64_t sum = 0;
           for (uint64_t i = 0; i < naccounts; i++) {
             string v;
             ALWAYS_ASSERT_COND_IN_TXN(t, this->btr->search(t, u64_varkey(i), v));
             sum += ((const rec *) v.data())->v;
           }
-          t.commit(true);
+          t.commit();
           if (sum != (naccounts * amount_per_person)) {
             cerr << "sum: " << sum << endl;
             cerr << "naccounts * amount_per_person: " << (naccounts * amount_per_person) << endl;
@@ -1364,6 +1377,7 @@ namespace mp_test3_ns {
           ALWAYS_ASSERT_COND_IN_TXN(t, sum == (naccounts * amount_per_person));
           validations++;
         } catch (transaction_abort_exception &e) {
+          t.abort();
           naborts++;
         }
       }
@@ -1435,9 +1449,9 @@ namespace mp_test_simple_write_skew_ns {
     virtual void run()
     {
       while (running) {
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           if ((n % 2) == 0) {
             // try to take this doctor off call
             unsigned int ctr = 0;
@@ -1451,16 +1465,16 @@ namespace mp_test_simple_write_skew_ns {
             }
             if (ctr == 2)
               this->btr->insert_object(t, u64_varkey(d), rec(0));
-            t.commit(true);
+            t.commit();
             ALWAYS_ASSERT_COND_IN_TXN(t, ctr >= 1);
           } else {
             // place this doctor on call
             this->btr->insert_object(t, u64_varkey(d), rec(1));
-            t.commit(true);
+            t.commit();
           }
           n++;
         } catch (transaction_abort_exception &e) {
-          // no-op
+          t.abort();
         }
       }
     }
@@ -1478,23 +1492,23 @@ namespace mp_test_simple_write_skew_ns {
     virtual void run()
     {
       while (running) {
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           if ((n % 2) == 0) {
             ctr = 0;
             this->btr->search_range_call(t, u64_varkey(0), NULL, *this);
             if (ctr == 2)
               this->btr->insert_object(t, u64_varkey(d), rec(0));
-            t.commit(true);
+            t.commit();
             ALWAYS_ASSERT_COND_IN_TXN(t, ctr >= 1);
           } else {
             this->btr->insert_object(t, u64_varkey(d), rec(1));
-            t.commit(true);
+            t.commit();
           }
           n++;
         } catch (transaction_abort_exception &e) {
-          // no-op
+          t.abort();
         }
       }
     }
@@ -1596,9 +1610,9 @@ namespace mp_test_batch_processing_ns {
     virtual void run()
     {
       while (running) {
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           string v;
           ALWAYS_ASSERT_COND_IN_TXN(t, ctrl->search(t, u64_varkey(0), v));
           ALWAYS_ASSERT_COND_IN_TXN(t, v.size() == sizeof(rec));
@@ -1607,7 +1621,7 @@ namespace mp_test_batch_processing_ns {
           sum = 0;
           const string endkey = MakeKey(prev_bid, numeric_limits<uint32_t>::max());
           receipts->search_range_call(t, MakeKey(prev_bid, 0), &endkey, *this);
-          t.commit(true);
+          t.commit();
           map<uint32_t, uint32_t>::iterator it = reports.find(prev_bid);
           if (it != reports.end()) {
             ALWAYS_ASSERT_COND_IN_TXN(t, sum == it->second);
@@ -1617,7 +1631,7 @@ namespace mp_test_batch_processing_ns {
           }
           n++;
         } catch (transaction_abort_exception &e) {
-          // no-op
+          t.abort();
         }
       }
     }
@@ -1652,9 +1666,9 @@ namespace mp_test_batch_processing_ns {
     virtual void run()
     {
       while (running) {
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           string v;
           ALWAYS_ASSERT_COND_IN_TXN(t, ctrl->search(t, u64_varkey(0), v));
           ALWAYS_ASSERT_COND_IN_TXN(t, v.size() == sizeof(rec));
@@ -1663,12 +1677,12 @@ namespace mp_test_batch_processing_ns {
           const uint32_t cur_rid = (cur_bid != last_bid) ? 0 : last_rid + 1;
           const string rkey = MakeKey(cur_bid, cur_rid);
           receipts->insert_object(t, rkey, rec(1));
-          t.commit(true);
+          t.commit();
           last_bid = cur_bid;
           last_rid = cur_rid;
           n++;
         } catch (transaction_abort_exception &e) {
-          // no-op
+          t.abort();
         }
       }
     }
@@ -1693,24 +1707,24 @@ namespace mp_test_batch_processing_ns {
       : ctrl(&ctrl), receipts(&receipts), txn_flags(txn_flags), n(0) {}
     virtual void run()
     {
-      struct timespec t;
-      NDB_MEMSET(&t, 0, sizeof(t));
-      t.tv_nsec = 1000; // 1 us
+      struct timespec ts;
+      NDB_MEMSET(&ts, 0, sizeof(ts));
+      ts.tv_nsec = 1000; // 1 us
       while (running) {
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           string v;
           ALWAYS_ASSERT_COND_IN_TXN(t, ctrl->search(t, u64_varkey(0), v));
           ALWAYS_ASSERT_COND_IN_TXN(t, v.size() == sizeof(rec));
           const rec * const r = (const rec *) v.data();
           ctrl->insert_object(t, u64_varkey(0), rec(r->v + 1));
-          t.commit(true);
+          t.commit();
           n++;
         } catch (transaction_abort_exception &e) {
-          // no-op
+          t.abort();
         }
-        nanosleep(&t, NULL);
+        nanosleep(&ts, NULL);
       }
     }
   private:
@@ -1803,15 +1817,16 @@ namespace read_only_perf_ns {
       while (running) {
         const uint64_t k = r.next() % nkeys;
       retry:
+        typename Traits::StringAllocator arena;
+        TxnType<Traits> t(this->txn_flags, arena);
         try {
-          typename Traits::StringAllocator arena;
-          TxnType<Traits> t(this->txn_flags, arena);
           string v;
           bool found = this->btr->search(t, u64_varkey(k), v);
-          t.commit(true);
+          t.commit();
           ALWAYS_ASSERT_COND_IN_TXN(t, found);
           AssertByteEquality(rec(k + 1), v);
         } catch (transaction_abort_exception &e) {
+          t.abort();
           goto retry;
         }
         n++;

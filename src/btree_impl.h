@@ -235,7 +235,7 @@ btree<P>::search_impl(const key_type &k, value_type &v,
                       typename util::vec<leaf_node *>::type &leaf_nodes,
                       versioned_node_t *search_info) const
 {
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active());
   //ANON_REGION("btree<P>::search_impl:", &btree_search_impl_perf_cg);
   INVARIANT(leaf_nodes.empty());
 
@@ -523,7 +523,7 @@ btree<P>::search_range_call(const key_type &lower,
                             string_type *buf) const
 {
   rcu_region guard;
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active);
   if (unlikely(upper && *upper <= lower))
     return;
   typename util::vec<leaf_node *>::type leaf_nodes;
@@ -570,7 +570,7 @@ template <typename P>
 bool
 btree<P>::remove_stable_location(node **root_location, const key_type &k, value_type *old_v)
 {
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active());
 retry:
   key_slice new_key;
   node *replace_node = NULL;
@@ -636,7 +636,7 @@ void
 btree<P>::tree_walk(tree_walk_callback &callback) const
 {
   rcu_region guard;
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active());
   std::vector<node *> q;
   // XXX: not sure if cast is safe
   q.push_back((node *) root_);
@@ -1358,7 +1358,7 @@ btree<P>::insert_stable_location(
     bool only_if_absent, value_type *old_v,
     insert_info_t *insert_info)
 {
-  INVARIANT(rcu::s_instance.in_rcu_region());
+  INVARIANT(RCU::rcu_is_active());
 retry:
   key_slice mk;
   node *ret;

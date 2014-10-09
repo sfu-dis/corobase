@@ -4,6 +4,12 @@ syntax: glob
 *.swp
 *.heap
 *.so
+doc/cidr/*.bbl
+doc/cidr/*.log
+doc/cidr/*.aux
+doc/cidr/*.blg
+doc/cidr/*.pdf
+doc/cidr/*.dvi
 core
 tags
 config.mk
@@ -71,3 +77,6 @@ masstree/doc/*_[0-9]*.pdf
 masstree/doc/!GNUmakefile
 masstree/doc/mpxerr.tex
 masstree/doc/spec.pdf
+
+src/build.sh
+src/run.sh

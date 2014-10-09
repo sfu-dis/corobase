@@ -35,10 +35,11 @@ bdb_wrapper::new_txn(
   return (void *) txn;
 }
 
-bool
+void
 bdb_wrapper::commit_txn(void *p)
 {
-  return ((DbTxn *) p)->commit(0) == 0;
+  if (((DbTxn *) p)->commit(0))
+      throw abstract_abort_exception();
 }
 
 void
