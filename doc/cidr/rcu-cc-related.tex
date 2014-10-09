@@ -4,22 +4,14 @@
 \seclabel{related}
 
 In terms of concurrency control, one of the most important studies has been \cite{AgrawalCL87}. This modeling study shows that if the overhead of pessimistic two-phase locking can be comparable to the overhead of optimistic methods then the pessimistic one is superior. The same study shows that it is beneficial to abort transactions that are going to abort as soon as possible. That is corroborated by other studies as well, e.g. \cite{PortsG12}. We follow the findings, trying to detect conflicts early.
- 
-The indirection map, which is central to ERMIA's design, is a well-known technique, for example presented in \cite{SadoghiRCB13}.
 
 Many of the memory-optimized systems adopt lightweight optimistic concurrency control schemes that are suitable only for a small fraction of transactional workloads.
 The designs can be categorized in three categories: non-partitioning- and partitioning-based systems and clustered solutions. 
-
 Silo's  \cite{TuZKLM13} employs a light-weight optimistic concurrency control that performs validations at pre-commit. That, as we showed in \secref{eval}, performs well only in a limited set of workloads. 
 Microsoft Hekaton \cite{Diaconu+13} employs similar multi-versioning CC \cite{LarsonBDFPZ11}. It is worth mentioning that Hekaton also uses a technique similar to the indirection map, which we also use. 
 
 %% \ippo{Partitioning-based}
 H-Store (and its commercial version, VoltDB) is a characteristic partitioning-based system \cite{Kallman+08}. H-Store physically partitions each database to as many instances as the number of available processors, and each processor executes each transaction in serial order without interruption.  
-Problems raise when the system has to execute mutli-site transactions, transactions that touch data from two or more separate database instances. Lots of work has been put in the area, including low overhead concurrency control mechanisms \cite{JonesAM10}, but also partitioning advisors that help to co-locate data that are frequently accessed in the same transactions, thereby reducing the frequency of multi-site transactions, e.g. \cite{CurinoJZM10,PavloJZ11,TranNST14}.
+Problems raise when the system has to execute mutli-site transactions, transactions that touch data from two or more separate database instances. 
 Hyper \cite{KemperN11} follows H-Store's single-threaded execution principle.  To scale up to multi-cores they employ the hardware transactional memory capabilities of the latest generation of processors \cite{LeisKN14}. 
-
-DORA \cite{PandisJHA10}  employs logical partitioning 
-PLP \cite{PandisTJA11} extends the data-oriented execution principle, by employing physiological partitioning. Under PLP the logical partitioning is reflected at the root level of the B+tree indexes that now are essentially multi-rooted. PLP is
-Both DORA and PLP use Shore-MT's codebase \cite{JohnsonPHAF09}, which is a scalable but disk-optimized storage manager with significantly bloated codebase. Hence, their performance lacks in comparison with the memory-optimized proposals. Additionally, even though only logical, there is a certain overhead in the performance due to the partitioning mechanism employed.  
-
-In addition to the work on scaling up the performance of transaction processing systems in mutlicore and multisocket environment, there has been also lots of interest on scaling out. Those scale out systems, such as Google's Spanner \cite{Corbett+12}, RAMP \cite{BailisFHGS14} and Calvin \cite{ThomsonA10}, emphasize the weakness of the partitioning-based camp. Because the easy to partition workloads and databases would have already been partitioned of different physical nodes. Therefore whatever data are assigned to a single node it would be quite difficult to further partition.  Hence the need of scalable multicore and multisocket transaction processing system designs.
+DORA \cite{PandisJHA10} employs logical partitioning that avoids limitations of physically partitioned systems. But DORA uses Shore-MT's codebase \cite{JohnsonPHAF09}, which is a scalable but disk-optimized storage manager with significantly bloated codebase. Hence, its performance lacks in comparison with the memory-optimized proposals.

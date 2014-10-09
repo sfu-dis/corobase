@@ -1,6 +1,6 @@
 %% -*- tex-main-file:"rcu-cc.tex" -*-
 
-\section{ERMAI: Fast main-memory OLTP with robust concurency control}
+\section{Memory-optimized OLTP with robust concurency control}
 \seclabel{design}
 
 In tis section we describe in more detail several key pieces of the system we are developing, with a focus on why we choose the design trade-offs we do.
@@ -38,8 +38,3 @@ The system has been designed from the ground up to allow efficient implementatio
 \seclabel{design:recovery}
 
 Recovery is straightforward because the log contains only committed work. OID arrays are the only real source of complexity, as they are volatile in-memory structures that make it possible to find all other objects in the system. It turns out that logical objects (records) are physically logged, while physical data (allocator state and OID array contents) use logical logging.  OID arrays are themselves objects stored in a master OID array, but they are updated in place to avoid overloading the log, with changes replayed by a log analysis step that reads only log block headers. This analysis step is very fast, because the skipped-over log payloads account for 90\% or more of the total log. In order to support efficient recovery, system transactions occasionally checkpoint the OID arrays using a fuzzy checkpointing mechanism to minimize the impact on user transactions. Because the log is the database, recovery only needs to rebuild the OID arrays in memory; anti-caching will take care of loading the actual data, though background pre-loading is highly recommended to minimize cold start effects.
-
-\subsection{Prototype Implementation}
-\seclabel{design:prototype}
-
-We implement a prototype of the ERMIA architecture and measure its performance.  For the implementation of the prototype we use a large fraction of the publicly available Silo codebase~\footnote{Silo's codebase can be downloaded from: https://github.com/stephentu/silo.}.  Silo uses the Masstree \cite{MaoKM12} as a cache-efficient index structure. 
