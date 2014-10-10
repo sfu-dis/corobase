@@ -4,13 +4,12 @@
 #include <stdint.h>
 #include "ndb_wrapper.h"
 #include "../counter.h"
-#include "../rcu/rcu.h"
+#include "../dbcore/rcu.h"
 #include "../varkey.h"
 #include "../macros.h"
 #include "../util.h"
 #include "../scopedperf.hh"
 #include "../txn.h"
-//#include "../txn_proto1_impl.h"
 #include "../txn_proto2_impl.h"
 #include "../tuple.h"
 

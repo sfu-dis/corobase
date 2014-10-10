@@ -18,9 +18,9 @@
 
 #include <unordered_map>
 #include "rcu-wrapper.h"
-#include "rcu/xid.h"
-#include "rcu/sm-log.h"
-#include "rcu/sm-gc.h"
+#include "dbcore/xid.h"
+#include "dbcore/sm-log.h"
+#include "dbcore/sm-gc.h"
 #include "amd64.h"
 #include "btree_choice.h"
 #include "core.h"

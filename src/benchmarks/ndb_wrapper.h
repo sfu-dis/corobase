@@ -3,7 +3,7 @@
 
 #include "abstract_db.h"
 #include "../txn_btree.h"
-#include "../rcu/sm-log.h"
+#include "../dbcore/sm-log.h"
 
 namespace private_ {
   struct ndbtxn {

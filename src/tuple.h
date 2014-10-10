@@ -26,7 +26,7 @@
 
 #ifdef HACK_SILO
 #include "object.h"
-#include "rcu/xid.h"
+#include "dbcore/xid.h"
 #endif
 
 using namespace TXN;

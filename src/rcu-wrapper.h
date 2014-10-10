@@ -5,8 +5,8 @@
 #include <numa.h>
 #include "macros.h"
 #include "core.h"
-#include "rcu/rcu.h"
-#include "rcu/sm-gc.h"
+#include "dbcore/rcu.h"
+#include "dbcore/sm-gc.h"
 
 // FIXME: tzwang: seems to be working
 // things won't work directly:
