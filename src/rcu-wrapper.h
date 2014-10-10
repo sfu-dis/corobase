@@ -6,7 +6,7 @@
 #include "macros.h"
 #include "core.h"
 #include "rcu/rcu.h"
-#include "gc.h"
+#include "rcu/sm-gc.h"
 
 // FIXME: tzwang: seems to be working
 // things won't work directly:
@@ -18,8 +18,7 @@ namespace RCU {
   typedef void (*deleter_t)(void *);
 
   inline void *allocate(size_t nbytes) {
-    GC::record_mem_alloc(nbytes);
-    return rcu_alloc(nbytes);
+    return rcu_alloc_gc(nbytes);
   }
 
   template <typename T>

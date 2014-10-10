@@ -16,6 +16,7 @@ template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type &sa)
   : transaction_base(flags), sa(&sa)
 {
+  GC::epoch_enter();
   INVARIANT(RCU::rcu_is_active());
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
@@ -42,6 +43,8 @@ transaction<Protocol, Traits>::~transaction()
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
+  //GC::epoch_quiesce();
+  GC::epoch_exit();
 }
 
 template <template <typename> class Protocol, typename Traits>

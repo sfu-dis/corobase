@@ -4,6 +4,8 @@
 #include "sm-exceptions.h"
 #include "sm-common.h"
 #include "size-encode.h"
+#include "sm-gc.h"
+#include "sm-defs.h"
 
 #include "../rcu-wrapper.h" // for delete_entry
 
@@ -298,15 +300,30 @@ void rcu_exit() {
     rcu_epochs.thread_exit();
 }
 
-void *rcu_alloc(size_t nbytes) {
-    // add space for a link
-    nbytes += sizeof(pointer);
-    rcu_pointer u;
-    int err = posix_memalign(&u.v, DEFAULT_ALIGNMENT, nbytes);
-    THROW_IF(err, rcu_alloc_fail, nbytes);
-    u.p->size = encode_size(nbytes);
-    //u.p->size = nbytes;
+// want exact match of decoded size and allocated size
+// (assuming posix_memalign will coincide with this with DEFAULT_ALIGNMENT?)
+#define __rcu_alloc(nbytes)   \
+    nbytes += sizeof(pointer);  \
+	uint8_t sz_code = encode_size(nbytes);  \
+    DIE_IF(nbytes > 950272, "size %lu to large for encoding", nbytes);  \
+    size_t sz_alloc = decode_size(sz_code); \
+    rcu_pointer u;  \
+    int err = posix_memalign(&u.v, DEFAULT_ALIGNMENT, sz_alloc);    \
+    THROW_IF(err, rcu_alloc_fail, sz_alloc);    \
+    u.p->size = sz_code;    \
     ++u.p;
+
+// The version used by version GC. Actually this function shouldn't be
+// here, it should be in the RCU or GC namespace. But here is more
+// convenient for getting the size info etc.
+void *rcu_alloc_gc(size_t nbytes) {
+    __rcu_alloc(nbytes);
+    GC::report_malloc(sz_alloc);
+    return u.v;
+}
+
+void *rcu_alloc(size_t nbytes) {
+    __rcu_alloc(nbytes);
     return u.v;
 }
 

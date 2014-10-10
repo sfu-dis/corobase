@@ -138,7 +138,6 @@ endif
 SRCFILES = allocator.cc \
 	core.cc \
 	counter.cc \
-	gc.cc \
 	memory.cc \
 	rcu-wrapper.cc \
 	stats_server.cc \
@@ -162,6 +161,7 @@ RCU_SRCFILES = rcu/sm-log.cpp \
 	rcu/sm-log-file.cpp \
 	rcu/sm-exceptions.cpp \
 	rcu/sm-common.cpp \
+	rcu/sm-gc.cpp \
 	rcu/window-buffer.cpp \
 	rcu/rcu-slist.cpp \
 	rcu/rcu.cpp \
