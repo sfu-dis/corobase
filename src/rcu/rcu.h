@@ -175,6 +175,7 @@ bool rcu_is_active();
    Throw rcu_alloc_fail if no memory is available
 */
 void* rcu_alloc(size_t nbytes);
+void* rcu_alloc_gc(size_t nbytes);
 
 /* Free a pointer previously returned by rcu_alloc */
 void rcu_free(void const*);
