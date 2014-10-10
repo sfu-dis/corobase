@@ -17,7 +17,7 @@
 #define MASSTREE_SCAN_HH
 #include "masstree_tcursor.hh"
 #include "masstree_struct.hh"
-#include "../rcu/xid.h"
+#include "../dbcore/xid.h"
 
 namespace Masstree {
 

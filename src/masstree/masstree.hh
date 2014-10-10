@@ -22,7 +22,7 @@
 #ifdef HACK_SILO
 #include "../object.h"
 #include "../tuple.h"
-#include "../rcu/xid.h"
+#include "../dbcore/xid.h"
 #include "../macros.h"
 #endif
 

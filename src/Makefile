@@ -153,23 +153,23 @@ SRCFILES = allocator.cc \
 #allocator.cc \
 #btree.cc \
 
-RCU_SRCFILES = rcu/sm-log.cpp \
-	rcu/sm-tx-log.cpp \
-	rcu/sm-log-alloc.cpp \
-	rcu/sm-log-recover.cpp \
-	rcu/sm-log-offset.cpp \
-	rcu/sm-log-file.cpp \
-	rcu/sm-exceptions.cpp \
-	rcu/sm-common.cpp \
-	rcu/sm-gc.cpp \
-	rcu/window-buffer.cpp \
-	rcu/rcu-slist.cpp \
-	rcu/rcu.cpp \
-	rcu/epoch.cpp \
-	rcu/adler.cpp \
-	rcu/w_rand.cpp \
-	rcu/size-encode.cpp \
-	rcu/xid.cpp
+DBCORE_SRCFILES = dbcore/sm-log.cpp \
+	dbcore/sm-tx-log.cpp \
+	dbcore/sm-log-alloc.cpp \
+	dbcore/sm-log-recover.cpp \
+	dbcore/sm-log-offset.cpp \
+	dbcore/sm-log-file.cpp \
+	dbcore/sm-exceptions.cpp \
+	dbcore/sm-common.cpp \
+	dbcore/sm-gc.cpp \
+	dbcore/window-buffer.cpp \
+	dbcore/rcu-slist.cpp \
+	dbcore/rcu.cpp \
+	dbcore/epoch.cpp \
+	dbcore/adler.cpp \
+	dbcore/w_rand.cpp \
+	dbcore/size-encode.cpp \
+	dbcore/xid.cpp
 
 ifeq ($(MASSTREE_S),1)
 MASSTREE_SRCFILES = masstree/compiler.cc \
@@ -182,7 +182,7 @@ endif
 OBJFILES := $(patsubst %.cc, $(O)/%.o, $(SRCFILES))
 
 MASSTREE_OBJFILES := $(patsubst masstree/%.cc, $(O)/%.o, $(MASSTREE_SRCFILES))
-RCU_OBJFILES := $(patsubst rcu/%.cpp, $(O)/rcu/%.o, $(RCU_SRCFILES))
+DBCORE_OBJFILES := $(patsubst dbcore/%.cpp, $(O)/dbcore/%.o, $(DBCORE_SRCFILES))
 
 BENCH_CXXFLAGS := $(CXXFLAGS)
 BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
@@ -236,14 +236,14 @@ $(MASSTREE_OBJFILES) : $(O)/%.o: masstree/%.cc masstree/config.h
 third-party/lz4/liblz4.so:
 	make -C third-party/lz4 library
 
-$(RCU_OBJFILES) : $(O)/rcu/%.o: rcu/%.cpp $(OBJDEP)
+$(DBCORE_OBJFILES) : $(O)/dbcore/%.o: dbcore/%.cpp $(OBJDEP)
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 .PHONY: test
 test: $(O)/test
 
-$(O)/test: $(O)/test.o $(OBJFILES) $(RCU_OBJFILES) $(MASSTREE_OBJFILES) third-party/lz4/liblz4.so
+$(O)/test: $(O)/test.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/test $^ $(LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: persist_test
@@ -269,19 +269,19 @@ masstree/configure masstree/config.h.in: masstree/configure.ac
 .PHONY: dbtest
 dbtest: $(O)/benchmarks/dbtest
 
-$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(RCU_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) third-party/lz4/liblz4.so
+$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/benchmarks/dbtest $^ $(BENCH_LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: kvtest
 kvtest: $(O)/benchmarks/masstree/kvtest
 
-$(O)/benchmarks/masstree/kvtest: $(O)/benchmarks/masstree/kvtest.o $(OBJFILES) $(RCU_OBJFILES) $(BENCH_OBJFILES)
+$(O)/benchmarks/masstree/kvtest: $(O)/benchmarks/masstree/kvtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(BENCH_OBJFILES)
 	$(CXX) -o $(O)/benchmarks/masstree/kvtest $^ $(BENCH_LDFLAGS)
 
 .PHONY: newdbtest
 newdbtest: $(O)/new-benchmarks/dbtest
 
-$(O)/new-benchmarks/dbtest: $(O)/new-benchmarks/dbtest.o $(OBJFILES) $(RCU_OBJFILES) $(MASSTREE_OBJFILES) $(NEWBENCH_OBJFILES) third-party/lz4/liblz4.so
+$(O)/new-benchmarks/dbtest: $(O)/new-benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(NEWBENCH_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/new-benchmarks/dbtest $^ $(LDFLAGS) $(LZ4LDFLAGS)
 
 DEPFILES := $(wildcard $(O)/*.d $(O)/*/*.d $(O)/*/*/*.d masstree/_masstree_config.d)
