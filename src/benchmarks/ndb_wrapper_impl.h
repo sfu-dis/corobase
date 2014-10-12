@@ -5,6 +5,7 @@
 #include "ndb_wrapper.h"
 #include "../counter.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-gc.h"
 #include "../varkey.h"
 #include "../macros.h"
 #include "../util.h"
@@ -121,6 +122,7 @@ struct hint_tpcc_stock_level_read_only_traits : public hint_read_only_traits {};
   x(abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY, hint_tpcc_stock_level_read_only_traits)
 
 sm_log* transaction_base::logger = NULL;
+GC* transaction_base::gc = NULL;
 
 template <template <typename> class Transaction>
 ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
@@ -135,7 +137,9 @@ ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
   auto no_recover = [](void*, sm_log_scan_mgr*, LSN, LSN)->void {
       SPAM("Log recovery is a no-op here\n");
   };
+
   transaction_base::logger = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
+  transaction_base::gc = new GC(transaction_base::logger);
 
   if (verbose) {
     std::cerr << "[logging subsystem]" << std::endl;

@@ -6,7 +6,7 @@
 #include "macros.h"
 #include "core.h"
 #include "dbcore/rcu.h"
-#include "dbcore/sm-gc.h"
+//#include "dbcore/sm-gc.h"
 
 // FIXME: tzwang: seems to be working
 // things won't work directly:
@@ -17,9 +17,7 @@
 namespace RCU {
   typedef void (*deleter_t)(void *);
 
-  inline void *allocate(size_t nbytes) {
-    return rcu_alloc_gc(nbytes);
-  }
+  void *allocate(size_t nbytes);
 
   template <typename T>
   static inline void

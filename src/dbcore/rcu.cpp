@@ -316,9 +316,10 @@ void rcu_exit() {
 // The version used by version GC. Actually this function shouldn't be
 // here, it should be in the RCU or GC namespace. But here is more
 // convenient for getting the size info etc.
-void *rcu_alloc_gc(size_t nbytes) {
+void *rcu_alloc_gc(size_t& nbytes) {
     __rcu_alloc(nbytes);
-    GC::report_malloc(sz_alloc);
+    // return the real allocated size
+    nbytes = sz_alloc;
     return u.v;
 }
 

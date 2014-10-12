@@ -57,6 +57,7 @@ class transaction_base {
     friend class base_txn_btree;
 public:
   static sm_log *logger;
+  static GC *gc;
 
   typedef dbtuple::size_type size_type;
   typedef dbtuple::string_type string_type;
