@@ -1,43 +1,36 @@
 #include "sm-gc.h"
 
-namespace GC {
-    gc_thread GC_thread;
-    percore<size_t, false, false> allocated_memory;
-
-    struct thread_data {
-        bool initialized;
-    };
-
-    static __thread thread_data tls;
-};
+percore<size_t, false, false> GC::allocated_memory;
+sm_log *GC::logger;
+__thread struct GC::thread_data GC::tls;
 
 /***************************************
  * * * Callbacks for the epoch_mgr * * *
  ***************************************/
 void
-global_init(void*)
+GC::global_init(void*)
 {
     for (size_t i = 0; i < coreid::NMaxCores; i++)
-        GC::allocated_memory[i] = 0;
+        allocated_memory[i] = 0;
 }
 
 epoch_mgr::tls_storage *
-get_tls(void*)
+GC::get_tls(void*)
 {
     static __thread epoch_mgr::tls_storage s;
     return &s;
 }
 
 void *
-thread_registered(void*)
+GC::thread_registered(void*)
 {
-	// cookie initialization
+    // cookie initialization
     GC::tls.initialized = true;
     return &GC::tls;
 }
 
 void
-thread_deregistered(void*, void *thread_cookie)
+GC::thread_deregistered(void*, void *thread_cookie)
 {
     auto *t = (GC::thread_data*) thread_cookie;
     ASSERT(t == &GC::tls);
@@ -45,92 +38,103 @@ thread_deregistered(void*, void *thread_cookie)
 }
 
 void *
-epoch_ended(void* cookie, epoch_mgr::epoch_num e)
+GC::epoch_ended(void* cookie, epoch_mgr::epoch_num e)
 {
+    ASSERT(GC::logger);
     std::cout << "e " << e << "ended" << std::endl;
-	// TODO. record cur_lsn
-    return cookie;  // return cookie to get epoch_reclaimed called
+    // So we need this rcu_is_active here because
+    // epoch_eneded is called not only when an epoch is eneded,
+    // but also when threads exit (see epoch.cpp:274-283 in function
+    // epoch_mgr::thread_init(). So we need to avoid the latter case
+    // as when thread exits it will no longer be in the rcu region
+    // created by the scoped_rcu_region in the transaction class.
+    if (RCU::rcu_is_active()) {
+        // FIXME: change to some clever alloc
+        LSN *lsn = (LSN *)malloc(sizeof(LSN));
+        *lsn = GC::logger->cur_lsn();
+        // record cur_lsn
+        return lsn; // return cookie to get epoch_reclaimed called
+    }
+    return NULL;
 }
 
 // FIXME: tzwang: need this?
 void *
-epoch_ended_thread(void *, void *epoch_cookie, void *)
+GC::epoch_ended_thread(void *, void *epoch_cookie, void *)
 {
     return epoch_cookie;
 }
 
 void
-epoch_reclaimed(void *, void *)
+GC::epoch_reclaimed(void *cookie, void *epoch_cookie)
 {
-	// TODO. signal to GC daemon
+    //scoped_rcu_region r;
+    LSN lsn = *(LSN *)epoch_cookie;
+    free(epoch_cookie);
+    // TODO. signal to GC daemon
 }
-
-epoch_mgr gc_epochs{{
-        nullptr, &global_init, &get_tls,
-            &thread_registered, &thread_deregistered,
-            &epoch_ended, &epoch_ended_thread,
-            &epoch_reclaimed}};
 
 void 
 GC::epoch_enter()
 {
     if (!GC::tls.initialized)
-        gc_epochs.thread_init();
-    gc_epochs.thread_enter();
+        epochs.thread_init();
+    epochs.thread_enter();
 }
 
 void
 GC::epoch_exit()
 {
-	gc_epochs.thread_exit();
+    epochs.thread_exit();
 }
 
 void
 GC::epoch_quiesce()
 {
-    gc_epochs.thread_quiesce();
+    epochs.thread_quiesce();
 }
 
 void
 GC::report_malloc(size_t nbytes)
 {
-	allocated_memory.my() += nbytes;
-	size_t total_mem = 0;
+    allocated_memory.my() += nbytes;
+    size_t total_mem = 0;
 
-	for (size_t i = 0; i < coreid::NMaxCores; i++)
-		total_mem += allocated_memory[i];
-	if( total_mem > WATERMARK )
-	{
+    for (size_t i = 0; i < coreid::NMaxCores; i++)
+        total_mem += allocated_memory[i];
+    if( total_mem > WATERMARK )
+    {
         // FIXME: tzwang: the threaad should already be active
         // if this is ever called? (as we called epoch_enter in tx ctor)
-		std::cout << "cur epoch :" << gc_epochs.get_cur_epoch() << std::endl;
-		std::cout<< "memory consumed:" << total_mem << std::endl;
-		for (size_t i = 0; i < coreid::NMaxCores; i++)
-			allocated_memory[i] = 0;
-		// trigger epoch advance
+        std::cout << "cur epoch :" << epochs.get_cur_epoch() << std::endl;
+        std::cout<< "memory consumed:" << total_mem << std::endl;
+        for (size_t i = 0; i < coreid::NMaxCores; i++)
+            allocated_memory[i] = 0;
+        // trigger epoch advance
         epoch_exit();   // FIXME: tzwang: this correct?
-        while (not gc_epochs.new_epoch())
+        while (not epochs.new_epoch())
             usleep(1000);
-		epoch_enter();
-        std::cout << "new epoch :" << gc_epochs.get_cur_epoch() << std::endl;
-	}
+        epoch_enter();
+        std::cout << "new epoch :" << epochs.get_cur_epoch() << std::endl;
+    }
 }
 
 void
-GC::gc_thread::gc_daemon()
+GC::cleaner_daemon()
 {
-  while (1)
-  {
-	  ;
-	  // wait for notification
-	  // GC work
-  }
+    std::cout << "GC cleaner thread start" << std::endl;
+    while (1)
+    {
+        ;
+        // wait for notification
+        // GC work
+    }
 }
 
-GC::gc_thread::gc_thread()
+GC::GC(sm_log *l)
 {
-  std::cout << "GC thread start" << std::endl;
-  std::thread t(gc_daemon);			// # of threads should be based on system speed, GC speed. 
-  t.detach();
+    GC::logger = l;
+    //std::thread t(cleaner_daemon);  // # of threads should be based on system speed, GC speed.
+    //t.detach();
 }
 
