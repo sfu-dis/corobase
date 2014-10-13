@@ -1,6 +1,8 @@
 #pragma once
 #include <type_traits>
 #include <thread>
+#include <condition_variable>
+#include <mutex>
 #include <numa.h>
 #include <unistd.h>
 #include <iostream>
@@ -28,7 +30,10 @@ class GC {
 
     static percore<size_t, false, false> allocated_memory;
     static sm_log *logger;
-    LSN lsn;
+    static LSN lsn;
+
+    static std::condition_variable cleaner_cv;
+    static std::mutex cleaner_mutex;
 
 public:
     struct thread_data {
@@ -37,7 +42,6 @@ public:
     static __thread struct thread_data tls;
 
     GC(sm_log *l);
-    void cleaner_daemon();
     void report_malloc(size_t nbytes);
     void epoch_enter();
     void epoch_exit();
@@ -50,6 +54,7 @@ public:
     static void* epoch_ended(void *cookie, epoch_num e);
     static void* epoch_ended_thread(void *, void *epoch_cookie, void *);
     static void epoch_reclaimed(void *cookie, void *epoch_cookie);
+    static void cleaner_daemon();
 
 private:
     epoch_mgr epochs {{nullptr, &global_init, &get_tls,

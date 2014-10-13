@@ -3,6 +3,8 @@
 percore<size_t, false, false> GC::allocated_memory;
 sm_log *GC::logger;
 __thread struct GC::thread_data GC::tls;
+std::condition_variable GC::cleaner_cv;
+std::mutex GC::cleaner_mutex;
 
 /***************************************
  * * * Callbacks for the epoch_mgr * * *
@@ -68,10 +70,10 @@ GC::epoch_ended_thread(void *, void *epoch_cookie, void *)
 void
 GC::epoch_reclaimed(void *cookie, void *epoch_cookie)
 {
-    //scoped_rcu_region r;
     LSN lsn = *(LSN *)epoch_cookie;
     free(epoch_cookie);
-    // TODO. signal to GC daemon
+    // signal the GC cleaner daemon to do real work
+    cleaner_cv.notify_all();
 }
 
 void 
@@ -123,10 +125,9 @@ void
 GC::cleaner_daemon()
 {
     std::cout << "GC cleaner thread start" << std::endl;
-    while (1)
-    {
-        ;
-        // wait for notification
+    std::unique_lock<std::mutex> lock(cleaner_mutex);
+    while (1) {
+        cleaner_cv.wait(lock);
         // GC work
     }
 }
@@ -134,7 +135,7 @@ GC::cleaner_daemon()
 GC::GC(sm_log *l)
 {
     GC::logger = l;
-    //std::thread t(cleaner_daemon);  // # of threads should be based on system speed, GC speed.
-    //t.detach();
+    std::thread t(cleaner_daemon);  // # of threads should be based on system speed, GC speed.
+    t.detach();
 }
 
