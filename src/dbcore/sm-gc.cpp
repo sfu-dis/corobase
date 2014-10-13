@@ -2,6 +2,7 @@
 
 percore<size_t, false, false> GC::allocated_memory;
 sm_log *GC::logger;
+LSN GC::reclaim_lsn;
 __thread struct GC::thread_data GC::tls;
 std::condition_variable GC::cleaner_cv;
 std::mutex GC::cleaner_mutex;
@@ -70,7 +71,7 @@ GC::epoch_ended_thread(void *, void *epoch_cookie, void *)
 void
 GC::epoch_reclaimed(void *cookie, void *epoch_cookie)
 {
-    LSN lsn = *(LSN *)epoch_cookie;
+    reclaim_lsn = *(LSN *)epoch_cookie;
     free(epoch_cookie);
     // signal the GC cleaner daemon to do real work
     cleaner_cv.notify_all();
@@ -129,6 +130,11 @@ GC::cleaner_daemon()
     while (1) {
         cleaner_cv.wait(lock);
         // GC work
+        std::cout << "[GC cleaner] to sweep versions < "
+                  << reclaim_lsn._val << std:: endl;
+        // NOTE: also need to make sure there's at least only one version
+        // left for each tuple, even if the tuple's only version is less
+        // than reclaim_lsn; touch clean versions only too.
     }
 }
 

@@ -30,7 +30,10 @@ class GC {
 
     static percore<size_t, false, false> allocated_memory;
     static sm_log *logger;
-    static LSN lsn;
+
+    // use this (unprotected) global variable to store the lsn, it should be
+    // fine as the cleaner only reads it and the only writer is epoch-mgr.
+    static LSN reclaim_lsn;
 
     static std::condition_variable cleaner_cv;
     static std::mutex cleaner_mutex;
