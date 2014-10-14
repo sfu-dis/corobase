@@ -13,6 +13,7 @@
 #include "../rcu-wrapper.h"
 #include "epoch.h"
 #include "sm-log.h"
+#include "../masstree_btree.h"
 
 /*
  * The garbage collector for ERMIA to remove dead tuple versions.
@@ -21,12 +22,8 @@ class GC {
     typedef epoch_mgr::epoch_num epoch_num;
 
     // if _allocated_memory reaches this many, start GC
-    // FIXME: tzwang: problem: if this watermark is too low, then some tx or
-    // thread might stuck in some epoch (or we could say some epoch is stuck)
-    // because the tx needs more memory, i.e., this tx might need to cross
-    // epoch boundaries.
     // TODO. should be based on physical memory size or GC performance
-    static const size_t WATERMARK = 128*1024*1024;
+    static const size_t WATERMARK = 64*1024*1024;
 
     static percore<size_t, false, false> allocated_memory;
     static sm_log *logger;
@@ -58,12 +55,14 @@ public:
     static void* epoch_ended_thread(void *, void *epoch_cookie, void *);
     static void epoch_reclaimed(void *cookie, void *epoch_cookie);
     static void cleaner_daemon();
+	static void register_table(concurrent_btree* table);
 
 private:
+	static std::vector<concurrent_btree*> tables;
     epoch_mgr epochs {{nullptr, &global_init, &get_tls,
                          &thread_registered, &thread_deregistered,
                          &epoch_ended, &epoch_ended_thread, &epoch_reclaimed}};
 
-    scoped_rcu_region _guard;
+//    scoped_rcu_region _guard;
 };  // end of namespace
 

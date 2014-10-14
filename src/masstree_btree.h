@@ -260,6 +260,10 @@ public:
   typedef object_vector<value_type> tuple_vector_type;
   typedef object_vector<node_base_type*> node_vector_type;
 
+  void cleanup_versions( LSN lsn )
+  {
+	  table_.cleanup_versions( lsn );
+  }
   inline oid_type insert_tuple( value_type val )
   {
 	  return table_.insert_tuple( val );

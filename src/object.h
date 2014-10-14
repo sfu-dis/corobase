@@ -24,6 +24,11 @@ class object_vector
 	typedef object<T> object_type;
 
 public:
+	unsigned long long size()
+	{
+		return _nallocated-1;		// just to prevent a rare corner case which we reclaim garbages before new bucket allocation
+	}
+
 	object_vector( unsigned long long capacity)
 	{
 		_nallocated= 0;
