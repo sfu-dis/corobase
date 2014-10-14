@@ -100,6 +100,54 @@ class basic_table {
 		return tuple_vector->insert( val );
 	}
 
+	void cleanup_versions( LSN reclaim_lsn )
+	{
+		object_type* head;
+		object_type* cur;
+		object_type* prev;
+		dbtuple* version;
+		INVARIANT( tuple_vector );
+		for( oid_type oid = 1; oid < tuple_vector->size(); oid++ )
+		{
+start_over:
+			cur = head = tuple_vector->begin(oid);
+			if( !cur )
+				continue;
+			
+			// Exceptions 
+			//	- If the first element's clsn < reclaim_lsn, we don't delete the "cold" data
+			//  - If the first element is "deleted" log, we shoudn't delete it until oid realloc handling(tree update to remove deleted OID) is done.
+			// Thus, the first case should be skipped in any cases. 
+			for( prev = cur, cur = cur->_next; cur; prev = cur, cur = cur->_next )	// TODO. volatile pointer read?
+			{
+				version = reinterpret_cast<dbtuple*>(cur->_data);
+				auto clsn = volatile_read(version->clsn);
+				if( clsn.asi_type() == fat_ptr::ASI_LOG )
+				{
+					if ( LSN::from_ptr(clsn) < reclaim_lsn )
+					{
+						// Unlink sub chain
+						if( not __sync_bool_compare_and_swap( &prev->_next, cur, NULL ) )
+							goto start_over;
+						break;
+					}
+				}
+			}
+
+			// free all sub-chain entries
+			for( ; cur; cur = cur->_next )
+			{
+				scoped_rcu_region guard;
+				version = reinterpret_cast<dbtuple*>(cur->_data);
+				auto clsn = volatile_read(version->clsn);
+				INVARIANT(clsn.asi_type() == fat_ptr::ASI_LOG );
+				INVARIANT(LSN::from_ptr(clsn) < reclaim_lsn );
+				dbtuple::release( version );
+				// TODO. free container also. 
+			}
+		}
+	}
+
 	std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
 	{
 		INVARIANT( tuple_vector );

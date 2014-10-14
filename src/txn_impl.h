@@ -80,6 +80,7 @@ transaction<Protocol, Traits>::abort_impl()
 		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
 
     dbtuple::release(tuple);
+	// TODO. free container also
   }
 
   // log discard
