@@ -103,12 +103,15 @@ GC::report_malloc(size_t nbytes)
     allocated_memory.my() += nbytes;
     size_t total_mem = 0;
 
-    for (size_t i = 0; i < coreid::NMaxCores; i++)
-        total_mem += allocated_memory[i];
-    if( total_mem > WATERMARK )
+//    for (size_t i = 0; i < coreid::NMaxCores; i++)
+  //      total_mem += allocated_memory[i];
+    if( allocated_memory.my() > WATERMARK )
     {
 		if(epochs.new_epoch_possible())
+		{
 			epochs.new_epoch();	
+			allocated_memory.my() = 0;
+		}
     }
 }
 
@@ -123,17 +126,17 @@ GC::cleaner_daemon()
         cleaner_cv.wait(lock);
 
 		// TODO. Multiple thread on partitioned object tables?
-		std::cout << "GC begin! Reclaim LSN: " << reclaim_lsn._val <<  std::endl;
+//		std::cout << "GC begin! Reclaim LSN: " << reclaim_lsn._val <<  std::endl;
 
 		// GC
 		for( unsigned int i = 0; i < tables.size(); i++ )
 			tables[i]->cleanup_versions( reclaim_lsn );
 
 		// Reset memory usage stats
-		for (size_t i = 0; i < coreid::NMaxCores; i++)
-			allocated_memory[i] = 0;				// FIXME. couldn't be zero
+//		for (size_t i = 0; i < coreid::NMaxCores; i++)
+//			allocated_memory[i] = 0;				// FIXME. couldn't be zero
 
-		std::cout << "GC finished! Reclaim LSN: " << reclaim_lsn._val <<  std::endl;
+//		std::cout << "GC finished! Reclaim LSN: " << reclaim_lsn._val <<  std::endl;
     }
 }
 

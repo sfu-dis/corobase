@@ -42,7 +42,7 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
     // Change this to allow using encoded size with rcu_alloc
     // (the size encoding can only represent values ranging from 0
     // to 950272).
-    static size_t const MAX_BLOCK_SIZE = 900*1024;
+    static size_t const MAX_BLOCK_SIZE = 512*1024;
     static size_t const MAX_BLOCK_RECORDS = 254;
     
     /* Starting from a known log block location, iterate over the log

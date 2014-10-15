@@ -118,7 +118,7 @@ start_over:
 			//	- If the first element's clsn < reclaim_lsn, we don't delete the "cold" data
 			//  - If the first element is "deleted" log, we shoudn't delete it until oid realloc handling(tree update to remove deleted OID) is done.
 			// Thus, the first case should be skipped in any cases. 
-			for( prev = cur, cur = cur->_next; cur; prev = cur, cur = cur->_next )	// TODO. volatile pointer read?
+			for( prev = volatile_read(cur), cur = volatile_read(cur->_next); cur; prev = volatile_read(cur), cur = volatile_read(cur->_next) )	// TODO. volatile pointer read?
 			{
 				version = reinterpret_cast<dbtuple*>(cur->_data);
 				auto clsn = volatile_read(version->clsn);
@@ -129,13 +129,15 @@ start_over:
 						// Unlink sub chain
 						if( not __sync_bool_compare_and_swap( &prev->_next, cur, NULL ) )
 							goto start_over;
+
+						volatile_write(prev->_next, cur );
 						break;
 					}
 				}
 			}
 
 			// free all sub-chain entries
-			for( ; cur; cur = cur->_next )
+			for( ; cur; cur = volatile_read(cur->_next) )
 			{
 				scoped_rcu_region guard;
 				version = reinterpret_cast<dbtuple*>(cur->_data);
@@ -264,7 +266,7 @@ install:
 		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
 		int attempts = 0;
 	start_over:
-		for( object_type* ptr = tuple_vector->begin(oid); ptr; ptr = ptr->_next ) {
+		for( object_type* ptr = tuple_vector->begin(oid); ptr; ptr = volatile_read(ptr->_next) ) {
 			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->_data);
 			auto clsn = volatile_read(version->clsn);
 			// xid tracking & status check

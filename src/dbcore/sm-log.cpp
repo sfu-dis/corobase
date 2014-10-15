@@ -54,6 +54,15 @@ sm_log::cur_lsn()
     auto *log = &get_impl(this)->_lm;
     auto offset = log->cur_lsn_offset();
     auto *sid = log->_lm.get_offset_segment(offset);
+
+	if (not sid) {
+		/* must have raced a new segment opening */
+		while (1) {
+			sid = log->_lm._newest_segment();
+			if (sid->start_offset >= offset)
+				break;
+		}
+	}
     ASSERT(sid);
     return sid->make_lsn(offset);
 }
