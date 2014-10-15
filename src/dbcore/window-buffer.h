@@ -106,12 +106,12 @@ struct window_buffer {
        the reader or not.
      */
     char *write_buf(size_t offset, size_t size) {
+		THROW_IF(write_begin() > offset, illegal_argument,
+				"Attempted write to region before before window");
         if (write_end() < offset+size) {
-            THROW_IF(write_end() < offset, illegal_argument,
-                     "Attempted write to region before before window");
             return NULL;
         }
-        return write_begin() <= offset? _get_ptr(offset) : NULL;
+        return _get_ptr(offset);
     }
 
     /* Return a pointer to the first byte of readable space. The
@@ -120,12 +120,12 @@ struct window_buffer {
        writer.
      */
     char const *read_buf(size_t offset, size_t size) {
+		THROW_IF(read_begin() > offset, illegal_argument,
+				"Attempted read from region before before window");
         if (read_end() < offset+size) {
-            THROW_IF(read_end() < offset, illegal_argument,
-                     "Attempted read from region before before window");
             return NULL;
         }
-        return read_begin() <= offset? _get_ptr(offset) : NULL;
+        return _get_ptr(offset);
     }
 
     void advance_writer(size_t new_wbegin);
