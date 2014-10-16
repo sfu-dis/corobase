@@ -107,7 +107,7 @@ retry:
 				return;
 			}
 			prev = &target->_next;	// only can be modified by current TX. volatile_read is not needed
-			target = *prev;
+			target = volatile_read(*prev);
 		}
 
 		if( !target )

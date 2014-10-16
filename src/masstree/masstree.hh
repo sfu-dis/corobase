@@ -130,7 +130,6 @@ start_over:
 						if( not __sync_bool_compare_and_swap( &prev->_next, cur, NULL ) )
 							goto start_over;
 
-						volatile_write(prev->_next, cur );
 						break;
 					}
 				}
