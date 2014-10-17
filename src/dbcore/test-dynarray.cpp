@@ -45,7 +45,7 @@ access(dynarray &d, size_t offset, bool should_fault)
 }
 
 int main() {
-    dynarray dummy;
+    dynarray<char> dummy;
 
     // test movable status
     dummy = dynarray(1024*1024, 1);

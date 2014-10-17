@@ -2,9 +2,9 @@
 
 #include <cstring>
 #include <atomic>
-#include <vector>
 #include <cassert>
 #include "macros.h"
+#include "dbcore/dynarray.h"
 
 typedef unsigned long long oid_type;
 
@@ -32,14 +32,16 @@ public:
 	object_vector( unsigned long long capacity)
 	{
 		_nallocated= 0;
-		_obj_table.resize( capacity );
-		std::fill( _obj_table.begin(), _obj_table.end(), reinterpret_cast<object_type*>(NULL) );
-		_size = capacity;
+		_obj_table = dynarray<object_type*>( capacity * sizeof(object_type*), capacity*sizeof(object_type*) );
+
+		// sanitizing, memset doesn't work since dynarray and object classes are not POD
+		for( auto i = 0: i < _obj_table.size() / sizeof(object_type*) )
+			_obj_table[i] = NULL;
 	}
 
 	bool put( oid_type oid, object_type* head, T item )
 	{
-		ALWAYS_ASSERT( oid > 0 && oid <= _size );
+		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 		object_type* new_desc = new object_type( item, head );
 
 		if( not __sync_bool_compare_and_swap( &_obj_table[oid], head, new_desc ) )
@@ -51,7 +53,7 @@ public:
 	}
 	bool put( oid_type oid, T item )
 	{
-		ALWAYS_ASSERT( oid > 0 && oid < _size );
+		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 		object_type* old_desc = _obj_table[oid];
 		object_type* new_desc = new object_type( item, old_desc );
 
@@ -76,8 +78,7 @@ public:
 
 	inline T get( oid_type oid )
 	{
-		ALWAYS_ASSERT( oid <= _size );
-		ALWAYS_ASSERT( oid > 0 && oid <= _size );
+		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 		object_type* desc= _obj_table[oid];
 		return desc ? desc->_data : 0;
 	}
@@ -91,7 +92,7 @@ public:
 	{
 		object_type* target;
 		object_type** prev;
-		INVARIANT( oid );
+		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 
 retry:
 		prev = &_obj_table[oid];			// constant value. doesn't need to be volatile_read
@@ -115,21 +116,18 @@ retry:
 	}
 
 private:
-	std::vector<object_type*> 		_obj_table;
+	dynarray<object_type*> 		_obj_table;
 	std::atomic<unsigned long long> 	_nallocated;
-	unsigned long long 			_size;
 
 	inline oid_type alloc()
 	{
-		// TODO. oid allocator
+		// bump allocator
+		_obj_table.ensure_size( sizeof( object_type*) );
 		return ++_nallocated;
 	}
 
-	inline bool free(object_type* desc)
+	inline void dealloc(object_type* desc)
 	{
-		// unlink from chain, update previous node's next field.
-		// update free entry info
-		// pass to garbage list for rcu?
-		return true;
+		// TODO. 
 	}
 };
