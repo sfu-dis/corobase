@@ -153,7 +153,8 @@ SRCFILES = allocator.cc \
 #allocator.cc \
 #btree.cc \
 
-DBCORE_SRCFILES = dbcore/sm-log.cpp \
+DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
+	dbcore/sm-log.cpp \
 	dbcore/sm-tx-log.cpp \
 	dbcore/sm-log-alloc.cpp \
 	dbcore/sm-log-recover.cpp \
