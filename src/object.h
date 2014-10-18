@@ -33,10 +33,7 @@ public:
 	{
 		_nallocated= 0;
 		_obj_table = dynarray<object_type*>( capacity * sizeof(object_type*), capacity*sizeof(object_type*) );
-
-		// sanitizing, memset doesn't work since dynarray and object classes are not POD
-		for( auto i = 0: i < _obj_table.size() / sizeof(object_type*) )
-			_obj_table[i] = NULL;
+		_obj_table.sanitize( 0, _obj_table.size() );
 	}
 
 	bool put( oid_type oid, object_type* head, T item )
@@ -117,13 +114,14 @@ retry:
 
 private:
 	dynarray<object_type*> 		_obj_table;
-	std::atomic<unsigned long long> 	_nallocated;
+	volatile unsigned int _nallocated;
 
 	inline oid_type alloc()
 	{
 		// bump allocator
-		_obj_table.ensure_size( sizeof( object_type*) );
-		return ++_nallocated;
+		// FIXME. resizing is needed
+		//_obj_table.ensure_size( sizeof( object_type*) );	
+		return __sync_add_and_fetch( &_nallocated, 1 );
 	}
 
 	inline void dealloc(object_type* desc)

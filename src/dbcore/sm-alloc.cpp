@@ -24,13 +24,7 @@ mem_region::~mem_region(void)
 void*
 mem_region::try_alloc(uint64_t size)
 {
-retry:
-    uint64_t alloc_pos = volatile_read(_allocated);
-    uint64_t next_pos = alloc_pos + size;
-
-    // NOTE: after GC and all stragglers left, should CAS _allocated to 0.
-    if (!__sync_bool_compare_and_swap(&_allocated, alloc_pos, next_pos))
-        goto retry;
+    uint64_t alloc_pos = __sync_fetch_and_add(&_allocated, size);
 
     // succeeded, get the memory if we still have space
     if (_allocated < _capacity)
