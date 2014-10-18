@@ -1,0 +1,46 @@
+## Latex Makefile for Linux and Mac OS X environments
+include Makefile.common
+
+PDFTOPSEXEC = /usr/bin/pdftops
+
+# IP: For linux it copies over the .pdf.in which was created during the normal production in Windows
+%.prn: figure-sources/%.pdf.in
+	cp $< $*.pdf
+
+%.eps.in: figure-sources/%.py
+	echo "${PYTHONEXEC} figure-sources/$*.py"
+	${PYTHONEXEC} figure-sources/$*.py eps
+
+%.dvi: %.tex ../common/biblio.bib Makefile.common Makefile.linux
+	$(LATEX) $* < /dev/null
+	$(BIBTEX) $* </dev/null 
+	$(LATEX) $* < /dev/null
+	$(LATEX) $* < /dev/null
+
+%.ps: %.dvi
+	dvips -Ppdf -t letter $*
+
+## this should come before the pdf:eps rule, because 
+## for python files --> eps --> pdf, the wrong circular dependency gets dropped otherwise
+#%.eps: %.pdf
+#	${PDFTOPSEXEC} -eps $< $@
+
+%.eps: %.eps.in
+	cp figure-sources/$*.eps.in $*.eps
+
+%.pdf: %.eps
+	${PS2PDF} -dEPSCrop $< $@
+	cp $*.pdf figure-sources/$*.pdf.in
+
+%.pdf: figure-sources/%.pdf.in
+	cp $< $*.pdf
+
+.PRECIOUS: %.prn %.eps %.pdf %.dvi
+
+SPAM_FILTER = awk '$$0 ~ /^Warning: pdflatex/ {moreskip=2; next} moreskip > 0 { moreskip--; next } {print}'
+%.pdf:: %.tex ../common/biblio.bib Makefile.common Makefile.linux
+	$(LATEX) $* < /dev/null
+	$(BIBTEX) $* </dev/null 
+	$(PDFLATEX) $* < /dev/null | $(SPAM_FILTER)
+	$(PDFLATEX) $* < /dev/null| $(SPAM_FILTER)
+	cp $*.pdf $(PAPER_TMSTAMP) ; echo $(PAPER_TMSTAMP)
