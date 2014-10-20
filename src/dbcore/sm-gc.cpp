@@ -101,7 +101,7 @@ void
 GC::report_malloc(size_t nbytes)
 {
     allocated_memory.my() += nbytes;
-    size_t total_mem = 0;
+//    size_t total_mem = 0;
 
 //    for (size_t i = 0; i < coreid::NMaxCores; i++)
   //      total_mem += allocated_memory[i];

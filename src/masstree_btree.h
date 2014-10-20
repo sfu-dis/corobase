@@ -40,6 +40,8 @@
 #include "tuple.h"
 #endif
 
+#include "dbcore/sm-alloc.h"
+
 class simple_threadinfo {
  public:
     simple_threadinfo()
@@ -128,32 +130,32 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-        return RCU::allocate(sz);
+        return RA::allocate(sz);
     }
     void deallocate(void* p, size_t sz, memtag) {
 	// in C++ allocators, 'p' must be nonnull
         // XXX: tzwang: this should be returning the memory to slab actually
-        scoped_rcu_region guard;
-        RCU::rcu_free(p);
+        //scoped_rcu_region guard;
+        //RCU::rcu_free(p);
         //RCU::rcu_pointer u = {p};
         //--u.p;
         //std::free(u.v);
     }
     void deallocate_rcu(void *p, size_t sz, memtag) {
 	assert(p);
-        scoped_rcu_region guard;
-        RCU::rcu_free(p);
+        //scoped_rcu_region guard;
+        //RCU::rcu_free(p);
     }
 
     void* pool_allocate(size_t sz, memtag) {
 	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        return RCU::allocate(nl * CACHE_LINE_SIZE);
+        return RA::allocate(nl * CACHE_LINE_SIZE);
     }
     void pool_deallocate(void* p, size_t sz, memtag) {
 	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
         // XXX: tzwang: this should be returning the memory to slab actually
-        scoped_rcu_region guard;
-        RCU::rcu_free(p);
+        //scoped_rcu_region guard;
+        //RCU::rcu_free(p);
         //RCU::rcu_pointer u = {p};
         //--u.p;
         //std::free(u.v);
@@ -161,13 +163,13 @@ class simple_threadinfo {
     void pool_deallocate_rcu(void* p, size_t sz, memtag) {
 	assert(p);
 	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        scoped_rcu_region guard;
-        RCU::rcu_free(p);
+        //scoped_rcu_region guard;
+        //RCU::rcu_free(p);
     }
 
     // RCU
     void rcu_register(rcu_callback *cb) {
-      RCU::free_with_fn(cb, rcu_callback_function);
+      //RCU::free_with_fn(cb, rcu_callback_function);
     }
 
   private:
