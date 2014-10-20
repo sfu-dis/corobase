@@ -584,8 +584,6 @@ protected:
   write_set_map write_set;
 
   string_allocator_type *sa;
-
-  unmanaged<scoped_rcu_region> rcu_guard_;
 };
 
 class transaction_abort_exception : public std::exception {
