@@ -29,6 +29,8 @@
 #include "dbcore/xid.h"
 #endif
 
+#include "dbcore/sm-alloc.h"
+
 using namespace TXN;
 
 template <template <typename> class Protocol, typename Traits>
@@ -405,7 +407,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sz),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(RCU::allocate(alloc_sz));
+    char *p = reinterpret_cast<char *>(RA::allocate(alloc_sz));
     INVARIANT(p);
     INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
     return new (p) dbtuple(sz, alloc_sz - sizeof(dbtuple));
@@ -420,7 +422,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + base->size),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(RCU::allocate(alloc_sz));
+    char *p = reinterpret_cast<char *>(RA::allocate(alloc_sz));
     INVARIANT(p);
     return new (p) dbtuple(base, alloc_sz - sizeof(dbtuple));
   }
@@ -440,7 +442,7 @@ public:
       std::min(
           util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + needed_sz),
           max_alloc_sz);
-    char *p = reinterpret_cast<char *>(RCU::allocate(alloc_sz));
+    char *p = reinterpret_cast<char *>(RA::allocate(alloc_sz));
     INVARIANT(p);
     return new (p) dbtuple(value, oldsz, newsz,
         alloc_sz - sizeof(dbtuple), copy_old_value);
@@ -456,12 +458,12 @@ private:
     n->~dbtuple();
 #ifdef CHECK_INVARIANTS
     // caller can't be rcu_delete
-    RCU::rcu_pointer u = {n};
-    --u.p;
-    intptr_t fn = u.p->size >> 8;
-    INVARIANT(!fn);
+    //RCU::rcu_pointer u = {n};
+    //--u.p;
+    //intptr_t fn = u.p->size >> 8;
+    //INVARIANT(!fn);
 #endif
-    RCU::rcu_delete(n);
+    //RCU::rcu_delete(n);
   }
 
   static inline void
@@ -485,7 +487,7 @@ public:
   {
     if (unlikely(!n))
       return;
-    RCU::free_with_fn(n, deleter);
+    //RCU::free_with_fn(n, deleter);
   }
 
   static inline void

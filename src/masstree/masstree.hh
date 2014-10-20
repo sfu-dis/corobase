@@ -140,7 +140,9 @@ start_over:
 			{
 				scoped_rcu_region guard;
 				version = reinterpret_cast<dbtuple*>(cur->_data);
-				auto clsn = volatile_read(version->clsn);
+#ifdef CHECK_INVARIANTS
+                auto clsn = volatile_read(version->clsn);
+#endif
 				INVARIANT(clsn.asi_type() == fat_ptr::ASI_LOG );
 				INVARIANT(LSN::from_ptr(clsn) < reclaim_lsn );
 				dbtuple::release( version );

@@ -2,14 +2,24 @@
 #include "sm-alloc.h"
 
 namespace RA {
-    region_allocator ra(RA::MEM_REGION_SIZE);
+    ra_wrapper ra_w;
+    region_allocator *ra;
+
+    void init() {
+        int nodes = numa_max_node() + 1;
+        ra = (region_allocator *)malloc(sizeof(region_allocator) * nodes);
+        for (int i = 0; i < nodes; i++)
+            new (ra + i) region_allocator(MEM_REGION_SIZE, i);
+    }
 };
 
-mem_region::mem_region(uint64_t cap) : _capacity(cap), _allocated(0)
+mem_region::mem_region(uint64_t cap, int skt) : _capacity(cap), _allocated(0)
 {
-    _data = mmap(NULL, _capacity, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    _data = numa_alloc_onnode(cap, skt);
+    //_data = mmap(NULL, _capacity, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     ASSERT(_data);
-    std::cout << "memory region: faulting " << cap << " bytes" << std::endl;
+    std::cout << "memory region: faulting " << cap << " bytes"
+              << " on node " << skt << std::endl;
     memset(_data, '\0', _capacity);
 }
 
@@ -32,11 +42,11 @@ mem_region::try_alloc(uint64_t size)
     return NULL;
 }
 
-region_allocator::region_allocator(uint64_t one_region_cap)
+region_allocator::region_allocator(uint64_t one_region_cap, int skt)
 {
-    _regions[0] = new mem_region(one_region_cap);
-    _regions[1] = new mem_region(one_region_cap);
-    _regions[2] = new mem_region(one_region_cap);
+    _regions[0] = new mem_region(one_region_cap, skt);
+    _regions[1] = new mem_region(one_region_cap, skt);
+    _regions[2] = new mem_region(one_region_cap, skt);
     _active = _regions[0];
     _reclaiming = NULL;
     _spare[0] = _regions[1];
@@ -47,14 +57,12 @@ void*
 region_allocator::allocate(uint64_t size)
 {
 retry:
-    //if (void *mem = _active.load()->try_alloc(size))
     if (void *mem = _active->try_alloc(size))
         return mem;
 
     _ptr_lock.lock();
 
     // check if somebody already did it before we acquired the lock
-    //if (void *mem = _active.load()->try_alloc(size)) {
     if (void *mem = _active->try_alloc(size)) {
         _ptr_lock.unlock();
         return mem;
@@ -65,8 +73,6 @@ retry:
         ASSERT(_spare[0] && _spare[1]);
         _reclaiming = _active;
         _active = _spare[0];    // pick any spare
-        //_reclaiming.store(_active);
-        //_active.store(_spare[0]);    // pick any spare
         // FIXME: signal gc
         std::cout << "region allocator: switched regions." << std::endl;
     }
