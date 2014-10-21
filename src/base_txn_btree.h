@@ -259,26 +259,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
                                // for now [since this would indicate a suboptimality]
   t.ensure_active();
 
-  // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
-  // it fails if somebody else acted faster to insert new, we then
-  // (fall back to) with the normal update procedure.
-  // Note: the original return value of try_insert_new_tuple is:
-  // <tuple, should_abort>. Here we use it as <tuple, failed>.
-  // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-  if (expect_new) {
-    if (t.try_insert_new_tuple(this->underlying_btree, k, v, writer)) 
-		return;
-  }
-
-  // do regular search
-  typename concurrent_btree::value_type bv = 0;
-  if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
-    // only version is uncommitted -> cannot overwrite it
-    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-    t.signal_abort(r);
-  }
-
-  typedef object< typename concurrent_btree::value_type> object_type;
+  // Prepare new tuple
 
   // Calculate Tuple Size
   typedef uint16_t node_size_type;
@@ -295,11 +276,11 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
 
   // Allocate an version
-  char* p = reinterpret_cast<char*>(RA::allocate(sizeof(object_type) + alloc_sz));
+  char* p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
   INVARIANT(p);
 
   // Tuple setup
-  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object_type));
+  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
   tuple = dbtuple::init( (char*)tuple, sz, alloc_sz );
   if (v)
     writer(dbtuple::TUPLE_WRITER_DO_WRITE,
@@ -307,14 +288,29 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   // initialize the version
   tuple->clsn = t.xid.to_ptr();		// XID state is set
-  tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
 
   // Create object
-  object_type* version = new (p) object<concurrent_btree::value_type>( (concurrent_btree::value_type)tuple, NULL );
+  object* version = new (p) object( (char*)tuple, NULL );
 
-  // initialize the version
-  tuple->clsn = t.xid.to_ptr();		// XID state is set
-  tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
+
+  // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
+  // it fails if somebody else acted faster to insert new, we then
+  // (fall back to) with the normal update procedure.
+  // Note: the original return value of try_insert_new_tuple is:
+  // <tuple, should_abort>. Here we use it as <tuple, failed>.
+  // try_insert_new_tuple should add tuple to write-set too, if succeeded.
+  if (expect_new) {
+    if (t.try_insert_new_tuple(this->underlying_btree, k, version, writer)) 
+		return;
+  }
+
+  // do regular search
+  typename concurrent_btree::value_type bv = 0;
+  if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
+    // only version is uncommitted -> cannot overwrite it
+    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
+    t.signal_abort(r);
+  }
 
   // After read the latest committed, and holding the version:
   // if the latest tuple in the chained is dirty then abort
@@ -329,9 +325,11 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // Here we just call the provided update_tulpe function which returns the
   // result (either succeeded or failed, i.e., need to abort).
 
+
+  // OID from previous probe
+  tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
   std::pair<bool, concurrent_btree::value_type> ret =
                           this->underlying_btree.update_version(tuple->oid,
-//                          reinterpret_cast<concurrent_btree::value_type>(tuple),
                           version,
                           t.xid);
 

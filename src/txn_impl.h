@@ -205,6 +205,7 @@ transaction<Protocol, Traits>::commit()
   xid_free(xid);
 }
 
+typedef object_vector<typename concurrent_btree::value_type> tuple_vector_type;
 // FIXME: tzwang: note: we only try once in this function. If it
 // failed (returns false) then the caller (supposedly do_tree_put)
 // should fallback to normal update procedure.
@@ -213,54 +214,20 @@ bool
 transaction<Protocol, Traits>::try_insert_new_tuple(
     concurrent_btree &btr,
     const std::string *key,
-    const void *value,
+	object* value,
     dbtuple::tuple_writer_t writer)
 {
   INVARIANT(key);
-  const size_t sz =
-    value ? writer(dbtuple::TUPLE_WRITER_COMPUTE_NEEDED,
-      value, nullptr, 0) : 0;
-
-  typedef object_vector<typename concurrent_btree::value_type> tuple_vector_type;
-  typedef object< typename concurrent_btree::value_type> object_type;
-
-  // Calculate Tuple Size
-  typedef uint16_t node_size_type;
-  INVARIANT(sz <= std::numeric_limits<node_size_type>::max());
-  const size_t max_alloc_sz =
-	  std::numeric_limits<node_size_type>::max() + sizeof(dbtuple);
-  const size_t alloc_sz =
-	  std::min(
-			  util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sz),
-			  max_alloc_sz);
-  INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
-
-  // Allocate an version
-  char* p = reinterpret_cast<char*>(RA::allocate(sizeof(object_type) + alloc_sz));
-  INVARIANT(p);
-
-  // Tuple setup
-  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object_type));
-  tuple = dbtuple::init( (char*)tuple, sz, alloc_sz );
-  if (value)
-    writer(dbtuple::TUPLE_WRITER_DO_WRITE,
-        value, tuple->get_value_start(), 0);
-
+  char*p = (char*)value;
+  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
   tuple_vector_type* tuple_vector = btr.get_tuple_vector();
   tuple->oid = tuple_vector->alloc();
-  tuple->clsn = this->xid.to_ptr();
-
-  // Create object
-  object_type* version = new (p) object<concurrent_btree::value_type>( (concurrent_btree::value_type)tuple, NULL );
-
-  // Put to OID array
-  while(!tuple_vector->put( tuple->oid, version ));
+  while(!tuple_vector->put( tuple->oid, value ));
 
   // XXX: underlying btree api should return the existing value if insert
   // fails- this would allow us to avoid having to do another search
   // FIXME: tzwang: didn't look like so, returns nullptr. bug?
   typename concurrent_btree::insert_info_t insert_info;
-  // FIXME: tzwang: this is aware of object.h already?
   if (unlikely(!btr.insert_if_absent(
           varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
@@ -274,7 +241,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   // insert to log
   // FIXME: tzwang: leave pdest as null and FID is always 1 now.
   INVARIANT(log);
-  auto record_size = align_up(sz);
+  auto record_size = align_up((size_t)tuple->size);
   auto size_code = encode_size_aligned(record_size);
   log->log_insert(1,
                   tuple->oid,
@@ -282,7 +249,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
   // FIXME: tzwang: so the caller shouldn't do this again if we returned true here.
-  //write_set.emplace_back(tuple, key, value, writer, &btr, true);
   write_set.emplace_back(tuple, &btr);
 
   return true;

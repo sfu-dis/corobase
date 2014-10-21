@@ -261,12 +261,6 @@ public:
 #ifdef HACK_SILO
   typedef object_vector<value_type> tuple_vector_type;
   typedef object_vector<node_base_type*> node_vector_type;
-  typedef object<value_type> object_type;
-
-  inline oid_type alloc_oid()
-  {
-	  return table_.alloc_oid();
-  }
 
   inline tuple_vector_type* get_tuple_vector()
   {
@@ -276,12 +270,8 @@ public:
   {
 	  table_.cleanup_versions( lsn );
   }
-  inline oid_type insert_tuple( value_type val )
-  {
-	  return table_.insert_tuple( val );
-  }
 
-  std::pair<bool, value_type> update_version( oid_type oid, object_type* obj, XID xid)
+  std::pair<bool, value_type> update_version( oid_type oid, object* obj, XID xid)
   {
 	  return table_.update_version( oid, obj, xid );
   }
@@ -293,9 +283,9 @@ public:
   {
 	  return table_.update_tuple( oid, val );
   }
-  inline value_type fetch_tuple( oid_type oid ) const
+  inline value_type fetch_latest_version( oid_type oid ) const
   {
-	  return table_.fetch_tuple( oid );
+	  return table_.fetch_latest_version( oid );
   }
 
   inline void unlink_tuple( oid_type oid, value_type item )
@@ -744,9 +734,9 @@ insert_new:
   }
   else
   {
-	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data. we check that here. and if it's the first case, version should be empty, then we retry insert.
+	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data in this chain. If it's the first case, version chain is considered empty, then we retry insert.
 	  oid_type oid = (oid_type)lp.value();
-	  if( fetch_tuple( oid ) )
+	  if( fetch_latest_version( oid ) )
 		  found = true;
 	  else
 		  goto insert_new;
@@ -770,7 +760,7 @@ inline bool mbtree<P>::remove(const key_type &k, value_type *old_v)
   bool found = lp.find_locked(ti);
   if (found && old_v)
 #ifdef HACK_SILO
-	  *old_v = fetch_tuple( (oid_type)lp.value() );
+	  *old_v = fetch_latest_version( (oid_type)lp.value() );
 	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
 #else
     *old_v = lp.value();
