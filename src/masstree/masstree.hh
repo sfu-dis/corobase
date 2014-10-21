@@ -94,10 +94,21 @@ class basic_table {
 	typedef object_vector<node_type*> node_vector_type; 
 	typedef object<value_type> object_type;
 
+	inline tuple_vector_type* get_tuple_vector()
+	{
+		INVARIANT(tuple_vector);
+		return tuple_vector;
+	}
+
 	inline oid_type insert_tuple( value_type val )
 	{
 		INVARIANT( tuple_vector );
 		return tuple_vector->insert( val );
+	}
+
+	inline oid_type alloc_oid()
+	{
+		return tuple_vector->alloc();
 	}
 
 	void cleanup_versions( LSN reclaim_lsn )
@@ -151,7 +162,7 @@ start_over:
 		}
 	}
 
-	std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
+	std::pair<bool, value_type> update_version( oid_type oid, object_type* new_desc, XID xid)
 	{
 		INVARIANT( tuple_vector );
 		
@@ -214,8 +225,8 @@ start_over:
 						// in-place update case ( multiple updates on the same record )
 						if( holder_xid == xid )
 						{
-							ptr->_data = val;
-							return std::make_pair( true, reinterpret_cast<value_type>(version) );
+							volatile_write(version->clsn, INVALID_LSN.to_ptr());
+							goto install;
 						}
 						else
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
@@ -233,7 +244,7 @@ start_over:
 		{
 			// make sure this is valid committed data, or aborted data that is not reclaimed yet.
 			// aborted, but not yet reclaimed.
-			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG || LSN::from_ptr(clsn) == INVALID_LSN);
 			if( LSN::from_ptr(clsn) == INVALID_LSN )
 				goto install;
 			// newer version. fall back
@@ -245,7 +256,7 @@ start_over:
 
 install:
 		// install a new version
-		if(!tuple_vector->put( oid, head, val ))
+		if(!tuple_vector->put( oid, head, new_desc ))
 			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
 		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 	}

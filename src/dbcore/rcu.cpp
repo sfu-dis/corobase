@@ -302,16 +302,14 @@ void rcu_exit() {
 
 // want exact match of decoded size and allocated size
 // (assuming posix_memalign will coincide with this with DEFAULT_ALIGNMENT?)
-//    int err = posix_memalign(&u.v, DEFAULT_ALIGNMENT, sz_alloc);
-//    THROW_IF(err, rcu_alloc_fail, sz_alloc);
 #define __rcu_alloc(nbytes)   \
     nbytes += sizeof(pointer);  \
 	uint8_t sz_code = encode_size(nbytes);  \
     DIE_IF(nbytes > 950272, "size %lu to large for encoding", nbytes);  \
     size_t sz_alloc = decode_size(sz_code); \
     rcu_pointer u;  \
-    u.v = RA::allocate(sz_alloc);   \
-    DIE_IF(!u.v, "region allocator failed\n");    \
+    int err = posix_memalign(&u.v, DEFAULT_ALIGNMENT, sz_alloc);    \
+    THROW_IF(err, rcu_alloc_fail, sz_alloc);    \
     u.p->size = sz_code;    \
     ++u.p;
 

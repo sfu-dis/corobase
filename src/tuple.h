@@ -412,6 +412,11 @@ public:
     INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
     return new (p) dbtuple(sz, alloc_sz - sizeof(dbtuple));
   }
+  static inline dbtuple *
+  init( char*p ,size_type sz, size_type alloc_sz)
+  {
+    return new (p) dbtuple(sz, alloc_sz - sizeof(dbtuple));
+  }
 
   static inline dbtuple *
   alloc(struct dbtuple *base)

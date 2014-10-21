@@ -7,8 +7,6 @@
 #include <cstddef>
 #include <cstdarg>
 
-#include "sm-alloc.h"
-
 namespace RCU {
 #define RCU_UNWIND
 
