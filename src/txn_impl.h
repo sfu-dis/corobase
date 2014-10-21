@@ -232,13 +232,40 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
     value ? writer(dbtuple::TUPLE_WRITER_COMPUTE_NEEDED,
       value, nullptr, 0) : 0;
 
-  // perf: ~900 tsc/alloc on istc11.csail.mit.edu
-  dbtuple * const tuple = dbtuple::alloc_first(sz);
+  typedef object_vector<typename concurrent_btree::value_type> tuple_vector_type;
+  typedef object< typename concurrent_btree::value_type> object_type;
+
+  // Calculate Tuple Size
+  typedef uint16_t node_size_type;
+  INVARIANT(sz <= std::numeric_limits<node_size_type>::max());
+  const size_t max_alloc_sz =
+	  std::numeric_limits<node_size_type>::max() + sizeof(dbtuple);
+  const size_t alloc_sz =
+	  std::min(
+			  util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sz),
+			  max_alloc_sz);
+  INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
+
+  // Allocate an version
+  char* p = reinterpret_cast<char*>(RA::allocate(sizeof(object_type) + alloc_sz));
+  INVARIANT(p);
+
+  // Tuple setup
+  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object_type));
+  tuple = dbtuple::init( (char*)tuple, sz, alloc_sz );
   if (value)
     writer(dbtuple::TUPLE_WRITER_DO_WRITE,
         value, tuple->get_value_start(), 0);
 
+  tuple_vector_type* tuple_vector = btr.get_tuple_vector();
+  tuple->oid = tuple_vector->alloc();
   tuple->clsn = this->xid.to_ptr();
+
+  // Create object
+  object_type* version = new (p) object<concurrent_btree::value_type>( (concurrent_btree::value_type)tuple, NULL );
+
+  // Put to OID array
+  while(!tuple_vector->put( tuple->oid, version ));
 
   // XXX: underlying btree api should return the existing value if insert
   // fails- this would allow us to avoid having to do another search

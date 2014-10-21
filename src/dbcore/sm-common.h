@@ -194,6 +194,11 @@ fat_ptr volatile_read(fat_ptr volatile &p) {
     return fat_ptr{volatile_read(p._ptr)};
 }
 
+static inline
+void volatile_write(fat_ptr volatile &x, fat_ptr const &y) {
+    volatile_write(x._ptr, y._ptr);
+}
+
 // The equivalent of a NULL pointer
 static fat_ptr const NULL_PTR = {0};
 
@@ -237,6 +242,8 @@ struct LSN {
 
 		return LSN::make(p.offset(), p.asi_segment()); 
     }
+
+    fat_ptr to_ptr() const { return fat_ptr{_val }; }
     
     uint64_t _val;
 

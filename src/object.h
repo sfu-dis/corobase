@@ -12,10 +12,10 @@ template <typename T>
 class object
 {
 	public:
-		object(T data, object* next):  _data(data), _next(next){}
+		object(T data, object* next):  _next(next), _data(data){}
 
-		T _data;
 		object* _next;
+		T _data;
 };
 
 template <typename T>
@@ -29,11 +29,42 @@ public:
 		return _nallocated-1;		// just to prevent a rare corner case which we reclaim garbages before new bucket allocation
 	}
 
+	object_vector()
+	{
+	}
 	object_vector( unsigned long long capacity)
 	{
 		_nallocated= 0;
 		_obj_table = dynarray<object_type*>( capacity * sizeof(object_type*), capacity*sizeof(object_type*) );
 		_obj_table.sanitize( 0, _obj_table.size() );
+	}
+
+	bool put( oid_type oid, object_type* new_desc )
+	{
+		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+		object_type* first = begin(oid);
+		volatile_write( new_desc->_next, first);
+
+		if( not __sync_bool_compare_and_swap( &_obj_table[oid], first, new_desc) )
+		{
+			//TODO. dealloc
+//			delete new_desc;
+			return false;
+		}
+		return true;
+	}
+	bool put( oid_type oid, object_type* head,  object_type* new_desc )
+	{
+		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+		volatile_write( new_desc->_next, head);
+
+		if( not __sync_bool_compare_and_swap( &_obj_table[oid], head, new_desc) )
+		{
+			//TODO. dealloc
+//			delete new_desc;
+			return false;
+		}
+		return true;
 	}
 
 	bool put( oid_type oid, object_type* head, T item )
@@ -112,10 +143,6 @@ retry:
 			ALWAYS_ASSERT(false);
 	}
 
-private:
-	dynarray<object_type*> 		_obj_table;
-	volatile unsigned int _nallocated;
-
 	inline oid_type alloc()
 	{
 		// bump allocator
@@ -128,4 +155,9 @@ private:
 	{
 		// TODO. 
 	}
+
+private:
+	dynarray<object_type*> 		_obj_table;
+	volatile unsigned int _nallocated;
+
 };
