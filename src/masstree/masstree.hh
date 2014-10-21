@@ -92,7 +92,6 @@ class basic_table {
 #ifdef HACK_SILO
 	typedef object_vector<value_type> tuple_vector_type; 
 	typedef object_vector<node_type*> node_vector_type; 
-	typedef object<value_type> object_type;
 
 	inline tuple_vector_type* get_tuple_vector()
 	{
@@ -106,16 +105,11 @@ class basic_table {
 		return tuple_vector->insert( val );
 	}
 
-	inline oid_type alloc_oid()
-	{
-		return tuple_vector->alloc();
-	}
-
 	void cleanup_versions( LSN reclaim_lsn )
 	{
-		object_type* head;
-		object_type* cur;
-		object_type* prev;
+		object* head;
+		object* cur;
+		object* prev;
 		dbtuple* version;
 		INVARIANT( tuple_vector );
 		for( oid_type oid = 1; oid < tuple_vector->size(); oid++ )
@@ -162,14 +156,14 @@ start_over:
 		}
 	}
 
-	std::pair<bool, value_type> update_version( oid_type oid, object_type* new_desc, XID xid)
+	std::pair<bool, value_type> update_version( oid_type oid, object* new_desc, XID xid)
 	{
 		INVARIANT( tuple_vector );
 		
 		int attempts = 0;
 	start_over:
-		object_type* head = tuple_vector->begin(oid);
-		object_type* ptr = head;
+		object* head = tuple_vector->begin(oid);
+		object* ptr = head;
 		xid_context *visitor = xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
 		dbtuple* version;
@@ -261,13 +255,14 @@ install:
 		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 	}
 
-	inline value_type fetch_tuple( oid_type oid ) const
+	// Sometimes, we don't care about version. We just need the first one!
+	inline value_type fetch_latest_version( oid_type oid ) const
 	{
 		ALWAYS_ASSERT( tuple_vector );
-		if( !tuple_vector->begin(oid) )
-			return NULL;
-		return tuple_vector->get( oid );
+		object* head = tuple_vector->begin(oid);
+		return head ? reinterpret_cast<value_type>(head->_data) : NULL;
 	}
+
 	value_type fetch_version( oid_type oid, XID xid ) const
 	{
 		INVARIANT( tuple_vector );
@@ -278,7 +273,7 @@ install:
 		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
 		int attempts = 0;
 	start_over:
-		for( object_type* ptr = tuple_vector->begin(oid); ptr; ptr = volatile_read(ptr->_next) ) {
+		for( object* ptr = tuple_vector->begin(oid); ptr; ptr = volatile_read(ptr->_next) ) {
 			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->_data);
 			auto clsn = volatile_read(version->clsn);
 			// xid tracking & status check

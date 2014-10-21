@@ -371,9 +371,9 @@ class leafvalue {
 	    prefetcher_type()(u_.v);
 	else
 #ifdef HACK_SILO
-		;
-#else
-	    u_.n->prefetch_full();	// TODO. deal with prefetch later
+		;							// We are multi-version. Prefetch need to be in version chain.
+#else		
+	    u_.n->prefetch_full();
 #endif
     }
 

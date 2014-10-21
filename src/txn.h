@@ -38,6 +38,7 @@
 #include "scopedperf.hh"
 #include "marked_ptr.h"
 #include "ndb_type_traits.h"
+#include "object.h"
 
 using namespace TXN;
 
@@ -532,7 +533,7 @@ protected:
   try_insert_new_tuple(
       concurrent_btree &btr,
       const std::string *key,
-      const void *value,
+	  object* value,
       dbtuple::tuple_writer_t writer);
 
   // reads the contents of tuple into v
