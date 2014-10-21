@@ -79,15 +79,15 @@ struct sm_log_alloc_mgr {
     os_mutex _write_daemon_mutex;
     os_condvar _write_daemon_cond;
     os_condvar _write_complete_cond;
-    
-    uint64_t _waiting_for_durable;
-    uint64_t _waiting_for_dmark;
-    
-    uint64_t _write_daemon_wait_count;
-    uint64_t _write_daemon_kick_count;
-    
-    bool _write_daemon_should_stop;
+    os_condvar _dmark_updated_cond;
 
+    int _write_daemon_state;
+    
+    bool _waiting_for_durable;
+    bool _waiting_for_dmark;
+    
+    bool _write_daemon_should_wake;
+    bool _write_daemon_should_stop;
 
 };
 

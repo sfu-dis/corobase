@@ -21,6 +21,8 @@ namespace {
         return NULL;
     }
 
+    enum { DAEMON_HAS_WORK=0x1, DAEMON_SLEEPING=0x2 };
+
 } // end anonymous namespace
 
 /* We have to find the end of the log files on disk before
@@ -34,10 +36,10 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
     : _lm(dname, segment_size, rfn, rfn_arg)
     , _logbuf(bufsz, get_starting_byte_offset(&_lm))
     , _durable_lsn_offset(_lm.get_durable_mark().offset())
-    , _waiting_for_durable(0)
-    , _waiting_for_dmark(0)
-    , _write_daemon_wait_count(0)
-    , _write_daemon_kick_count(0)
+    , _write_daemon_state(0)
+    , _waiting_for_durable(false)
+    , _waiting_for_dmark(false)
+    , _write_daemon_should_wake(false)
     , _write_daemon_should_stop(false)
 {
 
@@ -87,14 +89,19 @@ sm_log_alloc_mgr::dur_lsn_offset()
 void
 sm_log_alloc_mgr::wait_for_durable(uint64_t dlsn_offset)
 {
-    while (dur_lsn_offset() < dlsn_offset) {
+    if (dur_lsn_offset() < dlsn_offset) {
         _write_daemon_mutex.lock();
         DEFER(_write_daemon_mutex.unlock());
-        if (_waiting_for_durable < dlsn_offset)
-            _waiting_for_durable = dlsn_offset;
-        
-        _kick_log_write_daemon();
-        _write_complete_cond.wait(_write_daemon_mutex);
+
+        while (dur_lsn_offset() < dlsn_offset) {
+            /* Kickingdaemon here would accomplish nothing. Release of
+               new log records ensures that the daemon is (or will
+               soon become) awake to process them, so the daemon will
+               only stay asleep if there is no work for it to do.
+             */
+            _waiting_for_durable = true;
+            _write_complete_cond.wait(_write_daemon_mutex);
+        }
     }
 }
 
@@ -105,11 +112,9 @@ sm_log_alloc_mgr::update_durable_mark(uint64_t lsn_offset)
     _write_daemon_mutex.lock();
     DEFER(_write_daemon_mutex.unlock());
     while (_lm.get_durable_mark().offset() < lsn_offset) {
-        if (_waiting_for_dmark < lsn_offset)
-            _waiting_for_dmark = lsn_offset;
-        
+        _waiting_for_dmark = true;
         _kick_log_write_daemon();
-        _write_complete_cond.wait(_write_daemon_mutex);
+        _dmark_updated_cond.wait(_write_daemon_mutex);
     }
 }
 
@@ -317,11 +322,16 @@ sm_log_alloc_mgr::release(log_allocation *x)
     /* Hopefully the log daemon is already awake, but be ready to give
        it a kick if need be.
      */
-    if (_write_daemon_kick_count < _write_daemon_wait_count) {
-        _write_daemon_mutex.lock();
-        DEFER(_write_daemon_mutex.unlock());
-
-        _kick_log_write_daemon();
+    if (not (volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
+        // have to at least announce the new log record
+        auto old_state = __sync_fetch_and_or(&_write_daemon_state, DAEMON_HAS_WORK);
+        if (old_state & DAEMON_SLEEPING) {
+            // have to kick daemon
+            _write_daemon_mutex.lock();
+            DEFER(_write_daemon_mutex.unlock());
+            
+           _kick_log_write_daemon();
+        }
     }
 }
 
@@ -376,22 +386,9 @@ sm_log_alloc_mgr::_log_write_daemon()
 
     // every 100 ms or so, update the durable mark on disk
     static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(100)*1000*1000;
-    stopwatch_t timer;
+    uint64_t last_dmark = stopwatch_t::now();
     for (;;) {
-        rcu_quiesce();
         
-        stopwatch_t tmp = timer;
-        auto dmark_offset = _lm.get_durable_mark().offset();
-        bool can_update = dmark_offset < _durable_lsn_offset;
-        bool want_update = _lm.get_durable_mark().offset() < _waiting_for_dmark;
-        bool timeout = DURABLE_MARK_TIMEOUT_NS < tmp.time_ns();
-        if (can_update and (want_update or timeout)) {
-            update_dmark();
-            timer.reset();
-            if (want_update) 
-                _write_complete_cond.broadcast();
-        }
-
         /* The block list contains a fluctuating---and usually fairly
            short---set of log_allocation objects. Releasing or
            discarding a block marks it as dead (without removing it)
@@ -408,61 +405,14 @@ sm_log_alloc_mgr::_log_write_daemon()
            segment to obtain an LSN.
          */
         uint64_t cur_offset = cur_lsn_offset();
-
-        // Find the offset of the oldest live allocation
+        
+        /* Write out all available data in the largest chunks
+           possible. Do not span segments.
+        */
         uint64_t oldest_offset = cur_offset;
         for (auto &x : _block_list)
             oldest_offset = x.lsn_offset;
 
-        if (oldest_offset == _durable_lsn_offset) {
-            _write_daemon_mutex.lock();
-            DEFER(_write_daemon_mutex.unlock());
-
-            /* Before blocking: did somebody ask to update the durable
-               mark, and we are able to do so?
-             */
-            auto dmark_offset = _lm.get_durable_mark().offset();
-            if (dmark_offset < _waiting_for_dmark and _waiting_for_dmark <= _durable_lsn_offset)
-                continue;
-            
-            _write_complete_cond.broadcast();
-
-            // Nothing to write out
-            if (_durable_lsn_offset == cur_offset and volatile_read(_write_daemon_should_stop)) {
-                if (dmark_offset < _durable_lsn_offset)
-                    update_dmark();
-                
-                log_allocation *x = rcu_alloc();
-                cb_arg arg{cur_offset, _block_list};
-                bool inserted = _block_list.push_callback(x, cb, &arg);
-                ASSERT(inserted);
-                DEFER_UNLESS(node_removed, _block_list.remove_fast(x));
-                
-                if (oldest_offset == cur_offset) {
-                    node_removed = true;
-                    if (_block_list.remove_and_kill(x)) {
-                        DIE_IF(_durable_lsn_offset < _waiting_for_durable,
-                               "Thread(s) waiting for past-end durable LSN at log shutdown");
-                        DIE_IF(_durable_lsn_offset < _waiting_for_dmark,
-                               "Thread(s) waiting for past-end durable mark at log shutdown");
-
-                        return;
-                    }
-
-                    // another block slipped in, fall out and deal with it
-                }
-            }
-
-            // wait for a kick (false wakeups are acceptable)
-            _write_daemon_wait_count++;
-            _write_daemon_cond.wait(_write_daemon_mutex);
-            continue;
-        }
-
-        /* All right! We have some amount of data to write out,
-           possibly spanning multiple segments. Finish writing out
-           each segment before continuing on to the next.
-        */
         while (_durable_lsn_offset < oldest_offset) {
             sm_log_recover_mgr::segment_id *new_sid;
             uint64_t new_offset;
@@ -513,18 +463,83 @@ sm_log_alloc_mgr::_log_write_daemon()
                 active_fd = _lm.open_for_write(new_sid);
             }
 
-            _write_daemon_mutex.lock();
-            DEFER(_write_daemon_mutex.unlock());
-
-            // wake up any waiters if the old value was smaller than the waited-for one
-            if (_durable_lsn_offset < _waiting_for_durable) 
-                _write_complete_cond.broadcast();
-            
             // update values for next round
             durable_sid = new_sid;
             _durable_lsn_offset = new_offset;
             durable_byte = new_byte;
         }
+
+        /* Having completed a round of writes, notify waiting threads
+           and take care of special cases
+         */
+        _write_daemon_mutex.lock();
+        DEFER(_write_daemon_mutex.unlock());
+
+        // wake up any waiters if the old value was smaller than the waited-for one
+        if (_waiting_for_durable) {
+            _waiting_for_durable = false;
+            _write_complete_cond.broadcast();
+        }
+
+        // update dmark?
+        if (_lm.get_durable_mark().offset() < _durable_lsn_offset) {
+            auto now = stopwatch_t::now();
+            bool timeout = DURABLE_MARK_TIMEOUT_NS <= (last_dmark - now);
+            bool should_update = timeout or _waiting_for_durable;
+            if (_durable_lsn_offset == cur_offset and _write_daemon_should_stop)
+                should_update = true;
+        
+            if (should_update) {
+                last_dmark = now;
+                update_dmark();
+                if (_waiting_for_dmark) {
+                    _waiting_for_dmark = false;
+                    _write_complete_cond.broadcast();
+                }
+            }
+        }
+
+        // time to quit? (only if everything in the log reached disk)
+        if (_write_daemon_should_stop and cur_offset == _durable_lsn_offset) {
+            log_allocation *x = rcu_alloc();
+            cb_arg arg{cur_offset, _block_list};
+            bool inserted = _block_list.push_callback(x, cb, &arg);
+            ASSERT(inserted);
+            DEFER_UNLESS(node_removed, _block_list.remove_fast(x));
+                
+            if (oldest_offset == cur_offset) {
+                node_removed = true;
+                if (_block_list.remove_and_kill(x)) {
+                    DIE_IF(_waiting_for_durable,
+                           "Thread(s) waiting for durable LSN at log shutdown");
+                    DIE_IF(_waiting_for_dmark,
+                           "Thread(s) waiting for durable mark at log shutdown");
+
+                    return;
+                }
+            }
+        }
+
+        rcu_exit();
+        
+        // time to sleep?
+        while (not (volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
+            // looks like we can sleep
+            auto old_state = __sync_fetch_and_or(&_write_daemon_state, DAEMON_SLEEPING);
+            if (old_state & DAEMON_HAS_WORK or _write_daemon_should_wake) {
+                // never mind!
+                _write_daemon_state = DAEMON_HAS_WORK;
+            }
+            else {
+                _write_daemon_cond.wait(_write_daemon_mutex);
+            }
+            
+            _write_daemon_should_wake = false;
+        }
+        
+        // next loop iteration!
+        volatile_write(_write_daemon_state, 0);
+        rcu_enter();
     }
 }
 
@@ -535,8 +550,6 @@ sm_log_alloc_mgr::_log_write_daemon()
 void
 sm_log_alloc_mgr::_kick_log_write_daemon()
 {
-    if (_write_daemon_kick_count < _write_daemon_wait_count) {
-        _write_daemon_kick_count++;
-        _write_daemon_cond.signal();
-    }
+    _write_daemon_should_wake = true; 
+    _write_daemon_cond.signal();
 }
