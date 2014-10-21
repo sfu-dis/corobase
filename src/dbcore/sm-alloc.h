@@ -16,7 +16,6 @@ namespace RA {
     static const uint64_t PAGE_SIZE = 4096;
     static const uint64_t MEM_REGION_SIZE = 256 * 1024 * PAGE_SIZE;
     static const size_t SOCKETS = 4; // hardcoded # of sockets
-    static const size_t CPUS_PER_SKT = 6;    // hardcoded # of logical cpus per skt
 
     void init();
 };
