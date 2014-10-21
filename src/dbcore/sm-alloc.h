@@ -13,8 +13,8 @@ class region_allocator;
 
 namespace RA {
     // FIXME: change this to use some get_page_size function.
-    static const uint64_t PAGE_SIZE = 4096;
-    static const uint64_t MEM_REGION_SIZE = 256 * 1024 * PAGE_SIZE;
+    //static const uint64_t PAGE_SIZE = 4096;
+    //static const uint64_t MEM_REGION_SIZE = 256 * 1024 * PAGE_SIZE;
     static const size_t SOCKETS = 4; // hardcoded # of sockets
 
     void init();

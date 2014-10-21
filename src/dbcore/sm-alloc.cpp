@@ -2,6 +2,9 @@
 #include "sm-alloc.h"
 
 namespace RA {
+    static const uint64_t PAGE_SIZE = 4096;
+    static const uint64_t MEM_REGION_SIZE = 384 * 1024 * PAGE_SIZE;
+    
     ra_wrapper ra_w;
     region_allocator *ra;
 
