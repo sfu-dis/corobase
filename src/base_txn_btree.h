@@ -278,14 +278,39 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     t.signal_abort(r);
   }
 
-  // create new version
+  typedef object< typename concurrent_btree::value_type> object_type;
+
+  // Calculate Tuple Size
+  typedef uint16_t node_size_type;
   const size_t sz =
     v ? writer(dbtuple::TUPLE_WRITER_COMPUTE_NEEDED, v, nullptr, 0) : 0;
-  dbtuple * const tuple = dbtuple::alloc_first(sz);
-  if (v)
-    writer(dbtuple::TUPLE_WRITER_DO_WRITE, v, tuple->get_value_start(), 0);
-  INVARIANT(tuple);
 
+  INVARIANT(sz <= std::numeric_limits<node_size_type>::max());
+  const size_t max_alloc_sz =
+	  std::numeric_limits<node_size_type>::max() + sizeof(dbtuple);
+  const size_t alloc_sz =
+	  std::min(
+			  util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sz),
+			  max_alloc_sz);
+  INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
+
+  // Allocate an version
+  char* p = reinterpret_cast<char*>(RA::allocate(sizeof(object_type) + alloc_sz));
+  INVARIANT(p);
+
+  // Tuple setup
+  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object_type));
+  tuple = dbtuple::init( (char*)tuple, sz, alloc_sz );
+  if (v)
+    writer(dbtuple::TUPLE_WRITER_DO_WRITE,
+        v, tuple->get_value_start(), 0);
+
+  // initialize the version
+  tuple->clsn = t.xid.to_ptr();		// XID state is set
+  tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
+
+  // Create object
+  object_type* version = new (p) object<concurrent_btree::value_type>( (concurrent_btree::value_type)tuple, NULL );
 
   // initialize the version
   tuple->clsn = t.xid.to_ptr();		// XID state is set
@@ -306,7 +331,8 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   std::pair<bool, concurrent_btree::value_type> ret =
                           this->underlying_btree.update_version(tuple->oid,
-                          reinterpret_cast<concurrent_btree::value_type>(tuple),
+//                          reinterpret_cast<concurrent_btree::value_type>(tuple),
+                          version,
                           t.xid);
 
   // FIXME: tzwang: now the above update returns a pair:

@@ -261,8 +261,18 @@ public:
 #ifdef HACK_SILO
   typedef object_vector<value_type> tuple_vector_type;
   typedef object_vector<node_base_type*> node_vector_type;
+  typedef object<value_type> object_type;
 
-  void cleanup_versions( LSN lsn )
+  inline oid_type alloc_oid()
+  {
+	  return table_.alloc_oid();
+  }
+
+  inline tuple_vector_type* get_tuple_vector()
+  {
+	  return table_.get_tuple_vector();
+  }
+  inline void cleanup_versions( LSN lsn )
   {
 	  table_.cleanup_versions( lsn );
   }
@@ -270,9 +280,10 @@ public:
   {
 	  return table_.insert_tuple( val );
   }
-  std::pair<bool, value_type> update_version( oid_type oid, value_type val, XID xid)
+
+  std::pair<bool, value_type> update_version( oid_type oid, object_type* obj, XID xid)
   {
-	  return table_.update_version( oid, val, xid );
+	  return table_.update_version( oid, obj, xid );
   }
   value_type fetch_version( oid_type oid, XID xid ) const
   {
@@ -720,7 +731,7 @@ insert_new:
     ti.advance_timestamp(lp.node_timestamp());
 #ifdef HACK_SILO
 	dbtuple* tuple_ptr = reinterpret_cast<dbtuple*>(v);
-	tuple_ptr->oid =  insert_tuple(v);
+//	tuple_ptr->oid =  insert_tuple(v);
 	lp.value() = (value_type)(tuple_ptr->oid);
 #else
     lp.value() = v;
