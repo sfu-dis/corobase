@@ -15,6 +15,7 @@
 #include "../counter.h"
 #include "../scopedperf.hh"
 #include "../allocator.h"
+#include "../dbcore/sm-alloc.h"
 
 #ifdef USE_JEMALLOC
 //cannot include this header b/c conflicts with malloc.h
@@ -115,6 +116,7 @@ bench_worker::run()
     scoped_rcu_region r; // register this thread in rcu region
   }
   on_run_setup();
+  RA::register_thread();
   scoped_db_thread_ctx ctx(db, false);
   const workload_desc_vec workload = get_workload();
   txn_counts.resize(workload.size());
