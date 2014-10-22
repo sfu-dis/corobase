@@ -219,8 +219,13 @@ start_over:
 						// in-place update case ( multiple updates on the same record )
 						if( holder_xid == xid )
 						{
-							volatile_write(version->clsn, INVALID_LSN.to_ptr());
-							goto install;
+							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+							
+							//FIXME. high priority!! 
+							// Rare, but cause more aborts. 
+							// check INVALID_LSN is properly set
+						//	volatile_write(version->clsn, INVALID_LSN.to_ptr());
+						//	goto install;
 						}
 						else
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );

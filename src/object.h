@@ -5,7 +5,10 @@
 #include <cassert>
 #include "macros.h"
 #include "dbcore/dynarray.h"
+#include <sched.h>
+#include <numa.h>
 
+#define NR_SOCKETS 4
 typedef unsigned long long oid_type;
 
 class object
@@ -22,18 +25,34 @@ class object_vector
 {
 
 public:
-	inline unsigned long long size() { return _nallocated-1; }
+	unsigned long long size() 
+	{
+		auto max = 0;
+		for( auto i = 0 : NR_SOCKETS )
+		{
+			if( max < *_nallocated[i] )
+				max = *_nallocated[i];
+		}
+		return max;
+
+//		return _nallocated-1; 
+	}
 
 	object_vector( unsigned long long capacity)
 	{
-		_nallocated= 0;
+//		_nallocated= 0;
+		for( int i = 0; i < NR_SOCKETS; i ++ )
+		{
+			_nallocated[i] = (unsigned int*)numa_alloc_onnode( sizeof( unsigned int ), i );
+			*_nallocated[i] = 0;
+		}
 		_obj_table = dynarray<object*>( capacity * sizeof(object*), capacity*sizeof(object*) );
-		_obj_table.sanitize( 0, _obj_table.size() );
+		_obj_table.sanitize( 0,  capacity * sizeof(object*));
 	}
 
 	bool put( oid_type oid, object* new_desc )
 	{
-		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 		object* first = begin(oid);
 		volatile_write( new_desc->_next, first);
 
@@ -44,7 +63,7 @@ public:
 	}
 	bool put( oid_type oid, object* head,  object* new_desc )
 	{
-		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 		volatile_write( new_desc->_next, head);
 
 		if( not __sync_bool_compare_and_swap( &_obj_table[oid], head, new_desc) )
@@ -55,7 +74,7 @@ public:
 
 	bool put( oid_type oid, T item )
 	{
-		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 		object* old_desc = _obj_table[oid];
 		object* new_desc = new object( (char*)item, old_desc );
 
@@ -80,7 +99,7 @@ public:
 
 	inline T get( oid_type oid )
 	{
-		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 		object* desc= _obj_table[oid];
 		return desc ? (T)desc->_data : 0;
 	}
@@ -94,7 +113,7 @@ public:
 	{
 		object* target;
 		object** prev;
-		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
 
 retry:
 		prev = &_obj_table[oid];			// constant value. doesn't need to be volatile_read
@@ -122,7 +141,12 @@ retry:
 		// bump allocator
 		// FIXME. resizing is needed
 		//_obj_table.ensure_size( sizeof( object*) );	
-		return __sync_add_and_fetch( &_nallocated, 1 );
+		int cpu = sched_getcpu();
+		ALWAYS_ASSERT(cpu >= 0 );
+		int numa_node = cpu % NR_SOCKETS;		// by current topology
+		auto local_offset = __sync_add_and_fetch( _nallocated[numa_node], 1 );		// on NUMA node CAS
+		return local_offset * NR_SOCKETS + numa_node;
+//		return __sync_add_and_fetch( &_nallocated, 1 );
 	}
 
 	inline void dealloc(object* desc)
@@ -132,6 +156,6 @@ retry:
 
 private:
 	dynarray<object*> 		_obj_table;
-	volatile unsigned int _nallocated;
+	unsigned int* _nallocated[NR_SOCKETS];
 
 };
