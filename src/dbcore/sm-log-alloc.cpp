@@ -325,8 +325,8 @@ sm_log_alloc_mgr::release(log_allocation *x)
     if (not (volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
         // have to at least announce the new log record
         auto old_state = __sync_fetch_and_or(&_write_daemon_state, DAEMON_HAS_WORK);
-        if (old_state & DAEMON_SLEEPING) {
-            // have to kick daemon
+        if (old_state == DAEMON_SLEEPING) {
+            // first to arrive, have to kick daemon
             _write_daemon_mutex.lock();
             DEFER(_write_daemon_mutex.unlock());
             
@@ -469,6 +469,8 @@ sm_log_alloc_mgr::_log_write_daemon()
             durable_byte = new_byte;
         }
 
+        rcu_exit();
+
         /* Having completed a round of writes, notify waiting threads
            and take care of special cases
          */
@@ -520,8 +522,6 @@ sm_log_alloc_mgr::_log_write_daemon()
             }
         }
 
-        rcu_exit();
-        
         // time to sleep?
         while (not (volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
             // looks like we can sleep
