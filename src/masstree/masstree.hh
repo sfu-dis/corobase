@@ -98,6 +98,11 @@ class basic_table {
 		INVARIANT(tuple_vector);
 		return tuple_vector;
 	}
+	inline node_vector_type* get_node_vector()
+	{
+		INVARIANT(node_vector);
+		return node_vector;
+	}
 
 	inline oid_type insert_tuple( value_type val )
 	{
@@ -324,22 +329,15 @@ install:
 		return 0;
 	}
 
-	inline oid_type insert_node( node_type* node )
+	node_type* fetch_node( oid_type oid ) const
 	{
-		INVARIANT( node_vector );
-		return node_vector->insert( node );
-	}
-
-	inline bool update_node( oid_type oid, node_type* node )
-	{
-		INVARIANT( node_vector );
-		return node_vector->put( oid, node );
-	}
-	inline node_type* fetch_node( oid_type oid ) const
-	{
-		INVARIANT( node_vector );
+		ALWAYS_ASSERT( node_vector );
+		// NOTE: oid 0 indicates absence of the node
 		if( oid )
-			return node_vector->get( oid );
+		{
+			object* ptr = node_vector->begin(oid);
+			return ptr? (node_type*)ptr->_data : NULL;
+		}
 		else
 			return NULL;
 	}

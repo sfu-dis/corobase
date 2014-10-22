@@ -262,6 +262,10 @@ public:
   typedef object_vector<value_type> tuple_vector_type;
   typedef object_vector<node_base_type*> node_vector_type;
 
+  inline node_vector_type* get_node_vector()
+  {
+	  return table_.get_node_vector();
+  }
   inline tuple_vector_type* get_tuple_vector()
   {
 	  return table_.get_tuple_vector();
@@ -293,15 +297,6 @@ public:
 	  table_.unlink_tuple( oid, item );
   }
 
-  inline oid_type insert_node( node_base_type* val )
-  {
-	  return table_.insert_node( val );
-  }
-
-  inline void update_node( oid_type oid, node_base_type* val )
-  {
-	  table_.update_node( oid, val );
-  }
   inline node_base_type* fetch_node( oid_type oid ) const
   {
 	  return table_.fetch_node( oid );
