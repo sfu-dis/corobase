@@ -471,6 +471,14 @@ sm_log_alloc_mgr::_log_write_daemon()
 
         rcu_exit();
 
+        // give busy threads some time to enqueue new requests (~1us)
+#if 0
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 10000;
+        nanosleep(&ts, 0);
+#endif
+        
         /* Having completed a round of writes, notify waiting threads
            and take care of special cases
          */
