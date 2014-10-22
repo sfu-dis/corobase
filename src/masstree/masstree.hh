@@ -216,16 +216,12 @@ start_over:
 				case TXN_EMBRYO:
 				case TXN_ACTIVE:
 					{
-						// in-place update case ( multiple updates on the same record )
+						// in-place update case ( multiple updates on the same record  by same transaction)
 						if( holder_xid == xid )
 						{
-							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
-							
-							//FIXME. high priority!! 
-							// Rare, but cause more aborts. 
-							// check INVALID_LSN is properly set
-						//	volatile_write(version->clsn, INVALID_LSN.to_ptr());
-						//	goto install;
+							if(!tuple_vector->put( oid, head, new_desc ))
+								return std::make_pair(false, reinterpret_cast<value_type>(version));
+							return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 						}
 						else
 							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );

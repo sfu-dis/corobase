@@ -204,9 +204,11 @@ transaction<Protocol, Traits>::commit()
       INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     } 
     else {
-      // FIXME: tzwang: add this callback to adjust pointers in version chain
-      dbtuple::release(tuple);
-      //RCU::free_with_fn(tuple, tuple_remove_callback);
+		// Unlink overwritten uncommitted data by this TXN.
+		dbtuple* tuple = it->get_tuple();
+		concurrent_btree* btr = it->get_table();
+		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
+		dbtuple::release(tuple);
     }
   }
 
