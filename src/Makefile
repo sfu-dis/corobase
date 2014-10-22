@@ -84,7 +84,7 @@ endif
 CXXFLAGS := -Wall -std=c++0x -DHACK_SILO -g
 CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(DEBUG_S),1)
-        CXXFLAGS +=  -g -gdwarf-2 -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
+        CXXFLAGS +=  -g -Og -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
 else
         CXXFLAGS += -march=native -O2 -funroll-loops -fno-omit-frame-pointer
         #CXXFLAGS += -Werror -O2 -funroll-loops -fno-omit-frame-pointer
