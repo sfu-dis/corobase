@@ -208,7 +208,7 @@ class internode : public node_base<P> {
 
 
 		// Init object container and node
-		obj = new (obj) object( (char*)n, NULL );
+		obj = new (obj) object();
 		n = new(n) internode<P>;
 
 		// get oid
@@ -448,7 +448,7 @@ class leaf : public node_base<P> {
 		leaf<P>* n = (leaf<P>*)((char*)obj + sizeof(object));
 
 		// Init object container and node
-		obj = new (obj) object( (char*)n, NULL );
+		obj = new (obj) object();
 		n = new(n) leaf<P>(sz, node_ts);
 
 		// get oid 

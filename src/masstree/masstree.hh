@@ -130,7 +130,7 @@ start_over:
 			// Thus, the first case should be skipped in any cases. 
 			for( prev = volatile_read(cur), cur = volatile_read(cur->_next); cur; prev = volatile_read(cur), cur = volatile_read(cur->_next) )	// TODO. volatile pointer read?
 			{
-				version = reinterpret_cast<dbtuple*>(cur->_data);
+				version = reinterpret_cast<dbtuple*>(cur->payload());
 				auto clsn = volatile_read(version->clsn);
 				if( clsn.asi_type() == fat_ptr::ASI_LOG )
 				{
@@ -149,14 +149,14 @@ start_over:
 			for( ; cur; cur = volatile_read(cur->_next) )
 			{
 				scoped_rcu_region guard;
-				version = reinterpret_cast<dbtuple*>(cur->_data);
+				version = reinterpret_cast<dbtuple*>(cur->payload());
 #ifdef CHECK_INVARIANTS
                 auto clsn = volatile_read(version->clsn);
 #endif
 				INVARIANT(clsn.asi_type() == fat_ptr::ASI_LOG );
 				INVARIANT(LSN::from_ptr(clsn) < reclaim_lsn );
+				// FIXME. instead of tuple, we need to release container(object)
 				dbtuple::release( version );
-				// TODO. free container also. 
 			}
 		}
 	}
@@ -173,7 +173,7 @@ start_over:
 		INVARIANT(visitor->owner == xid);
 		dbtuple* version;
 
-		version = reinterpret_cast<dbtuple*>(ptr->_data);
+		version = reinterpret_cast<dbtuple*>(ptr->payload());
 		auto clsn = volatile_read(version->clsn);
 		if( clsn.asi_type() == fat_ptr::ASI_XID )
 		{
@@ -266,7 +266,7 @@ install:
 	{
 		ALWAYS_ASSERT( tuple_vector );
 		object* head = tuple_vector->begin(oid);
-		return head ? reinterpret_cast<value_type>(head->_data) : NULL;
+		return head ? reinterpret_cast<value_type>(head->payload()) : NULL;
 	}
 
 	value_type fetch_version( oid_type oid, XID xid ) const
@@ -280,7 +280,7 @@ install:
 		int attempts = 0;
 	start_over:
 		for( object* ptr = tuple_vector->begin(oid); ptr; ptr = volatile_read(ptr->_next) ) {
-			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->_data);
+			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->payload());
 			auto clsn = volatile_read(version->clsn);
 			// xid tracking & status check
 			if( clsn.asi_type() == fat_ptr::ASI_XID )
@@ -336,7 +336,7 @@ install:
 		if( oid )
 		{
 			object* ptr = node_vector->begin(oid);
-			return ptr? (node_type*)ptr->_data : NULL;
+			return ptr? (node_type*)ptr->payload() : NULL;
 		}
 		else
 			return NULL;
