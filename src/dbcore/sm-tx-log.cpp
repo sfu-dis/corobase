@@ -2,50 +2,75 @@
 
 using namespace RCU;
 
+namespace {
+    /* No point allocating these individually or repeatedly---they're
+       thread-private with a reasonably small maximum size (~10kB).
+
+       WARNING: this assumes that transactions are pinned to their
+       worker thread at least until pre-commit. If we ever implement
+       DORA we'll have to be more clever, because transactions would
+       change threads frequently, but for now it works great.
+     */
+    static __thread log_request tls_log_requests[sm_log_recover_mgr::MAX_BLOCK_RECORDS];
+
+    /* Same goes for the sm_tx_log_impl object we give the caller, for that matter */
+    static __thread char LOG_ALIGN tls_log_space[sizeof(sm_tx_log_impl)];
+    static __thread bool tls_log_space_used = false;
+
+    static sm_tx_log_impl*
+    get_log_impl(sm_tx_log *x)
+    {
+        DIE_IF(x != (void*) tls_log_space,
+               "sm_tx_log object can only be safely used by the thread that created it");
+        DIE_IF(not tls_log_space_used, "Attempt to access unallocated memory");
+        return get_impl(x);
+    }
+}
+
 void
 sm_tx_log::log_insert(FID f, OID o, fat_ptr ptr, int abits, fat_ptr *pdest) {
-    get_impl(this)->add_payload_request(LOG_INSERT, f, o, ptr, abits, pdest);
+    get_log_impl(this)->add_payload_request(LOG_INSERT, f, o, ptr, abits, pdest);
 }
 
 void
 sm_tx_log::log_update(FID f, OID o, fat_ptr ptr, int abits, fat_ptr *pdest) {
-    get_impl(this)->add_payload_request(LOG_UPDATE, f, o, ptr, abits, pdest);
+    get_log_impl(this)->add_payload_request(LOG_UPDATE, f, o, ptr, abits, pdest);
 }
 
 static
 void
-format_extra_ptr(log_request *req)
+format_extra_ptr(log_request &req)
 {
-    auto p = req->extra_ptr = req->payload_ptr;
-    req->payload_ptr = fat_ptr::make(&req->extra_ptr, p.size_code());
-    req->payload_size = align_up(sizeof(req->extra_ptr));
+    auto p = req.extra_ptr = req.payload_ptr;
+    req.payload_ptr = fat_ptr::make(&req.extra_ptr, p.size_code());
+    req.payload_size = align_up(sizeof(req.extra_ptr));
 }
 
 static
-log_request *
-new_log_request(log_record_type type, FID f, OID o, fat_ptr ptr, int abits) {
-    log_request *req = rcu_alloc();
-    req->type = type;
-    req->fid = f;
-    req->oid = o;
-    req->pdest = NULL;
-    req->size_align_bits = abits;
-    req->payload_ptr = ptr;
-    req->payload_size = decode_size_aligned(ptr.size_code(), abits);
+log_request
+make_log_request(log_record_type type, FID f, OID o, fat_ptr ptr, int abits) {
+    log_request req;
+    req.type = type;
+    req.fid = f;
+    req.oid = o;
+    req.pdest = NULL;
+    req.size_align_bits = abits;
+    req.payload_ptr = ptr;
+    req.payload_size = decode_size_aligned(ptr.size_code(), abits);
     return req;
 }
 
 void
 sm_tx_log::log_relocate(FID f, OID o, fat_ptr ptr, int abits) {
-    log_request *req = new_log_request(LOG_RELOCATE, f, o, ptr, abits);
+    log_request req = make_log_request(LOG_RELOCATE, f, o, ptr, abits);
     format_extra_ptr(req);
-    get_impl(this)->add_request(req);
+    get_log_impl(this)->add_request(req);
 }
 
 void
 sm_tx_log::log_delete(FID f, OID o) {
-    log_request *req = new_log_request(LOG_DELETE, f, o, NULL_PTR, 0);
-    get_impl(this)->add_request(req);
+    log_request req = make_log_request(LOG_DELETE, f, o, NULL_PTR, 0);
+    get_log_impl(this)->add_request(req);
 }
 
 LSN
@@ -61,7 +86,7 @@ sm_tx_log::get_clsn() {
        so the caller must use an appropriate RCU transaction to avoid
        use-after-free bugs.
      */
-    auto *impl = get_impl(this);
+    auto *impl = get_log_impl(this);
     if (auto *a = volatile_read(impl->_commit_block)) {
         a = impl->_install_commit_block(a);
         return a->block->next_lsn();
@@ -72,7 +97,7 @@ sm_tx_log::get_clsn() {
 
 LSN
 sm_tx_log::pre_commit() {
-    auto *impl = get_impl(this);
+    auto *impl = get_log_impl(this);
     if (not impl->_commit_block)
         impl->enter_precommit();
     return impl->_commit_block->block->next_lsn();
@@ -83,33 +108,39 @@ sm_tx_log::commit(LSN *pdest) {
     // make sure we acquired a commit block
     LSN clsn = pre_commit();
 
-    auto *impl = get_impl(this);
+    auto *impl = get_log_impl(this);
     if (pdest)
         *pdest = impl->_commit_block->block->lsn;
     
     impl->_log->_lm.release(impl->_commit_block);
-    rcu_free(impl);
+    tls_log_space_used = false;
     return clsn;
 }
 
 void
 sm_tx_log::discard() {
-    auto *impl = get_impl(this);
+    auto *impl = get_log_impl(this);
     impl->_log->_lm.discard(impl->_commit_block);
-    rcu_free(impl);
+    tls_log_space_used = false;
 }
 
 
+void *
+sm_tx_log_impl::alloc_storage() {
+    DIE_IF(tls_log_space_used, "Only one transaction per worker thread is allowed");
+    tls_log_space_used = true;
+    return tls_log_space;
+}
+    
 void
 sm_tx_log_impl::add_payload_request(log_record_type type, FID f, OID o,
                                     fat_ptr p, int abits, fat_ptr *pdest)
 {
 
-    log_request *req = new_log_request(type, f, o, p, abits);
-    DEFER_UNLESS(req_added, rcu_free(req));
+    log_request req = make_log_request(type, f, o, p, abits);
 
     // 4GB+ for a single object is just too big. Punt.
-    size_t psize = req->payload_size;
+    size_t psize = req.payload_size;
     THROW_IF(psize > UINT32_MAX, illegal_argument,
              "Log record payload must be less than 4GB (%zd requested, %zd bytes over limit)",
              psize, psize - UINT32_MAX);
@@ -135,8 +166,8 @@ sm_tx_log_impl::add_payload_request(log_record_type type, FID f, OID o,
         b->checksum = adler32_memcpy(b->payload_begin(), p, psize, csum);
 
         // update the request to point to the external record
-        req->type = (log_record_type) (req->type | LOG_FLAG_IS_EXT);
-        p = req->payload_ptr = _log->lsn2ptr(b->payload_lsn(0), false);
+        req.type = (log_record_type) (req.type | LOG_FLAG_IS_EXT);
+        p = req.payload_ptr = _log->lsn2ptr(b->payload_lsn(0), false);
         format_extra_ptr(req);
         if (pdest) {
             *pdest = p;
@@ -148,17 +179,16 @@ sm_tx_log_impl::add_payload_request(log_record_type type, FID f, OID o,
     }
 
     
-    // add to list (may throw, so mark success only after)
-    req->pdest = pdest;
+    // add to list
+    req.pdest = pdest;
     add_request(req);
-    req_added = true;
 }
 
-void sm_tx_log_impl::add_request(log_request *req) {
+void sm_tx_log_impl::add_request(log_request const &req) {
     ASSERT (not _commit_block);
     auto new_nreq = _nreq+1;
     bool too_many = (new_nreq > sm_log_recover_mgr::MAX_BLOCK_RECORDS);
-    auto new_payload_bytes = _payload_bytes + align_up(req->payload_size);
+    auto new_payload_bytes = _payload_bytes + align_up(req.payload_size);
     ASSERT(is_aligned(new_payload_bytes));
     
     auto bsize = log_block::wrapped_size(new_nreq, new_payload_bytes);
@@ -167,8 +197,8 @@ void sm_tx_log_impl::add_request(log_request *req) {
         spill_overflow();
         return add_request(req);
     }
-    
-    _reqs.push_tail(req);
+
+    tls_log_requests[_nreq] = req;
     _nreq = new_nreq;
     _payload_bytes = new_payload_bytes;
 }
@@ -191,8 +221,8 @@ sm_tx_log_impl::_populate_block(log_block *b)
     }
     
     // process normal log records
-    while (log_request *it = _reqs.pop_head()) {
-        DEFER(rcu_free(it));
+    while (i < _nreq) {
+        log_request *it = &tls_log_requests[i];
         DEFER(++i);
         
         log_record *r = &b->records[i];
@@ -239,22 +269,23 @@ log_allocation * const ENTERING_PRECOMMIT = (log_allocation*) 0x1;
    and we have to spill and overflow block to the log.
  */
 void sm_tx_log_impl::spill_overflow() {
-    size_t nreq = 0;
-    size_t pbytes = log_block::size(_nreq, _payload_bytes);
+    size_t inner_nreq = _nreq;
+    size_t outer_nreq = 0;
+    size_t pbytes = log_block::size(inner_nreq, _payload_bytes);
     
-    log_allocation *a = _log->_lm.allocate(nreq, pbytes);
+    log_allocation *a = _log->_lm.allocate(outer_nreq, pbytes);
     DEFER_UNLESS(it_worked, _log->_lm.discard(a));
 
     log_block *b = a->block;
-    ASSERT(b->nrec == nreq);
+    ASSERT(b->nrec == outer_nreq);
     ASSERT(b->lsn != INVALID_LSN);
 
     b->records->type = LOG_FAT_SKIP;
         
     auto *inner = (log_block*) b->payload(0);
-    inner->nrec = _nreq;
+    inner->nrec = inner_nreq;
     inner->lsn = b->payload_lsn(0);
-    fill_skip_record(&inner->records[_nreq], INVALID_LSN, _payload_bytes, false);
+    fill_skip_record(&inner->records[inner_nreq], INVALID_LSN, _payload_bytes, false);
     _populate_block(inner);
         
     uint32_t csum = b->body_checksum();
