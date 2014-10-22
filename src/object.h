@@ -111,7 +111,6 @@ retry:
 		int numa_node = cpu % NR_SOCKETS;		// by current topology
 		auto local_offset = __sync_add_and_fetch( _nallocated[numa_node], 1 );		// on NUMA node CAS
 		return local_offset * NR_SOCKETS + numa_node;
-//		return __sync_add_and_fetch( &_nallocated, 1 );
 	}
 
 	inline void dealloc(object* desc)
