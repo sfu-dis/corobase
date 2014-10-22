@@ -290,7 +290,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   tuple->clsn = t.xid.to_ptr();		// XID state is set
 
   // Create object
-  object* version = new (p) object( (char*)tuple, NULL );
+  object* version = new (p) object();
 
 
   // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),

@@ -14,10 +14,11 @@ typedef unsigned long long oid_type;
 class object
 {
 	public:
-		object(char* data, object* next):  _next(next), _data((char*)data){}
+		object() {_next = NULL;}
+		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
 
 		object* _next;
-		char* _data;
+		char* _data;			// FIXME. don't need. but removing this cause incorrect payload access. maybe we need to check payload() function.
 };
 
 template <typename T>
@@ -85,7 +86,7 @@ retry:
 		target = *prev;
 		while( target )
 		{
-			if( target->_data == (char*)item )
+			if( target->payload() == (char*)item )
 			{
 				if( not __sync_bool_compare_and_swap( prev, target, target->_next ) )
 					goto retry;
