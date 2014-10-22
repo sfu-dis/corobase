@@ -69,8 +69,9 @@ struct sm_log_record_scan_impl : sm_log_scan_mgr::record_scan {
  */
 struct sm_tx_log_impl : sm_tx_log {
 
-    typedef cslist<log_request, &log_request::next> req_list;
-
+    static
+    void *alloc_storage();
+    
     sm_tx_log_impl(sm_log_impl *l)
         : _log(l)
         , _nreq(0)
@@ -81,13 +82,12 @@ struct sm_tx_log_impl : sm_tx_log {
     }
     
     sm_log_impl *_log;
-    req_list _reqs;
     size_t _nreq; // includes a pending overflow record, if such is needed!!!
     size_t _payload_bytes;
     LSN _prev_overflow;
     log_allocation *_commit_block;
 
-    void add_request(log_request *req);
+    void add_request(log_request const &req);
     
     void add_payload_request(log_record_type type, FID f, OID o, fat_ptr p, int abits, fat_ptr *pdest);
     void spill_overflow();

@@ -35,7 +35,8 @@ sm_tx_log *
 sm_log::new_tx_log()
 {
     auto *self = get_impl(this);
-    return (_impl_of<sm_tx_log>::type*) rcu_new(self);
+    typedef _impl_of<sm_tx_log>::type Impl;
+    return new (Impl::alloc_storage()) Impl(self);
 }
 
 fat_ptr
