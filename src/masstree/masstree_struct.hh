@@ -60,15 +60,6 @@ class node_base : public make_nodeversion<P>::type {
 	basic_table_type* table_;
 	oid_type oid;
 
-	inline oid_type insert_node( base_type* node )
-	{
-		return table_->insert_node( node );
-	}
-
-	inline void update_node( oid_type oid, base_type* node )
-	{
-		table_->update_node( oid, node );
-	}
 	inline base_type* fetch_node( oid_type oid ) const
 	{
 		return table_->fetch_node( oid );
@@ -208,19 +199,31 @@ class internode : public node_base<P> {
 
 
 #ifdef HACK_SILO
-    static internode<P>* make(threadinfo& ti, basic_table<P>* table) {
-	void* ptr = ti.pool_allocate(sizeof(internode<P>),
-                                     memtag_masstree_internode);
-	internode<P>* n = new(ptr) internode<P>;
-	assert(n);
-	if (P::debug_level > 0)
-	    n->created_at_[0] = ti.operation_timestamp();
+	static internode<P>* make(threadinfo& ti, basic_table<P>* table) {
 
-	n->table_ = table;
-	n->oid = table->insert_node( n );
-	memset( n->child_oid_, 0, sizeof(oid_type)*width+1 );
-	return n;
-    }
+		// Allocate object
+		object* obj = reinterpret_cast<object*>(RA::allocate(sizeof(object) + sizeof(internode<P>)));
+		ALWAYS_ASSERT(obj);
+		internode<P>* n = (internode<P>*)((char*)obj + sizeof(object));
+
+
+		// Init object container and node
+		obj = new (obj) object( (char*)n, NULL );
+		n = new(n) internode<P>;
+
+		// get oid
+		node_vector_type* node_vector = table->get_node_vector();
+		oid_type oid = node_vector->alloc();
+
+		// Node init
+		n->table_ = table;
+		n->oid = oid;
+		memset( n->child_oid_, 0, sizeof(oid_type)*width+1 );
+
+		// drop to oid array
+		while(not node_vector->put( oid, obj ));
+		return n;
+	}
 #else
     static internode<P>* make(threadinfo& ti) {
 	void* ptr = ti.pool_allocate(sizeof(internode<P>),
@@ -400,6 +403,7 @@ class leaf : public node_base<P> {
     typedef typename P::ikey_type ikey_type;
     typedef typename key_bound<width, P::bound_method>::type bound_type;
     typedef typename P::threadinfo_type threadinfo;
+	typedef object_vector<node_base<P>*> node_vector_type; 
 
     int8_t extrasize64_;
     int8_t nremoved_;
@@ -436,19 +440,31 @@ class leaf : public node_base<P> {
 	if (extrasize64_ > 0)
 	    new((void *)&iksuf_[0]) stringbag<uint16_t>(width, sz - sizeof(*this));
     }
-    static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti, basic_table<P>* table) {
-	size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
-	void* ptr = ti.pool_allocate(sz, memtag_masstree_leaf);
-	leaf<P>* n = new(ptr) leaf<P>(sz, node_ts);
-	assert(n);
-	if (P::debug_level > 0)
-	    n->created_at_[0] = ti.operation_timestamp();
+	static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti, basic_table<P>* table) {
+		// Allocate object
+		size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
+		object* obj = reinterpret_cast<object*>(RA::allocate(sizeof(object) + sz ));
+		ALWAYS_ASSERT(obj);
+		leaf<P>* n = (leaf<P>*)((char*)obj + sizeof(object));
 
-	n->table_ = table;
-	n->oid = table->insert_node( n );
-	n->next_lock_ = false;
-	return n;
-    }
+		// Init object container and node
+		obj = new (obj) object( (char*)n, NULL );
+		n = new(n) leaf<P>(sz, node_ts);
+
+		// get oid 
+		node_vector_type* node_vector = table->get_node_vector();
+		oid_type oid = node_vector->alloc();
+
+		// node init
+		n->table_ = table;
+		n->oid = oid;
+		n->next_lock_ = false;
+
+		// drop to oid array 
+		while(not node_vector->put( oid, obj ));
+
+		return n;
+	}
 
     static leaf<P>* make_root(int ksufsize, leaf<P>* parent, threadinfo& ti, basic_table<P>* table) {
         leaf<P>* n = make(ksufsize, parent ? parent->node_ts_ : 0, ti, table);

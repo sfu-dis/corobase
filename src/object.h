@@ -34,13 +34,10 @@ public:
 				max = *_nallocated[i];
 		}
 		return max;
-
-//		return _nallocated-1; 
 	}
 
 	object_vector( unsigned long long capacity)
 	{
-//		_nallocated= 0;
 		for( int i = 0; i < NR_SOCKETS; i ++ )
 		{
 			_nallocated[i] = (unsigned int*)numa_alloc_onnode( sizeof( unsigned int ), i );
@@ -70,38 +67,6 @@ public:
 			return false;
 
 		return true;
-	}
-
-	bool put( oid_type oid, T item )
-	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
-		object* old_desc = _obj_table[oid];
-		object* new_desc = new object( (char*)item, old_desc );
-
-		if( not __sync_bool_compare_and_swap( &_obj_table[oid], old_desc, new_desc ) )
-		{
-			delete new_desc;
-			return false;
-		}
-		return true;
-	}
-
-	oid_type insert( T item )
-	{
-		oid_type oid = alloc();
-		ALWAYS_ASSERT( not _obj_table[oid] );
-		if( put( oid, item ) )
-			return oid;
-		else 
-			ALWAYS_ASSERT(false);
-		return 0;	// shouldn't reach here
-	}
-
-	inline T get( oid_type oid )
-	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
-		object* desc= _obj_table[oid];
-		return desc ? (T)desc->_data : 0;
 	}
 
 	inline object* begin( oid_type oid )
