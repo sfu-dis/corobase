@@ -329,7 +329,7 @@ install:
 		return 0;
 	}
 
-	node_type* fetch_node( oid_type oid ) const
+	inline node_type* fetch_node( oid_type oid ) const
 	{
 		ALWAYS_ASSERT( node_vector );
 		// NOTE: oid 0 indicates absence of the node
