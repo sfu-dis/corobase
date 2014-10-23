@@ -14,11 +14,11 @@ typedef unsigned long long oid_type;
 class object
 {
 	public:
-		object() {_next = NULL;}
+		object( size_t size ) : _next(NULL), _size(size) {}
 		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
 
 		object* _next;
-		char* _data;			// FIXME. don't need. but removing this cause incorrect payload access. maybe we need to check payload() function.
+		size_t _size;			// contraint on object size( practical enough )
 };
 
 template <typename T>
