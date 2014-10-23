@@ -2528,11 +2528,12 @@ protected:
             &barrier_a, &barrier_b,
             (i % NumWarehouses()) + 1, (i % NumWarehouses()) + 2));
     } else {
-      const unsigned nwhse_per_partition = NumWarehouses() / nthreads;
+        auto N = NumWarehouses();
+        auto T = nthreads;
+        // try this in python: [i*N//T for i in range(T+1)]
       for (size_t i = 0; i < nthreads; i++) {
-        const unsigned wstart = i * nwhse_per_partition;
-        const unsigned wend   = (i + 1 == nthreads) ?
-          NumWarehouses() : (i + 1) * nwhse_per_partition;
+        const unsigned wstart = i*N/T;
+        const unsigned wend   = (i + 1)*N/T;
         ret.push_back(
           new tpcc_worker(
             blockstart + i,
