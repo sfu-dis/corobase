@@ -2509,7 +2509,17 @@ protected:
     ALWAYS_ASSERT((blockstart % alignment) == 0);
     fast_random r(23984543);
     vector<bench_worker *> ret;
-    if (NumWarehouses() <= nthreads) {
+    static bool const NO_PIN_WH = false;
+    if (NO_PIN_WH) {
+      for (size_t i = 0; i < nthreads; i++)
+        ret.push_back(
+          new tpcc_worker(
+            blockstart + i,
+            r.next(), db, open_tables, partitions,
+            &barrier_a, &barrier_b,
+            1, NumWarehouses() + 1));
+    }
+    else if (NumWarehouses() <= nthreads) {
       for (size_t i = 0; i < nthreads; i++)
         ret.push_back(
           new tpcc_worker(
