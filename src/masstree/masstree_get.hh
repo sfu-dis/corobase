@@ -92,11 +92,7 @@ bool unlocked_tcursor<P>::find_unlocked(threadinfo& ti)
     else if (n_->keylenx_is_layer(keylenx)) {
 	if (likely(n_->keylenx_is_stable_layer(keylenx))) {
 	    ka_.shift();
-#ifdef HACK_SILO
 	    root = n_->fetch_node( lv_.layer() );
-#else
-	    root = lv_.layer();
-#endif
 	    goto retry;
 	} else
 	    goto forward;
@@ -137,23 +133,12 @@ inline node_base<P>* tcursor<P>::get_leaf_locked(node_type* root,
 	if (kp_ >= 0 && n_->value_is_stable_layer(kp_)) {
 	    fence();
 	    leafvalue_type entry(n_->lv_[kp_]);
-#ifdef HACK_SILO
 	    n_->fetch_node(entry.layer())->prefetch_full();
-#else
-	    entry.layer()->prefetch_full();
-#endif
 	    fence();
-#ifdef HACK_SILO
 	    if (likely(!v.deleted()) && !n_->has_changed(oldv, old_perm)
 		&& !n_->fetch_node(entry.layer())->has_split()) {
 		ka_.shift();
 		return n_->fetch_node(entry.layer());
-#else
-	    if (likely(!v.deleted()) && !n_->has_changed(oldv, old_perm)
-		&& !entry.layer()->has_split()) {
-		ka_.shift();
-		return entry.layer();
-#endif
 	    }
 	}
 
@@ -164,7 +149,6 @@ inline node_base<P>* tcursor<P>::get_leaf_locked(node_type* root,
 	if (likely(!v.deleted()) && !n_->has_changed(oldv, old_perm)) {
 	found:
 	    if (kp_ >= 0 && n_->value_is_stable_layer(kp_)) {
-#ifdef HACK_SILO
 		root =n_->fetch_node( n_->lv_[kp_].layer());
 		if (root->has_split())
 		{
@@ -174,14 +158,6 @@ inline node_base<P>* tcursor<P>::get_leaf_locked(node_type* root,
 		n_->unlock(v);
 		ka_.shift();
 		return root;
-#else
-		root = n_->lv_[kp_].layer();
-		if (root->has_split())
-		    n_->lv_[kp_] = root = root->unsplit_ancestor();
-		n_->unlock(v);
-		ka_.shift();
-		return root;
-#endif
 	    } else
 		return 0;
 	}

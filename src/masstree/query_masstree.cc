@@ -58,13 +58,8 @@ static void treestats1(node_base<P>* n, unsigned height) {
     } else {
 	internode<P> *in = (internode<P> *) n;
 	for (int i = 0; i <= n->size(); ++i)
-#ifdef HACK_SILO
 	    if (in->child_oid_[i])
 		treestats1(in->fetch_node(in->child_oid_[i]), height + 1);
-#else
-	    if (in->child_[i])
-		treestats1(in->child_[i], height + 1);
-#endif
     }
     assert((size_t) n->size() < arraysize(fillcounts));
     fillcounts[n->size()] += 1;
@@ -121,13 +116,8 @@ static void json_stats1(node_base<P>* n, lcdf::Json& j, int layer, int depth,
     } else {
 	internode<P> *in = static_cast<internode<P> *>(n);
 	for (int i = 0; i <= n->size(); ++i)
-#ifdef HACK_SILO
 	    if (in->child_oid_[i])
 		json_stats1(in->fetch_node(in->child_oid_[i]), j, layer, depth + 1, ti);
-#else
-	    if (in->child_[i])
-		json_stats1(in->child_[i], j, layer, depth + 1, ti);
-#endif
 	j[&"l1_node_by_depth"[!layer * 3]][depth] += 1;
     }
 }
@@ -176,11 +166,7 @@ static Str findpv(N *n, int pvi, int npv)
 	if (!n->isleaf() && total_nkeys_estimate < npv) {
 	    internode_type *in = static_cast<internode_type *>(n);
 	    pv_offset = std::min(std::max(pv_offset, 0), size - 1);
-#ifdef HACK_SILO
 	    N *next = in->fetch_node(in->child_oid_[pv_offset]);
-#else
-	    N *next = in->child_[pv_offset];
-#endif
 	    if (!n->has_changed(v)) {
 		nbranch = total_nkeys_estimate;
 		branchid = first_pv_in_node + pv_offset;

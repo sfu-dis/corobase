@@ -4,9 +4,7 @@
 #include "txn.h"
 #include "lockguard.h"
 
-#ifdef HACK_SILO
 #include "object.h"
-#endif
 
 using namespace TXN;
 

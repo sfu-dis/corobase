@@ -24,10 +24,8 @@
 #include "prefetch.h"
 #include "ownership_checker.h"
 
-#ifdef HACK_SILO
 #include "object.h"
 #include "dbcore/xid.h"
-#endif
 
 #include "dbcore/sm-alloc.h"
 
@@ -58,11 +56,9 @@ public:
   typedef size_t size_type;
   typedef std::string string_type;
 
-#ifdef HACK_SILO
   fat_ptr clsn;
   bool overwritten; // false => commit will ignore this tuple
   oid_type oid;
-#endif
 public:
 
 #ifdef TUPLE_MAGIC

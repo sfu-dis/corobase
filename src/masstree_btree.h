@@ -35,10 +35,8 @@
 #include "masstree/mtcounters.hh"
 #include "masstree/circular_int.hh"
 
-#ifdef HACK_SILO
 #include "object.h"
 #include "tuple.h"
-#endif
 
 #include "dbcore/sm-alloc.h"
 
@@ -258,7 +256,6 @@ public:
     table_.destroy(ti);
   }
 
-#ifdef HACK_SILO
   typedef object_vector<value_type> tuple_vector_type;
   typedef object_vector<node_base_type*> node_vector_type;
 
@@ -301,7 +298,6 @@ public:
   {
 	  return table_.fetch_node( oid );
   }
-#endif
 
   /**
    * NOT THREAD SAFE
@@ -559,11 +555,7 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
       return static_cast<leaf_type*>(cur);
     internode_type *in = static_cast<internode_type*>(cur);
     nodeversion_type version = cur->stable();
-#ifdef HACK_SILO
     node_base_type *child = in->fetch_node(in->child_oid_[0]);
-#else
-    node_base_type *child = in->child_[0];
-#endif
     if (unlikely(in->has_changed(version)))
       continue;
     cur = child;
@@ -589,11 +581,7 @@ void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
       auto perm = leaf->permutation();
       for (int i = 0; i != perm.size(); ++i)
         if (leaf->value_is_layer(perm[i]))
-#ifdef HACK_SILO
           layers.push_back(leaf->fetch_node(leaf->lv_[perm[i]].layer()));
-#else
-          layers.push_back(leaf->lv_[perm[i]].layer());
-#endif
       leaf_type *next = leaf->safe_next();
       callback.on_node_begin(leaf);
       if (unlikely(leaf->has_changed(version))) {
@@ -665,15 +653,11 @@ inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_unlocked(ti);
   if (found)
-#ifdef HACK_SILO
   {
 	  v = fetch_version((oid_type)(lp.value()), xid);
 	  if( !v )
 		  found = false;
   }
-#else
-    v = lp.value();
-#endif
   if (search_info)
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   return found;
@@ -714,13 +698,8 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, value_type v,
 insert_new:
 	found = false;
     ti.advance_timestamp(lp.node_timestamp());
-#ifdef HACK_SILO
 	dbtuple* tuple_ptr = reinterpret_cast<dbtuple*>(v);
-//	tuple_ptr->oid =  insert_tuple(v);
 	lp.value() = (value_type)(tuple_ptr->oid);
-#else
-    lp.value() = v;
-#endif
     if (insert_info) {
       insert_info->node = lp.node();
       insert_info->old_version = lp.previous_full_version_value();
@@ -754,12 +733,8 @@ inline bool mbtree<P>::remove(const key_type &k, value_type *old_v)
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
   if (found && old_v)
-#ifdef HACK_SILO
 	  *old_v = fetch_latest_version( (oid_type)lp.value() );
 	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
-#else
-    *old_v = lp.value();
-#endif
   lp.finish(found ? -1 : 0, ti);
   return found;
 }
