@@ -29,7 +29,7 @@ public:
 	unsigned long long size() 
 	{
 		auto max = 0;
-		for( auto i = 0 : NR_SOCKETS )
+		for( auto i = 0; i < NR_SOCKETS; i++ )
 		{
 			if( max < *_nallocated[i] )
 				max = *_nallocated[i];
