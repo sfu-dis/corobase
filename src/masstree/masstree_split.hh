@@ -65,17 +65,10 @@ int leaf<P>::split_into(leaf<P>* nr, int p, const key_type& ka,
 
     int width = this->size();	// == this->width or this->width - 1
     int mid = this->width / 2 + 1;
-#ifdef HACK_SILO
     if (p == 0 && !this->prev_oid_)
 	mid = 1;
     else if (p == width && !this->next_oid_)
 	mid = width;
-#else
-    if (p == 0 && !this->prev_)
-	mid = 1;
-    else if (p == width && !this->next_.ptr)
-	mid = width;
-#endif
 
     // Never separate keys with the same ikey0.
     permuter_type perml(this->permutation_);
@@ -140,7 +133,6 @@ int internode<P>::split_into(internode<P> *nr, int p, ikey_type ka,
     int mid = (split_type == 2 ? this->width : (this->width + 1) / 2);
     nr->nkeys_ = this->width + 1 - (mid + 1);
 
-#ifdef HACK_SILO
     if (p < mid) {
 	nr->child_oid_[0] = this->child_oid_[mid];
 	nr->shift_from(0, this, mid, this->width - mid);
@@ -159,26 +151,6 @@ int internode<P>::split_into(internode<P> *nr, int p, ikey_type ka,
 
     for (int i = 0; i <= nr->nkeys_; ++i)
 	nr->fetch_node(nr->child_oid_[i])->set_parent(nr);
-#else
-    if (p < mid) {
-	nr->child_[0] = this->child_[mid];
-	nr->shift_from(0, this, mid, this->width - mid);
-	split_ikey = this->ikey0_[mid - 1];
-    } else if (p == mid) {
-	nr->child_[0] = value;
-	nr->shift_from(0, this, mid, this->width - mid);
-	split_ikey = ka;
-    } else {
-	nr->child_[0] = this->child_[mid + 1];
-	nr->shift_from(0, this, mid + 1, p - (mid + 1));
-	nr->assign(p - (mid + 1), ka, value);
-	nr->shift_from(p + 1 - (mid + 1), this, p, this->width - p);
-	split_ikey = this->ikey0_[mid];
-    }
-
-    for (int i = 0; i <= nr->nkeys_; ++i)
-	nr->child_[i]->set_parent(nr);
-#endif
     this->mark_split();
     if (p < mid) {
 	this->nkeys_ = mid - 1;
@@ -194,11 +166,7 @@ template <typename P>
 node_base<P>* tcursor<P>::finish_split(threadinfo& ti)
 {
     node_type *n = n_;
-#ifdef HACK_SILO
     node_type *child = leaf_type::make(n_->ksuf_size(), n_->node_ts_, ti, n_->table_);
-#else
-    node_type *child = leaf_type::make(n_->ksuf_size(), n_->node_ts_, ti);
-#endif
     child->assign_version(*n_);
     ikey_type xikey[2];
     int split_type = n_->split_into(static_cast<leaf_type *>(child),
@@ -212,19 +180,11 @@ node_base<P>* tcursor<P>::finish_split(threadinfo& ti)
 	internode_type *p = n->locked_parent(ti);
 
 	if (!node_type::parent_exists(p)) {
-#ifdef HACK_SILO
 	    internode_type *nn = internode_type::make(ti, n->table_);
 		nn->child_oid_[0] = n->oid;
 	    nn->assign(0, xikey[sense], child);
 	    nn->nkeys_ = 1;
 	    nn->parent_oid_ = 0;
-#else
-	    internode_type *nn = internode_type::make(ti);
-	    nn->child_[0] = n;
-	    nn->assign(0, xikey[sense], child);
-	    nn->nkeys_ = 1;
-	    nn->parent_ = p;
-#endif
 	    nn->mark_root();
 	    fence();
 	    n->set_parent(nn);
@@ -234,11 +194,7 @@ node_base<P>* tcursor<P>::finish_split(threadinfo& ti)
 	    if (p->size() < p->width)
 		p->mark_insert();
 	    else {
-#ifdef HACK_SILO
 		next_child = internode_type::make(ti, p->table_);
-#else
-		next_child = internode_type::make(ti);
-#endif
 		next_child->assign_version(*p);
 		next_child->mark_nonroot();
 		kp = p->split_into(next_child, kp, xikey[sense],
