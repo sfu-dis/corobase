@@ -554,7 +554,6 @@ template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
 
     masstree_precondition(!root_oid_);
-	// FIXME. initial vector size parameter!
 	tuple_vector = new object_vector<value_type>( 100000000 );
 	node_vector = new object_vector<node_type*>( 10000000 );
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);

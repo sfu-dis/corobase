@@ -171,12 +171,11 @@ struct dynarray {
 		_adjust_mapping(size(), new_size, new_size, true);
 
 		// sanitize new area
-		//sanitize( (char*)_data + size(), new_size );
+		sanitize( (size_t)((char*)_data + size()), new_size );
 	}
 
 	inline void sanitize( size_t begin, size_t end )
 	{
-		// TODO. begin, end safety check
 		std::memset( (char*)(_data) + begin, 0, end-begin );
 	}
 
