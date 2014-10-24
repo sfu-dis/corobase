@@ -7,6 +7,7 @@
 #include "dbcore/dynarray.h"
 #include <sched.h>
 #include <numa.h>
+#include <limits.h>
 
 #define NR_SOCKETS 4
 typedef unsigned long long oid_type;
@@ -26,31 +27,31 @@ class object_vector
 {
 
 public:
-	unsigned long long size() 
+	inline unsigned long long size() 
 	{
 		auto max = 0;
 		for( auto i = 0; i < NR_SOCKETS; i++ )
 		{
-			if( max < *_nallocated[i] )
-				max = *_nallocated[i];
+			if( max < *_alloc_offset[i] )
+				max = *_alloc_offset[i];
 		}
 		return max;
 	}
 
-	object_vector( unsigned long long capacity)
+	object_vector( unsigned long long nelems)
 	{
 		for( int i = 0; i < NR_SOCKETS; i ++ )
 		{
-			_nallocated[i] = (unsigned int*)numa_alloc_onnode( sizeof( unsigned int ), i );
-			*_nallocated[i] = 0;
+			_alloc_offset[i] = (unsigned int*)numa_alloc_onnode( sizeof( unsigned int ), i );
+			*_alloc_offset[i] = 0;
 		}
-		_obj_table = dynarray<object*>( capacity * sizeof(object*), capacity*sizeof(object*) );
-		_obj_table.sanitize( 0,  capacity * sizeof(object*));
+		_obj_table = dynarray<object*>(  std::numeric_limits<unsigned int>::max(), nelems*sizeof(object*) );
+		_obj_table.sanitize( 0,  nelems* sizeof(object*));
 	}
 
 	bool put( oid_type oid, object* new_desc )
 	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
 		object* first = begin(oid);
 		volatile_write( new_desc->_next, first);
 
@@ -61,7 +62,7 @@ public:
 	}
 	bool put( oid_type oid, object* head,  object* new_desc )
 	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
 		volatile_write( new_desc->_next, head);
 
 		if( not __sync_bool_compare_and_swap( &_obj_table[oid], head, new_desc) )
@@ -79,7 +80,7 @@ public:
 	{
 		object* target;
 		object** prev;
-//		ALWAYS_ASSERT( oid > 0 && oid <= _nallocated );
+//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
 
 retry:
 		prev = &_obj_table[oid];			// constant value. doesn't need to be volatile_read
@@ -91,7 +92,6 @@ retry:
 				if( not __sync_bool_compare_and_swap( prev, target, target->_next ) )
 					goto retry;
 
-				//TODO. dealloc version container
 				return;
 			}
 			prev = &target->_next;	// only can be modified by current TX. volatile_read is not needed
@@ -104,13 +104,11 @@ retry:
 
 	inline oid_type alloc()
 	{
-		// bump allocator
-		// FIXME. resizing is needed
-		//_obj_table.ensure_size( sizeof( object*) );	
 		int cpu = sched_getcpu();
 		ALWAYS_ASSERT(cpu >= 0 );
 		int numa_node = cpu % NR_SOCKETS;		// by current topology
-		auto local_offset = __sync_add_and_fetch( _nallocated[numa_node], 1 );		// on NUMA node CAS
+		_obj_table.ensure_size( sizeof(object*) * NR_SOCKETS );
+		auto local_offset = __sync_add_and_fetch( _alloc_offset[numa_node], 1 );		// on NUMA node CAS
 		return local_offset * NR_SOCKETS + numa_node;
 	}
 
@@ -121,6 +119,6 @@ retry:
 
 private:
 	dynarray<object*> 		_obj_table;
-	unsigned int* _nallocated[NR_SOCKETS];
+	unsigned int* _alloc_offset[NR_SOCKETS];
 
 };
