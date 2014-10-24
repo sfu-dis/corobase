@@ -78,8 +78,9 @@ main(int argc, char **argv)
   int disable_gc = 0;
   int disable_snapshots = 0;
   string *log_dir = NULL;
-  size_t log_segsize = 1024 * 1024 * 1024; // log segment size
-  size_t log_bufsize = 32 * 1024 * 1024;  // log buffer size
+  size_t log_seg_gig = 1024 * 1024;
+  size_t log_segsize = log_seg_gig * 2048; // log segment size
+  size_t log_bufsize = 64 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
   while (1) {
     static struct option long_options[] =

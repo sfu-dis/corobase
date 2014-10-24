@@ -15,10 +15,13 @@
 #include "sm-log.h"
 #include "../masstree_btree.h"
 
+class region_allocator;
+
 /*
  * The garbage collector for ERMIA to remove dead tuple versions.
  */
 class GC {
+    friend class region_allocator;
     typedef epoch_mgr::epoch_num epoch_num;
 
     // if _allocated_memory reaches this many, start GC

@@ -226,6 +226,8 @@ bench_runner::run()
     cerr << "starting benchmark..." << endl;
   }
 
+  RA::system_loading = false;
+
   const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
 
   const vector<bench_worker *> workers = make_workers();
