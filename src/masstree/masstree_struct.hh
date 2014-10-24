@@ -169,6 +169,7 @@ class internode : public node_base<P> {
 	static internode<P>* make(threadinfo& ti, basic_table<P>* table) {
 
 		// Allocate object
+		//object* obj = reinterpret_cast<object*>(malloc(sizeof(object) + sizeof(internode<P>)));
 		object* obj = reinterpret_cast<object*>(RA::allocate(sizeof(object) + sizeof(internode<P>)));
 		ALWAYS_ASSERT(obj);
 		internode<P>* n = (internode<P>*)((char*)obj + sizeof(object));
@@ -348,6 +349,7 @@ class leaf : public node_base<P> {
 	static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti, basic_table<P>* table) {
 		// Allocate object
 		size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
+		//object* obj = reinterpret_cast<object*>(malloc(sizeof(object) + sz ));
 		object* obj = reinterpret_cast<object*>(RA::allocate(sizeof(object) + sz ));
 		ALWAYS_ASSERT(obj);
 		leaf<P>* n = (leaf<P>*)((char*)obj + sizeof(object));

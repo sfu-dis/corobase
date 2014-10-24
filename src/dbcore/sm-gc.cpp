@@ -148,8 +148,8 @@ GC::register_table(concurrent_btree* table)
 
 GC::GC(sm_log *l)
 {
-    GC::logger = l;
-    std::thread t(cleaner_daemon);  // # of threads should be based on system speed, GC speed.
-    t.detach();
+    //GC::logger = l;
+    //std::thread t(cleaner_daemon);  // # of threads should be based on system speed, GC speed.
+    //t.detach();
 }
 
