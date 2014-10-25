@@ -61,7 +61,7 @@ namespace RA {
     static const uint64_t MEM_SEGMENT_BITS = 30; // 1GB/segment (16 GB total on 4-socket machine)
     static_assert(MEM_SEGMENT_BITS > PAGE_SIZE_BITS,
                   "Region allocator segments can't be smaller than a page");
-    static const uint64_t TRIM_MARK = 256 * 1024 * 1024;
+    static const uint64_t TRIM_MARK = 16 * 1024 * 1024;
 
     ra_wrapper ra_w;
     region_allocator *ra;
@@ -277,7 +277,8 @@ region_allocator::allocate(uint64_t size)
         // chunk spans a segment boundary, unusable
         std::cout << "opening segment " << (noffset >> sbits) << " of memory region for socket " << _socket << std::endl;
         //while(state() != RA_NORMAL);
-        ALWAYS_ASSERT(state() == RA_NORMAL);
+        if (state() != RA_NORMAL)
+            throw std::runtime_error("GC requested before last round finishes.");
         set_state(RA_GC_REQUESTED);
         goto retry;
     }
@@ -362,10 +363,17 @@ start_over:
                     new_obj = (object *)myra->allocate(size);
                     memcpy(new_obj, cur, size);
                     hot_copy_amt += size;
-                    if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
-                        goto start_over;
-                    if (prev && !__sync_bool_compare_and_swap(&prev->_next, cur, new_obj))
-                        goto start_over;
+
+                    if (cur == head) {
+                        ASSERT(!prev);
+                        if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
+                            goto start_over;
+                    }
+                    else {
+                        ASSERT(prev);
+                        if (!__sync_bool_compare_and_swap(&prev->_next, cur, new_obj))
+                            goto start_over;
+                    }
                 }
                 prev = volatile_read(cur);
                 cur = volatile_read(cur->_next);
