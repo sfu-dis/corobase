@@ -15,6 +15,7 @@ namespace RA {
     void init();
     void register_thread();
     void *allocate(uint64_t size);
+    void *allocate_cold(uint64_t size);
 
     struct thread_data {
         bool initialized;
