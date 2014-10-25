@@ -110,6 +110,13 @@ namespace RA {
         return myra->allocate_cold(size);
     }
 
+    void *allocate_cold(uint64_t size) {
+        auto *myra = tls_ra;
+        if (not myra)
+            myra = &ra[sched_getcpu() % ra_nsock];
+        return myra->allocate_cold(size);
+    }
+
     // epochs related
     __thread struct thread_data epoch_tls;
     epoch_mgr ra_epochs {{nullptr, &global_init, &get_tls,
@@ -289,7 +296,7 @@ void*
 region_allocator::allocate_cold(uint64_t size)
 {
     auto noffset = __sync_add_and_fetch(&_allocated_cold_offset, size);
-    ALWAYS_ASSERT(noffset <= _cold_capacity);
+    THROW_IF(volatile_read(_cold_capacity) < noffset, std::bad_alloc);
     return &_cold_data[(noffset - size) & _cold_mask];
 }
 
@@ -311,7 +318,7 @@ forever:
     std::cout << "region allocator: start to reclaim for socket "
               << socket << std::endl;
 
-    uint64_t copy_amt = 0;
+    uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
     for (uint i = 0; i < GC::tables.size(); i++) {
         concurrent_btree *t = GC::tables[i];
         concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
@@ -335,7 +342,7 @@ start_over:
                 new_obj = (object *)myra->allocate_cold(size);
                 memcpy(new_obj, cur, size);
                 new_obj->_next = NULL;
-                copy_amt += size;
+                cold_copy_amt += size;
                 if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
                     goto start_over;
                 continue;
@@ -354,7 +361,7 @@ start_over:
                     }
                     new_obj = (object *)myra->allocate(size);
                     memcpy(new_obj, cur, size);
-                    copy_amt += size;
+                    hot_copy_amt += size;
                     if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
                         goto start_over;
                     if (prev && !__sync_bool_compare_and_swap(&prev->_next, cur, new_obj))
@@ -368,7 +375,8 @@ start_over:
 
     ASSERT(myra->state() == RA_GC_IN_PROG);
     myra->set_state(RA_GC_FINISHED);
-    std::cout << "socket " << socket << " tuple copy: " << copy_amt << " bytes\n";
+    std::cout << "socket " << socket << " cold copy=" << cold_copy_amt
+             << " bytes, hot copy=" << hot_copy_amt << " bytes\n";
     goto forever;
 }
 
