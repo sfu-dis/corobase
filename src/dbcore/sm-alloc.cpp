@@ -311,6 +311,7 @@ region_allocator::reclaim_daemon(int socket)
 
 forever:
     myra->_reclaim_cv.wait(lock);
+    LSN tlsn = volatile_read(RA::trim_lsn);
     uint64_t start_offset = (volatile_read(myra->_reclaimed_offset)) & myra->_hot_mask;
     uint64_t end_offset = start_offset + seg_size;
     ASSERT(!(start_offset & (seg_size - 1)));
@@ -339,7 +340,7 @@ start_over:
             dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
             auto clsn = volatile_read(version->clsn);
 
-            if (offset >= start_offset && offset + size <= end_offset && LSN::from_ptr(clsn) < RA::trim_lsn) {
+            if (offset >= start_offset && offset + size <= end_offset && LSN::from_ptr(clsn) < tlsn) {
                 new_obj = (object *)myra->allocate_cold(size);
                 memcpy(new_obj, cur, size);
                 new_obj->_next = NULL;
@@ -355,7 +356,7 @@ start_over:
                 if (offset >= start_offset && offset + size <= end_offset) {
                     version = reinterpret_cast<dbtuple *>(cur->payload());
                     clsn = volatile_read(version->clsn);
-                    if (LSN::from_ptr(clsn) < RA::trim_lsn && prev) {
+                    if (LSN::from_ptr(clsn) < tlsn && prev) {
                         if (!__sync_bool_compare_and_swap(&prev->_next, cur, NULL))
                             goto start_over;
                         break;
