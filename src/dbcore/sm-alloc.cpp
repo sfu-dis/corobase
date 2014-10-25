@@ -293,41 +293,6 @@ region_allocator::allocate_cold(uint64_t size)
     return &_cold_data[(noffset - size) & _cold_mask];
 }
 
-//std::cout << "s " << start_offset << " e " << end_offset << " o " << offset << " ss " << size << "\n";
-#define copy_vector(v, rLSN)  \
-    INVARIANT(v);  \
-    for (oid_type oid = 1; oid < v->size(); oid++) {   \
-    start_over_##v: \
-        object *head, *cur, *prev = NULL;   \
-        cur = head = v->begin(oid);    \
-        while (cur) {   \
-            size_t size = cur->_size;   \
-            uint64_t offset = (char *)cur - myra->_hot_data;    \
-            if (offset >= start_offset && offset + size <= end_offset) {    \
-                dbtuple *version = NULL;    \
-                if (rLSN != INVALID_LSN && cur != head) {    \
-                    version = reinterpret_cast<dbtuple *>(cur->payload());   \
-                    auto clsn = volatile_read(version->clsn);   \
-                    ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG); \
-                    if (LSN::from_ptr(clsn) < rLSN) {   \
-                        if (!__sync_bool_compare_and_swap(&prev->_next, cur, NULL)) \
-                            goto start_over_##v;    \
-                        break;  \
-                    }   \
-                }   \
-                void *new_obj = myra->allocate(size);   \
-                memcpy(new_obj, cur, size); \
-                v##_copy_amt += size;   \
-                if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))  \
-                    goto start_over_##v;    \
-                if (prev && !__sync_bool_compare_and_swap(&prev->_next, cur, new_obj))  \
-                    goto start_over_##v;    \
-            }   \
-            prev = volatile_read(cur);  \
-            cur = volatile_read(cur->_next);    \
-        }   \
-    }
-
 void
 region_allocator::reclaim_daemon(int socket)
 {
@@ -346,18 +311,64 @@ forever:
     std::cout << "region allocator: start to reclaim for socket "
               << socket << std::endl;
 
-    uint64_t tv_copy_amt = 0, nv_copy_amt = 0;
+    uint64_t copy_amt = 0;
     for (uint i = 0; i < GC::tables.size(); i++) {
         concurrent_btree *t = GC::tables[i];
-        concurrent_btree::tuple_vector_type *tv = t->get_tuple_vector();
-        copy_vector(tv, RA::trim_lsn);
-        concurrent_btree::node_vector_type *nv = t->get_node_vector();
-        copy_vector(nv, INVALID_LSN);
+        concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
+        INVARIANT(v);
+
+        for (oid_type oid = 1; oid < v->size(); oid++) {
+start_over:
+            object *head, *cur, *prev = NULL;
+            cur = head = v->begin(oid);
+            if (!cur)
+                continue;
+
+            object *new_obj = NULL;
+            size_t size = cur->_size;
+            uint64_t offset = (char *)cur - myra->_hot_data;
+
+            dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
+            auto clsn = volatile_read(version->clsn);
+
+            if (offset >= start_offset && offset + size <= end_offset && LSN::from_ptr(clsn) < RA::trim_lsn) {
+                new_obj = (object *)myra->allocate_cold(size);
+                memcpy(new_obj, cur, size);
+                new_obj->_next = NULL;
+                copy_amt += size;
+                if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
+                    goto start_over;
+                continue;
+            }
+
+            while (cur) {
+                size = cur->_size;
+                offset = (char *)cur - myra->_hot_data;
+                if (offset >= start_offset && offset + size <= end_offset) {
+                    version = reinterpret_cast<dbtuple *>(cur->payload());
+                    clsn = volatile_read(version->clsn);
+                    if (LSN::from_ptr(clsn) < RA::trim_lsn && prev) {
+                        if (!__sync_bool_compare_and_swap(&prev->_next, cur, NULL))
+                            goto start_over;
+                        break;
+                    }
+                    new_obj = (object *)myra->allocate(size);
+                    memcpy(new_obj, cur, size);
+                    copy_amt += size;
+                    if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
+                        goto start_over;
+                    if (prev && !__sync_bool_compare_and_swap(&prev->_next, cur, new_obj))
+                        goto start_over;
+                }
+                prev = volatile_read(cur);
+                cur = volatile_read(cur->_next);
+            }
+        }
     }
+
     ASSERT(myra->state() == RA_GC_IN_PROG);
     myra->set_state(RA_GC_FINISHED);
-    std::cout << "socket " << socket << " tuple copy: " << tv_copy_amt
-              << " bytes, node copy: " << nv_copy_amt << " bytes\n";
+    std::cout << "socket " << socket << " tuple copy: " << copy_amt << " bytes\n";
     goto forever;
 }
 
