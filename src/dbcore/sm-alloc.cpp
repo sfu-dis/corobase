@@ -349,7 +349,7 @@ start_over:
                 memcpy(new_obj, cur, size);
                 new_obj->_next = NULL;
                 cold_copy_amt += size;
-                if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
+                if (!__sync_bool_compare_and_swap(v->begin_ptr(oid), cur, new_obj))
                     goto start_over;
                 continue;
             }
@@ -371,7 +371,7 @@ start_over:
 
                     if (cur == head) {
                         ASSERT(!prev);
-                        if (!__sync_bool_compare_and_swap(v->obj_ptr(oid), cur, new_obj))
+                        if (!__sync_bool_compare_and_swap(v->begin_ptr(oid), cur, new_obj))
                             goto start_over;
                     }
                     else {

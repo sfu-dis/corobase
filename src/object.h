@@ -76,7 +76,7 @@ public:
 		return volatile_read(_obj_table[oid]);
 	}
 
-    inline object** obj_ptr(oid_type oid)
+    inline object** begin_ptr(oid_type oid)
     {
         // tzwang: I guess we don't need volatile_read for this
         return &_obj_table[oid];
