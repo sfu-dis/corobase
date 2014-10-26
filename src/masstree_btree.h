@@ -267,11 +267,6 @@ public:
   {
 	  return table_.get_tuple_vector();
   }
-  inline void cleanup_versions( LSN lsn )
-  {
-	  table_.cleanup_versions( lsn );
-  }
-
   std::pair<bool, value_type> update_version( oid_type oid, object* obj, XID xid)
   {
 	  return table_.update_version( oid, obj, xid );
@@ -895,3 +890,9 @@ void mbtree<P>::print() {
 
 typedef mbtree<masstree_params> concurrent_btree;
 typedef mbtree<masstree_single_threaded_params> single_threaded_btree;
+
+// just for concurrent_btree to avoid cyclic dependency
+namespace RA {
+	extern std::vector<concurrent_btree*> tables;
+    void register_table(concurrent_btree *t);
+};

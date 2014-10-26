@@ -162,7 +162,6 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/sm-log-file.cpp \
 	dbcore/sm-exceptions.cpp \
 	dbcore/sm-common.cpp \
-	dbcore/sm-gc.cpp \
 	dbcore/window-buffer.cpp \
 	dbcore/rcu-slist.cpp \
 	dbcore/rcu.cpp \
