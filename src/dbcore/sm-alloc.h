@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
+#include <vector>
 #include "sm-defs.h"
 #include "epoch.h"
 #include "../macros.h"

@@ -4,7 +4,6 @@
 #include "sm-exceptions.h"
 #include "sm-common.h"
 #include "size-encode.h"
-#include "sm-gc.h"
 #include "sm-defs.h"
 
 #include "../rcu-wrapper.h" // for delete_entry

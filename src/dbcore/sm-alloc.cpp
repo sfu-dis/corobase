@@ -1,9 +1,8 @@
 #include <sys/mman.h>
 #include "sm-alloc.h"
 #include "sm-common.h"
-#include "sm-gc.h"  // for tables
 #include "../txn.h"
-
+#include "../masstree_btree.h"
 #include <future>
 #include <new>
 
@@ -63,6 +62,7 @@ namespace RA {
                   "Region allocator segments can't be smaller than a page");
     static const uint64_t TRIM_MARK = 16 * 1024 * 1024;
 
+	std::vector<concurrent_btree*> tables;
     ra_wrapper ra_w;
     region_allocator *ra;
     int ra_nsock;
@@ -70,6 +70,10 @@ namespace RA {
     LSN trim_lsn;
     bool system_loading;
     __thread region_allocator *tls_ra = 0;
+
+    void register_table(concurrent_btree *t) {
+        tables.push_back(t);
+    }
 
     void init() {
         if (ra_nsock)
@@ -321,8 +325,8 @@ forever:
               << socket << std::endl;
 
     uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
-    for (uint i = 0; i < GC::tables.size(); i++) {
-        concurrent_btree *t = GC::tables[i];
+    for (uint i = 0; i < RA::tables.size(); i++) {
+        concurrent_btree *t = RA::tables[i];
         concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
         INVARIANT(v);
 

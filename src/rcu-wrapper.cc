@@ -16,6 +16,5 @@ void*
 RCU::allocate(size_t nbytes)
 {
   void *mem = rcu_alloc_gc(nbytes);
-  transaction_base::gc->report_malloc(nbytes);
   return mem;
 }

@@ -11,7 +11,6 @@
 #include <map>
 #include <type_traits>
 #include <memory>
-#include "dbcore/sm-gc.h"
 
 using namespace TXN;
 
@@ -39,7 +38,7 @@ public:
       been_destructed(false)
   {
     base_txn_btree_handler<Transaction>::on_construct();
-	transaction_base::gc->register_table(&underlying_btree);		// Register to GC system 
+	RA::register_table(&underlying_btree);		// Register to GC system 
   }
 
   ~base_txn_btree()
