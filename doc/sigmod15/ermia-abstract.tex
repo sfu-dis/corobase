@@ -9,6 +9,7 @@ Therefore, it is quite difficult, if not impossible, to adopt a different concur
 The architecture also largely determines how the physical conflicts between concurrent threads are dealt, and how recovery is achieved.
 
 We argue that transaction processing systems should be designed from the ground up with four basic requirements: to not heavily rely on partitioning; to provide flexible and robust concurrency control for the logical interactions between transactions; to address the physical interactions between threads in a scalable way; and to have a clear recovery methodology.  
-We report on some early progress in designing a system from the ground up to support the requirements we lay out, and show how the resulting architecture achieves these goals without unnecessary sacrifices to performance in other areas.
+We report on the design and prototype implementation a system, called ERMIA, from the ground up to support the requirements we lay out, and show how the resulting architecture achieves these goals without unnecessary sacrifices to performance in other areas. 
+ERMIA's performance is comparable, if not higher, to the performance of the highest-performing open-source in-memory OLTP system in the workloads for which this system was designed for, and it performs up to an order of magnitude higher in workloads with high contention or large read and write sets.
 
 \end{abstract}
