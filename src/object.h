@@ -35,7 +35,7 @@ public:
 			if( max < *_alloc_offset[i] )
 				max = *_alloc_offset[i];
 		}
-		return max;
+		return (max + 1) * NR_SOCKETS;
 	}
 
 	object_vector( unsigned long long nelems)
