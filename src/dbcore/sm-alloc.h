@@ -11,6 +11,16 @@
 #include "epoch.h"
 #include "../macros.h"
 
+#define MSB_MASK (uint64_t{1} << 63)
+
+// user programs' high bits are 0... (phys addrs' are 1...)
+#define LOCK_OBJ_NEXT(obj)  \
+    volatile_write(obj->_next, (object *)((uint64_t)obj->_next | MSB_MASK));
+
+// use this only when cas fails
+#define UNLOCK_OBJ_NEXT(obj)  \
+    volatile_write(obj->_next, (object *)((uint64_t)obj->_next & (~MSB_MASK)));
+
 namespace RA {
     extern bool system_loading;
     void init();
