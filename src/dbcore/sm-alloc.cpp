@@ -60,9 +60,9 @@ namespace RA {
     static const uint64_t MEM_SEGMENT_BITS = 30; // 1GB/segment (16 GB total on 4-socket machine)
     static_assert(MEM_SEGMENT_BITS > PAGE_SIZE_BITS,
                   "Region allocator segments can't be smaller than a page");
-    static const uint64_t TRIM_MARK = 16 * 1024 * 1024;
+    static const uint64_t TRIM_MARK = 4 * 1024 * 1024;
 
-	std::vector<concurrent_btree*> tables;
+    std::vector<concurrent_btree*> tables;
     ra_wrapper ra_w;
     region_allocator *ra;
     int ra_nsock;
@@ -237,7 +237,7 @@ region_allocator::region_allocator(uint64_t one_segment_bits, int skt)
     : _segment_bits(one_segment_bits)
     , _hot_bits(NUM_SEGMENT_BITS + _segment_bits)
     , _hot_capacity(uint64_t{1} << _hot_bits)
-    , _cold_capacity((uint64_t{1} << _segment_bits) * 2)
+    , _cold_capacity((uint64_t{1} << _segment_bits) * 4)
     , _hot_mask(_hot_capacity - 1)
     , _cold_mask(_cold_capacity - 1)
     , _reclaimed_offset(_hot_capacity)
@@ -301,14 +301,16 @@ void*
 region_allocator::allocate_cold(uint64_t size)
 {
     auto noffset = __sync_add_and_fetch(&_allocated_cold_offset, size);
-    THROW_IF(volatile_read(_cold_capacity) < noffset, std::bad_alloc);
+    if (_cold_capacity < noffset)
+        throw std::runtime_error("No enough space in cold store.");
     return &_cold_data[(noffset - size) & _cold_mask];
 }
 
+// Verbose version
+/*
 void
 region_allocator::reclaim_daemon(int socket)
 {
-    std::cout << "Allocator daemon started for socket " << socket << std::endl;
     region_allocator *myra = RA::ra + socket;
     std::unique_lock<std::mutex> lock(myra->_reclaim_mutex);
     uint64_t seg_size = 1 << myra->_segment_bits;
@@ -332,56 +334,158 @@ forever:
 
         for (oid_type oid = 1; oid < v->size(); oid++) {
 start_over:
-            object *head, *cur, *prev = NULL;
-            cur = head = v->begin(oid);
-            if (!cur)
+            object *head = v->begin(oid), *cur = head;
+            object *prev = NULL;
+            //object **prev_next = v->begin_ptr(oid);
+            if (!head)
                 continue;
-
-            object *new_obj = NULL;
-            size_t size = cur->_size;
-            uint64_t offset = (char *)cur - myra->_hot_data;
-
-            dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
-            auto clsn = volatile_read(version->clsn);
-
-            if (offset >= start_offset && offset + size <= end_offset && LSN::from_ptr(clsn) < tlsn) {
-                new_obj = (object *)myra->allocate_cold(size);
-                memcpy(new_obj, cur, size);
-                new_obj->_next = NULL;
-                cold_copy_amt += size;
-                if (!__sync_bool_compare_and_swap(v->begin_ptr(oid), cur, new_obj))
-                    goto start_over;
-                continue;
-            }
 
             while (cur) {
-                size = cur->_size;
-                offset = (char *)cur - myra->_hot_data;
-                if (offset >= start_offset && offset + size <= end_offset) {
-                    version = reinterpret_cast<dbtuple *>(cur->payload());
-                    clsn = volatile_read(version->clsn);
-                    if (LSN::from_ptr(clsn) < tlsn && prev) {
-                        if (!__sync_bool_compare_and_swap(&prev->_next, cur, NULL))
+                size_t size = cur->_size;
+                uint64_t offset = (char *)cur - myra->_hot_data;
+                object *new_obj = NULL;
+                dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
+                auto clsn = volatile_read(version->clsn);
+
+                if (offset < start_offset || offset + size > end_offset)
+                    goto next;
+
+                ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+                ASSERT(!((uint64_t)cur->_next & MSB_MASK));
+                LOCK_OBJ_NEXT(cur);
+
+                if (LSN::from_ptr(clsn) < tlsn) {
+                    if (cur == head) {
+                        new_obj = (object *)myra->allocate_cold(size);
+                        memcpy(new_obj, cur, size);
+                        new_obj->_next = NULL;
+                        if (!__sync_bool_compare_and_swap(v->begin_ptr(oid), head, new_obj)) {
+                            UNLOCK_OBJ_NEXT(cur);
                             goto start_over;
+                        }
+                        cold_copy_amt += size;
                         break;
                     }
+                    else {
+                        if (!__sync_bool_compare_and_swap(&prev->_next, cur, NULL)) {
+                            UNLOCK_OBJ_NEXT(cur);
+                            goto start_over;
+                        }
+                    }
+                }
+                else {
                     new_obj = (object *)myra->allocate(size);
                     memcpy(new_obj, cur, size);
+                    new_obj->_next = (object *)((uint64_t)cur->_next & (~MSB_MASK));
                     hot_copy_amt += size;
-
                     if (cur == head) {
                         ASSERT(!prev);
-                        if (!__sync_bool_compare_and_swap(v->begin_ptr(oid), cur, new_obj))
+                        if (!__sync_bool_compare_and_swap(v->begin_ptr(oid), head, new_obj)) {
+                            UNLOCK_OBJ_NEXT(cur);
                             goto start_over;
+                        }
+                        break;
                     }
                     else {
                         ASSERT(prev);
-                        if (!__sync_bool_compare_and_swap(&prev->_next, cur, new_obj))
+                        if (!__sync_bool_compare_and_swap(&prev->_next, cur, new_obj)) {
+                            UNLOCK_OBJ_NEXT(cur);
                             goto start_over;
+                        }
                     }
                 }
+next:
                 prev = volatile_read(cur);
                 cur = volatile_read(cur->_next);
+                volatile_write(cur, (object *)((uint64_t)volatile_read(cur) & (~MSB_MASK)));
+                volatile_write(prev, (object *)((uint64_t)volatile_read(prev) & (~MSB_MASK)));
+            }
+        }
+    }
+
+    ASSERT(myra->state() == RA_GC_IN_PROG);
+    myra->set_state(RA_GC_FINISHED);
+    std::cout << "socket " << socket << " cold copy=" << cold_copy_amt
+             << " bytes, hot copy=" << hot_copy_amt << " bytes\n";
+    goto forever;
+}
+*/
+
+void
+region_allocator::reclaim_daemon(int socket)
+{
+    region_allocator *myra = RA::ra + socket;
+    std::unique_lock<std::mutex> lock(myra->_reclaim_mutex);
+    uint64_t seg_size = 1 << myra->_segment_bits;
+
+forever:
+    myra->_reclaim_cv.wait(lock);
+    LSN tlsn = volatile_read(RA::trim_lsn);
+    uint64_t start_offset = (volatile_read(myra->_reclaimed_offset)) & myra->_hot_mask;
+    uint64_t end_offset = start_offset + seg_size;
+    ASSERT(!(start_offset & (seg_size - 1)));
+    ASSERT(!(end_offset & (seg_size - 1)));
+
+    std::cout << "region allocator: start to reclaim for socket "
+              << socket << std::endl;
+
+    uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
+    for (uint i = 0; i < RA::tables.size(); i++) {
+        concurrent_btree *t = RA::tables[i];
+        concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
+        INVARIANT(v);
+
+        for (oid_type oid = 1; oid < v->size(); oid++) {
+start_over:
+            object *head = v->begin(oid), *cur = head;
+            object **prev_next = v->begin_ptr(oid);
+            if (!head)
+                continue;
+
+            while (cur) {
+                size_t size = cur->_size;
+                uint64_t offset = (char *)cur - myra->_hot_data;
+                object *new_obj = NULL;
+                dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
+                auto clsn = volatile_read(version->clsn);
+
+                if (offset < start_offset || offset + size > end_offset)
+                    goto next;
+
+                ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+                ASSERT(!((uint64_t)cur->_next & MSB_MASK));
+                LOCK_OBJ_NEXT(cur);
+
+                if (LSN::from_ptr(clsn) < tlsn) {
+                    if (cur == head) {
+                        new_obj = (object *)myra->allocate_cold(size);
+                        memcpy(new_obj, cur, size);
+                        new_obj->_next = NULL;
+                    }   // else new_obj = NULL
+                    cold_copy_amt += size;
+                }
+                else {
+                    new_obj = (object *)myra->allocate(size);
+                    memcpy(new_obj, cur, size);
+                    new_obj->_next = (object *)((uint64_t)cur->_next & (~MSB_MASK));
+                    hot_copy_amt += size;
+                }
+                // will fail if sb. else claimed prev_next
+                if (!__sync_bool_compare_and_swap(prev_next, cur, new_obj)) {
+                    UNLOCK_OBJ_NEXT(cur);
+                    goto start_over;
+                }
+
+                // !new_obj => trimmed in the middle of the chain;
+                // !new_obj->_next => the last element or trimmed at head;
+                // so break in either case.
+                if (!new_obj || !new_obj->_next)
+                    break;
+                cur = new_obj;
+next:
+                prev_next = &cur->_next;
+                cur = volatile_read(cur->_next);
+                cur = (object *)((uint64_t)cur & (~MSB_MASK));
             }
         }
     }
