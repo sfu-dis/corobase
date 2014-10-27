@@ -115,17 +115,6 @@ class basic_table {
 		int attempts = 0;
 	start_over:
         object* head = tuple_vector->begin(oid);
-        //object *head_next = volatile_read(head->_next);
-
-        // claim head->next's MSB mask (contend with gc daemon)
-        //if ((uint64_t)head_next & MSB_MASK) // sb. else already claimed
-        //    goto start_over;
-        //else if (!__sync_bool_compare_and_swap(&head->_next, head_next,
-        //                    (object *)((uint64_t)head_next | MSB_MASK)))
-        //    goto start_over;
-        //DEFER(UNLOCK_OBJ_NEXT(head));
-        // Now I have it, the gc daemons will have to wait
-
 		object* ptr = head;
 		xid_context *visitor = xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
