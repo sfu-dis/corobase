@@ -28,13 +28,14 @@ dbtuple::~dbtuple()
   g_evt_dbtuple_bytes_freed += (alloc_size + sizeof(dbtuple));
 }
 
+/*
 void
 dbtuple::gc_this()
 {
   INVARIANT(RCU::rcu_is_active());
   release(this);
 }
-
+*/
 void
 dbtuple::print(ostream &o, unsigned len) const
 {

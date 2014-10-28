@@ -77,7 +77,7 @@ transaction<Protocol, Traits>::abort_impl()
 	if( !tuple->overwritten )
 		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
 
-    dbtuple::release(tuple);
+    //dbtuple::release(tuple);
 	// TODO. free container also
   }
 
@@ -206,7 +206,7 @@ transaction<Protocol, Traits>::commit()
 		dbtuple* tuple = it->get_tuple();
 		concurrent_btree* btr = it->get_table();
 		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
-		dbtuple::release(tuple);
+		//dbtuple::release(tuple);
     }
   }
 
@@ -241,7 +241,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   if (unlikely(!btr.insert_if_absent(
           varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
-    dbtuple::release_no_rcu(tuple);
+    //dbtuple::release_no_rcu(tuple);
     RCU::rcu_quiesce();
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
     return false;

@@ -51,7 +51,7 @@ namespace TXN {
    stragglers and restricts the number of concurrent epochs so that
    the problem cannot arise.
  */
-static uint16_t const NCONTEXTS = 2048;
+static uint16_t const NCONTEXTS = 1024;
 xid_context contexts[NCONTEXTS];
 
 struct bitmap {

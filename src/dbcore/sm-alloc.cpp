@@ -60,9 +60,11 @@ namespace RA {
     static const uint64_t MEM_SEGMENT_BITS = 30; // 1GB/segment (16 GB total on 4-socket machine)
     static_assert(MEM_SEGMENT_BITS > PAGE_SIZE_BITS,
                   "Region allocator segments can't be smaller than a page");
-    static const uint64_t TRIM_MARK = 4 * 1024 * 1024;
+    static const uint64_t TRIM_MARK = 1 * 1024 * 1024;
 
     std::vector<concurrent_btree*> tables;
+    std::vector<std::string> table_names;
+    uint64_t *table_gc_stat[4]; // one per skt
     ra_wrapper ra_w;
     region_allocator *ra;
     int ra_nsock;
@@ -71,8 +73,9 @@ namespace RA {
     bool system_loading;
     __thread region_allocator *tls_ra = 0;
 
-    void register_table(concurrent_btree *t) {
+    void register_table(concurrent_btree *t, std::string name) {
         tables.push_back(t);
+        table_names.push_back(name);
     }
 
     void init() {
@@ -417,83 +420,120 @@ region_allocator::reclaim_daemon(int socket)
     region_allocator *myra = RA::ra + socket;
     std::unique_lock<std::mutex> lock(myra->_reclaim_mutex);
     uint64_t seg_size = 1 << myra->_segment_bits;
+    char __attribute__((aligned(64))) *base_addr = myra->_hot_data;
 
 forever:
     myra->_reclaim_cv.wait(lock);
     LSN tlsn = volatile_read(RA::trim_lsn);
+    uint64_t cold_head = 0, hot_head = 0, empty_oid = 0;
     uint64_t start_offset = (volatile_read(myra->_reclaimed_offset)) & myra->_hot_mask;
     uint64_t end_offset = start_offset + seg_size;
     ASSERT(!(start_offset & (seg_size - 1)));
     ASSERT(!(end_offset & (seg_size - 1)));
 
+    //uint64_t cas_failures = 0, cas_success = 0;
+    //uint64_t trim_at_head = 0, trim_in_middle = 0;
+
+    if (!RA::table_gc_stat[socket]) {
+        RA::table_gc_stat[socket] = (uint64_t *)malloc(sizeof(uint64_t) * RA::tables.size());
+        memset(RA::table_gc_stat[socket], 0, sizeof(uint64_t) * 4);
+    }
+
     std::cout << "region allocator: start to reclaim for socket "
               << socket << std::endl;
 
-    uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
+    //uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
     for (uint i = 0; i < RA::tables.size(); i++) {
         concurrent_btree *t = RA::tables[i];
         concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
         INVARIANT(v);
 
-        for (oid_type oid = 1; oid < v->size(); oid++) {
+        for (int node = 0; node < RA::ra_nsock; node++) {
+            for (uint c = 0; c < v->size(node); c++) {
+                oid_type oid = c * RA::ra_nsock + node;
 start_over:
-            object *head = v->begin(oid), *cur = head;
-            object **prev_next = v->begin_ptr(oid);
-            if (!head)
-                continue;
-
-            while (cur) {
-                size_t size = cur->_size;
-                uint64_t offset = (char *)cur - myra->_hot_data;
-                object *new_obj = NULL;
-                dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
-                auto clsn = volatile_read(version->clsn);
-
-                if (offset < start_offset || offset + size > end_offset)
-                    goto next;
-
-                ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
-                ASSERT(!((uint64_t)cur->_next & MSB_MASK));
-                LOCK_OBJ_NEXT(cur);
-
-                if (LSN::from_ptr(clsn) < tlsn) {
-                    if (cur == head) {
-                        new_obj = (object *)myra->allocate_cold(size);
-                        memcpy(new_obj, cur, size);
-                        new_obj->_next = NULL;
-                    }   // else new_obj = NULL
-                    cold_copy_amt += size;
-                }
-                else {
-                    new_obj = (object *)myra->allocate(size);
-                    memcpy(new_obj, cur, size);
-                    new_obj->_next = (object *)((uint64_t)cur->_next & (~MSB_MASK));
-                    hot_copy_amt += size;
-                }
-                // will fail if sb. else claimed prev_next
-                if (!__sync_bool_compare_and_swap(prev_next, cur, new_obj)) {
-                    UNLOCK_OBJ_NEXT(cur);
-                    goto start_over;
+                object *head = v->begin(oid), *cur = head;
+                object **prev_next = v->begin_ptr(oid);
+                if (!head) {
+                    empty_oid++;
+                    continue;
                 }
 
-                // !new_obj => trimmed in the middle of the chain;
-                // !new_obj->_next => the last element or trimmed at head;
-                // so break in either case.
-                if (!new_obj || !new_obj->_next)
-                    break;
-                cur = new_obj;
-next:
-                prev_next = &cur->_next;
-                cur = volatile_read(cur->_next);
-                cur = (object *)((uint64_t)cur & (~MSB_MASK));
+                if ((uint64_t)head >= (uint64_t)myra->_cold_data && (uint64_t)head < (uint64_t)myra->_cold_data + myra->_cold_capacity)
+                    cold_head++;
+                else if ((uint64_t)head >= (uint64_t)myra->_hot_data && (uint64_t)head < (uint64_t)myra->_hot_data + myra->_hot_capacity)
+                    hot_head++;
+
+                while (cur) {
+                    object *new_obj = NULL;
+                    dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
+                    auto clsn = volatile_read(version->clsn);
+
+                    uint64_t offset = (char *)cur - base_addr;
+                    if (offset < start_offset || offset + cur->_size > end_offset)
+                        goto next;
+
+                    ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+                    ASSERT(!((uint64_t)cur->_next & MSB_MASK));
+                    LOCK_OBJ_NEXT(cur);
+
+                    if (LSN::from_ptr(clsn) < tlsn) {
+                        if (cur == head) {
+                            new_obj = (object *)myra->allocate_cold(cur->_size);
+                            memcpy(new_obj, cur, cur->_size);
+                            RA::table_gc_stat[socket][i]++;
+                            new_obj->_next = NULL;
+                            //cold_copy_amt += size;
+                        }   // else new_obj = NULL
+                    }
+                    else {
+                        new_obj = (object *)myra->allocate(cur->_size);
+                        memcpy(new_obj, cur, cur->_size);
+                        RA::table_gc_stat[socket][i]++;
+                        new_obj->_next = (object *)((uint64_t)cur->_next & (~MSB_MASK));
+                        //hot_copy_amt += size;
+                    }
+                    // will fail if sb. else claimed prev_next
+                    if (!__sync_bool_compare_and_swap(prev_next, cur, new_obj)) {
+                        UNLOCK_OBJ_NEXT(cur);
+                        //cas_failures++;
+                        goto start_over;
+                    }
+                    /*
+                    cas_success++;
+                    if (!new_obj)
+                        trim_in_middle++;
+                    else if (!new_obj->_next)
+                        trim_at_head++;
+                    */
+                    // !new_obj => trimmed in the middle of the chain;
+                    // !new_obj->_next => the last element or trimmed at head;
+                    // so break in either case.
+                    if (!new_obj || !new_obj->_next)
+                        break;
+                    cur = new_obj;
+    next:
+                    prev_next = &cur->_next;
+                    cur = volatile_read(cur->_next);
+                    cur = (object *)((uint64_t)cur & (~MSB_MASK));
+                }
             }
         }
     }
-
     ASSERT(myra->state() == RA_GC_IN_PROG);
     myra->set_state(RA_GC_FINISHED);
-    std::cout << "socket " << socket << " cold copy=" << cold_copy_amt
-             << " bytes, hot copy=" << hot_copy_amt << " bytes\n";
+    std::cout << "socket " << socket << " empty_oid=" << empty_oid
+              << " cold_head=" << cold_head << " hot_head=" << hot_head << "\n";
+    //std::cout << "socket " << socket << " cold copy=" << cold_copy_amt
+    //          << " bytes, hot copy=" << hot_copy_amt << " bytes\n";
+//             << cas_failures << " cas failures, "
+//             << cas_success << " cas succeeses, "
+//             << trim_at_head << " trim at head, "
+//             << trim_in_middle << " in middle\n";
+//    for (uint i = 0; i < RA::tables.size(); i++) {
+//        std::cout << "per table amt " << RA::table_names[i] << "=" << RA::table_gc_stat[socket][i] << "\n";
+//        RA::table_gc_stat[socket][i] = 0;
+//    }
     goto forever;
 }
 

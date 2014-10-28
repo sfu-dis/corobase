@@ -38,7 +38,7 @@ public:
       been_destructed(false)
   {
     base_txn_btree_handler<Transaction>::on_construct();
-	RA::register_table(&underlying_btree);		// Register to GC system 
+	RA::register_table(&underlying_btree, name);		// Register to GC system 
   }
 
   ~base_txn_btree()
@@ -222,6 +222,7 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
   for (size_t i = 0; i < spec_values.size(); i++) {
     dbtuple *tuple = (dbtuple *) spec_values[i].first;
     INVARIANT(tuple);
+    /*
     if (base_txn_btree_handler<Transaction>::has_background_task) {
       if (!tuple->size == 0) {
         dbtuple::release(tuple);
@@ -232,6 +233,7 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
       // XXX: this path is probably not right
       dbtuple::release_no_rcu(tuple);
     }
+    */
   }
   spec_values.clear();
 }
@@ -274,8 +276,15 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 			  max_alloc_sz);
   INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
 
+try_expect_new:
   // Allocate an version
-  char* p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
+  char *p = NULL;
+  if (expect_new) {
+      p = reinterpret_cast<char*>(RA::allocate_cold(sizeof(object) + alloc_sz));
+  }
+  else {
+      p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
+  }
   INVARIANT(p);
 
   // Tuple setup
@@ -301,6 +310,8 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   if (expect_new) {
     if (t.try_insert_new_tuple(this->underlying_btree, k, version, writer)) 
 		return;
+    expect_new = false;
+    goto try_expect_new;
   }
 
   // do regular search
