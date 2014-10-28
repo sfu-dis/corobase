@@ -25,7 +25,6 @@ class object
 template <typename T>
 class object_vector
 {
-
 public:
 	inline unsigned long long size() 
 	{
@@ -37,6 +36,11 @@ public:
 		}
 		return (max + 1) * NR_SOCKETS;
 	}
+
+    inline unsigned long long size(int skt)
+    {
+        return *_alloc_offset[skt];
+    }
 
 	object_vector( unsigned long long nelems)
 	{
@@ -58,6 +62,7 @@ public:
 		if( not __sync_bool_compare_and_swap( &_obj_table[oid], first, new_desc) )
 			return false;
 
+        // new record, shuold be in cold store, no need to change temp bit
 		return true;
 	}
 	bool put( oid_type oid, object* head,  object* new_desc )

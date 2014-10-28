@@ -310,6 +310,7 @@ public:
    *
    * Note: if this != ret.first, then we need a tree replacement
    */
+/*
   template <typename Transaction>
   write_record_ret
   write_record_at(const Transaction *txn,
@@ -408,12 +409,13 @@ public:
     INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
     return new (p) dbtuple(sz, alloc_sz - sizeof(dbtuple));
   }
+  */
   static inline dbtuple *
   init( char*p ,size_type sz, size_type alloc_sz)
   {
     return new (p) dbtuple(sz, alloc_sz - sizeof(dbtuple));
   }
-
+/*
   static inline dbtuple *
   alloc(struct dbtuple *base)
   {
@@ -498,7 +500,7 @@ public:
       return;
     destruct_and_free(n);
   }
-
+*/
   static std::string
   VersionInfoStr(version_t v);
 
