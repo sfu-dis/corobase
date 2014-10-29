@@ -19,7 +19,7 @@ using namespace TXN;
 template <template <typename> class Transaction>
 struct base_txn_btree_handler {
   static inline void on_construct() {} // called when initializing
-  static const bool has_background_task = false;
+  //static const bool has_background_task = false;
 };
 
 template <template <typename> class Transaction, typename P>
@@ -219,10 +219,10 @@ template <template <typename> class Transaction, typename P>
 void
 base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
 {
+  /*
   for (size_t i = 0; i < spec_values.size(); i++) {
     dbtuple *tuple = (dbtuple *) spec_values[i].first;
     INVARIANT(tuple);
-    /*
     if (base_txn_btree_handler<Transaction>::has_background_task) {
       if (!tuple->size == 0) {
         dbtuple::release(tuple);
@@ -233,8 +233,8 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
       // XXX: this path is probably not right
       dbtuple::release_no_rcu(tuple);
     }
-    */
   }
+  */
   spec_values.clear();
 }
 
