@@ -448,75 +448,72 @@ forever:
         concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
         INVARIANT(v);
 
-        for (int node = 0; node < RA::ra_nsock; node++) {
-            for (uint c = 0; c < v->size(node); c++) {
-                oid_type oid = c * RA::ra_nsock + node;
+        for (uint oid = 1; oid <= v->size(); oid++) {
 start_over:
-                object *head = v->begin(oid), *cur = head;
-                object **prev_next = v->begin_ptr(oid);
-                if (!head) {
-                    empty_oid++;
-                    continue;
-                }
+            object *head = v->begin(oid), *cur = head;
+            object **prev_next = v->begin_ptr(oid);
+            if (!head) {
+                empty_oid++;
+                continue;
+            }
 
-                if ((uint64_t)head >= (uint64_t)myra->_cold_data && (uint64_t)head < (uint64_t)myra->_cold_data + myra->_cold_capacity)
-                    cold_head++;
-                else if ((uint64_t)head >= (uint64_t)myra->_hot_data && (uint64_t)head < (uint64_t)myra->_hot_data + myra->_hot_capacity)
-                    hot_head++;
+            if ((uint64_t)head >= (uint64_t)myra->_cold_data && (uint64_t)head < (uint64_t)myra->_cold_data + myra->_cold_capacity)
+                cold_head++;
+            else if ((uint64_t)head >= (uint64_t)myra->_hot_data && (uint64_t)head < (uint64_t)myra->_hot_data + myra->_hot_capacity)
+                hot_head++;
 
-                while (cur) {
-                    object *new_obj = NULL;
-                    dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
-                    auto clsn = volatile_read(version->clsn);
+            while (cur) {
+                object *new_obj = NULL;
+                dbtuple *version = reinterpret_cast<dbtuple *>(cur->payload());
+                auto clsn = volatile_read(version->clsn);
 
-                    uint64_t offset = (char *)cur - base_addr;
-                    if (offset < start_offset || offset + cur->_size > end_offset)
-                        goto next;
+                uint64_t offset = (char *)cur - base_addr;
+                if (offset < start_offset || offset + cur->_size > end_offset)
+                    goto next;
 
-                    ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
-                    ASSERT(!((uint64_t)cur->_next & MSB_MASK));
-                    LOCK_OBJ_NEXT(cur);
+                ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+                ASSERT(!((uint64_t)cur->_next & MSB_MASK));
+                LOCK_OBJ_NEXT(cur);
 
-                    if (LSN::from_ptr(clsn) < tlsn) {
-                        if (cur == head) {
-                            new_obj = (object *)myra->allocate_cold(cur->_size);
-                            memcpy(new_obj, cur, cur->_size);
-                            RA::table_gc_stat[socket][i]++;
-                            new_obj->_next = NULL;
-                            //cold_copy_amt += size;
-                        }   // else new_obj = NULL
-                    }
-                    else {
-                        new_obj = (object *)myra->allocate(cur->_size);
+                if (LSN::from_ptr(clsn) < tlsn) {
+                    if (cur == head) {
+                        new_obj = (object *)myra->allocate_cold(cur->_size);
                         memcpy(new_obj, cur, cur->_size);
                         RA::table_gc_stat[socket][i]++;
-                        new_obj->_next = (object *)((uint64_t)cur->_next & (~MSB_MASK));
-                        //hot_copy_amt += size;
-                    }
-                    // will fail if sb. else claimed prev_next
-                    if (!__sync_bool_compare_and_swap(prev_next, cur, new_obj)) {
-                        UNLOCK_OBJ_NEXT(cur);
-                        //cas_failures++;
-                        goto start_over;
-                    }
-                    /*
-                    cas_success++;
-                    if (!new_obj)
-                        trim_in_middle++;
-                    else if (!new_obj->_next)
-                        trim_at_head++;
-                    */
-                    // !new_obj => trimmed in the middle of the chain;
-                    // !new_obj->_next => the last element or trimmed at head;
-                    // so break in either case.
-                    if (!new_obj || !new_obj->_next)
-                        break;
-                    cur = new_obj;
-    next:
-                    prev_next = &cur->_next;
-                    cur = volatile_read(cur->_next);
-                    cur = (object *)((uint64_t)cur & (~MSB_MASK));
+                        new_obj->_next = NULL;
+                        //cold_copy_amt += size;
+                    }   // else new_obj = NULL
                 }
+                else {
+                    new_obj = (object *)myra->allocate(cur->_size);
+                    memcpy(new_obj, cur, cur->_size);
+                    RA::table_gc_stat[socket][i]++;
+                    new_obj->_next = (object *)((uint64_t)cur->_next & (~MSB_MASK));
+                    //hot_copy_amt += size;
+                }
+                // will fail if sb. else claimed prev_next
+                if (!__sync_bool_compare_and_swap(prev_next, cur, new_obj)) {
+                    UNLOCK_OBJ_NEXT(cur);
+                    //cas_failures++;
+                    goto start_over;
+                }
+                /*
+                cas_success++;
+                if (!new_obj)
+                    trim_in_middle++;
+                else if (!new_obj->_next)
+                    trim_at_head++;
+                */
+                // !new_obj => trimmed in the middle of the chain;
+                // !new_obj->_next => the last element or trimmed at head;
+                // so break in either case.
+                if (!new_obj || !new_obj->_next)
+                    break;
+                cur = new_obj;
+next:
+                prev_next = &cur->_next;
+                cur = volatile_read(cur->_next);
+                cur = (object *)((uint64_t)cur & (~MSB_MASK));
             }
         }
     }
