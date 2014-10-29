@@ -448,12 +448,13 @@ forever:
         concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
         INVARIANT(v);
 
-        for (uint oid = 1; oid <= v->size(); oid++) {
+        for (uint oid = v->start_oid(); oid <= v->size(); oid++) {
 start_over:
             object *head = v->begin(oid), *cur = head;
             object **prev_next = v->begin_ptr(oid);
             if (!head) {
                 empty_oid++;
+                v->dealloc_oid(oid);
                 continue;
             }
 
