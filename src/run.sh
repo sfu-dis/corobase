@@ -1,3 +1,4 @@
+#!/bin/bash
 if [ ${OWNER} != "" ] && [ ${OWNER} != ${USER} ]; then
 		echo "Unavailable, Wait"
 else
