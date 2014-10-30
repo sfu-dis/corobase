@@ -101,6 +101,6 @@ struct base_txn_btree_handler<transaction_proto2> {
     transaction_proto2_static::InitGC();
 #endif
   }
-  static const bool has_background_task = true;
+  //static const bool has_background_task = true;
 };
 #endif /* _NDB_TXN_PROTO2_IMPL_H_ */

@@ -11,6 +11,9 @@
 #include "dbcore/sm-common.h"
 
 #define NR_SOCKETS 4
+// each socket requests this many oids a time from global alloc
+#define OID_EXT_SIZE 8192
+
 typedef unsigned long long oid_type;
 
 class object
@@ -29,27 +32,17 @@ class object_vector
 public:
 	inline unsigned long long size() 
 	{
-		auto max = 0;
-		for( auto i = 0; i < NR_SOCKETS; i++ )
-		{
-			if( max < *_alloc_offset[i] )
-				max = *_alloc_offset[i];
-		}
-		return (max + 1) * NR_SOCKETS;
-	}
-
-    inline unsigned long long size(int skt)
-    {
-        return *_alloc_offset[skt];
+		return _global_oid_alloc_offset + 1;
     }
 
 	object_vector( unsigned long long nelems)
 	{
-		for( int i = 0; i < NR_SOCKETS; i ++ )
-		{
-			_alloc_offset[i] = (unsigned int*)numa_alloc_onnode( sizeof( unsigned int ), i );
-			*_alloc_offset[i] = 0;
-		}
+        for (int i = 0; i < NR_SOCKETS; i++) {
+            _local_oid_alloc_offset[i] = OID_EXT_SIZE * i;
+            _local_oid_allocated[i] = 0;
+        }
+        _start_oid = 1;
+        _global_oid_alloc_offset = OID_EXT_SIZE * NR_SOCKETS;
 		_obj_table = dynarray<fat_ptr>(  std::numeric_limits<unsigned int>::max(), nelems*sizeof(fat_ptr) );
 		_obj_table.sanitize( 0,  nelems* sizeof(fat_ptr));
 	}
@@ -81,7 +74,7 @@ public:
 
 	inline fat_ptr begin( oid_type oid )
 	{
-        ASSERT(oid < size());
+        ASSERT(oid <= size());
 		return volatile_read(_obj_table[oid]);
 	}
 
@@ -122,22 +115,43 @@ retry:
 
 	inline oid_type alloc()
 	{
-		int cpu = sched_getcpu();
-		ALWAYS_ASSERT(cpu >= 0 );
+		int node = sched_getcpu() % NR_SOCKETS;
+retry:
+        uint64_t nallocated = __sync_add_and_fetch(&_local_oid_allocated[node], 1);
+        int64_t overflow = nallocated - OID_EXT_SIZE;
+        if (overflow == 0) {
+            volatile_write(_local_oid_alloc_offset[node], alloc_oid_extent(node));
+            volatile_write(_local_oid_allocated[node], 0);
+        }
+        else if (overflow > 0)
+            goto retry;
+        return _local_oid_alloc_offset[node] + nallocated; // oid starts at 1
+    }
 
-		// TODO. resizing
-		int numa_node = cpu % NR_SOCKETS;		// by current topology
-		auto local_offset = __sync_add_and_fetch( _alloc_offset[numa_node], 1 );		// on NUMA node CAS
-		return local_offset * NR_SOCKETS + numa_node;
+    inline uint64_t alloc_oid_extent(int socket) {
+		uint64_t noffset = __sync_fetch_and_add(&_global_oid_alloc_offset, OID_EXT_SIZE);
+		_obj_table.ensure_size(sizeof(object*) * (_global_oid_alloc_offset + 1));
+        return noffset;
 	}
 
-	inline void dealloc(object* desc)
-	{
-		// TODO. 
-	}
+    inline oid_type start_oid() {
+        return _start_oid;
+    }
+
+    inline void try_update_start_oid(oid_type noid) {
+        if (volatile_read(_start_oid) + 1 == noid) {
+            volatile_write(_start_oid, noid);
+        }
+    }
+
+    inline void dealloc_oid(oid_type oid) {
+        try_update_start_oid(oid);
+    }
 
 private:
 	dynarray<fat_ptr> 		_obj_table;
-	unsigned int* _alloc_offset[NR_SOCKETS];
-
+    uint64_t _local_oid_alloc_offset[NR_SOCKETS];
+    uint64_t _local_oid_allocated[NR_SOCKETS];
+    uint64_t _global_oid_alloc_offset;
+    oid_type _start_oid;
 };
