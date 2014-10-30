@@ -466,14 +466,18 @@ start_over:
 			   hot_head++;
 			 */
 
+			object* cur_obj;
+			object *new_obj;
+			dbtuple *version;
+			fat_ptr clsn;
 			while (cur.offset() != 0 ) {
-				object* cur_obj = (object*)cur.offset();
-				object *new_obj = NULL;
-				dbtuple *version = reinterpret_cast<dbtuple *>(cur_obj->payload());
-				auto clsn = volatile_read(version->clsn);
-
 				if( cur._ptr & fat_ptr::ASI_COLD_FLAG )
-					goto next;
+					break;
+				cur_obj = (object*)cur.offset();
+				new_obj = NULL;
+				version = reinterpret_cast<dbtuple *>(cur_obj->payload());
+				clsn = volatile_read(version->clsn);
+
 
 				offset = (char *)cur_obj - base_addr;
 				if (offset < start_offset || offset + cur_obj->_size > end_offset)
