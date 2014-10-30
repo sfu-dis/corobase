@@ -7,7 +7,7 @@
 #include "dbcore/dynarray.h"
 #include <sched.h>
 #include <numa.h>
-#include <limits.h>
+#include <limits>
 #include "dbcore/sm-common.h"
 
 #define NR_SOCKETS 4
@@ -37,10 +37,6 @@ public:
 
 	object_vector( unsigned long long nelems)
 	{
-        for (int i = 0; i < NR_SOCKETS; i++) {
-            _local_oid_alloc_offset[i] = OID_EXT_SIZE * i;
-            _local_oid_allocated[i] = 0;
-        }
         _start_oid = 1;
         _global_oid_alloc_offset = OID_EXT_SIZE * NR_SOCKETS;
 		_obj_table = dynarray<fat_ptr>(  std::numeric_limits<unsigned int>::max(), nelems*sizeof(fat_ptr) );
@@ -115,33 +111,6 @@ retry:
 
 	inline oid_type alloc()
 	{
-        return alloc_core();
-
-		int node = sched_getcpu() % NR_SOCKETS;
-retry:
-        uint64_t nallocated = __sync_add_and_fetch(&_local_oid_allocated[node], 1);
-        int64_t overflow = nallocated - OID_EXT_SIZE;
-        if (overflow == 0) {
-            volatile_write(_local_oid_alloc_offset[node], alloc_oid_extent());
-            volatile_write(_local_oid_allocated[node], 0);
-        }
-        else if (overflow > 0)
-            goto retry;
-        return _local_oid_alloc_offset[node] + nallocated; // oid starts at 1
-    }
-
-    inline oid_type alloc_core()
-    {
-        /*
-        static __thread uint64_t _local_alloc_offset;
-        static __thread uint64_t _local_allocated = OID_EXT_SIZE;
-
-        if (_local_allocated == OID_EXT_SIZE) {
-            _local_alloc_offset = alloc_oid_extent();
-            _local_allocated = 0;
-        }
-        return _local_alloc_offset + (++_local_allocated);
-        */
         if (_core_oid_remaining.my() == 0) {
             _core_oid_offset.my() = alloc_oid_extent();
             _core_oid_remaining.my() = OID_EXT_SIZE;
@@ -171,10 +140,8 @@ retry:
 
 private:
 	dynarray<fat_ptr> 		_obj_table;
-    uint64_t _local_oid_alloc_offset[NR_SOCKETS];
-    uint64_t _local_oid_allocated[NR_SOCKETS];
     uint64_t _global_oid_alloc_offset;
-    percore_lazy<uint64_t> _core_oid_offset;
-    percore_lazy<uint64_t> _core_oid_remaining;
+    percore<uint64_t, false, false> _core_oid_offset;
+    percore<uint64_t, false, false> _core_oid_remaining;
     oid_type _start_oid;
 };
