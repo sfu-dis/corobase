@@ -64,7 +64,7 @@ namespace RA {
 
     std::vector<concurrent_btree*> tables;
     std::vector<std::string> table_names;
-    uint64_t *table_gc_stat[4]; // one per skt
+    //uint64_t *table_gc_stat[4]; // one per skt
     ra_wrapper ra_w;
     region_allocator *ra;
     int ra_nsock;
@@ -276,7 +276,7 @@ region_allocator::allocate(uint64_t size)
     
  retry:
     auto noffset = __sync_add_and_fetch(&_allocated_hot_offset, size);
-    THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
+    //THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
     __sync_add_and_fetch(&_allocated, size);
 
     auto sbits = _segment_bits;
@@ -436,10 +436,12 @@ forever:
     //uint64_t cas_failures = 0, cas_success = 0;
     //uint64_t trim_at_head = 0, trim_in_middle = 0;
 
+    /*
     if (!RA::table_gc_stat[socket]) {
         RA::table_gc_stat[socket] = (uint64_t *)malloc(sizeof(uint64_t) * RA::tables.size());
         memset(RA::table_gc_stat[socket], 0, sizeof(uint64_t) * 4);
     }
+    */
 
     std::cout << "region allocator: start to reclaim for socket "
               << socket << std::endl;
@@ -467,11 +469,11 @@ start_over:
 			while (cur.offset() != 0 ) {
 				if( cur._ptr & fat_ptr::ASI_COLD_FLAG )
 				{
-					cold_head++;
+					//cold_head++;
 					break;
 				}
-				else
-					hot_head++;
+				//else
+					//hot_head++;
 
 				cur_obj = (object*)cur.offset();
 				new_obj = NULL;
@@ -491,7 +493,7 @@ start_over:
 					if (cur == head) {
 						new_obj = (object *)myra->allocate_cold(cur_obj->_size);
 						memcpy(new_obj, cur_obj, cur_obj->_size);
-						RA::table_gc_stat[socket][i]++;
+						//RA::table_gc_stat[socket][i]++;
 						new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE, fat_ptr::ASI_COLD_FLAG);
 //						cold_copy_amt += cur_obj->size;
 					}   
@@ -509,7 +511,7 @@ start_over:
 				else {
 					new_obj = (object *)myra->allocate(cur_obj->_size);
 					memcpy(new_obj, cur_obj, cur_obj->_size);
-					RA::table_gc_stat[socket][i]++;
+					//RA::table_gc_stat[socket][i]++;
 					// already hot data
 					volatile_write( new_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
 					new_obj->_next = cur_obj->_next;
