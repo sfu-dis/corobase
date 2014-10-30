@@ -444,7 +444,7 @@ forever:
     std::cout << "region allocator: start to reclaim for socket "
               << socket << std::endl;
 
-    //uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
+//    uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
 	for (uint i = 0; i < RA::tables.size(); i++) {
 		concurrent_btree *t = RA::tables[i];
 		concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
@@ -459,12 +459,6 @@ start_over:
 				continue;
 			}
 
-			/*
-			   if ((uint64_t)head >= (uint64_t)myra->_cold_data && (uint64_t)head < (uint64_t)myra->_cold_data + myra->_cold_capacity)
-			   cold_head++;
-			   else if ((uint64_t)head >= (uint64_t)myra->_hot_data && (uint64_t)head < (uint64_t)myra->_hot_data + myra->_hot_capacity)
-			   hot_head++;
-			 */
 
 			object* cur_obj;
 			object *new_obj;
@@ -472,7 +466,13 @@ start_over:
 			fat_ptr clsn;
 			while (cur.offset() != 0 ) {
 				if( cur._ptr & fat_ptr::ASI_COLD_FLAG )
+				{
+					cold_head++;
 					break;
+				}
+				else
+					hot_head++;
+
 				cur_obj = (object*)cur.offset();
 				new_obj = NULL;
 				version = reinterpret_cast<dbtuple *>(cur_obj->payload());
@@ -493,8 +493,18 @@ start_over:
 						memcpy(new_obj, cur_obj, cur_obj->_size);
 						RA::table_gc_stat[socket][i]++;
 						new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE, fat_ptr::ASI_COLD_FLAG);
-						//cold_copy_amt += size;
-					}   // else new_obj = NULL
+//						cold_copy_amt += cur_obj->size;
+					}   
+					else
+					{
+						new_ptr = fat_ptr::make((void*)0, INVALID_SIZE_CODE);
+						if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
+							volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
+							//cas_failures++;
+							goto start_over;
+						}
+						break;
+					}
 				}
 				else {
 					new_obj = (object *)myra->allocate(cur_obj->_size);
@@ -503,7 +513,7 @@ start_over:
 					// already hot data
 					volatile_write( new_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
 					new_obj->_next = cur_obj->_next;
-					//hot_copy_amt += size;
+//					hot_copy_amt += cur_obj->_size;
 				}
 				// will fail if sb. else claimed prev_next
 				new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE);
@@ -536,7 +546,7 @@ next:
     myra->set_state(RA_GC_FINISHED);
     std::cout << "socket " << socket << " empty_oid=" << empty_oid
               << " cold_head=" << cold_head << " hot_head=" << hot_head << "\n";
-    //std::cout << "socket " << socket << " cold copy=" << cold_copy_amt
+//    std::cout << "socket " << socket << " cold copy=" << cold_copy_amt << std::endl;
     //          << " bytes, hot copy=" << hot_copy_amt << " bytes\n";
 //             << cas_failures << " cas failures, "
 //             << cas_success << " cas succeeses, "
