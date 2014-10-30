@@ -113,9 +113,10 @@ class basic_table {
 		INVARIANT( tuple_vector );
 		
 		int attempts = 0;
+		fat_ptr new_ptr = fat_ptr::make( new_desc, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG );
 	start_over:
-        object* head = tuple_vector->begin(oid);
-		object* ptr = head;
+        fat_ptr head = tuple_vector->begin(oid);
+		object* ptr = (object*)head.offset();
 		xid_context *visitor = xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
 		dbtuple* version;
@@ -171,7 +172,7 @@ class basic_table {
 						// in-place update case ( multiple updates on the same record  by same transaction)
 						if( holder_xid == xid )
 						{
-							if(!tuple_vector->put( oid, head, new_desc ))
+							if(!tuple_vector->put( oid, head, new_ptr))
 								return std::make_pair(false, reinterpret_cast<value_type>(version));
 							return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 						}
@@ -203,7 +204,7 @@ class basic_table {
 
 install:
 		// install a new version
-		if(!tuple_vector->put( oid, head, new_desc ))
+		if(!tuple_vector->put( oid, head, new_ptr))
 			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
 		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 	}
@@ -212,8 +213,14 @@ install:
 	inline value_type fetch_latest_version( oid_type oid ) const
 	{
 		ALWAYS_ASSERT( tuple_vector );
-		object* head = tuple_vector->begin(oid);
-		return head ? reinterpret_cast<value_type>(head->payload()) : NULL;
+		fat_ptr head = tuple_vector->begin(oid);
+		if( head.offset() != 0 )
+		{
+			object* obj = (object*)head.offset();
+			return reinterpret_cast<value_type>( obj->payload() );
+		}
+		else
+			return NULL;
 	}
 
 	value_type fetch_version( oid_type oid, XID xid ) const
@@ -225,11 +232,13 @@ install:
 
 		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
 		int attempts = 0;
+		object* cur_obj;
 	start_over:
-		for( object* ptr = tuple_vector->begin(oid); ptr; ptr = volatile_read(ptr->_next) ) {
-            if ((uint64_t)ptr & MSB_MASK)
-                goto start_over;
-			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->payload());
+		for( fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
+//            if ((uint64_t)ptr & MSB_MASK)
+  //              goto start_over;
+			cur_obj = (object*)ptr.offset();
+			dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
 			auto clsn = volatile_read(version->clsn);
 			// xid tracking & status check
 			if( clsn.asi_type() == fat_ptr::ASI_XID )
@@ -284,11 +293,14 @@ install:
 		// NOTE: oid 0 indicates absence of the node
 		if( oid )
 		{
-			object* ptr = node_vector->begin(oid);
-			return ptr? (node_type*)ptr->payload() : NULL;
+			fat_ptr head = node_vector->begin(oid);
+			if( head.offset() != 0 )
+			{
+				object* obj = (object*)head.offset();
+				return (node_type*)(obj->payload());
+			}
 		}
-		else
-			return NULL;
+		return NULL;
 	}
 
 	inline void unlink_tuple( oid_type oid, value_type item )

@@ -5,6 +5,7 @@
 #include "lockguard.h"
 
 #include "object.h"
+#include "dbcore/sm-common.h"
 
 using namespace TXN;
 
@@ -232,7 +233,8 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
   tuple_vector_type* tuple_vector = btr.get_tuple_vector();
   tuple->oid = tuple_vector->alloc();
-  while(!tuple_vector->put( tuple->oid, value ));
+  fat_ptr new_head = fat_ptr::make( value, INVALID_SIZE_CODE, fat_ptr::ASI_COLD_FLAG );		// COLD marking
+  while(!tuple_vector->put( tuple->oid, new_head));
 
   // XXX: underlying btree api should return the existing value if insert
   // fails- this would allow us to avoid having to do another search
