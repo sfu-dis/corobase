@@ -115,12 +115,14 @@ retry:
 
 	inline oid_type alloc()
 	{
+        return alloc_core();
+
 		int node = sched_getcpu() % NR_SOCKETS;
 retry:
         uint64_t nallocated = __sync_add_and_fetch(&_local_oid_allocated[node], 1);
         int64_t overflow = nallocated - OID_EXT_SIZE;
         if (overflow == 0) {
-            volatile_write(_local_oid_alloc_offset[node], alloc_oid_extent(node));
+            volatile_write(_local_oid_alloc_offset[node], alloc_oid_extent());
             volatile_write(_local_oid_allocated[node], 0);
         }
         else if (overflow > 0)
@@ -128,7 +130,26 @@ retry:
         return _local_oid_alloc_offset[node] + nallocated; // oid starts at 1
     }
 
-    inline uint64_t alloc_oid_extent(int socket) {
+    inline oid_type alloc_core()
+    {
+        /*
+        static __thread uint64_t _local_alloc_offset;
+        static __thread uint64_t _local_allocated = OID_EXT_SIZE;
+
+        if (_local_allocated == OID_EXT_SIZE) {
+            _local_alloc_offset = alloc_oid_extent();
+            _local_allocated = 0;
+        }
+        return _local_alloc_offset + (++_local_allocated);
+        */
+        if (_core_oid_remaining.my() == 0) {
+            _core_oid_offset.my() = alloc_oid_extent();
+            _core_oid_remaining.my() = OID_EXT_SIZE;
+        }
+        return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--) + 1;
+    }
+
+    inline uint64_t alloc_oid_extent() {
 		uint64_t noffset = __sync_fetch_and_add(&_global_oid_alloc_offset, OID_EXT_SIZE);
 		_obj_table.ensure_size(sizeof(object*) * (_global_oid_alloc_offset + 1));
         return noffset;
@@ -153,5 +174,7 @@ private:
     uint64_t _local_oid_alloc_offset[NR_SOCKETS];
     uint64_t _local_oid_allocated[NR_SOCKETS];
     uint64_t _global_oid_alloc_offset;
+    percore_lazy<uint64_t> _core_oid_offset;
+    percore_lazy<uint64_t> _core_oid_remaining;
     oid_type _start_oid;
 };
