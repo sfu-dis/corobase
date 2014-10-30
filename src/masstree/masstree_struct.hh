@@ -190,7 +190,8 @@ class internode : public node_base<P> {
 		memset( n->child_oid_, 0, sizeof(oid_type)*width+1 );
 
 		// drop to oid array
-		while(not node_vector->put( oid, obj ));
+		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
+		while(not node_vector->put( oid, new_head ));
 		return n;
 	}
 
@@ -370,7 +371,8 @@ class leaf : public node_base<P> {
 		n->next_lock_ = false;
 
 		// drop to oid array 
-		while(not node_vector->put( oid, obj ));
+		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
+		while(not node_vector->put( oid, new_head ));
 
 		return n;
 	}
