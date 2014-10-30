@@ -494,8 +494,9 @@ start_over:
 						new_obj = (object *)myra->allocate_cold(cur_obj->_size);
 						memcpy(new_obj, cur_obj, cur_obj->_size);
 						//RA::table_gc_stat[socket][i]++;
-						new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE, fat_ptr::ASI_COLD_FLAG);
+						new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE);
 //						cold_copy_amt += cur_obj->size;
+						new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE , fat_ptr::ASI_COLD_FLAG);
 					}   
 					else
 					{
@@ -515,10 +516,10 @@ start_over:
 					// already hot data
 					volatile_write( new_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
 					new_obj->_next = cur_obj->_next;
+					new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG);
 //					hot_copy_amt += cur_obj->_size;
 				}
 				// will fail if sb. else claimed prev_next
-				new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE);
 				if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
 					volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
 					//cas_failures++;
