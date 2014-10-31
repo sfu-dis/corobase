@@ -16,6 +16,8 @@
 
 typedef unsigned long long oid_type;
 
+struct dynarray;
+
 class object
 {
 	public:
@@ -39,11 +41,8 @@ public:
 	{
         _start_oid = 1;
         _global_oid_alloc_offset = OID_EXT_SIZE * NR_SOCKETS;
-		_obj_table = dynarray<fat_ptr>(  std::numeric_limits<unsigned int>::max(), nelems*sizeof(fat_ptr) );
-		_obj_table.sanitize( 0,  nelems* sizeof(fat_ptr));
-
-		_temperature_bitmap = dynarray<uint64_t>(  std::numeric_limits<unsigned int>::max(), nelems / _oids_per_byte + 1);
-		_temperature_bitmap.sanitize( 0,  nelems / _oids_per_byte + 1);
+		_obj_table = dynarray(  std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr), nelems*sizeof(fat_ptr) );
+		_temperature_bitmap = dynarray(  std::numeric_limits<unsigned int>::max(),_obj_table.size() / sizeof(fat_ptr) / _oids_per_byte );
 	}
 
 	bool put( oid_type oid, fat_ptr new_head)
@@ -52,8 +51,9 @@ public:
 		fat_ptr old_head = begin(oid);
 		object* new_desc = (object*)new_head.offset();
 		volatile_write( new_desc->_next, old_head);
+		uint64_t* p = (uint64_t*)begin_ptr(oid);
 
-		if( not __sync_bool_compare_and_swap( &_obj_table[oid]._ptr, old_head._ptr, new_head._ptr) )
+		if( not __sync_bool_compare_and_swap( p, old_head._ptr, new_head._ptr) )
 			return false;
 
         // new record, shuold be in cold store, no need to change temp bit
@@ -64,8 +64,9 @@ public:
 //		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
 		object* new_desc = (object*)new_head.offset();
 		volatile_write( new_desc->_next, old_head);
+		uint64_t* p = (uint64_t*)begin_ptr(oid);
 
-		if( not __sync_bool_compare_and_swap( &_obj_table[oid]._ptr, old_head._ptr, new_head._ptr) )
+		if( not __sync_bool_compare_and_swap( p, old_head._ptr, new_head._ptr) )
 			return false;
 
 		return true;
@@ -74,13 +75,14 @@ public:
 	inline fat_ptr begin( oid_type oid )
 	{
         ASSERT(oid <= size());
-		return volatile_read(_obj_table[oid]);
+		fat_ptr* ret = begin_ptr(oid);
+		return volatile_read(*ret);
 	}
 
     inline fat_ptr* begin_ptr(oid_type oid)
     {
         // tzwang: I guess we don't need volatile_read for this
-        return (fat_ptr*)(&_obj_table[oid]._ptr);
+        return (fat_ptr*)(&_obj_table[oid * sizeof(fat_ptr)]);
     }
 
 	void unlink( oid_type oid, T item )
@@ -123,7 +125,10 @@ retry:
 
     inline uint64_t alloc_oid_extent() {
 		uint64_t noffset = __sync_fetch_and_add(&_global_oid_alloc_offset, OID_EXT_SIZE);
-		_obj_table.ensure_size(sizeof(object*) * (_global_oid_alloc_offset + 1));
+
+		uint64_t obj_table_size = sizeof(fat_ptr) * (_global_oid_alloc_offset);
+		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );			// 10% increase
+		_temperature_bitmap.ensure_size( _obj_table.size() / sizeof(fat_ptr) / _oids_per_byte);
         return noffset;
 	}
 
@@ -145,20 +150,22 @@ retry:
 	{
 		uint64_t index = oid / _oids_per_word;	
 		uint64_t offset = (oid % _oids_per_word) / _oids_per_bit;
+		uint64_t* p = (uint64_t*)(&_temperature_bitmap[index * sizeof(uint64_t)]);
 
-		uint64_t old_bitmap = volatile_read(_temperature_bitmap[index]);
+		uint64_t old_bitmap = volatile_read(*p);
 		uint64_t new_bitmap= is_hot ?
 			old_bitmap | ( (uint64_t)(1) << offset) : 
 			old_bitmap &~ ( (uint64_t)(1) << offset);
 
-		__sync_bool_compare_and_swap( _temperature_bitmap + index, old_bitmap, new_bitmap );
+		__sync_bool_compare_and_swap( p, old_bitmap, new_bitmap );
 	}
 
 	inline bool is_hotgroup( oid_type oid )
 	{
 		uint64_t index = oid / _oids_per_word;	
 		uint64_t offset = (oid % _oids_per_word) / _oids_per_bit;
-		bool is_hot = volatile_read(_temperature_bitmap[index]) & (uint64_t)(1) << offset;
+		uint64_t* p = (uint64_t*)(&_temperature_bitmap[index * sizeof(uint64_t)]);
+		bool is_hot = volatile_read(*p) & (uint64_t)(1) << offset;
 		return is_hot;
 	}
 
@@ -169,8 +176,8 @@ retry:
 
 
 private:
-	dynarray<fat_ptr> 		_obj_table;
-	dynarray<uint64_t> 		_temperature_bitmap;
+	dynarray 		_obj_table;
+	dynarray 		_temperature_bitmap;
 	uint64_t _oids_per_bit = 8;
 	uint64_t _oids_per_byte = 64;
 	uint64_t _oids_per_word = 512;
