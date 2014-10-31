@@ -284,7 +284,7 @@ region_allocator::allocate(uint64_t size)
     
  retry:
     auto noffset = __sync_add_and_fetch(&_allocated_hot_offset, size);
-    THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
+    //THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
     __sync_add_and_fetch(&_allocated, size);
 
     auto sbits = _segment_bits;

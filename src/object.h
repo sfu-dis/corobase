@@ -146,11 +146,12 @@ retry:
     {
         ASSERT(seg < RA_NUM_SEGMENTS);
         uint64_t groupid = oid_group(oid);
-        temp_bitmap_type *gmap_ptr = (temp_bitmap_type *)&_temperature_bitmap[seg][groupid];
+        temp_bitmap_type gmap = volatile_read(_temperature_bitmap[seg][groupid]);
         temp_bitmap_type nmap = hot ?
-            *gmap_ptr | (uint64_t){1} << (groupid % sizeof(temp_bitmap_type)) :
-            *gmap_ptr & (~((uint64_t){1} << (groupid % sizeof(temp_bitmap_type))));
-        __sync_bool_compare_and_swap(gmap_ptr, *gmap_ptr, nmap);
+            gmap | (uint64_t){1} << (groupid % sizeof(temp_bitmap_type)) :
+            gmap & (~((uint64_t){1} << (groupid % sizeof(temp_bitmap_type))));
+        if (gmap != nmap)
+            __sync_bool_compare_and_swap(&_temperature_bitmap[seg][groupid], gmap, nmap);
     }
 
     inline uint64_t oid_group(oid_type oid)
