@@ -233,7 +233,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
   tuple_vector_type* tuple_vector = btr.get_tuple_vector();
   tuple->oid = tuple_vector->alloc();
-  fat_ptr new_head = fat_ptr::make( value, INVALID_SIZE_CODE, fat_ptr::ASI_COLD_FLAG );		// COLD marking
+  fat_ptr new_head = fat_ptr::make( value, INVALID_SIZE_CODE, 0);
   while(!tuple_vector->put( tuple->oid, new_head));
 
   // XXX: underlying btree api should return the existing value if insert

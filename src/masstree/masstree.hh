@@ -208,8 +208,8 @@ install:
 			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
 
 		// hot marking
-		if( likely(not RA::system_loading) )
-			tuple_vector->set_temperature( oid, true );
+		//if( likely(not RA::system_loading) )
+		//	tuple_vector->set_temperature( oid, true );
 
 		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 	}

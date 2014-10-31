@@ -46,6 +46,7 @@ private:
 public:
     void* allocate(uint64_t size);
     void* allocate_cold(uint64_t size);
+    fat_ptr allocate_fat(uint64_t size);
     region_allocator(uint64_t one_segment_bits, int skt);
     ~region_allocator();
     int state() { return volatile_read(_state); }
@@ -64,7 +65,6 @@ namespace RA {
 
     std::vector<concurrent_btree*> tables;
     std::vector<std::string> table_names;
-    //uint64_t *table_gc_stat[4]; // one per skt
     ra_wrapper ra_w;
     region_allocator *ra;
     int ra_nsock;
@@ -122,6 +122,14 @@ namespace RA {
         if (not myra)
             myra = &ra[sched_getcpu() % ra_nsock];
         return myra->allocate_cold(size);
+    }
+
+    fat_ptr allocate_fat(uint64_t size) {
+        auto *myra = tls_ra;
+        if (not myra)
+            myra = &ra[sched_getcpu() % ra_nsock];
+        ASSERT(!system_loading);
+        return myra->allocate_fat(size);
     }
 
     // epochs related
@@ -276,14 +284,13 @@ region_allocator::allocate(uint64_t size)
     
  retry:
     auto noffset = __sync_add_and_fetch(&_allocated_hot_offset, size);
-    //THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
+    THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
     __sync_add_and_fetch(&_allocated, size);
 
     auto sbits = _segment_bits;
     if (((noffset-1) >> sbits) != ((noffset-size)  >> sbits)) {
         // chunk spans a segment boundary, unusable
         std::cout << "opening segment " << (noffset >> sbits) << " of memory region for socket " << _socket << std::endl;
-        //while(state() != RA_NORMAL);
         if (state() != RA_NORMAL)
             throw std::runtime_error("GC requested before last round finishes.");
         set_state(RA_GC_REQUESTED);
@@ -298,6 +305,26 @@ region_allocator::allocate(uint64_t size)
     }
 
     return &_hot_data[(noffset - size) & _hot_mask];
+}
+
+fat_ptr
+region_allocator::allocate_fat(uint64_t size)
+{
+    void *mem = allocate(size);
+    int seg_nr = ((uintptr_t)mem - (uintptr_t)_hot_data) >> _segment_bits;
+    uint64_t seg_id_mask = 0;
+    switch (seg_nr) {
+    case 1:
+        seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG;
+        break;
+    case 2:
+        seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG;
+        break;
+    case 3:
+        seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG | fat_ptr::ASI_SEG_HI_FLAG;
+        break;
+    }
+    return fat_ptr::make(mem, INVALID_SIZE_CODE, seg_id_mask);
 }
 
 void*
@@ -317,6 +344,7 @@ region_allocator::reclaim_daemon(int socket)
     uint64_t seg_size = 1 << myra->_segment_bits;
     char __attribute__((aligned(64))) *base_addr = myra->_hot_data;
 	uint64_t offset;
+    int gc_segment = 0; // the segment that's being gc'ed.
 
 forever:
     myra->_reclaim_cv.wait(lock);
@@ -328,39 +356,26 @@ forever:
     ASSERT(!(end_offset & (seg_size - 1)));
 	fat_ptr new_ptr;
 
-    //uint64_t cas_failures = 0, cas_success = 0;
-    //uint64_t trim_at_head = 0, trim_in_middle = 0;
-
-    /*
-    if (!RA::table_gc_stat[socket]) {
-        RA::table_gc_stat[socket] = (uint64_t *)malloc(sizeof(uint64_t) * RA::tables.size());
-        memset(RA::table_gc_stat[socket], 0, sizeof(uint64_t) * 4);
-    }
-    */
-
     std::cout << "region allocator: start to reclaim for socket "
               << socket << std::endl;
 
-//    uint64_t cold_copy_amt = 0, hot_copy_amt = 0;
 	for (uint i = 0; i < RA::tables.size(); i++) {
-		concurrent_btree *t = RA::tables[i];
-		concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
+		concurrent_btree::tuple_vector_type *v = RA::tables[i]->get_tuple_vector();
 		INVARIANT(v);
 
 		// OID group 
-		for( uint64_t i = 0; i < v->size() / v->oid_group_sz() + 1; i++ )
-		{
-			oid_type group_start_oid = i * v->oid_group_sz();
-			oid_type group_end_oid =  std::min( (i+1) * v->oid_group_sz(), (uint64_t)v->size() +1 );
+		for (uint64_t g = 0; g < v->size() / v->oid_group_sz() + 1; g++) {
+			if (!v->is_hot_group(g, gc_segment))
+                continue;
 
-			if( not v->is_hotgroup( group_start_oid ) )			// reserved
-				continue;
+            oid_type group_start_oid = g * v->oid_group_sz();
+			oid_type group_end_oid = std::min((uint64_t)group_start_oid + v->oid_group_sz(),
+                                              (uint64_t)v->size() + 1);
 
 			if( unlikely(group_start_oid == 0) )		// always 0
 				group_start_oid++;
 
-			// oid in a group
-			bool group_hotness = false;
+            v->set_temperature(group_start_oid, false, gc_segment);
 			for( oid_type oid = group_start_oid; oid < group_end_oid; oid++ )
 			{
 start_over:
@@ -371,27 +386,16 @@ start_over:
 					continue;
 				}
 
-				object* cur_obj;
-				object *new_obj;
-				dbtuple *version;
-				fat_ptr clsn;
 				while (cur.offset() != 0 ) {
-					if( cur._ptr & fat_ptr::ASI_COLD_FLAG )
-					{
-						//cold_head++;
+					if (!cur._ptr & fat_ptr::ASI_HOT_FLAG)
 						break;
-					}
-					//else
-					//hot_head++;
 
-					cur_obj = (object*)cur.offset();
-					new_obj = NULL;
-					version = reinterpret_cast<dbtuple *>(cur_obj->payload());
-					clsn = volatile_read(version->clsn);
-
+					object *cur_obj = (object*)cur.offset(), *new_obj = NULL;
+					dbtuple *version = reinterpret_cast<dbtuple *>(cur_obj->payload());
+					auto clsn = volatile_read(version->clsn);
 
 					offset = (char *)cur_obj - base_addr;
-					if (offset < start_offset || offset >= end_offset)
+					if (offset < start_offset || offset + cur_obj->_size > end_offset)
 						goto next;
 
 					ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -402,10 +406,8 @@ start_over:
 						if (cur == head) {
 							new_obj = (object *)myra->allocate_cold(cur_obj->_size);
 							memcpy(new_obj, cur_obj, cur_obj->_size);
-							//RA::table_gc_stat[socket][i]++;
 							new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE);
-							//						cold_copy_amt += cur_obj->size;
-							new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE , fat_ptr::ASI_COLD_FLAG);
+							new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE);
 						}   
 						else
 						{
@@ -421,16 +423,10 @@ start_over:
 					else {
 						new_obj = (object *)myra->allocate(cur_obj->_size);
 						memcpy(new_obj, cur_obj, cur_obj->_size);
-						//RA::table_gc_stat[socket][i]++;
 						// already hot data
 						volatile_write( new_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
 						new_obj->_next = cur_obj->_next;
 						new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG);
-
-						// hot marking
-						group_hotness = true;
-
-						//					hot_copy_amt += cur_obj->_size;
 					}
 					// will fail if sb. else claimed prev_next
 					if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
@@ -438,13 +434,6 @@ start_over:
 						//cas_failures++;
 						goto start_over;
 					}
-					/*
-					   cas_success++;
-					   if (!new_obj)
-					   trim_in_middle++;
-					   else if (!new_obj->_next)
-					   trim_at_head++;
-					 */
 					// !new_obj => trimmed in the middle of the chain;
 					// !new_obj->_next => the last element or trimmed at head;
 					// so break in either case.
@@ -456,27 +445,15 @@ next:
 					fat_ptr next = volatile_read( *prev_next );
 					volatile_write(cur._ptr, next._ptr &~ fat_ptr::DIRTY_MASK );
 				}
-
 			}
-			if( group_hotness == false )
-				v->set_temperature( group_start_oid, false );
 		}
-
 	}
     ASSERT(myra->state() == RA_GC_IN_PROG);
     myra->set_state(RA_GC_FINISHED);
     std::cout << "socket " << socket << " empty_oid=" << empty_oid
               << " cold_head=" << cold_head << " hot_head=" << hot_head << "\n";
-//    std::cout << "socket " << socket << " cold copy=" << cold_copy_amt << std::endl;
-    //          << " bytes, hot copy=" << hot_copy_amt << " bytes\n";
-//             << cas_failures << " cas failures, "
-//             << cas_success << " cas succeeses, "
-//             << trim_at_head << " trim at head, "
-//             << trim_in_middle << " in middle\n";
-//    for (uint i = 0; i < RA::tables.size(); i++) {
-//        std::cout << "per table amt " << RA::table_names[i] << "=" << RA::table_gc_stat[socket][i] << "\n";
-//        RA::table_gc_stat[socket][i] = 0;
-//    }
+    gc_segment++;
+    gc_segment = gc_segment % region_allocator::NUM_SEGMENTS;
     goto forever;
 }
 
