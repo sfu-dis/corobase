@@ -349,7 +349,6 @@ region_allocator::reclaim_daemon(int socket)
 forever:
     myra->_reclaim_cv.wait(lock);
     LSN tlsn = volatile_read(RA::trim_lsn);
-    uint64_t cold_head = 0, hot_head = 0, empty_oid = 0;
     uint64_t start_offset = (volatile_read(myra->_reclaimed_offset)) & myra->_hot_mask;
     uint64_t end_offset = start_offset + seg_size;
     ASSERT(!(start_offset & (seg_size - 1)));
@@ -381,10 +380,8 @@ forever:
 start_over:
 				fat_ptr head = v->begin(oid), cur = head;
 				fat_ptr *prev_next = v->begin_ptr(oid);
-				if (head.offset() == 0 ) {
-					empty_oid++;
+				if (head.offset() == 0 )
 					continue;
-				}
 
 				while (cur.offset() != 0 ) {
 					if (!cur._ptr & fat_ptr::ASI_HOT_FLAG)
@@ -414,7 +411,6 @@ start_over:
 							new_ptr = fat_ptr::make((void*)0, INVALID_SIZE_CODE);
 							if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
 								volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
-								//cas_failures++;
 								goto start_over;
 							}
 							break;
@@ -431,7 +427,6 @@ start_over:
 					// will fail if sb. else claimed prev_next
 					if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
 						volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
-						//cas_failures++;
 						goto start_over;
 					}
 					// !new_obj => trimmed in the middle of the chain;
@@ -450,8 +445,7 @@ next:
 	}
     ASSERT(myra->state() == RA_GC_IN_PROG);
     myra->set_state(RA_GC_FINISHED);
-    std::cout << "socket " << socket << " empty_oid=" << empty_oid
-              << " cold_head=" << cold_head << " hot_head=" << hot_head << "\n";
+    std::cout << "GC finished for socket " << socket << "\n";
     gc_segment++;
     gc_segment = gc_segment % region_allocator::NUM_SEGMENTS;
     goto forever;
