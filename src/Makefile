@@ -169,7 +169,8 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/adler.cpp \
 	dbcore/w_rand.cpp \
 	dbcore/size-encode.cpp \
-	dbcore/xid.cpp
+	dbcore/xid.cpp		\
+	dbcore/dynarray.cpp
 
 ifeq ($(MASSTREE_S),1)
 MASSTREE_SRCFILES = masstree/compiler.cc \

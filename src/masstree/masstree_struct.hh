@@ -560,8 +560,8 @@ template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
 
     masstree_precondition(!root_oid_);
-	tuple_vector = new object_vector<value_type>( 1024*1024*100);
-	node_vector = new object_vector<node_type*>( 1024*1024*10);
+	tuple_vector = new object_vector<value_type>( 1024*1024);
+	node_vector = new object_vector<node_type*>( 1024*1024);
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
 	root_oid_ = root->oid;
 }
