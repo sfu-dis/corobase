@@ -108,7 +108,7 @@ class basic_table {
 		return tuple_vector->insert( val );
 	}
 
-	std::pair<bool, value_type> update_version( oid_type oid, object* new_desc, XID xid)
+	bool update_version( oid_type oid, object* new_desc, XID xid)
 	{
 		INVARIANT( tuple_vector );
 		
@@ -156,7 +156,7 @@ class basic_table {
 				case TXN_CMMTD:
 					{
 						if ( end > visitor->begin )		// to prevent version branch( or lost update)
-							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+							return false;
 						else
 							goto install;
 					}
@@ -171,18 +171,14 @@ class basic_table {
 					{
 						// in-place update case ( multiple updates on the same record  by same transaction)
 						if( holder_xid == xid )
-						{
-							if(!tuple_vector->put( oid, head, new_ptr))
-								return std::make_pair(false, reinterpret_cast<value_type>(version));
-							return std::make_pair(true, reinterpret_cast<value_type>(NULL));
-						}
+							goto install;
 						else
-							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+							return false;
 					}
 
 					// If this TX is committing, we shouldn't install new version!
 				case TXN_COMMITTING:
-					return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+					return false;
 				default:
 					ALWAYS_ASSERT( false );
 			}
@@ -192,12 +188,9 @@ class basic_table {
 		{
 			// make sure this is valid committed data, or aborted data that is not reclaimed yet.
 			// aborted, but not yet reclaimed.
-			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG || LSN::from_ptr(clsn) == INVALID_LSN);
-			if( LSN::from_ptr(clsn) == INVALID_LSN )
-				goto install;
-			// newer version. fall back
-			else if ( LSN::from_ptr(clsn) > visitor->begin )
-				return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
+			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
+			if ( LSN::from_ptr(clsn) > visitor->begin )
+				return false;
 			else
 				goto install;
 		}
@@ -205,13 +198,8 @@ class basic_table {
 install:
 		// install a new version
 		if(!tuple_vector->put( oid, head, new_ptr))
-			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
-
-		// hot marking
-		//if( likely(not RA::system_loading) )
-		//	tuple_vector->set_temperature( oid, true );
-
-		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
+			return false;
+		return true;
 	}
 
 	// Sometimes, we don't care about version. We just need the first one!
@@ -235,7 +223,6 @@ install:
 		xid_context *visitor= xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
 
-		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
 		int attempts = 0;
 		object* cur_obj;
 	start_over:

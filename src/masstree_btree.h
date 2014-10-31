@@ -267,7 +267,7 @@ public:
   {
 	  return table_.get_tuple_vector();
   }
-  std::pair<bool, value_type> update_version( oid_type oid, object* obj, XID xid)
+  bool update_version( oid_type oid, object* obj, XID xid)
   {
 	  return table_.update_version( oid, obj, xid );
   }
