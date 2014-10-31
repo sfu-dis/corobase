@@ -347,98 +347,121 @@ forever:
 		concurrent_btree::tuple_vector_type *v = t->get_tuple_vector();
 		INVARIANT(v);
 
-		for (uint oid = v->start_oid(); oid <= v->size(); oid++) {
-start_over:
-			fat_ptr head = v->begin(oid), cur = head;
-			fat_ptr *prev_next = v->begin_ptr(oid);
-			if (head.offset() == 0 ) {
-				empty_oid++;
+		// OID group 
+		for( uint64_t i = 0; i < v->size() / v->oid_group_sz() + 1; i++ )
+		{
+			oid_type group_start_oid = i * v->oid_group_sz();
+			oid_type group_end_oid =  std::min( (i+1) * v->oid_group_sz(), (uint64_t)v->size() +1 );
+
+			if( not v->is_hotgroup( group_start_oid ) )			// reserved
 				continue;
-			}
 
+			if( unlikely(group_start_oid == 0) )		// always 0
+				group_start_oid++;
 
-			object* cur_obj;
-			object *new_obj;
-			dbtuple *version;
-			fat_ptr clsn;
-			while (cur.offset() != 0 ) {
-				if( cur._ptr & fat_ptr::ASI_COLD_FLAG )
-				{
-					//cold_head++;
-					break;
+			// oid in a group
+			bool group_hotness = false;
+			for( oid_type oid = group_start_oid; oid < group_end_oid; oid++ )
+			{
+start_over:
+				fat_ptr head = v->begin(oid), cur = head;
+				fat_ptr *prev_next = v->begin_ptr(oid);
+				if (head.offset() == 0 ) {
+					empty_oid++;
+					continue;
 				}
-				//else
-					//hot_head++;
 
-				cur_obj = (object*)cur.offset();
-				new_obj = NULL;
-				version = reinterpret_cast<dbtuple *>(cur_obj->payload());
-				clsn = volatile_read(version->clsn);
-
-
-				offset = (char *)cur_obj - base_addr;
-				if (offset < start_offset || offset + cur_obj->_size > end_offset)
-					goto next;
-
-				ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
-				ASSERT( not cur_obj->_next.is_dirty() );
-				volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr |fat_ptr::DIRTY_MASK );
-
-				if (LSN::from_ptr(clsn) < tlsn) {
-					if (cur == head) {
-						new_obj = (object *)myra->allocate_cold(cur_obj->_size);
-						memcpy(new_obj, cur_obj, cur_obj->_size);
-						//RA::table_gc_stat[socket][i]++;
-						new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE);
-//						cold_copy_amt += cur_obj->size;
-						new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE , fat_ptr::ASI_COLD_FLAG);
-					}   
-					else
+				object* cur_obj;
+				object *new_obj;
+				dbtuple *version;
+				fat_ptr clsn;
+				while (cur.offset() != 0 ) {
+					if( cur._ptr & fat_ptr::ASI_COLD_FLAG )
 					{
-						new_ptr = fat_ptr::make((void*)0, INVALID_SIZE_CODE);
-						if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
-							volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
-							//cas_failures++;
-							goto start_over;
-						}
+						//cold_head++;
 						break;
 					}
-				}
-				else {
-					new_obj = (object *)myra->allocate(cur_obj->_size);
-					memcpy(new_obj, cur_obj, cur_obj->_size);
-					//RA::table_gc_stat[socket][i]++;
-					// already hot data
-					volatile_write( new_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
-					new_obj->_next = cur_obj->_next;
-					new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG);
-//					hot_copy_amt += cur_obj->_size;
-				}
-				// will fail if sb. else claimed prev_next
-				if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
-					volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
-					//cas_failures++;
-					goto start_over;
-				}
-				/*
-				   cas_success++;
-				   if (!new_obj)
-				   trim_in_middle++;
-				   else if (!new_obj->_next)
-				   trim_at_head++;
-				 */
-				// !new_obj => trimmed in the middle of the chain;
-				// !new_obj->_next => the last element or trimmed at head;
-				// so break in either case.
-				if (!new_obj || new_obj->_next.offset() == 0 )
-					break;
-				cur_obj = new_obj;
+					//else
+					//hot_head++;
+
+					cur_obj = (object*)cur.offset();
+					new_obj = NULL;
+					version = reinterpret_cast<dbtuple *>(cur_obj->payload());
+					clsn = volatile_read(version->clsn);
+
+
+					offset = (char *)cur_obj - base_addr;
+					if (offset < start_offset || offset >= end_offset)
+						goto next;
+
+					ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+					ASSERT( not cur_obj->_next.is_dirty() );
+					volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr |fat_ptr::DIRTY_MASK );
+
+					if (LSN::from_ptr(clsn) < tlsn) {
+						if (cur == head) {
+							new_obj = (object *)myra->allocate_cold(cur_obj->_size);
+							memcpy(new_obj, cur_obj, cur_obj->_size);
+							//RA::table_gc_stat[socket][i]++;
+							new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE);
+							//						cold_copy_amt += cur_obj->size;
+							new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE , fat_ptr::ASI_COLD_FLAG);
+						}   
+						else
+						{
+							new_ptr = fat_ptr::make((void*)0, INVALID_SIZE_CODE);
+							if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
+								volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
+								//cas_failures++;
+								goto start_over;
+							}
+							break;
+						}
+					}
+					else {
+						new_obj = (object *)myra->allocate(cur_obj->_size);
+						memcpy(new_obj, cur_obj, cur_obj->_size);
+						//RA::table_gc_stat[socket][i]++;
+						// already hot data
+						volatile_write( new_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
+						new_obj->_next = cur_obj->_next;
+						new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG);
+
+						// hot marking
+						group_hotness = true;
+
+						//					hot_copy_amt += cur_obj->_size;
+					}
+					// will fail if sb. else claimed prev_next
+					if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
+						volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
+						//cas_failures++;
+						goto start_over;
+					}
+					/*
+					   cas_success++;
+					   if (!new_obj)
+					   trim_in_middle++;
+					   else if (!new_obj->_next)
+					   trim_at_head++;
+					 */
+					// !new_obj => trimmed in the middle of the chain;
+					// !new_obj->_next => the last element or trimmed at head;
+					// so break in either case.
+					if (!new_obj || new_obj->_next.offset() == 0 )
+						break;
+					cur_obj = new_obj;
 next:
-				prev_next = &cur_obj->_next;
-				fat_ptr next = volatile_read( *prev_next );
-				volatile_write(cur._ptr, next._ptr &~ fat_ptr::DIRTY_MASK );
+					prev_next = &cur_obj->_next;
+					fat_ptr next = volatile_read( *prev_next );
+					volatile_write(cur._ptr, next._ptr &~ fat_ptr::DIRTY_MASK );
+				}
+
 			}
+			if( group_hotness == false )
+				v->set_temperature( group_start_oid, false );
 		}
+
 	}
     ASSERT(myra->state() == RA_GC_IN_PROG);
     myra->set_state(RA_GC_FINISHED);
