@@ -318,7 +318,7 @@ region_allocator::allocate_fat(uint64_t size)
         seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG;
         break;
     case 2:
-        seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG;
+        seg_id_mask = fat_ptr::ASI_SEG_HI_FLAG;
         break;
     case 3:
         seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG | fat_ptr::ASI_SEG_HI_FLAG;

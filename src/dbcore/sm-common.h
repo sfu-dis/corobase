@@ -112,7 +112,7 @@ struct fat_ptr {
 
     // Indicates which segment of the hot store this memory is allocated from.
     // Currently we support four segments. So consider this as a two-bit int:
-    // ASI_SEG_LO | ASI_SEG_HI | segment
+    // ASI_SEG_HI | ASI_SEG_LO | segment
     //      0           0           0
     //      0           1           1
     //      1           0           2
