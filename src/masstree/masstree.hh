@@ -206,6 +206,11 @@ install:
 		// install a new version
 		if(!tuple_vector->put( oid, head, new_ptr))
 			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
+
+		// hot marking
+		if( likely(not RA::system_loading) )
+			tuple_vector->set_temperature( oid, true );
+
 		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
 	}
 
