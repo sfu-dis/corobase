@@ -279,11 +279,13 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 try_expect_new:
   // Allocate an version
   char *p = NULL;
+  fat_ptr fp;
   if (expect_new) {
       p = reinterpret_cast<char*>(RA::allocate_cold(sizeof(object) + alloc_sz));
   }
   else {
-      p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
+      fp = RA::allocate_fat(sizeof(object) + alloc_sz);
+      p = reinterpret_cast<char*>(fp.offset());
   }
   INVARIANT(p);
 
@@ -373,6 +375,7 @@ try_expect_new:
 
   // check return value
   if (ret.first) { // succeeded
+    this->underlying_btree.get_tuple_vector()->set_temperature(tuple->oid, true, fp);
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
