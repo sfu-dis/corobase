@@ -58,7 +58,7 @@ public:
 
 namespace RA {
     static const uint64_t PAGE_SIZE_BITS = 16; // Windows uses 64kB pages...
-    static const uint64_t MEM_SEGMENT_BITS = 30; // 1GB/segment (16 GB total on 4-socket machine)
+    static const uint64_t MEM_SEGMENT_BITS = 28; // 1GB/segment (16 GB total on 4-socket machine)
     static_assert(MEM_SEGMENT_BITS > PAGE_SIZE_BITS,
                   "Region allocator segments can't be smaller than a page");
     static const uint64_t TRIM_MARK = 1 * 1024 * 1024;
@@ -324,7 +324,7 @@ region_allocator::allocate_fat(uint64_t size)
         seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG | fat_ptr::ASI_SEG_HI_FLAG;
         break;
     }
-    return fat_ptr::make(mem, INVALID_SIZE_CODE, seg_id_mask);
+    return fat_ptr::make(mem, INVALID_SIZE_CODE, seg_id_mask | fat_ptr::ASI_HOT_FLAG);
 }
 
 void*
@@ -349,7 +349,7 @@ region_allocator::reclaim_daemon(int socket)
 forever:
     myra->_reclaim_cv.wait(lock);
     LSN tlsn = volatile_read(RA::trim_lsn);
-    uint64_t start_offset = (volatile_read(myra->_reclaimed_offset)) & myra->_hot_mask;
+    uint64_t start_offset = gc_segment * seg_size;
     uint64_t end_offset = start_offset + seg_size;
     ASSERT(!(start_offset & (seg_size - 1)));
     ASSERT(!(end_offset & (seg_size - 1)));
@@ -362,20 +362,22 @@ forever:
 		concurrent_btree::tuple_vector_type *v = RA::tables[i]->get_tuple_vector();
 		INVARIANT(v);
 
+        uint64_t nr_oids = v->size();
+        uint64_t nr_groups = (nr_oids + v->oid_group_sz() - 1) / v->oid_group_sz();
 		// OID group 
-		for (uint64_t g = 0; g < v->size() / v->oid_group_sz() + 1; g++) {
+		for (uint64_t g = 0; g < nr_groups; g++) {
 			if (!v->is_hot_group(g, gc_segment))
                 continue;
 
             oid_type group_start_oid = g * v->oid_group_sz();
-			oid_type group_end_oid = std::min((uint64_t)group_start_oid + v->oid_group_sz(),
-                                              (uint64_t)v->size() + 1);
+			oid_type group_end_oid = std::min((uint64_t)group_start_oid + v->oid_group_sz() - 1,
+                                              nr_oids - 1);
 
 			if( unlikely(group_start_oid == 0) )		// always 0
 				group_start_oid++;
 
             v->set_temperature(group_start_oid, false, gc_segment);
-			for( oid_type oid = group_start_oid; oid < group_end_oid; oid++ )
+			for( oid_type oid = group_start_oid; oid <= group_end_oid; oid++ )
 			{
 start_over:
 				fat_ptr head = v->begin(oid), cur = head;
@@ -387,14 +389,29 @@ start_over:
 					if (!cur._ptr & fat_ptr::ASI_HOT_FLAG)
 						break;
 
-					object *cur_obj = (object*)cur.offset(), *new_obj = NULL;
-					dbtuple *version = reinterpret_cast<dbtuple *>(cur_obj->payload());
-					auto clsn = volatile_read(version->clsn);
+                    ASSERT(!(cur._ptr & fat_ptr::DIRTY_MASK));
+#if CHECK_INVARIANTS
+                    bool legal_addr = false;
+                    for (uint n = 0; n < 4; n++) {
+                        region_allocator *r = RA::ra + n;
+                        if ((cur.offset() >= (uintptr_t)r->_hot_data &&
+                             cur.offset() < (uintptr_t)r->_hot_data + r->_hot_capacity) ||
+                            (cur.offset() >= (uintptr_t)r->_cold_data &&
+                             cur.offset() < (uintptr_t)r->_cold_data + r->_cold_capacity))
+                            legal_addr = true;
+                    }
+                    ASSERT(legal_addr);
+#endif
 
+					object *cur_obj = (object*)cur.offset(), *new_obj = NULL;
+					dbtuple *version = NULL;
+					fat_ptr clsn;
 					offset = (char *)cur_obj - base_addr;
 					if (offset < start_offset || offset + cur_obj->_size > end_offset)
 						goto next;
 
+                    version = reinterpret_cast<dbtuple *>(cur_obj->payload());
+					clsn = volatile_read(version->clsn);
 					ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
 					ASSERT( not cur_obj->_next.is_dirty() );
 					volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr |fat_ptr::DIRTY_MASK );
@@ -403,13 +420,15 @@ start_over:
 						if (cur == head) {
 							new_obj = (object *)myra->allocate_cold(cur_obj->_size);
 							memcpy(new_obj, cur_obj, cur_obj->_size);
-							new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE);
+							new_obj->_next= NULL_PTR;
+							//new_obj->_next= fat_ptr::make((void*)0, INVALID_SIZE_CODE);
 							new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE);
 						}   
 						else
 						{
-							new_ptr = fat_ptr::make((void*)0, INVALID_SIZE_CODE);
-							if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
+							new_ptr = NULL_PTR;
+							//new_ptr = fat_ptr::make((void*)0, INVALID_SIZE_CODE);
+							if (!__sync_bool_compare_and_swap(&prev_next->_ptr, cur._ptr, new_ptr._ptr)) {
 								volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
 								goto start_over;
 							}
@@ -417,18 +436,21 @@ start_over:
 						}
 					}
 					else {
-						new_obj = (object *)myra->allocate(cur_obj->_size);
+                        new_ptr = myra->allocate_fat(cur_obj->_size);
+                        new_obj = (object *)new_ptr.offset();
 						memcpy(new_obj, cur_obj, cur_obj->_size);
 						// already hot data
 						volatile_write( new_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
-						new_obj->_next = cur_obj->_next;
-						new_ptr = fat_ptr::make(new_obj, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG);
 					}
 					// will fail if sb. else claimed prev_next
-					if (!__sync_bool_compare_and_swap((uint64_t*)prev_next, cur._ptr, new_ptr._ptr)) {
+					if (!__sync_bool_compare_and_swap(&prev_next->_ptr, cur._ptr, new_ptr._ptr)) {
 						volatile_write( cur_obj->_next._ptr, cur_obj->_next._ptr & ~fat_ptr::DIRTY_MASK);
 						goto start_over;
 					}
+
+                    if (new_ptr._ptr & fat_ptr::ASI_HOT_FLAG)
+                        v->set_temperature(oid, true, new_ptr);
+
 					// !new_obj => trimmed in the middle of the chain;
 					// !new_obj->_next => the last element or trimmed at head;
 					// so break in either case.
@@ -445,7 +467,8 @@ next:
 	}
     ASSERT(myra->state() == RA_GC_IN_PROG);
     myra->set_state(RA_GC_FINISHED);
-    std::cout << "GC finished for socket " << socket << "\n";
+    std::cout << "GC finished for socket " << socket
+              << " segment " << gc_segment << "\n";
     gc_segment++;
     gc_segment = gc_segment % region_allocator::NUM_SEGMENTS;
     goto forever;

@@ -46,7 +46,7 @@ public:
 		_obj_table = dynarray(  std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr), nelems*sizeof(fat_ptr) );
 
         for (uint i = 0 ; i < RA_NUM_SEGMENTS; i++)
-            _temperature_bitmap[i] = dynarray(std::numeric_limits<unsigned int>::max(), _obj_table.size() / sizeof(fat_ptr) / _oids_per_byte);
+            _temperature_bitmap[i] = dynarray(std::numeric_limits<unsigned int>::max(), (_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
 	}
 
 	bool put( oid_type oid, fat_ptr new_head)
@@ -133,7 +133,7 @@ retry:
 		uint64_t obj_table_size = sizeof(fat_ptr) * (_global_oid_alloc_offset);
 		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );			// 10% increase
         for (uint i = 0; i < RA_NUM_SEGMENTS; i++)
-            _temperature_bitmap[i].ensure_size(_obj_table.size() / sizeof(fat_ptr) / _oids_per_byte);
+            _temperature_bitmap[i].ensure_size((_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
         return noffset;
 	}
 
@@ -146,40 +146,42 @@ retry:
     {
         ASSERT(seg < RA_NUM_SEGMENTS);
         uint64_t groupid = oid_group(oid);
-        temp_bitmap_type gmap = volatile_read(_temperature_bitmap[seg][groupid]);
-        temp_bitmap_type nmap = hot ?
-            gmap | (uint64_t){1} << (groupid % sizeof(temp_bitmap_type)) :
-            gmap & (~((uint64_t){1} << (groupid % sizeof(temp_bitmap_type))));
+        bitmap_entry_type gmap = volatile_read(_temperature_bitmap[seg][groupid]);
+        bitmap_entry_type nmap = hot ?
+            gmap | (uint64_t){1} << (groupid % sizeof(bitmap_entry_type)) :
+            gmap & (~((uint64_t){1} << (groupid % sizeof(bitmap_entry_type))));
         if (gmap != nmap)
             __sync_bool_compare_and_swap(&_temperature_bitmap[seg][groupid], gmap, nmap);
     }
 
-    inline uint64_t oid_group(oid_type oid)
+    inline int64_t oid_group(oid_type oid)
     {
-        return oid / _oids_per_word;
+        return oid / oid_group_sz();
     }
 
     inline bool is_hot_group(uint64_t groupid, int gc_segment)
     {
-        return _temperature_bitmap[gc_segment][groupid / sizeof(temp_bitmap_type)] &
-               ((uint64_t{1} << (groupid % sizeof(temp_bitmap_type))));
+        uint64_t aligned_byte_offset = groupid * oid_group_sz() / _oids_per_bit / 8 / sizeof(bitmap_entry_type) * sizeof(bitmap_entry_type);
+        ASSERT(!(aligned_byte_offset % sizeof(bitmap_entry_type)));
+        return (uint64_t)_temperature_bitmap[gc_segment][aligned_byte_offset] &
+               ((uint64_t{1} << (groupid % sizeof(bitmap_entry_type))));
     }
 
+    // how many oids per bitmap_entry?
 	inline uint64_t oid_group_sz()
 	{
-		return _oids_per_word;
+		return sizeof(bitmap_entry_type) * 8 * _oids_per_bit;
 	}
 
-    typedef uint64_t temp_bitmap_type;
+    typedef uint64_t bitmap_entry_type;
 
 private:
 	dynarray 		_obj_table;
 
     // each segment (i.e., gc cycle) has one bitmap for each gc daemon
 	dynarray        _temperature_bitmap[RA_NUM_SEGMENTS];
-	uint64_t _oids_per_bit = 8;
-	uint64_t _oids_per_byte = 64;
-	uint64_t _oids_per_word = 512;
+	uint64_t _oids_per_bit = 4;
+    uint64_t _oids_per_byte = _oids_per_bit * 8;
     uint64_t _global_oid_alloc_offset;
     percore<uint64_t, false, false> _core_oid_offset;
     percore<uint64_t, false, false> _core_oid_remaining;
