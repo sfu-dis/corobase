@@ -57,7 +57,6 @@ public:
   typedef std::string string_type;
 
   fat_ptr clsn;
-  bool overwritten; // false => commit will ignore this tuple
   oid_type oid;
 public:
 
@@ -120,8 +119,7 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      overwritten(false)
-      , size(CheckBounds(size))
+      size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
       , key()
@@ -147,8 +145,7 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      overwritten(false)
-      , size(base->size)
+      size(base->size)
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
       , key()
@@ -175,8 +172,7 @@ private:
 #ifdef TUPLE_MAGIC
       magic(TUPLE_MAGIC),
 #endif
-      overwritten(true)
-      , size(CheckBounds(new_size))
+      size(CheckBounds(new_size))
       , alloc_size(CheckBounds(alloc_size))
 #ifdef TUPLE_CHECK_KEY
       , key()

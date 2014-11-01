@@ -70,16 +70,7 @@ transaction<Protocol, Traits>::abort_impl()
   for (; it != it_end; ++it) {
     dbtuple* tuple = it->get_tuple();
 	concurrent_btree* btr = it->get_table();
-
-	// TODO. update to INVALID LSN
-	// INVALID_LSN -> FATPTR needed
-
-	// overwritten tuple is already out of chain
-	if( !tuple->overwritten )
-		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
-
-    //dbtuple::release(tuple);
-	// TODO. free container also
+	btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
   }
 
   // log discard
@@ -198,17 +189,8 @@ transaction<Protocol, Traits>::commit()
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
     dbtuple* tuple = it->get_tuple();
-    if (not tuple->overwritten) {
       tuple->clsn = xc->end.to_log_ptr();
       INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    } 
-    else {
-		// Unlink overwritten uncommitted data by this TXN.
-		dbtuple* tuple = it->get_tuple();
-		concurrent_btree* btr = it->get_table();
-		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
-		//dbtuple::release(tuple);
-    }
   }
 
   RCU::rcu_quiesce();
