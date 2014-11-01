@@ -145,35 +145,42 @@ retry:
     inline void set_temperature(oid_type oid, bool hot, int seg)
     {
         ASSERT(seg < RA_NUM_SEGMENTS);
-        uint64_t groupid = oid_group(oid);
-        bitmap_entry_type gmap = volatile_read(_temperature_bitmap[seg][groupid]);
-        bitmap_entry_type nmap = hot ?
-            gmap | (uint64_t){1} << (groupid % sizeof(bitmap_entry_type)) :
-            gmap & (~((uint64_t){1} << (groupid % sizeof(bitmap_entry_type))));
+        uint8_t groupid = oid_group(oid);
+        uint8_t gmap = group_bitmap_entry(groupid, seg);
+        uint8_t nmap = hot ?
+            gmap | (uint8_t){1} << (groupid % 8) :
+            gmap & (~((uint8_t){1} << (groupid % 8)));
         if (gmap != nmap)
-            __sync_bool_compare_and_swap(&_temperature_bitmap[seg][groupid], gmap, nmap);
+            __sync_bool_compare_and_swap(&_temperature_bitmap[seg][bitmap_index(groupid)], gmap, nmap);
     }
 
     inline int64_t oid_group(oid_type oid)
     {
-        return oid / oid_group_sz();
+        return oid / _oids_per_bit;
     }
 
     inline bool is_hot_group(uint64_t groupid, int gc_segment)
     {
-        uint64_t aligned_byte_offset = groupid * oid_group_sz() / _oids_per_bit / 8 / sizeof(bitmap_entry_type) * sizeof(bitmap_entry_type);
-        ASSERT(!(aligned_byte_offset % sizeof(bitmap_entry_type)));
-        return (uint64_t)_temperature_bitmap[gc_segment][aligned_byte_offset] &
-               ((uint64_t{1} << (groupid % sizeof(bitmap_entry_type))));
+        return group_bitmap_entry(groupid, gc_segment) & 
+               ((uint8_t{1} << (groupid % 8)));
+    }
+
+    inline uint8_t group_bitmap_entry(uint64_t groupid, int gc_segment)
+    {
+        uint64_t byte_offset = bitmap_index(groupid);
+        return (uint8_t)_temperature_bitmap[gc_segment][byte_offset];
+    }
+
+    inline uint64_t bitmap_index(uint64_t groupid)
+    {
+        return groupid / 8;
     }
 
     // how many oids per bitmap_entry?
 	inline uint64_t oid_group_sz()
 	{
-		return sizeof(bitmap_entry_type) * 8 * _oids_per_bit;
+        return _oids_per_bit;
 	}
-
-    typedef uint64_t bitmap_entry_type;
 
 private:
 	dynarray 		_obj_table;

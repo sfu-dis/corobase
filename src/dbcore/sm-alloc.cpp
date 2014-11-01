@@ -284,7 +284,7 @@ region_allocator::allocate(uint64_t size)
     
  retry:
     auto noffset = __sync_add_and_fetch(&_allocated_hot_offset, size);
-    //THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
+    THROW_IF(volatile_read(_reclaimed_offset) < noffset, std::bad_alloc);
     __sync_add_and_fetch(&_allocated, size);
 
     auto sbits = _segment_bits;
@@ -450,6 +450,21 @@ start_over:
 
                     if (new_ptr._ptr & fat_ptr::ASI_HOT_FLAG)
                         v->set_temperature(oid, true, new_ptr);
+
+#if CHECK_INVARIANTS
+                    if (new_ptr.offset()) {
+                        bool legal_addr = false;
+                        for (uint n = 0; n < 4; n++) {
+                            region_allocator *r = RA::ra + n;
+                            if ((new_ptr.offset() >= (uintptr_t)r->_hot_data &&
+                                 new_ptr.offset() < (uintptr_t)r->_hot_data + r->_hot_capacity) ||
+                                (new_ptr.offset() >= (uintptr_t)r->_cold_data &&
+                                 new_ptr.offset() < (uintptr_t)r->_cold_data + r->_cold_capacity))
+                                legal_addr = true;
+                        }
+                        ASSERT(legal_addr);
+                    }
+#endif
 
 					// !new_obj => trimmed in the middle of the chain;
 					// !new_obj->_next => the last element or trimmed at head;
