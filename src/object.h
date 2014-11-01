@@ -19,7 +19,7 @@ typedef unsigned long long oid_type;
 struct dynarray;
 
 // this really shound't live here...
-#define RA_NUM_SEGMENTS 4
+#define RA_NUM_SOCKETS 4
 
 class object
 {
@@ -45,7 +45,7 @@ public:
         _global_oid_alloc_offset = 0;
 		_obj_table = dynarray(  std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr), nelems*sizeof(fat_ptr) );
 
-        for (uint i = 0 ; i < RA_NUM_SEGMENTS; i++)
+        for (uint i = 0 ; i < RA_NUM_SOCKETS; i++)
             _temperature_bitmap[i] = dynarray(std::numeric_limits<unsigned int>::max(), (_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
 	}
 
@@ -124,7 +124,11 @@ retry:
             _core_oid_offset.my() = alloc_oid_extent();
             _core_oid_remaining.my() = OID_EXT_SIZE;
         }
-        return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--) + 1;
+//        return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--) + 1;
+		if (unlikely(_core_oid_offset.my() == 0)) 
+			       _core_oid_remaining.my()--; 
+		return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--);
+
     }
 
     inline uint64_t alloc_oid_extent() {
@@ -132,63 +136,73 @@ retry:
 
 		uint64_t obj_table_size = sizeof(fat_ptr) * (_global_oid_alloc_offset);
 		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );			// 10% increase
-        for (uint i = 0; i < RA_NUM_SEGMENTS; i++)
+        for (uint i = 0; i < RA_NUM_SOCKETS; i++)
             _temperature_bitmap[i].ensure_size((_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
         return noffset;
 	}
 
-    inline void set_temperature(oid_type oid, bool hot, fat_ptr fp)
+    inline void set_temperature(oid_type oid, bool hot)
     {
-        set_temperature(oid, hot, fp.mem_segment());
+		int numa = sched_getcpu() % RA_NUM_SOCKETS;
+        ASSERT(numa < RA_NUM_SOCKETS);
+		uint64_t word_offset = oid / oids_per_word();
+		uint8_t bit_offset = (oid % oids_per_word()) / _oids_per_bit; 
+		uint64_t* group = (uint64_t*)&_temperature_bitmap[numa][word_offset * sizeof(uint64_t)];
+			
+retry:
+        uint64_t gmap = volatile_read(*group);
+        uint64_t nmap;
+		if( hot )
+		{
+			nmap = gmap | (uint64_t){1} << (bit_offset);
+			if( gmap != nmap )
+			{
+				if( not __sync_bool_compare_and_swap(group, gmap, nmap) )
+					goto retry;				// race b/w TXN
+			}
+		}
+		else
+			volatile_write(nmap, 0 );
     }
 
-    inline void set_temperature(oid_type oid, bool hot, int seg)
+    inline bool is_hot_group(oid_type oid)
     {
-        ASSERT(seg < RA_NUM_SEGMENTS);
-        uint8_t groupid = oid_group(oid);
-        uint8_t gmap = group_bitmap_entry(groupid, seg);
-        uint8_t nmap = hot ?
-            gmap | (uint8_t){1} << (groupid % 8) :
-            gmap & (~((uint8_t){1} << (groupid % 8)));
-        if (gmap != nmap)
-            __sync_bool_compare_and_swap(&_temperature_bitmap[seg][bitmap_index(groupid)], gmap, nmap);
-    }
+		int numa = sched_getcpu() % RA_NUM_SOCKETS;
+        ASSERT(numa < RA_NUM_SOCKETS);
+		uint64_t word_offset = oid / oids_per_word();
+		uint64_t* group = (uint64_t*)&_temperature_bitmap[numa][word_offset * sizeof(uint64_t)];
+		uint64_t gmap = volatile_read( *group);
+		if( __builtin_ffsl(gmap) )
+			return true;
+		else
+			return false;
 
-    inline int64_t oid_group(oid_type oid)
-    {
-        return oid / _oids_per_bit;
-    }
 
-    inline bool is_hot_group(uint64_t groupid, int gc_segment)
-    {
-        return group_bitmap_entry(groupid, gc_segment) & 
-               ((uint8_t{1} << (groupid % 8)));
-    }
+//		uint8_t bit_offset = (oid % oids_per_byte()) / _oids_per_bit; 
+			
+//        uint8_t gmap = volatile_read(_temperature_bitmap[numa][byte_offset]);
 
-    inline uint8_t group_bitmap_entry(uint64_t groupid, int gc_segment)
-    {
-        uint64_t byte_offset = bitmap_index(groupid);
-        return (uint8_t)_temperature_bitmap[gc_segment][byte_offset];
-    }
-
-    inline uint64_t bitmap_index(uint64_t groupid)
-    {
-        return groupid / 8;
+//		return gmap & ((uint8_t)1 << (bit_offset));
     }
 
     // how many oids per bitmap_entry?
-	inline uint64_t oid_group_sz()
+	inline uint64_t oids_per_byte()
 	{
-        return _oids_per_bit;
+        return _oids_per_byte;
+	}
+	inline uint64_t oids_per_word()
+	{
+        return _oids_per_word;
 	}
 
 private:
 	dynarray 		_obj_table;
 
     // each segment (i.e., gc cycle) has one bitmap for each gc daemon
-	dynarray        _temperature_bitmap[RA_NUM_SEGMENTS];
-	uint64_t _oids_per_bit = 4;
+	dynarray        _temperature_bitmap[RA_NUM_SOCKETS];
+	uint64_t _oids_per_bit = 8;
     uint64_t _oids_per_byte = _oids_per_bit * 8;
+    uint64_t _oids_per_word = _oids_per_byte * 8;		//8B
     uint64_t _global_oid_alloc_offset;
     percore<uint64_t, false, false> _core_oid_offset;
     percore<uint64_t, false, false> _core_oid_remaining;

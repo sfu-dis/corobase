@@ -167,6 +167,7 @@ static uint g_microbench_wr_rows = 0; // this number of rows to write
 // 6: Microbenchmark-simple - just do one insert, get, and put
 // 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
 static unsigned g_txn_workload_mix[] = { 45, 43, 4, 4, 4, 0, 0, 0 }; // default TPC-C workload mix
+//static unsigned g_txn_workload_mix[] = { 0, 100, 0, 0, 0, 0, 0, 0 }; // default TPC-C workload mix
 
 static aligned_padded_elem<spinlock> *g_partition_locks = nullptr;
 static aligned_padded_elem<atomic<uint64_t>> *g_district_ids = nullptr;

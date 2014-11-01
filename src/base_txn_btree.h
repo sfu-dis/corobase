@@ -372,7 +372,7 @@ try_expect_new:
 
   // check return value
   if (ret) { // succeeded
-    this->underlying_btree.get_tuple_vector()->set_temperature(tuple->oid, true, fp);
+//    this->underlying_btree.get_tuple_vector()->set_temperature(tuple->oid, true, fp);
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless

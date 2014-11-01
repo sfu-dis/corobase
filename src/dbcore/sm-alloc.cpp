@@ -58,7 +58,7 @@ public:
 
 namespace RA {
     static const uint64_t PAGE_SIZE_BITS = 16; // Windows uses 64kB pages...
-    static const uint64_t MEM_SEGMENT_BITS = 28; // 1GB/segment (16 GB total on 4-socket machine)
+    static const uint64_t MEM_SEGMENT_BITS = 29; // 1GB/segment (16 GB total on 4-socket machine)
     static_assert(MEM_SEGMENT_BITS > PAGE_SIZE_BITS,
                   "Region allocator segments can't be smaller than a page");
     static const uint64_t TRIM_MARK = 1 * 1024 * 1024;
@@ -84,7 +84,7 @@ namespace RA {
         
         trim_lsn = INVALID_LSN;
         system_loading = true;
-        int nodes = numa_max_node() + 1;
+        int nodes = numa_max_node()+1;
         ra = (region_allocator *)malloc(sizeof(region_allocator) * nodes);
         std::future<region_allocator*> futures[nodes];
         for (int i = 0; i < nodes; i++) {
@@ -96,7 +96,7 @@ namespace RA {
         for (auto &f : futures)
             (void*) f.get();
 
-        ra_nsock = nodes;
+        volatile_write(ra_nsock,nodes);
     }
 
     void register_thread() {
@@ -248,7 +248,7 @@ region_allocator::region_allocator(uint64_t one_segment_bits, int skt)
     : _segment_bits(one_segment_bits)
     , _hot_bits(NUM_SEGMENT_BITS + _segment_bits)
     , _hot_capacity(uint64_t{1} << _hot_bits)
-    , _cold_capacity((uint64_t{1} << _segment_bits) * 4)
+    , _cold_capacity((uint64_t{1} << _segment_bits) * 8)
     , _hot_mask(_hot_capacity - 1)
     , _cold_mask(_cold_capacity - 1)
     , _reclaimed_offset(_hot_capacity)
@@ -288,7 +288,7 @@ region_allocator::allocate(uint64_t size)
     __sync_add_and_fetch(&_allocated, size);
 
     auto sbits = _segment_bits;
-    if (((noffset-1) >> sbits) != ((noffset-size)  >> sbits)) {
+    if (((noffset) >> sbits) != ((noffset-size)  >> sbits)) {
         // chunk spans a segment boundary, unusable
         std::cout << "opening segment " << (noffset >> sbits) << " of memory region for socket " << _socket << std::endl;
         if (state() != RA_NORMAL)
@@ -314,6 +314,8 @@ region_allocator::allocate_fat(uint64_t size)
     int seg_nr = ((uintptr_t)mem - (uintptr_t)_hot_data) >> _segment_bits;
     uint64_t seg_id_mask = 0;
     switch (seg_nr) {
+		case 0:
+			seg_id_mask = 0;
     case 1:
         seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG;
         break;
@@ -323,6 +325,8 @@ region_allocator::allocate_fat(uint64_t size)
     case 3:
         seg_id_mask = fat_ptr::ASI_SEG_LO_FLAG | fat_ptr::ASI_SEG_HI_FLAG;
         break;
+	default:
+		DIE("Wrong segment ");
     }
     return fat_ptr::make(mem, INVALID_SIZE_CODE, seg_id_mask | fat_ptr::ASI_HOT_FLAG);
 }
@@ -363,20 +367,20 @@ forever:
 		INVARIANT(v);
 
         uint64_t nr_oids = v->size();
-        uint64_t nr_groups = (nr_oids + v->oid_group_sz() - 1) / v->oid_group_sz();
+        uint64_t nr_groups = (nr_oids + v->oids_per_word() - 1) / v->oids_per_word();
 		// OID group 
 		for (uint64_t g = 0; g < nr_groups; g++) {
-			if (!v->is_hot_group(g, gc_segment))
+            oid_type group_start_oid = g * v->oids_per_word();
+			oid_type group_end_oid = std::min((uint64_t)group_start_oid + v->oids_per_word() - 1,
+                                              nr_oids - 1);
+			if ( not v->is_hot_group(group_start_oid ))
                 continue;
 
-            oid_type group_start_oid = g * v->oid_group_sz();
-			oid_type group_end_oid = std::min((uint64_t)group_start_oid + v->oid_group_sz() - 1,
-                                              nr_oids - 1);
 
 			if( unlikely(group_start_oid == 0) )		// always 0
 				group_start_oid++;
 
-            v->set_temperature(group_start_oid, false, gc_segment);
+            v->set_temperature(group_start_oid, false);			// Cold marking for entire OID group. 
 			for( oid_type oid = group_start_oid; oid <= group_end_oid; oid++ )
 			{
 start_over:
@@ -407,7 +411,7 @@ start_over:
 					dbtuple *version = NULL;
 					fat_ptr clsn;
 					offset = (char *)cur_obj - base_addr;
-					if (offset < start_offset || offset + cur_obj->_size > end_offset)
+					if (offset < start_offset || offset  >= end_offset)
 						goto next;
 
                     version = reinterpret_cast<dbtuple *>(cur_obj->payload());
@@ -449,7 +453,7 @@ start_over:
 					}
 
                     if (new_ptr._ptr & fat_ptr::ASI_HOT_FLAG)
-                        v->set_temperature(oid, true, new_ptr);
+                        v->set_temperature(oid, true);
 
 #if CHECK_INVARIANTS
                     if (new_ptr.offset()) {
