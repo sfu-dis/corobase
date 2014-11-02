@@ -46,7 +46,7 @@ public:
 		_obj_table = dynarray(  std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr), nelems*sizeof(fat_ptr) );
 
         for (uint i = 0 ; i < RA_NUM_SOCKETS; i++)
-            _temperature_bitmap[i] = dynarray(std::numeric_limits<unsigned int>::max(), (_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
+            _temperature_bitmap[i] = dynarray(std::numeric_limits<unsigned int>::max(), _obj_table.size() / sizeof(fat_ptr) / _oids_per_byte);
 	}
 
 	bool put( oid_type oid, fat_ptr new_head)
@@ -126,7 +126,7 @@ retry:
         }
 //        return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--) + 1;
 		if (unlikely(_core_oid_offset.my() == 0)) 
-			       _core_oid_remaining.my()--; 
+			_core_oid_remaining.my()--; 
 		return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--);
 
     }
@@ -135,9 +135,9 @@ retry:
 		uint64_t noffset = __sync_fetch_and_add(&_global_oid_alloc_offset, OID_EXT_SIZE);
 
 		uint64_t obj_table_size = sizeof(fat_ptr) * (_global_oid_alloc_offset);
-		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );			// 10% increase
+		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );	
         for (uint i = 0; i < RA_NUM_SOCKETS; i++)
-            _temperature_bitmap[i].ensure_size((_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
+            _temperature_bitmap[i].ensure_size((_obj_table.size() / sizeof(fat_ptr)) / _oids_per_byte);
         return noffset;
 	}
 
