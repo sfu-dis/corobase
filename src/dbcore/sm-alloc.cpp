@@ -61,7 +61,7 @@ namespace RA {
     static const uint64_t MEM_SEGMENT_BITS = 30; // 1GB/segment (16 GB total on 4-socket machine)
     static_assert(MEM_SEGMENT_BITS > PAGE_SIZE_BITS,
                   "Region allocator segments can't be smaller than a page");
-    static const uint64_t TRIM_MARK = 512 * 1024 * 1024;
+    static const uint64_t TRIM_MARK = 4 * 1024 * 1024;
 
     std::vector<concurrent_btree*> tables;
     std::vector<std::string> table_names;
@@ -177,7 +177,7 @@ namespace RA {
         for (int i = 0; i < ra_nsock; i++) {
             region_allocator *r = RA::ra + i;
             int s = r->state();
-            if (s == RA_GC_REQUESTED) {
+            if (s == RA_GC_REQUESTED || s == RA_GC_FINISHED) {
                 LSN *lsn = (LSN *)malloc(sizeof(LSN));
                 if (likely(RCU::rcu_is_active()))
                     *lsn = transaction_base::logger->cur_lsn();
@@ -212,14 +212,12 @@ namespace RA {
                 r->set_state(RA_GC_IN_PROG);
                 r->trigger_reclaim();
             }
-			/*
             else if (s == RA_GC_FINISHED) {
                 std::cout << "region allocator: spared for socket " << r->_socket << "\n";
                 volatile_write(r->_reclaimed_offset,
                     r->_reclaimed_offset + (1 << r->_segment_bits));  // no need to %
                 r->set_state(RA_NORMAL);
             }
-			*/
         }
     }
 
@@ -250,7 +248,7 @@ region_allocator::region_allocator(uint64_t one_segment_bits, int skt)
     : _segment_bits(one_segment_bits)
     , _hot_bits(NUM_SEGMENT_BITS + _segment_bits)
     , _hot_capacity(uint64_t{1} << _hot_bits)
-    , _cold_capacity((uint64_t{1} << _segment_bits) * 4)
+    , _cold_capacity((uint64_t{1} << _segment_bits) * 8)
     , _hot_mask(_hot_capacity - 1)
     , _cold_mask(_cold_capacity - 1)
     , _reclaimed_offset(_hot_capacity)
@@ -293,8 +291,8 @@ region_allocator::allocate(uint64_t size)
     if (((noffset) >> sbits) != ((noffset-size)  >> sbits)) {
         // chunk spans a segment boundary, unusable
         std::cout << "opening segment " << (noffset >> sbits) << " of memory region for socket " << _socket << std::endl;
-        while (state() != RA_NORMAL);
-//            throw std::runtime_error("GC requested before last round finishes.");
+        if (state() != RA_NORMAL)
+            throw std::runtime_error("GC requested before last round finishes.");
         set_state(RA_GC_REQUESTED);
         goto retry;
     }
@@ -475,7 +473,7 @@ start_over:
 					// !new_obj => trimmed in the middle of the chain;
 					// !new_obj->_next => the last element or trimmed at head;
 					// so break in either case.
-					if (!new_obj )
+					if (!new_obj || new_obj->_next.offset() == 0 )
 						break;
 					cur_obj = new_obj;
 next:
@@ -487,11 +485,7 @@ next:
 		}
 	}
     ASSERT(myra->state() == RA_GC_IN_PROG);
-                std::cout << "region allocator: spared for socket " << myra->_socket << "\n";
-                volatile_write(myra->_reclaimed_offset,
-                    myra->_reclaimed_offset + (1 << myra->_segment_bits));  // no need to %
-                myra->set_state(RA_NORMAL);
-//    myra->set_state(RA_GC_FINISHED);
+    myra->set_state(RA_GC_FINISHED);
     std::cout << "GC finished for socket " << socket
               << " segment " << gc_segment << "\n";
     gc_segment++;

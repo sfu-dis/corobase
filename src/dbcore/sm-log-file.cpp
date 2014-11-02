@@ -274,7 +274,7 @@ void sm_log_file_mgr::_make_new_log() {
     // write out the block
     int fd = open_for_write(sid);
     DEFER(os_close(fd));
-    os_pwrite(fd, buf, sizeof(buf), 0);
+//    os_pwrite(fd, buf, sizeof(buf), 0);
     _durable_lsn = b.next_lsn();
 
     // create the checkpoint and durable mark files

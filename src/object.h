@@ -176,13 +176,6 @@ retry:
 			return true;
 		else
 			return false;
-
-
-//		uint8_t bit_offset = (oid % oids_per_byte()) / _oids_per_bit; 
-			
-//        uint8_t gmap = volatile_read(_temperature_bitmap[numa][byte_offset]);
-
-//		return gmap & ((uint8_t)1 << (bit_offset));
     }
 
     // how many oids per bitmap_entry?
