@@ -453,7 +453,7 @@ sm_log_alloc_mgr::_log_write_daemon()
             uint64_t nbytes = new_byte - durable_byte;
             auto *buf = _logbuf.read_buf(durable_byte, nbytes);
             auto file_offset = durable_sid->offset(_durable_lsn_offset);
-//            uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
+            uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
             uint64_t n = nbytes;
             THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
             _logbuf.advance_reader(new_byte);
