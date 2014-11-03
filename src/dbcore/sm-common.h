@@ -110,16 +110,6 @@ struct fat_ptr {
     // otherwise it could be in cold store or simply no data at all.
 	static uint64_t const ASI_HOT = 0x01;
 
-    // Indicates which segment of the hot store this memory is allocated from.
-    // Currently we support four segments. So consider this as a two-bit int:
-    // ASI_SEG_HI | ASI_SEG_LO | segment
-    //      0           0           0
-    //      0           1           1
-    //      1           0           2
-    //      1           1           3
-	static uint64_t const ASI_SEG_LO = 0x02;
-    static uint64_t const ASI_SEG_HI = 0x03;
-
     static uint64_t const ASI_LOG = 0x10;
     static uint64_t const ASI_HEAP = 0x20;
     static uint64_t const ASI_EXT = 0x30;
@@ -130,8 +120,6 @@ struct fat_ptr {
     static uint64_t const ASI_EXT_FLAG = ASI_EXT << ASI_START_BIT;
     static uint64_t const ASI_XID_FLAG = ASI_XID << ASI_START_BIT;
     static uint64_t const ASI_HOT_FLAG = ASI_HOT << ASI_START_BIT;
-    static uint64_t const ASI_SEG_LO_FLAG = ASI_SEG_LO << ASI_START_BIT;
-    static uint64_t const ASI_SEG_HI_FLAG = ASI_SEG_HI << ASI_START_BIT;
 
     static uint64_t const ASI_SEGMENT_MASK = 0x0f;
 
@@ -180,10 +168,6 @@ struct fat_ptr {
     uint16_t asi_segment() const { return asi() & ASI_SEGMENT_MASK; }
 
     uint16_t is_dirty() const { return _ptr & DIRTY_MASK; }
-
-    uint16_t mem_segment() const {
-        return ((_ptr & ASI_SEG_LO_FLAG) | (_ptr & ASI_SEG_HI_FLAG)) >> ASI_START_BIT;
-    }
 
     // return dirty + ASI without any shifting
     uint16_t flags() const { return _ptr & FLAG_MASK; }
