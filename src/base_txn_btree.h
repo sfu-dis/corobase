@@ -280,11 +280,14 @@ try_expect_new:
   // Allocate an version
   char *p = NULL;
   fat_ptr fp;
+  int fp_sock = -1;
+  uint64_t fp_seg = 9999;   // hehe... you got 9999 sockets?
   if (expect_new) {
       p = reinterpret_cast<char*>(RA::allocate_cold(sizeof(object) + alloc_sz));
   }
   else {
-      fp = RA::allocate_fat(sizeof(object) + alloc_sz);
+      RA::allocate_fat(&fp, &fp_seg, &fp_sock, sizeof(object) + alloc_sz);
+      ASSERT(fp_seg != (RA::ra+fp_sock)->_gc_segment);
       p = reinterpret_cast<char*>(fp.offset());
   }
   INVARIANT(p);
@@ -372,7 +375,11 @@ try_expect_new:
 
   // check return value
   if (ret) { // succeeded
-//    this->underlying_btree.get_tuple_vector()->set_temperature(tuple->oid, true, fp);
+    if (!expect_new) {
+        ASSERT(fp_sock >= 0 && fp != NULL_PTR);
+        this->underlying_btree.get_tuple_vector()->set_temperature(tuple->oid, true,
+                                                                   fp_seg, fp_sock);
+    }
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless

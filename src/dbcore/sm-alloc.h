@@ -7,6 +7,8 @@
 #include <iostream>
 #include <mutex>
 #include <vector>
+#include <future>
+#include <new>
 #include "sm-defs.h"
 #include "epoch.h"
 #include "../macros.h"
@@ -21,13 +23,27 @@
 #define UNLOCK_OBJ_NEXT(obj)  \
     volatile_write(obj->_next, (object *)((uint64_t)obj->_next & (~MSB_MASK)));
 
+// RA GC states. Transitions btw these states are racy
+// (should be fine assuming gc finishes before the new
+// active region depletes).
+#define RA_NORMAL       0
+#define RA_GC_REQUESTED 1
+#define RA_GC_PREPARED  2
+#define RA_GC_IN_ADJ    4
+#define RA_GC_IN_PROG   3
+#define RA_GC_FINISHED  5
+#define RA_GC_SPARING   6
+
+class region_allocator;
+
 namespace RA {
     extern bool system_loading;
+    extern region_allocator *ra;
     void init();
     void register_thread();
     void *allocate(uint64_t size);
     void *allocate_cold(uint64_t size);
-    fat_ptr allocate_fat(uint64_t size);
+    void allocate_fat(fat_ptr *ptr, uint64_t *seg, int *sock, uint64_t size);
 
     struct thread_data {
         bool initialized;
@@ -64,3 +80,50 @@ public:
         RA::epoch_exit();
     }
 };
+
+class region_allocator {
+    friend void RA::epoch_reclaimed(void *cookie, void *epoch_cookie);
+    friend void* RA::epoch_ended(void *cookie, epoch_num e);
+private:
+    enum { NUM_SEGMENT_BITS=2 };
+    enum { NUM_SEGMENTS=1<<NUM_SEGMENT_BITS };
+
+    // low-contention and read-mostly stuff
+    public:
+    char *_hot_data;
+    char *_cold_data;
+    uint64_t _segment_bits;
+    uint64_t _hot_bits;
+    uint64_t _hot_capacity;
+    uint64_t _cold_capacity;
+    uint64_t _hot_mask;
+    uint64_t _cold_mask;
+    uint64_t _reclaimed_offset;
+    int _socket;
+
+    // high contention, needs its own cache line
+    uint64_t __attribute__((aligned(64))) _allocated_hot_offset;
+    uint64_t __attribute__((aligned(64))) _allocated_cold_offset;
+
+    // gc related
+    std::mutex _reclaim_mutex;
+    std::condition_variable _reclaim_cv;
+    uint64_t _allocated;
+    int _state;
+public:
+    int _gc_segment;
+
+public:
+    void* allocate(uint64_t size);
+    void* allocate_cold(uint64_t size);
+    void allocate_fat(fat_ptr *ptr, uint64_t *seg, int *sock, uint64_t size);
+    void allocate_fat(fat_ptr *ptr, uint64_t size);
+    region_allocator(uint64_t one_segment_bits, int skt);
+    ~region_allocator();
+    int state() { return volatile_read(_state); }
+    //void set_state(int s)   { volatile_write(_state, s); }
+    bool try_set_state(int from, int to);
+    inline void trigger_reclaim()  { _reclaim_cv.notify_all(); }
+    static void reclaim_daemon(int socket);
+};
+

@@ -199,7 +199,6 @@ install:
 		// install a new version
 		if(!tuple_vector->put( oid, head, new_ptr))
 			return false;
-		tuple_vector->set_temperature(oid, true);
 		return true;
 	}
 
