@@ -38,24 +38,23 @@ class object_vector
 public:
 	inline unsigned long long size() 
 	{
-		return _global_oid_alloc_offset + 1;
+		return _global_oid_alloc_offset;
     }
 
 	object_vector( unsigned long long nelems)
 	{
         _global_oid_alloc_offset = 0;
-		_obj_table = dynarray(  std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr), nelems*sizeof(fat_ptr) );
+		_obj_table = dynarray(std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr),
+                              nelems*sizeof(fat_ptr) );
 
         for (uint i = 0; i < NR_SOCKETS; i++) {
-            for (uint j = 0; j < RA_NUM_SEGMENTS; j++) {
-                _bitmap[i][j] = dynarray(std::numeric_limits<unsigned int>::max(), (_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
-            }
+            for (uint j = 0; j < RA_NUM_SEGMENTS; j++)
+                _bitmap[i][j] = dynarray(_obj_table.capacity(), _obj_table.size());
         }
 	}
 
 	bool put( oid_type oid, fat_ptr new_head)
 	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
 		fat_ptr old_head = begin(oid);
 		object* new_desc = (object*)new_head.offset();
 		volatile_write( new_desc->_next, old_head);
@@ -69,13 +68,25 @@ public:
 	}
 	bool put( oid_type oid, fat_ptr old_head, fat_ptr new_head )
 	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
 		object* new_desc = (object*)new_head.offset();
 		volatile_write( new_desc->_next, old_head);
 		uint64_t* p = (uint64_t*)begin_ptr(oid);
 
 		if( not __sync_bool_compare_and_swap( p, old_head._ptr, new_head._ptr) )
 			return false;
+
+        for (uint i = 0; i < NR_SOCKETS; i++) {
+            region_allocator *r = RA::ra + i;
+            for (uint j = 0; j < RA_NUM_SEGMENTS; j++) {
+                uint64_t start_offset = ((1 << r->_segment_bits) * j);
+                uint64_t end_offset = start_offset + ((1 << r->_segment_bits));
+                uint64_t off = (char *)new_desc - r->_hot_data;
+                if (off >= start_offset && off < end_offset) {
+                    set_hot_oid(oid, i, j);
+                    return true;
+                }
+            }
+        }
 
 		return true;
 	}
@@ -98,7 +109,6 @@ public:
 		object* target;
 		fat_ptr prev;
 		fat_ptr* prev_next;
-//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
 
 retry:
 		prev_next = begin_ptr( oid );			// constant value. doesn't need to be volatile_read
@@ -128,7 +138,9 @@ retry:
             _core_oid_offset.my() = alloc_oid_extent();
             _core_oid_remaining.my() = OID_EXT_SIZE;
         }
-        return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--) + 1;
+        if (unlikely(_core_oid_offset.my() == 0))
+            _core_oid_remaining.my()--;
+        return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--);
     }
 
     inline uint64_t alloc_oid_extent() {
@@ -138,15 +150,14 @@ retry:
 		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );			// 10% increase
 
         for (uint i = 0; i < NR_SOCKETS; i++) {
-            for (uint j = 0; j < RA_NUM_SEGMENTS; j++) {
-                _bitmap[i][j].ensure_size((_obj_table.size() / sizeof(fat_ptr) + sizeof(fat_ptr)) / _oids_per_byte);
-            }
+            for (uint j = 0; j < RA_NUM_SEGMENTS; j++)
+                _bitmap[i][j].ensure_size(_obj_table.size());
         }
 
         return noffset;
 	}
 
-    inline void set_temperature(oid_type oid, bool hot, int skt, int seg)
+    inline void set_hot_oid(oid_type oid, int skt, int seg)
     {
         ASSERT(seg < RA_NUM_SEGMENTS);
         // tzwang: strictly speaking, we need this assert below; and in
@@ -168,25 +179,13 @@ retry:
     retry:
         uint64_t bit_nr = oid / _oids_per_bit;
         uint64_t idx = bit_nr / 8 / sizeof(uint64_t) * sizeof(uint64_t);
-        uint64_t *bitmap = (uint64_t *)&_bitmap[skt][seg][idx];
-        uint64_t old_map = *bitmap;
-        uint64_t new_map = old_map;
-
-        if (hot)
-            new_map = old_map | ((uint64_t){1} << (bit_nr % 64));
-        else
-            new_map = old_map & (~((uint64_t){1} << (bit_nr % 64)));
+        uint64_t old_map = (uint64_t)volatile_read(_bitmap[skt][seg][idx]);
+        uint64_t new_map = 1;
 
         if (new_map != old_map) {
-            *bitmap = new_map;
-            if (!__sync_bool_compare_and_swap(bitmap, old_map, new_map)) {
-                if (hot){
-                    goto retry;
-                }
+            if (!__sync_bool_compare_and_swap(&_bitmap[skt][seg][idx], old_map, new_map)) {
+                goto retry;
             }
-            //__sync_synchronize();
-            ASSERT(*bitmap == new_map);
-            ASSERT(new_map == (uint64_t)_bitmap[skt][seg][idx]);
         }
     }
 
@@ -206,7 +205,7 @@ private:
 public:
     // each segment (i.e., gc cycle) has one bitmap for each gc daemon
 	dynarray _bitmap[NR_SOCKETS][RA_NUM_SEGMENTS];
-	uint64_t _oids_per_bit = 4;
+	uint64_t _oids_per_bit = 8;
     uint64_t _oids_per_byte = _oids_per_bit * 8;
     uint64_t _oids_per_cacheline = _oids_per_byte * CACHELINE_SIZE;
 };

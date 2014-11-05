@@ -91,7 +91,7 @@ void rcu_delete(void *ptr) {
         (*reinterpret_cast<deleter_t>(fn))(ptr);
     }
 
-    //std::free(u.v);
+    std::free(u.v);
 }
 
 
