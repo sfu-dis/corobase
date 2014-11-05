@@ -129,9 +129,6 @@ private:
 #endif
   {
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
-    // FIXME: tzwang: size could be zero, if we're deleting the tuple
-    // For us, it's just inserting a new version in the chain whose
-    // pointing to NULL.
     ++g_evt_dbtuple_creates;
     g_evt_dbtuple_bytes_allocated += alloc_size + sizeof(dbtuple);
   }
@@ -211,9 +208,6 @@ public:
 #endif
   }
 
-  // gcs *this* instance, ignoring the chain
-  void gc_this();
-
   inline ALWAYS_INLINE uint8_t *
   get_value_start()
   {
@@ -259,8 +253,6 @@ public:
    * NB(stephentu): calling stable_read() while holding the lock
    * is an error- this will cause deadlock
    */
-  // FIXME: tzwang: objmgr will give the latest, visible, committed version (maybe need to provide
-  // timestamp here)
   template <typename Reader, typename StringAllocator>
   inline ALWAYS_INLINE ReadStatus
   stable_read(Reader &reader, StringAllocator &sa) const
