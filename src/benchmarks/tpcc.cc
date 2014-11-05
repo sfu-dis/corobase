@@ -338,8 +338,6 @@ protected: \
            << " pinned to whse=" << wid << " (partid=" << partid << ")"
            << endl;
     RCU::pin_current_thread(pinid);
-    // FIXME: tzwang: no slab, no fault region
-    //rcu::s_instance.fault_region();
   }
 
 public:
@@ -683,8 +681,6 @@ protected:
     const size_t a = worker_id % coreid::num_cpus_online();
     const size_t b = a % nthreads;
     RCU::pin_current_thread(b);
-    // FIXME: tzwang: no fault region b/c no allocator
-    //rcu::s_instance.fault_region();
   }
 
   inline ALWAYS_INLINE string &

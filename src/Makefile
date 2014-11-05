@@ -147,11 +147,6 @@ SRCFILES = allocator.cc \
 	txn.cc \
 	txn_proto2_impl.cc \
 	varint.cc
-#ticker.cc \
-#txn_table.cc \
-#rcu.cc \
-#allocator.cc \
-#btree.cc \
 
 DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/sm-log.cpp \
@@ -188,14 +183,13 @@ DBCORE_OBJFILES := $(patsubst dbcore/%.cpp, $(O)/dbcore/%.o, $(DBCORE_SRCFILES))
 BENCH_CXXFLAGS := $(CXXFLAGS)
 BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
 
-BENCH_SRCFILES = benchmarks/bdb_wrapper.cc \
+BENCH_SRCFILES = \
 	benchmarks/bench.cc \
 	benchmarks/encstress.cc \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
 	benchmarks/tpcc.cc
-#	benchmarks/ycsb.cc FIXME: tzwang: don't bother non-tpcc for now
 
 ifeq ($(MYSQL_S),1)
 BENCH_CXXFLAGS += -DMYSQL_SHARE_DIR=\"$(MYSQL_SHARE_DIR)\"

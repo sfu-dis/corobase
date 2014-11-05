@@ -13,7 +13,7 @@
 #include "../thread.h"
 #include "../util.h"
 #include "../spinbarrier.h"
-#include "../rcu-wrapper.h"
+#include "../dbcore/rcu.h"
 
 extern void ycsb_do_test(abstract_db *db, int argc, char **argv);
 extern void tpcc_do_test(abstract_db *db, int argc, char **argv);
@@ -79,14 +79,13 @@ public:
   virtual void
   run()
   {
-    { // XXX(stephentu): this is a hack
-      scoped_rcu_region r; // register this thread in rcu region
-    }
+	RCU::rcu_register();
     ALWAYS_ASSERT(b);
     b->count_down();
     b->wait_for();
     scoped_db_thread_ctx ctx(db, true);
     load();
+	RCU::rcu_deregister();
   }
 protected:
   inline void *txn_buf() { return (void *) txn_obj_buf.data(); }

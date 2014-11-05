@@ -27,6 +27,22 @@ namespace RCU {
 #define RCU_LOG(msg, ...)
 #endif
 
+struct pointer_stash {
+    pointer *head;
+    int max_count;
+    int cur_count;
+
+    pointer_stash()
+        : head(0)
+        , max_count(0)
+        , cur_count(0)
+    {
+    }
+    
+    bool give(pointer *p);
+    pointer *take();
+};
+
 /* TODO: set up fancy slab allocators using the above pointers...
  */
 
@@ -39,7 +55,9 @@ struct rcu_tcb {
         return &local;
     }
 
-    bool initialized;
+//    bool initialized;
+    int register_count;
+    int enter_count;
 
     /* All recently-freed memory goes on this list; the RCU subsystem
        will swap out the [pointer_list] at each system-wide quiescent
@@ -49,6 +67,28 @@ struct rcu_tcb {
      */
     pointer_list * free_list;
 
+    /* Stashed memory makes a progression down through this array.
+
+       cur - released in the current epoch
+       cooling - released last epoch, waiting for threads to leave
+       cold - released two epochs ago, waiting for stragglers to leave
+       reclaimed - ready for the thread to reclaim.
+     */
+    pointer_list *cur_stash;
+    pointer_list *cooling_stash;
+    pointer_list *cold_stash;
+    pointer_list *reclaimed_stash;
+
+    /* Stashed memory is organized by block size. When thread requests
+       tracking of a given size, a new entry is created. Whenever a
+       stash size runs out, the thread will drain the reclaimed_stash
+       list (which contains blocks of all valid sizes) and will
+       scatter its pieces into their respective size stashes for
+       reuse. If a size-stash overflows or is destroyed, the extras
+       will be released to the system.
+    */
+    std::map<size_t, pointer_stash> size_stash;
+    
     /* Trigger a collection if the number of (to be) freed objects or
        bytes passes a certain threshold. Track free counts locally to
        avoid contention, and occasionally update the global total.
@@ -79,19 +119,23 @@ rcu_gc_info rcu_free_target = {
     10*RCU_THREAD_GC_THRESHOLD_NBYTES,
 };
 
+void rcu_delete_p(pointer *p) {
+    std::free(p);
+}
+
 /* Really delete a pointer that was previously passed to rcu_free.
 
    The [ptr] is the user-visible address returned by rcu_alloc.
  */
-void rcu_delete(void *ptr) {
+void rcu_delete_v(void *ptr) {
     rcu_pointer u = {ptr};
     --u.p;
-    intptr_t fn = u.p->size >> 8;
-    if (fn) {  // get a function to run
-        (*reinterpret_cast<deleter_t>(fn))(ptr);
-    }
+//    intptr_t fn = u.p->size >> 8;
+//    if (fn) {  // get a function to run
+//        (*reinterpret_cast<deleter_t>(fn))(ptr);
+//    }
 
-    //std::free(u.v);
+    rcu_delete_p(u.p);
 }
 
 
@@ -109,22 +153,60 @@ rcu_get_tls(void*)
     static __thread epoch_mgr::tls_storage s;
     return &s;
 }
+
 void *
 rcu_thread_registered(void*)
 {
     RCU_LOG("Thread %zd registered", (size_t) pthread_self());
     rcu_tcb *self = rcu_tcb::tls();
-    ASSERT(not self->initialized);
+//    ASSERT(not self->initialized);
     
-    self->initialized = true;
+//    self->initialized = true;
+    self->register_count = 1;
     self->free_count = 0;
     self->free_bytes = 0;
     
     // allocate a freelist
-    self->free_list = rcu_alloc();
-    self->free_list->next_list = 0;
-    self->free_list->head = 0;
+    self->free_list = rcu_new();
+
+    // allocate thread stashes
+    self->cur_stash = rcu_new();
+    self->cooling_stash = NULL;
+    self->cold_stash = NULL;
+    self->reclaimed_stash = NULL;
     return self;
+}
+
+bool filter_delete_all(pointer *) { return true; }
+
+template <typename Filter>
+void delete_list_contents(pointer *p, Filter &do_delete) {
+    while (p) {
+        pointer *q = p->next;
+        if (do_delete(p))
+            rcu_delete_p(p);
+        p = q;
+    }
+}
+
+void delete_list_contents(pointer *p) {
+    auto do_delete = [](pointer*) { return true; };
+    delete_list_contents(p, do_delete);
+}
+
+void
+append_stash(pointer_list *free_list, pointer_list *pstash)
+{
+    pointer *q = 0;
+    for (pointer *p=pstash->head; p; p=p->next) 
+        q = p;
+
+    if (q) {
+        q->next = free_list->head;
+        free_list->head = pstash->head;
+    }
+
+    rcu_free(pstash);
 }
 
 void
@@ -134,13 +216,24 @@ rcu_thread_deregistered(void*, void *thread_cookie)
     auto *self = (rcu_tcb*) thread_cookie;
     ASSERT(self == rcu_tcb::tls());
 
-    // get rid of the freelist
-    self->free_list->next_list = rcu_zombie_lists;
-    rcu_zombie_lists = self->free_list;
-    self->free_list = NULL; 
+    auto make_zombie = [&](pointer_list *&plist) {
+        if (plist) {
+            plist->next_list = rcu_zombie_lists;
+            rcu_zombie_lists = plist;
+            plist = NULL;
+        }
+    };
+    
+    // add freelist and stashes to the zombie list
+    make_zombie(self->free_list);
+    make_zombie(self->cur_stash);
+    make_zombie(self->cooling_stash);
+    make_zombie(self->cold_stash);
+    make_zombie(self->reclaimed_stash);
 
     // done
-    self->initialized = false;
+//    self->initialized = false;
+    self->register_count = 0;
 }
 
 void *
@@ -149,6 +242,7 @@ rcu_epoch_ended(void*, epoch_mgr::epoch_num x)
     RCU_LOG("Epoch %zd ended", x);
     rcu_free_target.objects_freed = rcu_free_counts.objects_freed + rcu_gc_threshold_nobj;
     rcu_free_target.bytes_freed = rcu_free_counts.bytes_freed + rcu_gc_threshold_nbytes;
+
     DEFER(rcu_zombie_lists = NULL);
     return rcu_zombie_lists;
 }
@@ -167,14 +261,35 @@ rcu_epoch_ended_thread(void *, void *epoch_cookie, void *thread_cookie)
        list until the epoch is reclaimed.
     */
     if (t->free_list->head) {
-        pointer_list *x = rcu_alloc();
-        x->next_list = 0;
-        x->head = 0;
+        pointer_list *x = rcu_new();
         std::swap(t->free_list, x);
         x->next_list = free_lists;
         free_lists = x;
     }
 
+    pointer_list *x = 0;
+    if (t->cur_stash->head) {
+        x = rcu_new();
+        std::swap(t->cur_stash, x);
+    }
+
+    // now bubble it down...
+    std::swap(t->cooling_stash, x);
+    std::swap(t->cold_stash, x);
+
+    // update stats
+    if (x) {
+        rcu_global_gc_stats.objects_stashed += x->nobj;
+        rcu_global_gc_stats.bytes_stashed += x->nbytes;
+    }
+    
+    // do we need to reclaim this?
+    x = __sync_lock_test_and_set(&t->reclaimed_stash, x);
+    if (x) {
+//        SPAM("TLS overflow to be freed");
+        x->next_list = free_lists;
+        free_lists = x;
+    }
     return free_lists;
 }
 
@@ -187,17 +302,17 @@ rcu_epoch_reclaimed(void *, void *epoch_cookie)
     size_t nbytes = 0;
     while (free_lists) {
         pointer *p = free_lists->head;
+        nobj += free_lists->nobj;
+        nbytes += free_lists->nbytes;
+        
         while (p) {
-            nobj++;
-            nbytes += p->size;
-            
             pointer *tmp = p->next;
-            rcu_delete(p+1); // pass user-visible address
+            rcu_delete_p(p);
             p = tmp;
         }
         
         pointer_list *tmp = free_lists->next_list;
-        rcu_delete(free_lists);
+        rcu_delete_v(free_lists);
         free_lists = tmp;
     }
 
@@ -229,11 +344,21 @@ rcu_gc_info rcu_get_gc_info() {
 }
 
 void rcu_register() {
-    rcu_epochs.thread_init();
+    // register? or just increase nesting level?
+    rcu_tcb *self = rcu_tcb::tls();
+    if (self->register_count)
+        self->register_count++;
+    else
+        rcu_epochs.thread_init();
 }
 
 void rcu_deregister() {
-    rcu_epochs.thread_fini();
+    // deregister? or just decrease nesting level?
+    rcu_tcb *self = rcu_tcb::tls();
+    if (self->register_count > 1)
+        self->register_count--;
+    else
+        rcu_epochs.thread_fini();
 }
 
 bool rcu_is_registered() {
@@ -241,7 +366,10 @@ bool rcu_is_registered() {
 }
 
 void rcu_enter() {
-    rcu_epochs.thread_enter();
+    // start? or just increase nesting level?
+    rcu_tcb *self = rcu_tcb::tls();
+    if (not self->enter_count++)
+        rcu_epochs.thread_enter();
 }
 
 bool rcu_is_active() {
@@ -249,7 +377,11 @@ bool rcu_is_active() {
 }
 
 void rcu_quiesce() {
-    rcu_epochs.thread_quiesce();
+//    rcu_epochs.thread_quiesce();
+    // quiesce only if we're the top level RCU transaction
+    rcu_tcb *self = rcu_tcb::tls();
+    if (self->register_count == 1)
+        rcu_epochs.thread_quiesce();
 }
 
 #if 0
@@ -296,34 +428,88 @@ void rcu_pend_global_quiesce() {
 #endif
 
 void rcu_exit() {
-    rcu_epochs.thread_exit();
+    // exit? or just decrease nesting level?
+    rcu_tcb *self = rcu_tcb::tls();
+    if (not --self->enter_count)
+        rcu_epochs.thread_exit();
 }
 
-// want exact match of decoded size and allocated size
-// (assuming posix_memalign will coincide with this with DEFAULT_ALIGNMENT?)
-#define __rcu_alloc(nbytes)   \
-    nbytes += sizeof(pointer);  \
-	uint8_t sz_code = encode_size(nbytes);  \
-    DIE_IF(nbytes > 950272, "size %lu to large for encoding", nbytes);  \
-    size_t sz_alloc = decode_size(sz_code); \
-    rcu_pointer u;  \
-    int err = posix_memalign(&u.v, DEFAULT_ALIGNMENT, sz_alloc);    \
-    THROW_IF(err, rcu_alloc_fail, sz_alloc);    \
-    u.p->size = sz_code;    \
-    ++u.p;
+bool pointer_stash::give(pointer *p) {
+    ASSERT(p);
+    if (cur_count == max_count)
+        return false;
 
-// The version used by version GC. Actually this function shouldn't be
-// here, it should be in the RCU or GC namespace. But here is more
-// convenient for getting the size info etc.
-void *rcu_alloc_gc(size_t& nbytes) {
-    __rcu_alloc(nbytes);
-    // return the real allocated size
-    nbytes = sz_alloc;
-    return u.v;
+    p->next = head;
+    head = p;
+    cur_count++;
+    return true;
+}
+
+pointer *pointer_stash::take() {
+    if (not cur_count)
+        return 0;
+
+    auto *p = head;
+    head = p->next;
+    cur_count--;
+    return p;
+}
+
+void rcu_start_tls_cache(size_t nbytes, size_t nentries) {
+    ASSERT (rcu_is_registered());
+    rcu_tcb *self = rcu_tcb::tls();
+    auto &pstash = self->size_stash[nbytes+sizeof(pointer)];
+    pstash.max_count += nentries;
+}
+
+void rcu_stop_tls_cache(size_t nbytes) {
+    ASSERT (rcu_is_registered());
+    rcu_tcb *self = rcu_tcb::tls();
+    auto it = self->size_stash.find(nbytes+sizeof(pointer));
+    if (it != self->size_stash.end()) {
+        delete_list_contents(it->second.head);
+        self->size_stash.erase(it);
+    }
 }
 
 void *rcu_alloc(size_t nbytes) {
-    __rcu_alloc(nbytes);
+    nbytes += sizeof(pointer);  
+
+    // available from thread-local stash?
+    rcu_tcb *self = rcu_tcb::tls();
+    auto end = self->size_stash.end();
+    auto it=self->size_stash.find(nbytes);
+    if (it != end) {
+        bool first_time = true;
+    retry:
+        if (pointer *p=it->second.take()) {
+            ASSERT (p->size == nbytes);
+            return p+1;
+        }
+
+        // can we reclaim a stash?
+        if (first_time) {
+            if (pointer_list *reclaimed = __sync_lock_test_and_set(&self->reclaimed_stash, 0)) {
+                auto do_delete = [&](pointer *p) {
+                    auto it2 = self->size_stash.find(p->size);
+                    return (it2 == end or not it2->second.give(p));
+                };
+                
+                delete_list_contents(reclaimed->head, do_delete);
+                rcu_free(reclaimed);
+
+                first_time = false;
+                goto retry;
+            }
+        }
+    }
+
+    // fall back to the slow way, then...
+    rcu_pointer u;
+    int err = posix_memalign(&u.v, DEFAULT_ALIGNMENT, nbytes);
+    THROW_IF(err, rcu_alloc_fail, nbytes);
+    u.p->size = nbytes;
+    ++u.p;
     return u.v;
 }
 
@@ -332,15 +518,28 @@ void rcu_free(void const* ptr) {
     rcu_tcb *self = rcu_tcb::tls();
     rcu_pointer u = {ptr};
     --u.p;
-    pointer_list *free_list = volatile_read(self->free_list);
+
+    // where to put it?
+    pointer_list *free_list;
+    if (self->size_stash.find(u.p->size) != self->size_stash.end()) {
+        // this is a size we like
+        free_list = volatile_read(self->cur_stash);
+    }
+    else {
+        // to the global free list, then
+        free_list = volatile_read(self->free_list);
+    }
+
+    free_list->nobj++;
+    free_list->nbytes += u.p->size;
     u.p->next = free_list->head;
-    bool eol = not u.p->next;
+	bool eol = not u.p->next;
     free_list->head = u.p;
-    size_t fcount = 1 + (eol? 0 : self->free_count);
+	size_t fcount = 1 + self->free_count;
     bool too_many = fcount > RCU_THREAD_GC_THRESHOLD_NOBJ;
-    //size_t fbytes = u.p->size + (eol? 0 : self->free_bytes);
-    uint8_t szcode = u.p->size & (~(1UL << 8));
-    size_t fbytes = decode_size(szcode) + (eol? 0 : self->free_bytes);
+    size_t fbytes = u.p->size + (eol? 0 : self->free_bytes);
+//    uint8_t szcode = u.p->size & (~(1UL << 8));
+//    size_t fbytes = decode_size(szcode) + self->free_bytes;
     bool too_big = fbytes > RCU_THREAD_GC_THRESHOLD_NBYTES;
     if (too_many or too_big) {
         size_t tcount = volatile_read(rcu_free_target.objects_freed);

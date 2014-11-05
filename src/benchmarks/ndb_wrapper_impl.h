@@ -131,12 +131,15 @@ ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
   INVARIANT(!transaction_base::logger);
 
   // FIXME: tzwang: dummy recovery for now
-  scoped_rcu_region scope;
   auto no_recover = [](void*, sm_log_scan_mgr*, LSN, LSN)->void {
       SPAM("Log recovery is a no-op here\n");
   };
 
+  RCU::rcu_register();
+  RCU::rcu_enter();
   transaction_base::logger = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
+  RCU::rcu_exit();
+  RCU::rcu_deregister();
 
   if (verbose) {
     std::cerr << "[logging subsystem]" << std::endl;
