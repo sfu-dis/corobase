@@ -15,26 +15,18 @@
 
 #define MSB_MASK (uint64_t{1} << 63)
 
-// user programs' high bits are 0... (phys addrs' are 1...)
-#define LOCK_OBJ_NEXT(obj)  \
-    volatile_write(obj->_next, (object *)((uint64_t)obj->_next | MSB_MASK));
-
-// use this only when cas fails
-#define UNLOCK_OBJ_NEXT(obj)  \
-    volatile_write(obj->_next, (object *)((uint64_t)obj->_next & (~MSB_MASK)));
-
 // RA GC states. Transitions btw these states are racy
 // (should be fine assuming gc finishes before the new
 // active region depletes).
 #define RA_NORMAL       0
 #define RA_GC_REQUESTED 1
 #define RA_GC_PREPARED  2
-#define RA_GC_IN_ADJ    4
 #define RA_GC_IN_PROG   3
-#define RA_GC_FINISHED  5
-#define RA_GC_SPARING   6
+#define RA_GC_FINISHED  4
+#define RA_GC_SPARING   5
 
 class region_allocator;
+typedef epoch_mgr::epoch_num epoch_num;
 
 namespace RA {
     extern bool system_loading;
@@ -48,8 +40,6 @@ namespace RA {
     struct thread_data {
         bool initialized;
     };
-
-    typedef epoch_mgr::epoch_num epoch_num;
 
     epoch_mgr::tls_storage *get_tls(void*);
     void global_init(void*);
@@ -97,7 +87,6 @@ private:
     uint64_t _hot_capacity;
     uint64_t _cold_capacity;
     uint64_t _hot_mask;
-    uint64_t _cold_mask;
     uint64_t _reclaimed_offset;
     int _socket;
 
@@ -121,7 +110,6 @@ public:
     region_allocator(uint64_t one_segment_bits, int skt);
     ~region_allocator();
     int state() { return volatile_read(_state); }
-    //void set_state(int s)   { volatile_write(_state, s); }
     bool try_set_state(int from, int to);
     inline void trigger_reclaim()  { _reclaim_cv.notify_all(); }
     static void reclaim_daemon(int socket);
