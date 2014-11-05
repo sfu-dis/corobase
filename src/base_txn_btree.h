@@ -279,17 +279,10 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 try_expect_new:
   // Allocate an version
   char *p = NULL;
-  fat_ptr fp;
-  int fp_sock = -1;
-  uint64_t fp_seg = 9999;   // hehe... you got 9999 sockets?
-  if (expect_new) {
+  if (expect_new)
       p = reinterpret_cast<char*>(RA::allocate_cold(sizeof(object) + alloc_sz));
-  }
-  else {
-      RA::allocate_fat(&fp, &fp_seg, &fp_sock, sizeof(object) + alloc_sz);
-      ASSERT(fp_seg != (RA::ra+fp_sock)->_gc_segment);
-      p = reinterpret_cast<char*>(fp.offset());
-  }
+  else
+      p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
   INVARIANT(p);
 
   // Tuple setup
@@ -375,11 +368,6 @@ try_expect_new:
 
   // check return value
   if (ret) { // succeeded
-    if (!expect_new) {
-        ASSERT(fp_sock >= 0 && fp != NULL_PTR);
-        this->underlying_btree.get_tuple_vector()->set_temperature(tuple->oid, true,
-                                                                   fp_seg, fp_sock);
-    }
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
