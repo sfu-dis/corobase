@@ -127,10 +127,7 @@ namespace RA {
             int s = r->state();
             if (s == RA_GC_REQUESTED || s == RA_GC_PREPARED || s == RA_GC_FINISHED) {
                 LSN *lsn = (LSN *)malloc(sizeof(LSN));
-                if (likely(RCU::rcu_is_active()))
-                    *lsn = transaction_base::logger->cur_lsn();
-                else
-                    *lsn = INVALID_LSN;
+				*lsn = transaction_base::logger->cur_lsn();
                 return lsn;
             }
         }
