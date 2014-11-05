@@ -77,6 +77,9 @@ struct rcu_gc_info {
     size_t gc_passes;
     size_t objects_freed;
     size_t bytes_freed;
+
+    size_t objects_stashed;
+    size_t bytes_stashed;
 };
 
 // tzwang: moved here for silo side to use
@@ -90,6 +93,10 @@ static_assert(sizeof(pointer) == 16, "Yikes");
 struct pointer_list {
     pointer *head;
     pointer_list *next_list;
+    uint64_t nobj;
+    uint64_t nbytes;
+
+    pointer_list() : head(0), next_list(0), nobj(0), nbytes(0) { }
 };
 
 
@@ -126,6 +133,17 @@ void rcu_deregister();
    RCU system.
  */
 bool rcu_is_registered();
+
+/* Request that allocations of the indicated size be cached
+   thread-locally when possible, up to the indicated capacity.
+ */
+void rcu_start_tls_cache(size_t sz, size_t cap);
+
+/* Request that allocations of the indicated size no longer be cached
+   thread-locally (all currently-cached objects of that size will be
+   released to the system).
+ */
+void rcu_stop_tls_cache(size_t n);
 
 /* Start an RCU transaction. No RCU-protected resources freed while
    the transaction is in flight can be reclaimed until the transaction

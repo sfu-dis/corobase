@@ -1,6 +1,5 @@
 #include "rcu-wrapper.h"
 #include "txn.h"
-percore_lazy<int> scoped_rcu_region::_depths;
 
 void
 RCU::pin_current_thread(size_t cpu)
@@ -15,6 +14,6 @@ RCU::pin_current_thread(size_t cpu)
 void*
 RCU::allocate(size_t nbytes)
 {
-  void *mem = rcu_alloc_gc(nbytes);
+  void *mem = rcu_alloc(nbytes);
   return mem;
 }

@@ -16,6 +16,7 @@
 #include "../scopedperf.hh"
 #include "../allocator.h"
 #include "../dbcore/sm-alloc.h"
+#include "../dbcore/rcu.h"
 
 #ifdef USE_JEMALLOC
 //cannot include this header b/c conflicts with malloc.h
@@ -112,9 +113,8 @@ bench_worker::run()
   // fix some of this stuff one day
   if (set_core_id)
     coreid::set_core_id(worker_id); // cringe
-  {
-    scoped_rcu_region r; // register this thread in rcu region
-  }
+  RCU::rcu_register();
+  RCU::rcu_start_tls_cache( 32, 100000 );
   on_run_setup();
   RA::register_thread();
   scoped_db_thread_ctx ctx(db, false);
@@ -161,6 +161,7 @@ bench_worker::run()
       d -= workload[i].frequency;
     }
   }
+  RCU::rcu_deregister();
 }
 
 void
@@ -218,7 +219,6 @@ bench_runner::run()
   if (verbose) {
     for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
-      scoped_rcu_region guard;
       const size_t s = it->second->size();
       cerr << "table " << it->first << " size " << s << endl;
       table_sizes_before[it->first] = s;
@@ -307,7 +307,6 @@ bench_runner::run()
     cerr << "--- table statistics ---" << endl;
     for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
-      scoped_rcu_region guard;
       const size_t s = it->second->size();
       const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
       cerr << "table " << it->first << " size " << it->second->size();
@@ -354,6 +353,14 @@ bench_runner::run()
     // FIXME: tzwang: no real allocator for now
     // cerr << "--- allocator stats ---" << endl;
     // ::allocator::DumpStats();
+
+	RCU::rcu_gc_info gc_info = RCU::rcu_get_gc_info();
+	cerr << "--- RCU stat --- " << endl;
+	cerr << "gc_passes: " << gc_info.gc_passes << endl;
+	cerr << "objects_freed: " << gc_info.objects_freed << endl;
+	cerr << "bytes_freed: " << gc_info.bytes_freed << endl;
+	cerr << "objects_stashed : " << gc_info.objects_stashed<< endl;
+	cerr << "bytes_stashed: " << gc_info.bytes_stashed << endl;
     cerr << "---------------------------------------" << endl;
 
 #ifdef USE_JEMALLOC

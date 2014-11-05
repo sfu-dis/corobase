@@ -201,7 +201,6 @@ base_txn_btree<Transaction, P>::unsafe_purge(bool dump_stats)
   ALWAYS_ASSERT(!been_destructed);
   been_destructed = true;
   purge_tree_walker w;
-  scoped_rcu_region guard;
   underlying_btree.tree_walk(w);
   underlying_btree.clear();
   return std::map<std::string, uint64_t>();
@@ -219,22 +218,6 @@ template <template <typename> class Transaction, typename P>
 void
 base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
 {
-  /*
-  for (size_t i = 0; i < spec_values.size(); i++) {
-    dbtuple *tuple = (dbtuple *) spec_values[i].first;
-    INVARIANT(tuple);
-    if (base_txn_btree_handler<Transaction>::has_background_task) {
-      if (!tuple->size == 0) {
-        dbtuple::release(tuple);
-      } else {
-        // enqueued already to background gc by the writer of the delete
-      }
-    } else {
-      // XXX: this path is probably not right
-      dbtuple::release_no_rcu(tuple);
-    }
-  }
-  */
   spec_values.clear();
 }
 

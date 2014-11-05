@@ -16,7 +16,6 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   : transaction_base(flags), sa(&sa)
 {
   RA::epoch_enter();
-  INVARIANT(RCU::rcu_is_active());
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
@@ -32,13 +31,7 @@ transaction<Protocol, Traits>::~transaction()
   // transaction shouldn't fall out of scope w/o resolution
   // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
   INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
-  INVARIANT(RCU::rcu_is_active());
 
-  // FIXME: tzwang: free txn desc.
-  const unsigned cur_depth = rcu_guard_->depth();
-  rcu_guard_.destroy();
-  if (cur_depth == 1)
-    INVARIANT(!RCU::rcu_is_active());
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
@@ -74,13 +67,14 @@ transaction<Protocol, Traits>::abort_impl()
   }
 
   // log discard
+  RCU::rcu_enter();
   log->pre_commit();
   log->discard();
+  RCU::rcu_exit();
 
   // now. safe to free XID
   xid_free(xid);
 
-  RCU::rcu_quiesce();
 }
 
 namespace {
@@ -176,11 +170,13 @@ transaction<Protocol, Traits>::commit()
 
   INVARIANT(log);
   // get clsn, abort if failed
+  RCU::rcu_enter();
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
       signal_abort(ABORT_REASON_INTERNAL);
-
   log->commit(NULL);
+  RCU::rcu_exit();
+
   // change state
   volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
 
@@ -193,7 +189,6 @@ transaction<Protocol, Traits>::commit()
       INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
 
-  RCU::rcu_quiesce();
   // done
   xid_free(xid);
 }
@@ -225,8 +220,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   if (unlikely(!btr.insert_if_absent(
           varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
-    //dbtuple::release_no_rcu(tuple);
-    RCU::rcu_quiesce();
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
     return false;
   }

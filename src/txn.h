@@ -17,7 +17,6 @@
 #include <tuple>
 
 #include <unordered_map>
-#include "rcu-wrapper.h"
 #include "dbcore/xid.h"
 #include "dbcore/sm-log.h"
 #include "amd64.h"
@@ -584,7 +583,6 @@ protected:
 
   string_allocator_type *sa;
 
-  unmanaged<scoped_rcu_region> rcu_guard_;
 };
 
 class transaction_abort_exception : public std::exception {

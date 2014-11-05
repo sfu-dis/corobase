@@ -14,7 +14,6 @@
 #include "../allocator.h"
 #include "../stats_server.h"
 #include "bench.h"
-#include "bdb_wrapper.h"
 #include "ndb_wrapper.h"
 #include "ndb_wrapper_impl.h"
 //#include "kvdb_wrapper.h"
@@ -79,8 +78,8 @@ main(int argc, char **argv)
   int disable_snapshots = 0;
   string *log_dir = NULL;
   size_t log_seg_gig = 1024 * 1024;
-  size_t log_segsize = log_seg_gig * 2048; // log segment size
-  size_t log_bufsize = 8 * 1024 * 1024;  // log buffer size
+  size_t log_segsize = log_seg_gig * 4096 ; // log segment size
+  size_t log_bufsize = 256 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
   while (1) {
     static struct option long_options[] =
@@ -245,12 +244,7 @@ main(int argc, char **argv)
   }
 #endif
 
-  if (db_type == "bdb") {
-    const string cmd = "rm -rf " + basedir + "/db/*";
-    // XXX(stephentu): laziness
-    int ret UNUSED = system(cmd.c_str());
-    db = new bdb_wrapper("db", bench_type + ".db");
-  } else if (db_type == "ndb-proto1") {
+  if (db_type == "ndb-proto1") {
     // XXX: hacky simulation of proto1
     db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
     transaction_proto2_static::set_hack_status(true);
