@@ -262,10 +262,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 try_expect_new:
   // Allocate an version
   char *p = NULL;
-  if (expect_new)
-      p = reinterpret_cast<char*>(RA::allocate_cold(sizeof(object) + alloc_sz));
-  else
-      p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
+  p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
   INVARIANT(p);
 
   // Tuple setup

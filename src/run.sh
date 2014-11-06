@@ -1,15 +1,5 @@
-#!/bin/bash
-if [ ${OWNER} != "" ] && [ ${OWNER} != ${USER} ]; then
-		echo "Unavailable, Wait"
-else
-	echo "Available! :) "
-	rm -rf /tmpfs/silo-log/*
-	export LD_PRELOAD="/usr/lib/libtcmalloc.so"
-
-#for NUM in 1 2 4 8 16 
-#do
-	./out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor $1 --num-threads $1 --runtime $2 --log-dir /tmpfs/silo-log/ --pin-cpu
-#	./out-perf.debug.check.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 12 --num-threads $1 --runtime 60 --log-dir /tmpfs/silo-log/ --pin-cpu
-	rm -rf /tmpfs/silo-log/*
-#done
-fi
+rm -rf /tmpfs/silo-log/*
+export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
+export LD_PRELOAD="/usr/lib/libtcmalloc.so"
+./out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 24 --num-threads $1 --runtime $2 --log-dir /tmpfs/silo-log/ --pin-cpu
+rm -rf /tmpfs/silo-log/*

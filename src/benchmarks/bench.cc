@@ -15,7 +15,6 @@
 #include "../counter.h"
 #include "../scopedperf.hh"
 #include "../allocator.h"
-#include "../dbcore/sm-alloc.h"
 #include "../dbcore/rcu.h"
 
 #ifdef USE_JEMALLOC
@@ -55,53 +54,53 @@ delete_pointers(const vector<T *> &pts)
 }
 
 template <typename T>
-static vector<T>
+	static vector<T>
 elemwise_sum(const vector<T> &a, const vector<T> &b)
 {
-  INVARIANT(a.size() == b.size());
-  vector<T> ret(a.size());
-  for (size_t i = 0; i < a.size(); i++)
-    ret[i] = a[i] + b[i];
-  return ret;
+	INVARIANT(a.size() == b.size());
+	vector<T> ret(a.size());
+	for (size_t i = 0; i < a.size(); i++)
+		ret[i] = a[i] + b[i];
+	return ret;
 }
 
 template <typename K, typename V>
-static void
+	static void
 map_agg(map<K, V> &agg, const map<K, V> &m)
 {
-  for (typename map<K, V>::const_iterator it = m.begin();
-       it != m.end(); ++it)
-    agg[it->first] += it->second;
+	for (typename map<K, V>::const_iterator it = m.begin();
+			it != m.end(); ++it)
+		agg[it->first] += it->second;
 }
 
 // returns <free_bytes, total_bytes>
-static pair<uint64_t, uint64_t>
+	static pair<uint64_t, uint64_t>
 get_system_memory_info()
 {
-  struct sysinfo inf;
-  sysinfo(&inf);
-  return make_pair(inf.mem_unit * inf.freeram, inf.mem_unit * inf.totalram);
+	struct sysinfo inf;
+	sysinfo(&inf);
+	return make_pair(inf.mem_unit * inf.freeram, inf.mem_unit * inf.totalram);
 }
 
-static bool
+	static bool
 clear_file(const char *name)
 {
-  ofstream ofs(name);
-  ofs.close();
-  return true;
+	ofstream ofs(name);
+	ofs.close();
+	return true;
 }
 
 static void
 write_cb(void *p, const char *s) UNUSED;
-static void
+	static void
 write_cb(void *p, const char *s)
 {
-  const char *f = "jemalloc.stats";
-  static bool s_clear_file UNUSED = clear_file(f);
-  ofstream ofs(f, ofstream::app);
-  ofs << s;
-  ofs.flush();
-  ofs.close();
+	const char *f = "jemalloc.stats";
+	static bool s_clear_file UNUSED = clear_file(f);
+	ofstream ofs(f, ofstream::app);
+	ofs << s;
+	ofs.flush();
+	ofs.close();
 }
 
 static event_avg_counter evt_avg_abort_spins("avg_abort_spins");
@@ -109,14 +108,10 @@ static event_avg_counter evt_avg_abort_spins("avg_abort_spins");
 void
 bench_worker::run()
 {
-  // XXX(stephentu): so many nasty hacks here. should actually
-  // fix some of this stuff one day
-  if (set_core_id)
-    coreid::set_core_id(worker_id); // cringe
+
   RCU::rcu_register();
   RCU::rcu_start_tls_cache( 32, 100000 );
   on_run_setup();
-  RA::register_thread();
   scoped_db_thread_ctx ctx(db, false);
   const workload_desc_vec workload = get_workload();
   txn_counts.resize(workload.size());
@@ -167,6 +162,7 @@ bench_worker::run()
 void
 bench_runner::run()
 {
+	heap_prefault();
   // load data
   const vector<bench_loader *> loaders = make_loaders();
   {
@@ -216,17 +212,6 @@ bench_runner::run()
   }
 
   map<string, size_t> table_sizes_before;
-  if (verbose) {
-    for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
-         it != open_tables.end(); ++it) {
-      const size_t s = it->second->size();
-      cerr << "table " << it->first << " size " << s << endl;
-      table_sizes_before[it->first] = s;
-    }
-    cerr << "starting benchmark..." << endl;
-  }
-
-  RA::system_loading = false;
 
   const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
 
@@ -237,6 +222,15 @@ bench_runner::run()
     (*it)->start();
 
   barrier_a.wait_for(); // wait for all threads to start up
+  if (verbose) {
+    for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
+         it != open_tables.end(); ++it) {
+      const size_t s = it->second->size();
+      cerr << "table " << it->first << " size " << s << endl;
+      table_sizes_before[it->first] = s;
+    }
+    cerr << "starting benchmark..." << endl;
+  }
   timer t, t_nosync;
   barrier_b.count_down(); // bombs away!
   if (run_mode == RUNMODE_TIME) {

@@ -227,12 +227,8 @@ install:
 		object* cur_obj;
 	start_over:
 		for( fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
-			if (ptr._ptr & fat_ptr::DIRTY_MASK)
-                goto start_over;
 
             cur_obj = (object*)ptr.offset();
-            if (cur_obj->_next._ptr & fat_ptr::DIRTY_MASK)
-                goto start_over;
 			dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
 			auto clsn = volatile_read(version->clsn);
 			// xid tracking & status check

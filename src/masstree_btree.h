@@ -128,7 +128,7 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-        return RA::allocate_cold(sz);
+        return RA::allocate(sz);
     }
     void deallocate(void* p, size_t sz, memtag) {
     }
@@ -137,7 +137,7 @@ class simple_threadinfo {
 
     void* pool_allocate(size_t sz, memtag) {
 	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        return RA::allocate_cold(nl * CACHE_LINE_SIZE);
+        return RA::allocate(nl * CACHE_LINE_SIZE);
     }
     void pool_deallocate(void* p, size_t sz, memtag) {
     }
