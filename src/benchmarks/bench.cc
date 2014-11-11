@@ -15,7 +15,7 @@
 #include "../counter.h"
 #include "../scopedperf.hh"
 #include "../allocator.h"
-#include "../dbcore/sm-alloc.h"
+#include "../dbcore/rcu.h"
 
 #ifdef USE_JEMALLOC
 //cannot include this header b/c conflicts with malloc.h
@@ -54,53 +54,53 @@ delete_pointers(const vector<T *> &pts)
 }
 
 template <typename T>
-static vector<T>
+	static vector<T>
 elemwise_sum(const vector<T> &a, const vector<T> &b)
 {
-  INVARIANT(a.size() == b.size());
-  vector<T> ret(a.size());
-  for (size_t i = 0; i < a.size(); i++)
-    ret[i] = a[i] + b[i];
-  return ret;
+	INVARIANT(a.size() == b.size());
+	vector<T> ret(a.size());
+	for (size_t i = 0; i < a.size(); i++)
+		ret[i] = a[i] + b[i];
+	return ret;
 }
 
 template <typename K, typename V>
-static void
+	static void
 map_agg(map<K, V> &agg, const map<K, V> &m)
 {
-  for (typename map<K, V>::const_iterator it = m.begin();
-       it != m.end(); ++it)
-    agg[it->first] += it->second;
+	for (typename map<K, V>::const_iterator it = m.begin();
+			it != m.end(); ++it)
+		agg[it->first] += it->second;
 }
 
 // returns <free_bytes, total_bytes>
-static pair<uint64_t, uint64_t>
+	static pair<uint64_t, uint64_t>
 get_system_memory_info()
 {
-  struct sysinfo inf;
-  sysinfo(&inf);
-  return make_pair(inf.mem_unit * inf.freeram, inf.mem_unit * inf.totalram);
+	struct sysinfo inf;
+	sysinfo(&inf);
+	return make_pair(inf.mem_unit * inf.freeram, inf.mem_unit * inf.totalram);
 }
 
-static bool
+	static bool
 clear_file(const char *name)
 {
-  ofstream ofs(name);
-  ofs.close();
-  return true;
+	ofstream ofs(name);
+	ofs.close();
+	return true;
 }
 
 static void
 write_cb(void *p, const char *s) UNUSED;
-static void
+	static void
 write_cb(void *p, const char *s)
 {
-  const char *f = "jemalloc.stats";
-  static bool s_clear_file UNUSED = clear_file(f);
-  ofstream ofs(f, ofstream::app);
-  ofs << s;
-  ofs.flush();
-  ofs.close();
+	const char *f = "jemalloc.stats";
+	static bool s_clear_file UNUSED = clear_file(f);
+	ofstream ofs(f, ofstream::app);
+	ofs << s;
+	ofs.flush();
+	ofs.close();
 }
 
 static event_avg_counter evt_avg_abort_spins("avg_abort_spins");
@@ -108,64 +108,63 @@ static event_avg_counter evt_avg_abort_spins("avg_abort_spins");
 void
 bench_worker::run()
 {
-  // XXX(stephentu): so many nasty hacks here. should actually
-  // fix some of this stuff one day
-  if (set_core_id)
-    coreid::set_core_id(worker_id); // cringe
-  {
-    scoped_rcu_region r; // register this thread in rcu region
-  }
-  on_run_setup();
-  RA::register_thread();
-  scoped_db_thread_ctx ctx(db, false);
-  const workload_desc_vec workload = get_workload();
-  txn_counts.resize(workload.size());
-  barrier_a->count_down();
-  barrier_b->wait_for();
-  while (running && (run_mode != RUNMODE_OPS || ntxn_commits < ops_per_worker)) {
-    double d = r.next_uniform();
-    for (size_t i = 0; i < workload.size(); i++) {
-      if ((i + 1) == workload.size() || d < workload[i].frequency) {
-      retry:
-        timer t;
-        const unsigned long old_seed = r.get_seed();
-        const auto ret = workload[i].fn(this);
-        if (likely(ret.first)) {
-          ++ntxn_commits;
-          latency_numer_us += t.lap();
-          backoff_shifts >>= 1;
-        } else {
-          ++ntxn_aborts;
-          if (retry_aborted_transaction && running) {
-            if (backoff_aborted_transaction) {
-              if (backoff_shifts < 63)
-                backoff_shifts++;
-              uint64_t spins = 1UL << backoff_shifts;
-              spins *= 100; // XXX: tuned pretty arbitrarily
-              evt_avg_abort_spins.offer(spins);
-              while (spins) {
-                nop_pause();
-                spins--;
-              }
-            }
-            r.set_seed(old_seed);
-            goto retry;
-          }
-        }
-        size_delta += ret.second; // should be zero on abort
-        txn_counts[i]++; // txn_counts aren't used to compute throughput (is
-                         // just an informative number to print to the console
-                         // in verbose mode)
-        break;
-      }
-      d -= workload[i].frequency;
-    }
-  }
+	// XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
+	RCU::rcu_register();
+	RA::ra_register();
+	RCU::rcu_start_tls_cache( 32, 100000 );
+	on_run_setup();
+	scoped_db_thread_ctx ctx(db, false);
+	const workload_desc_vec workload = get_workload();
+	txn_counts.resize(workload.size());
+	barrier_a->count_down();
+	barrier_b->wait_for();
+	while (running && (run_mode != RUNMODE_OPS || ntxn_commits < ops_per_worker)) {
+		double d = r.next_uniform();
+		for (size_t i = 0; i < workload.size(); i++) {
+			if ((i + 1) == workload.size() || d < workload[i].frequency) {
+retry:
+				timer t;
+				const unsigned long old_seed = r.get_seed();
+				const auto ret = workload[i].fn(this);
+				if (likely(ret.first)) {
+					++ntxn_commits;
+					latency_numer_us += t.lap();
+					backoff_shifts >>= 1;
+				} else {
+					++ntxn_aborts;
+					if (retry_aborted_transaction && running) {
+						if (backoff_aborted_transaction) {
+							if (backoff_shifts < 63)
+								backoff_shifts++;
+							uint64_t spins = 1UL << backoff_shifts;
+							spins *= 100; // XXX: tuned pretty arbitrarily
+							evt_avg_abort_spins.offer(spins);
+							while (spins) {
+								nop_pause();
+								spins--;
+							}
+						}
+						r.set_seed(old_seed);
+						goto retry;
+					}
+				}
+				size_delta += ret.second; // should be zero on abort
+				txn_counts[i]++; // txn_counts aren't used to compute throughput (is
+				// just an informative number to print to the console
+				// in verbose mode)
+				break;
+			}
+			d -= workload[i].frequency;
+		}
+	}
+	RA::ra_deregister();
+	RCU::rcu_deregister();
 }
 
 void
 bench_runner::run()
 {
+	heap_prefault();
   // load data
   const vector<bench_loader *> loaders = make_loaders();
   {
@@ -215,16 +214,6 @@ bench_runner::run()
   }
 
   map<string, size_t> table_sizes_before;
-  if (verbose) {
-    for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
-         it != open_tables.end(); ++it) {
-      scoped_rcu_region guard;
-      const size_t s = it->second->size();
-      cerr << "table " << it->first << " size " << s << endl;
-      table_sizes_before[it->first] = s;
-    }
-    cerr << "starting benchmark..." << endl;
-  }
 
   const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
 
@@ -235,6 +224,15 @@ bench_runner::run()
     (*it)->start();
 
   barrier_a.wait_for(); // wait for all threads to start up
+  if (verbose) {
+    for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
+         it != open_tables.end(); ++it) {
+      const size_t s = it->second->size();
+      cerr << "table " << it->first << " size " << s << endl;
+      table_sizes_before[it->first] = s;
+    }
+    cerr << "starting benchmark..." << endl;
+  }
   timer t, t_nosync;
   barrier_b.count_down(); // bombs away!
   if (run_mode == RUNMODE_TIME) {
@@ -305,7 +303,6 @@ bench_runner::run()
     cerr << "--- table statistics ---" << endl;
     for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
-      scoped_rcu_region guard;
       const size_t s = it->second->size();
       const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
       cerr << "table " << it->first << " size " << it->second->size();
@@ -352,6 +349,14 @@ bench_runner::run()
     // FIXME: tzwang: no real allocator for now
     // cerr << "--- allocator stats ---" << endl;
     // ::allocator::DumpStats();
+
+	RCU::rcu_gc_info gc_info = RCU::rcu_get_gc_info();
+	cerr << "--- RCU stat --- " << endl;
+	cerr << "gc_passes: " << gc_info.gc_passes << endl;
+	cerr << "objects_freed: " << gc_info.objects_freed << endl;
+	cerr << "bytes_freed: " << gc_info.bytes_freed << endl;
+	cerr << "objects_stashed : " << gc_info.objects_stashed<< endl;
+	cerr << "bytes_stashed: " << gc_info.bytes_stashed << endl;
     cerr << "---------------------------------------" << endl;
 
 #ifdef USE_JEMALLOC

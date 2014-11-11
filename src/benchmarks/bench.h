@@ -13,7 +13,15 @@
 #include "../thread.h"
 #include "../util.h"
 #include "../spinbarrier.h"
-#include "../rcu-wrapper.h"
+#include "../dbcore/rcu.h"
+#include "../dbcore/sm-alloc.h"
+
+#include <stdio.h>
+#include <sys/mman.h> // Needed for mlockall()
+#include <malloc.h>
+#include <sys/time.h> // needed for getrusage
+#include <sys/resource.h> // needed for getrusage
+#include <numa.h>
 
 extern void ycsb_do_test(abstract_db *db, int argc, char **argv);
 extern void tpcc_do_test(abstract_db *db, int argc, char **argv);
@@ -79,14 +87,16 @@ public:
   virtual void
   run()
   {
-    { // XXX(stephentu): this is a hack
-      scoped_rcu_region r; // register this thread in rcu region
-    }
+	  // XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
+	RCU::rcu_register();
+	RA::ra_register();
     ALWAYS_ASSERT(b);
     b->count_down();
     b->wait_for();
     scoped_db_thread_ctx ctx(db, true);
     load();
+	RA::ra_deregister();
+	RCU::rcu_deregister();
   }
 protected:
   inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
@@ -144,6 +154,7 @@ public:
   virtual workload_desc_vec get_workload() const = 0;
 
   virtual void run();
+
 
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
   inline size_t get_ntxn_aborts() const { return ntxn_aborts; }
@@ -217,6 +228,24 @@ public:
     : db(db), barrier_a(nthreads), barrier_b(1) {}
   virtual ~bench_runner() {}
   void run();
+  void heap_prefault()
+  {
+	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);		// 45G for 24 warehouses
+	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
+	  ALWAYS_ASSERT(p);
+	  memset( p,  0xdb, FAULT_SIZE );
+
+	  ALWAYS_ASSERT(not mlockall(MCL_CURRENT));
+	  mallopt (M_TRIM_THRESHOLD, -1);
+	  mallopt (M_MMAP_MAX, 0);
+
+	  struct rusage usage;
+	  getrusage(RUSAGE_SELF, &usage);
+	  std::cout<<"Major fault: " <<  usage.ru_majflt<< "Minor fault: " << usage.ru_minflt<< std::endl;
+
+	  free(p);
+
+  }
 protected:
   // only called once
   virtual std::vector<bench_loader*> make_loaders() = 0;

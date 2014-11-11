@@ -5,6 +5,7 @@
 #include "lockguard.h"
 
 #include "object.h"
+#include "dbcore/sm-common.h"
 
 using namespace TXN;
 
@@ -14,13 +15,14 @@ template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type &sa)
   : transaction_base(flags), sa(&sa)
 {
-  gc->epoch_enter();
-  INVARIANT(RCU::rcu_is_active());
+  RA::epoch_enter();
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
   xid_context *xc = xid_get_context(xid);
+  RCU::rcu_enter();
   xc->begin = logger->cur_lsn();
+  RCU::rcu_enter();
   xc->end = INVALID_LSN;
   xc->state = TXN_EMBRYO;
 }
@@ -31,17 +33,11 @@ transaction<Protocol, Traits>::~transaction()
   // transaction shouldn't fall out of scope w/o resolution
   // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
   INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
-  INVARIANT(RCU::rcu_is_active());
 
-  // FIXME: tzwang: free txn desc.
-  const unsigned cur_depth = rcu_guard_->depth();
-  rcu_guard_.destroy();
-  if (cur_depth == 1)
-    INVARIANT(!RCU::rcu_is_active());
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
-  gc->epoch_exit();
+  RA::epoch_exit();
 }
 
 template <template <typename> class Protocol, typename Traits>
@@ -69,26 +65,18 @@ transaction<Protocol, Traits>::abort_impl()
   for (; it != it_end; ++it) {
     dbtuple* tuple = it->get_tuple();
 	concurrent_btree* btr = it->get_table();
-
-	// TODO. update to INVALID LSN
-	// INVALID_LSN -> FATPTR needed
-
-	// overwritten tuple is already out of chain
-	if( !tuple->overwritten )
-		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
-
-    dbtuple::release(tuple);
-	// TODO. free container also
+	btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
   }
 
   // log discard
+  RCU::rcu_enter();
   log->pre_commit();
   log->discard();
+  RCU::rcu_exit();
 
   // now. safe to free XID
   xid_free(xid);
 
-  RCU::rcu_quiesce();
 }
 
 namespace {
@@ -184,11 +172,13 @@ transaction<Protocol, Traits>::commit()
 
   INVARIANT(log);
   // get clsn, abort if failed
+  RCU::rcu_enter();
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
       signal_abort(ABORT_REASON_INTERNAL);
-
   log->commit(NULL);
+  RCU::rcu_exit();
+
   // change state
   volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
 
@@ -197,20 +187,10 @@ transaction<Protocol, Traits>::commit()
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
     dbtuple* tuple = it->get_tuple();
-    if (not tuple->overwritten) {
       tuple->clsn = xc->end.to_log_ptr();
       INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    } 
-    else {
-		// Unlink overwritten uncommitted data by this TXN.
-		dbtuple* tuple = it->get_tuple();
-		concurrent_btree* btr = it->get_table();
-		btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
-		dbtuple::release(tuple);
-    }
   }
 
-  RCU::rcu_quiesce();
   // done
   xid_free(xid);
 }
@@ -232,7 +212,8 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
   tuple_vector_type* tuple_vector = btr.get_tuple_vector();
   tuple->oid = tuple_vector->alloc();
-  while(!tuple_vector->put( tuple->oid, value ));
+  fat_ptr new_head = fat_ptr::make( value, INVALID_SIZE_CODE, 0);
+  while(!tuple_vector->put( tuple->oid, new_head));
 
   // XXX: underlying btree api should return the existing value if insert
   // fails- this would allow us to avoid having to do another search
@@ -241,8 +222,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   if (unlikely(!btr.insert_if_absent(
           varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
-    dbtuple::release_no_rcu(tuple);
-    RCU::rcu_quiesce();
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
     return false;
   }

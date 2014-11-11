@@ -29,13 +29,6 @@ dbtuple::~dbtuple()
 }
 
 void
-dbtuple::gc_this()
-{
-  INVARIANT(RCU::rcu_is_active());
-  release(this);
-}
-
-void
 dbtuple::print(ostream &o, unsigned len) const
 {
   o << "dbtuple:" << endl

@@ -84,7 +84,7 @@ endif
 CXXFLAGS := -Wall -std=c++0x -g
 CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(DEBUG_S),1)
-        CXXFLAGS +=  -g -Og -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
+        CXXFLAGS +=  -g -Og -gdwarf-2 -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
 else
         CXXFLAGS += -march=native -O2 -funroll-loops -fno-omit-frame-pointer
         #CXXFLAGS += -Werror -O2 -funroll-loops -fno-omit-frame-pointer
@@ -147,11 +147,6 @@ SRCFILES = allocator.cc \
 	txn.cc \
 	txn_proto2_impl.cc \
 	varint.cc
-#ticker.cc \
-#txn_table.cc \
-#rcu.cc \
-#allocator.cc \
-#btree.cc \
 
 DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/sm-log.cpp \
@@ -162,7 +157,6 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/sm-log-file.cpp \
 	dbcore/sm-exceptions.cpp \
 	dbcore/sm-common.cpp \
-	dbcore/sm-gc.cpp \
 	dbcore/window-buffer.cpp \
 	dbcore/rcu-slist.cpp \
 	dbcore/rcu.cpp \
@@ -170,7 +164,8 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/adler.cpp \
 	dbcore/w_rand.cpp \
 	dbcore/size-encode.cpp \
-	dbcore/xid.cpp
+	dbcore/xid.cpp		\
+	dbcore/dynarray.cpp
 
 ifeq ($(MASSTREE_S),1)
 MASSTREE_SRCFILES = masstree/compiler.cc \
@@ -188,14 +183,13 @@ DBCORE_OBJFILES := $(patsubst dbcore/%.cpp, $(O)/dbcore/%.o, $(DBCORE_SRCFILES))
 BENCH_CXXFLAGS := $(CXXFLAGS)
 BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
 
-BENCH_SRCFILES = benchmarks/bdb_wrapper.cc \
+BENCH_SRCFILES = \
 	benchmarks/bench.cc \
 	benchmarks/encstress.cc \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
 	benchmarks/tpcc.cc
-#	benchmarks/ycsb.cc FIXME: tzwang: don't bother non-tpcc for now
 
 ifeq ($(MYSQL_S),1)
 BENCH_CXXFLAGS += -DMYSQL_SHARE_DIR=\"$(MYSQL_SHARE_DIR)\"
