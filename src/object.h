@@ -45,7 +45,6 @@ public:
         _global_oid_alloc_offset = 0;
 		_obj_table = dynarray(std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr),
                               nelems*sizeof(fat_ptr) );
-
 	}
 
 	bool put( oid_type oid, fat_ptr new_head)
@@ -103,6 +102,7 @@ retry:
 				if( not __sync_bool_compare_and_swap( (uint64_t *)prev_next, prev._ptr, target->_next._ptr ) )
 					goto retry;
 
+				RA::deallocate( (void*)target );
 				return;
 			}
 			prev_next = &target->_next;	// only can be modified by current TX. volatile_read is not needed

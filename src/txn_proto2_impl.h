@@ -82,13 +82,9 @@ public:
                      typename Traits::StringAllocator &sa)
     : transaction<transaction_proto2, Traits>(flags, sa)
   {
-    INVARIANT(RCU::rcu_is_active());
   }
 
-  ~transaction_proto2()
-  {
-    INVARIANT(RCU::rcu_is_active());
-  }
+  ~transaction_proto2() {}
 };
 
 // txn_btree_handler specialization
