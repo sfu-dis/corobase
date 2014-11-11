@@ -108,55 +108,57 @@ static event_avg_counter evt_avg_abort_spins("avg_abort_spins");
 void
 bench_worker::run()
 {
-
-  RCU::rcu_register();
-  RCU::rcu_start_tls_cache( 32, 100000 );
-  on_run_setup();
-  scoped_db_thread_ctx ctx(db, false);
-  const workload_desc_vec workload = get_workload();
-  txn_counts.resize(workload.size());
-  barrier_a->count_down();
-  barrier_b->wait_for();
-  while (running && (run_mode != RUNMODE_OPS || ntxn_commits < ops_per_worker)) {
-    double d = r.next_uniform();
-    for (size_t i = 0; i < workload.size(); i++) {
-      if ((i + 1) == workload.size() || d < workload[i].frequency) {
-      retry:
-        timer t;
-        const unsigned long old_seed = r.get_seed();
-        const auto ret = workload[i].fn(this);
-        if (likely(ret.first)) {
-          ++ntxn_commits;
-          latency_numer_us += t.lap();
-          backoff_shifts >>= 1;
-        } else {
-          ++ntxn_aborts;
-          if (retry_aborted_transaction && running) {
-            if (backoff_aborted_transaction) {
-              if (backoff_shifts < 63)
-                backoff_shifts++;
-              uint64_t spins = 1UL << backoff_shifts;
-              spins *= 100; // XXX: tuned pretty arbitrarily
-              evt_avg_abort_spins.offer(spins);
-              while (spins) {
-                nop_pause();
-                spins--;
-              }
-            }
-            r.set_seed(old_seed);
-            goto retry;
-          }
-        }
-        size_delta += ret.second; // should be zero on abort
-        txn_counts[i]++; // txn_counts aren't used to compute throughput (is
-                         // just an informative number to print to the console
-                         // in verbose mode)
-        break;
-      }
-      d -= workload[i].frequency;
-    }
-  }
-  RCU::rcu_deregister();
+	// XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
+	RCU::rcu_register();
+	RA::ra_register();
+	RCU::rcu_start_tls_cache( 32, 100000 );
+	on_run_setup();
+	scoped_db_thread_ctx ctx(db, false);
+	const workload_desc_vec workload = get_workload();
+	txn_counts.resize(workload.size());
+	barrier_a->count_down();
+	barrier_b->wait_for();
+	while (running && (run_mode != RUNMODE_OPS || ntxn_commits < ops_per_worker)) {
+		double d = r.next_uniform();
+		for (size_t i = 0; i < workload.size(); i++) {
+			if ((i + 1) == workload.size() || d < workload[i].frequency) {
+retry:
+				timer t;
+				const unsigned long old_seed = r.get_seed();
+				const auto ret = workload[i].fn(this);
+				if (likely(ret.first)) {
+					++ntxn_commits;
+					latency_numer_us += t.lap();
+					backoff_shifts >>= 1;
+				} else {
+					++ntxn_aborts;
+					if (retry_aborted_transaction && running) {
+						if (backoff_aborted_transaction) {
+							if (backoff_shifts < 63)
+								backoff_shifts++;
+							uint64_t spins = 1UL << backoff_shifts;
+							spins *= 100; // XXX: tuned pretty arbitrarily
+							evt_avg_abort_spins.offer(spins);
+							while (spins) {
+								nop_pause();
+								spins--;
+							}
+						}
+						r.set_seed(old_seed);
+						goto retry;
+					}
+				}
+				size_delta += ret.second; // should be zero on abort
+				txn_counts[i]++; // txn_counts aren't used to compute throughput (is
+				// just an informative number to print to the console
+				// in verbose mode)
+				break;
+			}
+			d -= workload[i].frequency;
+		}
+	}
+	RA::ra_deregister();
+	RCU::rcu_deregister();
 }
 
 void

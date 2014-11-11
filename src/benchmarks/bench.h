@@ -14,6 +14,7 @@
 #include "../util.h"
 #include "../spinbarrier.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-alloc.h"
 
 #include <stdio.h>
 #include <sys/mman.h> // Needed for mlockall()
@@ -86,12 +87,15 @@ public:
   virtual void
   run()
   {
+	  // XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
 	RCU::rcu_register();
+	RA::ra_register();
     ALWAYS_ASSERT(b);
     b->count_down();
     b->wait_for();
     scoped_db_thread_ctx ctx(db, true);
     load();
+	RA::ra_deregister();
 	RCU::rcu_deregister();
   }
 protected:
@@ -226,7 +230,7 @@ public:
   void run();
   void heap_prefault()
   {
-	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*40);
+	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);		// 45G for 24 warehouses
 	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
 	  ALWAYS_ASSERT(p);
 	  memset( p,  0xdb, FAULT_SIZE );

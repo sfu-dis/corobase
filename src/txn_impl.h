@@ -20,7 +20,9 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   concurrent_btree::NodeLockRegionBegin();
 #endif
   xid_context *xc = xid_get_context(xid);
+  RCU::rcu_enter();
   xc->begin = logger->cur_lsn();
+  RCU::rcu_enter();
   xc->end = INVALID_LSN;
   xc->state = TXN_EMBRYO;
 }
