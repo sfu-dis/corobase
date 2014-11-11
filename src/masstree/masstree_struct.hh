@@ -188,7 +188,8 @@ class internode : public node_base<P> {
 		memset( n->child_oid_, 0, sizeof(oid_type)*width+1 );
 
 		// drop to oid array
-		while(not node_vector->put( oid, obj ));
+		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
+		while(not node_vector->put( oid, new_head ));
 		return n;
 	}
 
@@ -366,7 +367,8 @@ class leaf : public node_base<P> {
 		n->next_lock_ = false;
 
 		// drop to oid array 
-		while(not node_vector->put( oid, obj ));
+		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
+		while(not node_vector->put( oid, new_head ));
 
 		return n;
 	}
@@ -554,8 +556,8 @@ template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
 
     masstree_precondition(!root_oid_);
-	tuple_vector = new object_vector<value_type>( 100000000 );
-	node_vector = new object_vector<node_type*>( 10000000 );
+	tuple_vector = new object_vector<value_type>( 1024*1024);
+	node_vector = new object_vector<node_type*>( 1024*1024);
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
 	root_oid_ = root->oid;
 }

@@ -11,7 +11,6 @@
 #include <map>
 #include <type_traits>
 #include <memory>
-#include "dbcore/sm-gc.h"
 
 using namespace TXN;
 
@@ -20,7 +19,7 @@ using namespace TXN;
 template <template <typename> class Transaction>
 struct base_txn_btree_handler {
   static inline void on_construct() {} // called when initializing
-  static const bool has_background_task = false;
+  //static const bool has_background_task = false;
 };
 
 template <template <typename> class Transaction, typename P>
@@ -39,7 +38,7 @@ public:
       been_destructed(false)
   {
     base_txn_btree_handler<Transaction>::on_construct();
-	transaction_base::gc->register_table(&underlying_btree);		// Register to GC system 
+	RA::register_table(&underlying_btree, name);		// Register to GC system 
   }
 
   ~base_txn_btree()
@@ -202,7 +201,6 @@ base_txn_btree<Transaction, P>::unsafe_purge(bool dump_stats)
   ALWAYS_ASSERT(!been_destructed);
   been_destructed = true;
   purge_tree_walker w;
-  scoped_rcu_region guard;
   underlying_btree.tree_walk(w);
   underlying_btree.clear();
   return std::map<std::string, uint64_t>();
@@ -220,20 +218,6 @@ template <template <typename> class Transaction, typename P>
 void
 base_txn_btree<Transaction, P>::purge_tree_walker::on_node_success()
 {
-  for (size_t i = 0; i < spec_values.size(); i++) {
-    dbtuple *tuple = (dbtuple *) spec_values[i].first;
-    INVARIANT(tuple);
-    if (base_txn_btree_handler<Transaction>::has_background_task) {
-      if (!tuple->size == 0) {
-        dbtuple::release(tuple);
-      } else {
-        // enqueued already to background gc by the writer of the delete
-      }
-    } else {
-      // XXX: this path is probably not right
-      dbtuple::release_no_rcu(tuple);
-    }
-  }
   spec_values.clear();
 }
 
@@ -275,8 +259,10 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 			  max_alloc_sz);
   INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
 
+try_expect_new:
   // Allocate an version
-  char* p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
+  char *p = NULL;
+  p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
   INVARIANT(p);
 
   // Tuple setup
@@ -302,6 +288,8 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   if (expect_new) {
     if (t.try_insert_new_tuple(this->underlying_btree, k, version, writer)) 
 		return;
+    expect_new = false;
+    goto try_expect_new;
   }
 
   // do regular search
@@ -328,10 +316,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   // OID from previous probe
   tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
-  std::pair<bool, concurrent_btree::value_type> ret =
-                          this->underlying_btree.update_version(tuple->oid,
-                          version,
-                          t.xid);
+  bool ret = this->underlying_btree.update_version(tuple->oid, version, t.xid);
 
   // FIXME: tzwang: now the above update returns a pair:
   // <bool, dbtuple*>, bool indicates if the update op has succeeded or not.
@@ -362,7 +347,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // checking a valid bit at commit time). See comments next.
 
   // check return value
-  if (ret.first) { // succeeded
+  if (ret) { // succeeded
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
@@ -374,16 +359,6 @@ void base_txn_btree<Transaction, P>::do_tree_put(
                       fat_ptr::make(tuple, size_code),
                       DEFAULT_ALIGNMENT_BITS,
                       NULL);
-    dbtuple* ret_tuple = reinterpret_cast<dbtuple*>(ret.second);
-    if (ret_tuple) {  // in-place update
-      INVARIANT(ret_tuple != tuple);
-      // Even simpler, if we have a valid bit in dbtuple header, we don't need
-      // to traverse the write-set. Just mark it as invalid if in-place update
-      // happened, because the write set just holds the pointer to tuples. During
-      // commit we'll need to check this bit and rcu_free tuples in the write-set
-      // with valid=false.
-      ret_tuple->overwritten = true;
-    } // else we're done.
   }
   else {  // somebody else acted faster than we did
     const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;

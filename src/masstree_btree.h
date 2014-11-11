@@ -131,18 +131,8 @@ class simple_threadinfo {
         return RA::allocate(sz);
     }
     void deallocate(void* p, size_t sz, memtag) {
-	// in C++ allocators, 'p' must be nonnull
-        // XXX: tzwang: this should be returning the memory to slab actually
-        //scoped_rcu_region guard;
-        //RCU::rcu_free(p);
-        //RCU::rcu_pointer u = {p};
-        //--u.p;
-        //std::free(u.v);
     }
     void deallocate_rcu(void *p, size_t sz, memtag) {
-	assert(p);
-        //scoped_rcu_region guard;
-        //RCU::rcu_free(p);
     }
 
     void* pool_allocate(size_t sz, memtag) {
@@ -150,24 +140,11 @@ class simple_threadinfo {
         return RA::allocate(nl * CACHE_LINE_SIZE);
     }
     void pool_deallocate(void* p, size_t sz, memtag) {
-	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        // XXX: tzwang: this should be returning the memory to slab actually
-        //scoped_rcu_region guard;
-        //RCU::rcu_free(p);
-        //RCU::rcu_pointer u = {p};
-        //--u.p;
-        //std::free(u.v);
     }
     void pool_deallocate_rcu(void* p, size_t sz, memtag) {
-	assert(p);
-	//int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        //scoped_rcu_region guard;
-        //RCU::rcu_free(p);
     }
 
-    // RCU
     void rcu_register(rcu_callback *cb) {
-      //RCU::free_with_fn(cb, rcu_callback_function);
     }
 
   private:
@@ -199,9 +176,6 @@ class mbtree {
   typedef uint64_t key_slice;
   typedef typename P::value_type value_type;
   typedef typename P::threadinfo_type threadinfo;
-  typedef typename std::conditional<!P::RcuRespCaller,
-      scoped_rcu_region,
-      disabled_rcu_region>::type rcu_region;
 
   // public to assist in testing
   static const unsigned int NKeysPerNode    = P::leaf_width;
@@ -251,7 +225,6 @@ public:
   }
 
   ~mbtree() {
-    rcu_region guard;
     threadinfo ti;
     table_.destroy(ti);
   }
@@ -267,12 +240,7 @@ public:
   {
 	  return table_.get_tuple_vector();
   }
-  inline void cleanup_versions( LSN lsn )
-  {
-	  table_.cleanup_versions( lsn );
-  }
-
-  std::pair<bool, value_type> update_version( oid_type oid, object* obj, XID xid)
+  bool update_version( oid_type oid, object* obj, XID xid)
   {
 	  return table_.update_version( oid, obj, xid );
   }
@@ -303,7 +271,6 @@ public:
    * NOT THREAD SAFE
    */
   inline void clear() {
-    rcu_region guard;
     threadinfo ti;
     table_.destroy(ti);
     table_.initialize(ti);
@@ -564,8 +531,6 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
 
 template <typename P>
 void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
-  rcu_region guard;
-  INVARIANT(RCU::rcu_is_active()); // FIXME: tzwang: bug? because gurad could be disabled
   std::vector<node_base_type *> q, layers;
   q.push_back(table_.root());
   while (!q.empty()) {
@@ -648,7 +613,6 @@ template <typename P>
 inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
                               versioned_node_t *search_info) const
 {
-  rcu_region guard;
   threadinfo ti;
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_unlocked(ti);
@@ -668,7 +632,6 @@ inline bool mbtree<P>::insert(const key_type &k, value_type v,
                               value_type *old_v,
                               insert_info_t *insert_info)
 {
-  rcu_region guard;
   threadinfo ti;
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_insert(ti);
@@ -690,7 +653,6 @@ template <typename P>
 inline bool mbtree<P>::insert_if_absent(const key_type &k, value_type v,
                                         insert_info_t *insert_info)
 {
-  rcu_region guard;
   threadinfo ti;
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_insert(ti);
@@ -728,7 +690,6 @@ insert_new:
 template <typename P>
 inline bool mbtree<P>::remove(const key_type &k, value_type *old_v)
 {
-  rcu_region guard;
   threadinfo ti;
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
@@ -895,3 +856,9 @@ void mbtree<P>::print() {
 
 typedef mbtree<masstree_params> concurrent_btree;
 typedef mbtree<masstree_single_threaded_params> single_threaded_btree;
+
+// just for concurrent_btree to avoid cyclic dependency
+namespace RA {
+	extern std::vector<concurrent_btree*> tables;
+    void register_table(concurrent_btree *t, std::string name);
+};

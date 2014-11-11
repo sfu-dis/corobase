@@ -23,6 +23,7 @@
 #include "../tuple.h"
 #include "../dbcore/xid.h"
 #include "../macros.h"
+#include "../dbcore/sm-alloc.h"
 
 namespace Masstree {
 using lcdf::Str;
@@ -107,65 +108,15 @@ class basic_table {
 		return tuple_vector->insert( val );
 	}
 
-	void cleanup_versions( LSN reclaim_lsn )
-	{
-		object* head;
-		object* cur;
-		object* prev;
-		dbtuple* version;
-		INVARIANT( tuple_vector );
-		for( oid_type oid = 1; oid < tuple_vector->size(); oid++ )
-		{
-start_over:
-			cur = head = tuple_vector->begin(oid);
-			if( !cur )
-				continue;
-			
-			// Exceptions 
-			//	- If the first element's clsn < reclaim_lsn, we don't delete the "cold" data
-			//  - If the first element is "deleted" log, we shoudn't delete it until oid realloc handling(tree update to remove deleted OID) is done.
-			// Thus, the first case should be skipped in any cases. 
-			for( prev = volatile_read(cur), cur = volatile_read(cur->_next); cur; prev = volatile_read(cur), cur = volatile_read(cur->_next) )	// TODO. volatile pointer read?
-			{
-				version = reinterpret_cast<dbtuple*>(cur->payload());
-				auto clsn = volatile_read(version->clsn);
-				if( clsn.asi_type() == fat_ptr::ASI_LOG )
-				{
-					if ( LSN::from_ptr(clsn) < reclaim_lsn )
-					{
-						// Unlink sub chain
-						if( not __sync_bool_compare_and_swap( &prev->_next, cur, NULL ) )
-							goto start_over;
-
-						break;
-					}
-				}
-			}
-
-			// free all sub-chain entries
-			for( ; cur; cur = volatile_read(cur->_next) )
-			{
-				scoped_rcu_region guard;
-				version = reinterpret_cast<dbtuple*>(cur->payload());
-#ifdef CHECK_INVARIANTS
-                auto clsn = volatile_read(version->clsn);
-#endif
-				INVARIANT(clsn.asi_type() == fat_ptr::ASI_LOG );
-				INVARIANT(LSN::from_ptr(clsn) < reclaim_lsn );
-				// FIXME. instead of tuple, we need to release container(object)
-				dbtuple::release( version );
-			}
-		}
-	}
-
-	std::pair<bool, value_type> update_version( oid_type oid, object* new_desc, XID xid)
+	bool update_version( oid_type oid, object* new_desc, XID xid)
 	{
 		INVARIANT( tuple_vector );
 		
 		int attempts = 0;
+		fat_ptr new_ptr = fat_ptr::make( new_desc, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG );
 	start_over:
-		object* head = tuple_vector->begin(oid);
-		object* ptr = head;
+        fat_ptr head = tuple_vector->begin(oid);
+		object* ptr = (object*)head.offset();
 		xid_context *visitor = xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
 		dbtuple* version;
@@ -205,7 +156,7 @@ start_over:
 				case TXN_CMMTD:
 					{
 						if ( end > visitor->begin )		// to prevent version branch( or lost update)
-							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+							return false;
 						else
 							goto install;
 					}
@@ -220,18 +171,14 @@ start_over:
 					{
 						// in-place update case ( multiple updates on the same record  by same transaction)
 						if( holder_xid == xid )
-						{
-							if(!tuple_vector->put( oid, head, new_desc ))
-								return std::make_pair(false, reinterpret_cast<value_type>(version));
-							return std::make_pair(true, reinterpret_cast<value_type>(NULL));
-						}
+							goto install;
 						else
-							return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+							return false;
 					}
 
 					// If this TX is committing, we shouldn't install new version!
 				case TXN_COMMITTING:
-					return std::make_pair(false, reinterpret_cast<value_type>(NULL) );
+					return false;
 				default:
 					ALWAYS_ASSERT( false );
 			}
@@ -241,29 +188,32 @@ start_over:
 		{
 			// make sure this is valid committed data, or aborted data that is not reclaimed yet.
 			// aborted, but not yet reclaimed.
-			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG || LSN::from_ptr(clsn) == INVALID_LSN);
-			if( LSN::from_ptr(clsn) == INVALID_LSN )
-				goto install;
-			// newer version. fall back
-			else if ( LSN::from_ptr(clsn) > visitor->begin )
-				return std::make_pair( false, reinterpret_cast<value_type>(NULL) );
+			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
+			if ( LSN::from_ptr(clsn) > visitor->begin )
+				return false;
 			else
 				goto install;
 		}
 
 install:
 		// install a new version
-		if(!tuple_vector->put( oid, head, new_desc ))
-			return std::make_pair(false, reinterpret_cast<value_type>(NULL));
-		return std::make_pair(true, reinterpret_cast<value_type>(NULL));
+		if(!tuple_vector->put( oid, head, new_ptr))
+			return false;
+		return true;
 	}
 
 	// Sometimes, we don't care about version. We just need the first one!
 	inline value_type fetch_latest_version( oid_type oid ) const
 	{
 		ALWAYS_ASSERT( tuple_vector );
-		object* head = tuple_vector->begin(oid);
-		return head ? reinterpret_cast<value_type>(head->payload()) : NULL;
+		fat_ptr head = tuple_vector->begin(oid);
+		if( head.offset() != 0 )
+		{
+			object* obj = (object*)head.offset();
+			return reinterpret_cast<value_type>( obj->payload() );
+		}
+		else
+			return NULL;
 	}
 
 	value_type fetch_version( oid_type oid, XID xid ) const
@@ -273,11 +223,13 @@ install:
 		xid_context *visitor= xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
 
-		// TODO. iterate whole elements in a chain and pick up the LATEST one ( having the largest end field )
 		int attempts = 0;
+		object* cur_obj;
 	start_over:
-		for( object* ptr = tuple_vector->begin(oid); ptr; ptr = volatile_read(ptr->_next) ) {
-			dbtuple* version = reinterpret_cast<dbtuple*>(ptr->payload());
+		for( fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
+
+            cur_obj = (object*)ptr.offset();
+			dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
 			auto clsn = volatile_read(version->clsn);
 			// xid tracking & status check
 			if( clsn.asi_type() == fat_ptr::ASI_XID )
@@ -332,11 +284,14 @@ install:
 		// NOTE: oid 0 indicates absence of the node
 		if( oid )
 		{
-			object* ptr = node_vector->begin(oid);
-			return ptr? (node_type*)ptr->payload() : NULL;
+			fat_ptr head = node_vector->begin(oid);
+			if( head.offset() != 0 )
+			{
+				object* obj = (object*)head.offset();
+				return (node_type*)(obj->payload());
+			}
 		}
-		else
-			return NULL;
+		return NULL;
 	}
 
 	inline void unlink_tuple( oid_type oid, value_type item )
@@ -345,6 +300,7 @@ install:
 		INVARIANT( oid );
 		return tuple_vector->unlink( oid, item );
 	}
+
 
   private:
 	oid_type root_oid_;

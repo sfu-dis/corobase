@@ -74,7 +74,9 @@ struct fat_ptr {
 
        0x00 -- main memory
 
-       0x01...0x0f -- currently unused
+       0x01 -- data temperature, either hot or non-hot (cold or null data)
+       
+       0x02...0x03 -- hot store segment number (where does this memory come from)
 
        0x10...0x1f -- LSN; low 4 bits give phsyical log segment file
 
@@ -104,6 +106,10 @@ struct fat_ptr {
     static uint64_t const DIRTY_BIT = VALUE_START_BIT-1;
     static uint64_t const DIRTY_MASK = 1 << DIRTY_BIT;
 
+    // If this bit is set, then the data reside in hot store;
+    // otherwise it could be in cold store or simply no data at all.
+	static uint64_t const ASI_HOT = 0x01;
+
     static uint64_t const ASI_LOG = 0x10;
     static uint64_t const ASI_HEAP = 0x20;
     static uint64_t const ASI_EXT = 0x30;
@@ -113,6 +119,7 @@ struct fat_ptr {
     static uint64_t const ASI_HEAP_FLAG = ASI_HEAP << ASI_START_BIT;
     static uint64_t const ASI_EXT_FLAG = ASI_EXT << ASI_START_BIT;
     static uint64_t const ASI_XID_FLAG = ASI_XID << ASI_START_BIT;
+    static uint64_t const ASI_HOT_FLAG = ASI_HOT << ASI_START_BIT;
 
     static uint64_t const ASI_SEGMENT_MASK = 0x0f;
 

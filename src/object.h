@@ -7,95 +7,107 @@
 #include "dbcore/dynarray.h"
 #include <sched.h>
 #include <numa.h>
-#include <limits.h>
+#include <limits>
+#include "dbcore/sm-common.h"
+#include "dbcore/sm-alloc.h"
 
 #define NR_SOCKETS 4
+// each socket requests this many oids a time from global alloc
+#define OID_EXT_SIZE 8192
+
 typedef unsigned long long oid_type;
+
+struct dynarray;
+
+// this really shound't live here...
 
 class object
 {
 	public:
-		object( size_t size ) : _next(NULL), _size(size) {}
+		object( size_t size ) : _size(size) { _next = fat_ptr::make( (void*)0, INVALID_SIZE_CODE); }
 		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
 
-		object* _next;
+		fat_ptr _next;
 		size_t _size;			// contraint on object size( practical enough )
 };
 
 template <typename T>
 class object_vector
 {
-
 public:
 	inline unsigned long long size() 
 	{
-		auto max = 0;
-		for( auto i = 0; i < NR_SOCKETS; i++ )
-		{
-			if( max < *_alloc_offset[i] )
-				max = *_alloc_offset[i];
-		}
-		return (max + 1) * NR_SOCKETS;
-	}
+		return _global_oid_alloc_offset;
+    }
 
 	object_vector( unsigned long long nelems)
 	{
-		for( int i = 0; i < NR_SOCKETS; i ++ )
-		{
-			_alloc_offset[i] = (unsigned int*)numa_alloc_onnode( sizeof( unsigned int ), i );
-			*_alloc_offset[i] = 0;
-		}
-		_obj_table = dynarray<object*>(  std::numeric_limits<unsigned int>::max(), nelems*sizeof(object*) );
-		_obj_table.sanitize( 0,  nelems* sizeof(object*));
+        _global_oid_alloc_offset = 0;
+		_obj_table = dynarray(std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr),
+                              nelems*sizeof(fat_ptr) );
 	}
 
-	bool put( oid_type oid, object* new_desc )
+	bool put( oid_type oid, fat_ptr new_head)
 	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
-		object* first = begin(oid);
-		volatile_write( new_desc->_next, first);
+		fat_ptr old_head = begin(oid);
+		object* new_desc = (object*)new_head.offset();
+		volatile_write( new_desc->_next, old_head);
+		uint64_t* p = (uint64_t*)begin_ptr(oid);
 
-		if( not __sync_bool_compare_and_swap( &_obj_table[oid], first, new_desc) )
+		if( not __sync_bool_compare_and_swap( p, old_head._ptr, new_head._ptr) )
+			return false;
+
+        // new record, shuold be in cold store, no need to change temp bit
+		return true;
+	}
+	bool put( oid_type oid, fat_ptr old_head, fat_ptr new_head )
+	{
+		object* new_desc = (object*)new_head.offset();
+		volatile_write( new_desc->_next, old_head);
+		uint64_t* p = (uint64_t*)begin_ptr(oid);
+
+		if( not __sync_bool_compare_and_swap( p, old_head._ptr, new_head._ptr) )
 			return false;
 
 		return true;
 	}
-	bool put( oid_type oid, object* head,  object* new_desc )
+
+	inline fat_ptr begin( oid_type oid )
 	{
-//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
-		volatile_write( new_desc->_next, head);
-
-		if( not __sync_bool_compare_and_swap( &_obj_table[oid], head, new_desc) )
-			return false;
-
-		return true;
+        ASSERT(oid <= size());
+		fat_ptr* ret = begin_ptr(oid);
+		return volatile_read(*ret);
 	}
 
-	inline object* begin( oid_type oid )
-	{
-		return volatile_read(_obj_table[oid]);
-	}
+    inline fat_ptr* begin_ptr(oid_type oid)
+    {
+        // tzwang: I guess we don't need volatile_read for this
+        return (fat_ptr*)(&_obj_table[oid * sizeof(fat_ptr)]);
+    }
 
 	void unlink( oid_type oid, T item )
 	{
 		object* target;
-		object** prev;
-//		ALWAYS_ASSERT( oid > 0 && oid <= _alloc_offset );
+		fat_ptr prev;
+		fat_ptr* prev_next;
 
 retry:
-		prev = &_obj_table[oid];			// constant value. doesn't need to be volatile_read
-		target = *prev;
+		prev_next = begin_ptr( oid );			// constant value. doesn't need to be volatile_read
+		prev= volatile_read(*prev_next);
+		target = (object*)prev.offset();
 		while( target )
 		{
 			if( target->payload() == (char*)item )
 			{
-				if( not __sync_bool_compare_and_swap( prev, target, target->_next ) )
+				if( not __sync_bool_compare_and_swap( (uint64_t *)prev_next, prev._ptr, target->_next._ptr ) )
 					goto retry;
 
+				RA::deallocate( (void*)target );
 				return;
 			}
-			prev = &target->_next;	// only can be modified by current TX. volatile_read is not needed
-			target = volatile_read(*prev);
+			prev_next = &target->_next;	// only can be modified by current TX. volatile_read is not needed
+			prev = volatile_read(*prev_next);
+			target = (object*)prev.offset();
 		}
 
 		if( !target )
@@ -104,21 +116,27 @@ retry:
 
 	inline oid_type alloc()
 	{
-		int cpu = sched_getcpu();
-		ALWAYS_ASSERT(cpu >= 0 );
-		int numa_node = cpu % NR_SOCKETS;		// by current topology
-		_obj_table.ensure_size( sizeof(object*) * NR_SOCKETS );
-		auto local_offset = __sync_add_and_fetch( _alloc_offset[numa_node], 1 );		// on NUMA node CAS
-		return local_offset * NR_SOCKETS + numa_node;
-	}
+        if (_core_oid_remaining.my() == 0) {
+            _core_oid_offset.my() = alloc_oid_extent();
+            _core_oid_remaining.my() = OID_EXT_SIZE;
+        }
+        if (unlikely(_core_oid_offset.my() == 0))
+            _core_oid_remaining.my()--;
+        return _core_oid_offset.my() + OID_EXT_SIZE - (_core_oid_remaining.my()--);
+    }
 
-	inline void dealloc(object* desc)
-	{
-		// TODO. 
+    inline uint64_t alloc_oid_extent() {
+		uint64_t noffset = __sync_fetch_and_add(&_global_oid_alloc_offset, OID_EXT_SIZE);
+
+		uint64_t obj_table_size = sizeof(fat_ptr) * (_global_oid_alloc_offset);
+		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );			// 10% increase
+
+        return noffset;
 	}
 
 private:
-	dynarray<object*> 		_obj_table;
-	unsigned int* _alloc_offset[NR_SOCKETS];
-
+	dynarray 		_obj_table;
+    uint64_t _global_oid_alloc_offset;
+    percore<uint64_t, false, false> _core_oid_offset;
+    percore<uint64_t, false, false> _core_oid_remaining;
 };

@@ -82,13 +82,9 @@ public:
                      typename Traits::StringAllocator &sa)
     : transaction<transaction_proto2, Traits>(flags, sa)
   {
-    INVARIANT(RCU::rcu_is_active());
   }
 
-  ~transaction_proto2()
-  {
-    INVARIANT(RCU::rcu_is_active());
-  }
+  ~transaction_proto2() {}
 };
 
 // txn_btree_handler specialization
@@ -101,6 +97,6 @@ struct base_txn_btree_handler<transaction_proto2> {
     transaction_proto2_static::InitGC();
 #endif
   }
-  static const bool has_background_task = true;
+  //static const bool has_background_task = true;
 };
 #endif /* _NDB_TXN_PROTO2_IMPL_H_ */

@@ -58,13 +58,23 @@ sm_log::cur_lsn()
 
 	if (not sid) {
 		/* must have raced a new segment opening */
+		/*
 		while (1) {
 			sid = log->_lm._newest_segment();
 			if (sid->start_offset >= offset)
 				break;
 		}
+		*/
+
+retry:
+		sid = log->_lm._newest_segment();
+		ASSERT(sid);
+		if (offset < sid->start_offset)
+			offset = sid->start_offset;
+		else if (sid->end_offset <= offset) {
+			    goto retry; 
+		}
 	}
-    ASSERT(sid);
     return sid->make_lsn(offset);
 }
 
