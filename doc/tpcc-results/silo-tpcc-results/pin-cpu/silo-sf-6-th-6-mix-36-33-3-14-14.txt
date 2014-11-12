@@ -1,0 +1,26 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2b2c79542000, 0x2b2ef9f42000)
+cpu0 owns [0x2b2c79600000, 0x2b2ce4200000)
+cpu1 owns [0x2b2ce4200000, 0x2b2d4ee00000)
+cpu2 owns [0x2b2d4ee00000, 0x2b2db9a00000)
+cpu3 owns [0x2b2db9a00000, 0x2b2e24600000)
+cpu4 owns [0x2b2e24600000, 0x2b2e8f200000)
+cpu5 owns [0x2b2e8f200000, 0x2b2ef9e00000)
+num batches: 30
+cpu0 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu0 finished faulting region in 1205.55 ms
+cpu1 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu1 finished faulting region in 1209.12 ms
+cpu2 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu2 finished faulting region in 1202.99 ms
+cpu3 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu3 finished faulting region in 1210.63 ms
+cpu4 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu4 finished faulting region in 1203.09 ms
+cpu5 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu5 finished faulting region in 1218.89 ms
+wait_an_epoch(): consistent reads happening in e-1, but e=0 so special case
+138284.142045 138284.142045 0.043258 0.000000 3.366531
+4148692 commits, 101 aborts
