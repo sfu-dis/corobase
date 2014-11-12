@@ -2,6 +2,7 @@
 
 # $1 - silo exec
 # $2 - output dir
+# $3 - any other params for dbtest (e.g., --pin-cpu)
 
 # workload mix:
 # new order, payment, delivery, order status, stock level
@@ -19,7 +20,7 @@ mix_arr=(   \
 for t in 1 6 12 18 24; do
     for m in "${mix_arr[@]}"; do
         echo "start to run" $m sf/threads=$t
-        ./run-tpcc-workload-mix.sh $1 $m $t $2
+        ./run-tpcc-workload-mix.sh $1 $m $t $2 $3
     done
 done
 
