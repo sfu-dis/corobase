@@ -1,0 +1,80 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2b0f01509000, 0x2b1183709000)
+cpu0 owns [0x2b0f01600000, 0x2b0f1c200000)
+cpu1 owns [0x2b0f1c200000, 0x2b0f36e00000)
+cpu2 owns [0x2b0f36e00000, 0x2b0f51a00000)
+cpu3 owns [0x2b0f51a00000, 0x2b0f6c600000)
+cpu4 owns [0x2b0f6c600000, 0x2b0f87200000)
+cpu5 owns [0x2b0f87200000, 0x2b0fa1e00000)
+cpu6 owns [0x2b0fa1e00000, 0x2b0fbca00000)
+cpu7 owns [0x2b0fbca00000, 0x2b0fd7600000)
+cpu8 owns [0x2b0fd7600000, 0x2b0ff2200000)
+cpu9 owns [0x2b0ff2200000, 0x2b100ce00000)
+cpu10 owns [0x2b100ce00000, 0x2b1027a00000)
+cpu11 owns [0x2b1027a00000, 0x2b1042600000)
+cpu12 owns [0x2b1042600000, 0x2b105d200000)
+cpu13 owns [0x2b105d200000, 0x2b1077e00000)
+cpu14 owns [0x2b1077e00000, 0x2b1092a00000)
+cpu15 owns [0x2b1092a00000, 0x2b10ad600000)
+cpu16 owns [0x2b10ad600000, 0x2b10c8200000)
+cpu17 owns [0x2b10c8200000, 0x2b10e2e00000)
+cpu18 owns [0x2b10e2e00000, 0x2b10fda00000)
+cpu19 owns [0x2b10fda00000, 0x2b1118600000)
+cpu20 owns [0x2b1118600000, 0x2b1133200000)
+cpu21 owns [0x2b1133200000, 0x2b114de00000)
+cpu22 owns [0x2b114de00000, 0x2b1168a00000)
+cpu23 owns [0x2b1168a00000, 0x2b1183600000)
+num batches: 30
+cpu0 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu0 finished faulting region in 316.278 ms
+cpu1 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu1 finished faulting region in 312.704 ms
+cpu2 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu2 finished faulting region in 311.338 ms
+cpu3 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu3 finished faulting region in 314.103 ms
+cpu4 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu4 finished faulting region in 303.677 ms
+cpu5 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu5 finished faulting region in 303.337 ms
+cpu6 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu6 finished faulting region in 302.544 ms
+cpu7 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu7 finished faulting region in 303.402 ms
+cpu8 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu8 finished faulting region in 302.933 ms
+cpu9 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu9 finished faulting region in 301.745 ms
+cpu10 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu10 finished faulting region in 302.825 ms
+cpu11 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu11 finished faulting region in 303.118 ms
+cpu12 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu12 finished faulting region in 303.548 ms
+cpu13 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu13 finished faulting region in 302.529 ms
+cpu14 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu14 finished faulting region in 301.619 ms
+cpu15 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu15 finished faulting region in 301.686 ms
+cpu16 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu16 finished faulting region in 301.875 ms
+cpu17 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu17 finished faulting region in 302.552 ms
+cpu18 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu18 finished faulting region in 301.709 ms
+cpu19 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu19 finished faulting region in 301.584 ms
+cpu20 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu20 finished faulting region in 307.509 ms
+cpu21 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu21 finished faulting region in 300.96 ms
+cpu22 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu22 finished faulting region in 300.288 ms
+cpu23 starting faulting region (448790528 bytes / 214 hugepgs)
+cpu23 finished faulting region in 300.511 ms
+wait_an_epoch(): consistent reads happening in e-1: 9
+597228.563220 597228.563220 0.040038 0.000000 24.599202
+17917438 commits, 738 aborts

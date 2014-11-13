@@ -1,0 +1,44 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2b273bfb1000, 0x2b29bc9b1000)
+cpu0 owns [0x2b273c000000, 0x2b2771600000)
+cpu1 owns [0x2b2771600000, 0x2b27a6c00000)
+cpu2 owns [0x2b27a6c00000, 0x2b27dc200000)
+cpu3 owns [0x2b27dc200000, 0x2b2811800000)
+cpu4 owns [0x2b2811800000, 0x2b2846e00000)
+cpu5 owns [0x2b2846e00000, 0x2b287c400000)
+cpu6 owns [0x2b287c400000, 0x2b28b1a00000)
+cpu7 owns [0x2b28b1a00000, 0x2b28e7000000)
+cpu8 owns [0x2b28e7000000, 0x2b291c600000)
+cpu9 owns [0x2b291c600000, 0x2b2951c00000)
+cpu10 owns [0x2b2951c00000, 0x2b2987200000)
+cpu11 owns [0x2b2987200000, 0x2b29bc800000)
+num batches: 30
+cpu0 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu0 finished faulting region in 609.358 ms
+cpu1 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu1 finished faulting region in 617.184 ms
+cpu2 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu2 finished faulting region in 608.848 ms
+cpu3 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu3 finished faulting region in 612.834 ms
+cpu4 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu4 finished faulting region in 598.478 ms
+cpu5 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu5 finished faulting region in 611.178 ms
+cpu6 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu6 finished faulting region in 600.161 ms
+cpu7 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu7 finished faulting region in 602.038 ms
+cpu8 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu8 finished faulting region in 602.077 ms
+cpu9 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu9 finished faulting region in 604.466 ms
+cpu10 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu10 finished faulting region in 602.236 ms
+cpu11 starting faulting region (895483904 bytes / 427 hugepgs)
+cpu11 finished faulting region in 602.471 ms
+wait_an_epoch(): consistent reads happening in e-1: 3
+254453.767496 254453.767496 0.047017 0.000000 5.799871
+7633783 commits, 174 aborts
