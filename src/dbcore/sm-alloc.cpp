@@ -2,14 +2,14 @@
 #include "sm-alloc.h"
 #include "sm-common.h"
 #include "../txn.h"
-#include "../masstree_btree.h"
+//#include "../masstree_btree.h"
 
 namespace RA {
-    std::vector<concurrent_btree*> tables;
-    std::vector<std::string> table_names;
+    //std::vector<concurrent_btree*> tables;
+    //std::vector<std::string> table_names;
     LSN trim_lsn;
-	std::condition_variable gc_trigger;
-	std::mutex gc_lock;
+	//std::condition_variable gc_trigger;
+	//std::mutex gc_lock;
 	void gc_daemon( int id );
 
     // epochs related
@@ -40,12 +40,14 @@ namespace RA {
 	}
     void global_init(void*)
     {
+        /*
 #define NR_GC_DAEMONS 1
 		for( int i = 0; i < NR_GC_DAEMONS; i++ )
 		{
 			std::thread t(gc_daemon, i);
 			t.detach();
 		}
+        */
     }
 
     void*
@@ -64,7 +66,7 @@ namespace RA {
         ASSERT(t == &epoch_tls);
         t->initialized = false;
 		t->nbytes = 0;
-		t->nbytes = 0;
+		t->counts = 0;
     }
 
     void*
@@ -77,10 +79,10 @@ namespace RA {
 		// as when thread exits it will no longer be in the rcu region
 		// created by the scoped_rcu_region in the transaction class.
 		LSN *lsn = (LSN *)malloc(sizeof(LSN));
-		ALWAYS_ASSERT(lsn);
-		RCU::rcu_enter();
+		//ALWAYS_ASSERT(lsn);
+		//RCU::rcu_enter();
 		*lsn = transaction_base::logger->cur_lsn();
-		RCU::rcu_exit();
+		//RCU::rcu_exit();
 		return lsn;
 	}
 
@@ -98,7 +100,6 @@ namespace RA {
 		{
 			volatile_write( trim_lsn._val, lsn._val);
 			free(epoch_cookie);
-			//gc_trigger.notify_all();
 		}
     }
 
@@ -118,11 +119,6 @@ namespace RA {
     epoch_thread_quiesce(void)
     {
         ra_epochs.thread_quiesce();
-    }
-
-    void register_table(concurrent_btree *t, std::string name) {
-        tables.push_back(t);
-        table_names.push_back(name);
     }
 
     void *allocate(uint64_t size) {
@@ -148,9 +144,15 @@ namespace RA {
 
 	void deallocate( void* p )
 	{
-		ALWAYS_ASSERT(p);
+		ASSERT(p);
 		free(p);
 	}
+
+    /*
+    void register_table(concurrent_btree *t, std::string name) {
+        tables.push_back(t);
+        table_names.push_back(name);
+    }
 
 	void gc_daemon( int id )
 	{
@@ -208,6 +210,7 @@ start_over:
 			std::cout << "GC(" << id  << ") finished: trim LSN(" << tlsn._val << ") " << "reclaimed bytes(" << reclaimed_nbytes << ")" << std::endl;
 		}
 	}
+    */
 };
 
 
