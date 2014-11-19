@@ -38,7 +38,7 @@ public:
       been_destructed(false)
   {
     base_txn_btree_handler<Transaction>::on_construct();
-	RA::register_table(&underlying_btree, name);		// Register to GC system 
+	//RA::register_table(&underlying_btree, name);		// Register to GC system 
   }
 
   ~base_txn_btree()
