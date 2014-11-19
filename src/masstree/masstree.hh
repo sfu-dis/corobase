@@ -264,14 +264,32 @@ install:
 				if( end > visitor->begin  			// committed(but invisible) data, 
 						|| end == INVALID_LSN)		// aborted data
 					continue;
-				return (value_type)version;
 			}
 			else
 			{
 				if( LSN::from_ptr(clsn) > visitor->begin ) 	// invisible
 					continue;
-				return (value_type)version;
 			}
+            // try if we can trim
+            dbtuple *ret_ver = version;
+
+            fat_ptr next_ptr = cur_obj->_next;
+            next_ptr = NULL_PTR;
+            while (next_ptr.offset()) {
+                object *next_obj = (object *)next_ptr.offset();
+                if (LSN::from_ptr(((dbtuple *)(next_obj->payload()))->clsn) < RA::trim_lsn) {
+                    if (__sync_bool_compare_and_swap(&cur_obj->_next._ptr, next_ptr._ptr, 0)) {
+                        do {
+                            next_ptr = next_obj->_next;
+                            RA::deallocate(next_obj);
+                            next_obj = (object *)next_ptr.offset();
+                        } while (next_obj);
+                    }
+                    break;
+                }
+                next_ptr = cur_obj->_next;
+            }
+            return (value_type)ret_ver;
 		}
 
 		// No Visible records

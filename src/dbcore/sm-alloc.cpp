@@ -98,7 +98,7 @@ namespace RA {
 		{
 			volatile_write( trim_lsn._val, lsn._val);
 			free(epoch_cookie);
-			gc_trigger.notify_all();
+			//gc_trigger.notify_all();
 		}
     }
 
