@@ -23,9 +23,9 @@ do
     echo -ne "Mix\tCommit/s\tAborts/s\n"
     for m in "${mix_arr[@]}"; do
         echo -ne "$m\t"
-        echo -ne `tail -2 $2/$1/silo-sf-$t-th-$t-mix-$m.txt | head -1 | cut -d ' ' -f1`
+        echo -ne `tail -2 $2/$1-sf-$t-th-$t-mix-$m.txt | head -1 | cut -d ' ' -f1`
         echo -ne "\t"
-        echo -ne `tail -2 $2/$1/silo-sf-$t-th-$t-mix-$m.txt | head -1 | cut -d ' ' -f5`
+        echo -ne `tail -2 $2/$1-sf-$t-th-$t-mix-$m.txt | head -1 | cut -d ' ' -f5`
         echo -ne "\n"
     done
     echo ""
