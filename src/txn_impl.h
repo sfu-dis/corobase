@@ -138,9 +138,10 @@ transaction<Protocol, Traits>::get_txn_counters() const
   std::map<std::string, uint64_t> ret;
 
   // max_write_set_size
+#ifdef USE_SMALL_CONTAINER_OPT
   ret["write_set_size"] = write_set.size();
   ret["write_set_is_large?"] = !write_set.is_small_type();
-
+#endif
   return ret;
 }
 
@@ -260,7 +261,6 @@ transaction<Protocol, Traits>::do_tuple_read(
     ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
     tuple->prefetch();
     stat = tuple->stable_read(value_reader, this->string_allocator());
-    // FIXME: tzwang: give better reason here, basically for not-visible
     if (unlikely(stat == dbtuple::READ_FAILED)) {
       const transaction_base::abort_reason r = transaction_base::ABORT_REASON_UNSTABLE_READ;
       signal_abort(r);
@@ -271,6 +271,7 @@ transaction<Protocol, Traits>::do_tuple_read(
   const bool v_empty = (stat == dbtuple::READ_EMPTY);
   if (v_empty)
     ++transaction_base::g_evt_read_logical_deleted_node_search;
+  read_set.emplace_back(tuple);
   return !v_empty;
 }
 

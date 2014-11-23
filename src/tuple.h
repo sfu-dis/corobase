@@ -43,30 +43,27 @@ extern std::string (*g_proto_version_str)(uint64_t v);
  */
 struct dbtuple {
 public:
-  // trying to save space by putting constraints
-  // on node maximums
-  typedef uint32_t version_t;
-  typedef uint16_t node_size_type;
-  typedef uint8_t * record_type;
-  typedef const uint8_t * const_record_type;
   typedef size_t size_type;
   typedef std::string string_type;
 
-  fat_ptr clsn;
   oid_type oid;
+  fat_ptr clsn;     // version creation stamp
+  LSN xlsn;         // access stamp (\eta)
+  LSN slsn;         // successor stamp (\pi)
+  dbtuple *prev;    // overwritten version (old head)
 
 public:
-  node_size_type size; // actual size of record
-  node_size_type alloc_size; // allocated (aligned) size
+  size_type size; // actual size of record
+  size_type alloc_size; // allocated (aligned) size
 
   // must be last field
   uint8_t value_start[0];
 
 private:
-  static inline ALWAYS_INLINE node_size_type
+  static inline ALWAYS_INLINE size_type
   CheckBounds(size_type s)
   {
-    INVARIANT(s <= std::numeric_limits<node_size_type>::max());
+    INVARIANT(s <= std::numeric_limits<size_type>::max());
     return s;
   }
 
