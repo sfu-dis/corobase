@@ -186,9 +186,6 @@ protected:
 
   // We need a much simpler write_record than silo does - same as the read_record_t.
   struct write_record_t {
-    constexpr write_record_t() : tuple(), btr() {}
-    constexpr write_record_t(dbtuple *tuple )
-      : tuple(tuple), btr() {}
     constexpr write_record_t(dbtuple *tuple, concurrent_btree* btr )
       : tuple(tuple), btr(btr) {}
     inline dbtuple *
