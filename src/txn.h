@@ -284,8 +284,6 @@ namespace private_ {
 inline ALWAYS_INLINE std::ostream &
 operator<<(std::ostream &o, const transaction_base::read_record_t &r)
 {
-  o << "[tuple=" << *r.get_tuple()
-    << "]";
   return o;
 }
 
@@ -294,8 +292,6 @@ operator<<(
     std::ostream &o,
     const transaction_base::write_record_t &r)
 {
-  o << "[tuple=" << r.get_tuple()
-    << "]";
   return o;
 }
 
