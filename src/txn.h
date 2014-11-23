@@ -571,10 +571,6 @@ protected:
     return const_cast<transaction *>(this)->find_write_set(tuple);
   }
 
-  inline bool
-  handle_last_tuple_in_group(
-      dbtuple_write_info &info, bool did_group_insert);
-
   write_set_map write_set;
 
   string_allocator_type *sa;
