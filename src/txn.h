@@ -163,13 +163,7 @@ public:
 
 protected:
 
-  // the read set is a mapping from (tuple -> tid_read).
-  // "write_set" is used to indicate if this read tuple
-  // also belongs in the write set.
-  // FIXME: tzwang: now the read-set is just a set of tuples,
-  // which are the most recent committed visible record.
   struct read_record_t {
-    constexpr read_record_t() : tuple() {}
     constexpr read_record_t(const dbtuple *tuple)
       : tuple(tuple) {}
     inline const dbtuple *
@@ -252,7 +246,6 @@ protected:
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
 
-  // FIXME: tzwang: use xid
   XID xid;
   sm_tx_log* log;
 
@@ -293,6 +286,7 @@ operator<<(
 }
 
 struct default_transaction_traits {
+  static const size_t read_set_expected_size = SMALL_SIZE_MAP;
   static const size_t write_set_expected_size = SMALL_SIZE_MAP;
   static const bool stable_input_memory = false;
   static const bool hard_expected_sizes = false; // true if the expected sizes are hard maximums
@@ -403,6 +397,9 @@ protected:
 
   // small types
   typedef small_vector<
+    read_record_t,
+    traits_type::read_set_expected_size> read_set_map;
+  typedef small_vector<
     write_record_t,
     traits_type::write_set_expected_size> write_set_map_small;
 
@@ -411,28 +408,24 @@ protected:
     write_record_t,
     traits_type::write_set_expected_size> write_set_map_static;
 
-  // helper types for log writing
-  typedef small_vector<
-    uint32_t,
-    traits_type::write_set_expected_size> write_set_u32_vec_small;
-  typedef static_vector<
-    uint32_t,
-    traits_type::write_set_expected_size> write_set_u32_vec_static;
-
   // use static types if the expected sizes are guarantees
   typedef
     typename std::conditional<
       traits_type::hard_expected_sizes,
       write_set_map_static, write_set_map_small>::type write_set_map;
-  typedef
-    typename std::conditional<
-      traits_type::hard_expected_sizes,
-      write_set_u32_vec_static, write_set_u32_vec_small>::type write_set_u32_vec;
 
 #else
+  typedef std::vector<read_record_t> read_set_map;
   typedef std::vector<write_record_t> write_set_map;
-  typedef std::vector<uint32_t> write_set_u32_vec;
 #endif
+
+  template <typename T>
+    using read_set_sized_vec =
+      typename std::conditional<
+        traits_type::hard_expected_sizes,
+        static_vector<T, traits_type::read_set_expected_size>,
+        typename util::vec<T, traits_type::read_set_expected_size>::type
+      >::type;
 
   template <typename T>
     using write_set_sized_vec =
@@ -504,6 +497,12 @@ public:
 
   std::map<std::string, uint64_t> get_txn_counters() const;
 
+  inline const read_set_map &
+  get_read_set() const
+  {
+    return read_set;
+  }
+
   inline const write_set_map &
   get_write_set() const
   {
@@ -562,12 +561,35 @@ protected:
     return it;
   }
 
+  // FIXME: tzwang: so this will be very slow, but we need it in SSN;
+  // definitely will need something better later.
+  typename read_set_map::iterator
+  find_read_set(dbtuple *tuple)
+  {
+    // linear scan- returns the *first* entry found
+    // (a tuple can exist in the read_set more than once)
+    // FIXME: tzwang: actually we need a set...
+    typename read_set_map::iterator it     = read_set.begin();
+    typename read_set_map::iterator it_end = read_set.end();
+    for (; it != it_end; ++it)
+      if (it->get_tuple() == tuple)
+        break;
+    return it;
+  }
+
   inline typename write_set_map::const_iterator
   find_write_set(const dbtuple *tuple) const
   {
     return const_cast<transaction *>(this)->find_write_set(tuple);
   }
 
+  inline typename read_set_map::const_iterator
+  find_read_set(const dbtuple *tuple) const
+  {
+    return const_cast<transaction *>(this)->find_read_set(tuple);
+  }
+
+  read_set_map read_set;
   write_set_map write_set;
 
   string_allocator_type *sa;

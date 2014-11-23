@@ -11,6 +11,8 @@ struct xid_context {
     XID owner;
     LSN begin;
     LSN end;
+    LSN hi; // youngest predecessor (\eta)
+    LSN lo; // oldest successor (\pi)
     txn_state state;
 };
 
