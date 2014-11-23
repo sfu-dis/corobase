@@ -143,7 +143,6 @@ SRCFILES = allocator.cc \
 	stats_server.cc \
 	thread.cc \
 	tuple.cc \
-	txn_btree.cc \
 	txn.cc \
 	txn_proto2_impl.cc \
 	varint.cc
