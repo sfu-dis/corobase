@@ -108,11 +108,14 @@ class basic_table {
 		return tuple_vector->insert( val );
 	}
 
-	bool update_version( oid_type oid, object* new_desc, XID xid)
+    // return the overwritten version (could be an in-flight version!)
+	dbtuple *update_version(oid_type oid, object* new_desc, XID xid)
 	{
 		INVARIANT( tuple_vector );
 		
+#if CHECK_INVARIANTS
 		int attempts = 0;
+#endif
 		fat_ptr new_ptr = fat_ptr::make( new_desc, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG );
 	start_over:
         fat_ptr head = tuple_vector->begin(oid);
@@ -120,11 +123,13 @@ class basic_table {
 		xid_context *visitor = xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
 		dbtuple* version;
+        bool overwrite = false;
 
 		version = reinterpret_cast<dbtuple*>(ptr->payload());
 		auto clsn = volatile_read(version->clsn);
 		if( clsn.asi_type() == fat_ptr::ASI_XID )
 		{
+            overwrite = true;
 			/* Grab the context for this XID. If we're too slow,
 			   the context might be recycled for a different XID,
 			   perhaps even *while* we are reading the
@@ -145,11 +150,12 @@ class basic_table {
 
 			// context still valid for this XID?
                         if ( unlikely(owner != holder_xid) ) {
+#if CHECK_INVARIANTS
 				ASSERT(attempts < 2);
 				attempts++;
+#endif
 				goto start_over;
 			}
-			
 			switch (state)
 			{
 				// if committed and newer data, abort. if not, keep traversing
@@ -197,9 +203,9 @@ class basic_table {
 
 install:
 		// install a new version
-		if(!tuple_vector->put( oid, head, new_ptr))
-			return false;
-		return true;
+        if (tuple_vector->put(oid, head, new_ptr, overwrite))
+			return version;
+		return NULL;
 	}
 
 	// Sometimes, we don't care about version. We just need the first one!
@@ -234,6 +240,19 @@ install:
 			// xid tracking & status check
 			if( clsn.asi_type() == fat_ptr::ASI_XID )
 			{
+                // FIXME: tzwang: should only check if reading the head,
+                // otherwise continue to avoid throwing "Invalid XID".
+                // Note that we blindly insert new heads even for in-place
+                // updates, i.e., the tx repetitively updates one tuple. But
+                // our write set (access set) only captures the latest (the
+                // one that really counts in the end), we will leave older
+                // uncommitted versions with clsn.asi_type==ASI_XID but their
+                // context are already recycled ==> wil trigger "Invalid XID"
+                // when trying to xid_get_context(). We'll need the GC to
+                // clean up these uncommitted, overwritten versions.
+                if (ptr != tuple_vector->begin(oid))
+                    continue;
+
 				/* Same as above: grab and verify XID context,
 				   starting over if it has been recycled
 				 */

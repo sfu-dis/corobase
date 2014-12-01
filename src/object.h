@@ -15,7 +15,7 @@
 // each socket requests this many oids a time from global alloc
 #define OID_EXT_SIZE 8192
 
-typedef unsigned long long oid_type;
+typedef uint64_t oid_type;
 
 struct dynarray;
 
@@ -53,23 +53,30 @@ public:
 		object* new_desc = (object*)new_head.offset();
 		volatile_write( new_desc->_next, old_head);
 		uint64_t* p = (uint64_t*)begin_ptr(oid);
-
-		if( not __sync_bool_compare_and_swap( p, old_head._ptr, new_head._ptr) )
-			return false;
-
-        // new record, shuold be in cold store, no need to change temp bit
-		return true;
+		return __sync_bool_compare_and_swap(p, old_head._ptr, new_head._ptr);
 	}
-	bool put( oid_type oid, fat_ptr old_head, fat_ptr new_head )
+	bool put(oid_type oid, fat_ptr old_head, fat_ptr new_head, bool overwrite)
 	{
+        // remove uncommitted overwritten version
+        // (tx's repetitive updates, keep the latest one only)
+        // Note for this to be correct we shouldn't allow multiple txs
+        // working on the same tuple at the same time.
 		object* new_desc = (object*)new_head.offset();
-		volatile_write( new_desc->_next, old_head);
+        if (overwrite) {
+            object *old_desc = (object *)old_head.offset();
+            volatile_write(new_desc->_next, old_desc->_next);
+        }
+        else {
+            volatile_write(new_desc->_next, old_head);
+        }
 		uint64_t* p = (uint64_t*)begin_ptr(oid);
 
-		if( not __sync_bool_compare_and_swap( p, old_head._ptr, new_head._ptr) )
-			return false;
+        // The caller of this function (update_version) will return the old
+        // head, even it is in-place update. So the caller of update_version
+        // (do_tree_put) will actually do the free of that overwritten version
+        // as the tx needs to copy various stamps from the overwritten version.
 
-		return true;
+        return __sync_bool_compare_and_swap(p, old_head._ptr, new_head._ptr);
 	}
 
 	inline fat_ptr begin( oid_type oid )

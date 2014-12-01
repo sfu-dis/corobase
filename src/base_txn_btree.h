@@ -183,11 +183,9 @@ base_txn_btree<Transaction, P>::do_search(
   // search the underlying btree to map k=>(btree_node|tuple)
   typename concurrent_btree::value_type underlying_v{};
   concurrent_btree::versioned_node_t search_info;
-  // FIXME: tzwang: so this search function (or the lowest responsible function) should be aware
-  // of the versions.
   const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, t.xid, &search_info);
   if (found) {
-    const dbtuple * const tuple = reinterpret_cast<const dbtuple *>(underlying_v);
+    dbtuple *tuple = reinterpret_cast<dbtuple *>(underlying_v);
     return t.do_tuple_read(tuple, value_reader);
   } else {
     return false;
@@ -260,7 +258,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
 
 try_expect_new:
-  // Allocate an version
+  // Allocate a version
   char *p = NULL;
   p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
   INVARIANT(p);
@@ -278,12 +276,9 @@ try_expect_new:
   // Create object
   object* version = new (p) object( sizeof(object) + alloc_sz );
 
-
   // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
   // it fails if somebody else acted faster to insert new, we then
   // (fall back to) with the normal update procedure.
-  // Note: the original return value of try_insert_new_tuple is:
-  // <tuple, should_abort>. Here we use it as <tuple, failed>.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
   if (expect_new) {
     if (t.try_insert_new_tuple(this->underlying_btree, k, version, writer)) 
@@ -316,38 +311,22 @@ try_expect_new:
 
   // OID from previous probe
   tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
-  bool ret = this->underlying_btree.update_version(tuple->oid, version, t.xid);
+  dbtuple *prev = this->underlying_btree.update_version(tuple->oid, version, t.xid);
 
-  // FIXME: tzwang: now the above update returns a pair:
-  // <bool, dbtuple*>, bool indicates if the update op has succeeded or not.
-  // dbtuple*'s value dependes on if the update is in-place or out-of-place.
-  // Though we do multi-version, we do in-place update if the tx is repeatedly
-  // updating its own data. If it's normal insert-to-chain, i.e., out-of-place
-  // update, dbtuple* will be null. Otherwise it will be the older dirty tuple's
-  // address. It's like this mainly because we might have different sizes for
-  // the older and new dirty tuple. So in case of in-place update, we don't copy
-  // data provided by the tx, but rather simply use the one provided by the tx;
-  // then the older (obsolete) dirty tuple is returned here to get rcu_freed,
-  // by traversing the write-set, which contains pointers to updated tuples.
-  // So in summary, this requires a traversal of the write-set only if in-place
-  // update happened, which we anticipate to be rare.
-  //
-  // One way to avoid this traversal is to store OIDs, rather than pointers to
-  // new tuple versions in the write-set. Then we will be able to blindly add
-  // the OID of the updated tuple no matter it's an in-place or out-of-place
-  // update. During commit we just follow the OIDs to find the physical pointer
-  // to tuples and write it to the log, becaues the OID table always has the
-  // pointer to the latest updated version. But again, this might need to
-  // traverse the OID table or at least some fancy index to build the OID table
-  // (such as a hash table).
-  //
-  // For now we stick to the pointer (former) way because it's simple, and
-  // silo's write-set infrastructure is already in that format, plus in-place
-  // update should be very rare. This could be avoided too (with the cost of
-  // checking a valid bit at commit time). See comments next.
+  if (prev) { // succeeded
+    // update access set (note this is different from the ssn_write algo in
+    // the ssn paper, as we still need to add the latest version to the
+    // access set, tho we don't need a new access_record if it already exists)
+    typename transaction<Transaction, Traits>::access_set_key askey(&this->underlying_btree, tuple->oid);
+    typename transaction<Transaction, Traits>::access_set_map::iterator it = t.find_access_set(askey);
+    if (it == t.access_set.end())   // new access record
+      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(tuple, true));
+    else {
+      it->second.set_tuple(tuple);
+      if (not it->second.is_write())
+        it->second.set_write(true);
+    }
 
-  // check return value
-  if (ret) { // succeeded
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
@@ -364,9 +343,6 @@ try_expect_new:
     const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
     t.signal_abort(r);
   }
-
-  // put to write-set, done.
-  t.write_set.emplace_back(tuple, &this->underlying_btree);
 }
 
 template <template <typename> class Transaction, typename P>
@@ -381,7 +357,6 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "on_resp_node(): <node=0x" << util::hexify(intptr_t(n))
                << ", version=" << version << ">" << std::endl);
   VERBOSE(std::cerr << "  " << concurrent_btree::NodeStringify(n) << std::endl);
-  //t->do_node_read(n, version);
 }
 
 template <template <typename> class Transaction, typename P>
@@ -398,7 +373,7 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x" << util::hexify(n)
                     << ", version=" << version << ">" << std::endl
                     << "  " << *((dbtuple *) v) << std::endl);
-  const dbtuple * const tuple = reinterpret_cast<const dbtuple *>(v);
+  dbtuple *tuple = reinterpret_cast<dbtuple *>(v);
   if (t->do_tuple_read(tuple, *value_reader))
     return caller_callback->invoke(
         (*key_reader)(k), value_reader->results());

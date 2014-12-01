@@ -75,7 +75,6 @@ public:
   virtual void commit_txn(void *txn);
   virtual void abort_txn(void *txn);
   virtual void print_txn_debug(void *txn) const;
-  virtual std::map<std::string, uint64_t> get_txn_counters(void *txn) const;
 
   virtual abstract_ordered_index *
   open_index(const std::string &name,

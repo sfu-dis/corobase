@@ -37,6 +37,7 @@ transaction<Protocol, Traits>::~transaction()
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
+  access_set.clear();
   RA::epoch_exit();
 }
 
@@ -45,8 +46,6 @@ void
 transaction<Protocol, Traits>::signal_abort(abort_reason reason)
 {
   abort_trap(reason);
-  
-  // atomic state change. after this, write-sets are invisible.
   volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   throw transaction_abort_exception(reason);
 }
@@ -57,14 +56,14 @@ transaction<Protocol, Traits>::abort_impl()
 {
   INVARIANT(state() == TXN_ABRTD);
   
-  // write-set uninstall
-  //	1. unlink from version chain
-  //	2. rcu-free the out-of-chain versions for rcu callback to reclaim them.
-  typename write_set_map::iterator it     = write_set.begin();
-  typename write_set_map::iterator it_end = write_set.end();
+  // unlink from version chain
+  typename access_set_map::iterator it     = access_set.begin();
+  typename access_set_map::iterator it_end = access_set.end();
   for (; it != it_end; ++it) {
-    dbtuple* tuple = it->get_tuple();
-	concurrent_btree* btr = it->get_table();
+    if (not it->second.is_write())
+      continue;
+    dbtuple* tuple = it->second.get_tuple();
+	concurrent_btree* btr = it->first.tree_ptr;
 	btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
   }
 
@@ -122,27 +121,6 @@ transaction<Protocol, Traits>::dump_debug_info() const
        << transaction_state_to_cstr(state()) << std::endl;
   std::cerr << "  Abort Reason: " << AbortReasonStr(reason) << std::endl;
   std::cerr << "  Flags: " << transaction_flags_to_str(flags) << std::endl;
-  std::cerr << "  Read/Write sets:" << std::endl;
-
-  std::cerr << "      === Write Set ===" << std::endl;
-  // write-set
-  for (typename write_set_map::const_iterator ws_it = write_set.begin();
-       ws_it != write_set.end(); ++ws_it)
-    std::cerr << *ws_it << std::endl;
-}
-
-template <template <typename> class Protocol, typename Traits>
-std::map<std::string, uint64_t>
-transaction<Protocol, Traits>::get_txn_counters() const
-{
-  std::map<std::string, uint64_t> ret;
-
-  // max_write_set_size
-#ifdef USE_SMALL_CONTAINER_OPT
-  ret["write_set_size"] = write_set.size();
-  ret["write_set_is_large?"] = !write_set.is_small_type();
-#endif
-  return ret;
 }
 
 template <template <typename> class Protocol, typename Traits>
@@ -164,12 +142,12 @@ transaction<Protocol, Traits>::commit()
   case TXN_CMMTD:
   case TXN_COMMITTING: 
   case TXN_ABRTD:
-    INVARIANT(false);
+    ALWAYS_ASSERT(false);
   }
   
   // avoid cross init after goto do_abort
-  typename write_set_map::iterator it     = write_set.begin();
-  typename write_set_map::iterator it_end = write_set.end();
+  typename access_set_map::iterator it     = access_set.begin();
+  typename access_set_map::iterator it_end = access_set.end();
 
   INVARIANT(log);
   // get clsn, abort if failed
@@ -187,9 +165,11 @@ transaction<Protocol, Traits>::commit()
   // (traverse write-tuple)
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
-    dbtuple* tuple = it->get_tuple();
+    dbtuple* tuple = it->second.get_tuple();
+    if (it->second.is_write()) {
       tuple->clsn = xc->end.to_log_ptr();
       INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+    }
   }
 
   // done
@@ -238,10 +218,8 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   tuple->oid,
                   fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
-  // update write_set
-  // FIXME: tzwang: so the caller shouldn't do this again if we returned true here.
-  write_set.emplace_back(tuple, &btr);
-
+  // update access_set
+  access_set.emplace(access_set_key(&btr, tuple->oid), access_record_t(tuple, true));
   return true;
 }
 
@@ -249,7 +227,7 @@ template <template <typename> class Protocol, typename Traits>
 template <typename ValueReader>
 bool
 transaction<Protocol, Traits>::do_tuple_read(
-    const dbtuple *tuple, ValueReader &value_reader)
+    dbtuple *tuple, ValueReader &value_reader)
 {
   INVARIANT(tuple);
   ++evt_local_search_lookups;
@@ -271,7 +249,6 @@ transaction<Protocol, Traits>::do_tuple_read(
   const bool v_empty = (stat == dbtuple::READ_EMPTY);
   if (v_empty)
     ++transaction_base::g_evt_read_logical_deleted_node_search;
-  read_set.emplace_back(tuple);
   return !v_empty;
 }
 
