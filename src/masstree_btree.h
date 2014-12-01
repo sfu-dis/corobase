@@ -240,7 +240,7 @@ public:
   {
 	  return table_.get_tuple_vector();
   }
-  bool update_version( oid_type oid, object* obj, XID xid)
+  dbtuple *update_version(oid_type oid, object* obj, XID xid)
   {
 	  return table_.update_version( oid, obj, xid );
   }

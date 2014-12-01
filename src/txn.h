@@ -86,7 +86,8 @@ public:
     x(ABORT_REASON_INSERT_NODE_INTERFERENCE) \
     x(ABORT_REASON_READ_NODE_INTEREFERENCE) \
     x(ABORT_REASON_READ_ABSENCE_INTEREFERENCE) \
-    x(ABORT_REASON_VERSION_INTERFERENCE)
+    x(ABORT_REASON_VERSION_INTERFERENCE) \
+    x(ABORT_REASON_SSN_EXCLUSION_FAILURE)
 
   enum abort_reason {
 #define ENUM_X(x) x,
@@ -163,25 +164,14 @@ public:
 
 protected:
 
-  struct read_record_t {
-    constexpr read_record_t(const dbtuple *tuple)
-      : tuple(tuple) {}
-    inline const dbtuple *
-    get_tuple() const
+  struct access_record_t {
+    constexpr access_record_t(dbtuple *tuple, bool w)
+      : tuple(tuple), write(w) {}
+    inline void
+    set_tuple(dbtuple *t)
     {
-      return tuple;
+        tuple = t;
     }
-  private:
-    const dbtuple *tuple;
-  };
-
-  friend std::ostream &
-  operator<<(std::ostream &o, const read_record_t &r);
-
-  // We need a much simpler write_record than silo does - same as the read_record_t.
-  struct write_record_t {
-    constexpr write_record_t(dbtuple *tuple, concurrent_btree* btr )
-      : tuple(tuple), btr(btr) {}
     inline dbtuple *
     get_tuple()
     {
@@ -192,42 +182,22 @@ protected:
     {
       return tuple;
     }
-    inline concurrent_btree*
-    get_table() 
+    inline bool
+    is_write()
     {
-      return btr;
+      return write;
     }
-    inline concurrent_btree*
-    get_table() const
+    inline void set_write(bool w)
     {
-      return btr;
+      write = w;
     }
   private:
-    // FIXME: tzwang: also in here we'll need it to be non-const b/c
-    // we change tuple.clsn upon commit.
     dbtuple *tuple;
-    concurrent_btree *btr;
+    bool write;
   };
 
   friend std::ostream &
-  operator<<(std::ostream &o, const write_record_t &r);
-
-  struct dbtuple_write_info {
-    dbtuple_write_info() : tuple(), entry(nullptr) {}
-    dbtuple_write_info(dbtuple *tuple, write_record_t *entry)
-      : tuple(tuple), entry(entry) {}
-    // XXX: for searching only
-    explicit dbtuple_write_info(const dbtuple *tuple)
-      : tuple(const_cast<dbtuple *>(tuple)), entry() {}
-    inline dbtuple *
-    get_tuple()
-    {
-      return tuple.get();
-    }
-    marked_ptr<dbtuple> tuple;
-    write_record_t *entry;
-  };
-
+  operator<<(std::ostream &o, const access_record_t &r);
 
   static event_counter g_evt_read_logical_deleted_node_search;
   static event_counter g_evt_read_logical_deleted_node_scan;
@@ -235,7 +205,6 @@ protected:
   static event_counter g_evt_dbtuple_write_insert_failed;
 
   static event_counter evt_local_search_lookups;
-  static event_counter evt_local_search_write_set_hits;
   static event_counter evt_dbtuple_latest_replacement;
 
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe0, g_txn_commit_probe0_cg);
@@ -253,47 +222,17 @@ protected:
   const uint64_t flags;
 };
 
-// type specializations
-namespace private_ {
-  template <>
-  struct is_trivially_destructible<transaction_base::read_record_t> {
-    static const bool value = true;
-  };
-
-  template <>
-  struct is_trivially_destructible<transaction_base::write_record_t> {
-    static const bool value = true;
-  };
-
-  template <>
-  struct is_trivially_destructible<transaction_base::dbtuple_write_info> {
-    static const bool value = true;
-  };
-}
-
-inline ALWAYS_INLINE std::ostream &
-operator<<(std::ostream &o, const transaction_base::read_record_t &r)
-{
-  return o;
-}
-
 inline ALWAYS_INLINE std::ostream &
 operator<<(
     std::ostream &o,
-    const transaction_base::write_record_t &r)
+    const transaction_base::access_record_t &r)
 {
   return o;
 }
 
 struct default_transaction_traits {
-  static const size_t read_set_expected_size = SMALL_SIZE_MAP;
-  static const size_t write_set_expected_size = SMALL_SIZE_MAP;
   static const bool stable_input_memory = false;
   static const bool hard_expected_sizes = false; // true if the expected sizes are hard maximums
-  static const bool read_own_writes = true; // if we read a key which we previous put(), are we guaranteed
-                                            // to read our latest (uncommited) values? this comes at a
-                                            // performance penality [you should not need this behavior to
-                                            // write txns, since you *know* the values you inserted]
 
   typedef util::default_string_allocator StringAllocator;
 };
@@ -389,70 +328,22 @@ protected:
     return static_cast<const Protocol<Traits> *>(this);
   }
 
-  // XXX: we have baked in b-tree into the protocol- other indexes are possible
-  // but we would need to abstract it away. we don't bother for now.
+  struct access_set_key {
+    concurrent_btree *tree_ptr;
+    oid_type oid;
+    access_set_key(concurrent_btree *t, oid_type o) :
+        tree_ptr(t), oid(o) {}
+    bool operator==(const access_set_key &k) const {
+      return k.tree_ptr == tree_ptr && k.oid == oid;
+    }
+  };
+  struct as_key_hash {
+    size_t operator()(const access_set_key &k) const {
+      return (uint64_t)k.tree_ptr ^ k.oid;
+    }
+  };
 
-#ifdef USE_SMALL_CONTAINER_OPT
-  // XXX: use parameterized typedef to avoid duplication
-
-  // small types
-  typedef small_vector<
-    read_record_t,
-    traits_type::read_set_expected_size> read_set_map;
-  typedef small_vector<
-    write_record_t,
-    traits_type::write_set_expected_size> write_set_map_small;
-
-  // static types
-  typedef static_vector<
-    write_record_t,
-    traits_type::write_set_expected_size> write_set_map_static;
-
-  // use static types if the expected sizes are guarantees
-  typedef
-    typename std::conditional<
-      traits_type::hard_expected_sizes,
-      write_set_map_static, write_set_map_small>::type write_set_map;
-
-#else
-  typedef std::vector<read_record_t> read_set_map;
-  typedef std::vector<write_record_t> write_set_map;
-#endif
-
-  template <typename T>
-    using read_set_sized_vec =
-      typename std::conditional<
-        traits_type::hard_expected_sizes,
-        static_vector<T, traits_type::read_set_expected_size>,
-        typename util::vec<T, traits_type::read_set_expected_size>::type
-      >::type;
-
-  template <typename T>
-    using write_set_sized_vec =
-      typename std::conditional<
-        traits_type::hard_expected_sizes,
-        static_vector<T, traits_type::write_set_expected_size>,
-        typename util::vec<T, traits_type::write_set_expected_size>::type
-      >::type;
-
-  // small type
-  typedef
-    typename util::vec<
-      dbtuple_write_info, traits_type::write_set_expected_size>::type
-    dbtuple_write_info_vec_small;
-
-  // static type
-  typedef
-    static_vector<
-      dbtuple_write_info, traits_type::write_set_expected_size>
-    dbtuple_write_info_vec_static;
-
-  // chosen type
-  typedef
-    typename std::conditional<
-      traits_type::hard_expected_sizes,
-      dbtuple_write_info_vec_static, dbtuple_write_info_vec_small>::type
-    dbtuple_write_info_vec;
+  typedef std::unordered_map<access_set_key, access_record_t, as_key_hash> access_set_map;
 
 public:
 
@@ -495,28 +386,14 @@ public:
   }
 #endif
 
-  std::map<std::string, uint64_t> get_txn_counters() const;
-
-  inline const read_set_map &
-  get_read_set() const
+  inline const access_set_map&
+  get_access_set() const
   {
-    return read_set;
-  }
-
-  inline const write_set_map &
-  get_write_set() const
-  {
-    return write_set;
+    return access_set;
   }
 
 protected:
   void abort_impl();
-
-  // assumes lock on marker is held on marker by caller, and marker is the
-  // latest: removes marker from tree, and clears latest
-  void cleanup_inserted_tuple_marker(
-      dbtuple *marker, const std::string &key,
-      concurrent_btree *btr);
 
   bool
   try_insert_new_tuple(
@@ -529,10 +406,7 @@ protected:
   // within this transaction context
   template <typename ValueReader>
   bool
-  do_tuple_read(const dbtuple *tuple, ValueReader &value_reader);
-
-  void
-  do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
+  do_tuple_read(dbtuple *tuple, ValueReader &value_reader);
 
 public:
   // expected public overrides
@@ -544,56 +418,14 @@ public:
   }
 
 protected:
-  void on_post_rcu_region_completion();
-
-protected:
-  // SLOW accessor methods- used for invariant checking
-  typename write_set_map::iterator
-  find_write_set(dbtuple *tuple)
+  typename access_set_map::iterator
+  find_access_set(access_set_key &k)
   {
-    // linear scan- returns the *first* entry found
-    // (a tuple can exist in the write_set more than once)
-    typename write_set_map::iterator it     = write_set.begin();
-    typename write_set_map::iterator it_end = write_set.end();
-    for (; it != it_end; ++it)
-      if (it->get_tuple() == tuple)
-        break;
-    return it;
+    return access_set.find(k);
   }
 
-  // FIXME: tzwang: so this will be very slow, but we need it in SSN;
-  // definitely will need something better later.
-  typename read_set_map::iterator
-  find_read_set(dbtuple *tuple)
-  {
-    // linear scan- returns the *first* entry found
-    // (a tuple can exist in the read_set more than once)
-    // FIXME: tzwang: actually we need a set...
-    typename read_set_map::iterator it     = read_set.begin();
-    typename read_set_map::iterator it_end = read_set.end();
-    for (; it != it_end; ++it)
-      if (it->get_tuple() == tuple)
-        break;
-    return it;
-  }
-
-  inline typename write_set_map::const_iterator
-  find_write_set(const dbtuple *tuple) const
-  {
-    return const_cast<transaction *>(this)->find_write_set(tuple);
-  }
-
-  inline typename read_set_map::const_iterator
-  find_read_set(const dbtuple *tuple) const
-  {
-    return const_cast<transaction *>(this)->find_read_set(tuple);
-  }
-
-  read_set_map read_set;
-  write_set_map write_set;
-
+  access_set_map access_set;
   string_allocator_type *sa;
-
 };
 
 class transaction_abort_exception : public std::exception {
