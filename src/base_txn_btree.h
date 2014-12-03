@@ -107,7 +107,8 @@ protected:
         key_reader(key_reader), value_reader(value_reader) {}
 
     virtual void on_resp_node(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
-    virtual bool invoke(const typename concurrent_btree::string_type &k, typename concurrent_btree::value_type v,
+    virtual bool invoke(const concurrent_btree *btr_ptr,
+                        const typename concurrent_btree::string_type &k, typename concurrent_btree::value_type v,
                         const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 
   private:
@@ -186,7 +187,7 @@ base_txn_btree<Transaction, P>::do_search(
   const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, t.xid, &search_info);
   if (found) {
     dbtuple *tuple = reinterpret_cast<dbtuple *>(underlying_v);
-    return t.do_tuple_read(tuple, value_reader);
+    return t.do_tuple_read(&this->underlying_btree, tuple, value_reader);
   } else {
     return false;
   }
@@ -314,6 +315,23 @@ try_expect_new:
   dbtuple *prev = this->underlying_btree.update_version(tuple->oid, version, t.xid);
 
   if (prev) { // succeeded
+    // update hi watermark
+    xid_context* xc = xid_get_context(t.xid);
+    ASSERT(xc);
+    if (xc->hi < prev->xlsn)
+      xc->hi = prev->xlsn;
+
+    //if (not ssn_check_exclusion(xc))
+    //  t.signal_abort();
+
+    // copy stamps to new tuple from overwritten version
+    volatile_write(tuple->xlsn._val, prev->xlsn._val);
+    volatile_write(tuple->slsn._val, prev->slsn._val);
+    if (prev->clsn.asi_type() == fat_ptr::ASI_XID)  // in-place update!
+      volatile_write(tuple->prev, prev->prev); // prev's prev: previous *committed* version
+    else    // prev is committed head
+      volatile_write(tuple->prev, prev);
+
     // update access set (note this is different from the ssn_write algo in
     // the ssn paper, as we still need to add the latest version to the
     // access set, tho we don't need a new access_record if it already exists)
@@ -366,6 +384,7 @@ bool
 base_txn_btree<Transaction, P>
   ::txn_search_range_callback<Traits, Callback, KeyReader, ValueReader>
   ::invoke(
+    const concurrent_btree *btr_ptr,
     const typename concurrent_btree::string_type &k, typename concurrent_btree::value_type v,
     const typename concurrent_btree::node_opaque_t *n, uint64_t version)
 {
@@ -374,7 +393,7 @@ base_txn_btree<Transaction, P>
                     << ", version=" << version << ">" << std::endl
                     << "  " << *((dbtuple *) v) << std::endl);
   dbtuple *tuple = reinterpret_cast<dbtuple *>(v);
-  if (t->do_tuple_read(tuple, *value_reader))
+  if (t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), tuple, *value_reader))
     return caller_callback->invoke(
         (*key_reader)(k), value_reader->results());
   return true;

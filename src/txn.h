@@ -406,7 +406,7 @@ protected:
   // within this transaction context
   template <typename ValueReader>
   bool
-  do_tuple_read(dbtuple *tuple, ValueReader &value_reader);
+  do_tuple_read(concurrent_btree *btr_ptr, dbtuple *tuple, ValueReader &value_reader);
 
 public:
   // expected public overrides

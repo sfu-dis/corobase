@@ -227,7 +227,7 @@ template <template <typename> class Protocol, typename Traits>
 template <typename ValueReader>
 bool
 transaction<Protocol, Traits>::do_tuple_read(
-    dbtuple *tuple, ValueReader &value_reader)
+    concurrent_btree *btr_ptr, dbtuple *tuple, ValueReader &value_reader)
 {
   INVARIANT(tuple);
   ++evt_local_search_lookups;
@@ -249,6 +249,34 @@ transaction<Protocol, Traits>::do_tuple_read(
   const bool v_empty = (stat == dbtuple::READ_EMPTY);
   if (v_empty)
     ++transaction_base::g_evt_read_logical_deleted_node_search;
+
+  // SSN stamps and check
+  access_set_key askey(btr_ptr, tuple->oid);
+  if (find_access_set(askey) == access_set.end()) {
+      xid_context* xc = xid_get_context(xid);
+      ASSERT(xc);
+      LSN v_clsn = LSN::from_ptr(tuple->clsn);
+      // \eta - largest predecessor. So if I read this tuple, I should commit
+      // after the tuple's creator (trivial, as this is committed version, so
+      // this tuple's clsn can only be a predecessor of me): so just update
+      // my \eta if needed.
+      if (xc->hi < v_clsn)
+          xc->hi = v_clsn;
+
+      // Now if this tuple was overwritten by somebody, this means if I read
+      // it, that overwriter will have anti-dependency on me (I must be
+      // serialized before the overwriter), and it already committed (as a
+      // successor of mine), so I need to update my \pi for the SSN check.
+      // This is the easier case of anti-dependency (the other case is T1
+      // already read a (then latest) version, then T2 comes to overwrite it).
+      if (tuple->slsn == INVALID_LSN)   // no overwrite so far
+        access_set.emplace(askey, access_record_t(tuple, false));
+      else if (xc->lo > tuple->slsn)
+          xc->lo = tuple->slsn;    // \pi
+      //if (not ssn_check_exclusion(xc))
+      //  signal_abort();
+  }
+
   return !v_empty;
 }
 
