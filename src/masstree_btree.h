@@ -308,7 +308,7 @@ public:
     /**
      * This key/value pair was read from node n @ version
      */
-    virtual bool invoke(const string_type &k, value_type v,
+    virtual bool invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, value_type v,
                         const node_opaque_t *n, uint64_t version) = 0;
   };
 
@@ -733,9 +733,9 @@ template <bool Reverse>
 class mbtree<P>::low_level_search_range_scanner
   : public search_range_scanner_base<Reverse> {
  public:
-  low_level_search_range_scanner(const key_type* boundary,
+  low_level_search_range_scanner(const mbtree<P> *btr_ptr, const key_type* boundary,
                                  low_level_search_range_callback& callback)
-    : search_range_scanner_base<Reverse>(boundary), callback_(callback) {
+    : search_range_scanner_base<Reverse>(boundary), callback_(callback), btr_ptr_(btr_ptr) {
   }
   void visit_leaf(const Masstree::scanstackelt<P>& iter,
                   const Masstree::key<uint64_t>& key, threadinfo&) {
@@ -753,12 +753,13 @@ class mbtree<P>::low_level_search_range_scanner
           ( Reverse && bs >= key.full_string()))
         return false;
     }
-    return callback_.invoke(key.full_string(), value, this->n_, this->v_);
+    return callback_.invoke(this->btr_ptr_, key.full_string(), value, this->n_, this->v_);
   }
  private:
   Masstree::leaf<P>* n_;
   uint64_t v_;
   low_level_search_range_callback& callback_;
+  const mbtree<P> *btr_ptr_;
 };
 
 template <typename P>
@@ -787,7 +788,7 @@ inline void mbtree<P>::search_range_call(const key_type &lower,
                                          low_level_search_range_callback &callback,
 										 XID xid,
                                          std::string*) const {
-  low_level_search_range_scanner<false> scanner(upper, callback);
+  low_level_search_range_scanner<false> scanner(this, upper, callback);
   threadinfo ti;
   table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
 }
@@ -798,7 +799,7 @@ inline void mbtree<P>::rsearch_range_call(const key_type &upper,
                                           low_level_search_range_callback &callback,
 										  XID xid,
                                           std::string*) const {
-  low_level_search_range_scanner<true> scanner(lower, callback);
+  low_level_search_range_scanner<true> scanner(this, lower, callback);
   threadinfo ti;
   table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
 }
@@ -810,7 +811,7 @@ inline void mbtree<P>::search_range(const key_type &lower,
 									XID xid,
                                     std::string*) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
-  low_level_search_range_scanner<false> scanner(upper, wrapper);
+  low_level_search_range_scanner<false> scanner(this, upper, wrapper);
   threadinfo ti;
   table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
 }
@@ -822,7 +823,7 @@ inline void mbtree<P>::rsearch_range(const key_type &upper,
 									 XID xid,
                                      std::string*) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
-  low_level_search_range_scanner<true> scanner(lower, wrapper);
+  low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti;
   table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
 }

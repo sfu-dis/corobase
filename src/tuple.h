@@ -48,9 +48,9 @@ public:
 
   oid_type oid;
   fat_ptr clsn;     // version creation stamp
-  LSN xlsn;         // access stamp (\eta)
-  LSN slsn;         // successor stamp (\pi)
-  dbtuple *prev;    // overwritten version (old head)
+  LSN xlsn;         // access stamp (\eta), updated when reader commits
+  LSN slsn;         // successor stamp (\pi), updated when writer commits
+  dbtuple *prev;    // overwritten version (old head), updated when writer commits
 
 public:
   size_type size; // actual size of record

@@ -33,4 +33,8 @@ void xid_free(XID x);
  */
 xid_context *xid_get_context(XID x);
 
+inline bool ssn_check_exclusion(xid_context *xc) {
+    if (xc->lo != INVALID_LSN and xc->hi >= xc->lo) printf("ssn exclusion failure\n");
+    return xc->lo != INVALID_LSN and xc->hi < xc->lo; // \eta < \pi
+}
 };  // end of namespace
