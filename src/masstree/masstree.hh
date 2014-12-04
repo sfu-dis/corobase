@@ -229,7 +229,9 @@ install:
 		xid_context *visitor= xid_get_context(xid);
 		INVARIANT(visitor->owner == xid);
 
+#if CHECK_INVARIANTS
 		int attempts = 0;
+#endif
 		object* cur_obj;
 	start_over:
 		for( fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
@@ -267,8 +269,10 @@ install:
 				
 				// context still valid for this XID?
 				if( unlikely(owner != holder_xid) ) {
+#if CHECK_INVARIANTS
 					ASSERT(attempts < 2);
 					attempts++;
+#endif
 					goto start_over;
 				}
 

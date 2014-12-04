@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 /** options */
+//#define USE_SERIAL_SSN
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
 //#define DIE_ON_ABORT

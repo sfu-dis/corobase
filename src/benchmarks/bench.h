@@ -234,7 +234,7 @@ public:
 	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
 	  ALWAYS_ASSERT(p);
 
-	  //ALWAYS_ASSERT(not mlockall(MCL_CURRENT));
+	  ALWAYS_ASSERT(not mlockall(MCL_CURRENT));
 	  mallopt (M_TRIM_THRESHOLD, -1);
 	  mallopt (M_MMAP_MAX, 0);
 
