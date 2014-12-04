@@ -1,11 +1,17 @@
 // -*- mode:c++ -*-
 #pragma once
 
+#include <mutex>
 #include "sm-common.h"
+#include "../macros.h"
 
 namespace TXN {
 
 enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD };
+
+#ifdef USE_SERIAL_SSN
+  extern std::mutex ssn_commit_mutex;
+#endif
 
 struct xid_context {
     XID owner;
@@ -35,6 +41,9 @@ xid_context *xid_get_context(XID x);
 
 inline bool ssn_check_exclusion(xid_context *xc) {
     if (xc->lo != INVALID_LSN and xc->hi >= xc->lo) printf("ssn exclusion failure\n");
-    return xc->lo != INVALID_LSN and xc->hi < xc->lo; // \eta < \pi
+    if (xc->hi != INVALID_LSN and xc->lo != INVALID_LSN)
+        return xc->hi < xc->lo; // \eta - predecessor, \pi - sucessor
+        // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
+    return true;
 }
 };  // end of namespace

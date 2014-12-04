@@ -69,7 +69,8 @@ private:
 
   dbtuple(size_type size, size_type alloc_size)
     :
-      size(CheckBounds(size))
+      prev(NULL)
+      , size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
   {
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);

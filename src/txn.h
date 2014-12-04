@@ -353,6 +353,8 @@ public:
   // returns on successful commit.
   // signals failure by throwing an abort exception
   void commit();
+  void si_commit();
+  void ssn_si_commit();
 
   // signal the caller that an abort is necessary by throwing an abort
   // exception. 

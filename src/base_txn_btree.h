@@ -316,17 +316,21 @@ try_expect_new:
 
   if (prev) { // succeeded
     // update hi watermark
+    // Overwriting a version could trigger outbound anti-dep,
+    // i.e., I'll depend on some tx who has read the version that's
+    // being overwritten by me. So I'll need to see the version's
+    // access stamp to tell if the read happened.
     xid_context* xc = xid_get_context(t.xid);
     ASSERT(xc);
     if (xc->hi < prev->xlsn)
       xc->hi = prev->xlsn;
 
-    //if (not ssn_check_exclusion(xc))
-    //  t.signal_abort();
+    if (not ssn_check_exclusion(xc))
+      t.signal_abort();
 
-    // copy stamps to new tuple from overwritten version
+    // copy access stamp to new tuple from overwritten version
+    // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
-    volatile_write(tuple->slsn._val, prev->slsn._val);
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID)  // in-place update!
       volatile_write(tuple->prev, prev->prev); // prev's prev: previous *committed* version
     else    // prev is committed head

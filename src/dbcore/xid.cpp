@@ -5,6 +5,11 @@
 #include <unistd.h>
 
 namespace TXN {
+
+#ifdef USE_SERIAL_SSN
+std::mutex ssn_commit_mutex;
+#endif
+
 #if 0
 } // disable autoindent
 #endif
