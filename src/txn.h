@@ -165,34 +165,9 @@ public:
 protected:
 
   struct access_record_t {
-    constexpr access_record_t(dbtuple *tuple, bool w)
-      : tuple(tuple), write(w) {}
-    inline void
-    set_tuple(dbtuple *t)
-    {
-        tuple = t;
-    }
-    inline dbtuple *
-    get_tuple()
-    {
-      return tuple;
-    }
-    inline dbtuple *
-    get_tuple() const
-    {
-      return tuple;
-    }
-    inline bool
-    is_write()
-    {
-      return write;
-    }
-    inline void set_write(bool w)
-    {
-      write = w;
-    }
-  private:
-    dbtuple *tuple;
+    constexpr access_record_t(fat_ptr c, bool w)
+      : clsn(c), write(w) {}
+    fat_ptr clsn;
     bool write;
   };
 
