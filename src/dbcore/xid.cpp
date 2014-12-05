@@ -242,4 +242,10 @@ xid_get_context(XID x) {
              illegal_argument, "Invalid XID");
     return ctx;
 }
+
+bool
+wait_for_commit_result(xid_context *xc) {
+    while (volatile_read(xc->state) == TXN_COMMITTING);
+    return volatile_read(xc->state) == TXN_CMMTD;
+}
 } // end of namespace
