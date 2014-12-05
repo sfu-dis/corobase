@@ -48,8 +48,8 @@ public:
 
   oid_type oid;
   fat_ptr clsn;     // version creation stamp
-  LSN xlsn;         // access stamp (\eta), updated when reader commits
-  LSN slsn;         // successor stamp (\pi), updated when writer commits
+  LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
+  fat_ptr slsn;     // successor (overwriter) stamp (\pi), updated when writer commits
   dbtuple *prev;    // overwritten version (old head), updated when writer commits
 
 public:
@@ -69,7 +69,10 @@ private:
 
   dbtuple(size_type size, size_type alloc_size)
     :
-      prev(NULL)
+      clsn(NULL_PTR)
+      , xlsn(INVALID_LSN)
+      , slsn(NULL_PTR)
+      , prev(NULL)
       , size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
   {

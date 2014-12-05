@@ -128,16 +128,20 @@ void
 transaction<Protocol, Traits>::commit()
 {
 #ifdef USE_SERIAL_SSN
-  ssn_si_commit();
+  ssn_serial_si_commit();
+#else
+#ifdef USE_PARALLEL_SSN
+  ssn_parallel_si_commit();
 #else
   si_commit();
+#endif
 #endif
 }
 
 #ifdef USE_SERIAL_SSN
 template <template <typename> class Protocol, typename Traits>
 void
-transaction<Protocol, Traits>::ssn_si_commit()
+transaction<Protocol, Traits>::ssn_serial_si_commit()
 {
   xid_context* xc = xid_get_context(xid);
 
@@ -225,6 +229,139 @@ transaction<Protocol, Traits>::ssn_si_commit()
   xid_free(xid);
 }
 #else
+#ifdef USE_PARALLEL_SSN
+template <template <typename> class Protocol, typename Traits>
+void
+transaction<Protocol, Traits>::ssn_parallel_si_commit()
+{
+  xid_context* xc = xid_get_context(xid);
+
+  PERF_DECL(
+      static std::string probe0_name(
+        std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
+  ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
+
+  switch (state()) {
+  case TXN_EMBRYO:
+  case TXN_ACTIVE:
+    xc->state = TXN_COMMITTING;
+    break;
+  case TXN_CMMTD:
+  case TXN_COMMITTING:
+  case TXN_ABRTD:
+    ALWAYS_ASSERT(false);
+  }
+
+  // avoid cross init after goto do_abort
+  typename access_set_map::iterator it     = access_set.begin();
+  typename access_set_map::iterator it_end = access_set.end();
+
+  INVARIANT(log);
+  // get clsn, abort if failed
+  RCU::rcu_enter();
+  xc->end = log->pre_commit();
+  LSN clsn = xc->end;
+  if (xc->end == INVALID_LSN)
+    signal_abort(ABORT_REASON_INTERNAL);
+
+  // find out my largest predecessor (\eta) and smallest sucessor (\pi)
+  // for reads, see if sb. has written the tuples - look at sucessor lsn
+  // for writes, see if sb. has read the tuples - look at access lsn
+  for (it = access_set.begin(); it != it_end; ++it) {
+    dbtuple* tuple = it->second.get_tuple();
+    if (it->second.is_write()) {
+      if (tuple->prev) {    // ok, this is an update
+        // need access stamp , i.e., who read this version that I'm trying to overwrite?
+        // (it's the predecessor, \eta)
+        // need to go to that committed version, because the one we copied
+        // during update might be out-of-date now (sb. already stuffed a new pstamp).
+        // so go to prev (do_tree_put and obj_vec->put make sure this is the committed version)
+      // FIXME
+      //try_get_predecessor:
+      //  LSN prev_xlsn = volatile_read(tuple->prev->xlsn);
+      //  if (xc->hi < prev_xlsn)
+      //    xc->hi = prev_xlsn;
+      }
+    }
+    else {
+      // so tuple should be the committed version I read
+      ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+
+    try_get_sucessor:
+      // read tuple->slsn to a local variable before doing anything relying on it,
+      // it might be changed any time...
+      fat_ptr tuple_slsn = volatile_read(tuple->slsn);
+
+      // overwriter in progress?
+      if (tuple_slsn.asi_type() == fat_ptr::ASI_XID) {
+        xid_context *sucessor_xc = xid_get_context(XID::from_ptr(tuple_slsn));
+        if (sucessor_xc->owner != XID::from_ptr(tuple_slsn))
+          goto try_get_sucessor;
+
+        // overwriter might haven't committed, be serialized after me, or before me
+        if (sucessor_xc->end == INVALID_LSN) // not even in precommit, don't bother
+            ;
+        else if (sucessor_xc->end > clsn)    // serialzed after me, (dependency trivially satisfied as I as the reader will (hopefully) commit first)
+            ;
+        else {
+          // either wait or give conservative estimation
+          while (sucessor_xc->state != TXN_CMMTD);
+
+          // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
+          if (sucessor_xc->end < xc->lo)
+            xc->lo = sucessor_xc->end;
+        }
+      }
+      else {    // overwriter already fully committed (slsn available)
+        ASSERT(tuple_slsn.asi_type() == fat_ptr::ASI_LOG);
+        if (LSN::from_ptr(tuple_slsn) < xc->lo)
+          xc->lo = LSN::from_ptr(tuple_slsn);
+      }
+    }
+  }
+
+  if (not ssn_check_exclusion(xc))
+    signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
+
+  // ok, can really commit if we reach here
+  log->commit(NULL);
+  RCU::rcu_exit();
+
+  // change state
+  volatile_write(xc->state, TXN_CMMTD);
+
+  // post-commit: stuff access stamps for reads; init new versions
+  for (it = access_set.begin(); it != it_end; ++it) {
+    dbtuple *tuple = it->second.get_tuple();
+    if (it->second.is_write()) {
+      if (tuple->prev) {    // could be an insert...
+        volatile_write(tuple->prev->slsn, xc->lo.to_log_ptr());
+        // wait for the older reader to finish pre-commit
+        // FIXME: well, need a list of readers here...
+      }
+      //tuple->clsn = clsn.to_log_ptr();
+      //tuple->xlsn = clsn;
+    }
+    else {
+      fat_ptr tuple_slsn = volatile_read(tuple->slsn);
+      if (tuple_slsn.asi_type() == fat_ptr::ASI_XID) {
+        xid_context *overwriter_xc = xid_get_context(XID::from_ptr(tuple_slsn));
+        // wait for the older overwriter (smaller clsn) to finish pre-commit
+        // (can't allow a newer reader to update xlsn before an older overwriter
+        // finishes precommit, otherwise xlsn (\pi) will always be larger than
+        // the overwriter's clsn (its \eta too) => will always abort the overwriter.
+        if (overwriter_xc->end != INVALID_LSN and overwriter_xc->end < clsn)
+          while (overwriter_xc->state != TXN_CMMTD);
+      }
+      if (volatile_read(tuple->xlsn) < clsn)
+        volatile_write(tuple->xlsn._val, clsn._val);
+    }
+  }
+
+  // done
+  xid_free(xid);
+}
+#else
 template <template <typename> class Protocol, typename Traits>
 void
 transaction<Protocol, Traits>::si_commit()
@@ -277,6 +414,7 @@ transaction<Protocol, Traits>::si_commit()
   // done
   xid_free(xid);
 }
+#endif
 #endif
 
 typedef object_vector<typename concurrent_btree::value_type> tuple_vector_type;
@@ -372,10 +510,13 @@ transaction<Protocol, Traits>::do_tuple_read(
       // successor of mine), so I need to update my \pi for the SSN check.
       // This is the easier case of anti-dependency (the other case is T1
       // already read a (then latest) version, then T2 comes to overwrite it).
-      if (tuple->slsn == INVALID_LSN)   // no overwrite so far
-        access_set.emplace(askey, access_record_t(tuple, false));
-      else if (xc->lo > tuple->slsn)
-          xc->lo = tuple->slsn;    // \pi
+      fat_ptr tuple_slsn = volatile_read(tuple->slsn);
+      if (tuple_slsn.asi_type() == fat_ptr::ASI_LOG) {
+        if (LSN::from_ptr(tuple_slsn) == INVALID_LSN)   // no overwrite so far
+          access_set.emplace(askey, access_record_t(tuple, false));
+        else if (xc->lo > LSN::from_ptr(tuple_slsn))
+          xc->lo = LSN::from_ptr(tuple_slsn); // \pi
+      }
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
   }
