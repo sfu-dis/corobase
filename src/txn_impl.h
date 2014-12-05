@@ -290,12 +290,12 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     try_get_sucessor:
       // read tuple->slsn to a local variable before doing anything relying on it,
       // it might be changed any time...
-      fat_ptr tuple_slsn = volatile_read(tuple->slsn);
+      fat_ptr sucessor_clsn = volatile_read(((dbtuple *)(((object *)it->first.tree_ptr->get_tuple_vector()->begin_ptr(it->first.oid))->payload()))->clsn);
 
       // overwriter in progress?
-      if (tuple_slsn.asi_type() == fat_ptr::ASI_XID) {
-        xid_context *sucessor_xc = xid_get_context(XID::from_ptr(tuple_slsn));
-        if (sucessor_xc->owner != XID::from_ptr(tuple_slsn))
+      if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
+        xid_context *sucessor_xc = xid_get_context(XID::from_ptr(sucessor_clsn));
+        if (sucessor_xc->owner != XID::from_ptr(sucessor_clsn))
           goto try_get_sucessor;
 
         // overwriter might haven't committed, be serialized after me, or before me
@@ -313,9 +313,9 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         }
       }
       else {    // overwriter already fully committed (slsn available)
-        ASSERT(tuple_slsn.asi_type() == fat_ptr::ASI_LOG);
-        if (LSN::from_ptr(tuple_slsn) < xc->lo)
-          xc->lo = LSN::from_ptr(tuple_slsn);
+        ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
+        if (tuple->slsn < xc->lo)
+          xc->lo = tuple->slsn;
       }
     }
   }
@@ -335,7 +335,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     dbtuple *tuple = it->second.get_tuple();
     if (it->second.is_write()) {
       if (tuple->prev) {    // could be an insert...
-        volatile_write(tuple->prev->slsn, xc->lo.to_log_ptr());
+        volatile_write(tuple->prev->slsn._val, xc->lo._val);
         // wait for the older reader to finish pre-commit
         // FIXME: well, need a list of readers here...
       }
@@ -343,9 +343,9 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       //tuple->xlsn = clsn;
     }
     else {
-      fat_ptr tuple_slsn = volatile_read(tuple->slsn);
-      if (tuple_slsn.asi_type() == fat_ptr::ASI_XID) {
-        xid_context *overwriter_xc = xid_get_context(XID::from_ptr(tuple_slsn));
+      fat_ptr sucessor_clsn = volatile_read(((dbtuple *)(((object *)it->first.tree_ptr->get_tuple_vector()->begin_ptr(it->first.oid))->payload()))->clsn);
+      if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
+        xid_context *overwriter_xc = xid_get_context(XID::from_ptr(sucessor_clsn));
         // wait for the older overwriter (smaller clsn) to finish pre-commit
         // (can't allow a newer reader to update xlsn before an older overwriter
         // finishes precommit, otherwise xlsn (\pi) will always be larger than
@@ -510,13 +510,11 @@ transaction<Protocol, Traits>::do_tuple_read(
       // successor of mine), so I need to update my \pi for the SSN check.
       // This is the easier case of anti-dependency (the other case is T1
       // already read a (then latest) version, then T2 comes to overwrite it).
-      fat_ptr tuple_slsn = volatile_read(tuple->slsn);
-      if (tuple_slsn.asi_type() == fat_ptr::ASI_LOG) {
-        if (LSN::from_ptr(tuple_slsn) == INVALID_LSN)   // no overwrite so far
-          access_set.emplace(askey, access_record_t(tuple, false));
-        else if (xc->lo > LSN::from_ptr(tuple_slsn))
-          xc->lo = LSN::from_ptr(tuple_slsn); // \pi
-      }
+      LSN tuple_slsn = volatile_read(tuple->slsn);
+      if (tuple_slsn == INVALID_LSN)   // no overwrite so far
+        access_set.emplace(askey, access_record_t(tuple, false));
+      else if (xc->lo > tuple_slsn)
+        xc->lo = tuple_slsn; // \pi
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
   }
