@@ -334,11 +334,8 @@ try_expect_new:
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID)  // in-place update!
       volatile_write(tuple->prev, prev->prev); // prev's prev: previous *committed* version
-    else {    // prev is committed head
+    else    // prev is committed head
       volatile_write(tuple->prev, prev);
-      // put my xid there to let readers know I'm updating (see commit protocol)
-      volatile_write(tuple->slsn, t.xid.to_ptr());
-    }
 
     // update access set (note this is different from the ssn_write algo in
     // the ssn paper, as we still need to add the latest version to the
