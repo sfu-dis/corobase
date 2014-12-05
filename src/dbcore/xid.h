@@ -17,8 +17,8 @@ struct xid_context {
     XID owner;
     LSN begin;
     LSN end;
-    LSN hi; // youngest predecessor (\eta)
-    LSN lo; // oldest successor (\pi)
+    LSN pred; // youngest predecessor (\eta)
+    LSN succ; // oldest successor (\pi)
     txn_state state;
 };
 
@@ -40,9 +40,9 @@ void xid_free(XID x);
 xid_context *xid_get_context(XID x);
 
 inline bool ssn_check_exclusion(xid_context *xc) {
-    if (xc->lo != INVALID_LSN and xc->hi >= xc->lo) printf("ssn exclusion failure\n");
-    if (xc->hi != INVALID_LSN and xc->lo != INVALID_LSN)
-        return xc->hi < xc->lo; // \eta - predecessor, \pi - sucessor
+    if (xc->succ != INVALID_LSN and xc->pred >= xc->succ) printf("ssn exclusion failure\n");
+    if (xc->succ != INVALID_LSN and xc->pred != INVALID_LSN)
+        return xc->pred < xc->succ; // \eta - predecessor, \pi - sucessor
         // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
     return true;
 }

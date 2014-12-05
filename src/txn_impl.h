@@ -60,9 +60,9 @@ transaction<Protocol, Traits>::abort_impl()
   typename access_set_map::iterator it     = access_set.begin();
   typename access_set_map::iterator it_end = access_set.end();
   for (; it != it_end; ++it) {
-    if (not it->second.is_write())
+    if (not it->second.write)
       continue;
-    dbtuple* tuple = it->second.get_tuple();
+    dbtuple* tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
 	concurrent_btree* btr = it->first.tree_ptr;
 	btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
   }
@@ -178,7 +178,7 @@ transaction<Protocol, Traits>::ssn_serial_si_commit()
 
   for (it = access_set.begin(); it != it_end; ++it) {
     dbtuple* tuple = it->second.get_tuple();
-    if (it->second.is_write()) {
+    if (it->second.write) {
       if (tuple->prev) {    // ok, this is an update
         // need access stamp , i.e., who read this version that I'm trying to overwrite?
         // (it's the predecessor, \eta)
@@ -205,7 +205,7 @@ transaction<Protocol, Traits>::ssn_serial_si_commit()
   // survived! stuff access stamps for reads, and init new versions
   for (it = access_set.begin(); it != it_end; ++it) {
     dbtuple *tuple = it->second.get_tuple();
-    if (it->second.is_write()) {
+    if (it->second.write) {
       if (tuple->prev)  // could be an insert...
         tuple->prev->slsn = xc->lo;
       tuple->clsn = clsn.to_log_ptr();
@@ -268,9 +268,10 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   // for reads, see if sb. has written the tuples - look at sucessor lsn
   // for writes, see if sb. has read the tuples - look at access lsn
   for (it = access_set.begin(); it != it_end; ++it) {
-    dbtuple* tuple = it->second.get_tuple();
-    if (it->second.is_write()) {
-      if (tuple->prev) {    // ok, this is an update
+    dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
+    object *obj = (object *)((char *)tuple - sizeof(object));
+    if (it->second.write) {
+      if (obj->_next.offset()) {    // ok, this is an update. FIXME: what if next points to a deleted version?
         // need access stamp , i.e., who read this version that I'm trying to overwrite?
         // (it's the predecessor, \eta)
         // need to go to that committed version, because the one we copied
@@ -308,14 +309,14 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
           while (sucessor_xc->state != TXN_CMMTD);
 
           // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
-          if (sucessor_xc->end < xc->lo)
-            xc->lo = sucessor_xc->end;
+          if (sucessor_xc->end < xc->succ)
+            xc->succ = sucessor_xc->end;
         }
       }
       else {    // overwriter already fully committed (slsn available)
         ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
-        if (tuple->slsn < xc->lo)
-          xc->lo = tuple->slsn;
+        if (tuple->slsn < xc->succ)
+          xc->succ = tuple->slsn;
       }
     }
   }
@@ -332,10 +333,11 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
   // post-commit: stuff access stamps for reads; init new versions
   for (it = access_set.begin(); it != it_end; ++it) {
-    dbtuple *tuple = it->second.get_tuple();
-    if (it->second.is_write()) {
-      if (tuple->prev) {    // could be an insert...
-        volatile_write(tuple->prev->slsn._val, xc->lo._val);
+    dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
+    object *obj = (object *)((char *)tuple - sizeof(object));
+    if (it->second.write) {
+      if (obj->_next.offset()) {    // could be an insert...
+        volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, xc->succ._val);
         // wait for the older reader to finish pre-commit
         // FIXME: well, need a list of readers here...
       }
@@ -405,7 +407,7 @@ transaction<Protocol, Traits>::si_commit()
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
     dbtuple* tuple = it->second.get_tuple();
-    if (it->second.is_write()) {
+    if (it->second.write) {
       tuple->clsn = xc->end.to_log_ptr();
       INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     }
@@ -460,7 +462,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update access_set
-  access_set.emplace(access_set_key(&btr, tuple->oid), access_record_t(tuple, true));
+  access_set.emplace(access_set_key(&btr, tuple->oid), access_record_t(xid.to_ptr(), true));
   return true;
 }
 
@@ -501,8 +503,8 @@ transaction<Protocol, Traits>::do_tuple_read(
       // after the tuple's creator (trivial, as this is committed version, so
       // this tuple's clsn can only be a predecessor of me): so just update
       // my \eta if needed.
-      if (xc->hi < v_clsn)
-          xc->hi = v_clsn;
+      if (xc->pred < v_clsn)
+          xc->pred = v_clsn;
 
       // Now if this tuple was overwritten by somebody, this means if I read
       // it, that overwriter will have anti-dependency on me (I must be
@@ -512,9 +514,9 @@ transaction<Protocol, Traits>::do_tuple_read(
       // already read a (then latest) version, then T2 comes to overwrite it).
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN)   // no overwrite so far
-        access_set.emplace(askey, access_record_t(tuple, false));
-      else if (xc->lo > tuple_slsn)
-        xc->lo = tuple_slsn; // \pi
+        access_set.emplace(askey, access_record_t(tuple->clsn, false));
+      else if (xc->succ > tuple_slsn)
+        xc->succ = tuple_slsn; // \pi
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
   }

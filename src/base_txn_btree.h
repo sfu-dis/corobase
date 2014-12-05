@@ -315,6 +315,7 @@ try_expect_new:
   dbtuple *prev = this->underlying_btree.update_version(tuple->oid, version, t.xid);
 
   if (prev) { // succeeded
+    object *prev_obj = (object *)((char *)prev - sizeof(object));
     // update hi watermark
     // Overwriting a version could trigger outbound anti-dep,
     // i.e., I'll depend on some tx who has read the version that's
@@ -323,8 +324,8 @@ try_expect_new:
     xid_context* xc = xid_get_context(t.xid);
     ASSERT(xc);
     LSN prev_xlsn = volatile_read(prev->xlsn);
-    if (xc->hi < prev_xlsn)
-      xc->hi = prev_xlsn;
+    if (xc->pred < prev_xlsn)
+      xc->pred = prev_xlsn;
 
     if (not ssn_check_exclusion(xc))
       t.signal_abort();
@@ -333,9 +334,9 @@ try_expect_new:
     // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID)  // in-place update!
-      volatile_write(tuple->prev, prev->prev); // prev's prev: previous *committed* version
+      volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
     else    // prev is committed head
-      volatile_write(tuple->prev, prev);
+      volatile_write(version->_next, fat_ptr::make(prev_obj, 0));
 
     // update access set (note this is different from the ssn_write algo in
     // the ssn paper, as we still need to add the latest version to the
@@ -343,11 +344,10 @@ try_expect_new:
     typename transaction<Transaction, Traits>::access_set_key askey(&this->underlying_btree, tuple->oid);
     typename transaction<Transaction, Traits>::access_set_map::iterator it = t.find_access_set(askey);
     if (it == t.access_set.end())   // new access record
-      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(tuple, true));
+      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(t.xid.to_ptr(), true));
     else {
-      it->second.set_tuple(tuple);
-      if (not it->second.is_write())
-        it->second.set_write(true);
+      if (not it->second.write)
+        it->second.write = true;
     }
 
     INVARIANT(log);

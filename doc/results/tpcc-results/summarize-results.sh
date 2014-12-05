@@ -5,7 +5,7 @@
 if [[ $# -lt 2 ]]; then
     echo "Too few arguments. "
     echo "Usage $0 <result-type> <result-dir>"
-    echo "<result-type>: silo, ermia, cpu-pin, no-cpu-pin"
+    echo "<result-type>: silo, ermia"
     echo "<result-dir> : results files dir."
     exit
 fi

@@ -50,7 +50,6 @@ public:
   fat_ptr clsn;     // version creation stamp
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
-  dbtuple *prev;    // overwritten version (old head), updated when writer commits
 
 public:
   size_type size; // actual size of record
@@ -72,7 +71,6 @@ private:
       clsn(NULL_PTR)
       , xlsn(INVALID_LSN)
       , slsn(INVALID_LSN)
-      , prev(NULL)
       , size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
   {
