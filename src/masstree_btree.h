@@ -244,6 +244,10 @@ public:
   {
 	  return table_.update_version( oid, obj, xid );
   }
+  value_type fetch_overwriter(oid_type oid, LSN rlsn) const
+  {
+	  return table_.fetch_overwriter(oid, rlsn);
+  }
   value_type fetch_version( oid_type oid, XID xid ) const
   {
 	  return table_.fetch_version( oid, xid );

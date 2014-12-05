@@ -291,7 +291,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     try_get_sucessor:
       // read tuple->slsn to a local variable before doing anything relying on it,
       // it might be changed any time...
-      fat_ptr sucessor_clsn = volatile_read(((dbtuple *)(((object *)it->first.tree_ptr->get_tuple_vector()->begin_ptr(it->first.oid))->payload()))->clsn);
+      fat_ptr sucessor_clsn = volatile_read(((dbtuple *)(((object *)it->first.tree_ptr->fetch_overwriter(it->first.oid, LSN::from_ptr(it->second.clsn)))->payload()))->clsn);
 
       // overwriter in progress?
       if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
@@ -299,18 +299,20 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         if (sucessor_xc->owner != XID::from_ptr(sucessor_clsn))
           goto try_get_sucessor;
 
+        LSN sucessor_end = sucessor_xc->end;
         // overwriter might haven't committed, be serialized after me, or before me
-        if (sucessor_xc->end == INVALID_LSN) // not even in precommit, don't bother
+        if (sucessor_end == INVALID_LSN) // not even in precommit, don't bother
             ;
-        else if (sucessor_xc->end > clsn)    // serialzed after me, (dependency trivially satisfied as I as the reader will (hopefully) commit first)
+        else if (sucessor_end > clsn)    // serialzed after me, (dependency trivially satisfied as I as the reader will (hopefully) commit first)
             ;
         else {
           // either wait or give conservative estimation
-          while (sucessor_xc->state != TXN_CMMTD);
-
-          // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
-          if (sucessor_xc->end < xc->succ)
-            xc->succ = sucessor_xc->end;
+          if (wait_for_commit_result(sucessor_xc)) {
+            // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
+            if (sucessor_end < xc->succ)
+              xc->succ = sucessor_end;
+          }
+          // otherwise aborted, ignore
         }
       }
       else {    // overwriter already fully committed (slsn available)
@@ -345,16 +347,6 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       //tuple->xlsn = clsn;
     }
     else {
-      fat_ptr sucessor_clsn = volatile_read(((dbtuple *)(((object *)it->first.tree_ptr->get_tuple_vector()->begin_ptr(it->first.oid))->payload()))->clsn);
-      if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
-        xid_context *overwriter_xc = xid_get_context(XID::from_ptr(sucessor_clsn));
-        // wait for the older overwriter (smaller clsn) to finish pre-commit
-        // (can't allow a newer reader to update xlsn before an older overwriter
-        // finishes precommit, otherwise xlsn (\pi) will always be larger than
-        // the overwriter's clsn (its \eta too) => will always abort the overwriter.
-        if (overwriter_xc->end != INVALID_LSN and overwriter_xc->end < clsn)
-          while (overwriter_xc->state != TXN_CMMTD);
-      }
       if (volatile_read(tuple->xlsn) < clsn)
         volatile_write(tuple->xlsn._val, clsn._val);
     }
