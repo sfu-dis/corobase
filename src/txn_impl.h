@@ -132,108 +132,13 @@ template <template <typename> class Protocol, typename Traits>
 void
 transaction<Protocol, Traits>::commit()
 {
-#ifdef USE_SERIAL_SSN
-  ssn_serial_si_commit();
-#else
 #ifdef USE_PARALLEL_SSN
   ssn_parallel_si_commit();
 #else
   si_commit();
 #endif
-#endif
 }
 
-#ifdef USE_SERIAL_SSN
-template <template <typename> class Protocol, typename Traits>
-void
-transaction<Protocol, Traits>::ssn_serial_si_commit()
-{
-  xid_context* xc = xid_get_context(xid);
-
-  PERF_DECL(
-      static std::string probe0_name(
-        std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-  ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
-
-  switch (state()) {
-  case TXN_EMBRYO:
-  case TXN_ACTIVE:
-    xc->state = TXN_COMMITTING;
-    break;
-  case TXN_CMMTD:
-  case TXN_COMMITTING:
-  case TXN_ABRTD:
-    ALWAYS_ASSERT(false);
-  }
-
-  // avoid cross init after goto do_abort
-  typename access_set_map::iterator it     = access_set.begin();
-  typename access_set_map::iterator it_end = access_set.end();
-
-  // ssn protocol
-  ssn_commit_mutex.lock();
-
-  INVARIANT(log);
-  // get clsn, abort if failed
-  RCU::rcu_enter();
-  xc->end = log->pre_commit();
-  LSN clsn = xc->end;
-  if (xc->end == INVALID_LSN)
-    signal_abort(ABORT_REASON_INTERNAL);
-
-  for (it = access_set.begin(); it != it_end; ++it) {
-    dbtuple* tuple = it->second.get_tuple();
-    if (it->second.write) {
-      if (tuple->prev) {    // ok, this is an update
-        // need access stamp , i.e., who read this version that I'm trying to overwrite?
-        // (it's the predecessor, \eta)
-        // hehe need to go to that committed version really.... because the one we copied
-        // during update might be out-of-date now (sb. already stuffed a new pstamp).
-        // so go to prev (do_tree_put and obj_vec->put make sure this is the committed version) to 
-        // get access stamp
-        if (xc->hi < tuple->prev->xlsn)
-          xc->hi = tuple->prev->xlsn;
-      }
-    }
-    else {
-      if (xc->lo > clsn)
-        xc->lo = clsn;
-      // need to finalize the sucessor stamp (\pi)
-      if (xc->lo > tuple->slsn)
-        xc->lo = tuple->slsn;
-    }
-  }
-
-  if (not ssn_check_exclusion(xc))
-    signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
-
-  // survived! stuff access stamps for reads, and init new versions
-  for (it = access_set.begin(); it != it_end; ++it) {
-    dbtuple *tuple = it->second.get_tuple();
-    if (it->second.write) {
-      if (tuple->prev)  // could be an insert...
-        tuple->prev->slsn = xc->lo;
-      tuple->clsn = clsn.to_log_ptr();
-      tuple->xlsn = clsn;
-    }
-    else {
-      if (tuple->xlsn < clsn)
-        tuple->xlsn = clsn;
-    }
-  }
-  ssn_commit_mutex.unlock();
-
-  // ok, can really commit if we reach here
-  log->commit(NULL);
-  RCU::rcu_exit();
-
-  // change state
-  volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
-
-  // done
-  xid_free(xid);
-}
-#else
 #ifdef USE_PARALLEL_SSN
 template <template <typename> class Protocol, typename Traits>
 void
@@ -420,7 +325,6 @@ transaction<Protocol, Traits>::si_commit()
   // done
   xid_free(xid);
 }
-#endif
 #endif
 
 typedef object_vector<typename concurrent_btree::value_type> tuple_vector_type;
