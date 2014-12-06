@@ -58,6 +58,7 @@ public:
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
   std::unordered_set<XID, xid_hash> readers;  // list of readers for overwriters of this tuple to examine (ssn)
+  std::mutex readers_mutex;
 
 public:
   size_type size; // actual size of record

@@ -209,7 +209,11 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     try_get_sucessor:
       // read tuple->slsn to a local variable before doing anything relying on it,
       // it might be changed any time...
-      fat_ptr sucessor_clsn = volatile_read(((dbtuple *)(((object *)it->first.tree_ptr->fetch_overwriter(it->first.oid, LSN::from_ptr(it->second.clsn)))->payload()))->clsn);
+      dbtuple *overwriter_tuple = reinterpret_cast<dbtuple*>(it->first.tree_ptr->fetch_overwriter(it->first.oid, LSN::from_ptr(it->second.clsn)));
+      if (not overwriter_tuple)
+        goto do_ssn_check;
+
+      fat_ptr sucessor_clsn = volatile_read(overwriter_tuple->clsn);
 
       // overwriter in progress?
       if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
@@ -241,6 +245,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     }
   }
 
+do_ssn_check:
   if (not ssn_check_exclusion(xc))
     signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
 
@@ -260,7 +265,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, clsn._val);
         // or should be this: (?)
         // volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, xc->succ._val);
-      volatile_write(tuple->clsn._ptr, clsn._val);
+      volatile_write(tuple->clsn._ptr, clsn.to_log_ptr()._ptr);
       volatile_write(tuple->xlsn._val, clsn._val);
     }
     else {
@@ -423,7 +428,9 @@ transaction<Protocol, Traits>::do_tuple_read(
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
         access_set.emplace(askey, access_record_t(tuple->clsn, false));
+        tuple->readers_mutex.lock();
         tuple->readers.emplace(xid);
+        tuple->readers_mutex.unlock();
       }
       else if (xc->succ > tuple_slsn)
         xc->succ = tuple_slsn; // \pi

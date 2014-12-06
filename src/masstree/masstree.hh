@@ -231,8 +231,10 @@ install:
 		ALWAYS_ASSERT( oid );
 		object* cur_obj = NULL;
 		for(fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
-            object *cur_obj = (object*)ptr.offset();
+            cur_obj = (object*)ptr.offset();
             object *nxt_obj = (object *)cur_obj->_next.offset();
+            if (not nxt_obj)
+                return NULL;
             dbtuple *nxt_ver = reinterpret_cast<dbtuple *>(nxt_obj->payload());
             if (nxt_ver->clsn.asi_type() == fat_ptr::ASI_XID and LSN::from_ptr(nxt_ver->clsn) == rlsn)
                 return (value_type)nxt_ver;
