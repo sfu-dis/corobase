@@ -7,6 +7,7 @@
 #include <utility>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 #include <ostream>
 #include <thread>
 
@@ -46,10 +47,17 @@ public:
   typedef size_t size_type;
   typedef std::string string_type;
 
+  struct xid_hash {
+    size_t operator()(const XID &x) const {
+      return (uint64_t)x._val;
+    }
+  };
+
   oid_type oid;
   fat_ptr clsn;     // version creation stamp
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
+  std::unordered_set<XID, xid_hash> readers;  // list of readers for overwriters of this tuple to examine (ssn)
 
 public:
   size_type size; // actual size of record

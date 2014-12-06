@@ -60,11 +60,16 @@ transaction<Protocol, Traits>::abort_impl()
   typename access_set_map::iterator it     = access_set.begin();
   typename access_set_map::iterator it_end = access_set.end();
   for (; it != it_end; ++it) {
-    if (not it->second.write)
-      continue;
-    dbtuple* tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
-	concurrent_btree* btr = it->first.tree_ptr;
-	btr->unlink_tuple( tuple->oid, (typename concurrent_btree::value_type)tuple );
+    if (not it->second.write) {
+      // remove myself from reader list
+      dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
+      tuple->readers.erase(xid);
+    }
+    else {
+      dbtuple* tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
+	  concurrent_btree* btr = it->first.tree_ptr;
+	  btr->unlink_tuple(tuple->oid, (typename concurrent_btree::value_type)tuple);
+    }
   }
 
   // log discard
@@ -277,11 +282,19 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         // need to go to that committed version, because the one we copied
         // during update might be out-of-date now (sb. already stuffed a new pstamp).
         // so go to prev (do_tree_put and obj_vec->put make sure this is the committed version)
-      // FIXME
-      //try_get_predecessor:
-      //  LSN prev_xlsn = volatile_read(tuple->prev->xlsn);
-      //  if (xc->hi < prev_xlsn)
-      //    xc->hi = prev_xlsn;
+        // wait for the older reader to finish pre-commit
+        for (auto &r : tuple->readers) {
+        try_get_predecessor:
+          xid_context *reader_xc = xid_get_context(r);
+          if (reader_xc->owner != r)
+            goto try_get_predecessor;
+          LSN reader_end = volatile_read(reader_xc->end);
+          // reader committed
+          if (reader_end != INVALID_LSN and reader_end < clsn and wait_for_commit_result(reader_xc)) {
+            if (xc->pred < reader_end)
+              xc->pred = reader_end;
+          }
+        }
       }
     }
     else {
@@ -338,13 +351,12 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
     object *obj = (object *)((char *)tuple - sizeof(object));
     if (it->second.write) {
-      if (obj->_next.offset()) {    // could be an insert...
-        volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, xc->succ._val);
-        // wait for the older reader to finish pre-commit
-        // FIXME: well, need a list of readers here...
-      }
-      //tuple->clsn = clsn.to_log_ptr();
-      //tuple->xlsn = clsn;
+      if (obj->_next.offset())  // could be an insert...
+        volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, clsn._val);
+        // or should be this: (?)
+        // volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, xc->succ._val);
+      volatile_write(tuple->clsn._ptr, clsn._val);
+      volatile_write(tuple->xlsn._val, clsn._val);
     }
     else {
       if (volatile_read(tuple->xlsn) < clsn)
@@ -505,8 +517,10 @@ transaction<Protocol, Traits>::do_tuple_read(
       // This is the easier case of anti-dependency (the other case is T1
       // already read a (then latest) version, then T2 comes to overwrite it).
       LSN tuple_slsn = volatile_read(tuple->slsn);
-      if (tuple_slsn == INVALID_LSN)   // no overwrite so far
+      if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
         access_set.emplace(askey, access_record_t(tuple->clsn, false));
+        tuple->readers.emplace(xid);
+      }
       else if (xc->succ > tuple_slsn)
         xc->succ = tuple_slsn; // \pi
       if (not ssn_check_exclusion(xc))
