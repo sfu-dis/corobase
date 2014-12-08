@@ -9,10 +9,6 @@ namespace TXN {
 
 enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD };
 
-#ifdef USE_SERIAL_SSN
-  extern std::mutex ssn_commit_mutex;
-#endif
-
 struct xid_context {
     XID owner;
     LSN begin;

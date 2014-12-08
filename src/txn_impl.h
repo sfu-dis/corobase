@@ -56,19 +56,20 @@ transaction<Protocol, Traits>::abort_impl()
 {
   INVARIANT(state() == TXN_ABRTD);
   
-  // unlink from version chain
-  typename access_set_map::iterator it     = access_set.begin();
-  typename access_set_map::iterator it_end = access_set.end();
-  for (; it != it_end; ++it) {
-    if (not it->second.write) {
-      // remove myself from reader list
-      dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
-      tuple->readers.erase(xid);
+  for (auto &r : access_set) {
+    dbtuple *tuple = reinterpret_cast<dbtuple *>(r.first.tree_ptr->fetch_version(r.first.oid, xid));//, r.second.clsn));
+    ASSERT(tuple and tuple->oid == r.first.oid);
+    if (r.second.write) {
+      ASSERT(XID::from_ptr(tuple->clsn) == xid);
+      r.first.tree_ptr->unlink_tuple(tuple->oid, (typename concurrent_btree::value_type)tuple);
     }
     else {
-      dbtuple* tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
-	  concurrent_btree* btr = it->first.tree_ptr;
-	  btr->unlink_tuple(tuple->oid, (typename concurrent_btree::value_type)tuple);
+      ASSERT(tuple == reinterpret_cast<dbtuple *>(r.first.tree_ptr->fetch_committed_version(r.first.oid, xid, r.second.clsn)));
+      ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+      // remove myself from reader list
+      tuple->readers_mutex.lock();
+      tuple->readers.erase(xid);
+      tuple->readers_mutex.unlock();
     }
   }
 
@@ -78,9 +79,8 @@ transaction<Protocol, Traits>::abort_impl()
   log->discard();
   RCU::rcu_exit();
 
-  // now. safe to free XID
+  // now safe to free XID
   xid_free(xid);
-
 }
 
 namespace {
@@ -178,41 +178,37 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   // for reads, see if sb. has written the tuples - look at sucessor lsn
   // for writes, see if sb. has read the tuples - look at access lsn
   for (it = access_set.begin(); it != it_end; ++it) {
-    dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
-    object *obj = (object *)((char *)tuple - sizeof(object));
+    // both write and read need to go to that committed version for the reader list
+    dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_committed_version(it->first.oid, xid, it->second.clsn));
+    if (not tuple)  // this is an insert
+      continue;
+    ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     if (it->second.write) {
-      if (obj->_next.offset()) {    // ok, this is an update. FIXME: what if next points to a deleted version?
-        // need access stamp , i.e., who read this version that I'm trying to overwrite?
-        // (it's the predecessor, \eta)
-        // need to go to that committed version, because the one we copied
-        // during update might be out-of-date now (sb. already stuffed a new pstamp).
-        // so go to prev (do_tree_put and obj_vec->put make sure this is the committed version)
-        // wait for the older reader to finish pre-commit
-        for (auto &r : tuple->readers) {
-        try_get_predecessor:
-          xid_context *reader_xc = xid_get_context(r);
-          if (reader_xc->owner != r)
-            goto try_get_predecessor;
-          LSN reader_end = volatile_read(reader_xc->end);
-          // reader committed
-          if (reader_end != INVALID_LSN and reader_end < clsn and wait_for_commit_result(reader_xc)) {
-            if (xc->pred < reader_end)
-              xc->pred = reader_end;
-          }
+      // need access stamp , i.e., who read this version that I'm trying to overwrite?
+      tuple->readers_mutex.lock();
+      for (auto &r : tuple->readers) {
+        xid_context *reader_xc = xid_get_context(r);
+        ASSERT(reader_xc->owner == r);
+        LSN reader_end = volatile_read(reader_xc->end);
+        // reader committed
+        if (reader_end != INVALID_LSN and reader_end < clsn and wait_for_commit_result(reader_xc)) {
+          if (xc->pred < reader_end)
+            xc->pred = reader_end;
         }
       }
+      tuple->readers_mutex.unlock();
     }
     else {
       // so tuple should be the committed version I read
       ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
 
-    try_get_sucessor:
       // read tuple->slsn to a local variable before doing anything relying on it,
       // it might be changed any time...
       dbtuple *overwriter_tuple = reinterpret_cast<dbtuple*>(it->first.tree_ptr->fetch_overwriter(it->first.oid, LSN::from_ptr(it->second.clsn)));
       if (not overwriter_tuple)
         goto do_ssn_check;
 
+    try_get_sucessor:
       fat_ptr sucessor_clsn = volatile_read(overwriter_tuple->clsn);
 
       // overwriter in progress?
@@ -221,20 +217,18 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         if (sucessor_xc->owner != XID::from_ptr(sucessor_clsn))
           goto try_get_sucessor;
 
-        LSN sucessor_end = sucessor_xc->end;
+        LSN sucessor_end = volatile_read(sucessor_xc->end);
         // overwriter might haven't committed, be serialized after me, or before me
         if (sucessor_end == INVALID_LSN) // not even in precommit, don't bother
             ;
         else if (sucessor_end > clsn)    // serialzed after me, (dependency trivially satisfied as I as the reader will (hopefully) commit first)
             ;
         else {
-          // either wait or give conservative estimation
-          if (wait_for_commit_result(sucessor_xc)) {
+          if (wait_for_commit_result(sucessor_xc)) {    // either wait or give conservative estimation
             // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
             if (sucessor_end < xc->succ)
               xc->succ = sucessor_end;
-          }
-          // otherwise aborted, ignore
+          } // otherwise aborted, ignore
         }
       }
       else {    // overwriter already fully committed (slsn available)
@@ -258,19 +252,34 @@ do_ssn_check:
 
   // post-commit: stuff access stamps for reads; init new versions
   for (it = access_set.begin(); it != it_end; ++it) {
-    dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
-    object *obj = (object *)((char *)tuple - sizeof(object));
     if (it->second.write) {
-      if (obj->_next.offset())  // could be an insert...
-        volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, clsn._val);
-        // or should be this: (?)
-        // volatile_write(((dbtuple *)obj->_next.offset())->slsn._val, xc->succ._val);
-      volatile_write(tuple->clsn._ptr, clsn.to_log_ptr()._ptr);
+      object *obj = (object *)it->first.tree_ptr->get_tuple_vector()->begin_ptr(it->first.oid)->offset();
+      dbtuple *tuple = (dbtuple *)obj->payload();
+      ASSERT(tuple == (dbtuple *)it->first.tree_ptr->fetch_version(it->first.oid, xid));
+      ASSERT(tuple and tuple->clsn.asi_type() == fat_ptr::ASI_XID);
+      ASSERT(XID::from_ptr(tuple->clsn) == xid);
+      if (obj->_next.offset()) {  // could be an insert...
+        dbtuple *next_tuple = (dbtuple *)(((object *)(obj->_next.offset()))->payload());
+        ASSERT(volatile_read(next_tuple->clsn).asi_type());
+        volatile_write(next_tuple->slsn._val, xc->succ._val);
+      }
+      ASSERT(tuple->readers.size() == 0);
+      tuple->clsn = clsn.to_log_ptr();
+      ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
       volatile_write(tuple->xlsn._val, clsn._val);
     }
     else {
-      if (volatile_read(tuple->xlsn) < clsn)
-        volatile_write(tuple->xlsn._val, clsn._val);
+      dbtuple *tuple = (dbtuple *)it->first.tree_ptr->fetch_committed_version(it->first.oid, xid, it->second.clsn);
+      ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+      LSN xlsn = INVALID_LSN;
+      do {
+        xlsn = volatile_read(tuple->xlsn);
+      }
+      while (xlsn < clsn and not __sync_bool_compare_and_swap(&tuple->xlsn._val, xlsn._val, clsn._val));
+      // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
+      tuple->readers_mutex.lock();
+      tuple->readers.erase(xid);
+      tuple->readers_mutex.unlock();
     }
   }
 

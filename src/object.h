@@ -19,8 +19,6 @@ typedef uint64_t oid_type;
 
 struct dynarray;
 
-// this really shound't live here...
-
 class object
 {
 	public:
@@ -69,14 +67,12 @@ public:
         else {
             volatile_write(new_desc->_next, old_head);
         }
-		uint64_t* p = (uint64_t*)begin_ptr(oid);
 
         // The caller of this function (update_version) will return the old
-        // head, even it is in-place update. So the caller of update_version
-        // (do_tree_put) will actually do the free of that overwritten version
+        // head, even for in-place update. So the caller of update_version
+        // (do_tree_put) will need to free that overwritten version
         // as the tx needs to copy various stamps from the overwritten version.
-
-        return __sync_bool_compare_and_swap(p, old_head._ptr, new_head._ptr);
+        return __sync_bool_compare_and_swap((uint64_t *)begin_ptr(oid), old_head._ptr, new_head._ptr);
 	}
 
 	inline fat_ptr begin( oid_type oid )
@@ -120,6 +116,14 @@ retry:
 		if( !target )
 			ALWAYS_ASSERT(false);
 	}
+
+    // use with caution! this removes the head, the only user now is abort_impl (when removing updates).
+    void undo_head_update(oid_type oid)
+    {
+        fat_ptr old_head = begin(oid);
+        object *old_obj = (object *)old_head.offset();
+        ALWAYS_ASSERT(__sync_bool_compare_and_swap((uint64_t *)begin_ptr(oid)->_ptr, old_head._ptr, old_obj->_next._ptr));
+    }
 
 	inline oid_type alloc()
 	{

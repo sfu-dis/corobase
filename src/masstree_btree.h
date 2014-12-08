@@ -248,6 +248,10 @@ public:
   {
 	  return table_.fetch_overwriter(oid, rlsn);
   }
+  value_type fetch_committed_version(oid_type oid, XID xid, fat_ptr verify_lsn) const
+  {
+	  return table_.fetch_committed_version(oid, xid, verify_lsn);
+  }
   value_type fetch_version( oid_type oid, XID xid ) const
   {
 	  return table_.fetch_version( oid, xid );
@@ -260,7 +264,6 @@ public:
   {
 	  return table_.fetch_latest_version( oid );
   }
-
   inline void unlink_tuple( oid_type oid, value_type item )
   {
 	  table_.unlink_tuple( oid, item );
