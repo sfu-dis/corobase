@@ -117,14 +117,6 @@ retry:
 			ALWAYS_ASSERT(false);
 	}
 
-    // use with caution! this removes the head, the only user now is abort_impl (when removing updates).
-    void undo_head_update(oid_type oid)
-    {
-        fat_ptr old_head = begin(oid);
-        object *old_obj = (object *)old_head.offset();
-        ALWAYS_ASSERT(__sync_bool_compare_and_swap((uint64_t *)begin_ptr(oid)->_ptr, old_head._ptr, old_obj->_next._ptr));
-    }
-
 	inline oid_type alloc()
 	{
         if (_core_oid_remaining.my() == 0) {
