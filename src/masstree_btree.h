@@ -248,9 +248,9 @@ public:
   {
 	  return table_.fetch_overwriter(oid, rlsn);
   }
-  value_type fetch_committed_version(oid_type oid, XID xid, fat_ptr verify_lsn) const
+  value_type fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
   {
-	  return table_.fetch_committed_version(oid, xid, verify_lsn);
+	  return table_.fetch_committed_version_at(oid, xid, at_clsn);
   }
   value_type fetch_version( oid_type oid, XID xid ) const
   {

@@ -354,7 +354,7 @@ try_expect_new:
     typename transaction<Transaction, Traits>::access_set_key askey(&this->underlying_btree, tuple->oid);
     typename transaction<Transaction, Traits>::access_set_map::iterator it = t.find_access_set(askey);
     if (it == t.access_set.end())   // new access record
-      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(t.xid.to_ptr(), true));
+      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(LSN::from_ptr(prev->clsn), true));
     else if (not it->second.write) {
       it->second.write = true;
       prev->readers_mutex.lock();
