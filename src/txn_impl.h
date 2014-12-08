@@ -329,7 +329,7 @@ transaction<Protocol, Traits>::si_commit()
   // (traverse write-tuple)
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
-    dbtuple* tuple = it->second.get_tuple();
+    dbtuple* tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
     if (it->second.write) {
       tuple->clsn = xc->end.to_log_ptr();
       INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
