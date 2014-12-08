@@ -328,14 +328,10 @@ public:
   // returns on successful commit.
   // signals failure by throwing an abort exception
   void commit();
-#ifdef USE_SERIAL_SSN
-  void ssn_serial_si_commit();
-#else
 #ifdef USE_PARALLEL_SSN
   void ssn_parallel_si_commit();
 #else
   void si_commit();
-#endif
 #endif
 
   // signal the caller that an abort is necessary by throwing an abort

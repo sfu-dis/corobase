@@ -129,7 +129,6 @@ class basic_table {
 		auto clsn = volatile_read(version->clsn);
 		if( clsn.asi_type() == fat_ptr::ASI_XID )
 		{
-            overwrite = true;
 			/* Grab the context for this XID. If we're too slow,
 			   the context might be recycled for a different XID,
 			   perhaps even *while* we are reading the
@@ -143,13 +142,13 @@ class basic_table {
 			auto holder_xid = XID::from_ptr(clsn);
 			xid_context *holder= xid_get_context(holder_xid);
 			INVARIANT(holder);
-                        auto end = volatile_read(holder->end);
-                        auto state = volatile_read(holder->state);
+            auto end = volatile_read(holder->end);
+            auto state = volatile_read(holder->state);
 			auto owner = volatile_read(holder->owner);
 			holder = NULL; // use cached values instead!
 
 			// context still valid for this XID?
-                        if ( unlikely(owner != holder_xid) ) {
+            if ( unlikely(owner != holder_xid) ) {
 #if CHECK_INVARIANTS
 				ASSERT(attempts < 2);
 				attempts++;
@@ -176,8 +175,10 @@ class basic_table {
 				case TXN_ACTIVE:
 					{
 						// in-place update case ( multiple updates on the same record  by same transaction)
-						if( holder_xid == xid )
+						if (holder_xid == xid ) {
+                            overwrite = true;
 							goto install;
+                        }
 						else
 							return false;
 					}
@@ -227,10 +228,10 @@ install:
     // for reads in commit path ONLY
     value_type fetch_overwriter(oid_type oid, LSN rlsn) const
 	{
-		INVARIANT( tuple_vector );
+		INVARIANT(tuple_vector);
 		ALWAYS_ASSERT( oid );
 		object* cur_obj = NULL;
-		for(fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
+		for (fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
             cur_obj = (object*)ptr.offset();
             object *nxt_obj = (object *)cur_obj->_next.offset();
             if (not nxt_obj)
@@ -242,6 +243,27 @@ install:
 		ALWAYS_ASSERT(0);
 	}
 
+    // return the (latest) committed version (at verify_lsn)
+    value_type fetch_committed_version(oid_type oid, XID xid, fat_ptr verify_lsn) const
+    {
+        INVARIANT( tuple_vector );
+        ASSERT(verify_lsn.asi_type() == fat_ptr::ASI_XID or verify_lsn.asi_type() == fat_ptr::ASI_LOG);
+        ALWAYS_ASSERT( oid );
+        xid_context *visitor= xid_get_context(xid);
+        INVARIANT(visitor->owner == xid);
+        object* cur_obj = NULL;
+        for (fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
+            cur_obj = (object*)ptr.offset();
+            dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
+            auto clsn = volatile_read(version->clsn);
+            ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
+            if (clsn.asi_type() == fat_ptr::ASI_XID or LSN::from_ptr(clsn) > visitor->begin)
+                continue;
+            DIE_IF(clsn != verify_lsn, "fetch_latest_committed_version: lsn mismatch\n");
+            return (value_type)version;
+        }
+        return 0;
+    }
 
 	value_type fetch_version( oid_type oid, XID xid ) const
 	{
@@ -253,29 +275,16 @@ install:
 #if CHECK_INVARIANTS
 		int attempts = 0;
 #endif
-		object* cur_obj;
+		object* cur_obj = NULL;
 	start_over:
 		for( fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
-
             cur_obj = (object*)ptr.offset();
 			dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
 			auto clsn = volatile_read(version->clsn);
+            ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
 			// xid tracking & status check
 			if( clsn.asi_type() == fat_ptr::ASI_XID )
 			{
-                // FIXME: tzwang: should only check if reading the head,
-                // otherwise continue to avoid throwing "Invalid XID".
-                // Note that we blindly insert new heads even for in-place
-                // updates, i.e., the tx repetitively updates one tuple. But
-                // our write set (access set) only captures the latest (the
-                // one that really counts in the end), we will leave older
-                // uncommitted versions with clsn.asi_type==ASI_XID but their
-                // context are already recycled ==> wil trigger "Invalid XID"
-                // when trying to xid_get_context(). We'll need the GC to
-                // clean up these uncommitted, overwritten versions.
-                if (ptr != tuple_vector->begin(oid))
-                    continue;
-
 				/* Same as above: grab and verify XID context,
 				   starting over if it has been recycled
 				 */
@@ -297,10 +306,15 @@ install:
 					goto start_over;
 				}
 
+#if CHECK_INVARIANTS
+                if (cur_obj->_next.offset())
+                    ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
+#endif
+
 				// dirty data made by me is visible!
 				if( owner == xid )
-					return (value_type)version;
-				
+					goto out;
+
 				// invalid data
 				if( state != TXN_CMMTD)	   // only see committed data.
 					continue;
@@ -314,14 +328,18 @@ install:
 				if( LSN::from_ptr(clsn) > visitor->begin ) 	// invisible
 					continue;
 			}
+        out:
             // try if we can trim
+            ASSERT(version);
             dbtuple *ret_ver = version;
-
+            /*
             fat_ptr next_ptr = cur_obj->_next;
-            next_ptr = NULL_PTR;
             while (next_ptr.offset()) {
                 object *next_obj = (object *)next_ptr.offset();
-                if (LSN::from_ptr(((dbtuple *)(next_obj->payload()))->clsn) < RA::trim_lsn) {
+                dbtuple *next_tuple = (dbtuple *)next_obj->payload();
+                fat_ptr next_clsn = volatile_read(next_tuple->clsn);
+                ASSERT(next_clsn.asi_type() == fat_ptr::ASI_LOG);
+                if (LSN::from_ptr(next_clsn) < RA::trim_lsn) {
                     if (__sync_bool_compare_and_swap(&cur_obj->_next._ptr, next_ptr._ptr, 0)) {
                         do {
                             next_ptr = next_obj->_next;
@@ -331,8 +349,9 @@ install:
                     }
                     break;
                 }
-                next_ptr = cur_obj->_next;
+                next_ptr = next_obj->_next;
             }
+            */
             return (value_type)ret_ver;
 		}
 
@@ -362,7 +381,6 @@ install:
 		INVARIANT( oid );
 		return tuple_vector->unlink( oid, item );
 	}
-
 
   private:
 	oid_type root_oid_;

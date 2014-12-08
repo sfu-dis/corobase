@@ -333,11 +333,21 @@ try_expect_new:
     // copy access stamp to new tuple from overwritten version
     // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
-    if (prev->clsn.asi_type() == fat_ptr::ASI_XID)  // in-place update!
+    if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {  // in-place update!
+#if CHECK_INVARIANTS
+      ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
+      if (prev_obj->_next.offset()) {
+        dbtuple *next_tuple = (dbtuple *)((object *)(prev_obj->_next.offset()))->payload();
+        ASSERT(volatile_read(next_tuple->clsn).asi_type() == fat_ptr::ASI_LOG);
+      }
+#endif
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
+    }
     else    // prev is committed head
       volatile_write(version->_next, fat_ptr::make(prev_obj, 0));
 
+    ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
+    ASSERT((dbtuple *)this->underlying_btree.fetch_version(tuple->oid, t.xid) == tuple);
     // update access set (note this is different from the ssn_write algo in
     // the ssn paper, as we still need to add the latest version to the
     // access set, tho we don't need a new access_record if it already exists)
@@ -345,10 +355,14 @@ try_expect_new:
     typename transaction<Transaction, Traits>::access_set_map::iterator it = t.find_access_set(askey);
     if (it == t.access_set.end())   // new access record
       t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(t.xid.to_ptr(), true));
-    else {
-      if (not it->second.write)
-        it->second.write = true;
+    else if (not it->second.write) {
+      it->second.write = true;
+      prev->readers_mutex.lock();
+      prev->readers.erase(t.xid);
+      prev->readers_mutex.unlock();
     }
+    if (prev->clsn.asi_type() == fat_ptr::ASI_XID)
+      RA::deallocate(prev_obj);
 
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
