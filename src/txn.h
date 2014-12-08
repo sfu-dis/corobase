@@ -165,9 +165,11 @@ public:
 protected:
 
   struct access_record_t {
-    constexpr access_record_t(fat_ptr c, bool w)
+    constexpr access_record_t(LSN c, bool w)
       : clsn(c), write(w) {}
-    fat_ptr clsn;
+    // this will be the LSN of the overwritten version
+    // if it's an update; INVALID_LSN if it's an insert
+    LSN clsn;
     bool write;
   };
 

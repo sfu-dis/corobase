@@ -244,22 +244,18 @@ install:
 	}
 
     // return the (latest) committed version (at verify_lsn)
-    value_type fetch_committed_version(oid_type oid, XID xid, fat_ptr verify_lsn) const
+    value_type fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
     {
         INVARIANT( tuple_vector );
-        ASSERT(verify_lsn.asi_type() == fat_ptr::ASI_XID or verify_lsn.asi_type() == fat_ptr::ASI_LOG);
         ALWAYS_ASSERT( oid );
-        xid_context *visitor= xid_get_context(xid);
-        INVARIANT(visitor->owner == xid);
         object* cur_obj = NULL;
         for (fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
             cur_obj = (object*)ptr.offset();
             dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
             auto clsn = volatile_read(version->clsn);
             ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
-            if (clsn.asi_type() == fat_ptr::ASI_XID or LSN::from_ptr(clsn) > visitor->begin)
+            if (clsn.asi_type() == fat_ptr::ASI_XID or LSN::from_ptr(clsn) != at_clsn)
                 continue;
-            DIE_IF(clsn != verify_lsn, "fetch_latest_committed_version: lsn mismatch\n");
             return (value_type)version;
         }
         return 0;
@@ -334,6 +330,7 @@ install:
             dbtuple *ret_ver = version;
             // strat from the next's next, in case the head is in-flight
             // (could be remove if the tx aborted)
+
             cur_obj = (object *)cur_obj->_next.offset();
             LSN tlsn = volatile_read(RA::trim_lsn);
             while (cur_obj) {
@@ -357,6 +354,7 @@ install:
                 }
                 cur_obj = (object *)cur_obj->_next;
             }
+
             return (value_type)ret_ver;
 		}
 

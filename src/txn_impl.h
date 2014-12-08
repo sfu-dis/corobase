@@ -64,7 +64,7 @@ transaction<Protocol, Traits>::abort_impl()
       r.first.tree_ptr->unlink_tuple(tuple->oid, (typename concurrent_btree::value_type)tuple);
     }
     else {
-      ASSERT(tuple == reinterpret_cast<dbtuple *>(r.first.tree_ptr->fetch_committed_version(r.first.oid, xid, r.second.clsn)));
+      ASSERT(tuple == reinterpret_cast<dbtuple *>(r.first.tree_ptr->fetch_committed_version_at(r.first.oid, xid, r.second.clsn)));
       ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
       // remove myself from reader list
       tuple->readers_mutex.lock();
@@ -179,7 +179,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   // for writes, see if sb. has read the tuples - look at access lsn
   for (it = access_set.begin(); it != it_end; ++it) {
     // both write and read need to go to that committed version for the reader list
-    dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_committed_version(it->first.oid, xid, it->second.clsn));
+    dbtuple *tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_committed_version_at(it->first.oid, xid, it->second.clsn));
     if (not tuple)  // this is an insert
       continue;
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -204,7 +204,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
       // read tuple->slsn to a local variable before doing anything relying on it,
       // it might be changed any time...
-      dbtuple *overwriter_tuple = reinterpret_cast<dbtuple*>(it->first.tree_ptr->fetch_overwriter(it->first.oid, LSN::from_ptr(it->second.clsn)));
+      dbtuple *overwriter_tuple = reinterpret_cast<dbtuple*>(it->first.tree_ptr->fetch_overwriter(it->first.oid, it->second.clsn));
       if (not overwriter_tuple)
         goto do_ssn_check;
 
@@ -269,7 +269,7 @@ do_ssn_check:
       volatile_write(tuple->xlsn._val, clsn._val);
     }
     else {
-      dbtuple *tuple = (dbtuple *)it->first.tree_ptr->fetch_committed_version(it->first.oid, xid, it->second.clsn);
+      dbtuple *tuple = (dbtuple *)it->first.tree_ptr->fetch_committed_version_at(it->first.oid, xid, it->second.clsn);
       ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
       LSN xlsn = INVALID_LSN;
       do {
@@ -384,7 +384,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update access_set
-  access_set.emplace(access_set_key(&btr, tuple->oid), access_record_t(xid.to_ptr(), true));
+  access_set.emplace(access_set_key(&btr, tuple->oid), access_record_t(INVALID_LSN, true));
   return true;
 }
 
@@ -436,7 +436,7 @@ transaction<Protocol, Traits>::do_tuple_read(
       // already read a (then latest) version, then T2 comes to overwrite it).
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
-        access_set.emplace(askey, access_record_t(tuple->clsn, false));
+        access_set.emplace(askey, access_record_t(v_clsn, false));
         tuple->readers_mutex.lock();
         tuple->readers.emplace(xid);
         tuple->readers_mutex.unlock();
