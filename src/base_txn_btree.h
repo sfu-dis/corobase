@@ -333,18 +333,20 @@ try_expect_new:
     // copy access stamp to new tuple from overwritten version
     // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
+    LSN committed_lsn = INVALID_LSN;
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {  // in-place update!
-#if CHECK_INVARIANTS
-      ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
       if (prev_obj->_next.offset()) {
         dbtuple *next_tuple = (dbtuple *)((object *)(prev_obj->_next.offset()))->payload();
         ASSERT(volatile_read(next_tuple->clsn).asi_type() == fat_ptr::ASI_LOG);
+        committed_lsn = LSN::from_ptr(volatile_read(next_tuple->clsn));
       }
-#endif
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
+      ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
     }
-    else    // prev is committed head
+    else {  // prev is committed head
       volatile_write(version->_next, fat_ptr::make(prev_obj, 0));
+      committed_lsn = LSN::from_ptr(volatile_read(prev->clsn));
+    }
 
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT((dbtuple *)this->underlying_btree.fetch_version(tuple->oid, t.xid) == tuple);
@@ -354,7 +356,7 @@ try_expect_new:
     typename transaction<Transaction, Traits>::access_set_key askey(&this->underlying_btree, tuple->oid);
     typename transaction<Transaction, Traits>::access_set_map::iterator it = t.find_access_set(askey);
     if (it == t.access_set.end())   // new access record
-      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(LSN::from_ptr(prev->clsn), true));
+      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(committed_lsn, true));
     else if (not it->second.write) {
       it->second.write = true;
       prev->readers_mutex.lock();

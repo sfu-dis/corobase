@@ -330,7 +330,7 @@ install:
             dbtuple *ret_ver = version;
             // strat from the next's next, in case the head is in-flight
             // (could be remove if the tx aborted)
-
+/*
             cur_obj = (object *)cur_obj->_next.offset();
             LSN tlsn = volatile_read(RA::trim_lsn);
             while (cur_obj) {
@@ -354,7 +354,7 @@ install:
                 }
                 cur_obj = (object *)cur_obj->_next;
             }
-
+*/
             return (value_type)ret_ver;
 		}
 
