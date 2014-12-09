@@ -67,9 +67,9 @@ transaction<Protocol, Traits>::abort_impl()
       ASSERT(tuple == reinterpret_cast<dbtuple *>(r.first.tree_ptr->fetch_committed_version_at(r.first.oid, xid, r.second.clsn)));
       ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
       // remove myself from reader list
-      tuple->readers_mutex.lock();
+      tuple->acquire_readers_lock();
       tuple->readers.erase(xid);
-      tuple->readers_mutex.unlock();
+      tuple->release_readers_lock();
     }
   }
 
@@ -185,7 +185,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     if (it->second.write) {
       // need access stamp , i.e., who read this version that I'm trying to overwrite?
-      tuple->readers_mutex.lock();
+      tuple->acquire_readers_lock();
       for (auto &r : tuple->readers) {
         xid_context *reader_xc = xid_get_context(r);
         ASSERT(reader_xc->owner == r);
@@ -196,7 +196,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
             xc->pred = reader_end;
         }
       }
-      tuple->readers_mutex.unlock();
+      tuple->release_readers_lock();
     }
     else {
       // so tuple should be the committed version I read
@@ -277,9 +277,9 @@ do_ssn_check:
       }
       while (xlsn < clsn and not __sync_bool_compare_and_swap(&tuple->xlsn._val, xlsn._val, clsn._val));
       // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
-      tuple->readers_mutex.lock();
+      tuple->acquire_readers_lock();
       tuple->readers.erase(xid);
-      tuple->readers_mutex.unlock();
+      tuple->release_readers_lock();
     }
   }
 
@@ -437,9 +437,9 @@ transaction<Protocol, Traits>::do_tuple_read(
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
         access_set.emplace(askey, access_record_t(v_clsn, false));
-        tuple->readers_mutex.lock();
+        tuple->acquire_readers_lock();
         tuple->readers.emplace(xid);
-        tuple->readers_mutex.unlock();
+        tuple->release_readers_lock();
       }
       else if (xc->succ > tuple_slsn)
         xc->succ = tuple_slsn; // \pi

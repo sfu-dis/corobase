@@ -230,17 +230,20 @@ install:
 	{
 		INVARIANT(tuple_vector);
 		ALWAYS_ASSERT( oid );
+        object *prev_obj = (object *)tuple_vector->begin(oid).offset();
 		object* cur_obj = NULL;
-		for (fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
-            cur_obj = (object*)ptr.offset();
-            object *nxt_obj = (object *)cur_obj->_next.offset();
-            if (not nxt_obj)
-                return NULL;
-            dbtuple *nxt_ver = reinterpret_cast<dbtuple *>(nxt_obj->payload());
-            if (nxt_ver->clsn.asi_type() == fat_ptr::ASI_XID and LSN::from_ptr(nxt_ver->clsn) == rlsn)
-                return (value_type)nxt_ver;
-		}
-		ALWAYS_ASSERT(0);
+        fat_ptr ptr = ((object *)tuple_vector->begin(oid).offset())->_next;
+        for (; ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
+            cur_obj = (object *)ptr.offset();
+            dbtuple *tuple = (dbtuple *)cur_obj->payload();
+            LSN tuple_clsn = LSN::from_ptr(volatile_read(tuple->clsn));
+            if (tuple_clsn < rlsn)
+                break;
+            if (tuple_clsn == rlsn)
+                return (value_type)prev_obj->payload();
+            prev_obj = cur_obj;
+        }
+        return 0;
 	}
 
     // return the (latest) committed version (at verify_lsn)
@@ -254,8 +257,10 @@ install:
             dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
             auto clsn = volatile_read(version->clsn);
             ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
-            if (clsn.asi_type() == fat_ptr::ASI_XID or LSN::from_ptr(clsn) != at_clsn)
+            if (clsn.asi_type() == fat_ptr::ASI_XID)
                 continue;
+            if (LSN::from_ptr(clsn) < at_clsn)
+                break;
             return (value_type)version;
         }
         return 0;

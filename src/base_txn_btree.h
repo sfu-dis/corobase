@@ -359,9 +359,9 @@ try_expect_new:
       t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(committed_lsn, true));
     else if (not it->second.write) {
       it->second.write = true;
-      prev->readers_mutex.lock();
+      prev->acquire_readers_lock();
       prev->readers.erase(t.xid);
-      prev->readers_mutex.unlock();
+      prev->release_readers_lock();
     }
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID)
       RA::deallocate(prev_obj);

@@ -58,7 +58,7 @@ public:
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
   std::unordered_set<XID, xid_hash> readers;  // list of readers for overwriters of this tuple to examine (ssn)
-  std::mutex readers_mutex;
+  bool readers_lock;
 
 public:
   size_type size; // actual size of record
@@ -80,6 +80,7 @@ private:
       clsn(NULL_PTR)
       , xlsn(INVALID_LSN)
       , slsn(INVALID_LSN)
+      , readers_lock(false)
       , size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
   {
@@ -93,6 +94,17 @@ private:
   static event_avg_counter g_evt_avg_dbtuple_read_retries;
 
 public:
+  void acquire_readers_lock()
+  {
+    while (__sync_lock_test_and_set(&readers_lock, true));
+  }
+
+  void release_readers_lock()
+  {
+    __sync_synchronize();
+    readers_lock = false;
+  }
+
 
   enum ReadStatus {
     READ_FAILED,
