@@ -251,22 +251,22 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   INVARIANT(sz <= std::numeric_limits<node_size_type>::max());
   const size_t max_alloc_sz =
-	  std::numeric_limits<node_size_type>::max() + sizeof(dbtuple);
+	  std::numeric_limits<node_size_type>::max() + sizeof(dbtuple) + sizeof(object);
   const size_t alloc_sz =
 	  std::min(
-			  util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sz),
+			  util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sizeof(object) + sz),
 			  max_alloc_sz);
-  INVARIANT((alloc_sz - sizeof(dbtuple)) >= sz);
+  INVARIANT((alloc_sz - sizeof(dbtuple) - sizeof(object)) >= sz);
 
 try_expect_new:
   // Allocate a version
   char *p = NULL;
-  p = reinterpret_cast<char*>(RA::allocate(sizeof(object) + alloc_sz));
+  p = reinterpret_cast<char*>(RA::allocate(alloc_sz));
   INVARIANT(p);
 
   // Tuple setup
   dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
-  tuple = dbtuple::init( (char*)tuple, sz, alloc_sz );
+  tuple = dbtuple::init((char*)tuple, sz);
   if (v)
     writer(dbtuple::TUPLE_WRITER_DO_WRITE,
         v, tuple->get_value_start(), 0);

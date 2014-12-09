@@ -62,7 +62,6 @@ public:
 
 public:
   size_type size; // actual size of record
-  size_type alloc_size; // allocated (aligned) size
 
   // must be last field
   uint8_t value_start[0];
@@ -75,18 +74,16 @@ private:
     return s;
   }
 
-  dbtuple(size_type size, size_type alloc_size)
+  dbtuple(size_type size)
     :
       clsn(NULL_PTR)
       , xlsn(INVALID_LSN)
       , slsn(INVALID_LSN)
       , readers_lock(false)
       , size(CheckBounds(size))
-      , alloc_size(CheckBounds(alloc_size))
   {
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
     ++g_evt_dbtuple_creates;
-    g_evt_dbtuple_bytes_allocated += alloc_size + sizeof(dbtuple);
   }
 
   ~dbtuple();
@@ -94,6 +91,7 @@ private:
   static event_avg_counter g_evt_avg_dbtuple_read_retries;
 
 public:
+
   void acquire_readers_lock()
   {
     while (__sync_lock_test_and_set(&readers_lock, true));
@@ -116,7 +114,7 @@ public:
   prefetch() const
   {
 #ifdef TUPLE_PREFETCH
-    prefetch_bytes(this, sizeof(*this) + alloc_size);
+    prefetch_bytes(this, sizeof(*this) + size);
 #endif
   }
 
@@ -160,19 +158,6 @@ public:
     return size ? READ_RECORD : READ_EMPTY;
   }
 
-  struct write_record_ret {
-    write_record_ret() : head_(), rest_() {}
-    write_record_ret(dbtuple *head, dbtuple* rest)
-      : head_(head), rest_(rest)
-    {
-      INVARIANT(head);
-      INVARIANT(head != rest);
-      INVARIANT(rest);
-    }
-    dbtuple *head_;
-    dbtuple *rest_;
-  };
-
   // XXX: kind of hacky, but we do this to avoid virtual
   // functions / passing multiple function pointers around
   enum TupleWriterMode {
@@ -185,9 +170,9 @@ public:
   typedef size_t (*tuple_writer_t)(TupleWriterMode, const void *, uint8_t *, size_t);
 
   static inline dbtuple *
-  init( char*p ,size_type sz, size_type alloc_sz)
+  init(char*p ,size_type sz)
   {
-    return new (p) dbtuple(sz, alloc_sz - sizeof(dbtuple));
+    return new (p) dbtuple(sz);
   }
 }
 #if !defined(CHECK_INVARIANTS)

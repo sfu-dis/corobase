@@ -14,6 +14,5 @@ event_counter dbtuple::g_evt_dbtuple_bytes_freed("dbtuple_bytes_freed");
 dbtuple::~dbtuple()
 {
   VERBOSE(cerr << "dbtuple: " << hexify(intptr_t(this)) << " is being deleted" << endl);
-  g_evt_dbtuple_bytes_freed += (alloc_size + sizeof(dbtuple));
 }
 
