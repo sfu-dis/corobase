@@ -414,12 +414,13 @@ transaction<Protocol, Traits>::do_tuple_read(
   }
   INVARIANT(stat == dbtuple::READ_EMPTY ||
             stat == dbtuple::READ_RECORD);
-  const bool v_empty = (stat == dbtuple::READ_EMPTY);
-  if (v_empty)
+  if (stat == dbtuple::READ_EMPTY) {
     ++transaction_base::g_evt_read_logical_deleted_node_search;
+    return false;
+  }
+
 #ifdef TRACE_FOOTPRINT  // FIXME: get stats on how much is empty???
-  else
-    FP_TRACE::print_access(xid, std::string("read"), (uintptr_t)btr_ptr, tuple, NULL);
+  FP_TRACE::print_access(xid, std::string("read"), (uintptr_t)btr_ptr, tuple, NULL);
 #endif
   // SSN stamps and check
   access_set_key askey(btr_ptr, tuple->oid);
@@ -453,7 +454,7 @@ transaction<Protocol, Traits>::do_tuple_read(
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
   }
 
-  return !v_empty;
+  return true;
 }
 
 #endif /* _NDB_TXN_IMPL_H_ */
