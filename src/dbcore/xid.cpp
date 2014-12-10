@@ -6,10 +6,6 @@
 
 namespace TXN {
 
-#ifdef USE_SERIAL_SSN
-std::mutex ssn_commit_mutex;
-#endif
-
 #if 0
 } // disable autoindent
 #endif
@@ -243,9 +239,4 @@ xid_get_context(XID x) {
     return ctx;
 }
 
-bool
-wait_for_commit_result(xid_context *xc) {
-    while (volatile_read(xc->state) == TXN_COMMITTING);
-    return volatile_read(xc->state) == TXN_CMMTD;
-}
 } // end of namespace

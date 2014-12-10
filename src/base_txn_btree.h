@@ -363,12 +363,11 @@ try_expect_new:
     typename transaction<Transaction, Traits>::access_set_key askey(&this->underlying_btree, tuple->oid);
     typename transaction<Transaction, Traits>::access_set_map::iterator it = t.find_access_set(askey);
     if (it == t.access_set.end())   // new access record
-      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(committed_lsn, true));
-    else if (not it->second.write) {
-      it->second.write = true;
-      prev->acquire_readers_lock();
-      prev->readers.erase(t.xid);
-      prev->release_readers_lock();
+      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(committed_lsn, -1));
+    else if (not it->second.is_write()) {
+      readers_reg.deregister_tx((void *)&this->underlying_btree, prev->oid,
+                                LSN::from_ptr(prev->clsn), it->second.get_reader_pos());
+      it->second.set_write();   // don't do this before deregister_tx (which destroys reader_pos)
     }
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID)
       RA::deallocate(prev_obj);
