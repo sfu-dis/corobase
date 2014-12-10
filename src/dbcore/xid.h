@@ -35,14 +35,4 @@ void xid_free(XID x);
  */
 xid_context *xid_get_context(XID x);
 
-bool wait_for_commit_result(xid_context *xc);
-
-inline bool ssn_check_exclusion(xid_context *xc) {
-    if (xc->succ != INVALID_LSN and xc->pred >= xc->succ) printf("ssn exclusion failure\n");
-    if (xc->succ != INVALID_LSN and xc->pred != INVALID_LSN)
-        return xc->pred < xc->succ; // \eta - predecessor, \pi - sucessor
-        // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
-    return true;
-}
-
 };  // end of namespace

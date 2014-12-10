@@ -164,6 +164,7 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/w_rand.cpp \
 	dbcore/size-encode.cpp \
 	dbcore/xid.cpp		\
+	dbcore/ssn.cpp	\
 	dbcore/dynarray.cpp
 
 ifeq ($(MASSTREE_S),1)

@@ -18,6 +18,7 @@
 
 #include <unordered_map>
 #include "dbcore/xid.h"
+#include "dbcore/ssn.h"
 #include "dbcore/sm-log.h"
 #include "amd64.h"
 #include "btree_choice.h"
@@ -164,13 +165,29 @@ public:
 
 protected:
 
-  struct access_record_t {
-    constexpr access_record_t(LSN c, bool w)
-      : clsn(c), write(w) {}
+  class access_record_t {
     // this will be the LSN of the overwritten version
     // if it's an update; INVALID_LSN if it's an insert
     LSN clsn;
-    bool write;
+
+    // this will be the index into the version's readers list
+    // for reads; -1 for writes.
+    int reader_pos;
+  public:
+    access_record_t(LSN c, int p)
+      : clsn(c), reader_pos(p) {}
+    inline bool is_write() {
+      return reader_pos < 0;
+    }
+    inline void set_write() {
+      reader_pos = -1;
+    }
+    inline int get_reader_pos() {
+      return reader_pos;
+    }
+    inline LSN get_clsn() {
+      return clsn;
+    }
   };
 
   friend std::ostream &
