@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 /** options */
+//#define TRACE_FOOTPRINT
 #define USE_PARALLEL_SSN
 #define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH

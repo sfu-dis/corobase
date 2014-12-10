@@ -226,7 +226,6 @@ class transaction : public transaction_base {
   friend Protocol<Traits>;
 
 public:
-
   // KeyWriter is expected to implement:
   // [1-arg constructor]
   //   KeyWriter(const Key *)
@@ -379,7 +378,7 @@ protected:
 
   bool
   try_insert_new_tuple(
-      concurrent_btree &btr,
+      concurrent_btree *btr,
       const std::string *key,
 	  object* value,
       dbtuple::tuple_writer_t writer);
@@ -445,5 +444,13 @@ struct txn_epoch_sync {
   // reset the persisted counters
   static inline void reset_ntxn_persisted() {}
 };
+
+#ifdef TRACE_FOOTPRINT
+namespace FP_TRACE {
+  extern std::mutex footprint_mutex;
+  extern void print_access(XID xid, std::string op, uintptr_t table_ptr, dbtuple *t, dbtuple *prev);
+  extern std::map<uintptr_t, std::string> tables;
+};
+#endif
 
 #endif /* _NDB_TXN_H_ */

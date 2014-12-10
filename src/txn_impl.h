@@ -348,7 +348,7 @@ typedef object_vector<typename concurrent_btree::value_type> tuple_vector_type;
 template <template <typename> class Protocol, typename Traits>
 bool
 transaction<Protocol, Traits>::try_insert_new_tuple(
-    concurrent_btree &btr,
+    concurrent_btree *btr,
     const std::string *key,
 	object* value,
     dbtuple::tuple_writer_t writer)
@@ -356,7 +356,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   INVARIANT(key);
   char*p = (char*)value;
   dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
-  tuple_vector_type* tuple_vector = btr.get_tuple_vector();
+  tuple_vector_type* tuple_vector = btr->get_tuple_vector();
   tuple->oid = tuple_vector->alloc();
   fat_ptr new_head = fat_ptr::make( value, INVALID_SIZE_CODE, 0);
   while(!tuple_vector->put( tuple->oid, new_head));
@@ -365,7 +365,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   // fails- this would allow us to avoid having to do another search
   // FIXME: tzwang: didn't look like so, returns nullptr. bug?
   typename concurrent_btree::insert_info_t insert_info;
-  if (unlikely(!btr.insert_if_absent(
+  if (unlikely(!btr->insert_if_absent(
           varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
@@ -384,7 +384,10 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update access_set
-  access_set.emplace(access_set_key(&btr, tuple->oid), access_record_t(INVALID_LSN, true));
+  access_set.emplace(access_set_key(btr, tuple->oid), access_record_t(INVALID_LSN, true));
+#ifdef TRACE_FOOTPRINT  // FIXME: get stats on how much is empty???
+  FP_TRACE::print_access(xid, std::string("insert"), (uintptr_t)btr, tuple, NULL);
+#endif
   return true;
 }
 
@@ -414,7 +417,10 @@ transaction<Protocol, Traits>::do_tuple_read(
   const bool v_empty = (stat == dbtuple::READ_EMPTY);
   if (v_empty)
     ++transaction_base::g_evt_read_logical_deleted_node_search;
-
+#ifdef TRACE_FOOTPRINT  // FIXME: get stats on how much is empty???
+  else
+    FP_TRACE::print_access(xid, std::string("read"), (uintptr_t)btr_ptr, tuple, NULL);
+#endif
   // SSN stamps and check
   access_set_key askey(btr_ptr, tuple->oid);
   if (find_access_set(askey) == access_set.end() and tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {

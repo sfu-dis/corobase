@@ -39,6 +39,9 @@ public:
   {
     base_txn_btree_handler<Transaction>::on_construct();
 	//RA::register_table(&underlying_btree, name);		// Register to GC system 
+#ifdef TRACE_FOOTPRINT
+    FP_TRACE::tables[(uintptr_t)&underlying_btree] = name;
+#endif
   }
 
   ~base_txn_btree()
@@ -282,7 +285,7 @@ try_expect_new:
   // (fall back to) with the normal update procedure.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
   if (expect_new) {
-    if (t.try_insert_new_tuple(this->underlying_btree, k, version, writer)) 
+    if (t.try_insert_new_tuple(&this->underlying_btree, k, version, writer))
 		return;
     expect_new = false;
     goto try_expect_new;
@@ -315,6 +318,10 @@ try_expect_new:
   dbtuple *prev = this->underlying_btree.update_version(tuple->oid, version, t.xid);
 
   if (prev) { // succeeded
+#ifdef TRACE_FOOTPRINT
+    FP_TRACE::print_access(t.xid, std::string("update"),
+                           (uintptr_t)&this->underlying_btree, tuple, prev);
+#endif
     object *prev_obj = (object *)((char *)prev - sizeof(object));
     // update hi watermark
     // Overwriting a version could trigger outbound anti-dep,
