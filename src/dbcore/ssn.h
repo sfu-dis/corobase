@@ -20,30 +20,6 @@ inline bool ssn_check_exclusion(xid_context *xc) {
 class readers_registry {
 public:
     typedef unsigned int bitmap_t;  // _builtin_ctz needs it to be uint
-
-    struct readers_registry_key {
-        void *table_tree;
-        oid_type oid;
-        LSN clsn;   // read version's clsn
-        readers_registry_key(void *t, oid_type o, LSN l) :
-            table_tree(t), oid(o), clsn(l) {}
-    };
-
-private:
-    struct rr_hash {
-        size_t operator()(const readers_registry_key &k) const {
-            return (uintptr_t)k.table_tree ^ k.oid * k.clsn._val;
-        }
-    };
-
-    struct rr_equal {
-        bool operator()(const readers_registry_key &k1,
-                        const readers_registry_key &k2) const {
-            return k1.table_tree == k2.table_tree and
-                   k1.oid == k2.oid and k1.clsn == k2.clsn;
-        }
-    };
-
     struct readers_list {
         // FIXME: on crossfire we basically won't have more than 24 concurrent
         // transactions running (not to mention all as readers of a single
@@ -55,6 +31,7 @@ private:
         bitmap_t bitmap;
 
         readers_list(XID init_xid) {
+            memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
             xids[0] = init_xid;
             bitmap = bitmap_t(3) << XIDS_PER_READER_KEY;
         }
@@ -66,7 +43,9 @@ private:
         //FIXME: add_xid(XID xid);
     };
 
-    std::unordered_map<readers_registry_key, readers_list, rr_hash, rr_equal> reg;
+private:
+    // maps dbtuple* to readers_list
+    std::unordered_map<uintptr_t, readers_list*> reg;
     bool reg_lock;
 
 private:
@@ -80,21 +59,14 @@ private:
         __sync_synchronize();
         reg_lock = false;
     }
-/*
-    readers_registry::iterator find_reg(readers_registry_key &k)
-    {
-        acquire_reg_lock();
-        readers_registry::iterator it = reg.find(k);
-        release_reg_lock();
-        return it;
-    }
-*/
+
 public:
     readers_registry() : reg_lock(false) {}
-    int register_tx(void *table_tree, oid_type oid, LSN clsn, XID xid);
-    void deregister_tx(void *table_tree, oid_type oid, LSN clsn, int pos);
-    size_t count_readers(void *table_tree, oid_type oid, LSN clsn);
-    XID* get_xid_list(void *table_tree, oid_type oid, LSN clsn);
+    int register_tx(uintptr_t tuple, XID xid);
+    int register_tx(readers_list *rl, XID xid);
+    void deregister_tx(uintptr_t tuple, int pos);
+    void deregister_tx(readers_list *rl, int pos);
+    XID* get_xid_list(uintptr_t tuple);
 };
 
 extern readers_registry readers_reg;
