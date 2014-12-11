@@ -46,24 +46,14 @@ struct dbtuple {
 public:
   typedef size_t size_type;
   typedef std::string string_type;
-
-  struct xid_hash {
-    size_t operator()(const XID &x) const {
-      return (uint64_t)x._val;
-    }
-  };
-
   oid_type oid;
   fat_ptr clsn;     // version creation stamp
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
   readers_registry::readers_list *rlist;
-
-public:
+  readers_registry::bitmap_t rl_bitmap;
   size_type size; // actual size of record
-
-  // must be last field
-  uint8_t value_start[0];
+  uint8_t value_start[0];   // must be last field
 
 private:
   static inline ALWAYS_INLINE size_type
@@ -78,7 +68,7 @@ private:
       clsn(NULL_PTR)
       , xlsn(INVALID_LSN)
       , slsn(INVALID_LSN)
-      , rlist(NULL)
+      , rlist(new readers_registry::readers_list())
       , size(CheckBounds(size))
   {
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);

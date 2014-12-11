@@ -72,7 +72,8 @@ namespace FP_TRACE {
               << " op=" << std::dec << op
               << " table=" << tables[table_ptr]
               << " oid=" << std::dec << t->oid
-              << " version=" << std::hex << t;
+              << " version=" << std::hex << t
+              << " size=" << std::dec << t->size;
     if (prev)
       std::cout << " prev=" << prev << "\n";
     else
