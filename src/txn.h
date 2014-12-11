@@ -164,34 +164,12 @@ public:
   }
 
 protected:
-
-  class access_record_t {
-    // this will be the LSN of the overwritten version
-    // if it's an update; INVALID_LSN if it's an insert
-    LSN clsn;
-
-    // this will be the index into the version's readers list
-    // for reads; -1 for writes.
+  struct read_record_t {
+    read_record_t(concurrent_btree *b, int p) : btr(b), reader_pos(p) {}
+    read_record_t() : btr(NULL), reader_pos(-1) {}
+    concurrent_btree *btr;
     int reader_pos;
-  public:
-    access_record_t(LSN c, int p)
-      : clsn(c), reader_pos(p) {}
-    inline bool is_write() {
-      return reader_pos < 0;
-    }
-    inline void set_write() {
-      reader_pos = -1;
-    }
-    inline int get_reader_pos() {
-      return reader_pos;
-    }
-    inline LSN get_clsn() {
-      return clsn;
-    }
   };
-
-  friend std::ostream &
-  operator<<(std::ostream &o, const access_record_t &r);
 
   static event_counter g_evt_read_logical_deleted_node_search;
   static event_counter g_evt_read_logical_deleted_node_scan;
@@ -215,14 +193,6 @@ protected:
   abort_reason reason;
   const uint64_t flags;
 };
-
-inline ALWAYS_INLINE std::ostream &
-operator<<(
-    std::ostream &o,
-    const transaction_base::access_record_t &r)
-{
-  return o;
-}
 
 struct default_transaction_traits {
   static const bool stable_input_memory = false;
@@ -321,22 +291,8 @@ protected:
     return static_cast<const Protocol<Traits> *>(this);
   }
 
-  struct access_set_key {
-    concurrent_btree *tree_ptr;
-    oid_type oid;
-    access_set_key(concurrent_btree *t, oid_type o) :
-        tree_ptr(t), oid(o) {}
-    bool operator==(const access_set_key &k) const {
-      return k.tree_ptr == tree_ptr && k.oid == oid;
-    }
-  };
-  struct as_key_hash {
-    size_t operator()(const access_set_key &k) const {
-      return (uint64_t)k.tree_ptr ^ k.oid;
-    }
-  };
-
-  typedef std::unordered_map<access_set_key, access_record_t, as_key_hash> access_set_map;
+  typedef std::unordered_map<dbtuple*, concurrent_btree*> write_set_map;
+  typedef std::unordered_map<dbtuple*, read_record_t> read_set_map;
 
 public:
 
@@ -384,12 +340,6 @@ public:
   }
 #endif
 
-  inline const access_set_map&
-  get_access_set() const
-  {
-    return access_set;
-  }
-
 protected:
   void abort_impl();
 
@@ -416,13 +366,20 @@ public:
   }
 
 protected:
-  typename access_set_map::iterator
-  find_access_set(access_set_key &k)
+  typename write_set_map::iterator
+  find_write_set(dbtuple *k)
   {
-    return access_set.find(k);
+    return write_set.find(k);
   }
 
-  access_set_map access_set;
+  typename read_set_map::iterator
+  find_read_set(dbtuple *k)
+  {
+    return read_set.find(k);
+  }
+
+  read_set_map read_set;
+  write_set_map write_set;
   string_allocator_type *sa;
 };
 

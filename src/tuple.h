@@ -26,7 +26,7 @@
 
 #include "object.h"
 #include "dbcore/xid.h"
-
+#include "dbcore/ssn.h"
 #include "dbcore/sm-alloc.h"
 
 using namespace TXN;
@@ -57,6 +57,7 @@ public:
   fat_ptr clsn;     // version creation stamp
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
+  readers_registry::readers_list *rlist;
 
 public:
   size_type size; // actual size of record
@@ -77,6 +78,7 @@ private:
       clsn(NULL_PTR)
       , xlsn(INVALID_LSN)
       , slsn(INVALID_LSN)
+      , rlist(NULL)
       , size(CheckBounds(size))
   {
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);

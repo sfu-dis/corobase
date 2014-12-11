@@ -75,7 +75,8 @@ public:
 
   typedef Traits traits_type;
   typedef transaction_base::string_type string_type;
-  typedef typename super_type::access_set_map access_set_map;
+  typedef typename super_type::read_set_map read_set_map;
+  typedef typename super_type::write_set_map write_set_map;
 
   transaction_proto2(uint64_t flags,
                      typename Traits::StringAllocator &sa)

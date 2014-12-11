@@ -340,19 +340,17 @@ try_expect_new:
     // copy access stamp to new tuple from overwritten version
     // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
-    LSN committed_lsn = INVALID_LSN;
+    dbtuple *committed_tuple = prev;
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {  // in-place update!
-      if (prev_obj->_next.offset()) {
-        dbtuple *next_tuple = (dbtuple *)((object *)(prev_obj->_next.offset()))->payload();
-        ASSERT(volatile_read(next_tuple->clsn).asi_type() == fat_ptr::ASI_LOG);
-        committed_lsn = LSN::from_ptr(volatile_read(next_tuple->clsn));
-      }
+      //if (prev_obj->_next.offset()) {
+        committed_tuple = (dbtuple *)((object *)(prev_obj->_next.offset()))->payload();
+        ASSERT(volatile_read(committed_tuple->clsn).asi_type() == fat_ptr::ASI_LOG);
+      //}
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
     }
     else {  // prev is committed head
       volatile_write(version->_next, fat_ptr::make(prev_obj, 0));
-      committed_lsn = LSN::from_ptr(volatile_read(prev->clsn));
     }
 
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
@@ -360,17 +358,19 @@ try_expect_new:
     // update access set (note this is different from the ssn_write algo in
     // the ssn paper, as we still need to add the latest version to the
     // access set, tho we don't need a new access_record if it already exists)
-    typename transaction<Transaction, Traits>::access_set_key askey(&this->underlying_btree, tuple->oid);
-    typename transaction<Transaction, Traits>::access_set_map::iterator it = t.find_access_set(askey);
-    if (it == t.access_set.end())   // new access record
-      t.access_set.emplace(askey, typename transaction<Transaction, Traits>::access_record_t(committed_lsn, -1));
-    else if (not it->second.is_write()) {
-      readers_reg.deregister_tx((void *)&this->underlying_btree, prev->oid,
-                                LSN::from_ptr(prev->clsn), it->second.get_reader_pos());
-      it->second.set_write();   // don't do this before deregister_tx (which destroys reader_pos)
+    t.write_set[tuple] = &this->underlying_btree;
+    typename transaction<Transaction, Traits>::read_set_map::iterator it;
+    it = t.find_read_set(committed_tuple);
+    if (it != t.read_set.end()) {
+      ASSERT(it->second.reader_pos >= 0);
+      readers_reg.deregister_tx(it->first->rlist, it->second.reader_pos);
+      t.read_set.erase(committed_tuple);
     }
-    if (prev->clsn.asi_type() == fat_ptr::ASI_XID)
+
+    if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {
+      t.write_set.erase(prev);
       RA::deallocate(prev_obj);
+    }
 
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
