@@ -185,10 +185,12 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
     // need access stamp , i.e., who read this version that I'm trying to overwrite?
     //XID *reader_xids = readers_reg.get_xid_list((uintptr_t)overwritten_tuple);
+    if (not overwritten_tuple->rlist)
+      continue;
     XID *reader_xids = overwritten_tuple->rlist->xids;
     ASSERT(reader_xids);
-    if (not reader_xids)
-        continue;
+    if (overwritten_tuple->rlist->bitmap == readers_registry::bitmap_t(1 << XIDS_PER_READER_KEY))
+      continue;
     for (auto i = 0; i < XIDS_PER_READER_KEY; i++) {
       XID xid = volatile_read(reader_xids[i]);
       if (not xid._val)
@@ -441,10 +443,11 @@ transaction<Protocol, Traits>::do_tuple_read(
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
         int pos = -1;
-        if (likely(tuple->rlist))
+        ASSERT(tuple->rlist);
+        //if (likely(tuple->rlist))
           pos = readers_reg.register_tx(tuple->rlist, xid);
-        else
-          pos = readers_reg.register_tx((uintptr_t)tuple, xid);
+        //else
+          //pos = readers_reg.register_tx((uintptr_t)tuple, xid);
         read_set[tuple] = read_record_t(btr_ptr, pos);
       }
       else if (xc->succ > tuple_slsn)

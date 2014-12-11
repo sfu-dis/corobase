@@ -230,7 +230,7 @@ public:
   void run();
   void heap_prefault()
   {
-	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*5);		// 45G for 24 warehouses
+	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*10);		// 45G for 24 warehouses
 	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
 	  ALWAYS_ASSERT(p);
       ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
