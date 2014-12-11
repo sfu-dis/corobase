@@ -359,14 +359,6 @@ try_expect_new:
     // the ssn paper, as we still need to add the latest version to the
     // access set, tho we don't need a new access_record if it already exists)
     t.write_set[tuple] = &this->underlying_btree;
-    typename transaction<Transaction, Traits>::read_set_map::iterator it;
-    it = t.find_read_set(committed_tuple);
-    if (it != t.read_set.end()) {
-      ASSERT(it->second.reader_pos >= 0);
-      readers_reg.deregister_tx(it->first->rlist, it->second.reader_pos);
-      t.read_set.erase(committed_tuple);
-    }
-
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {
       t.write_set.erase(prev);
       RA::deallocate(prev_obj);

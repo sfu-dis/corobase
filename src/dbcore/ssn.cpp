@@ -1,5 +1,5 @@
 #include "ssn.h"
-#include "../tuple.h"
+
 namespace TXN {
 
 readers_registry readers_reg;
@@ -29,27 +29,24 @@ readers_registry::register_tx(uintptr_t tuple, XID xid)
     release_reg_lock();
     return register_tx(((dbtuple *)tuple)->rlist, xid);
 }
+#endif
 
-int
-readers_registry::register_tx(readers_list *rl, XID xid)
+bool
+ssn_register_reader_tx(dbtuple *t, XID xid)
 {
-    ASSERT(rl);
-    int pos = -1;
-    bitmap_t curr_bitmap = -1, new_bitmap = -1;
-    do {
-        curr_bitmap = volatile_read(rl->bitmap);
-        ALWAYS_ASSERT(curr_bitmap);
-        pos = __builtin_ctz(curr_bitmap) - 1;
-        ALWAYS_ASSERT(pos >= 0);
-        new_bitmap = curr_bitmap | (bitmap_t(1) << pos);
-    }
-    while(not __sync_bool_compare_and_swap(&rl->bitmap, curr_bitmap, new_bitmap));
-    int xid_pos = XIDS_PER_READER_KEY - (pos + 1);
-    ASSERT(not rl->xids[xid_pos]._val);
-    volatile_write(rl->xids[xid_pos]._val, xid._val);
-    return xid_pos;
+    ASSERT(t->rlist);
+    bitmap_t old_bitmap = volatile_read(t->rl_bitmap);
+    if (old_bitmap & tls_bitmap_entry)
+        return false;
+    
+    int xid_pos = __builtin_ctz(tls_bitmap_entry);
+    __sync_fetch_and_or(&t->rl_bitmap, tls_bitmap_entry);
+    ASSERT(not t->rlist->xids[xid_pos]._val);
+    volatile_write(t->rlist->xids[xid_pos]._val, xid._val);
+    return true;
 }
 
+#if 0
 // deregister a tx from a version's readers list
 // @pos: the index in to xids array returned by register_tx
 void
@@ -60,14 +57,18 @@ readers_registry::deregister_tx(uintptr_t tuple, int pos)
     release_reg_lock();
     return deregister_tx(rl, pos);
 }
+#endif
 
 void
-readers_registry::deregister_tx(readers_list *rl, int pos)
+ssn_deregister_reader_tx(dbtuple *t)
 {
     // FIXME: xid=0 means invalid xid?
-    ASSERT(pos >= 0 and rl->xids[pos]._val);
-    volatile_write(rl->xids[pos]._val, 0);
-    __sync_fetch_and_and(&rl->bitmap, ~(bitmap_t(1) << (XIDS_PER_READER_KEY - pos - 1)));
+    ASSERT(tls_bitmap_entry);
+    int pos = __builtin_ctz(tls_bitmap_entry);
+    ASSERT(pos >= 0 and t->rlist->xids[pos]._val);
+    ASSERT(t->rl_bitmap & tls_bitmap_entry);
+    volatile_write(t->rlist->xids[pos]._val, 0);
+    __sync_fetch_and_xor(&t->rl_bitmap, tls_bitmap_entry);
 }
 
 XID*
