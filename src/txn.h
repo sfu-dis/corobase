@@ -292,7 +292,7 @@ protected:
   }
 
   typedef std::unordered_map<dbtuple*, concurrent_btree*> write_set_map;
-  typedef std::unordered_map<dbtuple*, read_record_t> read_set_map;
+  typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 
 public:
 
@@ -370,12 +370,6 @@ protected:
   find_write_set(dbtuple *k)
   {
     return write_set.find(k);
-  }
-
-  typename read_set_map::iterator
-  find_read_set(dbtuple *k)
-  {
-    return read_set.find(k);
   }
 
   read_set_map read_set;

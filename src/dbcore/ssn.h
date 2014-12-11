@@ -1,13 +1,13 @@
 #pragma once
 #include <unordered_map>
 #include "xid.h"
-#include "../object.h"
-
-#define XIDS_PER_READER_KEY 24
+#include "../tuple.h"
 
 namespace TXN {
 
 bool wait_for_commit_result(xid_context *xc);
+void assign_reader_bitmap_entry();
+void deassign_reader_bitmap_entry();    
 
 inline bool ssn_check_exclusion(xid_context *xc) {
     if (xc->succ != INVALID_LSN and xc->pred >= xc->succ) printf("ssn exclusion failure\n");
@@ -19,29 +19,8 @@ inline bool ssn_check_exclusion(xid_context *xc) {
 
 class readers_registry {
 public:
-    typedef unsigned int bitmap_t;  // _builtin_ctz needs it to be uint
-    struct readers_list {
-        // FIXME: on crossfire we basically won't have more than 24 concurrent
-        // transactions running (not to mention all as readers of a single
-        // version). If this doesn't hold (on some other machine e.g.), we need
-        // to consider how to handle overflows (one way is to consolidate all
-        // txs to one bit and let late comers to compare with this).
-        XID xids[XIDS_PER_READER_KEY];
-        // note: bitmap starts from msb, but we still use xids array from 0
-        bitmap_t bitmap;
-
-        readers_list(XID init_xid) {
-            memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
-            xids[0] = init_xid;
-            bitmap = bitmap_t(3) << XIDS_PER_READER_KEY;
-        }
-        readers_list() {
-            memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
-            // mark our own msb so ctz can work correctly (bitmap=0 is undefind)
-            bitmap = bitmap_t(1) << XIDS_PER_READER_KEY;
-        }
-        //FIXME: add_xid(XID xid);
-    };
+    typedef dbtuple::bitmap_t bitmap_t;  // _builtin_ctz needs it to be uint
+    typedef dbtuple::readers_list readers_list;
 
 private:
     // maps dbtuple* to readers_list
@@ -63,11 +42,23 @@ private:
 public:
     readers_registry() : reg_lock(false) {}
     int register_tx(uintptr_t tuple, XID xid);
-    int register_tx(readers_list *rl, XID xid);
+    // return true if new entry was created
+    bool register_tx(dbtuple *tup, XID xid);
     void deregister_tx(uintptr_t tuple, int pos);
-    void deregister_tx(readers_list *rl, int pos);
+    void deregister_tx(dbtuple *tup);
     XID* get_xid_list(uintptr_t tuple);
 };
+
+bool ssn_register_reader_tx(dbtuple *tup, XID xid);
+void ssn_deregister_reader_tx(dbtuple *tup);
+
+/* Return a bitmap with 1's representing active readers.
+ */
+static inline 
+dbtuple::bitmap_t ssn_get_tuple_readers(dbtuple *tup) {
+    auto mask = dbtuple::bitmap_t(1) << dbtuple::XIDS_PER_READER_KEY;
+    return mask & ~volatile_read(tup->rl_bitmap);
+}
 
 extern readers_registry readers_reg;
 };  // end of namespace

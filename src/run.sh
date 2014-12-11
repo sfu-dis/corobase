@@ -8,8 +8,11 @@ if [[ $# -lt 2 ]]; then
     exit
 fi
 
-rm -rf /tmpfs/silo-log/*
+LOGDIR=/tmpfs/$USER/silo-log
+mkdir -p $LOGDIR
+trap "rm -rf $LOGDIR" EXIT
+
 export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
 export LD_PRELOAD="/usr/lib/libtcmalloc.so"
-./out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 24 --num-threads $1 --runtime $2 --log-dir /tmpfs/silo-log/ --pin-cpu
-rm -rf /tmpfs/silo-log/*
+./out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 24 --num-threads $1 --runtime $2 --log-dir $LOGDIR --pin-cpu
+

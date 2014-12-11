@@ -66,9 +66,9 @@ transaction<Protocol, Traits>::abort_impl()
 
   for (auto &r : read_set) {
     dbtuple *tuple = r.first;
-    ASSERT(tuple == reinterpret_cast<dbtuple *>(r.second.btr->fetch_committed_version_at(tuple->oid, xid, LSN::from_ptr(tuple->clsn))));
+    ASSERT(tuple == reinterpret_cast<dbtuple *>(r.second->fetch_committed_version_at(tuple->oid, xid, LSN::from_ptr(tuple->clsn))));
     // remove myself from reader list
-    readers_reg.deregister_tx(tuple->rlist, r.second.reader_pos);
+    ssn_deregister_reader_tx(tuple);
   }
 
   // log discard
@@ -185,16 +185,15 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
     // need access stamp , i.e., who read this version that I'm trying to overwrite?
     //XID *reader_xids = readers_reg.get_xid_list((uintptr_t)overwritten_tuple);
-    if (not overwritten_tuple->rlist)
-      continue;
-    XID *reader_xids = overwritten_tuple->rlist->xids;
-    ASSERT(reader_xids);
-    if (overwritten_tuple->rlist->bitmap == readers_registry::bitmap_t(1 << XIDS_PER_READER_KEY))
-      continue;
-    for (auto i = 0; i < XIDS_PER_READER_KEY; i++) {
-      XID xid = volatile_read(reader_xids[i]);
-      if (not xid._val)
-        continue;
+    ASSERT(overwritten_tuple->rlist);
+    readers_registry::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
+    while (readers) {
+      int i = __builtin_ctz(readers);
+      readers &= (readers-1);
+      XID xid = volatile_read(overwritten_tuple->rlist->xids[i]);
+      if (not xid._val or xid == xc->owner)
+        continue; // ignore invalid entries and ignore my own reads
+        
       xid_context *reader_xc = xid_get_context(xid);
       ASSERT(reader_xc->owner == xid);
       LSN reader_end = volatile_read(reader_xc->end);
@@ -210,7 +209,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     dbtuple *tuple = r.first;
     // so tuple should be the committed version I read
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    dbtuple *overwriter_tuple = (dbtuple *)r.second.btr->fetch_overwriter(tuple->oid,
+    dbtuple *overwriter_tuple = (dbtuple *)r.second->fetch_overwriter(tuple->oid,
                                                         LSN::from_ptr(tuple->clsn));
     if (not overwriter_tuple)
       continue;
@@ -283,7 +282,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     }
     while (xlsn < clsn and not __sync_bool_compare_and_swap(&tuple->xlsn._val, xlsn._val, clsn._val));
     // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
-    readers_reg.deregister_tx(tuple->rlist, r.second.reader_pos);
+    ssn_deregister_reader_tx(tuple);
   }
 
   // done
@@ -423,7 +422,7 @@ transaction<Protocol, Traits>::do_tuple_read(
   FP_TRACE::print_access(xid, std::string("read"), (uintptr_t)btr_ptr, tuple, NULL);
 #endif
   // SSN stamps and check
-  if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG and find_write_set(tuple) == write_set.end() and find_read_set(tuple) == read_set.end()) {
+  if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG and find_write_set(tuple) == write_set.end()) {
       xid_context* xc = xid_get_context(xid);
       ASSERT(xc);
       LSN v_clsn = LSN::from_ptr(tuple->clsn);
@@ -442,13 +441,10 @@ transaction<Protocol, Traits>::do_tuple_read(
       // already read a (then latest) version, then T2 comes to overwrite it).
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
-        int pos = -1;
         ASSERT(tuple->rlist);
         //if (likely(tuple->rlist))
-          pos = readers_reg.register_tx(tuple->rlist, xid);
-        //else
-          //pos = readers_reg.register_tx((uintptr_t)tuple, xid);
-        read_set[tuple] = read_record_t(btr_ptr, pos);
+        if (ssn_register_reader_tx(tuple, xid))
+            read_set.emplace_back(tuple, btr_ptr);
       }
       else if (xc->succ > tuple_slsn)
         xc->succ = tuple_slsn; // \pi
