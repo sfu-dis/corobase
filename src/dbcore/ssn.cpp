@@ -8,12 +8,42 @@ readers_registry readers_reg;
 std::mutex ssn_commit_mutex;
 #endif
 
-bool
+bool __attribute__((noinline))
 wait_for_commit_result(xid_context *xc) {
-    while (volatile_read(xc->state) == TXN_COMMITTING);
+    while (volatile_read(xc->state) == TXN_COMMITTING) { /* spin */ }
     return volatile_read(xc->state) == TXN_CMMTD;
 }
 
+typedef dbtuple::bitmap_t bitmap_t;
+static __thread bitmap_t tls_bitmap_entry = 0;
+static bitmap_t claimed_bitmap_entries = 0;
+
+void assign_reader_bitmap_entry() {
+    if (tls_bitmap_entry)
+        return;
+
+    bitmap_t old_bitmap = volatile_read(claimed_bitmap_entries);
+ retry:
+    bitmap_t new_bitmap = old_bitmap | (old_bitmap+1);
+    bitmap_t cur_bitmap = __sync_val_compare_and_swap(&claimed_bitmap_entries, old_bitmap, new_bitmap);
+    if (old_bitmap != cur_bitmap) {
+        old_bitmap = cur_bitmap;
+        goto retry;
+    }
+
+    tls_bitmap_entry = new_bitmap ^ old_bitmap;
+    bitmap_t forbidden_bits = -(bitmap_t(1) << dbtuple::XIDS_PER_READER_KEY);
+    ALWAYS_ASSERT(not (tls_bitmap_entry & forbidden_bits));
+}
+
+void deassign_reader_bitmap_entry() {
+    ALWAYS_ASSERT(tls_bitmap_entry);
+    ALWAYS_ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
+    __sync_fetch_and_xor(&claimed_bitmap_entries, tls_bitmap_entry);
+    tls_bitmap_entry = 0;
+}
+
+#if 0
 // register a tx to a version's readers list
 // returns the position of the tx in the xids array
 int
