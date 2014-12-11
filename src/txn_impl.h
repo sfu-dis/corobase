@@ -208,7 +208,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       // it might be changed any time...
       dbtuple *overwriter_tuple = reinterpret_cast<dbtuple*>(it->first.tree_ptr->fetch_overwriter(it->first.oid, it->second.get_clsn()));
       if (not overwriter_tuple)
-        goto do_ssn_check;
+        continue;
 
     try_get_sucessor:
       fat_ptr sucessor_clsn = volatile_read(overwriter_tuple->clsn);
@@ -241,7 +241,6 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     }
   }
 
-do_ssn_check:
   if (not ssn_check_exclusion(xc))
     signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
 
