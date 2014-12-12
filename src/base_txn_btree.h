@@ -340,12 +340,7 @@ try_expect_new:
     // copy access stamp to new tuple from overwritten version
     // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
-    dbtuple *committed_tuple = prev;
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {  // in-place update!
-      //if (prev_obj->_next.offset()) {
-        committed_tuple = (dbtuple *)((object *)(prev_obj->_next.offset()))->payload();
-        ASSERT(volatile_read(committed_tuple->clsn).asi_type() == fat_ptr::ASI_LOG);
-      //}
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
     }
@@ -360,7 +355,6 @@ try_expect_new:
     // access set, tho we don't need a new access_record if it already exists)
     t.write_set[tuple] = &this->underlying_btree;
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {
-      t.write_set.erase(prev);
       RA::deallocate(prev_obj);
     }
 

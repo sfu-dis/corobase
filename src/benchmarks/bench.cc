@@ -108,6 +108,7 @@ static event_avg_counter evt_avg_abort_spins("avg_abort_spins");
 void
 bench_worker::run()
 {
+    assign_reader_bitmap_entry();
 	// XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
 	RCU::rcu_register();
 	RA::ra_register();
@@ -159,6 +160,7 @@ retry:
 	}
 	RA::ra_deregister();
 	RCU::rcu_deregister();
+    deassign_reader_bitmap_entry();
 }
 
 void
