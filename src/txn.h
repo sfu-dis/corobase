@@ -164,13 +164,14 @@ public:
   }
 
 protected:
+/*
   struct read_record_t {
-    read_record_t(concurrent_btree *b, int p) : btr(b), reader_pos(p) {}
-    read_record_t() : btr(NULL), reader_pos(-1) {}
+    read_record_t(dbtuple *t, concurrent_btree *b) : tuple(t), btr(b) {}
+    read_record_t() : tuple(NULL), btr(NULL) {}
+    dbtuple *tuple;
     concurrent_btree *btr;
-    int reader_pos;
   };
-
+*/
   static event_counter g_evt_read_logical_deleted_node_search;
   static event_counter g_evt_read_logical_deleted_node_scan;
   static event_counter g_evt_dbtuple_write_search_failed;
@@ -292,6 +293,7 @@ protected:
   }
 
   typedef std::unordered_map<dbtuple*, concurrent_btree*> write_set_map;
+  //typedef std::vector<read_record_t> read_set_map;
   typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 
 public:

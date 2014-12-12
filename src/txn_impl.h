@@ -19,6 +19,7 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
+  ssn_register_tx(xid);
   xid_context *xc = xid_get_context(xid);
   RCU::rcu_enter();
   xc->begin = logger->cur_lsn();
@@ -37,6 +38,7 @@ transaction<Protocol, Traits>::~transaction()
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
+  ssn_deregister_tx(xid);
   write_set.clear();
   read_set.clear();
   RA::epoch_exit();
@@ -65,10 +67,9 @@ transaction<Protocol, Traits>::abort_impl()
   }
 
   for (auto &r : read_set) {
-    dbtuple *tuple = r.first;
-    ASSERT(tuple == reinterpret_cast<dbtuple *>(r.second->fetch_committed_version_at(tuple->oid, xid, LSN::from_ptr(tuple->clsn))));
+    ASSERT(r.first == reinterpret_cast<dbtuple *>(r.second->fetch_committed_version_at(r.first->oid, xid, LSN::from_ptr(r.first->clsn))));
     // remove myself from reader list
-    ssn_deregister_reader_tx(tuple);
+    ssn_deregister_reader_tx(r.first);//r.tuple);
   }
 
   // log discard
@@ -184,18 +185,16 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     ASSERT(overwritten_tuple->oid == tuple->oid);
 
     // need access stamp , i.e., who read this version that I'm trying to overwrite?
-    //XID *reader_xids = readers_reg.get_xid_list((uintptr_t)overwritten_tuple);
-    ASSERT(overwritten_tuple->rlist);
-    readers_registry::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
+    readers_list::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
     while (readers) {
       int i = __builtin_ctz(readers);
+      ASSERT(i >= 0 and i < 24);
       readers &= (readers-1);
-      XID xid = volatile_read(overwritten_tuple->rlist->xids[i]);
-      if (not xid._val or xid == xc->owner)
+      XID rxid = volatile_read(rlist.xids[i]);
+      if (not rxid._val or rxid == xc->owner)
         continue; // ignore invalid entries and ignore my own reads
-        
-      xid_context *reader_xc = xid_get_context(xid);
-      ASSERT(reader_xc->owner == xid);
+      xid_context *reader_xc = xid_get_context(rxid);
+      ASSERT(reader_xc->owner == rxid);
       LSN reader_end = volatile_read(reader_xc->end);
       // reader committed
       if (reader_end != INVALID_LSN and reader_end < clsn and wait_for_commit_result(reader_xc)) {
@@ -206,11 +205,13 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   }
 
   for (auto &r : read_set) {
-    dbtuple *tuple = r.first;
+    // skip writes (note we didn't remove the one in read set)
+    if (find_write_set(r.first) != write_set.end())
+        continue;
     // so tuple should be the committed version I read
-    ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    dbtuple *overwriter_tuple = (dbtuple *)r.second->fetch_overwriter(tuple->oid,
-                                                        LSN::from_ptr(tuple->clsn));
+    ASSERT(r.first->clsn.asi_type() == fat_ptr::ASI_LOG);
+    dbtuple *overwriter_tuple = (dbtuple *)r.second->fetch_overwriter(r.first->oid,
+                                                  LSN::from_ptr(r.first->clsn));
     if (not overwriter_tuple)
       continue;
 
@@ -222,6 +223,9 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     // overwriter in progress?
     if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
       xid_context *sucessor_xc = xid_get_context(XID::from_ptr(sucessor_clsn));
+      if (sucessor_xc->owner == xc->owner)  // myself
+          continue;
+
       if (sucessor_xc->owner != XID::from_ptr(sucessor_clsn))
         goto try_get_sucessor;
 
@@ -241,8 +245,8 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     }
     else {    // overwriter already fully committed (slsn available)
       ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
-      if (tuple->slsn < xc->succ)
-        xc->succ = tuple->slsn;
+      if (r.first->slsn < xc->succ)
+        xc->succ = r.first->slsn;
     }
   }
 
@@ -274,15 +278,14 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   }
 
   for (auto &r : read_set) {
-    dbtuple *tuple = r.first;
-    ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+    ASSERT(r.first->clsn.asi_type() == fat_ptr::ASI_LOG);
     LSN xlsn = INVALID_LSN;
     do {
-      xlsn = volatile_read(tuple->xlsn);
+      xlsn = volatile_read(r.first->xlsn);//r.tuple->xlsn);
     }
-    while (xlsn < clsn and not __sync_bool_compare_and_swap(&tuple->xlsn._val, xlsn._val, clsn._val));
+    while (xlsn < clsn and not __sync_bool_compare_and_swap(&r.first->xlsn._val, xlsn._val, clsn._val));
     // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
-    ssn_deregister_reader_tx(tuple);
+    ssn_deregister_reader_tx(r.first);
   }
 
   // done
@@ -312,8 +315,8 @@ transaction<Protocol, Traits>::si_commit()
   }
   
   // avoid cross init after goto do_abort
-  typename access_set_map::iterator it     = access_set.begin();
-  typename access_set_map::iterator it_end = access_set.end();
+  typename write_set_map::iterator it     = write_set.begin();
+  typename write_set_map::iterator it_end = write_set.end();
 
   INVARIANT(log);
   // get clsn, abort if failed
@@ -331,11 +334,9 @@ transaction<Protocol, Traits>::si_commit()
   // (traverse write-tuple)
   // stuff clsn in tuples in write-set
   for (; it != it_end; ++it) {
-    dbtuple* tuple = reinterpret_cast<dbtuple *>(it->first.tree_ptr->fetch_version(it->first.oid, xid));
-    if (it->second.is_write()) {
-      tuple->clsn = xc->end.to_log_ptr();
-      INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    }
+    dbtuple* tuple = it->first;
+    tuple->clsn = xc->end.to_log_ptr();
+    INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
 
   // done
@@ -422,7 +423,7 @@ transaction<Protocol, Traits>::do_tuple_read(
   FP_TRACE::print_access(xid, std::string("read"), (uintptr_t)btr_ptr, tuple, NULL);
 #endif
   // SSN stamps and check
-  if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG and find_write_set(tuple) == write_set.end()) {
+  if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
       xid_context* xc = xid_get_context(xid);
       ASSERT(xc);
       LSN v_clsn = LSN::from_ptr(tuple->clsn);
@@ -441,8 +442,6 @@ transaction<Protocol, Traits>::do_tuple_read(
       // already read a (then latest) version, then T2 comes to overwrite it).
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
-        ASSERT(tuple->rlist);
-        //if (likely(tuple->rlist))
         if (ssn_register_reader_tx(tuple, xid))
             read_set.emplace_back(tuple, btr_ptr);
       }
@@ -451,7 +450,6 @@ transaction<Protocol, Traits>::do_tuple_read(
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
   }
-
   return true;
 }
 

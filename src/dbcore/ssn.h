@@ -17,48 +17,33 @@ inline bool ssn_check_exclusion(xid_context *xc) {
     return true;
 }
 
-class readers_registry {
+struct readers_list {
 public:
-    typedef dbtuple::bitmap_t bitmap_t;  // _builtin_ctz needs it to be uint
-    typedef dbtuple::readers_list readers_list;
+    typedef dbtuple::rl_bitmap_t bitmap_t;
+    enum { XIDS_PER_READER_KEY=24 };
 
-private:
-    // maps dbtuple* to readers_list
-    std::unordered_map<uintptr_t, readers_list*> reg;
-    bool reg_lock;
+    // FIXME: on crossfire we basically won't have more than 24 concurrent
+    // transactions running (not to mention all as readers of a single
+    // version). If this doesn't hold (on some other machine e.g.), we need
+    // to consider how to handle overflows (one way is to consolidate all
+    // txs to one bit and let late comers to compare with this).
+    XID xids[XIDS_PER_READER_KEY];
 
-private:
-    void acquire_reg_lock()
-    {
-        while (__sync_lock_test_and_set(&reg_lock, true));
+    readers_list() {
+        memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
     }
-
-    void release_reg_lock()
-    {
-        __sync_synchronize();
-        reg_lock = false;
-    }
-
-public:
-    readers_registry() : reg_lock(false) {}
-    int register_tx(uintptr_t tuple, XID xid);
-    // return true if new entry was created
-    bool register_tx(dbtuple *tup, XID xid);
-    void deregister_tx(uintptr_t tuple, int pos);
-    void deregister_tx(dbtuple *tup);
-    XID* get_xid_list(uintptr_t tuple);
 };
 
 bool ssn_register_reader_tx(dbtuple *tup, XID xid);
 void ssn_deregister_reader_tx(dbtuple *tup);
-
+void ssn_register_tx(XID xid);
+void ssn_deregister_tx(XID xid);
 /* Return a bitmap with 1's representing active readers.
  */
 static inline 
-dbtuple::bitmap_t ssn_get_tuple_readers(dbtuple *tup) {
-    auto mask = dbtuple::bitmap_t(1) << dbtuple::XIDS_PER_READER_KEY;
-    return mask & ~volatile_read(tup->rl_bitmap);
+readers_list::bitmap_t ssn_get_tuple_readers(dbtuple *tup) {
+    return volatile_read(tup->rl_bitmap);
 }
 
-extern readers_registry readers_reg;
+extern readers_list rlist;
 };  // end of namespace

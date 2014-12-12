@@ -15,7 +15,7 @@
 #include "../spinbarrier.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-alloc.h"
-
+#include "../dbcore/ssn.h"
 #include <stdio.h>
 #include <sys/mman.h> // Needed for mlockall()
 #include <malloc.h>
@@ -87,6 +87,7 @@ public:
   virtual void
   run()
   {
+    assign_reader_bitmap_entry();
 	  // XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
 	RCU::rcu_register();
 	RA::ra_register();
@@ -97,6 +98,7 @@ public:
     load();
 	RA::ra_deregister();
 	RCU::rcu_deregister();
+    deassign_reader_bitmap_entry();
   }
 protected:
   inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
@@ -230,7 +232,7 @@ public:
   void run();
   void heap_prefault()
   {
-	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*10);		// 45G for 24 warehouses
+	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*40);		// 45G for 24 warehouses
 	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
 	  ALWAYS_ASSERT(p);
       ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));

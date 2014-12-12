@@ -7,7 +7,7 @@
 /** options */
 //#define TRACE_FOOTPRINT
 #define USE_PARALLEL_SSN
-#define TUPLE_PREFETCH
+//#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
 //#define DIE_ON_ABORT
 //#define TRAP_LARGE_ALLOOCATIONS

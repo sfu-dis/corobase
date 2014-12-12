@@ -43,41 +43,15 @@ extern std::string (*g_proto_version_str)(uint64_t v);
  */
 struct dbtuple {
 public:
-    enum { XIDS_PER_READER_KEY=24 };
-    typedef unsigned int bitmap_t;  // _builtin_ctz needs it to be uint
-    
-    struct readers_list {
-        // FIXME: on crossfire we basically won't have more than 24 concurrent
-        // transactions running (not to mention all as readers of a single
-        // version). If this doesn't hold (on some other machine e.g.), we need
-        // to consider how to handle overflows (one way is to consolidate all
-        // txs to one bit and let late comers to compare with this).
-        XID xids[XIDS_PER_READER_KEY];
-
-        readers_list(bitmap_t *bmap, XID init_xid) {
-            memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
-            xids[0] = init_xid;
-
-            // init the owner's bitmap to have all entries free (bit set)
-            *bmap = (bitmap_t(1) << XIDS_PER_READER_KEY) - 1;
-        }
-        readers_list(bitmap_t *bmap) {
-            memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
-            // init the owner's bitmap to have all entries free (bit set)
-            *bmap = (bitmap_t(1) << XIDS_PER_READER_KEY) - 1;
-        }
-
-        //FIXME: add_xid(XID xid);
-    };
-
   typedef size_t size_type;
   typedef std::string string_type;
+  typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
+
   oid_type oid;
   fat_ptr clsn;     // version creation stamp
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
-  readers_list *rlist;
-  bitmap_t rl_bitmap;
+  rl_bitmap_t rl_bitmap;   // bitmap of readers
   size_type size; // actual size of record
   uint8_t value_start[0];   // must be last field
 
@@ -94,7 +68,7 @@ private:
       clsn(NULL_PTR)
       , xlsn(INVALID_LSN)
       , slsn(INVALID_LSN)
-      , rlist(new readers_list(&rl_bitmap))
+      , rl_bitmap(rl_bitmap_t(0))
       , size(CheckBounds(size))
   {
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
