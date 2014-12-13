@@ -261,7 +261,6 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 			  max_alloc_sz);
   INVARIANT((alloc_sz - sizeof(dbtuple) - sizeof(object)) >= sz);
 
-try_expect_new:
   // Allocate a version
   char *p = NULL;
   p = reinterpret_cast<char*>(RA::allocate(alloc_sz));
@@ -284,12 +283,8 @@ try_expect_new:
   // it fails if somebody else acted faster to insert new, we then
   // (fall back to) with the normal update procedure.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-  if (expect_new) {
-    if (t.try_insert_new_tuple(&this->underlying_btree, k, version, writer))
+  if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, version, writer))
 		return;
-    expect_new = false;
-    goto try_expect_new;
-  }
 
   // do regular search
   typename concurrent_btree::value_type bv = 0;
