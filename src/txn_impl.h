@@ -61,13 +61,17 @@ transaction<Protocol, Traits>::abort_impl()
   INVARIANT(state() == TXN_ABRTD);
 
   for (auto &w : write_set) {
-    dbtuple *tuple = w.first;
+    if (not w.second.btr)   // for repeated overwrites
+        continue;
+    dbtuple *tuple = w.second.new_tuple;
     ASSERT(tuple);
     ASSERT(XID::from_ptr(tuple->clsn) == xid);
-    w.second->unlink_tuple(tuple->oid, (typename concurrent_btree::value_type)tuple);
+    w.second.btr->unlink_tuple(tuple->oid, (typename concurrent_btree::value_type)tuple);
   }
 
   for (auto &r : read_set) {
+    if (not write_set[r.tuple].btr)
+      continue;
     ASSERT(r.tuple == reinterpret_cast<dbtuple *>(r.btr->fetch_committed_version_at(r.tuple->oid, xid, LSN::from_ptr(r.tuple->clsn))));
     // remove myself from reader list
     ssn_deregister_reader_tx(r.tuple);
@@ -172,13 +176,15 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   // for writes, see if sb. has read the tuples - look at access lsn
 
   for (auto &w : write_set) {
-    dbtuple *tuple = w.first;
-    object *obj = (object *)((char *)tuple - sizeof(object));
-    if (obj->_next == NULL_PTR) // this is an insert
-      continue;
+    if (not w.second.btr)   // for repeated overwrites
+        continue;
+    dbtuple *tuple = w.second.new_tuple;
 
     // go to the committed version I (am about to) overwrote for the reader list
-    dbtuple *overwritten_tuple = (dbtuple *)((object *)obj->_next.offset())->payload();
+    dbtuple *overwritten_tuple = w.first;   // the key
+    if (overwritten_tuple == tuple) // insert, see do_tree_put for the rules
+      continue;
+
     ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     ASSERT(overwritten_tuple->oid == tuple->oid);
 
@@ -204,8 +210,9 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
   for (auto &r : read_set) {
     // skip writes (note we didn't remove the one in read set)
-    if (find_write_set(r.tuple) != write_set.end())
-        continue;
+    //if (find_write_set(r.tuple) != write_set.end())
+    if (not write_set[r.tuple].btr)
+      continue;
     // so tuple should be the committed version I read
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.tuple->oid,
@@ -260,10 +267,11 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
   // post-commit: stuff access stamps for reads; init new versions
   for (auto &w : write_set) {
-    dbtuple *tuple = w.first;
-    object *obj = (object *)((char *)tuple - sizeof(object));   // avoid begin_ptr, save one ptr chasing
-    if (obj->_next != NULL_PTR) {   // update, not insert
-      dbtuple *next_tuple = (dbtuple *)((object *)obj->_next.offset())->payload();
+    if (not w.second.btr)   // for repeated overwrites
+        continue;
+    dbtuple *tuple = w.second.new_tuple;
+    dbtuple *next_tuple = w.first;
+    if (tuple != next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
       volatile_write(next_tuple->slsn._val, xc->succ._val);
     }
@@ -376,7 +384,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
-  write_set[tuple] = btr;
+  write_set[tuple] = write_record_t(tuple, btr);
 #ifdef TRACE_FOOTPRINT  // FIXME: get stats on how much is empty???
   FP_TRACE::print_access(xid, std::string("insert"), (uintptr_t)btr, tuple, NULL);
 #endif
