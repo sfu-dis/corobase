@@ -289,7 +289,20 @@ protected:
     concurrent_btree *btr;
   };
 
-  typedef std::unordered_map<dbtuple*, concurrent_btree*> write_set_map;
+  struct write_record_t {
+    write_record_t(dbtuple *n, concurrent_btree *b) :
+        new_tuple(n), btr(b) {}
+    write_record_t() : new_tuple(NULL), btr(NULL) {}
+    dbtuple *new_tuple;
+    concurrent_btree *btr;
+  };
+
+  // key is committed version if it's an update;
+  // key is the new inserted version if it's an insert
+  // key is the new inserted version if it's an update of an insert
+  // ^^^^^ note in the above case, do_tree_put should mark btr as null
+  // for the older inserted tuple.
+  typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
   //typedef dense_hash_map<dbtuple *, concurrent_btree*> write_set_map;
   typedef std::vector<read_record_t> read_set_map;
   //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;

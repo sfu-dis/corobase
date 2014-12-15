@@ -335,23 +335,29 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // copy access stamp to new tuple from overwritten version
     // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xlsn._val, prev->xlsn._val);
+
+    // use the committed version as key, if not, use the new version
+    // this should cover the update of myself's insert too
+    dbtuple *key_tuple = NULL;
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {  // in-place update!
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
+      key_tuple = (dbtuple *)((object *)prev_obj->_next.offset())->payload();
+      if (not key_tuple) {  // update of myself's insert
+        t.write_set[prev].btr = NULL;
+        key_tuple = tuple;
+      }
+      RA::deallocate(prev_obj);
       ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
     }
     else {  // prev is committed head
       volatile_write(version->_next, fat_ptr::make(prev_obj, 0));
+      key_tuple = prev;
     }
+
+    t.write_set[key_tuple] = typename transaction<Transaction, Traits>::write_record_t(tuple, &this->underlying_btree);
 
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT((dbtuple *)this->underlying_btree.fetch_version(tuple->oid, t.xid) == tuple);
-    // update access set (note this is different from the ssn_write algo in
-    // the ssn paper, as we still need to add the latest version to the
-    // access set, tho we don't need a new access_record if it already exists)
-    t.write_set[tuple] = &this->underlying_btree;
-    if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {
-      RA::deallocate(prev_obj);
-    }
 
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
