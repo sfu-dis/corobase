@@ -303,7 +303,7 @@ protected:
   // ^^^^^ note in the above case, do_tree_put should mark btr as null
   // for the older inserted tuple.
   typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
-  //typedef dense_hash_map<dbtuple *, concurrent_btree*> write_set_map;
+  //typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
   typedef std::vector<read_record_t> read_set_map;
   //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 
