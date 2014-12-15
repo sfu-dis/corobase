@@ -54,6 +54,11 @@ public:
 		uint64_t* p = (uint64_t*)begin_ptr(oid);
 		return __sync_bool_compare_and_swap(p, old_head._ptr, new_head._ptr);
 	}
+
+    // The caller of this function (update_version) will return the old
+    // head, even for in-place update. So the caller of update_version
+    // (do_tree_put) will need to free that overwritten version
+    // as the tx needs to copy various stamps from the overwritten version.
 	bool put(oid_type oid, fat_ptr old_head, fat_ptr new_head, bool overwrite)
 	{
         // remove uncommitted overwritten version
@@ -64,16 +69,14 @@ public:
         if (overwrite) {
             object *old_desc = (object *)old_head.offset();
             volatile_write(new_desc->_next, old_desc->_next);
+            // I already claimed it, no need to use cas then
+            volatile_write(begin_ptr(oid)->_ptr, new_head._ptr);
+            return true;
         }
         else {
             volatile_write(new_desc->_next, old_head);
+            return __sync_bool_compare_and_swap((uint64_t *)begin_ptr(oid), old_head._ptr, new_head._ptr);
         }
-
-        // The caller of this function (update_version) will return the old
-        // head, even for in-place update. So the caller of update_version
-        // (do_tree_put) will need to free that overwritten version
-        // as the tx needs to copy various stamps from the overwritten version.
-        return __sync_bool_compare_and_swap((uint64_t *)begin_ptr(oid), old_head._ptr, new_head._ptr);
 	}
 
 	inline fat_ptr begin( oid_type oid )
