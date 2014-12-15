@@ -368,6 +368,7 @@ class leaf : public node_base<P> {
 
 		// drop to oid array 
 		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
+        // FIXME: tzwang: so this actually won't fail at alL??
 		while(not node_vector->put( oid, new_head ));
 
 		return n;

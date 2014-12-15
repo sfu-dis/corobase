@@ -102,12 +102,6 @@ class basic_table {
 		return node_vector;
 	}
 
-	inline oid_type insert_tuple( value_type val )
-	{
-		INVARIANT( tuple_vector );
-		return tuple_vector->insert( val );
-	}
-
     // return the overwritten version (could be an in-flight version!)
 	dbtuple *update_version(oid_type oid, object* new_desc, XID xid)
 	{
@@ -158,17 +152,30 @@ class basic_table {
 			switch (state)
 			{
 				// if committed and newer data, abort. if not, keep traversing
+                // FIXME: tzwang: so TXN_CMMTD and TXN_ABRTD do NOT necessarily
+                // mean it's safe now to install new version, because the head's
+                // clsn is still an XID, and is different from mine. Recall that
+                // this function returns the previous (maybe dirty) version, if
+                // we allowed install of new head here, in do_tree_put, we would
+                // get a prev tuple with a different XID other than mine. But
+                // do_tree_put will still think it got a repeated update (overwrite)
+                // case and try to update the write set with previously committed
+                // tuple_key, which of course isn't in the write_set, failing the
+                // assersions. So we might need to differentiate this case in
+                // do_tree_put to allow higher concurrency.
 				case TXN_CMMTD:
 					{
 						if ( end > visitor->begin )		// to prevent version branch( or lost update)
 							return false;
 						else
-							goto install;
+                            return false;
+							//goto install;
 					}
 
 					// aborted data. ignore
 				case TXN_ABRTD:
-					goto install;
+                    return false;
+					//goto install;
 
 					// dirty data
 				case TXN_EMBRYO:
@@ -257,10 +264,11 @@ install:
             dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
             auto clsn = volatile_read(version->clsn);
             ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
-            if (clsn.asi_type() == fat_ptr::ASI_XID)
+            if (clsn.asi_type() == fat_ptr::ASI_XID or LSN::from_ptr(clsn) > at_clsn)
                 continue;
             if (LSN::from_ptr(clsn) < at_clsn)
                 break;
+            ASSERT(LSN::from_ptr(clsn) == at_clsn);
             return (value_type)version;
         }
         return 0;
@@ -307,14 +315,15 @@ install:
 					goto start_over;
 				}
 
-#if CHECK_INVARIANTS
-                if (cur_obj->_next.offset())
-                    ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
-#endif
-
 				// dirty data made by me is visible!
-				if( owner == xid )
+				if( owner == xid ) {
 					goto out;
+#if CHECK_INVARIANTS
+                    // don't do this if it's not my own tuple!
+                    if (cur_obj->_next.offset())
+                        ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
+#endif
+                }
 
 				// invalid data
 				if( state != TXN_CMMTD)	   // only see committed data.

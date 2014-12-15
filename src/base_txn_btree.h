@@ -340,11 +340,17 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // this should cover the update of myself's insert too
     dbtuple *key_tuple = NULL;
     if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {  // in-place update!
+      ASSERT(XID::from_ptr(prev->clsn) == t.xid);
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
-      key_tuple = (dbtuple *)((object *)prev_obj->_next.offset())->payload();
-      if (not key_tuple) {  // update of myself's insert
-        t.write_set[prev].btr = NULL;
+      if (not prev_obj->_next.offset()) {    // update of myself's insert
+        ASSERT(t.write_set[prev].new_tuple == key_tuple and t.write_set[prev].btr == &this->underlying_btree);
         key_tuple = tuple;
+        t.write_set[prev].btr = NULL;
+      }
+      else {
+        key_tuple = (dbtuple *)((object *)prev_obj->_next.offset())->payload();
+        ASSERT(key_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(t.write_set[key_tuple].new_tuple == prev);
       }
       RA::deallocate(prev_obj);
       ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
@@ -355,6 +361,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     }
 
     t.write_set[key_tuple] = typename transaction<Transaction, Traits>::write_record_t(tuple, &this->underlying_btree);
+    ASSERT(t.write_set[key_tuple].new_tuple == tuple and t.write_set[key_tuple].btr == &this->underlying_btree);
 
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT((dbtuple *)this->underlying_btree.fetch_version(tuple->oid, t.xid) == tuple);
