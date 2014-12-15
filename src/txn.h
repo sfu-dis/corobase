@@ -39,6 +39,9 @@
 #include "ndb_type_traits.h"
 #include "object.h"
 
+//#include <sparsehash/dense_hash_map>
+//using google::dense_hash_map;
+
 using namespace TXN;
 
 // forward decl
@@ -112,9 +115,7 @@ public:
 
   // FIXME: tzwang: allocate td here
   transaction_base(uint64_t flags)
-    : xid(TXN::xid_alloc()),
-      log(logger->new_tx_log()),
-      reason(ABORT_REASON_NONE),
+    : reason(ABORT_REASON_NONE),
       flags(flags) {}
 
   transaction_base(const transaction_base &) = delete;
@@ -143,20 +144,6 @@ protected:
 
 public:
 
-  inline txn_state state() const
-  {
-    return TXN::xid_get_context(xid)->state;
-  }
-
-  // only fires during invariant checking
-  inline void
-  ensure_active()
-  {
-    if (state() == TXN_EMBRYO)
-      xid_get_context(xid)->state = TXN_ACTIVE;
-    INVARIANT(state() == TXN_ACTIVE);
-  }
-
   inline uint64_t
   get_flags() const
   {
@@ -164,14 +151,6 @@ public:
   }
 
 protected:
-/*
-  struct read_record_t {
-    read_record_t(dbtuple *t, concurrent_btree *b) : tuple(t), btr(b) {}
-    read_record_t() : tuple(NULL), btr(NULL) {}
-    dbtuple *tuple;
-    concurrent_btree *btr;
-  };
-*/
   static event_counter g_evt_read_logical_deleted_node_search;
   static event_counter g_evt_read_logical_deleted_node_scan;
   static event_counter g_evt_dbtuple_write_search_failed;
@@ -187,9 +166,6 @@ protected:
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe4, g_txn_commit_probe4_cg);
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
-
-  XID xid;
-  sm_tx_log* log;
 
   abort_reason reason;
   const uint64_t flags;
@@ -292,9 +268,31 @@ protected:
     return static_cast<const Protocol<Traits> *>(this);
   }
 
+  inline txn_state state() const
+  {
+    return TXN::xid_get_context(xid)->state;
+  }
+
+  // only fires during invariant checking
+  inline void
+  ensure_active()
+  {
+    if (state() == TXN_EMBRYO)
+      xid_get_context(xid)->state = TXN_ACTIVE;
+    INVARIANT(state() == TXN_ACTIVE);
+  }
+
+  struct read_record_t {
+    read_record_t(dbtuple *t, concurrent_btree *b) : tuple(t), btr(b) {}
+    read_record_t() : tuple(NULL), btr(NULL) {}
+    dbtuple *tuple;
+    concurrent_btree *btr;
+  };
+
   typedef std::unordered_map<dbtuple*, concurrent_btree*> write_set_map;
-  //typedef std::vector<read_record_t> read_set_map;
-  typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
+  //typedef dense_hash_map<dbtuple *, concurrent_btree*> write_set_map;
+  typedef std::vector<read_record_t> read_set_map;
+  //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 
 public:
 
@@ -314,7 +312,7 @@ public:
   // exception. 
   void __attribute__((noreturn))
   signal_abort(abort_reason r=ABORT_REASON_USER);
-  
+
   // if an abort has been signaled, perform the actual abort and clean
   // up. always succeeds, so caller should rethrow if needed.
   inline void
@@ -374,9 +372,11 @@ protected:
     return write_set.find(k);
   }
 
+  XID xid;
+  sm_tx_log* log;
+  string_allocator_type *sa;
   read_set_map read_set;
   write_set_map write_set;
-  string_allocator_type *sa;
 };
 
 class transaction_abort_exception : public std::exception {
@@ -395,24 +395,6 @@ public:
   }
 private:
   transaction_base::abort_reason r;
-};
-
-// XXX(stephentu): stupid hacks
-// XXX(stephentu): txn_epoch_sync is a misnomer
-template <template <typename> class Transaction>
-struct txn_epoch_sync {
-  // block until the next epoch
-  static inline void sync() {}
-  // finish any async jobs
-  static inline void finish() {}
-  // run this code when a benchmark worker finishes
-  static inline void thread_end() {}
-  // how many txns have we persisted in total, from
-  // the last reset invocation?
-  static inline std::pair<uint64_t, double>
-    compute_ntxn_persisted() { return {0, 0.0}; }
-  // reset the persisted counters
-  static inline void reset_ntxn_persisted() {}
 };
 
 #ifdef TRACE_FOOTPRINT

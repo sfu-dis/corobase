@@ -13,7 +13,7 @@ using namespace TXN;
 
 template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type &sa)
-  : transaction_base(flags), sa(&sa)
+  : transaction_base(flags), xid(TXN::xid_alloc()), log(logger->new_tx_log()), sa(&sa)
 {
   RA::epoch_enter();
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
@@ -21,9 +21,9 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #endif
   ssn_register_tx(xid);
   xid_context *xc = xid_get_context(xid);
+  //write_set.set_empty_key(NULL);
   RCU::rcu_enter();
   xc->begin = logger->cur_lsn();
-  RCU::rcu_enter();
   xc->end = INVALID_LSN;
   xc->state = TXN_EMBRYO;
 }
@@ -39,8 +39,9 @@ transaction<Protocol, Traits>::~transaction()
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
   ssn_deregister_tx(xid);
-  write_set.clear();
-  read_set.clear();
+  xid_free(xid);
+  //write_set.clear();
+  //read_set.clear();
   RA::epoch_exit();
 }
 
@@ -49,7 +50,6 @@ void
 transaction<Protocol, Traits>::signal_abort(abort_reason reason)
 {
   abort_trap(reason);
-  volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   throw transaction_abort_exception(reason);
 }
   
@@ -57,6 +57,7 @@ template <template <typename> class Protocol, typename Traits>
 void
 transaction<Protocol, Traits>::abort_impl()
 {
+  volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   INVARIANT(state() == TXN_ABRTD);
 
   for (auto &w : write_set) {
@@ -67,9 +68,9 @@ transaction<Protocol, Traits>::abort_impl()
   }
 
   for (auto &r : read_set) {
-    ASSERT(r.first == reinterpret_cast<dbtuple *>(r.second->fetch_committed_version_at(r.first->oid, xid, LSN::from_ptr(r.first->clsn))));
+    ASSERT(r.tuple == reinterpret_cast<dbtuple *>(r.btr->fetch_committed_version_at(r.tuple->oid, xid, LSN::from_ptr(r.tuple->clsn))));
     // remove myself from reader list
-    ssn_deregister_reader_tx(r.first);//r.tuple);
+    ssn_deregister_reader_tx(r.tuple);
   }
 
   // log discard
@@ -77,9 +78,6 @@ transaction<Protocol, Traits>::abort_impl()
   log->pre_commit();
   log->discard();
   RCU::rcu_exit();
-
-  // now safe to free XID
-  xid_free(xid);
 }
 
 namespace {
@@ -206,12 +204,12 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
   for (auto &r : read_set) {
     // skip writes (note we didn't remove the one in read set)
-    if (find_write_set(r.first) != write_set.end())
+    if (find_write_set(r.tuple) != write_set.end())
         continue;
     // so tuple should be the committed version I read
-    ASSERT(r.first->clsn.asi_type() == fat_ptr::ASI_LOG);
-    dbtuple *overwriter_tuple = (dbtuple *)r.second->fetch_overwriter(r.first->oid,
-                                                  LSN::from_ptr(r.first->clsn));
+    ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+    dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.tuple->oid,
+                                                  LSN::from_ptr(r.tuple->clsn));
     if (not overwriter_tuple)
       continue;
 
@@ -245,8 +243,8 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     }
     else {    // overwriter already fully committed (slsn available)
       ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
-      if (r.first->slsn < xc->succ)
-        xc->succ = r.first->slsn;
+      if (r.tuple->slsn < xc->succ)
+        xc->succ = r.tuple->slsn;
     }
   }
 
@@ -263,7 +261,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   // post-commit: stuff access stamps for reads; init new versions
   for (auto &w : write_set) {
     dbtuple *tuple = w.first;
-    object *obj = (object *)w.second->get_tuple_vector()->begin_ptr(tuple->oid)->offset();
+    object *obj = (object *)((char *)tuple - sizeof(object));   // avoid begin_ptr, save one ptr chasing
     if (obj->_next != NULL_PTR) {   // update, not insert
       dbtuple *next_tuple = (dbtuple *)((object *)obj->_next.offset())->payload();
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
@@ -278,18 +276,15 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   }
 
   for (auto &r : read_set) {
-    ASSERT(r.first->clsn.asi_type() == fat_ptr::ASI_LOG);
+    ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     LSN xlsn = INVALID_LSN;
     do {
-      xlsn = volatile_read(r.first->xlsn);//r.tuple->xlsn);
+      xlsn = volatile_read(r.tuple->xlsn);
     }
-    while (xlsn < clsn and not __sync_bool_compare_and_swap(&r.first->xlsn._val, xlsn._val, clsn._val));
+    while (xlsn < clsn and not __sync_bool_compare_and_swap(&r.tuple->xlsn._val, xlsn._val, clsn._val));
     // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
-    ssn_deregister_reader_tx(r.first);
+    ssn_deregister_reader_tx(r.tuple);
   }
-
-  // done
-  xid_free(xid);
 }
 #else
 template <template <typename> class Protocol, typename Traits>
@@ -338,9 +333,6 @@ transaction<Protocol, Traits>::si_commit()
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
-
-  // done
-  xid_free(xid);
 }
 #endif
 
