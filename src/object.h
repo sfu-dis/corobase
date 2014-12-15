@@ -48,11 +48,11 @@ public:
 
 	bool put( oid_type oid, fat_ptr new_head)
 	{
-		fat_ptr old_head = begin(oid);
+#if CHECK_INVARIANTS
 		object* new_desc = (object*)new_head.offset();
-		volatile_write( new_desc->_next, old_head);
-		uint64_t* p = (uint64_t*)begin_ptr(oid);
-		return __sync_bool_compare_and_swap(p, old_head._ptr, new_head._ptr);
+		ASSERT(not new_desc->_next.offset());
+#endif
+		return __sync_bool_compare_and_swap(&begin_ptr(oid)->_ptr, 0, new_head._ptr);
 	}
 
     // The caller of this function (update_version) will return the old
@@ -94,7 +94,21 @@ public:
 
 	void unlink( oid_type oid, T item )
 	{
-		object* target;
+        // Now the head is guaranteed to be the only dirty version
+        // because we unlink the overwritten dirty version in put,
+        // essentially this function ditches the head directly.
+        // Otherwise use the commented out old code.
+        fat_ptr head_ptr = begin(oid);
+        object *head = (object *)head_ptr.offset();
+        ASSERT(head->payload() == (char *)item);
+        ALWAYS_ASSERT(__sync_bool_compare_and_swap(&begin_ptr(oid)->_ptr, head_ptr._ptr, head->_next._ptr));
+        // FIXME: tzwang: also need to free the old head during GC
+        // Note that a race exists here: some reader might be using
+        // that old head in fetch_version while we do the above CAS.
+        // So we can't immediate deallocate it here right now.
+        return;
+#if 0
+        object* target;
 		fat_ptr prev;
 		fat_ptr* prev_next;
 
@@ -109,7 +123,7 @@ retry:
 				if( not __sync_bool_compare_and_swap( (uint64_t *)prev_next, prev._ptr, target->_next._ptr ) )
 					goto retry;
 
-				RA::deallocate( (void*)target );
+				//RA::deallocate( (void*)target );
 				return;
 			}
 			prev_next = &target->_next;	// only can be modified by current TX. volatile_read is not needed
@@ -119,6 +133,7 @@ retry:
 
 		if( !target )
 			ALWAYS_ASSERT(false);
+#endif
 	}
 
 	inline oid_type alloc()
