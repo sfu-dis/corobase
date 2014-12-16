@@ -596,11 +596,14 @@ const char* const upx_separated[] = {": ", ", "};
 
 void Json::hard_unparse(StringAccum &sa, const unparse_manipulator &m, int depth) const
 {
-    bool expanded;
+    bool expanded = false;
     const char* const* upx;
+    const char* dummy = "00";
     if (is_object() || is_array()) {
         expanded = depth < m.indent_depth() && unparse_is_complex();
         upx = expanded ? upx_expanded : (m.space_separator() ? upx_separated : upx_normal);
+    } else {
+      upx = &dummy;
     }
 
     if (is_object() && !u_.x.x)
