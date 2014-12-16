@@ -168,8 +168,7 @@ class basic_table {
 						if ( end > visitor->begin )		// to prevent version branch( or lost update)
 							return false;
 						else
-                            return false;
-							//goto install;
+							goto install;
 					}
 
 					// aborted data. ignore
