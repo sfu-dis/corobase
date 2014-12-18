@@ -166,14 +166,14 @@ class basic_table {
 				case TXN_CMMTD:
 					{
 						if ( end > visitor->begin )		// to prevent version branch( or lost update)
-							return false;
+							return NULL;
 						else
 							goto install;
 					}
 
 					// aborted data. ignore
 				case TXN_ABRTD:
-                    return false;
+                    return NULL;
 					//goto install;
 
 					// dirty data
@@ -186,12 +186,12 @@ class basic_table {
 							goto install;
                         }
 						else
-							return false;
+							return NULL;
 					}
 
 					// If this TX is committing, we shouldn't install new version!
 				case TXN_COMMITTING:
-					return false;
+					return NULL;
 				default:
 					ALWAYS_ASSERT( false );
 			}
@@ -203,7 +203,7 @@ class basic_table {
 			// aborted, but not yet reclaimed.
 			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
 			if ( LSN::from_ptr(clsn) > visitor->begin )
-				return false;
+				return NULL;
 			else
 				goto install;
 		}
