@@ -1707,14 +1707,14 @@ tpcc_worker::txn_credit_check()
 
 		// select * from customer with random C_ID
 		customer::key k_c;
-		customer::value v_c;
+		customer::value v_c_temp;
 		const uint customerID = GetCustomerId(r);
 		k_c.c_w_id = customerWarehouseID;
 		k_c.c_d_id = customerDistrictID;
 		k_c.c_id = customerID;
 		ALWAYS_ASSERT(tbl_customer(customerWarehouseID)->get(txn, Encode(obj_key0, k_c), obj_v));
-		Decode(obj_v, v_c);
-		checker::SanityCheckCustomer(&k_c, &v_c);
+		const customer::value* v_c = Decode(obj_v, v_c_temp);
+		checker::SanityCheckCustomer(&k_c, v_c);
 
 		// scan order
 		//		c_w_id = :w_id;
@@ -1764,11 +1764,12 @@ tpcc_worker::txn_credit_check()
 		}
 
 		// c_credit update
-		if( sum >= 5000 )
-			v_c.c_credit.assign("BC");
+		customer::value v_c_new(*v_c);
+		if( v_c_new.c_balance + sum >= 5000 )			// Threshold = 5K
+			v_c_new.c_credit.assign("BC");
 		else
-			v_c.c_credit.assign("GC");
-		tbl_customer(customerWarehouseID)->put(txn, Encode(str(), k_c), Encode(str(), v_c));
+			v_c_new.c_credit.assign("GC");
+		tbl_customer(customerWarehouseID)->put(txn, Encode(str(), k_c), Encode(str(), v_c_new));
 
 		measure_txn_counters(txn, "txn_credit_check");
 		db->commit_txn(txn);
