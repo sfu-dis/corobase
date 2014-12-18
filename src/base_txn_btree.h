@@ -339,7 +339,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // use the committed version as key, if not, use the new version
     // this should cover the update of myself's insert too
     dbtuple *key_tuple = NULL;
-    if (prev->clsn.asi_type() == fat_ptr::ASI_XID) {  // in-place update!
+    if (prev->clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev->clsn) == t.xid) {  // in-place update!
       ASSERT(XID::from_ptr(prev->clsn) == t.xid);
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       if (not prev_obj->_next.offset()) {    // update of myself's insert
