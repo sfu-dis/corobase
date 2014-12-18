@@ -210,7 +210,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   for (auto &r : read_set) {
     // skip writes (note we didn't remove the one in read set)
     //if (find_write_set(r.tuple) != write_set.end())
-    if (not write_set[r.tuple].btr)
+    if (write_set[r.tuple].btr)
       continue;
     // so tuple should be the committed version I read
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
