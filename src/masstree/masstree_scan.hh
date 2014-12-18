@@ -352,8 +352,8 @@ int basic_table<P>::scan(H helper,
 	case mystack_type::scan_emit:
 		{
 	    ++scancount;
-		value_type v;
-		v = fetch_version((oid_type)(entry.value()), xid);
+		dbtuple *v;
+		v = fetch_version(entry.value(), xid);
 		if (v) {
 			if (!scanner.visit_value(ka, v, ti))
 				goto done;

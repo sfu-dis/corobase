@@ -317,7 +317,7 @@ public:
                     const key_type &lower,
                     const key_type *upper,
                     search_range_callback &callback,
-                    size_type max_bytes_read = string_type::npos)
+                    size_type max_bytes_read = ~size_type(0))
   {
     key_reader_type kr;
     value_reader_type vr(max_bytes_read);
@@ -330,7 +330,7 @@ public:
                      const key_type &upper,
                      const key_type *lower,
                      search_range_callback &callback,
-                     size_type max_bytes_read = string_type::npos)
+                     size_type max_bytes_read = ~size_type(0))
   {
     key_reader_type kr;
     value_reader_type vr(max_bytes_read);
@@ -343,7 +343,7 @@ public:
                     const varkey &lower,
                     const varkey *upper,
                     search_range_callback &callback,
-                    size_type max_bytes_read = string_type::npos)
+                    size_type max_bytes_read = ~size_type(0))
   {
     key_type u;
     if (upper)
@@ -358,7 +358,7 @@ public:
                      const varkey &upper,
                      const varkey *lower,
                      search_range_callback &callback,
-                     size_type max_bytes_read = string_type::npos)
+                     size_type max_bytes_read = ~size_type(0))
   {
     key_type l;
     if (lower)
@@ -373,7 +373,7 @@ public:
                const key_type &lower,
                const key_type *upper,
                T &callback,
-               size_type max_bytes_read = string_type::npos)
+               size_type max_bytes_read = ~size_type(0))
   {
     type_callback_wrapper<T> w(&callback);
     search_range_call(t, lower, upper, w, max_bytes_read);
@@ -385,7 +385,7 @@ public:
                const varkey &lower,
                const varkey *upper,
                T &callback,
-               size_type max_bytes_read = string_type::npos)
+               size_type max_bytes_read = ~size_type(0))
   {
     key_type u;
     if (upper)

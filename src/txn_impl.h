@@ -66,12 +66,12 @@ transaction<Protocol, Traits>::abort_impl()
     dbtuple *tuple = w.second.new_tuple;
     ASSERT(tuple);
     ASSERT(XID::from_ptr(tuple->clsn) == xid);
-    w.second.btr->unlink_tuple(tuple->oid, (typename concurrent_btree::value_type)tuple);
+    w.second.btr->unlink_tuple(tuple->oid, tuple);
   }
 
   for (auto &r : read_set) {
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    ASSERT(r.tuple == reinterpret_cast<dbtuple *>(r.btr->fetch_committed_version_at(r.tuple->oid, xid, LSN::from_ptr(r.tuple->clsn))));
+    ASSERT(r.tuple == r.btr->fetch_committed_version_at(r.tuple->oid, xid, LSN::from_ptr(r.tuple->clsn)));
     // remove myself from reader list
     ssn_deregister_reader_tx(r.tuple);
   }
@@ -368,10 +368,10 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
 
   typename concurrent_btree::insert_info_t insert_info;
   if (unlikely(!btr->insert_if_absent(
-          varkey(*key), (typename concurrent_btree::value_type) tuple, &insert_info))) {
+          varkey(*key), tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
-    tuple_vector->unlink(tuple->oid, (concurrent_btree::value_type)tuple);
+    tuple_vector->unlink(tuple->oid, tuple);
     return false;
   }
   VERBOSE(std::cerr << "insert_if_absent suceeded for key: " << util::hexify(key) << std::endl

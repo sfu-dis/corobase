@@ -43,7 +43,7 @@ extern std::string (*g_proto_version_str)(uint64_t v);
  */
 struct dbtuple {
 public:
-  typedef size_t size_type;
+  typedef uint32_t size_type;
   typedef std::string string_type;
   typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
 

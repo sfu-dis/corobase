@@ -166,15 +166,15 @@ class basic_table {
 				case TXN_CMMTD:
 					{
 						if ( end > visitor->begin )		// to prevent version branch( or lost update)
-							return false;
+							return 0;
 						else
-                            return false;
+                            return 0;
 							//goto install;
 					}
 
 					// aborted data. ignore
 				case TXN_ABRTD:
-                    return false;
+                    return 0;
 					//goto install;
 
 					// dirty data
@@ -187,12 +187,12 @@ class basic_table {
 							goto install;
                         }
 						else
-							return false;
+							return 0;
 					}
 
 					// If this TX is committing, we shouldn't install new version!
 				case TXN_COMMITTING:
-					return false;
+					return 0;
 				default:
 					ALWAYS_ASSERT( false );
 			}
@@ -204,7 +204,7 @@ class basic_table {
 			// aborted, but not yet reclaimed.
 			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
 			if ( LSN::from_ptr(clsn) > visitor->begin )
-				return false;
+				return 0;
 			else
 				goto install;
 		}
@@ -217,14 +217,14 @@ install:
 	}
 
 	// Sometimes, we don't care about version. We just need the first one!
-	inline value_type fetch_latest_version( oid_type oid ) const
+	inline dbtuple *fetch_latest_version( oid_type oid ) const
 	{
 		ALWAYS_ASSERT( tuple_vector );
 		fat_ptr head = tuple_vector->begin(oid);
 		if( head.offset() != 0 )
 		{
 			object* obj = (object*)head.offset();
-			return reinterpret_cast<value_type>( obj->payload() );
+			return reinterpret_cast<dbtuple*>( obj->payload() );
 		}
 		else
 			return NULL;
@@ -233,7 +233,7 @@ install:
     // return the sucessor of the version with rlsn (could be dirty)
     // used only for commit path, no xid checking etc.
     // for reads in commit path ONLY
-    value_type fetch_overwriter(oid_type oid, LSN rlsn) const
+    dbtuple *fetch_overwriter(oid_type oid, LSN rlsn) const
 	{
 		INVARIANT(tuple_vector);
 		ALWAYS_ASSERT( oid );
@@ -247,14 +247,14 @@ install:
             if (tuple_clsn < rlsn)
                 break;
             if (tuple_clsn == rlsn)
-                return (value_type)prev_obj->payload();
+                return (dbtuple*) prev_obj->payload();
             prev_obj = cur_obj;
         }
         return 0;
 	}
 
     // return the (latest) committed version (at verify_lsn)
-    value_type fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
+    dbtuple *fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
     {
         INVARIANT( tuple_vector );
         ALWAYS_ASSERT( oid );
@@ -269,12 +269,12 @@ install:
             if (LSN::from_ptr(clsn) < at_clsn)
                 break;
             ASSERT(LSN::from_ptr(clsn) == at_clsn);
-            return (value_type)version;
+            return version;
         }
         return 0;
     }
 
-	value_type fetch_version( oid_type oid, XID xid ) const
+	dbtuple *fetch_version( oid_type oid, XID xid ) const
 	{
 		INVARIANT( tuple_vector );
 		ALWAYS_ASSERT( oid );
@@ -369,7 +369,7 @@ install:
                 cur_obj = (object *)cur_obj->_next;
             }
 */
-            return (value_type)ret_ver;
+            return ret_ver;
 		}
 
 		// No Visible records
@@ -392,7 +392,7 @@ install:
 		return NULL;
 	}
 
-	inline void unlink_tuple( oid_type oid, value_type item )
+	inline void unlink_tuple( oid_type oid, dbtuple *item )
 	{
 		INVARIANT( tuple_vector );
 		INVARIANT( oid );

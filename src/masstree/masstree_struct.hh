@@ -106,10 +106,6 @@ class node_base : public make_nodeversion<P>::type {
 
 	}
     }
-    static inline base_type* parent_for_layer_root(base_type* higher_layer) {
-        (void) higher_layer;
-        return 0;
-    }
     static inline bool parent_exists(base_type* p) {
         return p != 0;
     }
@@ -266,10 +262,6 @@ class leafvalue {
 	u_.x = reinterpret_cast<uintptr_t>(n);
     }
 
-	leafvalue(oid_type oid)
-	{
-		u_.o = oid;
-	}
     static leafvalue<P> make_empty() {
 	return leafvalue<P>(value_type());
     }
@@ -377,7 +369,7 @@ class leaf : public node_base<P> {
     static leaf<P>* make_root(int ksufsize, leaf<P>* parent, threadinfo& ti, basic_table<P>* table) {
         leaf<P>* n = make(ksufsize, parent ? parent->node_ts_ : 0, ti, table);
         n->next_oid_ = n->prev_oid_ = 0;
-        n->parent_oid_ = reinterpret_cast<oid_type>(node_base<P>::parent_for_layer_root(parent));
+        n->parent_oid_ = 0;
         n->mark_root();
         return n;
     }
