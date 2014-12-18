@@ -9,6 +9,19 @@
 
 using namespace TXN;
 
+/* Versions with more than 2.5 billion LSN delta from current are
+   "old" and treated as read-mode. Readers do not apply SSN to these
+   tuples, and writers (expected to be rare) must assume that the
+   tuple has been read by a transaction that committed just before the
+   writer. The upside is that readers pay vastly less than normal; the
+   downside is this effectively means that any transaction that
+   overwrites an old version cannot read under other committed
+   overwrites: any meaningful sstamp would violate the exclusion
+   window.
+ */
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
+static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
+
 // base definitions
 
 template <template <typename> class Protocol, typename Traits>
@@ -188,6 +201,11 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     //ASSERT(overwritten_tuple->oid == tuple->oid);
 
+    /* for old tuples, just assume xstamp = cstamp-1 otherwise, check
+       reader list and such
+     */
+    int64_t age = xc->begin.offset() - overwritten_tuple->clsn.offset();
+    if (age < OLD_VERSION_THRESHOLD) {
     // need access stamp , i.e., who read this version that I'm trying to overwrite?
     readers_list::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
     while (readers) {
@@ -205,6 +223,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         if (xc->pstamp < reader_end)
           xc->pstamp = reader_end;
       }
+    }
     }
     else {
         // pstamp can't be larger than this, no need to check
@@ -435,6 +454,8 @@ transaction<Protocol, Traits>::do_tuple_read(
       xid_context* xc = xid_get_context(xid);
       ASSERT(xc);
       auto v_clsn = tuple->clsn.offset();
+      int64_t age = xc->begin.offset() - v_clsn;
+      if (age < OLD_VERSION_THRESHOLD) {
       // \eta - largest predecessor. So if I read this tuple, I should commit
       // after the tuple's creator (trivial, as this is committed version, so
       // this tuple's clsn can only be a predecessor of me): so just update
@@ -458,6 +479,7 @@ transaction<Protocol, Traits>::do_tuple_read(
       
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
+      }
   }
   return true;
 }
