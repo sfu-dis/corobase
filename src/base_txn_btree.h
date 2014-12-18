@@ -324,16 +324,16 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // access stamp to tell if the read happened.
     xid_context* xc = xid_get_context(t.xid);
     ASSERT(xc);
-    LSN prev_xlsn = volatile_read(prev->xlsn);
-    if (xc->pred < prev_xlsn)
-      xc->pred = prev_xlsn;
+    auto prev_xstamp = volatile_read(prev->xstamp);
+    if (xc->pstamp < prev_xstamp)
+      xc->pstamp = prev_xstamp;
 
     if (not ssn_check_exclusion(xc))
       t.signal_abort();
 
     // copy access stamp to new tuple from overwritten version
     // (no need to copy sucessor lsn (slsn))
-    volatile_write(tuple->xlsn._val, prev->xlsn._val);
+    volatile_write(tuple->xstamp, prev->xstamp);
 
     // use the committed version as key, if not, use the new version
     // this should cover the update of myself's insert too

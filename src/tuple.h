@@ -48,8 +48,8 @@ public:
   typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
 
   fat_ptr clsn;     // version creation stamp
-  LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
-  LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits
+  uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
+  uint64_t sstamp;         // successor (overwriter) stamp (\pi), updated when writer commits
   rl_bitmap_t rl_bitmap;   // bitmap of readers
   size_type size; // actual size of record
   uint8_t value_start[0];   // must be last field
@@ -65,8 +65,8 @@ private:
   dbtuple(size_type size)
     :
       clsn(NULL_PTR)
-      , xlsn(INVALID_LSN)
-      , slsn(INVALID_LSN)
+      , xstamp(0)
+      , sstamp(0)
       , rl_bitmap(rl_bitmap_t(0))
       , size(CheckBounds(size))
   {

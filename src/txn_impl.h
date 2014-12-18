@@ -167,6 +167,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   RCU::rcu_enter();
   xc->end = log->pre_commit();
   LSN clsn = xc->end;
+  auto cstamp = clsn.offset();
   if (xc->end == INVALID_LSN)
     signal_abort(ABORT_REASON_INTERNAL);
 
@@ -198,12 +199,16 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         continue; // ignore invalid entries and ignore my own reads
       xid_context *reader_xc = xid_get_context(rxid);
       ASSERT(reader_xc->owner == rxid);
-      LSN reader_end = volatile_read(reader_xc->end);
+      auto reader_end = volatile_read(reader_xc->end).offset();
       // reader committed
-      if (reader_end != INVALID_LSN and reader_end < clsn and wait_for_commit_result(reader_xc)) {
-        if (xc->pred < reader_end)
-          xc->pred = reader_end;
+      if (reader_end and reader_end < cstamp and wait_for_commit_result(reader_xc)) {
+        if (xc->pstamp < reader_end)
+          xc->pstamp = reader_end;
       }
+    }
+    else {
+        // pstamp can't be larger than this, no need to check
+        xc->pstamp = cstamp - 1;
     }
   }
 
@@ -233,24 +238,24 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       if (sucessor_xc->owner != XID::from_ptr(sucessor_clsn))
         goto try_get_sucessor;
 
-      LSN sucessor_end = volatile_read(sucessor_xc->end);
+      auto sucessor_end = volatile_read(sucessor_xc->end).offset();
       // overwriter might haven't committed, be serialized after me, or before me
-      if (sucessor_end == INVALID_LSN) // not even in precommit, don't bother
+      if (not sucessor_end) // not even in precommit, don't bother
           ;
-      else if (sucessor_end > clsn)    // serialzed after me, (dependency trivially satisfied as I as the reader will (hopefully) commit first)
+      else if (sucessor_end > cstamp)    // serialzed after me, (dependency trivially satisfied as I as the reader will (hopefully) commit first)
           ;
       else {
         if (wait_for_commit_result(sucessor_xc)) {    // either wait or give conservative estimation
           // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
-          if (sucessor_end < xc->succ)
-            xc->succ = sucessor_end;
+          if (sucessor_end < xc->sstamp)
+            xc->sstamp = sucessor_end;
         } // otherwise aborted, ignore
       }
     }
     else {    // overwriter already fully committed (slsn available)
       ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
-      if (r.tuple->slsn < xc->succ)
-        xc->succ = r.tuple->slsn;
+      if (r.tuple->sstamp < xc->sstamp)
+          xc->sstamp = r.tuple->sstamp;
     }
   }
 
@@ -272,25 +277,25 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     dbtuple *next_tuple = w.first;
     if (tuple != next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
-      volatile_write(next_tuple->slsn._val, xc->succ._val);
+      volatile_write(next_tuple->sstamp, xc->sstamp);
     }
     tuple->clsn = clsn.to_log_ptr();
     //ASSERT(readers_reg.count_readers((void *)it->first.tree_ptr, it->first.oid, LSN::from_ptr(tuple->clsn)) == 0);
     //^^^^^ the above isn't totally true: to make it is, we need to provide xid to count_readers to only include
     //those that are older than me.
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    volatile_write(tuple->xlsn._val, clsn._val);
+    volatile_write(tuple->xstamp, cstamp);
   }
 
   for (auto &r : read_set) {
     if (write_set[r.tuple].btr)
       continue;
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    LSN xlsn = INVALID_LSN;
+    uint64_t xlsn;
     do {
-      xlsn = volatile_read(r.tuple->xlsn);
+      xlsn = volatile_read(r.tuple->xstamp);
     }
-    while (xlsn < clsn and not __sync_bool_compare_and_swap(&r.tuple->xlsn._val, xlsn._val, clsn._val));
+    while (xlsn < cstamp and not __sync_bool_compare_and_swap(&r.tuple->xstamp, xlsn, cstamp));
     // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
     ssn_deregister_reader_tx(r.tuple);
   }
@@ -429,13 +434,13 @@ transaction<Protocol, Traits>::do_tuple_read(
   if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
       xid_context* xc = xid_get_context(xid);
       ASSERT(xc);
-      LSN v_clsn = LSN::from_ptr(tuple->clsn);
+      auto v_clsn = tuple->clsn.offset();
       // \eta - largest predecessor. So if I read this tuple, I should commit
       // after the tuple's creator (trivial, as this is committed version, so
       // this tuple's clsn can only be a predecessor of me): so just update
       // my \eta if needed.
-      if (xc->pred < v_clsn)
-          xc->pred = v_clsn;
+      if (xc->pstamp < v_clsn)
+          xc->pstamp = v_clsn;
 
       // Now if this tuple was overwritten by somebody, this means if I read
       // it, that overwriter will have anti-dependency on me (I must be
@@ -443,13 +448,14 @@ transaction<Protocol, Traits>::do_tuple_read(
       // successor of mine), so I need to update my \pi for the SSN check.
       // This is the easier case of anti-dependency (the other case is T1
       // already read a (then latest) version, then T2 comes to overwrite it).
-      LSN tuple_slsn = volatile_read(tuple->slsn);
-      if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
+      auto tuple_sstamp = volatile_read(tuple->sstamp);
+      if (not tuple_sstamp) {   // no overwrite so far
         if (ssn_register_reader_tx(tuple, xid))
             read_set.emplace_back(tuple, btr_ptr, oid);
       }
-      else if (xc->succ > tuple_slsn)
-        xc->succ = tuple_slsn; // \pi
+      else if (xc->sstamp > tuple_sstamp)
+        xc->sstamp = tuple_sstamp; // \pi
+      
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
   }

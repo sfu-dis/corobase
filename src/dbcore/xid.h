@@ -13,8 +13,8 @@ struct xid_context {
     XID owner;
     LSN begin;
     LSN end;
-    LSN pred; // youngest predecessor (\eta)
-    LSN succ; // oldest successor (\pi)
+    uint64_t pstamp; // youngest predecessor (\eta)
+    uint64_t sstamp; // oldest successor (\pi)
     txn_state state;
 };
 

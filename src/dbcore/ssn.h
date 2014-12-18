@@ -10,9 +10,9 @@ void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
 
 inline bool ssn_check_exclusion(xid_context *xc) {
-    if (xc->succ != INVALID_LSN and xc->pred >= xc->succ) printf("ssn exclusion failure\n");
-    if (xc->succ != INVALID_LSN and xc->pred != INVALID_LSN)
-        return xc->pred < xc->succ; // \eta - predecessor, \pi - sucessor
+    if (xc->sstamp and xc->pstamp >= xc->sstamp) printf("ssn exclusion failure\n");
+    if (xc->sstamp and xc->pstamp)
+        return xc->pstamp < xc->sstamp; // \eta - predecessor, \pi - sucessor
         // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
     return true;
 }
