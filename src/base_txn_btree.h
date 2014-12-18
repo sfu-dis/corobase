@@ -111,7 +111,7 @@ protected:
 
     virtual void on_resp_node(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
     virtual bool invoke(const concurrent_btree *btr_ptr,
-                        const typename concurrent_btree::string_type &k, dbtuple* v,
+                        const typename concurrent_btree::string_type &k, oid_type o, dbtuple* v,
                         const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 
   private:
@@ -186,10 +186,11 @@ base_txn_btree<Transaction, P>::do_search(
 
   // search the underlying btree to map k=>(btree_node|tuple)
   dbtuple * tuple{};
+  oid_type oid;
   concurrent_btree::versioned_node_t search_info;
-  const bool found = this->underlying_btree.search(varkey(*key_str), tuple, t.xid, &search_info);
+  const bool found = this->underlying_btree.search(varkey(*key_str), oid, tuple, t.xid, &search_info);
   if (found) {
-    return t.do_tuple_read(&this->underlying_btree, tuple, value_reader);
+    return t.do_tuple_read(&this->underlying_btree, oid, tuple, value_reader);
   } else {
     return false;
   }
@@ -287,7 +288,8 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   // do regular search
   dbtuple * bv = 0;
-  if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
+  oid_type oid = 0;
+  if (!this->underlying_btree.search(varkey(*k), oid, bv, t.xid)) {
     // only version is uncommitted -> cannot overwrite it
     const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
     t.signal_abort(r);
@@ -307,9 +309,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // result (either succeeded or failed, i.e., need to abort).
 
 
-  // OID from previous probe
-  tuple->oid = reinterpret_cast<dbtuple*>(bv)->oid;
-  dbtuple *prev = this->underlying_btree.update_version(tuple->oid, version, t.xid);
+  dbtuple *prev = this->underlying_btree.update_version(oid, version, t.xid);
 
   if (prev) { // succeeded
 #ifdef TRACE_FOOTPRINT
@@ -359,11 +359,11 @@ void base_txn_btree<Transaction, P>::do_tree_put(
       key_tuple = prev;
     }
 
-    t.write_set[key_tuple] = typename transaction<Transaction, Traits>::write_record_t(tuple, &this->underlying_btree);
+    t.write_set[key_tuple] = typename transaction<Transaction, Traits>::write_record_t(tuple, &this->underlying_btree, oid);
     ASSERT(t.write_set[key_tuple].new_tuple == tuple and t.write_set[key_tuple].btr == &this->underlying_btree);
 
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
-    ASSERT((dbtuple *)this->underlying_btree.fetch_version(tuple->oid, t.xid) == tuple);
+    ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xid) == tuple);
 
     INVARIANT(log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
@@ -372,7 +372,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     auto record_size = align_up(sz);
     auto size_code = encode_size_aligned(record_size);
     t.log->log_update(1,
-                      tuple->oid,
+                      oid,
                       fat_ptr::make(tuple, size_code),
                       DEFAULT_ALIGNMENT_BITS,
                       NULL);
@@ -405,15 +405,14 @@ base_txn_btree<Transaction, P>
   ::txn_search_range_callback<Traits, Callback, KeyReader, ValueReader>
   ::invoke(
     const concurrent_btree *btr_ptr,
-    const typename concurrent_btree::string_type &k, dbtuple *v,
+    const typename concurrent_btree::string_type &k, oid_type o, dbtuple *v,
     const typename concurrent_btree::node_opaque_t *n, uint64_t version)
 {
   t->ensure_active();
   VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x" << util::hexify(n)
                     << ", version=" << version << ">" << std::endl
                     << "  " << *((dbtuple *) v) << std::endl);
-  dbtuple *tuple = reinterpret_cast<dbtuple *>(v);
-  if (t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), tuple, *value_reader))
+  if (t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), o, v, *value_reader))
     return caller_callback->invoke(
         (*key_reader)(k), value_reader->results());
   return true;

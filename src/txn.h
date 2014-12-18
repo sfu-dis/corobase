@@ -283,18 +283,21 @@ protected:
   }
 
   struct read_record_t {
-    read_record_t(dbtuple *t, concurrent_btree *b) : tuple(t), btr(b) {}
-    read_record_t() : tuple(NULL), btr(NULL) {}
+    read_record_t(dbtuple *n, concurrent_btree *b, oid_type o) :
+        tuple(n), btr(b), oid(o) {}
+    read_record_t() : tuple(NULL), btr(NULL), oid(0) {}
     dbtuple *tuple;
     concurrent_btree *btr;
+    oid_type oid;
   };
 
   struct write_record_t {
-    write_record_t(dbtuple *n, concurrent_btree *b) :
-        new_tuple(n), btr(b) {}
-    write_record_t() : new_tuple(NULL), btr(NULL) {}
+    write_record_t(dbtuple *n, concurrent_btree *b, oid_type o) :
+        new_tuple(n), btr(b), oid(o) {}
+    write_record_t() : new_tuple(NULL), btr(NULL), oid(0) {}
     dbtuple *new_tuple;
     concurrent_btree *btr;
+    oid_type oid;
   };
 
   // key is committed version if it's an update;
@@ -367,7 +370,7 @@ protected:
   // within this transaction context
   template <typename ValueReader>
   bool
-  do_tuple_read(concurrent_btree *btr_ptr, dbtuple *tuple, ValueReader &value_reader);
+  do_tuple_read(concurrent_btree *btr_ptr, oid_type oid, dbtuple *tuple, ValueReader &value_reader);
 
 public:
   // expected public overrides

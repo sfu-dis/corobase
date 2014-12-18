@@ -47,7 +47,6 @@ public:
   typedef std::string string_type;
   typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
 
-  oid_type oid;
   fat_ptr clsn;     // version creation stamp
   LSN xlsn;         // access (reader) stamp (\eta), updated when reader commits
   LSN slsn;         // successor (overwriter) stamp (\pi), updated when writer commits

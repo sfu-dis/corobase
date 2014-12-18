@@ -66,12 +66,12 @@ transaction<Protocol, Traits>::abort_impl()
     dbtuple *tuple = w.second.new_tuple;
     ASSERT(tuple);
     ASSERT(XID::from_ptr(tuple->clsn) == xid);
-    w.second.btr->unlink_tuple(tuple->oid, tuple);
+    w.second.btr->unlink_tuple(w.second.oid, tuple);
   }
 
   for (auto &r : read_set) {
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    ASSERT(r.tuple == r.btr->fetch_committed_version_at(r.tuple->oid, xid, LSN::from_ptr(r.tuple->clsn)));
+    ASSERT(r.tuple == r.btr->fetch_committed_version_at(r.oid, xid, LSN::from_ptr(r.tuple->clsn)));
     // remove myself from reader list
     ssn_deregister_reader_tx(r.tuple);
   }
@@ -185,7 +185,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       continue;
 
     ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    ASSERT(overwritten_tuple->oid == tuple->oid);
+    //ASSERT(overwritten_tuple->oid == tuple->oid);
 
     // need access stamp , i.e., who read this version that I'm trying to overwrite?
     readers_list::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
@@ -214,7 +214,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       continue;
     // so tuple should be the committed version I read
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.tuple->oid,
+    dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.oid,
                                                   LSN::from_ptr(r.tuple->clsn));
     if (not overwriter_tuple)
       continue;
@@ -361,17 +361,17 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   char*p = (char*)value;
   dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
   tuple_vector_type* tuple_vector = btr->get_tuple_vector();
-  tuple->oid = tuple_vector->alloc();
+  oid_type oid = tuple_vector->alloc();
   fat_ptr new_head = fat_ptr::make( value, INVALID_SIZE_CODE, 0);
-  if (not tuple_vector->put(tuple->oid, new_head))
+  if (not tuple_vector->put(oid, new_head))
     return false;
 
   typename concurrent_btree::insert_info_t insert_info;
   if (unlikely(!btr->insert_if_absent(
-          varkey(*key), tuple, &insert_info))) {
+          varkey(*key), oid, tuple, &insert_info))) {
     VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
-    tuple_vector->unlink(tuple->oid, tuple);
+    tuple_vector->unlink(oid, tuple);
     return false;
   }
   VERBOSE(std::cerr << "insert_if_absent suceeded for key: " << util::hexify(key) << std::endl
@@ -383,11 +383,11 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   auto record_size = align_up((size_t)tuple->size);
   auto size_code = encode_size_aligned(record_size);
   log->log_insert(1,
-                  tuple->oid,
+                  oid,
                   fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
-  write_set[tuple] = write_record_t(tuple, btr);
+  write_set[tuple] = write_record_t(tuple, btr, oid);
 #ifdef TRACE_FOOTPRINT  // FIXME: get stats on how much is empty???
   FP_TRACE::print_access(xid, std::string("insert"), (uintptr_t)btr, tuple, NULL);
 #endif
@@ -398,7 +398,7 @@ template <template <typename> class Protocol, typename Traits>
 template <typename ValueReader>
 bool
 transaction<Protocol, Traits>::do_tuple_read(
-    concurrent_btree *btr_ptr, dbtuple *tuple, ValueReader &value_reader)
+    concurrent_btree *btr_ptr, oid_type oid, dbtuple *tuple, ValueReader &value_reader)
 {
   INVARIANT(tuple);
   ++evt_local_search_lookups;
@@ -446,7 +446,7 @@ transaction<Protocol, Traits>::do_tuple_read(
       LSN tuple_slsn = volatile_read(tuple->slsn);
       if (tuple_slsn == INVALID_LSN) {   // no overwrite so far
         if (ssn_register_reader_tx(tuple, xid))
-            read_set.emplace_back(tuple, btr_ptr);
+            read_set.emplace_back(tuple, btr_ptr, oid);
       }
       else if (xc->succ > tuple_slsn)
         xc->succ = tuple_slsn; // \pi
