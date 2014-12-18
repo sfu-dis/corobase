@@ -353,9 +353,10 @@ int basic_table<P>::scan(H helper,
 		{
 	    ++scancount;
 		dbtuple *v;
-		v = fetch_version(entry.value(), xid);
+                oid_type o = entry.value();
+		v = fetch_version(o, xid);
 		if (v) {
-			if (!scanner.visit_value(ka, v, ti))
+			if (!scanner.visit_value(ka, o, v, ti))
 				goto done;
 		}
 	    stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);

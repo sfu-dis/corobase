@@ -290,7 +290,7 @@ public:
           /** NOTE: the public interface assumes that the caller has taken care
            * of setting up RCU */
 
-  inline bool search(const key_type &k, dbtuple* &v, XID xid,
+  inline bool search(const key_type &k, oid_type &o, dbtuple* &v, XID xid,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -315,7 +315,7 @@ public:
     /**
      * This key/value pair was read from node n @ version
      */
-    virtual bool  invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, dbtuple *v,
+    virtual bool  invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, oid_type o, dbtuple *v,
                         const node_opaque_t *n, uint64_t version) = 0;
   };
 
@@ -439,7 +439,7 @@ public:
    * if k inserted, false otherwise (k exists already)
    */
   inline bool
-  insert_if_absent(const key_type &k, dbtuple * v,
+  insert_if_absent(const key_type &k, oid_type o, dbtuple * v,
                    insert_info_t *insert_info = NULL);
 
   /**
@@ -617,7 +617,7 @@ inline size_t mbtree<P>::size() const
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, dbtuple* &v, XID xid,
+inline bool mbtree<P>::search(const key_type &k, oid_type &o, dbtuple* &v, XID xid,
                               versioned_node_t *search_info) const
 {
   threadinfo ti;
@@ -625,7 +625,8 @@ inline bool mbtree<P>::search(const key_type &k, dbtuple* &v, XID xid,
   bool found = lp.find_unlocked(ti);
   if (found)
   {
-	  v = fetch_version(lp.value(), xid);
+	  o = lp.value();
+	  v = fetch_version(o, xid);
 	  if( !v )
 		  found = false;
   }
@@ -657,7 +658,7 @@ inline bool mbtree<P>::insert(const key_type &k, dbtuple * v,
 }
 
 template <typename P>
-inline bool mbtree<P>::insert_if_absent(const key_type &k, dbtuple * v,
+inline bool mbtree<P>::insert_if_absent(const key_type &k, oid_type o, dbtuple * v,
                                         insert_info_t *insert_info)
 {
   threadinfo ti;
@@ -667,8 +668,7 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, dbtuple * v,
 insert_new:
 	found = false;
     ti.advance_timestamp(lp.node_timestamp());
-	dbtuple* tuple_ptr = reinterpret_cast<dbtuple*>(v);
-	lp.value() = (value_type)(tuple_ptr->oid);
+	lp.value() = o;
     if (insert_info) {
       insert_info->node = lp.node();
       insert_info->old_version = lp.previous_full_version_value();
@@ -753,14 +753,14 @@ class mbtree<P>::low_level_search_range_scanner
       this->check(iter, key);
   }
   bool visit_value(const Masstree::key<uint64_t>& key,
-                   dbtuple * value, threadinfo&) {
+                   oid_type oid, dbtuple * value, threadinfo&) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
           ( Reverse && bs >= key.full_string()))
         return false;
     }
-    return callback_.invoke(this->btr_ptr_, key.full_string(), value, this->n_, this->v_);
+    return callback_.invoke(this->btr_ptr_, key.full_string(), oid, value, this->n_, this->v_);
   }
  private:
   Masstree::leaf<P>* n_;
@@ -779,10 +779,10 @@ public:
   void on_resp_node(const node_opaque_t *n, uint64_t version) OVERRIDE {}
 
   bool
-  invoke(const string_type &k, dbtuple * v,
+  invoke(const string_type &k, oid_type o, dbtuple * v,
          const node_opaque_t *n, uint64_t version) OVERRIDE
   {
-    return callback_(k, v);
+    return callback_(k, o, v);
   }
 
  private:
