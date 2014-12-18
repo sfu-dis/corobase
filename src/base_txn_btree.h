@@ -111,7 +111,7 @@ protected:
 
     virtual void on_resp_node(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
     virtual bool invoke(const concurrent_btree *btr_ptr,
-                        const typename concurrent_btree::string_type &k, typename concurrent_btree::value_type v,
+                        const typename concurrent_btree::string_type &k, dbtuple* v,
                         const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 
   private:
@@ -185,11 +185,10 @@ base_txn_btree<Transaction, P>::do_search(
     key_writer.fully_materialize(true, t.string_allocator());
 
   // search the underlying btree to map k=>(btree_node|tuple)
-  typename concurrent_btree::value_type underlying_v{};
+  dbtuple * tuple{};
   concurrent_btree::versioned_node_t search_info;
-  const bool found = this->underlying_btree.search(varkey(*key_str), underlying_v, t.xid, &search_info);
+  const bool found = this->underlying_btree.search(varkey(*key_str), tuple, t.xid, &search_info);
   if (found) {
-    dbtuple *tuple = reinterpret_cast<dbtuple *>(underlying_v);
     return t.do_tuple_read(&this->underlying_btree, tuple, value_reader);
   } else {
     return false;
@@ -287,7 +286,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 		return;
 
   // do regular search
-  typename concurrent_btree::value_type bv = 0;
+  dbtuple * bv = 0;
   if (!this->underlying_btree.search(varkey(*k), bv, t.xid)) {
     // only version is uncommitted -> cannot overwrite it
     const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
@@ -406,7 +405,7 @@ base_txn_btree<Transaction, P>
   ::txn_search_range_callback<Traits, Callback, KeyReader, ValueReader>
   ::invoke(
     const concurrent_btree *btr_ptr,
-    const typename concurrent_btree::string_type &k, typename concurrent_btree::value_type v,
+    const typename concurrent_btree::string_type &k, dbtuple *v,
     const typename concurrent_btree::node_opaque_t *n, uint64_t version)
 {
   t->ensure_active();

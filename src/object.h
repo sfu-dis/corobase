@@ -16,7 +16,7 @@
 // each socket requests this many oids a time from global alloc
 #define OID_EXT_SIZE 8192
 
-typedef uint64_t oid_type;
+typedef uint32_t oid_type;
 
 struct dynarray;
 
@@ -92,7 +92,7 @@ public:
         return (fat_ptr*)(&_obj_table[oid * sizeof(fat_ptr)]);
     }
 
-	void unlink( oid_type oid, T item )
+	void unlink( oid_type oid, void *item )
 	{
         // Now the head is guaranteed to be the only dirty version
         // because we unlink the overwritten dirty version in put,
@@ -100,7 +100,7 @@ public:
         // Otherwise use the commented out old code.
         fat_ptr head_ptr = begin(oid);
         object *head = (object *)head_ptr.offset();
-        ASSERT(head->payload() == (char *)item);
+        ASSERT(head->payload() == item);
         ALWAYS_ASSERT(__sync_bool_compare_and_swap(&begin_ptr(oid)->_ptr, head_ptr._ptr, head->_next._ptr));
         // FIXME: tzwang: also need to free the old head during GC
         // Note that a race exists here: some reader might be using

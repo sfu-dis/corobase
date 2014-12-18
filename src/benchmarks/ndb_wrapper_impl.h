@@ -467,7 +467,7 @@ ndb_ordered_index<Transaction>::scan(
 #define MY_OP_X(a, b) \
   case a: \
     { \
-      auto t = cast< b >()(p); \
+      auto *t = cast< b >()(p); \
       btr.search_range_call(*t, start_key, end_key, c); \
       return; \
     }

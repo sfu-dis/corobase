@@ -70,7 +70,7 @@ bool tcursor<P>::gc_layer(threadinfo& ti)
 	}
 
 	node_type *child = in->fetch_node(in->child_oid_[0]);
-	child->set_parent(node_type::parent_for_layer_root(n_));
+	child->set_parent(0);
 	n_->lv_[kp_] = child ? child->oid : 0;
 	in->mark_split();
 	in->set_parent(child);	// ensure concurrent reader finds true root

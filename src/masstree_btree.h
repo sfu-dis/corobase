@@ -152,7 +152,7 @@ class simple_threadinfo {
 };
 
 struct masstree_params : public Masstree::nodeparams<> {
-  typedef uint8_t* value_type;
+  typedef oid_type value_type;
   typedef Masstree::value_print<value_type> value_print_type;
   typedef simple_threadinfo threadinfo_type;
   enum { RcuRespCaller = true }; // FIXME: tzwang: OK, silo's original code also set it to true
@@ -244,15 +244,15 @@ public:
   {
 	  return table_.update_version( oid, obj, xid );
   }
-  value_type fetch_overwriter(oid_type oid, LSN rlsn) const
+  dbtuple* fetch_overwriter(oid_type oid, LSN rlsn) const
   {
 	  return table_.fetch_overwriter(oid, rlsn);
   }
-  value_type fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
+  dbtuple* fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
   {
 	  return table_.fetch_committed_version_at(oid, xid, at_clsn);
   }
-  value_type fetch_version( oid_type oid, XID xid ) const
+  dbtuple* fetch_version( oid_type oid, XID xid ) const
   {
 	  return table_.fetch_version( oid, xid );
   }
@@ -260,11 +260,11 @@ public:
   {
 	  return table_.update_tuple( oid, val );
   }
-  inline value_type fetch_latest_version( oid_type oid ) const
+  inline dbtuple * fetch_latest_version( oid_type oid ) const
   {
 	  return table_.fetch_latest_version( oid );
   }
-  inline void unlink_tuple( oid_type oid, value_type item )
+  inline void unlink_tuple( oid_type oid, dbtuple* item )
   {
 	  table_.unlink_tuple( oid, item );
   }
@@ -290,7 +290,7 @@ public:
           /** NOTE: the public interface assumes that the caller has taken care
            * of setting up RCU */
 
-  inline bool search(const key_type &k, value_type &v, XID xid,
+  inline bool search(const key_type &k, dbtuple* &v, XID xid,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -315,7 +315,7 @@ public:
     /**
      * This key/value pair was read from node n @ version
      */
-    virtual bool invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, value_type v,
+    virtual bool  invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, dbtuple *v,
                         const node_opaque_t *n, uint64_t version) = 0;
   };
 
@@ -430,7 +430,7 @@ public:
    * is written into old_v
    */
   inline bool
-  insert(const key_type &k, value_type v,
+  insert(const key_type &k, dbtuple * v,
          value_type *old_v = NULL,
          insert_info_t *insert_info = NULL);
 
@@ -439,7 +439,7 @@ public:
    * if k inserted, false otherwise (k exists already)
    */
   inline bool
-  insert_if_absent(const key_type &k, value_type v,
+  insert_if_absent(const key_type &k, dbtuple * v,
                    insert_info_t *insert_info = NULL);
 
   /**
@@ -449,7 +449,7 @@ public:
    * is written into old_v
    */
   inline bool
-  remove(const key_type &k, value_type *old_v = NULL);
+  remove(const key_type &k, dbtuple* *old_v = NULL);
 
   /**
    * The tree walk API is a bit strange, due to the optimistic nature of the
@@ -617,7 +617,7 @@ inline size_t mbtree<P>::size() const
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
+inline bool mbtree<P>::search(const key_type &k, dbtuple* &v, XID xid,
                               versioned_node_t *search_info) const
 {
   threadinfo ti;
@@ -625,7 +625,7 @@ inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
   bool found = lp.find_unlocked(ti);
   if (found)
   {
-	  v = fetch_version((oid_type)(lp.value()), xid);
+	  v = fetch_version(lp.value(), xid);
 	  if( !v )
 		  found = false;
   }
@@ -635,7 +635,7 @@ inline bool mbtree<P>::search(const key_type &k, value_type &v, XID xid,
 }
 
 template <typename P>
-inline bool mbtree<P>::insert(const key_type &k, value_type v,
+inline bool mbtree<P>::insert(const key_type &k, dbtuple * v,
                               value_type *old_v,
                               insert_info_t *insert_info)
 {
@@ -657,7 +657,7 @@ inline bool mbtree<P>::insert(const key_type &k, value_type v,
 }
 
 template <typename P>
-inline bool mbtree<P>::insert_if_absent(const key_type &k, value_type v,
+inline bool mbtree<P>::insert_if_absent(const key_type &k, dbtuple * v,
                                         insert_info_t *insert_info)
 {
   threadinfo ti;
@@ -678,7 +678,7 @@ insert_new:
   else
   {
 	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data in this chain. If it's the first case, version chain is considered empty, then we retry insert.
-	  oid_type oid = (oid_type)lp.value();
+	  oid_type oid = lp.value();
 	  if( fetch_latest_version( oid ) )
 		  found = true;
 	  else
@@ -695,13 +695,13 @@ insert_new:
  * is written into old_v
  */
 template <typename P>
-inline bool mbtree<P>::remove(const key_type &k, value_type *old_v)
+inline bool mbtree<P>::remove(const key_type &k, dbtuple * *old_v)
 {
   threadinfo ti;
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
   if (found && old_v)
-	  *old_v = fetch_latest_version( (oid_type)lp.value() );
+	  *old_v = fetch_latest_version(lp.value() );
 	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
   lp.finish(found ? -1 : 0, ti);
   return found;
@@ -753,7 +753,7 @@ class mbtree<P>::low_level_search_range_scanner
       this->check(iter, key);
   }
   bool visit_value(const Masstree::key<uint64_t>& key,
-                   value_type value, threadinfo&) {
+                   dbtuple * value, threadinfo&) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
@@ -779,7 +779,7 @@ public:
   void on_resp_node(const node_opaque_t *n, uint64_t version) OVERRIDE {}
 
   bool
-  invoke(const string_type &k, value_type v,
+  invoke(const string_type &k, dbtuple * v,
          const node_opaque_t *n, uint64_t version) OVERRIDE
   {
     return callback_(k, v);
