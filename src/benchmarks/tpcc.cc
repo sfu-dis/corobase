@@ -157,6 +157,12 @@ static uint g_microbench_rows = 100000;  // this many rows
 static double g_microbench_wr_ratio = 0; // this % of writes
 static uint g_microbench_wr_rows = 0; // this number of rows to write
 
+// how much % of time a worker should use a random home wh
+// 0 - always use home wh
+// 50 - 50% of time use random wh
+// 100 - always use a random wh
+static double g_wh_spread = 0;
+
 // TPC-C workload mix
 // 0: NewOrder
 // 1: Payment
@@ -394,17 +400,6 @@ public:
     return CheckBetweenInclusive(NonUniformRandom(r, 1023, 259, 1, NumCustomersPerDistrict()), 1, NumCustomersPerDistrict());
   }
 
-  // pick a number between [start, end)
-  static inline ALWAYS_INLINE unsigned
-  PickWarehouseId(fast_random &r, unsigned start, unsigned end)
-  {
-    INVARIANT(start < end);
-    const unsigned diff = end - start;
-    if (diff == 1)
-      return start;
-    return (r.next() % diff) + start;
-  }
-
   static string NameTokens[];
 
   // all tokens are at most 5 chars long
@@ -522,24 +517,14 @@ public:
               const map<string, abstract_ordered_index *> &open_tables,
               const map<string, vector<abstract_ordered_index *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
-              uint warehouse_id_start, uint warehouse_id_end)
+              uint home_warehouse_id)
     : bench_worker(worker_id, true, seed, db,
                    open_tables, barrier_a, barrier_b),
       tpcc_worker_mixin(partitions),
-      warehouse_id_start(warehouse_id_start),
-      warehouse_id_end(warehouse_id_end)
+      home_warehouse_id(home_warehouse_id)
   {
-    INVARIANT(warehouse_id_start >= 1);
-    INVARIANT(warehouse_id_start <= NumWarehouses());
-    INVARIANT(warehouse_id_end > warehouse_id_start);
-    INVARIANT(warehouse_id_end <= (NumWarehouses() + 1));
+    INVARIANT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     NDB_MEMSET(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-    if (verbose) {
-      cerr << "tpcc: worker id " << worker_id
-        << " => warehouses [" << warehouse_id_start
-        << ", " << warehouse_id_end << ")"
-        << endl;
-    }
     obj_key0.reserve(str_arena::MinStrReserveLength);
     obj_key1.reserve(str_arena::MinStrReserveLength);
     obj_v.reserve(str_arena::MinStrReserveLength);
@@ -690,8 +675,19 @@ protected:
   }
 
 private:
-  const uint warehouse_id_start;
-  const uint warehouse_id_end;
+  inline ALWAYS_INLINE unsigned
+  pick_wh(fast_random &r)
+  {
+    INVARIANT(g_wh_spread >= 0 and g_wh_spread <= 1);
+    // wh_spread = 0: always use home wh
+    // wh_spread = 1: always use random wh
+    if (g_wh_spread == 0 or r.next_uniform() >= g_wh_spread)
+      return home_warehouse_id;
+    return r.next() % NumWarehouses() + 1;
+  }
+
+private:
+  const uint home_warehouse_id;
   int32_t last_no_o_ids[10]; // XXX(stephentu): hack
 
   // some scratch buffer space
@@ -1295,7 +1291,7 @@ static event_counter evt_tpcc_cross_partition_payment_txns("tpcc_cross_partition
 tpcc_worker::txn_result
 tpcc_worker::txn_new_order()
 {
-  const uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
+  const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
   const uint numItems = RandomNumber(r, 5, 15);
@@ -1494,7 +1490,7 @@ STATIC_COUNTER_DECL(scopedperf::tod_ctr, delivery_probe0_tod, delivery_probe0_cg
 tpcc_worker::txn_result
 tpcc_worker::txn_delivery()
 {
-  const uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
+  const uint warehouse_id = pick_wh(r);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
 
@@ -1608,7 +1604,7 @@ static event_avg_counter evt_avg_cust_name_idx_scan_size("avg_cust_name_idx_scan
 tpcc_worker::txn_result
 tpcc_worker::txn_payment()
 {
-  const uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
+  const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
   if (likely(g_disable_xpartition_txn ||
@@ -1790,7 +1786,7 @@ STATIC_COUNTER_DECL(scopedperf::tod_ctr, order_status_probe0_tod, order_status_p
 tpcc_worker::txn_result
 tpcc_worker::txn_order_status()
 {
-  const uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
+  const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
   // output from txn counters:
@@ -1944,7 +1940,7 @@ static event_avg_counter evt_avg_stock_level_loop_join_lookups("stock_level_loop
 tpcc_worker::txn_result
 tpcc_worker::txn_stock_level()
 {
-  const uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
+  const uint warehouse_id = pick_wh(r);
   const uint threshold = RandomNumber(r, 10, 20);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
@@ -2032,7 +2028,7 @@ tpcc_worker::txn_micro_bench_ro()
     // micro-bench's read/write here
     // Use the order_line table, for each warehouse, district, customer,
     // order, order-line (see tpcc schema).
-    for (uint w = warehouse_id_start; w < warehouse_id_end; w++) {
+    for (uint w = 1; w < NumWarehouses() + 1; w++) {
       scoped_lock_guard<spinlock> slock(
           g_enable_partition_locks ? &LockForPartition(w) : nullptr);
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
@@ -2327,7 +2323,7 @@ do_write:
     uint n_write_rows = g_microbench_rows * g_microbench_wr_ratio;
     for (uint i = 0; i < n_write_rows; i++) {
       // generate key
-      const uint ww = PickWarehouseId(r, 1, w + 1);
+      const uint ww = RandomNumber(r, 1, w + 1);
       const uint dd = RandomNumber(r, 1, d + 1);
       const uint cc = RandomNumber(r, 1, c + 1);
       const uint ll = RandomNumber(r, 1, 16);
@@ -2506,27 +2502,18 @@ protected:
     ALWAYS_ASSERT((blockstart % alignment) == 0);
     fast_random r(23984543);
     vector<bench_worker *> ret;
-    static bool const NO_PIN_WH = false;
-    if (NO_PIN_WH) {
+    if (NumWarehouses() <= nthreads) {
       for (size_t i = 0; i < nthreads; i++)
-        ret.push_back(
-          new tpcc_worker(
-            blockstart + i,
-            r.next(), db, open_tables, partitions,
-            &barrier_a, &barrier_b,
-            1, NumWarehouses() + 1));
+        ret.push_back(new tpcc_worker(blockstart + i, r.next(), db,
+                                      open_tables, partitions,
+                                      &barrier_a, &barrier_b,
+                                      (i % NumWarehouses()) + 1));
     }
-    else if (NumWarehouses() <= nthreads) {
-      for (size_t i = 0; i < nthreads; i++)
-        ret.push_back(
-          new tpcc_worker(
-            blockstart + i,
-            r.next(), db, open_tables, partitions,
-            &barrier_a, &barrier_b,
-            (i % NumWarehouses()) + 1, (i % NumWarehouses()) + 2));
-    } else {
-        auto N = NumWarehouses();
-        auto T = nthreads;
+#if 0
+    else {
+      // FIXME: tzwang: think this is interesting for testing a CC scheme...
+      auto N = NumWarehouses();
+      auto T = nthreads;
         // try this in python: [i*N//T for i in range(T+1)]
       for (size_t i = 0; i < nthreads; i++) {
         const unsigned wstart = i*N/T;
@@ -2538,6 +2525,7 @@ protected:
             &barrier_a, &barrier_b, wstart+1, wend+1));
       }
     }
+#endif
     return ret;
   }
 
@@ -2563,6 +2551,7 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
       {"uniform-item-dist"                    , no_argument       , &g_uniform_item_dist                  , 1}   ,
       {"order-status-scan-hack"               , no_argument       , &g_order_status_scan_hack             , 1}   ,
       {"workload-mix"                         , required_argument , 0                                     , 'w'} ,
+      {"warehouse-spread"                     , required_argument , 0                                     , 's'}   ,
       {"microbench-static"                    , no_argument       , &g_microbench_static                  , 1}   ,
       {"microbench-simple"                    , no_argument       , &g_microbench_simple                  , 1}   ,
       {"microbench-random"                    , no_argument       , &g_microbench_random                  , 1}   ,
@@ -2580,6 +2569,10 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
       if (long_options[option_index].flag != 0)
         break;
       abort();
+      break;
+
+    case 's':
+      g_wh_spread = strtoul(optarg, NULL, 10) / 100.00;
       break;
 
     case 'n':
@@ -2648,6 +2641,7 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
 
   if (verbose) {
     cerr << "tpcc settings:" << endl;
+    cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << endl;
     cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn << endl;
     cerr << "  read_only_snapshots          : " << !g_disable_read_only_scans << endl;
     cerr << "  partition_locks              : " << g_enable_partition_locks << endl;
