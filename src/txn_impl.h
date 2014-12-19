@@ -71,9 +71,7 @@ transaction<Protocol, Traits>::abort_impl()
 
   for (auto &r : read_set) {
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    dbtuple *c = reinterpret_cast<dbtuple *>(r.btr->fetch_committed_version_at(r.tuple->oid, xid, LSN::from_ptr(r.tuple->clsn)));
-    if (r.tuple != c)
-        ASSERT(false);
+    ASSERT(r.tuple == reinterpret_cast<dbtuple *>(r.btr->fetch_committed_version_at(r.tuple->oid, xid, LSN::from_ptr(r.tuple->clsn))));
     // remove myself from reader list
     ssn_deregister_reader_tx(r.tuple);
   }
