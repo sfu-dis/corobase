@@ -16,6 +16,7 @@
 #include "../scopedperf.hh"
 #include "../allocator.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-trace.h"
 
 #ifdef USE_JEMALLOC
 //cannot include this header b/c conflicts with malloc.h
@@ -235,6 +236,10 @@ bench_runner::run()
     }
     cerr << "starting benchmark..." << endl;
   }
+#ifdef TRACE_FOOTPRINT
+  TRACER::init();
+  TRACER::start();
+#endif
   timer t, t_nosync;
   barrier_b.count_down(); // bombs away!
   if (run_mode == RUNMODE_TIME) {

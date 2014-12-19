@@ -412,9 +412,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
   write_set[tuple] = write_record_t(tuple, btr, oid);
-#ifdef TRACE_FOOTPRINT  // FIXME: get stats on how much is empty???
-  FP_TRACE::print_access(xid, std::string("insert"), (uintptr_t)btr, tuple, NULL);
-#endif
   return true;
 }
 
@@ -446,9 +443,6 @@ transaction<Protocol, Traits>::do_tuple_read(
     return false;
   }
 
-#ifdef TRACE_FOOTPRINT  // FIXME: get stats on how much is empty???
-  FP_TRACE::print_access(xid, std::string("read"), (uintptr_t)btr_ptr, tuple, NULL);
-#endif
   // SSN stamps and check
   if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
       xid_context* xc = xid_get_context(xid);

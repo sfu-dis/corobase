@@ -40,7 +40,7 @@ public:
     base_txn_btree_handler<Transaction>::on_construct();
 	//RA::register_table(&underlying_btree, name);		// Register to GC system 
 #ifdef TRACE_FOOTPRINT
-    FP_TRACE::tables[(uintptr_t)&underlying_btree] = name;
+    TRACER::register_table((uintptr_t)underlying_btree.get_tuple_vector(), name);
 #endif
   }
 
@@ -312,10 +312,6 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   dbtuple *prev = this->underlying_btree.update_version(oid, version, t.xid);
 
   if (prev) { // succeeded
-#ifdef TRACE_FOOTPRINT
-    FP_TRACE::print_access(t.xid, std::string("update"),
-                           (uintptr_t)&this->underlying_btree, tuple, prev);
-#endif
     object *prev_obj = (object *)((char *)prev - sizeof(object));
     // update hi watermark
     // Overwriting a version could trigger outbound anti-dep,

@@ -16,6 +16,7 @@
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/ssn.h"
+#include "../dbcore/sm-trace.h"
 #include <stdio.h>
 #include <sys/mman.h> // Needed for mlockall()
 #include <malloc.h>

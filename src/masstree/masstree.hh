@@ -211,8 +211,20 @@ class basic_table {
 
 install:
 		// install a new version
-        if (tuple_vector->put(oid, head, new_ptr, overwrite))
-			return version;
+        if (tuple_vector->put(oid, head, new_ptr, overwrite)) {
+#ifdef TRACE_FOOTPRINT
+            int64_t old_age = -1;
+            if (clsn.asi_type() == fat_ptr::ASI_XID) {
+                // in-place update, parser should know by seeing xid == old_age (which should = xc->begin)
+                old_age = xid._val;
+            }
+            TRACER::record(xid._val, 'u', (uint64_t)tuple_vector, oid,
+                           (uint64_t)version, (uint64_t)new_ptr.offset(),
+                           version->size, ((dbtuple*)(((object *)new_ptr.offset())->payload()))->size,
+                           old_age, visitor->begin._val);
+#endif
+            return version;
+        }
 		return NULL;
 	}
 
@@ -284,9 +296,15 @@ install:
 #if CHECK_INVARIANTS
 		int attempts = 0;
 #endif
+#ifdef TRACE_FOOTPRINT
+        int pos = -1;
+#endif
 		object* cur_obj = NULL;
 	start_over:
 		for( fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
+#ifdef TRACE_FOOTPRINT
+            pos++;
+#endif
             cur_obj = (object*)ptr.offset();
 			dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
 			auto clsn = volatile_read(version->clsn);
@@ -369,6 +387,15 @@ install:
                 cur_obj = (object *)cur_obj->_next;
             }
 */
+#ifdef TRACE_FOOTPRINT
+            int64_t ver_age = -1;
+            if (ret_ver->clsn.asi_type() == fat_ptr::ASI_XID) {
+                // read own update, parser should tell this by seeing xid_age == ver_age
+                ver_age = xid._val;
+            }
+            TRACER::record(xid._val, 'r', (uint64_t)tuple_vector, oid, (uint64_t)ret_ver,
+                           ret_ver->size, pos, ver_age, visitor->begin._val);
+#endif
             return ret_ver;
 		}
 
