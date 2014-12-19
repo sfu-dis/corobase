@@ -20,6 +20,7 @@
 #include "dbcore/xid.h"
 #include "dbcore/ssn.h"
 #include "dbcore/sm-log.h"
+#include "dbcore/sm-trace.h"
 #include "amd64.h"
 #include "btree_choice.h"
 #include "core.h"
@@ -307,6 +308,7 @@ protected:
   // for the older inserted tuple.
   typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
   //typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
+  //typedef small_vector<read_record_t, SMALL_SIZE_MAP> read_set_map;
   typedef std::vector<read_record_t> read_set_map;
   //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 
@@ -412,13 +414,5 @@ public:
 private:
   transaction_base::abort_reason r;
 };
-
-#ifdef TRACE_FOOTPRINT
-namespace FP_TRACE {
-  extern std::mutex footprint_mutex;
-  extern void print_access(XID xid, std::string op, uintptr_t table_ptr, dbtuple *t, dbtuple *prev);
-  extern std::map<uintptr_t, std::string> tables;
-};
-#endif
 
 #endif /* _NDB_TXN_H_ */

@@ -33,6 +33,7 @@ MASSTREE ?= 1
 
 ###############
 
+TRACE_FOOTPRINT_S=$(strip $(TRACE_FOOTPRINT))
 DEBUG_S=$(strip $(DEBUG))
 CHECK_INVARIANTS_S=$(strip $(CHECK_INVARIANTS))
 EVENT_COUNTERS_S=$(strip $(EVENT_COUNTERS))
@@ -83,6 +84,9 @@ endif
 
 CXXFLAGS := -Wall -std=c++0x -g
 CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
+ifeq ($(TRACE_FOOTPRINT_S),1)
+	CXXFLAGS+=-DTRACE_FOOTPRINT
+endif
 ifeq ($(DEBUG_S),1)
         CXXFLAGS +=  -g -gdwarf-2 -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
 else
@@ -166,6 +170,10 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/xid.cpp		\
 	dbcore/ssn.cpp	\
 	dbcore/dynarray.cpp
+
+ifeq ($(TRACE_FOOTPRINT_S),1)
+DBCORE_SRCFILES += dbcore/sm-trace.cpp
+endif
 
 ifeq ($(MASSTREE_S),1)
 MASSTREE_SRCFILES = masstree/compiler.cc \

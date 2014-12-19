@@ -61,24 +61,3 @@ event_counter transaction_base::g_evt_dbtuple_write_insert_failed
 
 event_counter transaction_base::evt_local_search_lookups("local_search_lookups");
 
-#ifdef TRACE_FOOTPRINT
-namespace FP_TRACE {
-  std::mutex footprint_mutex;
-  std::map<uintptr_t, std::string> tables;
-  void print_access(XID xid, std::string op, uintptr_t table_ptr, dbtuple *t, dbtuple *prev)
-  {
-    footprint_mutex.lock();
-    std::cout << "tx=" << std::hex << xid._val
-              << " op=" << std::dec << op
-              << " table=" << tables[table_ptr]
-              << " oid=" << std::dec << t->oid
-              << " version=" << std::hex << t
-              << " size=" << std::dec << t->size;
-    if (prev)
-      std::cout << " prev=" << prev << "\n";
-    else
-      std::cout << "\n";
-    footprint_mutex.unlock();
-  }
-};
-#endif
