@@ -342,10 +342,6 @@ transaction<Protocol, Traits>::si_commit()
     ALWAYS_ASSERT(false);
   }
   
-  // avoid cross init after goto do_abort
-  typename write_set_map::iterator it     = write_set.begin();
-  typename write_set_map::iterator it_end = write_set.end();
-
   INVARIANT(log);
   // get clsn, abort if failed
   RCU::rcu_enter();
@@ -361,8 +357,10 @@ transaction<Protocol, Traits>::si_commit()
   // post-commit cleanup: install clsn to tuples
   // (traverse write-tuple)
   // stuff clsn in tuples in write-set
-  for (; it != it_end; ++it) {
-    dbtuple* tuple = it->first;
+  for (auto &w : write_set) {
+    if (not w.second.btr)
+      continue;
+    dbtuple* tuple = w.second.new_tuple;
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
