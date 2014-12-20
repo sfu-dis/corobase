@@ -73,6 +73,13 @@ struct hint_tpcc_payment_traits {
   typedef str_arena StringAllocator;
 };
 
+struct hint_tpcc_credit_check_traits {
+  static const bool stable_input_memory = true;
+  static const bool hard_expected_sizes = false;
+  static const bool read_own_writes = false;
+  typedef str_arena StringAllocator;
+};
+
 struct hint_tpcc_delivery_traits {
   static const size_t read_set_expected_size = 175;
   static const size_t write_set_expected_size = 175;
@@ -114,6 +121,7 @@ struct hint_tpcc_stock_level_read_only_traits : public hint_read_only_traits {};
   x(abstract_db::HINT_KV_SCAN, hint_kv_scan_traits) \
   x(abstract_db::HINT_TPCC_NEW_ORDER, hint_tpcc_new_order_traits) \
   x(abstract_db::HINT_TPCC_PAYMENT, hint_tpcc_payment_traits) \
+  x(abstract_db::HINT_TPCC_CREDIT_CHECK, hint_tpcc_credit_check_traits) \
   x(abstract_db::HINT_TPCC_DELIVERY, hint_tpcc_delivery_traits) \
   x(abstract_db::HINT_TPCC_ORDER_STATUS, hint_tpcc_order_status_traits) \
   x(abstract_db::HINT_TPCC_ORDER_STATUS_READ_ONLY, hint_tpcc_order_status_read_only_traits) \
