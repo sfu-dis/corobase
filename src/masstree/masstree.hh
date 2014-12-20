@@ -136,7 +136,7 @@ class basic_table {
 			auto holder_xid = XID::from_ptr(clsn);
 			xid_context *holder= xid_get_context(holder_xid);
 			INVARIANT(holder);
-            auto end = volatile_read(holder->end);
+            //auto end = volatile_read(holder->end);
             auto state = volatile_read(holder->state);
 			auto owner = volatile_read(holder->owner);
 			holder = NULL; // use cached values instead!

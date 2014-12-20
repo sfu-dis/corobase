@@ -1670,7 +1670,7 @@ tpcc_worker::txn_credit_check()
 	*/
 
 
-	const uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
+	const uint warehouse_id = pick_wh(r);
 	const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 	uint customerDistrictID, customerWarehouseID;
 	if (likely(g_disable_xpartition_txn ||
