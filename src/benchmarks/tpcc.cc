@@ -166,13 +166,15 @@ static double g_wh_spread = 0;
 // TPC-C workload mix
 // 0: NewOrder
 // 1: Payment
-// 2: Delivery
-// 3: OrderStatus
-// 4: StockLevel
-// 5: Microbenchmark - others will be set to 0 if g_microbench is set
-// 6: Microbenchmark-simple - just do one insert, get, and put
-// 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
-static unsigned g_txn_workload_mix[] = { 45, 43, 4, 4, 4, 0, 0, 0 }; // default TPC-C workload mix
+// 2: CreditCheck
+// 3: Delivery
+// 4: OrderStatus
+// 5: StockLevel
+// 6: Microbenchmark - others will be set to 0 if g_microbench is set
+// 7: Microbenchmark-simple - just do one insert, get, and put
+// 8: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
+static unsigned g_txn_workload_mix[] = { 41, 43, 4, 4, 4, 4, 0, 0, 0 }; // default TPC-C workload mix
+//static unsigned g_txn_workload_mix[] = { 45, 43, 4, 4, 4, 0, 0, 0 }; // default TPC-C workload mix
 //static unsigned g_txn_workload_mix[] = { 0, 100, 0, 0, 0, 0, 0, 0 }; // default TPC-C workload mix
 
 static aligned_padded_elem<spinlock> *g_partition_locks = nullptr;
@@ -551,6 +553,14 @@ public:
     return static_cast<tpcc_worker *>(w)->txn_delivery();
   }
 
+  txn_result txn_credit_check();
+  static txn_result
+  TxnCreditCheck(bench_worker *w)
+  {
+    ANON_REGION("TxnCreditCheck:", &tpcc_txn_cg);
+    return static_cast<tpcc_worker *>(w)->txn_credit_check();
+  }
+
   txn_result txn_payment();
 
   static txn_result
@@ -642,17 +652,19 @@ public:
     if (g_txn_workload_mix[1])
       w.push_back(workload_desc("Payment", double(g_txn_workload_mix[1])/100.0, TxnPayment));
     if (g_txn_workload_mix[2])
-      w.push_back(workload_desc("Delivery", double(g_txn_workload_mix[2])/100.0, TxnDelivery));
+      w.push_back(workload_desc("CreditCheck", double(g_txn_workload_mix[2])/100.0, TxnCreditCheck));
     if (g_txn_workload_mix[3])
-      w.push_back(workload_desc("OrderStatus", double(g_txn_workload_mix[3])/100.0, TxnOrderStatus));
+      w.push_back(workload_desc("Delivery", double(g_txn_workload_mix[3])/100.0, TxnDelivery));
     if (g_txn_workload_mix[4])
-      w.push_back(workload_desc("StockLevel", double(g_txn_workload_mix[4])/100.0, TxnStockLevel));
+      w.push_back(workload_desc("OrderStatus", double(g_txn_workload_mix[4])/100.0, TxnOrderStatus));
     if (g_txn_workload_mix[5])
-        w.push_back(workload_desc("MicroBench", double(g_txn_workload_mix[5])/100.0, TxnMicroBenchStatic));
+      w.push_back(workload_desc("StockLevel", double(g_txn_workload_mix[5])/100.0, TxnStockLevel));
     if (g_txn_workload_mix[6])
-        w.push_back(workload_desc("MicroBenchSimple", double(g_txn_workload_mix[6])/100.0, TxnMicroBenchSimple));
+        w.push_back(workload_desc("MicroBench", double(g_txn_workload_mix[6])/100.0, TxnMicroBenchStatic));
     if (g_txn_workload_mix[7])
-        w.push_back(workload_desc("MicroBenchRandom", double(g_txn_workload_mix[7])/100.0, TxnMicroBenchRandom));
+        w.push_back(workload_desc("MicroBenchSimple", double(g_txn_workload_mix[7])/100.0, TxnMicroBenchSimple));
+    if (g_txn_workload_mix[8])
+        w.push_back(workload_desc("MicroBenchRandom", double(g_txn_workload_mix[8])/100.0, TxnMicroBenchRandom));
     return w;
   }
 
@@ -1287,6 +1299,7 @@ private:
 
 static event_counter evt_tpcc_cross_partition_new_order_txns("tpcc_cross_partition_new_order_txns");
 static event_counter evt_tpcc_cross_partition_payment_txns("tpcc_cross_partition_payment_txns");
+static event_counter evt_tpcc_cross_partition_credit_check_txns("tpcc_cross_partition_credit_check_txns");
 
 tpcc_worker::txn_result
 tpcc_worker::txn_new_order()
@@ -1601,6 +1614,168 @@ tpcc_worker::txn_delivery()
 
 static event_avg_counter evt_avg_cust_name_idx_scan_size("avg_cust_name_idx_scan_size");
 
+class credit_check_order_scan_callback : public abstract_ordered_index::scan_callback {
+	public:
+		credit_check_order_scan_callback( str_arena* arena ) : _arena(arena) {}
+		virtual bool invoke( const char *keyp, size_t keylen, const string &value)
+		{
+			std::string * const k_oo = _arena->next();
+			INVARIANT(k_oo && k_oo->empty());
+			k_oo->assign(keyp, keylen);
+			_k_oo.emplace_back(k_oo);
+			return true;
+		}
+		std::vector<std::string *> _k_oo;
+		str_arena* _arena;
+};
+
+class credit_check_order_line_scan_callback : public abstract_ordered_index::scan_callback {
+	public:
+		credit_check_order_line_scan_callback( str_arena* arena ) : _arena(arena) {}
+		virtual bool invoke( const char *keyp, size_t keylen, const string &value)
+		{
+			_v_ol.emplace_back( &value);
+			return true;
+		}
+		std::vector<const std::string *> _v_ol;
+		str_arena* _arena;
+};
+
+tpcc_worker::txn_result
+tpcc_worker::txn_credit_check()
+{
+	/*
+		Note: Cahill's credit check transaction to introduce SI's anomaly.
+		
+		SELECT c_balance, c_credit_lim 
+		INTO :c_balance, :c_credit_lim 
+		FROM Customer 
+		WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
+		
+		SELECT SUM(ol_amount) INTO :neworder_balance 
+		FROM OrderLine, Orders, NewOrder 
+		WHERE ol_o_id = o_id AND ol_d_id = :d_id 
+		AND ol_w_id = :w_id AND o_d_id = :d_id 
+		AND o_w_id = :w_id AND o_c_id = :c_id 
+		AND no_o_id = o_id AND no_d_id = :d_id 
+		AND no_w_id = :w_id
+		
+		if (c_balance + neworder_balance > c_credit_lim) 
+		c_credit = "BC"; 
+		else 
+		c_credit = "GC"; 
+		
+		SQL UPDATE Customer SET c_credit = :c_credit 
+		WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id 
+	*/
+
+
+	const uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
+	const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+	uint customerDistrictID, customerWarehouseID;
+	if (likely(g_disable_xpartition_txn ||
+				NumWarehouses() == 1 ||
+				RandomNumber(r, 1, 100) <= 85)) {
+		customerDistrictID = districtID;
+		customerWarehouseID = warehouse_id;
+	} else {
+		customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+		do {
+			customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
+		} while (customerWarehouseID == warehouse_id);
+	}
+	INVARIANT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+	void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_TPCC_CREDIT_CHECK);
+	scoped_str_arena s_arena(arena);
+	scoped_multilock<spinlock> mlock;
+	if (g_enable_partition_locks) {
+		mlock.enq(LockForPartition(warehouse_id));
+		if (PartitionId(customerWarehouseID) != PartitionId(warehouse_id))
+			mlock.enq(LockForPartition(customerWarehouseID));
+		mlock.multilock();
+	}
+	if (customerWarehouseID != warehouse_id)
+		++evt_tpcc_cross_partition_credit_check_txns;
+	try {
+
+		ssize_t ret = 0;
+
+		// select * from customer with random C_ID
+		customer::key k_c;
+		customer::value v_c_temp;
+		const uint customerID = GetCustomerId(r);
+		k_c.c_w_id = customerWarehouseID;
+		k_c.c_d_id = customerDistrictID;
+		k_c.c_id = customerID;
+		ALWAYS_ASSERT(tbl_customer(customerWarehouseID)->get(txn, Encode(obj_key0, k_c), obj_v));
+		const customer::value* v_c = Decode(obj_v, v_c_temp);
+		checker::SanityCheckCustomer(&k_c, v_c);
+
+		// scan order
+		//		c_w_id = :w_id;
+		//		c_d_id = :d_id;
+		//		c_id = :c_id;
+		credit_check_order_scan_callback c_oorder(s_arena.get());
+		const oorder::key k_oo_0(warehouse_id, districtID, 0);
+		const oorder::key k_oo_1(warehouse_id, districtID, numeric_limits<int32_t>::max());
+		tbl_oorder(warehouse_id)->scan(txn, Encode(obj_key0, k_oo_0), &Encode(obj_key1, k_oo_1), c_oorder, s_arena.get());
+		ALWAYS_ASSERT(c_oorder._k_oo.size());
+
+		double sum = 0;
+		for( auto &k_oo : c_oorder._k_oo)
+		{
+			oorder::key k_o_temp;
+			const oorder::key *k_o = Decode(*k_oo, k_o_temp);
+
+			// New order fetch - test existence only 
+			//const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
+			//		no_d_id = :d_id
+			//		no_w_id = :w_id
+			//		no_o_id = o_id
+			const new_order::key k_no(warehouse_id, districtID, k_o->o_id);
+			if( not tbl_new_order(warehouse_id)->get(txn, Encode(obj_key0, k_no), obj_v) )
+				continue;
+
+			// Order line scan
+			//		ol_d_id = :d_id
+			//		ol_w_id = :w_id
+			//		ol_o_id = o_id
+			//		ol_number = 1-15
+			credit_check_order_line_scan_callback c_ol(s_arena.get());
+			const order_line::key k_ol_0(warehouse_id, districtID, k_o->o_id, 1);
+			const order_line::key k_ol_1(warehouse_id, districtID, k_o->o_id, 15);
+			tbl_order_line(warehouse_id)->scan(txn, Encode(obj_key0, k_ol_0), &Encode(obj_key1, k_ol_1), c_ol, s_arena.get());
+			ALWAYS_ASSERT(c_ol._v_ol.size());
+
+
+			for( auto &v_ol : c_ol._v_ol )
+			{
+				order_line::value v_ol_temp;
+				const order_line::value *val = Decode(*v_ol, v_ol_temp);
+
+				// Aggregation
+				sum += val->ol_amount;
+			}
+		}
+
+		// c_credit update
+		customer::value v_c_new(*v_c);
+		if( v_c_new.c_balance + sum >= 5000 )			// Threshold = 5K
+			v_c_new.c_credit.assign("BC");
+		else
+			v_c_new.c_credit.assign("GC");
+		tbl_customer(customerWarehouseID)->put(txn, Encode(str(), k_c), Encode(str(), v_c_new));
+
+		measure_txn_counters(txn, "txn_credit_check");
+		db->commit_txn(txn);
+		return txn_result(true, ret);
+	} catch (abstract_db::abstract_abort_exception &ex) {
+		db->abort_txn(txn);
+		return txn_result(false, 0);
+	}
+}
+
 tpcc_worker::txn_result
 tpcc_worker::txn_payment()
 {
@@ -1782,6 +1957,7 @@ public:
 };
 
 STATIC_COUNTER_DECL(scopedperf::tod_ctr, order_status_probe0_tod, order_status_probe0_cg)
+STATIC_COUNTER_DECL(scopedperf::tod_ctr, credit_check_probe0_tod, credit_check_probe0_cg)
 
 tpcc_worker::txn_result
 tpcc_worker::txn_order_status()

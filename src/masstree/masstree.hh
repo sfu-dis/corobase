@@ -164,18 +164,11 @@ class basic_table {
                 // assersions. So we might need to differentiate this case in
                 // do_tree_put to allow higher concurrency.
 				case TXN_CMMTD:
-					{
-						if ( end > visitor->begin )		// to prevent version branch( or lost update)
-							return 0;
-						else
-                            return 0;
-							//goto install;
-					}
+                    return NULL;
 
 					// aborted data. ignore
 				case TXN_ABRTD:
-                    return 0;
-					//goto install;
+                    return NULL;
 
 					// dirty data
 				case TXN_EMBRYO:
@@ -187,12 +180,12 @@ class basic_table {
 							goto install;
                         }
 						else
-							return 0;
+							return NULL;
 					}
 
 					// If this TX is committing, we shouldn't install new version!
 				case TXN_COMMITTING:
-					return 0;
+					return NULL;
 				default:
 					ALWAYS_ASSERT( false );
 			}
@@ -204,7 +197,7 @@ class basic_table {
 			// aborted, but not yet reclaimed.
 			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
 			if ( LSN::from_ptr(clsn) > visitor->begin )
-				return 0;
+				return NULL;
 			else
 				goto install;
 		}
