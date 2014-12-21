@@ -45,12 +45,14 @@ struct dbtuple {
 public:
   typedef uint32_t size_type;
   typedef std::string string_type;
-  typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
 
   fat_ptr clsn;     // version creation stamp
+#ifdef USE_PARALLEL_SSN
+  typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
   uint64_t sstamp;         // successor (overwriter) stamp (\pi), updated when writer commits
   rl_bitmap_t rl_bitmap;   // bitmap of readers
+#endif
   size_type size; // actual size of record
   uint8_t value_start[0];   // must be last field
 
@@ -65,9 +67,11 @@ private:
   dbtuple(size_type size)
     :
       clsn(NULL_PTR)
+#ifdef USE_PARALLEL_SSN
       , xstamp(0)
       , sstamp(0)
       , rl_bitmap(rl_bitmap_t(0))
+#endif
       , size(CheckBounds(size))
   {
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);

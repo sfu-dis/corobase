@@ -313,6 +313,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
 
   if (prev) { // succeeded
     object *prev_obj = (object *)((char *)prev - sizeof(object));
+#ifdef USE_PARALLEL_SSN
     // update hi watermark
     // Overwriting a version could trigger outbound anti-dep,
     // i.e., I'll depend on some tx who has read the version that's
@@ -330,6 +331,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // copy access stamp to new tuple from overwritten version
     // (no need to copy sucessor lsn (slsn))
     volatile_write(tuple->xstamp, prev->xstamp);
+#endif
 
     // use the committed version as key, if not, use the new version
     // this should cover the update of myself's insert too
