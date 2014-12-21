@@ -1,12 +1,8 @@
 #include "ssn.h"
-
+#ifdef USE_PARALLEL_SSN
 namespace TXN {
 
 readers_list rlist;
-
-#ifdef USE_SERIAL_SSN
-std::mutex ssn_commit_mutex;
-#endif
 
 bool __attribute__((noinline))
 wait_for_commit_result(xid_context *xc) {
@@ -78,3 +74,4 @@ ssn_deregister_tx(XID xid)
 }
 
 };  // end of namespace
+#endif

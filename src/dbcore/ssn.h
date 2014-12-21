@@ -1,3 +1,5 @@
+#include "../macros.h"
+#ifdef USE_PARALLEL_SSN
 #pragma once
 #include <unordered_map>
 #include "xid.h"
@@ -47,3 +49,4 @@ readers_list::bitmap_t ssn_get_tuple_readers(dbtuple *tup) {
 
 extern readers_list rlist;
 };  // end of namespace
+#endif

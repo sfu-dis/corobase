@@ -20,7 +20,9 @@ using namespace TXN;
    window.
  */
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
+#ifdef USE_PARALLEL_SSN
 static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
+#endif
 
 // base definitions
 
@@ -32,7 +34,9 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
+#ifdef USE_PARALLEL_SSN
   ssn_register_tx(xid);
+#endif
   xid_context *xc = xid_get_context(xid);
   //write_set.set_empty_key(NULL);
   RCU::rcu_enter();
@@ -51,7 +55,9 @@ transaction<Protocol, Traits>::~transaction()
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
+#ifdef USE_PARALLEL_SSN
   ssn_deregister_tx(xid);
+#endif
   xid_free(xid);
   //write_set.clear();
   //read_set.clear();
@@ -82,12 +88,14 @@ transaction<Protocol, Traits>::abort_impl()
     w.second.btr->unlink_tuple(w.second.oid, tuple);
   }
 
+#ifdef USE_PARALLEL_SSN
   for (auto &r : read_set) {
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     ASSERT(r.tuple == r.btr->fetch_committed_version_at(r.oid, xid, LSN::from_ptr(r.tuple->clsn)));
     // remove myself from reader list
     ssn_deregister_reader_tx(r.tuple);
   }
+#endif
 
   // log discard
   RCU::rcu_enter();
@@ -441,6 +449,7 @@ transaction<Protocol, Traits>::do_tuple_read(
     return false;
   }
 
+#ifdef USE_PARALLEL_SSN
   // SSN stamps and check
   if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
       xid_context* xc = xid_get_context(xid);
@@ -473,6 +482,7 @@ transaction<Protocol, Traits>::do_tuple_read(
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
       }
   }
+#endif
   return true;
 }
 
