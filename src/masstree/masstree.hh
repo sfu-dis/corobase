@@ -134,9 +134,10 @@ class basic_table {
 			 */
 			//xid tracking
 			auto holder_xid = XID::from_ptr(clsn);
-			xid_context *holder= xid_get_context(holder_xid);
+            xid_context *holder= xid_get_context(holder_xid);
+            if (not holder)
+                return NULL;
 			INVARIANT(holder);
-            //auto end = volatile_read(holder->end);
             auto state = volatile_read(holder->state);
 			auto owner = volatile_read(holder->owner);
 			holder = NULL; // use cached values instead!
@@ -151,41 +152,30 @@ class basic_table {
 			}
 			switch (state)
 			{
-				// if committed and newer data, abort. if not, keep traversing
-                // FIXME: tzwang: so TXN_CMMTD and TXN_ABRTD do NOT necessarily
-                // mean it's safe now to install new version, because the head's
-                // clsn is still an XID, and is different from mine. Recall that
-                // this function returns the previous (maybe dirty) version, if
-                // we allowed install of new head here, in do_tree_put, we would
-                // get a prev tuple with a different XID other than mine. But
-                // do_tree_put will still think it got a repeated update (overwrite)
-                // case and try to update the write set with previously committed
-                // tuple_key, which of course isn't in the write_set, failing the
-                // assersions. So we might need to differentiate this case in
-                // do_tree_put to allow higher concurrency.
-				case TXN_CMMTD:
-                    return NULL;
+                // Allow installing a new version if the tx committed (might
+                // still hasn't finished post-commit). Note that the caller
+                // (ie do_tree_put) should look at the clsn field of the
+                // returned version (prev) to see if this is an overwrite
+                // (ie xids match) or not (xids don't match).
+                case TXN_CMMTD:
+                    ASSERT(holder_xid != xid);
+                    goto install;
 
-					// aborted data. ignore
+				case TXN_COMMITTING:
 				case TXN_ABRTD:
                     return NULL;
 
 					// dirty data
 				case TXN_EMBRYO:
 				case TXN_ACTIVE:
-					{
-						// in-place update case ( multiple updates on the same record  by same transaction)
-						if (holder_xid == xid ) {
-                            overwrite = true;
-							goto install;
-                        }
-						else
-							return NULL;
-					}
+                    // in-place update case ( multiple updates on the same record  by same transaction)
+                    if (holder_xid == xid ) {
+                        overwrite = true;
+                        goto install;
+                    }
+                    else
+                        return NULL;
 
-					// If this TX is committing, we shouldn't install new version!
-				case TXN_COMMITTING:
-					return NULL;
 				default:
 					ALWAYS_ASSERT( false );
 			}
@@ -309,8 +299,20 @@ install:
 				   starting over if it has been recycled
 				 */
 				auto holder_xid = XID::from_ptr(clsn);
+
+				// dirty data made by me is visible!
+				if (holder_xid == xid) {
+					goto out;
+#if CHECK_INVARIANTS
+                    // don't do this if it's not my own tuple!
+                    if (cur_obj->_next.offset())
+                        ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
+#endif
+                }
+
 				xid_context *holder = xid_get_context(holder_xid);
-				INVARIANT(holder);
+                if (not holder) // invalid XID (dead tuple, either retry or goto next in the chain)
+                    continue;
 
 				auto state = volatile_read(holder->state);
 				auto end = volatile_read(holder->end);
@@ -325,16 +327,6 @@ install:
 #endif
 					goto start_over;
 				}
-
-				// dirty data made by me is visible!
-				if( owner == xid ) {
-					goto out;
-#if CHECK_INVARIANTS
-                    // don't do this if it's not my own tuple!
-                    if (cur_obj->_next.offset())
-                        ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
-#endif
-                }
 
 				// invalid data
 				if( state != TXN_CMMTD)	   // only see committed data.

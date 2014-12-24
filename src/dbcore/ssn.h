@@ -12,7 +12,9 @@ void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
 
 inline bool ssn_check_exclusion(xid_context *xc) {
+#if CHECK_INVARIANTS
     if (xc->sstamp and xc->pstamp >= xc->sstamp) printf("ssn exclusion failure\n");
+#endif
     if (xc->sstamp and xc->pstamp)
         return xc->pstamp < xc->sstamp; // \eta - predecessor, \pi - sucessor
         // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle

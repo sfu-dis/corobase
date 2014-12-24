@@ -69,6 +69,8 @@ void
 transaction<Protocol, Traits>::signal_abort(abort_reason reason)
 {
   abort_trap(reason);
+  if (likely(state() != TXN_COMMITTING))
+    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   throw transaction_abort_exception(reason);
 }
   
@@ -76,9 +78,6 @@ template <template <typename> class Protocol, typename Traits>
 void
 transaction<Protocol, Traits>::abort_impl()
 {
-  volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
-  INVARIANT(state() == TXN_ABRTD);
-
   for (auto &w : write_set) {
     if (not w.second.btr)   // for repeated overwrites
         continue;
@@ -96,11 +95,12 @@ transaction<Protocol, Traits>::abort_impl()
     ssn_deregister_reader_tx(r.tuple);
   }
 #endif
-
-  // log discard
   RCU::rcu_enter();
-  log->pre_commit();
+  if (likely(state() != TXN_COMMITTING))
+    log->pre_commit();
   log->discard();
+  if (unlikely(state() == TXN_COMMITTING))
+    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   RCU::rcu_exit();
 }
 
@@ -175,7 +175,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   switch (state()) {
   case TXN_EMBRYO:
   case TXN_ACTIVE:
-    xc->state = TXN_COMMITTING;
+    volatile_write(xc->state, TXN_COMMITTING);
     break;
   case TXN_CMMTD:
   case TXN_COMMITTING:
@@ -214,24 +214,30 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
      */
     int64_t age = xc->begin.offset() - overwritten_tuple->clsn.offset();
     if (age < OLD_VERSION_THRESHOLD) {
-    // need access stamp , i.e., who read this version that I'm trying to overwrite?
-    readers_list::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
-    while (readers) {
-      int i = __builtin_ctz(readers);
-      ASSERT(i >= 0 and i < 24);
-      readers &= (readers-1);
-      XID rxid = volatile_read(rlist.xids[i]);
-      if (not rxid._val or rxid == xc->owner)
-        continue; // ignore invalid entries and ignore my own reads
-      xid_context *reader_xc = xid_get_context(rxid);
-      ASSERT(reader_xc->owner == rxid);
-      auto reader_end = volatile_read(reader_xc->end).offset();
-      // reader committed
-      if (reader_end and reader_end < cstamp and wait_for_commit_result(reader_xc)) {
-        if (xc->pstamp < reader_end)
-          xc->pstamp = reader_end;
+      // need access stamp , i.e., who read this version that I'm trying to overwrite?
+      readers_list::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
+      while (readers) {
+        int i = __builtin_ctz(readers);
+        ASSERT(i >= 0 and i < 24);
+        readers &= (readers-1);
+      get_reader:
+        XID rxid = volatile_read(rlist.xids[i]);
+        if (not rxid._val or rxid == xc->owner)
+          continue; // ignore invalid entries and ignore my own reads
+        xid_context *reader_xc = xid_get_context(rxid);
+        if (not reader_xc)
+          continue;
+        // copy everything before doing anything
+        auto reader_owner = volatile_read(reader_xc->owner);
+        auto reader_end = volatile_read(reader_xc->end).offset();
+        if (reader_owner != rxid)
+            goto get_reader;
+        // reader committed
+        if (reader_end and reader_end < cstamp and wait_for_commit_result(reader_xc)) {
+          if (xc->pstamp < reader_end)
+            xc->pstamp = reader_end;
+        }
       }
-    }
     }
     else {
         // pstamp can't be larger than this, no need to check
@@ -241,7 +247,6 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
   for (auto &r : read_set) {
     // skip writes (note we didn't remove the one in read set)
-    //if (find_write_set(r.tuple) != write_set.end())
     if (write_set[r.tuple].btr)
       continue;
     // so tuple should be the committed version I read
@@ -258,14 +263,19 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
 
     // overwriter in progress?
     if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
-      xid_context *sucessor_xc = xid_get_context(XID::from_ptr(sucessor_clsn));
-      if (sucessor_xc->owner == xc->owner)  // myself
+      XID successor_xid = XID::from_ptr(sucessor_clsn);
+      xid_context *sucessor_xc = xid_get_context(successor_xid);
+      if (not sucessor_xc)
+        continue;
+      auto successor_owner = volatile_read(sucessor_xc->owner);
+      if (successor_owner == xc->owner)  // myself
           continue;
 
-      if (sucessor_xc->owner != XID::from_ptr(sucessor_clsn))
+      // read everything before doing anything
+      auto sucessor_end = volatile_read(sucessor_xc->end).offset();
+      if (successor_owner != successor_xid)
         goto try_get_sucessor;
 
-      auto sucessor_end = volatile_read(sucessor_xc->end).offset();
       // overwriter might haven't committed, be serialized after me, or before me
       if (not sucessor_end) // not even in precommit, don't bother
           ;
@@ -274,7 +284,9 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       else {
         if (wait_for_commit_result(sucessor_xc)) {    // either wait or give conservative estimation
           // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
-          if (sucessor_end < xc->sstamp)
+          if (unlikely(not xc->sstamp))
+            xc->sstamp = sucessor_end;
+          else if (sucessor_end < xc->sstamp)
             xc->sstamp = sucessor_end;
         } // otherwise aborted, ignore
       }
@@ -452,11 +464,11 @@ transaction<Protocol, Traits>::do_tuple_read(
 #ifdef USE_PARALLEL_SSN
   // SSN stamps and check
   if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
-      xid_context* xc = xid_get_context(xid);
-      ASSERT(xc);
-      auto v_clsn = tuple->clsn.offset();
-      int64_t age = xc->begin.offset() - v_clsn;
-      if (age < OLD_VERSION_THRESHOLD) {
+    xid_context* xc = xid_get_context(xid);
+    ASSERT(xc);
+    auto v_clsn = tuple->clsn.offset();
+    int64_t age = xc->begin.offset() - v_clsn;
+    if (age < OLD_VERSION_THRESHOLD) {
       // \eta - largest predecessor. So if I read this tuple, I should commit
       // after the tuple's creator (trivial, as this is committed version, so
       // this tuple's clsn can only be a predecessor of me): so just update
@@ -475,12 +487,18 @@ transaction<Protocol, Traits>::do_tuple_read(
         if (ssn_register_reader_tx(tuple, xid))
             read_set.emplace_back(tuple, btr_ptr, oid);
       }
-      else if (xc->sstamp > tuple_sstamp)
-        xc->sstamp = tuple_sstamp; // \pi
-      
+      else {
+        if (unlikely(not xc->sstamp))
+          xc->sstamp = tuple_sstamp;
+        else if (xc->sstamp > tuple_sstamp)
+          xc->sstamp = tuple_sstamp; // \pi
+      }
+
+#ifdef DO_EARLY_SSN_CHECKS
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
-      }
+#endif
+    }
   }
 #endif
   return true;
