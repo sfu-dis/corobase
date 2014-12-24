@@ -6,6 +6,7 @@
 
 /** options */
 #define USE_PARALLEL_SSN
+#define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
 //#define DIE_ON_ABORT

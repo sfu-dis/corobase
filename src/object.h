@@ -71,6 +71,7 @@ public:
             volatile_write(new_desc->_next, old_desc->_next);
             // I already claimed it, no need to use cas then
             volatile_write(begin_ptr(oid)->_ptr, new_head._ptr);
+            __sync_synchronize();
             return true;
         }
         else {
@@ -106,7 +107,6 @@ public:
         // Note that a race exists here: some reader might be using
         // that old head in fetch_version while we do the above CAS.
         // So we can't immediate deallocate it here right now.
-        return;
 #if 0
         object* target;
 		fat_ptr prev;

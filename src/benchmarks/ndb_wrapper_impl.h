@@ -213,7 +213,11 @@ ndb_wrapper<Transaction>::commit_txn(void *txn)
   case a: \
     { \
       auto t = cast< b >()(p); \
-      t->commit();             \
+      try { \
+        t->commit();             \
+      } catch (transaction_abort_exception &ex) {   \
+        throw abstract_db::abstract_abort_exception();  \
+      } \
       Destroy(t); \
       return; \
     }
