@@ -513,7 +513,6 @@ STATIC_COUNTER_DECL(scopedperf::tsc_ctr, tpcc_txn, tpcc_txn_cg)
 
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
 public:
-  // resp for [warehouse_id_start, warehouse_id_end)
   tpcc_worker(unsigned int worker_id,
               unsigned long seed, abstract_db *db,
               const map<string, abstract_ordered_index *> &open_tables,
@@ -2687,7 +2686,7 @@ protected:
     }
 #if 0
     else {
-      // FIXME: tzwang: think this is interesting for testing a CC scheme...
+      // FIXME: tzwang: think this isn't interesting for testing a CC scheme...
       auto N = NumWarehouses();
       auto T = nthreads;
         // try this in python: [i*N//T for i in range(T+1)]
