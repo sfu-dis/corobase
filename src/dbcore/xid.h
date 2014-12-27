@@ -13,8 +13,10 @@ struct xid_context {
     XID owner;
     LSN begin;
     LSN end;
+#ifdef USE_PARALLEL_SSN
     uint64_t pstamp; // youngest predecessor (\eta)
     uint64_t sstamp; // oldest successor (\pi)
+#endif
     txn_state state;
 };
 

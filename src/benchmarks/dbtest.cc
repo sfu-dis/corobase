@@ -77,8 +77,8 @@ main(int argc, char **argv)
   int disable_gc = 0;
   int disable_snapshots = 0;
   string *log_dir = NULL;
-  size_t log_seg_gig = 1024 * 1024;
-  size_t log_segsize = log_seg_gig * 8192; // log segment size
+  size_t log_seg_gig = 1024 * 1024 * 1024;
+  size_t log_segsize = log_seg_gig * 8; // log segment size
   size_t log_bufsize = 512 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
   while (1) {
