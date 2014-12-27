@@ -338,7 +338,10 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // use the committed version as key, if not, use the new version
     // this should cover the update of myself's insert too
     dbtuple *key_tuple = NULL;
-    if (prev->clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev->clsn) == t.xid) {  // in-place update!
+    // read prev's clsn first, in case it's a committing XID, the clsn's state
+    // might change to ASI_LOG anytime
+    fat_ptr prev_clsn = volatile_read(prev->clsn);
+    if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {  // in-place update!
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       if (not prev_obj->_next.offset()) {    // update of myself's insert
         ASSERT(t.write_set[prev].new_tuple == key_tuple and t.write_set[prev].btr == &this->underlying_btree);
@@ -353,7 +356,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
       RA::deallocate(prev_obj);
       ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
     }
-    else {  // prev is committed head
+    else {  // prev is committed (or precommitted but in post-commit now) head
       volatile_write(version->_next, fat_ptr::make(prev_obj, 0));
       key_tuple = prev;
     }
@@ -364,7 +367,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xid) == tuple);
 
-    INVARIANT(log);
+    INVARIANT(t.log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
     // the record is tooooo large).
