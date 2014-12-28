@@ -201,18 +201,36 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         continue;
     dbtuple *tuple = w.second.new_tuple;
 
-    // go to the committed version I (am about to) overwrote for the reader list
+    // go to the precommitted or committed version I (am about to)
+    // overwrite for the reader list
     dbtuple *overwritten_tuple = w.first;   // the key
     if (overwritten_tuple == tuple) // insert, see do_tree_put for the rules
       continue;
 
-    ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-    //ASSERT(overwritten_tuple->oid == tuple->oid);
+    int64_t age = 0;
+    // note fetch_overwriter might return a tuple with clsn being an XID
+    // (of a precommitted but still in post-commit transaction).
+  try_get_age:
+    fat_ptr overwritten_tuple_clsn = volatile_read(overwritten_tuple->clsn);
+    if (overwritten_tuple_clsn.asi_type() == fat_ptr::ASI_XID) {
+      // then that tx must have pre-committed, ie it has a valid xc->end
+      // and need to go to the tx's context to find out its cstamp to
+      // calculate age
+      XID overwritten_xid = XID::from_ptr(overwritten_tuple_clsn);
+      xid_context *overwritten_xc = xid_get_context(overwritten_xid);
+      ASSERT(volatile_read(overwritten_xc->end).offset());
+      if (overwritten_xc->owner != overwritten_xid)
+        goto try_get_age;
+      age = xc->begin.offset() - volatile_read(overwritten_xc->end).offset();
+    }
+    else {
+      ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+      age = xc->begin.offset() - overwritten_tuple->clsn.offset();
+    }
 
     /* for old tuples, just assume xstamp = cstamp-1 otherwise, check
        reader list and such
      */
-    int64_t age = xc->begin.offset() - overwritten_tuple->clsn.offset();
     if (age < OLD_VERSION_THRESHOLD) {
       // need access stamp , i.e., who read this version that I'm trying to overwrite?
       readers_list::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
