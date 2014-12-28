@@ -85,6 +85,9 @@ take_one(thread_data *t)
     DEFER(t->bitmap &= (t->bitmap-1));
     auto id = t->base_id + __builtin_ctzll(t->bitmap);
     auto x = contexts[id].owner = XID::make(t->epoch, id);
+#ifdef USE_PARALLEL_SSN
+    contexts[id].sstamp = ~uint64_t{0};
+#endif
     return x;
 }
 
