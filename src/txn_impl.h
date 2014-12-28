@@ -261,6 +261,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         // pstamp can't be larger than this, no need to check
         xc->pstamp = cstamp - 1;
     }
+    ASSERT(xc->pstamp <= cstamp - 1);
   }
 
   for (auto &r : read_set) {
@@ -302,17 +303,18 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       else {
         if (wait_for_commit_result(sucessor_xc)) {    // either wait or give conservative estimation
           // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
-          if (unlikely(not xc->sstamp))
-            xc->sstamp = sucessor_end;
-          else if (sucessor_end < xc->sstamp)
+          if (sucessor_end < xc->sstamp)
             xc->sstamp = sucessor_end;
         } // otherwise aborted, ignore
       }
     }
-    else {    // overwriter already fully committed (slsn available)
+    else {
+      // overwriter already fully committed/aborted or no overwriter at all
       ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
-      if (r.tuple->sstamp < xc->sstamp)
-          xc->sstamp = r.tuple->sstamp;
+      uint64_t tuple_sstamp = volatile_read(r.tuple->sstamp);
+      // tuple_sstamp = 0 means no one has overwritten this version so far
+      if (tuple_sstamp and tuple_sstamp < xc->sstamp)
+        xc->sstamp = tuple_sstamp;
     }
   }
 
@@ -334,14 +336,14 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     dbtuple *next_tuple = w.first;
     if (tuple != next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
-      volatile_write(next_tuple->sstamp, xc->sstamp);
+      // FIXME: tuple's sstamp should never decrease?
+      ASSERT(xc->sstamp);
+      if (xc->sstamp != ~uint64_t{0})
+        volatile_write(next_tuple->sstamp, xc->sstamp);
     }
-    tuple->clsn = clsn.to_log_ptr();
-    //ASSERT(readers_reg.count_readers((void *)it->first.tree_ptr, it->first.oid, LSN::from_ptr(tuple->clsn)) == 0);
-    //^^^^^ the above isn't totally true: to make it is, we need to provide xid to count_readers to only include
-    //those that are older than me.
-    ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     volatile_write(tuple->xstamp, cstamp);
+    tuple->clsn = clsn.to_log_ptr();
+    ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
 
   for (auto &r : read_set) {
@@ -505,12 +507,8 @@ transaction<Protocol, Traits>::do_tuple_read(
         if (ssn_register_reader_tx(tuple, xid))
             read_set.emplace_back(tuple, btr_ptr, oid);
       }
-      else {
-        if (unlikely(not xc->sstamp))
-          xc->sstamp = tuple_sstamp;
-        else if (xc->sstamp > tuple_sstamp)
-          xc->sstamp = tuple_sstamp; // \pi
-      }
+      else if (xc->sstamp > tuple_sstamp)
+        xc->sstamp = tuple_sstamp; // \pi
 
 #ifdef DO_EARLY_SSN_CHECKS
       if (not ssn_check_exclusion(xc))

@@ -11,14 +11,15 @@ bool wait_for_commit_result(xid_context *xc);
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
 
+// returns true if serializable, false means exclusion window violation
 inline bool ssn_check_exclusion(xid_context *xc) {
 #if CHECK_INVARIANTS
-    if (xc->sstamp and xc->pstamp >= xc->sstamp) printf("ssn exclusion failure\n");
+    if (xc->pstamp >= xc->sstamp) printf("ssn exclusion failure\n");
 #endif
-    if (xc->sstamp and xc->pstamp)
-        return xc->pstamp < xc->sstamp; // \eta - predecessor, \pi - sucessor
-        // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
-    return true;
+    // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
+    // note xc->sstamp is initialized to ~0, xc->pstamp's init value is 0,
+    // so don't return xc->pstamp < xc->sstamp...
+    return not (xc->pstamp >= xc->sstamp); // \eta - predecessor, \pi - sucessor
 }
 
 struct readers_list {
