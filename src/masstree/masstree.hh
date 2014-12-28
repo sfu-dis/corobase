@@ -238,7 +238,23 @@ install:
         for (; ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
             cur_obj = (object *)ptr.offset();
             dbtuple *tuple = (dbtuple *)cur_obj->payload();
+            // Note here we might see data that are still in post-commit
+            // (ie., tuple clsn will be an XID), b/c we allow updating
+            // pre-committed data in update_version. So this also means
+            // we might return a tuple with clsn as an XID to the caller.
+            if (volatile_read(tuple->clsn).asi_type() == fat_ptr::ASI_XID) {
+                // so now there could be at most one dirty version (head)
+                // followed by multiple **precommitted** versions, before
+                // the committed version read by the tx that's invoking
+                // this function. so this one must not be the rlsn that
+                // I'm trying to find.
+                continue;
+            }
+
+            // now clsn must be ASI_LOG
             LSN tuple_clsn = LSN::from_ptr(volatile_read(tuple->clsn));
+
+            // no overwriter (we started from  the 2nd version in the chain)
             if (tuple_clsn < rlsn)
                 break;
             if (tuple_clsn == rlsn)
