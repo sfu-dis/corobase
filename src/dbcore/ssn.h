@@ -7,6 +7,8 @@
 
 namespace TXN {
 
+extern uint64_t __thread tls_ssn_abort_count;
+
 bool wait_for_commit_result(xid_context *xc);
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
@@ -43,6 +45,8 @@ bool ssn_register_reader_tx(dbtuple *tup, XID xid);
 void ssn_deregister_reader_tx(dbtuple *tup);
 void ssn_register_tx(XID xid);
 void ssn_deregister_tx(XID xid);
+void summarize_ssn_aborts();
+
 /* Return a bitmap with 1's representing active readers.
  */
 static inline 

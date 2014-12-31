@@ -2,6 +2,8 @@
 #ifdef USE_PARALLEL_SSN
 namespace TXN {
 
+uint64_t ssn_abort_count;
+uint64_t __thread tls_ssn_abort_count;
 readers_list rlist;
 
 bool __attribute__((noinline))
@@ -37,6 +39,14 @@ void deassign_reader_bitmap_entry() {
     ALWAYS_ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
     __sync_fetch_and_xor(&claimed_bitmap_entries, tls_bitmap_entry);
     tls_bitmap_entry = 0;
+    summarize_ssn_aborts();
+}
+
+void summarize_ssn_aborts()
+{
+    __sync_fetch_and_add(&ssn_abort_count, tls_ssn_abort_count);
+    if (not claimed_bitmap_entries)
+        printf("--- SSN aborts: %lu\n", ssn_abort_count);
 }
 
 bool
