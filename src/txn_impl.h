@@ -19,9 +19,11 @@ using namespace TXN;
    overwrites: any meaningful sstamp would violate the exclusion
    window.
  */
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
 #ifdef USE_PARALLEL_SSN
-static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
+static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
 #endif
 
 // base definitions
@@ -69,6 +71,10 @@ void
 transaction<Protocol, Traits>::signal_abort(abort_reason reason)
 {
   abort_trap(reason);
+#ifdef USE_PARALLEL_SSN
+  if (reason == ABORT_REASON_SSN_EXCLUSION_FAILURE)
+    TXN::tls_ssn_abort_count++;
+#endif
   if (likely(state() != TXN_COMMITTING))
     volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   throw transaction_abort_exception(reason);
@@ -192,6 +198,15 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   if (xc->end == INVALID_LSN)
     signal_abort(ABORT_REASON_INTERNAL);
 
+  // note that sstamp comes from reads, but the read optimization might
+  // ignore looking at tuple's sstamp at all, so if tx sstamp is still
+  // the initial value so far, we need to initialize it as cstamp. (so
+  // that later we can fill tuple's sstamp as cstamp in case sstamp still
+  // remained as the initial value.) Consider the extreme case where
+  // old_version_threshold = 0: means no read set at all...
+  if (xc->sstamp > cstamp)
+    xc->sstamp = cstamp;
+
   // find out my largest predecessor (\eta) and smallest sucessor (\pi)
   // for reads, see if sb. has written the tuples - look at sucessor lsn
   // for writes, see if sb. has read the tuples - look at access lsn
@@ -227,6 +242,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
       age = xc->begin.offset() - overwritten_tuple->clsn.offset();
     }
+    ASSERT(volatile_read(overwritten_tuple->sstamp) == 0);
 
     /* for old tuples, just assume xstamp = cstamp-1 otherwise, check
        reader list and such
@@ -260,9 +276,10 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     else {
         // pstamp can't be larger than this, no need to check
         xc->pstamp = cstamp - 1;
+        break;
     }
-    ASSERT(xc->pstamp <= cstamp - 1);
   }
+  ASSERT(xc->pstamp <= cstamp - 1);
 
   for (auto &r : read_set) {
     // skip writes (note we didn't remove the one in read set)
@@ -337,9 +354,8 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     if (tuple != next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
       // FIXME: tuple's sstamp should never decrease?
-      ASSERT(xc->sstamp);
-      if (xc->sstamp != ~uint64_t{0})
-        volatile_write(next_tuple->sstamp, xc->sstamp);
+      ASSERT(xc->sstamp and xc->sstamp != ~uint64_t{0});
+      volatile_write(next_tuple->sstamp, xc->sstamp);
     }
     volatile_write(tuple->xstamp, cstamp);
     tuple->clsn = clsn.to_log_ptr();
@@ -487,8 +503,6 @@ transaction<Protocol, Traits>::do_tuple_read(
     xid_context* xc = xid_get_context(xid);
     ASSERT(xc);
     auto v_clsn = tuple->clsn.offset();
-    int64_t age = xc->begin.offset() - v_clsn;
-    if (age < OLD_VERSION_THRESHOLD) {
       // \eta - largest predecessor. So if I read this tuple, I should commit
       // after the tuple's creator (trivial, as this is committed version, so
       // this tuple's clsn can only be a predecessor of me): so just update
@@ -514,7 +528,6 @@ transaction<Protocol, Traits>::do_tuple_read(
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
 #endif
-    }
   }
 #endif
   return true;
