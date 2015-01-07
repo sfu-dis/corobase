@@ -503,6 +503,8 @@ transaction<Protocol, Traits>::do_tuple_read(
     xid_context* xc = xid_get_context(xid);
     ASSERT(xc);
     auto v_clsn = tuple->clsn.offset();
+    int64_t age = xc->begin.offset() - v_clsn;
+    if (age < OLD_VERSION_THRESHOLD) {
       // \eta - largest predecessor. So if I read this tuple, I should commit
       // after the tuple's creator (trivial, as this is committed version, so
       // this tuple's clsn can only be a predecessor of me): so just update
@@ -528,6 +530,7 @@ transaction<Protocol, Traits>::do_tuple_read(
       if (not ssn_check_exclusion(xc))
         signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
 #endif
+    }
   }
 #endif
   return true;
