@@ -326,8 +326,12 @@ void base_txn_btree<Transaction, P>::do_tree_put(
       xc->pstamp = prev_xstamp;
 
 #ifdef DO_EARLY_SSN_CHECKS
-    if (not ssn_check_exclusion(xc))
+    if (not ssn_check_exclusion(xc)) {
+      // unlink the version here (note abort_impl won't be able to catch
+      // it because it's not yet in the write set)
+      this->underlying_btree.unlink_tuple(oid, tuple);
       t.signal_abort(transaction_base::ABORT_REASON_SSN_EXCLUSION_FAILURE);
+    }
 #endif
 
     // copy access stamp to new tuple from overwritten version
@@ -344,7 +348,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {  // in-place update!
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       if (not prev_obj->_next.offset()) {    // update of myself's insert
-        ASSERT(t.write_set[prev].new_tuple == key_tuple and t.write_set[prev].btr == &this->underlying_btree);
+        ASSERT(t.write_set[prev].new_tuple == prev and t.write_set[prev].btr == &this->underlying_btree);
         key_tuple = tuple;
         t.write_set[prev].btr = NULL;
       }
