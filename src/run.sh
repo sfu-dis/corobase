@@ -17,5 +17,5 @@ export LD_PRELOAD="/usr/lib/libtcmalloc.so"
 #numactl --interleave=all ./out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor $1 --num-threads $2 --runtime $3 --log-dir $LOGDIR --pin-cpu
 
 # Default SF:500, working-days: 300 ( loading takes too long in this case )
-numactl --interleave=all ./out-perf.debug.check.masstree/benchmarks/dbtest --verbose --bench tpce --scale-factor 500 --num-threads $1 --runtime $2 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 1000 --working-days 1"
+numactl --interleave=all ./out-perf.masstree/benchmarks/dbtest --verbose --bench tpce --scale-factor 500 --num-threads $1 --runtime $2 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 1000 --working-days 1"
 

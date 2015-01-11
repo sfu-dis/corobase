@@ -23,6 +23,8 @@
 #include <sys/time.h> // needed for getrusage
 #include <sys/resource.h> // needed for getrusage
 #include <numa.h>
+#include <vector>
+#include <set>
 
 extern void ycsb_do_test(abstract_db *db, int argc, char **argv);
 extern void tpcc_do_test(abstract_db *db, int argc, char **argv);
@@ -51,6 +53,19 @@ extern int slow_exit;
 extern int retry_aborted_transaction;
 extern int no_reset_counters;
 extern int backoff_aborted_transaction;
+
+template <typename T> static std::vector<T>
+unique_filter(const std::vector<T> &v)
+{
+	std::set<T> seen;
+	std::vector<T> ret;
+	for (auto &e : v)
+		if (!seen.count(e)) {
+			ret.emplace_back(e);
+			seen.insert(e);
+		}
+	return ret;
+}
 
 class scoped_db_thread_ctx {
 public:
