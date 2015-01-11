@@ -16,8 +16,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
-
-#include <set>
 #include <vector>
 
 #include "../txn.h"
@@ -28,21 +26,6 @@
 #include "bench.h"
 #include "tpce.h"
 
-#include "egen/TxnHarnessBrokerVolume.h"
-#include "egen/TxnHarnessMarketFeed.h"        
-#include "egen/TxnHarnessStructs.h"       
-#include "egen/TxnHarnessTradeResult.h"
-#include "egen/TxnHarnessCustomerPosition.h"
-#include "egen/TxnHarnessMarketWatch.h"            
-#include "egen/TxnHarnessTradeCleanup.h"  
-#include "egen/TxnHarnessTradeStatus.h"
-#include "egen/TxnHarnessDBInterface.h"       
-#include "egen/TxnHarnessSecurityDetail.h"         
-#include "egen/TxnHarnessTradeLookup.h"   
-#include "egen/TxnHarnessTradeUpdate.h"
-#include "egen/TxnHarnessDataMaintenance.h"   
-#include "egen/TxnHarnessSendToMarketInterface.h"  
-#include "egen/TxnHarnessTradeOrder.h"
 
 using namespace std;
 using namespace util;
@@ -101,19 +84,6 @@ TaxrateBuffer taxrateBuffer (325);
 ZipCodeBuffer zipCodeBuffer (14850);
 
 // Utils
-template <typename T> static vector<T>
-unique_filter(const vector<T> &v)
-{
-	set<T> seen;
-	vector<T> ret;
-	for (auto &e : v)
-		if (!seen.count(e)) {
-			ret.emplace_back(e);
-			seen.insert(e);
-		}
-	return ret;
-}
-
 int64_t EgenTimeToTimeT(CDateTime &cdt)
 { 
 	struct tm ts;
@@ -695,50 +665,111 @@ class tpce_worker :
 		string obj_v;
 };
 
-class sector_scan_callback : public abstract_ordered_index::scan_callback {
+class table_scanner: public abstract_ordered_index::scan_callback {
 	public:
-		sector_scan_callback( str_arena* arena ) : _arena(arena) {}
+		table_scanner( str_arena* arena) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const string &value)
 		{
-			std::string * const k_sc = _arena->next();
-			INVARIANT(k_sc && k_sc->empty());
-			k_sc->assign(keyp, keylen);
-			scan_set.emplace_back(k_sc);
+			std::string * const k = _arena->next();
+			INVARIANT(k && k->empty());
+			k->assign(keyp, keylen);
+			output.emplace_back(k, &value);
 			return true;
 		}
-		std::vector<std::string *> scan_set;
+		std::vector<std::pair<std::string *, const std::string*>> output;
 		str_arena* _arena;
 };
 
-// TODO. Fill out all frames based on TPCE spec (shore-kits codes either)
 void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBrokerVolumeFrame1Output *pOut)
 {
-	/*
-	SECTOR scan
-	for( auto i : broker_name_list )
-	{
-		INDUSTRY scan
-		COMPANY scan
-		SECURITY scan
-		TRADE_REQUEST scan
-		GROUP BY
-	}
-	SORT
-	*/
+	/* SQL
+	start transaction
+	// Should return 0 to 40 rows
+	select
+		broker_name[] = B_NAME,
+		volume[] = sum(TR_QTY * TR_BID_PRICE)
+	from
+		TRADE_REQUEST,
+		SECTOR,
+		INDUSTRY
+		COMPANY,
+		BROKER,
+		SECURITY
+	where
+		TR_B_ID = B_ID and
+		TR_S_SYMB = S_SYMB and
+		S_CO_ID = CO_ID and
+		CO_IN_ID = IN_ID and
+		SC_ID = IN_SC_ID and
+		B_NAME in (broker_list) and
+		SC_NAME = sector_name
+	group by
+		B_NAME
+	order by
+		2 DESC
+
+	// row_count will frequently be zero near the start of a Test Run when
+	// TRADE_REQUEST table is mostly empty.
+	list_len = row_count
+	commit transaction
+*/
 
 	scoped_str_arena s_arena(arena);
+
+	// Sector scan
 	const sector::key k_sc_0( pIn->sector_name,"AA" );
 	const sector::key k_sc_1( pIn->sector_name,"ZZ" );
+	table_scanner sc_scanner(s_arena.get());
+	tbl_sector(1)->scan(txn, Encode(obj_key0, k_sc_0), &Encode(obj_key1, k_sc_1), sc_scanner, s_arena.get());
+	ALWAYS_ASSERT(sc_scanner.output.size() == 1);
 
-	sector_scan_callback c_sector(s_arena.get());
-	tbl_sector(1)->scan(txn, Encode(obj_key0, k_sc_0), &Encode(obj_key1, k_sc_1), c_sector, s_arena.get());
-	for( auto &k : c_sector.scan_set)
+	// Industry scan
+	const industry::key k_in_0( "AA" );
+	const industry::key k_in_1( "ZZ" );
+	table_scanner in_scanner(s_arena.get());
+	tbl_industry(1)->scan(txn, Encode(obj_key0, k_in_0), &Encode(obj_key1, k_in_1), in_scanner, s_arena.get());
+	ALWAYS_ASSERT(in_scanner.output.size());
+
+	// Company scan
+	const company::key k_co_0( 0 );
+	const company::key k_co_1( numeric_limits<int64_t>::max() );
+	table_scanner co_scanner(s_arena.get());
+	tbl_industry(1)->scan(txn, Encode(obj_key0, k_co_0), &Encode(obj_key1, k_co_1), co_scanner, s_arena.get());
+	ALWAYS_ASSERT(co_scanner.output.size());
+
+
+	// NLJ
+	for( auto &r_sc: sc_scanner.output )
 	{
 		sector::key k_sc_temp;
-		const sector::key *k_sc = Decode(*k, k_sc_temp);
-		cout << k_sc->sc_name << " " << k_sc->sc_id << endl;
+		sector::value v_sc_temp;
+		const sector::key* k_sc = Decode(*r_sc.first, k_sc_temp );
+		const sector::value* v_sc = Decode(*r_sc.second, v_sc_temp );
+
+		for( auto &r_in: in_scanner.output)
+		{
+			industry::key k_in_temp;
+			industry::value v_in_temp;
+			const industry::key* k_in = Decode(*r_in.first, k_in_temp );
+			const industry::value* v_in = Decode(*r_in.second, v_in_temp );
+
+			if( k_sc->sc_id != v_in->in_sc_id )
+				continue;
+
+			for( auto &r_co : co_scanner.output )
+			{
+				company::key k_co_temp;
+				company::value v_co_temp;
+				const company::key* k_co = Decode(*r_co.first, k_co_temp );
+				const company::value* v_co = Decode(*r_co.second, v_co_temp );
+
+				if( k_in->in_id != v_co->co_in_id )
+					continue;
+			}
+		}
 	}
 }
+
 void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut){}
 void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *pIn, TCustomerPositionFrame2Output *pOut){}
 void tpce_worker::DoCustomerPositionFrame3(void){}
@@ -969,16 +1000,16 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
 					int rows=industryBuffer.getSize();
 					for(int i=0; i<rows; i++){
 						PINDUSTRY_ROW record = industryBuffer.get(i);
-						industry::key k;
-						industry::value v;
+						industry::key k_in;
+						industry::value v_in;
 						string obj_buf;
 
-						k.in_id = string(record->IN_ID);
-						v.in_name = string(record->IN_NAME);
-						v.in_sc_id = string(record->IN_SC_ID);
+						k_in.in_id = string(record->IN_ID);
+						v_in.in_name = string(record->IN_NAME);
+						v_in.in_sc_id = string(record->IN_SC_ID);
 
 						void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);	// FIXME. change hint
-						tbl_industry(1)->insert(txn, Encode(k), Encode(obj_buf, v));
+						tbl_industry(1)->insert(txn, Encode(k_in), Encode(obj_buf, v_in));
 						db->commit_txn(txn);
 					}
 					pGenerateAndLoad->ReleaseIndustry();
@@ -2600,7 +2631,7 @@ void tpce_do_test(abstract_db *db, int argc, char **argv)
 	int customers = 0;
 	int working_days = 0;
 	int scaling_factor_tpce = scale_factor;
-	const char* egen_dir;
+	char* egen_dir = NULL;
 	char sfe_str[8], wd_str[8], cust_str[8];
 	memset(sfe_str,0,8);
 	memset(wd_str,0,8);

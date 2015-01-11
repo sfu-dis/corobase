@@ -2532,20 +2532,6 @@ do_write:
   }
 }
 
-template <typename T>
-static vector<T>
-unique_filter(const vector<T> &v)
-{
-  set<T> seen;
-  vector<T> ret;
-  for (auto &e : v)
-    if (!seen.count(e)) {
-      ret.emplace_back(e);
-      seen.insert(e);
-    }
-  return ret;
-}
-
 class tpcc_bench_runner : public bench_runner {
 private:
 
