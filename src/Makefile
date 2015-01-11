@@ -197,7 +197,44 @@ BENCH_SRCFILES = \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
+	benchmarks/tpce.cc	\
 	benchmarks/tpcc.cc
+
+EGEN_SRCFILES = \
+   benchmarks/egen/DateTime.cpp \
+   benchmarks/egen/error.cpp \
+   benchmarks/egen/Random.cpp \
+   benchmarks/egen/Money.cpp \
+   benchmarks/egen/EGenVersion.cpp \
+   benchmarks/egen/locking.cpp \
+   benchmarks/egen/threading.cpp \
+   benchmarks/egen/BaseLogger.cpp \
+   benchmarks/egen/EGenLogFormatterTab.cpp \
+   benchmarks/egen/EGenLoader.cpp \
+   benchmarks/egen/MEE.cpp \
+   benchmarks/egen/MEEPriceBoard.cpp \
+   benchmarks/egen/MEESecurity.cpp \
+   benchmarks/egen/MEETickerTape.cpp \
+   benchmarks/egen/MEETradingFloor.cpp \
+   benchmarks/egen/WheelTime.cpp \
+   benchmarks/egen/AddressTable.cpp \
+   benchmarks/egen/CustomerSelection.cpp \
+   benchmarks/egen/CustomerTable.cpp \
+   benchmarks/egen/InputFlatFilesStructure.cpp \
+   benchmarks/egen/Person.cpp \
+   benchmarks/egen/ReadRowFunctions.cpp \
+   benchmarks/egen/TradeGen.cpp \
+   benchmarks/egen/FlatFileLoader.cpp \
+   benchmarks/egen/CE.cpp \
+   benchmarks/egen/CETxnInputGenerator.cpp \
+   benchmarks/egen/CETxnMixGenerator.cpp \
+   benchmarks/egen/DM.cpp \
+   benchmarks/egen/EGenGenerateAndLoad.cpp \
+   benchmarks/egen/EGenValidate.cpp \
+   benchmarks/egen/strutil.cpp \
+   benchmarks/egen/progressmeter.cpp \
+   benchmarks/egen/progressmeterinterface.cpp \
+   benchmarks/egen/bucketsimulator.cpp
 
 ifeq ($(MYSQL_S),1)
 BENCH_CXXFLAGS += -DMYSQL_SHARE_DIR=\"$(MYSQL_SHARE_DIR)\"
@@ -208,6 +245,7 @@ BENCH_CXXFLAGS += -DNO_MYSQL
 endif
 
 BENCH_OBJFILES := $(patsubst %.cc, $(O)/%.o, $(BENCH_SRCFILES))
+EGEN_OBJFILES := $(patsubst %.cpp, $(O)/%.o, $(EGEN_SRCFILES))
 
 NEWBENCH_SRCFILES = new-benchmarks/bench.cc \
 	new-benchmarks/tpcc.cc
@@ -223,6 +261,10 @@ $(O)/benchmarks/%.o: benchmarks/%.cc $(O)/buildstamp $(O)/buildstamp.bench $(OBJ
 $(O)/benchmarks/masstree/%.o: benchmarks/masstree/%.cc $(O)/buildstamp $(O)/buildstamp.bench $(OBJDEP)
 	@mkdir -p $(@D)
 	$(CXX) $(BENCH_CXXFLAGS) -c $< -o $@
+
+$(EGEN_OBJFILES) : $(O)/benchmarks/egen/%.o: benchmarks/egen/%.cpp $(OBJDEP)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(O)/new-benchmarks/%.o: new-benchmarks/%.cc $(O)/buildstamp $(O)/buildstamp.bench $(OBJDEP)
 	@mkdir -p $(@D)
@@ -272,7 +314,7 @@ masstree/configure masstree/config.h.in: masstree/configure.ac
 .PHONY: dbtest
 dbtest: $(O)/benchmarks/dbtest
 
-$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) third-party/lz4/liblz4.so
+$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) $(EGEN_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/benchmarks/dbtest $^ $(BENCH_LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: kvtest
