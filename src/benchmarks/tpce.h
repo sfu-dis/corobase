@@ -236,7 +236,7 @@ DO_STRUCT(trade_type, TRADE_TYPE_KEY_FIELDS, TRADE_TYPE_VALUE_FIELDS )
 #define COMPANY_VALUE_FIELDS(x,y)\
     x(inline_str_fixed<4>, co_st_id)\
     y(inline_str_fixed<60>, co_name)\
-    y(inline_str_fixed<2>,	co_in_id)\
+    y(inline_str_fixed<4>,	co_in_id)\
     y(inline_str_fixed<4>,	co_sp_rate)\
     y(inline_str_fixed<46>,	co_ceo)\
     y(int64_t,    co_ad_id)\
@@ -247,7 +247,7 @@ DO_STRUCT( company, COMPANY_KEY_FIELDS, COMPANY_VALUE_FIELDS )
 #define COMPANY_COMPETITOR_KEY_FIELDS(x,y)\
     x(int64_t,    cp_co_id)\
     y(int64_t,    cp_comp_co_id)\
-    y(inline_str_fixed<2>, cp_in_id)
+    y(inline_str_fixed<4>, cp_in_id)
 #define COMPANY_COMPETITOR_VALUE_FIELDS(x,y)\
     x(bool, dummy)
 DO_STRUCT( company_competitor, COMPANY_COMPETITOR_KEY_FIELDS, COMPANY_COMPETITOR_VALUE_FIELDS )
@@ -292,10 +292,10 @@ DO_STRUCT( exchange, EXCHANGE_KEY_FIELDS, EXCHANGE_VALUE_FIELDS )
 DO_STRUCT( financial, FINANCIAL_KEY_FIELDS, FINANCIAL_VALUE_FIELDS )
 
 #define INDUSTRY_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<2>, in_id)
+    x(inline_str_fixed<4>, in_id)
 #define INDUSTRY_VALUE_FIELDS(x,y)\
     x(inline_str_fixed<50>, in_name)\
-    y(inline_str_fixed<2>, in_sc_id)
+    y(inline_str_fixed<4>, in_sc_id)
 DO_STRUCT( industry, INDUSTRY_KEY_FIELDS, INDUSTRY_VALUE_FIELDS )
 
 #define LAST_TRADE_KEY_FIELDS(x,y)\
@@ -329,7 +329,7 @@ DO_STRUCT( news_xref, NEWS_XREF_KEY_FIELDS, NEWS_XREF_VALUE_FIELDS )
 
 #define SECTOR_KEY_FIELDS(x,y)\
     x(inline_str_fixed<32>, sc_name)\
-    y(inline_str_fixed<2>, sc_id)
+    y(inline_str_fixed<4>, sc_id)
 #define SECTOR_VALUE_FIELDS(x,y)\
     x(bool, dummy)
 DO_STRUCT( sector, SECTOR_KEY_FIELDS, SECTOR_VALUE_FIELDS )

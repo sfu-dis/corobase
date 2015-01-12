@@ -84,6 +84,22 @@ TaxrateBuffer taxrateBuffer (325);
 ZipCodeBuffer zipCodeBuffer (14850);
 
 // Utils
+class table_scanner: public abstract_ordered_index::scan_callback {
+	public:
+		table_scanner( str_arena* arena) : _arena(arena) {}
+		virtual bool invoke( const char *keyp, size_t keylen, const string &value)
+		{
+			std::string * const k = _arena->next();
+			INVARIANT(k && k->empty());
+			k->assign(keyp, keylen);
+			output.emplace_back(k, &value);
+			return true;
+		}
+		std::vector<std::pair<std::string *, const std::string*>> output;
+		str_arena* _arena;
+};
+
+
 int64_t EgenTimeToTimeT(CDateTime &cdt)
 { 
 	struct tm ts;
@@ -665,21 +681,6 @@ class tpce_worker :
 		string obj_v;
 };
 
-class table_scanner: public abstract_ordered_index::scan_callback {
-	public:
-		table_scanner( str_arena* arena) : _arena(arena) {}
-		virtual bool invoke( const char *keyp, size_t keylen, const string &value)
-		{
-			std::string * const k = _arena->next();
-			INVARIANT(k && k->empty());
-			k->assign(keyp, keylen);
-			output.emplace_back(k, &value);
-			return true;
-		}
-		std::vector<std::pair<std::string *, const std::string*>> output;
-		str_arena* _arena;
-};
-
 void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBrokerVolumeFrame1Output *pOut)
 {
 	/* SQL
@@ -737,14 +738,11 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	tbl_industry(1)->scan(txn, Encode(obj_key0, k_co_0), &Encode(obj_key1, k_co_1), co_scanner, s_arena.get());
 	ALWAYS_ASSERT(co_scanner.output.size());
 
-
 	// NLJ
 	for( auto &r_sc: sc_scanner.output )
 	{
 		sector::key k_sc_temp;
-		sector::value v_sc_temp;
 		const sector::key* k_sc = Decode(*r_sc.first, k_sc_temp );
-		const sector::value* v_sc = Decode(*r_sc.second, v_sc_temp );
 
 		for( auto &r_in: in_scanner.output)
 		{
@@ -763,8 +761,11 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 				const company::key* k_co = Decode(*r_co.first, k_co_temp );
 				const company::value* v_co = Decode(*r_co.second, v_co_temp );
 
+				cout << "IN_ID : " << k_in->in_id << " " << "CO_IN_ID : " << v_co->co_in_id << endl;
 				if( k_in->in_id != v_co->co_in_id )
 					continue;
+
+				cout << v_co->co_in_id << " " << v_co->co_name << endl;
 			}
 		}
 	}
@@ -1434,26 +1435,26 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 
 							k.c_id			= record->C_ID;
 							v.c_tax_id		= string(record->C_TAX_ID);
-							v.c_st_id			= string(record->C_ST_ID);
+							v.c_st_id		= string(record->C_ST_ID);
 							v.c_l_name		= string(record->C_L_NAME);
 							v.c_f_name		= string(record->C_F_NAME);
 							v.c_m_name		= string(record->C_M_NAME);
-							v.c_gndr			= record->C_GNDR;
-							v.c_tier			= record->C_TIER;
+							v.c_gndr		= record->C_GNDR;
+							v.c_tier		= record->C_TIER;
 							v.c_dob			= EgenTimeToTimeT(record->C_DOB);
-							v.c_ad_id			= record->C_AD_ID;
+							v.c_ad_id		= record->C_AD_ID;
 							v.c_ctry_1		= string(record->C_CTRY_1);
 							v.c_area_1		= string(record->C_AREA_1);
 							v.c_local_1		= string(record->C_LOCAL_1);
-							v.c_ext_1			= string(record->C_EXT_1);
+							v.c_ext_1		= string(record->C_EXT_1);
 							v.c_ctry_2		= string(record->C_CTRY_2);
 							v.c_area_2		= string(record->C_AREA_2);
 							v.c_local_2		= string(record->C_LOCAL_2);
-							v.c_ext_2			= string(record->C_EXT_2);
+							v.c_ext_2		= string(record->C_EXT_2);
 							v.c_ctry_3		= string(record->C_CTRY_3);
 							v.c_area_3		= string(record->C_AREA_3);
 							v.c_local_3		= string(record->C_LOCAL_3);
-							v.c_ext_3			= string(record->C_EXT_3);
+							v.c_ext_3		= string(record->C_EXT_3);
 							v.c_email_1		= string(record->C_EMAIL_1);
 							v.c_email_2		= string(record->C_EMAIL_2);
 
