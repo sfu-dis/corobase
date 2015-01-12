@@ -717,6 +717,7 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 	scoped_str_arena s_arena(arena);
 
+	// FIXME. white space has lower ascii code
 	// Sector scan
 	const sector::key k_sc_0( pIn->sector_name,"AA" );
 	const sector::key k_sc_1( pIn->sector_name,"ZZ" );
@@ -735,8 +736,42 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	const company::key k_co_0( 0 );
 	const company::key k_co_1( numeric_limits<int64_t>::max() );
 	table_scanner co_scanner(s_arena.get());
-	tbl_industry(1)->scan(txn, Encode(obj_key0, k_co_0), &Encode(obj_key1, k_co_1), co_scanner, s_arena.get());
+	tbl_company(1)->scan(txn, Encode(obj_key0, k_co_0), &Encode(obj_key1, k_co_1), co_scanner, s_arena.get());
 	ALWAYS_ASSERT(co_scanner.output.size());
+
+	// Security scan
+	const security::key k_s_0( "AAAAAAAAAAAAAAAA" );
+	const security::key k_s_1( "ZZZZZZZZZZZZZZZZ" );
+	table_scanner s_scanner(s_arena.get());
+	tbl_security(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
+	ALWAYS_ASSERT(s_scanner.output.size());
+
+	// Broker scan  FIXME. index ( broker is read-only table?? )
+	const broker::key k_b_0( 0 );
+	const broker::key k_b_1( numeric_limits<int64_t>::max() );
+	table_scanner b_scanner(s_arena.get());
+	tbl_broker(1)->scan(txn, Encode(obj_key0, k_b_0), &Encode(obj_key1, k_b_1), b_scanner, s_arena.get());
+	ALWAYS_ASSERT(b_scanner.output.size());
+	std::vector<std::pair<std::string *, const std::string*>> brokers;
+	for( auto &r_b : b_scanner.output )
+	{
+		broker::key k_b_temp;
+		broker::value v_b_temp;
+		const broker::key* k_b = Decode( *r_b.first, k_b_temp );
+		const broker::value* v_b = Decode(*r_b.second, v_b_temp );
+
+		for( auto j = 0; j < max_broker_list_len ; j++ )
+		{
+			if( not pIn->broker_list[j] )
+				break;
+
+			inline_str_8<52> b_name = string(pIn->broker_list[j]);
+			if( b_name != v_b->b_name )
+			{
+				brokers.push_back( r_b );
+			}
+		}
+	}
 
 	// NLJ
 	for( auto &r_sc: sc_scanner.output )
@@ -761,19 +796,54 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 				const company::key* k_co = Decode(*r_co.first, k_co_temp );
 				const company::value* v_co = Decode(*r_co.second, v_co_temp );
 
-				cout << "IN_ID : " << k_in->in_id << " " << "CO_IN_ID : " << v_co->co_in_id << endl;
 				if( k_in->in_id != v_co->co_in_id )
 					continue;
 
-				cout << v_co->co_in_id << " " << v_co->co_name << endl;
+				for( auto &r_s : s_scanner.output )
+				{
+					security::key k_s_temp;
+					security::value v_s_temp;
+					const security::key* k_s = Decode( *r_s.first, k_s_temp );
+					const security::value* v_s = Decode(*r_s.second, v_s_temp );
+
+					if( v_s->s_co_id != k_co->co_id )
+						continue;
+
+					for( auto &r_b : brokers )
+					{
+						broker::key k_b_temp;
+						broker::value v_b_temp;
+						const broker::key* k_b = Decode( *r_b.first, k_b_temp );
+						const broker::value* v_b = Decode(*r_b.second, v_b_temp );
+
+						const trade_request::key k_tr(k_s->s_symb, k_b->b_id);
+						if(tbl_trade_request(1)->get(txn, Encode(obj_key0, k_tr), obj_v))
+						{
+							trade_request::value v_tr_temp;
+							const trade_request::value *v_tr = Decode(obj_v, v_tr_temp);
+
+							// TODO. aggregation, group by, order by
+							//cout << v_tr->tr_qty << endl;
+						}
+					}
+				}
 			}
 		}
 	}
 }
 
-void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut){}
-void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *pIn, TCustomerPositionFrame2Output *pOut){}
-void tpce_worker::DoCustomerPositionFrame3(void){}
+void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut)
+{
+}
+
+void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *pIn, TCustomerPositionFrame2Output *pOut)
+{	
+}
+
+void tpce_worker::DoCustomerPositionFrame3(void)
+{
+}
+
 void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketFeedFrame1Output *pOut, CSendToMarketInterface *pSendToMarket){}
 void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut){}
 void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut){}
@@ -1429,8 +1499,8 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 						int rows=customerBuffer.getSize();
 						for(int i=0; i<rows; i++){
 							PCUSTOMER_ROW record = customerBuffer.get(i);
-							customer::key k;
-							customer::value v;
+							customers::key k;
+							customers::value v;
 							string obj_buf;
 
 							k.c_id			= record->C_ID;
@@ -1459,7 +1529,7 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 							v.c_email_2		= string(record->C_EMAIL_2);
 
 							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);	// FIXME. change hint
-							tbl_customer(1)->insert(txn, Encode(k), Encode(obj_buf, v));
+							tbl_customers(1)->insert(txn, Encode(k), Encode(obj_buf, v));
 							db->commit_txn(txn);
 						}
 					}
@@ -1753,10 +1823,10 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
 
 							k.co_id			= record->CO_ID;
 							v.co_st_id		= string(record->CO_ST_ID);
-							v.co_name			= string(record->CO_NAME);
+							v.co_name		= string(record->CO_NAME);
 							v.co_in_id		= string(record->CO_IN_ID);
-							v.co_sp_rate		= string(record->CO_SP_RATE);
-							v.co_ceo			= string(record->CO_CEO);
+							v.co_sp_rate	= string(record->CO_SP_RATE);
+							v.co_ceo		= string(record->CO_CEO);
 							v.co_ad_id		= record->CO_AD_ID;
 							v.co_open_date	= EgenTimeToTimeT(record->CO_OPEN_DATE);
 
