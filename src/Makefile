@@ -197,8 +197,8 @@ BENCH_SRCFILES = \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
-	benchmarks/tpcc.cc	\
-	benchmarks/tpce.cc	
+	benchmarks/tpce.cc	\
+	benchmarks/tpcc.cc	
 
 EGEN_SRCFILES = \
    benchmarks/egen/DateTime.cpp \

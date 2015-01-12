@@ -43,9 +43,9 @@ DO_STRUCT(account_permission, ACCOUNT_PERMISSION_KEY_FIELDS, ACCOUNT_PERMISSION_
 		
 
 
-#define CUSTOMER_KEY_FIELDS(x,y)\
+#define CUSTOMERS_KEY_FIELDS(x,y)\
     x(int64_t,     c_id)
-#define CUSTOMER_VALUE_FIELDS(x,y)\
+#define CUSTOMERS_VALUE_FIELDS(x,y)\
     x(inline_str_fixed<20>,  c_tax_id)\
     y(inline_str_fixed<4>,  c_st_id)\
     y(inline_str_fixed<25>,  c_l_name)\
@@ -69,7 +69,7 @@ DO_STRUCT(account_permission, ACCOUNT_PERMISSION_KEY_FIELDS, ACCOUNT_PERMISSION_
     y(inline_str_fixed<5>, c_ext_3)\
     y(inline_str_fixed<50>, c_email_1)\
     y(inline_str_fixed<50>, c_email_2)
-DO_STRUCT(customer, CUSTOMER_KEY_FIELDS, CUSTOMER_VALUE_FIELDS)
+DO_STRUCT(customers, CUSTOMERS_KEY_FIELDS, CUSTOMERS_VALUE_FIELDS)				// XXX. MUST avoid use of same name with TPCC, otherwise one of the customer table definitions is overwritten
 
 #define CUSTOMER_ACCOUNT_KEY_FIELDS(x,y)\
     x(int64_t,   	 ca_id)
@@ -167,8 +167,8 @@ DO_STRUCT(charge, CHARGE_KEY_FIELDS, CHARGE_VALUE_FIELDS)
 
 #define COMMISSION_RATE_KEY_FIELDS(x,y)\
 	x(int32_t, cr_c_tier)\
-	y(inline_str_fixed<6>, cr_tt_id )\
-	y(inline_str_fixed<8>, cr_ex_id )\
+	y(inline_str_fixed<4>, cr_tt_id )\
+	y(inline_str_fixed<6>, cr_ex_id )\
 	y(double, cr_from_qty)
 #define COMMISSION_RATE_VALUE_FIELDS(x,y)\
 	x(double, cr_to_qty)\
@@ -398,7 +398,7 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 	x(trade_type)\
 	x(zip_code)\
 	x(address)\
-	x(customer)\
+	x(customers)\
 	x(customer_account)\
 	x(account_permission)\
 	x(customer_taxrate)\
@@ -413,6 +413,7 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 	x(news_xref)\
 	x(security)\
 	x(trade)\
+	x(trade_request)\
 	x(trade_history)\
 	x(settlement)\
 	x(cash)\
