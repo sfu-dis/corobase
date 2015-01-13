@@ -1,10 +1,12 @@
 /*
    TODOs
 
+   string->c_str
+   scan key
    sanity check & carninality check 
-   secondary indices
+   secondary indices for read-only tables
    non unique indices, check that masstree can do it
-   partitioning and pinning for loaders and workers
+   partitioning and CPU pinning for loaders and workers
  */
 
 #include <sys/time.h>
@@ -375,9 +377,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateBrokerVolumeInput(input);
 			CBrokerVolume* harness= new CBrokerVolume(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			harness->DoTxn( (PBrokerVolumeTxnInput)&input, (PBrokerVolumeTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBrokerVolumeFrame1Output *pOut);
@@ -395,9 +395,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateCustomerPositionInput(input);
 			CCustomerPosition* harness= new CCustomerPosition(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
-			//	harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
-			db->commit_txn(txn);
+			harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
 			return txn_result(true, 0);
 		}
 		void DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut);
@@ -717,6 +715,7 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 	scoped_str_arena s_arena(arena);
 
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 	// FIXME. white space has lower ascii code
 	// Sector scan
 	const sector::key k_sc_0( pIn->sector_name,"AA" );
@@ -753,11 +752,15 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	tbl_broker(1)->scan(txn, Encode(obj_key0, k_b_0), &Encode(obj_key1, k_b_1), b_scanner, s_arena.get());
 	ALWAYS_ASSERT(b_scanner.output.size());
 	std::vector<std::pair<std::string *, const std::string*>> brokers;
+
+
+	pOut->list_len = 0;
+	// BrokerVolume query processing
 	for( auto &r_b : b_scanner.output )
 	{
-		broker::key k_b_temp;
+//		broker::key k_b_temp;
 		broker::value v_b_temp;
-		const broker::key* k_b = Decode( *r_b.first, k_b_temp );
+//		const broker::key* k_b = Decode( *r_b.first, k_b_temp );
 		const broker::value* v_b = Decode(*r_b.second, v_b_temp );
 
 		for( auto j = 0; j < max_broker_list_len ; j++ )
@@ -822,26 +825,224 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 							trade_request::value v_tr_temp;
 							const trade_request::value *v_tr = Decode(obj_v, v_tr_temp);
 
-							// TODO. aggregation, group by, order by
-							//cout << v_tr->tr_qty << endl;
+							// TODO. group by
+							// TODO. order by
+							memcpy(pOut->broker_name[pOut->list_len],  v_b->b_name.data(), v_b->b_name.size());
+							pOut->volume[pOut->list_len] = v_tr->tr_bid_price * v_tr->tr_qty; 
+							pOut->list_len++;
+							//cout << pOut->broker_name[pOut->list_len-1] << " " << pOut->volume[pOut->list_len-1] << endl;
 						}
 					}
 				}
 			}
 		}
 	}
+	db->commit_txn(txn);
 }
 
 void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut)
 {
+	scoped_str_arena s_arena(arena);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+
+	// Get c_id;
+	const customers::key k_c_0( 0 );
+	const customers::key k_c_1( numeric_limits<int64_t>::max() );
+	table_scanner c_scanner(s_arena.get());
+	if(pIn->cust_id)
+		pOut->cust_id = pIn->cust_id;
+	else
+	{
+		tbl_customers(1)->scan(txn, Encode(obj_key0, k_c_0), &Encode(obj_key1, k_c_1), c_scanner, s_arena.get());
+		ALWAYS_ASSERT(c_scanner.output.size());
+		for( auto &r_c : c_scanner.output )
+		{
+			customers::key k_c_temp;
+			customers::value v_c_temp;
+			const customers::key* k_c = Decode( *r_c.first, k_c_temp );
+			const customers::value* v_c = Decode(*r_c.second, v_c_temp );
+
+			inline_str_fixed<20> c_tax_id = string( pIn->tax_id );
+
+			if( v_c->c_tax_id == c_tax_id )
+				pOut->cust_id = k_c->c_id;
+		}
+	}
+
+	// probe Customers
+	const customers::key k_c(pOut->cust_id);
+	ALWAYS_ASSERT(tbl_customers(1)->get(txn, Encode(obj_key0, k_c), obj_v));
+    customers::value v_c_temp;
+    const customers::value *v_c = Decode(obj_v, v_c_temp);
+
+    memcpy(pOut->c_st_id, v_c->c_st_id.data(), v_c->c_st_id.size() );
+    memcpy(pOut->c_l_name, v_c->c_l_name.data(), v_c->c_l_name.size());
+	memcpy(pOut->c_f_name, v_c->c_f_name.data(), v_c->c_f_name.size());
+    memcpy(pOut->c_m_name, v_c->c_m_name.data(), v_c->c_m_name.size());
+    pOut->c_gndr[0] = v_c->c_gndr; pOut->c_gndr[1] = 0;
+    pOut->c_tier = v_c->c_tier;
+//    pOut->c_dob = v_c->c_dob;				// FIXME. time_t -> TIMESTAMP_STRUCT
+    pOut->c_ad_id = v_c->c_ad_id;
+    memcpy(pOut->c_ctry_1, v_c->c_ctry_1.data(), v_c->c_ctry_1.size());
+    memcpy(pOut->c_area_1, v_c->c_area_1.data(), v_c->c_area_1.size());
+    memcpy(pOut->c_local_1, v_c->c_local_1.data(), v_c->c_local_1.size());
+    memcpy(pOut->c_ext_1, v_c->c_ext_1.data(), v_c->c_ext_1.size());
+    memcpy(pOut->c_ctry_2, v_c->c_ctry_2.data(), v_c->c_ctry_2.size());
+    memcpy(pOut->c_area_2, v_c->c_area_2.data(), v_c->c_area_2.size());
+    memcpy(pOut->c_local_2, v_c->c_local_2.data(), v_c->c_local_2.size());
+    memcpy(pOut->c_ext_2, v_c->c_ext_2.data(), v_c->c_ext_2.size());
+    memcpy(pOut->c_ctry_3, v_c->c_ctry_3.data(), v_c->c_ctry_3.size());
+    memcpy(pOut->c_area_3, v_c->c_area_3.data(), v_c->c_area_3.size());
+    memcpy(pOut->c_local_3, v_c->c_local_3.data(), v_c->c_local_3.size());
+    memcpy(pOut->c_ext_3, v_c->c_ext_3.data(), v_c->c_ext_3.size());
+    memcpy(pOut->c_email_1, v_c->c_email_1.data(), v_c->c_email_1.size());
+    memcpy(pOut->c_email_2, v_c->c_email_2.data(), v_c->c_email_2.size());
+
+
+	// CustomerAccount scan
+	const customer_account::key k_ca_0( 0 );
+	const customer_account::key k_ca_1( numeric_limits<int64_t>::max() );
+	table_scanner ca_scanner(s_arena.get());
+	tbl_customer_account(1)->scan(txn, Encode(obj_key0, k_ca_0), &Encode(obj_key1, k_ca_1), ca_scanner, s_arena.get());
+	ALWAYS_ASSERT( ca_scanner.output.size() );
+
+	// HoldingSummary scan
+	const holding_summary::key k_hs_0( 0, "AAAAAAAAAAAAAAAA" );
+	const holding_summary::key k_hs_1( numeric_limits<int64_t>::max(), "ZZZZZZZZZZZZZZZZ" );
+	table_scanner hs_scanner(s_arena.get());
+	tbl_holding_summary(1)->scan(txn, Encode(obj_key0, k_hs_0), &Encode(obj_key1, k_hs_1), hs_scanner, s_arena.get());
+	ALWAYS_ASSERT( hs_scanner.output.size() );
+
+	for( auto& r_ca : ca_scanner.output )
+	{
+		customer_account::key k_ca_temp;
+		customer_account::value v_ca_temp;
+		const customer_account::key* k_ca = Decode( *r_ca.first, k_ca_temp );
+		const customer_account::value* v_ca = Decode(*r_ca.second, v_ca_temp );
+		
+		if( v_ca->ca_c_id != pOut->cust_id )
+			continue;
+
+		auto asset = 0;
+		for( auto& r_hs : hs_scanner.output )
+		{
+			holding_summary::key k_hs_temp;
+			holding_summary::value v_hs_temp;
+			const holding_summary::key* k_hs = Decode( *r_hs.first, k_hs_temp );
+			const holding_summary::value* v_hs = Decode(*r_hs.second, v_hs_temp );
+
+			if(  k_ca->ca_id == k_hs->hs_ca_id )
+			{
+				// LastTrade probe & equi-join
+				const last_trade::key k_lt(k_hs->hs_s_symb);
+				ALWAYS_ASSERT(tbl_last_trade(1)->get(txn, Encode(obj_key0, k_lt), obj_v));
+				last_trade::value v_lt_temp;
+				const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
+
+				asset += v_hs->hs_qty * v_lt->lt_price;
+			}
+		}
+
+		// TODO.  aggregation( if <CA_ID,CA_BAL> is not unique ) and sorting.
+		pOut->acct_id[pOut->acct_len] = k_ca->ca_id;
+		pOut->cash_bal[pOut->acct_len] = v_ca->ca_bal;
+		pOut->asset_total[pOut->acct_len] = asset;
+		pOut->acct_len++;
+		cout << __FUNCTION__ << ": " << pOut->acct_id[pOut->acct_len-1] << " " << pOut->cash_bal[pOut->acct_len-1] << " " << pOut->asset_total[pOut->acct_len-1] << endl;
+	}
 }
 
 void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *pIn, TCustomerPositionFrame2Output *pOut)
-{	
+{
+	scoped_str_arena s_arena(arena);
+	// Trade scan and collect 10 TID
+	const trade::key k_t_0( 0 );
+	const trade::key k_t_1( numeric_limits<int64_t>::max() );
+	table_scanner t_scanner(s_arena.get());
+	tbl_trade(1)->scan(txn, Encode(obj_key0, k_t_0), &Encode(obj_key1, k_t_1), t_scanner, s_arena.get());
+	ALWAYS_ASSERT( t_scanner.output.size() );
+
+	std::vector<std::pair<std::string *, const std::string*>> tids;
+	for( auto &r_t : t_scanner.output )
+	{
+//		trade::key k_t_temp;
+		trade::value v_t_temp;
+//		const trade::key* k_t = Decode( *r_t.first, k_t_temp );
+		const trade::value* v_t = Decode(*r_t.second, v_t_temp );
+
+		if( pIn->acct_id != v_t->t_ca_id )
+			continue;
+
+		tids.push_back( r_t );
+		if( tids.size() >= 10 )
+			break;
+	}
+
+	// TODO. order by and grab top-10 tids
+
+	// Join
+	const trade_history::key k_th_0( 0, 0 );
+	const trade_history::key k_th_1(numeric_limits<int64_t>::max(), numeric_limits<int64_t>::max() );
+	table_scanner th_scanner(s_arena.get());
+	tbl_trade_history(1)->scan(txn, Encode(obj_key0, k_th_0), &Encode(obj_key1, k_th_1), th_scanner, s_arena.get());
+	ALWAYS_ASSERT( th_scanner.output.size() );
+
+	const status_type::key k_st_0( "    " );
+	const status_type::key k_st_1( "ZZZZ"  );
+	table_scanner st_scanner(s_arena.get());
+	tbl_status_type(1)->scan(txn, Encode(obj_key0, k_st_0), &Encode(obj_key1, k_st_1), st_scanner, s_arena.get());
+	ALWAYS_ASSERT( st_scanner.output.size() );
+
+	for( auto &r_t : tids )
+	{
+		trade::key k_t_temp;
+		trade::value v_t_temp;
+		const trade::key* k_t = Decode( *r_t.first, k_t_temp );
+		const trade::value* v_t = Decode(*r_t.second, v_t_temp );
+
+		for( auto &r_th : th_scanner.output )
+		{
+			trade_history::key k_th_temp;
+			trade_history::value v_th_temp;
+			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
+			const trade_history::value* v_th = Decode(*r_th.second, v_th_temp );
+
+			if( k_t->t_id != k_th->th_t_id )
+				continue;
+
+			for( auto &r_st : st_scanner.output )
+			{
+				status_type::key k_st_temp;
+				status_type::value v_st_temp;
+				const status_type::key* k_st = Decode( *r_st.first, k_st_temp );
+				const status_type::value* v_st = Decode(*r_st.second, v_st_temp );
+
+				if( v_th->th_st_id != k_st->st_id )
+					continue;
+
+				// TODO. order by and grab 30 rows
+				pOut->trade_id[pOut->hist_len] 	= k_t->t_id;
+				pOut->qty[pOut->hist_len] 		= v_t->t_qty;
+//				pOut->hist_dts[pOut->hist_len] = 0;			//FIXME
+				memcpy(pOut->symbol[pOut->hist_len], v_t->t_s_symb.data(), v_t->t_s_symb.size());
+				memcpy(pOut->trade_status[pOut->hist_len], v_st->st_name.data(), v_st->st_name.size());
+				pOut->hist_len++;
+
+				cout << __FUNCTION__ << ": " << pOut->trade_id[pOut->hist_len-1] << " " << pOut->qty[pOut->hist_len-1] << " " << pOut->symbol[pOut->hist_len-1] << endl;
+				if( pOut->hist_len >= 30 )
+					goto commit;
+			}
+
+		}
+
+	}
+commit:
+	db->commit_txn(txn);
 }
 
 void tpce_worker::DoCustomerPositionFrame3(void)
 {
+	db->commit_txn(txn);
 }
 
 void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketFeedFrame1Output *pOut, CSendToMarketInterface *pSendToMarket){}
