@@ -116,7 +116,7 @@ int64_t EgenTimeToTimeT(CDateTime &cdt)
 	return (int64_t)x;
 }
 
-int64_t EgenTimeStampToTimeT(TIMESTAMP_STRUCT &tss) //Converts EGEN TIMESTAMP representation to time_t structure
+int64_t EgenTimeStampToTimeT(TIMESTAMP_STRUCT tss) //Converts EGEN TIMESTAMP representation to time_t structure
 { 
 	struct tm ts;
 	ts.tm_year = tss.year -1900;
@@ -433,7 +433,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateMarketWatchInput(input);
 			CMarketWatch* harness= new CMarketWatch(this);
 
-			//	harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
+			harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
 			return txn_result(true, 0);
 		}
 		void DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut);
@@ -1062,14 +1062,161 @@ void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 			const trade_request::key* k_tr = Decode( *r_tr.first, k_tr_temp );
 			const trade_request::value* v_tr = Decode(*r_tr.second, v_tr_temp );
 
-			cout << v_tr->tr_tt_id << endl;
+			//cout << v_tr->tr_tt_id << endl;
 		}
 
 		db->commit_txn(txn);
 	}
 }
 
-void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut){}
+void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut)
+{
+	scoped_str_arena s_arena(arena);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+
+	std::vector<inline_str_fixed<16>> stock_list_cursor;
+
+	if( pIn->c_id )
+	{
+		const watch_item::key k_wi_0( 0,  "                " );
+		const watch_item::key k_wi_1( numeric_limits<int64_t>::max(), "ZZZZZZZZZZZZZZZZ"  );
+		table_scanner wi_scanner(s_arena.get());
+		tbl_watch_item(1)->scan(txn, Encode(obj_key0, k_wi_0), &Encode(obj_key1, k_wi_1), wi_scanner, s_arena.get());
+		ALWAYS_ASSERT( wi_scanner.output.size() );
+		
+		const watch_list::key k_wl_0( pIn->c_id, 0 );
+		const watch_list::key k_wl_1( pIn->c_id, numeric_limits<int64_t>::max() );
+		table_scanner wl_scanner(s_arena.get());
+		tbl_watch_list(1)->scan(txn, Encode(obj_key0, k_wl_0), &Encode(obj_key1, k_wl_1), wl_scanner, s_arena.get());
+		ALWAYS_ASSERT( wl_scanner.output.size() );
+
+		for( auto &r_wi : wi_scanner.output )
+		{
+			watch_item::key k_wi_temp;
+			const watch_item::key* k_wi = Decode( *r_wi.first, k_wi_temp );
+
+			for( auto &r_wl: wl_scanner.output )
+			{
+				watch_list::key k_wl_temp;
+				const watch_list::key* k_wl = Decode( *r_wl.first, k_wl_temp );
+
+				if( k_wi->wi_wl_id == k_wl->wl_id )
+					stock_list_cursor.push_back( k_wi->wi_s_symb );
+			}
+		}
+	}
+	else if ( pIn->industry_name[0] )
+	{
+		const industry::key k_in_0( "    " );
+		const industry::key k_in_1( "ZZZZ" );
+		table_scanner in_scanner(s_arena.get());
+		tbl_industry(1)->scan(txn, Encode(obj_key0, k_in_0), &Encode(obj_key1, k_in_1), in_scanner, s_arena.get());
+		ALWAYS_ASSERT( in_scanner.output.size() );
+		
+		const company::key k_co_0( pIn->starting_co_id );
+		const company::key k_co_1( pIn->ending_co_id );
+		table_scanner co_scanner(s_arena.get());
+		tbl_company(1)->scan(txn, Encode(obj_key0, k_co_0), &Encode(obj_key1, k_co_1), co_scanner, s_arena.get());
+		ALWAYS_ASSERT( co_scanner.output.size() );
+
+		const security::key k_s_0( "                ");
+		const security::key k_s_1( "ZZZZZZZZZZZZZZZZ");
+		table_scanner s_scanner(s_arena.get());
+		tbl_security(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
+		ALWAYS_ASSERT( s_scanner.output.size() );
+
+		for( auto &r_in : in_scanner.output )
+		{
+			industry::key k_in_temp;
+			industry::value v_in_temp;
+			const industry::key* k_in = Decode( *r_in.first, k_in_temp );
+			const industry::value* v_in = Decode( *r_in.second, v_in_temp );
+
+			if( v_in->in_name != pIn->industry_name )
+				continue;
+
+			for( auto &r_co: co_scanner.output )
+			{
+				company::key k_co_temp;
+				company::value v_co_temp;
+				const company::key* k_co = Decode( *r_co.first, k_co_temp );
+				const company::value* v_co = Decode( *r_co.second, v_co_temp );
+
+				if( v_co->co_in_id != k_in->in_id )
+					continue;
+				
+				for( auto &r_s : s_scanner.output )
+				{
+					security::key k_s_temp;
+					security::value v_s_temp;
+					const security::key* k_s = Decode( *r_s.first, k_s_temp );
+					const security::value* v_s = Decode( *r_s.second, v_s_temp );
+
+					if( v_s->s_co_id == k_co->co_id )
+					{
+						stock_list_cursor.push_back( k_s->s_symb );
+					}
+				}
+			}
+		}
+	}
+	else if( pIn->acct_id )
+	{
+		const holding_summary::key k_hs_0( pIn->acct_id, "AAAAAAAAAAAAAAAA" );
+		const holding_summary::key k_hs_1( pIn->acct_id, "ZZZZZZZZZZZZZZZZ" );
+		table_scanner hs_scanner(s_arena.get());
+		tbl_holding_summary(1)->scan(txn, Encode(obj_key0, k_hs_0), &Encode(obj_key1, k_hs_1), hs_scanner, s_arena.get());
+		ALWAYS_ASSERT( hs_scanner.output.size() );
+
+		for( auto& r_hs : hs_scanner.output )
+		{
+			holding_summary::key k_hs_temp;
+			const holding_summary::key* k_hs = Decode( *r_hs.first, k_hs_temp );
+
+			stock_list_cursor.push_back( k_hs->hs_s_symb );
+		}
+	}
+	else
+		ALWAYS_ASSERT(false);
+
+    double old_mkt_cap = 0;
+    double new_mkt_cap = 0;
+
+	for( auto &s : stock_list_cursor )
+	{
+		const last_trade::key k_lt(s);
+		ALWAYS_ASSERT(tbl_last_trade(1)->get(txn, Encode(obj_key0, k_lt), obj_v));
+		last_trade::value v_lt_temp;
+		const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
+
+		const security::key k_s(s);
+		ALWAYS_ASSERT(tbl_security(1)->get(txn, Encode(obj_key0, k_s), obj_v));
+		security::value v_s_temp;
+		const security::value *v_s = Decode(obj_v, v_s_temp);
+
+		const daily_market::key k_dm(s, EgenTimeStampToTimeT(pIn->start_day));
+		ALWAYS_ASSERT(tbl_daily_market(1)->get(txn, Encode(obj_key0, k_dm), obj_v));
+		daily_market::value v_dm_temp;
+		const daily_market::value *v_dm = Decode(obj_v, v_dm_temp);
+
+		auto s_num_out = v_s->s_num_out;
+		auto old_price = v_dm->dm_close;
+		auto new_price = v_lt->lt_price;
+
+		old_mkt_cap += s_num_out * old_price;
+		new_mkt_cap += s_num_out * new_price;
+	}
+
+	if( old_mkt_cap != 0 )
+		pOut->pct_change = 100 * (new_mkt_cap / old_mkt_cap - 1);
+	else
+		pOut->pct_change = 0;
+
+//	cout << pct_change << " " << old_mkt_cap << " " << new_mkt_cap << endl;
+
+	db->commit_txn(txn);
+}
+
 void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut){}
 void tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTradeLookupFrame1Output *pOut){}
 void tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTradeLookupFrame2Output *pOut){}
