@@ -225,6 +225,8 @@ public:
 
   struct search_range_callback {
   public:
+    rc_t return_code;
+    search_range_callback() : return_code(rc_t{RC_FALSE}) {}
     virtual ~search_range_callback() {}
     virtual bool invoke(const keystring_type &k, const string_type &v) = 0;
   };
@@ -289,7 +291,7 @@ public:
   {}
 
   template <typename Traits>
-  inline bool
+  inline rc_t
   search(Transaction<Traits> &t,
          const varkey &k,
          value_type &v,
@@ -301,7 +303,7 @@ public:
   // either returns false or v is set to not-empty with value
   // precondition: max_bytes_read > 0
   template <typename Traits>
-  inline bool
+  inline rc_t
   search(Transaction<Traits> &t,
          const key_type &k,
          value_type &v,
@@ -395,31 +397,31 @@ public:
   }
 
   template <typename Traits>
-  inline void
+  inline rc_t
   put(Transaction<Traits> &t, const key_type &k, const value_type &v)
   {
     INVARIANT(!v.empty());
-    this->do_tree_put(
+    return this->do_tree_put(
         t, stablize(t, k), stablize(t, v),
         txn_btree_::tuple_writer, false);
   }
 
   template <typename Traits>
-  inline void
+  inline rc_t
   put(Transaction<Traits> &t, const varkey &k, const value_type &v)
   {
     INVARIANT(!v.empty());
-    this->do_tree_put(
+    return this->do_tree_put(
         t, stablize(t, k), stablize(t, v),
         txn_btree_::tuple_writer, false);
   }
 
   template <typename Traits>
-  inline void
+  inline rc_t
   insert(Transaction<Traits> &t, const key_type &k, const value_type &v)
   {
     INVARIANT(!v.empty());
-    this->do_tree_put(
+    return this->do_tree_put(
         t, stablize(t, k), stablize(t, v),
         txn_btree_::tuple_writer, true);
   }
@@ -427,12 +429,12 @@ public:
   // insert() methods below are for legacy use
 
   template <typename Traits>
-  inline void
+  inline rc_t
   insert(Transaction<Traits> &t, const key_type &k, const uint8_t *v, size_type sz)
   {
     INVARIANT(v);
     INVARIANT(sz);
-    this->do_tree_put(
+    return this->do_tree_put(
         t, stablize(t, k), stablize(t, v, sz),
         txn_btree_::tuple_writer, true);
   }
@@ -448,6 +450,8 @@ public:
         txn_btree_::tuple_writer, true);
   }
 
+  // FIXME: tzwang: not in-use?
+#if 0
   template <typename Traits, typename T>
   inline void
   insert_object(Transaction<Traits> &t, const varkey &k, const T &obj)
@@ -461,19 +465,20 @@ public:
   {
     insert(t, k, (const uint8_t *) &obj, sizeof(obj));
   }
+#endif
 
   template <typename Traits>
-  inline void
+  inline rc_t
   remove(Transaction<Traits> &t, const key_type &k)
   {
-    this->do_tree_put(t, stablize(t, k), nullptr, txn_btree_::tuple_writer, false);
+    return this->do_tree_put(t, stablize(t, k), nullptr, txn_btree_::tuple_writer, false);
   }
 
   template <typename Traits>
-  inline void
+  inline rc_t
   remove(Transaction<Traits> &t, const varkey &k)
   {
-    this->do_tree_put(t, stablize(t, k), nullptr, txn_btree_::tuple_writer, false);
+    return this->do_tree_put(t, stablize(t, k), nullptr, txn_btree_::tuple_writer, false);
   }
 
   static void Test();

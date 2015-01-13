@@ -17,6 +17,7 @@
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/ssn.h"
 #include "../dbcore/sm-trace.h"
+#include "../dbcore/sm-rc.h"
 #include <stdio.h>
 #include <sys/mman.h> // Needed for mlockall()
 #include <malloc.h>
@@ -237,10 +238,10 @@ public:
   void run();
   void heap_prefault()
   {
-	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);		// 45G for 24 warehouses
-	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
-	  ALWAYS_ASSERT(p);
-      ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
+	  //uint64_t FAULT_SIZE = (((uint64_t)1<<30)*40);		// 45G for 24 warehouses
+	  //uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
+	  //ALWAYS_ASSERT(p);
+      //ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
 	  //ALWAYS_ASSERT(not mlockall(MCL_CURRENT));
 	  mallopt (M_TRIM_THRESHOLD, -1);
 	  mallopt (M_MMAP_MAX, 0);
@@ -249,8 +250,7 @@ public:
 	  getrusage(RUSAGE_SELF, &usage);
 	  std::cout<<"Major fault: " <<  usage.ru_majflt<< "Minor fault: " << usage.ru_minflt<< std::endl;
 
-	  free(p);
-
+	  //free(p);
   }
 protected:
   // only called once
@@ -369,5 +369,45 @@ private:
   str_arena *arena;
   bool ignore_key;
 };
+
+#define __abort_txn \
+{   \
+  db->abort_txn(txn); \
+  return bench_worker::txn_result(false, 0); \
+}
+
+// NOTE: only use these in transaction benchmark (e.g., TPCC) code, not in engine code
+
+// reminescent the try...catch block:
+// if return code is one of those RC_ABORT* then abort
+#define try_catch(rc) \
+{ \
+  if (rc_is_abort(rc)) \
+    __abort_txn; \
+}
+
+// if rc == RC_FALSE then do op
+#define try_catch_cond(rc, op) \
+{ \
+  rc_t r = rc; \
+  if (rc_is_abort(r)) \
+    __abort_txn; \
+  if (r._val == RC_FALSE) \
+    op; \
+}
+
+#define try_catch_cond_abort(rc) try_catch_cond(rc, __abort_txn)
+
+// combines the try...catch block with ALWAYS_ASSERT
+// TODO: change to use rc_t by bits, i.e., set abort bit and
+// return value (true/false) bit, rather than use the whole int.
+// The rc_is_abort case is there because sometimes we want to make
+// sure say, a get, succeeds, but the read itsef could also cause
+// abort (by SSN).
+#define try_verify(oper) \
+{ \
+  rc_t rc = oper;   \
+  ALWAYS_ASSERT(rc._val == RC_TRUE or rc_is_abort(rc)); \
+}
 
 #endif /* _NDB_BENCH_H_ */

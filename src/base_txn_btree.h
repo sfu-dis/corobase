@@ -122,7 +122,7 @@ protected:
   };
 
   template <typename Traits, typename ValueReader>
-  inline bool
+  inline rc_t
   do_search(Transaction<Traits> &t,
             const typename P::Key &k,
             ValueReader &value_reader);
@@ -153,7 +153,7 @@ protected:
   //
   // NOTE: both key and value are expected to be stable values already
   template <typename Traits>
-  void do_tree_put(Transaction<Traits> &t,
+  rc_t do_tree_put(Transaction<Traits> &t,
                    const std::string *k,
                    const typename P::Value *v,
                    dbtuple::tuple_writer_t writer,
@@ -172,7 +172,7 @@ namespace private_ {
 
 template <template <typename> class Transaction, typename P>
 template <typename Traits, typename ValueReader>
-bool
+rc_t
 base_txn_btree<Transaction, P>::do_search(
     Transaction<Traits> &t,
     const typename P::Key &k,
@@ -189,11 +189,9 @@ base_txn_btree<Transaction, P>::do_search(
   oid_type oid;
   concurrent_btree::versioned_node_t search_info;
   const bool found = this->underlying_btree.search(varkey(*key_str), oid, tuple, t.xid, &search_info);
-  if (found) {
+  if (found)
     return t.do_tuple_read(&this->underlying_btree, oid, tuple, value_reader);
-  } else {
-    return false;
-  }
+  return rc_t{RC_FALSE};
 }
 
 template <template <typename> class Transaction, typename P>
@@ -232,7 +230,7 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_failure()
 
 template <template <typename> class Transaction, typename P>
 template <typename Traits>
-void base_txn_btree<Transaction, P>::do_tree_put(
+rc_t base_txn_btree<Transaction, P>::do_tree_put(
     Transaction<Traits> &t,
     const std::string *k,
     const typename P::Value *v,
@@ -284,16 +282,13 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // (fall back to) with the normal update procedure.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
   if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, version, writer))
-		return;
+    return rc_t{RC_TRUE};
 
   // do regular search
   dbtuple * bv = 0;
   oid_type oid = 0;
-  if (!this->underlying_btree.search(varkey(*k), oid, bv, t.xid)) {
-    // only version is uncommitted -> cannot overwrite it
-    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-    t.signal_abort(r);
-  }
+  if (!this->underlying_btree.search(varkey(*k), oid, bv, t.xid))
+    return rc_t{RC_ABORT};
 
   // After read the latest committed, and holding the version:
   // if the latest tuple in the chained is dirty then abort
@@ -326,8 +321,12 @@ void base_txn_btree<Transaction, P>::do_tree_put(
       xc->pstamp = prev_xstamp;
 
 #ifdef DO_EARLY_SSN_CHECKS
-    if (not ssn_check_exclusion(xc))
-      t.signal_abort(transaction_base::ABORT_REASON_SSN_EXCLUSION_FAILURE);
+    if (not ssn_check_exclusion(xc)) {
+      // unlink the version here (note abort_impl won't be able to catch
+      // it because it's not yet in the write set)
+      this->underlying_btree.unlink_tuple(oid, tuple);
+      return rc_t{RC_ABORT_SSN_EXCLUSION};
+    }
 #endif
 
     // copy access stamp to new tuple from overwritten version
@@ -344,7 +343,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {  // in-place update!
       volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       if (not prev_obj->_next.offset()) {    // update of myself's insert
-        ASSERT(t.write_set[prev].new_tuple == key_tuple and t.write_set[prev].btr == &this->underlying_btree);
+        ASSERT(t.write_set[prev].new_tuple == prev and t.write_set[prev].btr == &this->underlying_btree);
         key_tuple = tuple;
         t.write_set[prev].btr = NULL;
       }
@@ -378,10 +377,10 @@ void base_txn_btree<Transaction, P>::do_tree_put(
                       fat_ptr::make(tuple, size_code),
                       DEFAULT_ALIGNMENT_BITS,
                       NULL);
+    return rc_t{RC_TRUE};
   }
   else {  // somebody else acted faster than we did
-    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-    t.signal_abort(r);
+    return rc_t{RC_ABORT_SI_CONFLICT};
   }
 }
 
@@ -414,9 +413,14 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x" << util::hexify(n)
                     << ", version=" << version << ">" << std::endl
                     << "  " << *((dbtuple *) v) << std::endl);
-  if (t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), o, v, *value_reader))
-    return caller_callback->invoke(
-        (*key_reader)(k), value_reader->results());
+  caller_callback->return_code = t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), o, v, *value_reader);
+  if (caller_callback->return_code._val == RC_TRUE)
+    return caller_callback->invoke((*key_reader)(k), value_reader->results());
+  else if (rc_is_abort(caller_callback->return_code))
+    return false;   // don't continue the read if the tx should abort
+                    // ^^^^^ note: see masstree_scan.hh, whose scan() calls
+                    // visit_value(), which calls this function to determine
+                    // if it should stop reading.
   return true;
 }
 

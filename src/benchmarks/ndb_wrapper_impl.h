@@ -205,7 +205,7 @@ Destroy(T *t)
 }
 
 template <template <typename> class Transaction>
-void
+rc_t
 ndb_wrapper<Transaction>::commit_txn(void *txn)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
@@ -213,13 +213,10 @@ ndb_wrapper<Transaction>::commit_txn(void *txn)
   case a: \
     { \
       auto t = cast< b >()(p); \
-      try { \
-        t->commit();             \
-      } catch (transaction_abort_exception &ex) {   \
-        throw abstract_db::abstract_abort_exception();  \
-      } \
-      Destroy(t); \
-      return; \
+      rc_t rc = t->commit();             \
+      if (not rc_is_abort(rc))  \
+        Destroy(t); \
+      return rc; \
     }
   switch (p->hint) {
     TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -296,7 +293,7 @@ ndb_ordered_index<Transaction>::ndb_ordered_index(
 }
 
 template <template <typename> class Transaction>
-bool
+rc_t
 ndb_ordered_index<Transaction>::get(
     void *txn,
     const std::string &key,
@@ -305,14 +302,11 @@ ndb_ordered_index<Transaction>::get(
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_get_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
-      if (!btr.search(*t, key, value, max_bytes_read)) \
-        return false; \
-      return true; \
+      return btr.search(*t, key, value, max_bytes_read); \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -321,16 +315,13 @@ ndb_ordered_index<Transaction>::get(
     }
 #undef MY_OP_X
     INVARIANT(!value.empty());
-    return true;
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
+    return rc_t{RC_TRUE}; // FIXME: correct?
 }
 
 // XXX: find way to remove code duplication below using C++ templates!
 
 template <template <typename> class Transaction>
-const char *
+rc_t
 ndb_ordered_index<Transaction>::put(
     void *txn,
     const std::string &key,
@@ -339,13 +330,11 @@ ndb_ordered_index<Transaction>::put(
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_put_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
-      btr.put(*t, key, value); \
-      return 0; \
+      return btr.put(*t, key, value); \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -353,27 +342,24 @@ ndb_ordered_index<Transaction>::put(
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
-  return 0;
+  // FIXME: tzwang: should never reach here??
+  ALWAYS_ASSERT(false);
+  return rc_t{RC_FALSE};
 }
 
 template <template <typename> class Transaction>
-const char *
+rc_t
 ndb_ordered_index<Transaction>::put(
     void *txn,
     std::string &&key,
     std::string &&value)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
-      btr.put(*t, std::move(key), std::move(value)); \
-      return 0; \
+      return btr.put(*t, std::move(key), std::move(value)); \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -381,14 +367,13 @@ ndb_ordered_index<Transaction>::put(
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
-  return 0;
+  // FIXME: tzwang: should never reach here??
+  ALWAYS_ASSERT(false);
+  return rc_t{RC_FALSE};
 }
 
 template <template <typename> class Transaction>
-const char *
+rc_t
 ndb_ordered_index<Transaction>::insert(
     void *txn,
     const std::string &key,
@@ -397,13 +382,11 @@ ndb_ordered_index<Transaction>::insert(
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_insert_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
-      btr.insert(*t, key, value); \
-      return 0; \
+      return btr.insert(*t, key, value); \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -411,27 +394,22 @@ ndb_ordered_index<Transaction>::insert(
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
-  return 0;
+  return rc_t{RC_FALSE};
 }
 
 template <template <typename> class Transaction>
-const char *
+rc_t
 ndb_ordered_index<Transaction>::insert(
     void *txn,
     std::string &&key,
     std::string &&value)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
-      btr.insert(*t, std::move(key), std::move(value)); \
-      return 0; \
+      return btr.insert(*t, std::move(key), std::move(value)); \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -439,17 +417,14 @@ ndb_ordered_index<Transaction>::insert(
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
-  return 0;
+  return rc_t{RC_FALSE};
 }
 
 template <template <typename> class Transaction>
 class ndb_wrapper_search_range_callback : public txn_btree<Transaction>::search_range_callback {
 public:
   ndb_wrapper_search_range_callback(abstract_ordered_index::scan_callback &upcall)
-    : upcall(&upcall) {}
+    : txn_btree<Transaction>::search_range_callback(), upcall(&upcall) {}
 
   virtual bool
   invoke(const typename txn_btree<Transaction>::keystring_type &k,
@@ -463,7 +438,7 @@ private:
 };
 
 template <template <typename> class Transaction>
-void
+rc_t
 ndb_ordered_index<Transaction>::scan(
     void *txn,
     const std::string &start_key,
@@ -475,13 +450,13 @@ ndb_ordered_index<Transaction>::scan(
   ANON_REGION(probe1_name.c_str(), &private_::ndb_scan_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   ndb_wrapper_search_range_callback<Transaction> c(callback);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto *t = cast< b >()(p); \
+      ASSERT(c.return_code._val == RC_FALSE); \
       btr.search_range_call(*t, start_key, end_key, c); \
-      return; \
+      return c.return_code; \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -489,13 +464,12 @@ ndb_ordered_index<Transaction>::scan(
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
+  // FIXME: tzwang: should never reach here?
+  ALWAYS_ASSERT(false);
 }
 
 template <template <typename> class Transaction>
-void
+rc_t
 ndb_ordered_index<Transaction>::rscan(
     void *txn,
     const std::string &start_key,
@@ -505,13 +479,13 @@ ndb_ordered_index<Transaction>::rscan(
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   ndb_wrapper_search_range_callback<Transaction> c(callback);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
+      ASSERT(c.return_code._val == RC_FALSE); \
       btr.rsearch_range_call(*t, start_key, end_key, c); \
-      return; \
+      return c.return_code; \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -519,25 +493,22 @@ ndb_ordered_index<Transaction>::rscan(
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
+  // FIXME: tzwang: should never reach here?
+  ALWAYS_ASSERT(false);
 }
 
 template <template <typename> class Transaction>
-void
+rc_t
 ndb_ordered_index<Transaction>::remove(void *txn, const std::string &key)
 {
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_remove_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
-      btr.remove(*t, key); \
-      return; \
+      return btr.remove(*t, key); \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -545,23 +516,19 @@ ndb_ordered_index<Transaction>::remove(void *txn, const std::string &key)
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
+  ALWAYS_ASSERT(false);
 }
 
 template <template <typename> class Transaction>
-void
+rc_t
 ndb_ordered_index<Transaction>::remove(void *txn, std::string &&key)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  try {
 #define MY_OP_X(a, b) \
   case a: \
     { \
       auto t = cast< b >()(p); \
-      btr.remove(*t, std::move(key)); \
-      return; \
+      return btr.remove(*t, std::move(key)); \
     }
     switch (p->hint) {
       TXN_PROFILE_HINT_OP(MY_OP_X)
@@ -569,9 +536,7 @@ ndb_ordered_index<Transaction>::remove(void *txn, std::string &&key)
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-  } catch (transaction_abort_exception &ex) {
-    throw abstract_db::abstract_abort_exception();
-  }
+  ALWAYS_ASSERT(false);
 }
 
 template <template <typename> class Transaction>

@@ -39,7 +39,7 @@ namespace RA {
     void epoch_enter(void);
     void epoch_exit(void);
     void epoch_thread_quiesce(void);
-
+    void init();
     extern LSN trim_lsn;
 };
 

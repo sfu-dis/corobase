@@ -8,8 +8,8 @@
 class str_arena {
 public:
 
-  static const size_t PreAllocBufSize = 32678;
-  static const size_t NStrs = 32768;
+  static const uint64_t PreAllocBufSize = 32678;
+  static const uint64_t NStrs = 32768;
 
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
   static_assert(PreAllocBufSize >= MinStrReserveLength, "xx");
