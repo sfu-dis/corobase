@@ -5,6 +5,9 @@
 //#include "../masstree_btree.h"
 
 namespace RA {
+    char **mem;
+    uint64_t *alloc_offset;
+    int nr_sockets;
     //std::vector<concurrent_btree*> tables;
     //std::vector<std::string> table_names;
     LSN trim_lsn;
@@ -121,8 +124,25 @@ namespace RA {
         ra_epochs.thread_quiesce();
     }
 
+    void init() {
+        nr_sockets = numa_max_node() + 1;
+        alloc_offset = (uint64_t *)malloc(sizeof(uint64_t) * nr_sockets);
+        memset(alloc_offset, '\0', sizeof(uint64_t) * nr_sockets);
+        mem = (char **)malloc(sizeof(char *) * nr_sockets);
+        for (int i = 0; i < nr_sockets; i++) {
+            numa_run_on_node(i);
+            uint64_t mega = 1024 * 1024;
+            printf("allocating for socket %d\n", i);
+            mem[i] = (char *)numa_alloc_local(8192 * mega);
+            printf("faulting for socket %d\n", i);
+            memset(mem[i], '\0', 8192 * mega);
+        }
+    }
+
     void *allocate(uint64_t size) {
-		void* p =  malloc(size);
+        //int skt = sched_getcpu() % nr_sockets;
+		//char *p = &mem[skt][__sync_fetch_and_add(&alloc_offset[skt], align_up(size, 1 << DEFAULT_ALIGNMENT_BITS))];
+        void* p =  malloc(size);
 		ALWAYS_ASSERT(p);
 		epoch_tls.nbytes += size;
 		epoch_tls.counts += 1;

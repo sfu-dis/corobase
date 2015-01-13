@@ -135,8 +135,13 @@ class basic_table {
 			//xid tracking
 			auto holder_xid = XID::from_ptr(clsn);
             xid_context *holder= xid_get_context(holder_xid);
-            if (not holder)
-                return NULL;
+            if (not holder) {
+#if CHECK_INVARIANTS
+                auto t = volatile_read(version->clsn).asi_type();
+                ASSERT(t == fat_ptr::ASI_LOG or tuple_vector->begin(oid) != head);
+#endif
+                goto start_over;
+            }
 			INVARIANT(holder);
             auto state = volatile_read(holder->state);
 			auto owner = volatile_read(holder->owner);
@@ -354,8 +359,10 @@ install:
 			}
 			else
 			{
+#ifndef USE_READ_COMMITTED
 				if( LSN::from_ptr(clsn) > visitor->begin ) 	// invisible
 					continue;
+#endif
 			}
         out:
             // try if we can trim

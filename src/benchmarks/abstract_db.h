@@ -118,7 +118,7 @@ public:
    * On failure, throw abstract_abort_exception. The transaction has
    * *not* been deleted, and caller is responsible to call abort_txn.
    */
-  virtual void commit_txn(void *txn) = 0;
+  virtual rc_t commit_txn(void *txn) = 0;
 
   /**
    * Abort the transaction and delete it. 

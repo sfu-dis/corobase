@@ -193,11 +193,11 @@ BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
 
 BENCH_SRCFILES = \
 	benchmarks/bench.cc \
-	benchmarks/encstress.cc \
+	benchmarks/tpcc.cc
+	#benchmarks/encstress.cc \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
-	benchmarks/tpcc.cc
 
 ifeq ($(MYSQL_S),1)
 BENCH_CXXFLAGS += -DMYSQL_SHARE_DIR=\"$(MYSQL_SHARE_DIR)\"

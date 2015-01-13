@@ -22,8 +22,8 @@ using namespace TXN;
 #ifdef USE_PARALLEL_SSN
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
-static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
+static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
 #endif
 
 // base definitions
@@ -68,22 +68,11 @@ transaction<Protocol, Traits>::~transaction()
 
 template <template <typename> class Protocol, typename Traits>
 void
-transaction<Protocol, Traits>::signal_abort(abort_reason reason)
-{
-  abort_trap(reason);
-#ifdef USE_PARALLEL_SSN
-  if (reason == ABORT_REASON_SSN_EXCLUSION_FAILURE)
-    TXN::tls_ssn_abort_count++;
-#endif
-  if (likely(state() != TXN_COMMITTING))
-    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
-  throw transaction_abort_exception(reason);
-}
-  
-template <template <typename> class Protocol, typename Traits>
-void
 transaction<Protocol, Traits>::abort_impl()
 {
+  if (likely(state() != TXN_COMMITTING))
+    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
+
   for (auto &w : write_set) {
     if (not w.second.btr)   // for repeated overwrites
         continue;
@@ -156,19 +145,19 @@ transaction<Protocol, Traits>::dump_debug_info() const
 }
 
 template <template <typename> class Protocol, typename Traits>
-void
+rc_t
 transaction<Protocol, Traits>::commit()
 {
 #ifdef USE_PARALLEL_SSN
-  ssn_parallel_si_commit();
+  return ssn_parallel_si_commit();
 #else
-  si_commit();
+  return si_commit();
 #endif
 }
 
 #ifdef USE_PARALLEL_SSN
 template <template <typename> class Protocol, typename Traits>
-void
+rc_t
 transaction<Protocol, Traits>::ssn_parallel_si_commit()
 {
   xid_context* xc = xid_get_context(xid);
@@ -196,7 +185,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   LSN clsn = xc->end;
   auto cstamp = clsn.offset();
   if (xc->end == INVALID_LSN)
-    signal_abort(ABORT_REASON_INTERNAL);
+    return rc_t{RC_ABORT};
 
   // note that sstamp comes from reads, but the read optimization might
   // ignore looking at tuple's sstamp at all, so if tx sstamp is still
@@ -219,6 +208,9 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     // go to the precommitted or committed version I (am about to)
     // overwrite for the reader list
     dbtuple *overwritten_tuple = w.first;   // the key
+    ASSERT(tuple == overwritten_tuple or
+           ((object *)((char *)tuple - sizeof(object)))->_next.offset() ==
+           (uint64_t)((char *)overwritten_tuple - sizeof(object)));
     if (overwritten_tuple == tuple) // insert, see do_tree_put for the rules
       continue;
 
@@ -233,10 +225,14 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       // calculate age
       XID overwritten_xid = XID::from_ptr(overwritten_tuple_clsn);
       xid_context *overwritten_xc = xid_get_context(overwritten_xid);
-      ASSERT(volatile_read(overwritten_xc->end).offset());
-      if (overwritten_xc->owner != overwritten_xid)
+      if (not overwritten_xc)
         goto try_get_age;
-      age = xc->begin.offset() - volatile_read(overwritten_xc->end).offset();
+      auto overwritten_end = volatile_read(overwritten_xc->end).offset();
+      ASSERT(overwritten_end);
+      XID overwritten_owner = volatile_read(overwritten_xc->owner);
+      if (overwritten_owner != overwritten_xid)
+        goto try_get_age;
+      age = xc->begin.offset() - overwritten_end;
     }
     else {
       ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -336,7 +332,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   }
 
   if (not ssn_check_exclusion(xc))
-    signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
+    return rc_t{RC_ABORT_SSN_EXCLUSION};
 
   // ok, can really commit if we reach here
   log->commit(NULL);
@@ -351,6 +347,9 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
         continue;
     dbtuple *tuple = w.second.new_tuple;
     dbtuple *next_tuple = w.first;
+    ASSERT(tuple == next_tuple or
+           ((object *)((char *)tuple - sizeof(object)))->_next.offset() ==
+           (uint64_t)((char *)next_tuple - sizeof(object)));
     if (tuple != next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
       // FIXME: tuple's sstamp should never decrease?
@@ -358,7 +357,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
       volatile_write(next_tuple->sstamp, xc->sstamp);
     }
     volatile_write(tuple->xstamp, cstamp);
-    tuple->clsn = clsn.to_log_ptr();
+    volatile_write(tuple->clsn, clsn.to_log_ptr());
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
 
@@ -374,10 +373,11 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
     ssn_deregister_reader_tx(r.tuple);
   }
+  return rc_t{RC_TRUE};
 }
 #else
 template <template <typename> class Protocol, typename Traits>
-void
+rc_t
 transaction<Protocol, Traits>::si_commit()
 {
   xid_context* xc = xid_get_context(xid);
@@ -403,7 +403,7 @@ transaction<Protocol, Traits>::si_commit()
   RCU::rcu_enter();
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
-      signal_abort(ABORT_REASON_INTERNAL);
+    return rc_t{RC_ABORT};
   log->commit(NULL);
   RCU::rcu_exit();
 
@@ -420,6 +420,7 @@ transaction<Protocol, Traits>::si_commit()
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
+  return rc_t{RC_TRUE};
 }
 #endif
 
@@ -471,7 +472,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
 
 template <template <typename> class Protocol, typename Traits>
 template <typename ValueReader>
-bool
+rc_t
 transaction<Protocol, Traits>::do_tuple_read(
     concurrent_btree *btr_ptr, oid_type oid, dbtuple *tuple, ValueReader &value_reader)
 {
@@ -485,16 +486,14 @@ transaction<Protocol, Traits>::do_tuple_read(
     ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
     tuple->prefetch();
     stat = tuple->stable_read(value_reader, this->string_allocator());
-    if (unlikely(stat == dbtuple::READ_FAILED)) {
-      const transaction_base::abort_reason r = transaction_base::ABORT_REASON_UNSTABLE_READ;
-      signal_abort(r);
-    }
+    if (unlikely(stat == dbtuple::READ_FAILED))
+      return rc_t{RC_ABORT};
   }
   INVARIANT(stat == dbtuple::READ_EMPTY ||
             stat == dbtuple::READ_RECORD);
   if (stat == dbtuple::READ_EMPTY) {
     ++transaction_base::g_evt_read_logical_deleted_node_search;
-    return false;
+    return {RC_FALSE};
   }
 
 #ifdef USE_PARALLEL_SSN
@@ -528,12 +527,12 @@ transaction<Protocol, Traits>::do_tuple_read(
 
 #ifdef DO_EARLY_SSN_CHECKS
       if (not ssn_check_exclusion(xc))
-        signal_abort(ABORT_REASON_SSN_EXCLUSION_FAILURE);
+        return {RC_ABORT_SSN_EXCLUSION};
 #endif
     }
   }
 #endif
-  return true;
+  return {RC_TRUE};
 }
 
 #endif /* _NDB_TXN_IMPL_H_ */

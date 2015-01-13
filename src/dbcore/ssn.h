@@ -21,7 +21,12 @@ inline bool ssn_check_exclusion(xid_context *xc) {
     // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
     // note xc->sstamp is initialized to ~0, xc->pstamp's init value is 0,
     // so don't return xc->pstamp < xc->sstamp...
-    return not (xc->pstamp >= xc->sstamp); // \eta - predecessor, \pi - sucessor
+    if (xc->pstamp >= xc->sstamp) {
+        tls_ssn_abort_count++;
+        return false;
+    }
+    return true;
+    //return not (xc->pstamp >= xc->sstamp); // \eta - predecessor, \pi - sucessor
 }
 
 struct readers_list {

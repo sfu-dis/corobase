@@ -2,7 +2,7 @@
 #ifdef USE_PARALLEL_SSN
 namespace TXN {
 
-uint64_t ssn_abort_count;
+uint64_t ssn_abort_count = 0;
 uint64_t __thread tls_ssn_abort_count;
 readers_list rlist;
 

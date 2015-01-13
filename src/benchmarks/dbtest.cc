@@ -190,18 +190,20 @@ main(int argc, char **argv)
       abort();
     }
   }
-// FIXME: tzwang: don't bother for ycsb now
+// FIXME: tzwang: only keep tpcc for now
 /* if (bench_type == "ycsb")
     test_fn = ycsb_do_test;
   else */
   if (bench_type == "tpcc")
     test_fn = tpcc_do_test;
+#if 0
   else if (bench_type == "queue")
     test_fn = queue_do_test;
   else if (bench_type == "encstress")
     test_fn = encstress_do_test;
   else if (bench_type == "bid")
     test_fn = bid_do_test;
+#endif
   else
     ALWAYS_ASSERT(false);
 
@@ -353,6 +355,7 @@ main(int argc, char **argv)
     thread(&stats_server::serve_forever, srvr).detach();
   }
 
+  //RA::init();
   vector<string> bench_toks = split_ws(bench_opts);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];
