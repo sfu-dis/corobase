@@ -1,6 +1,7 @@
 /*
    TODOs
 
+   dts
    string->c_str
    scan key
    sanity check & carninality check 
@@ -414,9 +415,7 @@ class tpce_worker :
 			TMarketFeedTxnOutput output;
 			CMarketFeed* harness= new CMarketFeed(this, this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
-			//	harness->DoTxn( (PMarketFeedTxnInput)&input, (PMarketFeedTxnOutput)&output);
-			db->commit_txn(txn);
+//			harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
 			return txn_result(true, 0);
 		}
 		void DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketFeedFrame1Output *pOut, CSendToMarketInterface *pSendToMarket);
@@ -434,9 +433,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateMarketWatchInput(input);
 			CMarketWatch* harness= new CMarketWatch(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut);
@@ -454,9 +451,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateSecurityDetailInput(input);
 			CSecurityDetail* harness= new CSecurityDetail(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PSecurityDetailTxnInput)&input, (PSecurityDetailTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut);
@@ -474,9 +469,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeLookupInput(input);
 			CTradeLookup* harness= new CTradeLookup(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTradeLookupFrame1Output *pOut);
@@ -499,9 +492,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeOrderInput(input, iTradeType, bExecutorIsAccountOwner);
 			CTradeOrder* harness= new CTradeOrder(this, this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PTradeOrderTxnInput)&input, (PTradeOrderTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn, TTradeOrderFrame1Output *pOut);
@@ -523,9 +514,7 @@ class tpce_worker :
 			TTradeResultTxnOutput output;
 			CTradeResult* harness= new CTradeResult(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PTradeResultTxnInput)&input, (PTradeResultTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTradeResultFrame1Output *pOut);
@@ -548,9 +537,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeStatusInput(input);
 			CTradeStatus* harness= new CTradeStatus(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PTradeStatusTxnInput)&input, (PTradeStatusTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTradeStatusFrame1Output *pOut);
@@ -568,9 +555,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeUpdateInput(input);
 			CTradeUpdate* harness= new CTradeUpdate(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTradeUpdateFrame1Output *pOut);
@@ -589,9 +574,7 @@ class tpce_worker :
 			TDataMaintenanceTxnOutput output;
 			CDataMaintenance* harness= new CDataMaintenance(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PDataMaintenanceTxnInput)&input, (PDataMaintenanceTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn);
@@ -608,9 +591,7 @@ class tpce_worker :
 			TTradeCleanupTxnOutput output;
 			CTradeCleanup* harness= new CTradeCleanup(this);
 
-			txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 			//	harness->DoTxn( (PTradeCleanupTxnInput)&input, (PTradeCleanupTxnOutput)&output);
-			db->commit_txn(txn);
 			return txn_result(true, 0);
 		}
 		void DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn);
@@ -948,7 +929,7 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 		pOut->cash_bal[pOut->acct_len] = v_ca->ca_bal;
 		pOut->asset_total[pOut->acct_len] = asset;
 		pOut->acct_len++;
-		cout << __FUNCTION__ << ": " << pOut->acct_id[pOut->acct_len-1] << " " << pOut->cash_bal[pOut->acct_len-1] << " " << pOut->asset_total[pOut->acct_len-1] << endl;
+		//cout << __FUNCTION__ << ": " << pOut->acct_id[pOut->acct_len-1] << " " << pOut->cash_bal[pOut->acct_len-1] << " " << pOut->asset_total[pOut->acct_len-1] << endl;
 	}
 }
 
@@ -1028,7 +1009,7 @@ void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
 				memcpy(pOut->trade_status[pOut->hist_len], v_st->st_name.data(), v_st->st_name.size());
 				pOut->hist_len++;
 
-				cout << __FUNCTION__ << ": " << pOut->trade_id[pOut->hist_len-1] << " " << pOut->qty[pOut->hist_len-1] << " " << pOut->symbol[pOut->hist_len-1] << endl;
+				//cout << __FUNCTION__ << ": " << pOut->trade_id[pOut->hist_len-1] << " " << pOut->qty[pOut->hist_len-1] << " " << pOut->symbol[pOut->hist_len-1] << endl;
 				if( pOut->hist_len >= 30 )
 					goto commit;
 			}
@@ -1045,7 +1026,49 @@ void tpce_worker::DoCustomerPositionFrame3(void)
 	db->commit_txn(txn);
 }
 
-void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketFeedFrame1Output *pOut, CSendToMarketInterface *pSendToMarket){}
+void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketFeedFrame1Output *pOut, CSendToMarketInterface *pSendToMarket)
+{
+	scoped_str_arena s_arena(arena);
+
+	auto rows_updated = 0;
+	for( int i = 0; i <= max_feed_len; i++ )
+	{
+		txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+		auto row_sent = 0;
+		TTickerEntry entry = pIn->Entries[i];
+
+		last_trade::key k_lt(entry.symbol);
+		ALWAYS_ASSERT(tbl_last_trade(1)->get(txn, Encode(obj_key0, k_lt), obj_v));
+		last_trade::value v_lt_temp;
+		const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
+		last_trade::value v_lt_new;
+		v_lt_new = *v_lt;
+//		v_lt_new.lt_dts = CDateTime::set_to_current			// FIXME
+		v_lt_new.lt_price = v_lt->lt_price + entry.price_quote;
+		v_lt_new.lt_vol = entry.price_quote;
+		tbl_last_trade(1)->put(txn, Encode(str(), k_lt), Encode(str(), v_lt_new));
+
+		rows_updated++;
+
+		const trade_request::key k_tr_0( entry.symbol, 0 );
+		const trade_request::key k_tr_1( entry.symbol, numeric_limits<int64_t>::max()  );
+		table_scanner tr_scanner(s_arena.get());
+		tbl_trade_request(1)->scan(txn, Encode(obj_key0, k_tr_0), &Encode(obj_key1, k_tr_1), tr_scanner, s_arena.get());
+
+		for( auto &r_tr : tr_scanner.output )
+		{
+			trade_request::key k_tr_temp;
+			trade_request::value v_tr_temp;
+			const trade_request::key* k_tr = Decode( *r_tr.first, k_tr_temp );
+			const trade_request::value* v_tr = Decode(*r_tr.second, v_tr_temp );
+
+			cout << v_tr->tr_tt_id << endl;
+		}
+
+		db->commit_txn(txn);
+	}
+}
+
 void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut){}
 void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut){}
 void tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTradeLookupFrame1Output *pOut){}
