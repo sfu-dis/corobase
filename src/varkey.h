@@ -14,6 +14,8 @@
 #include "macros.h"
 #include "util.h"
 
+#include "varstr.h"
+
 #if NDB_MASSTREE
 #include "prefetch.h"
 #include "masstree/config.h"
@@ -33,20 +35,29 @@ public:
   {
   }
 
+  inline varkey(const varstr *s)
+    : p(s->data()), l(s->size())
+  {
+  }
+
+#if 0
   explicit inline varkey(const std::string &s)
     : p((const uint8_t *) s.data()), l(s.size())
   {
   }
+#endif
 
   explicit inline varkey(const char *s)
     : p((const uint8_t *) s), l(strlen(s))
   {
   }
 
+#if 0
   explicit inline varkey(const imstring &s)
     : p(s.data()), l(s.size())
   {
   }
+#endif
 
   inline bool
   operator==(const varkey &that) const
@@ -134,6 +145,7 @@ public:
     return p;
   }
 
+#if 0
   inline
   std::string str() const
   {
@@ -146,6 +158,7 @@ public:
     buf.assign((const char *) p, l);
     return buf;
   }
+#endif
 
 #if NDB_MASSTREE
   inline operator lcdf::Str() const {
@@ -158,12 +171,14 @@ private:
   size_t l;
 };
 
+#if 0
 inline std::ostream &
 operator<<(std::ostream &o, const varkey &k)
 {
   o << util::hexify(k.str());
   return o;
 }
+#endif
 
 template <bool is_signed, typename T>
 struct signed_aware_trfm {};

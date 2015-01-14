@@ -22,8 +22,8 @@ using namespace TXN;
 #ifdef USE_PARALLEL_SSN
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
-static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
+static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
 #endif
 
 // base definitions
@@ -432,7 +432,7 @@ template <template <typename> class Protocol, typename Traits>
 bool
 transaction<Protocol, Traits>::try_insert_new_tuple(
     concurrent_btree *btr,
-    const std::string *key,
+    const varstr *key,
 	object* value,
     dbtuple::tuple_writer_t writer)
 {
@@ -447,14 +447,11 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
 
   typename concurrent_btree::insert_info_t insert_info;
   if (unlikely(!btr->insert_if_absent(
-          varkey(*key), oid, tuple, &insert_info))) {
-    VERBOSE(std::cerr << "insert_if_absent failed for key: " << util::hexify(key) << std::endl);
+          varkey(key), oid, tuple, &insert_info))) {
     ++transaction_base::g_evt_dbtuple_write_insert_failed;
     tuple_vector->unlink(oid, tuple);
     return false;
   }
-  VERBOSE(std::cerr << "insert_if_absent suceeded for key: " << util::hexify(key) << std::endl
-                    << "  new dbtuple is " << util::hexify(tuple) << std::endl);
 
   // insert to log
   // FIXME: tzwang: leave pdest as null and FID is always 1 now.
