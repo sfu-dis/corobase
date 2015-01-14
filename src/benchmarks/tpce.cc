@@ -1,13 +1,13 @@
 /*
    TODOs
 
+   partitioning and scaling, input parameter( configured customers ), CPU pinning for loaders and workers
    dts
    string->c_str
    scan key
    sanity check & carninality check 
    secondary indices for read-only tables
    non unique indices, check that masstree can do it
-   partitioning and CPU pinning for loaders and workers
  */
 
 #include <sys/time.h>
@@ -451,7 +451,7 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateSecurityDetailInput(input);
 			CSecurityDetail* harness= new CSecurityDetail(this);
 
-			//	harness->DoTxn( (PSecurityDetailTxnInput)&input, (PSecurityDetailTxnOutput)&output);
+			harness->DoTxn( (PSecurityDetailTxnInput)&input, (PSecurityDetailTxnOutput)&output);
 			return txn_result(true, 0);
 		}
 		void DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut);
@@ -1217,7 +1217,227 @@ void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 	db->commit_txn(txn);
 }
 
-void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut){}
+void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut)
+{
+	scoped_str_arena s_arena(arena);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+
+	int64_t co_id;
+
+	const security::key k_s(pIn->symbol);
+	ALWAYS_ASSERT(tbl_security(1)->get(txn, Encode(obj_key0, k_s), obj_v));
+	security::value v_s_temp;
+	const security::value *v_s = Decode(obj_v, v_s_temp);
+	co_id = v_s->s_co_id;
+
+	const company::key k_co(co_id);
+	ALWAYS_ASSERT(tbl_company(1)->get(txn, Encode(obj_key0, k_co), obj_v));
+	company::value v_co_temp;
+	const company::value *v_co = Decode(obj_v, v_co_temp);
+
+	const address::key k_ca(v_co->co_ad_id);
+	ALWAYS_ASSERT(tbl_address(1)->get(txn, Encode(obj_key0, k_ca), obj_v));
+	address::value v_ca_temp;
+	const address::value *v_ca = Decode(obj_v, v_ca_temp);
+
+	const zip_code::key k_zca(v_ca->ad_zc_code);
+	ALWAYS_ASSERT(tbl_zip_code(1)->get(txn, Encode(obj_key0, k_zca), obj_v));
+	zip_code::value v_zca_temp;
+	const zip_code::value *v_zca = Decode(obj_v, v_zca_temp);
+
+	const exchange::key k_ex(v_s->s_ex_id);
+	ALWAYS_ASSERT(tbl_exchange(1)->get(txn, Encode(obj_key0, k_ex), obj_v));
+	exchange::value v_ex_temp;
+	const exchange::value *v_ex = Decode(obj_v, v_ex_temp);
+
+	const address::key k_ea(v_ex->ex_ad_id);
+	ALWAYS_ASSERT(tbl_address(1)->get(txn, Encode(obj_key0, k_ea), obj_v));
+	address::value v_ea_temp;
+	const address::value *v_ea = Decode(obj_v, v_ea_temp);
+
+	const zip_code::key k_zea(v_ea->ad_zc_code);
+	ALWAYS_ASSERT(tbl_zip_code(1)->get(txn, Encode(obj_key0, k_zea), obj_v));
+	zip_code::value v_zea_temp;
+	const zip_code::value *v_zea = Decode(obj_v, v_zea_temp);
+	
+	memcpy(pOut->s_name,  v_s->s_name.data(), v_s->s_name.size());
+	pOut->num_out = v_s->s_num_out;
+//	pOut->start_date = v_s->s_start_date;
+//	pOut->ex_date= v_s->s_exch_date;
+	pOut->pe_ratio = v_s->s_pe;
+	pOut->s52_wk_high = v_s->s_52wk_high;
+//	pOut->s52_wk_high_date = v_s->s_52wk_high_date;
+	pOut->s52_wk_low = v_s->s_52wk_low;
+//	pOut->s52_wk_low_date = v_s->s_52wk_low_date;
+	pOut->divid = v_s->s_dividend;
+	pOut->yield = v_s->s_yield;
+	memcpy(pOut->co_name,  v_co->co_name.data(), v_co->co_name.size());
+	memcpy(pOut->sp_rate,  v_co->co_sp_rate.data(), v_co->co_sp_rate.size());
+	memcpy(pOut->ceo_name,  v_co->co_ceo.data(), v_co->co_ceo.size());
+	memcpy(pOut->co_desc,  v_co->co_desc.data(), v_co->co_desc.size());
+//	pOut->open_date = v_s->co_open_date;
+	memcpy(pOut->co_st_id,  v_co->co_st_id.data(), v_co->co_st_id.size());
+	memcpy(pOut->co_ad_line1,  v_ca->ad_line1.data(), v_ca->ad_line1.size());
+	memcpy(pOut->co_ad_line2,  v_ca->ad_line2.data(), v_ca->ad_line2.size());
+	memcpy(pOut->co_ad_zip,  v_ca->ad_zc_code.data(), v_ca->ad_zc_code.size());
+	memcpy(pOut->co_ad_cty,  v_ca->ad_ctry.data(), v_ca->ad_ctry.size());
+	memcpy(pOut->ex_ad_line1,  v_ea->ad_line1.data(), v_ea->ad_line1.size());
+	memcpy(pOut->ex_ad_line2,  v_ea->ad_line2.data(), v_ea->ad_line2.size());
+	memcpy(pOut->ex_ad_zip,  v_ea->ad_zc_code.data(), v_ea->ad_zc_code.size());
+	memcpy(pOut->ex_ad_cty,  v_ea->ad_ctry.data(), v_ea->ad_ctry.size());
+	pOut->ex_open = v_ex->ex_open;
+	pOut->ex_close = v_ex->ex_close;
+	pOut->ex_num_symb = v_ex->ex_num_symb;
+	memcpy(pOut->ex_name,  v_ex->ex_name.data(), v_ex->ex_name.size());
+	memcpy(pOut->ex_desc,  v_ex->ex_desc.data(), v_ex->ex_desc.size());
+	memcpy(pOut->co_ad_town, v_zca->zc_town.data(), v_zca->zc_town.size());
+	memcpy(pOut->co_ad_div,  v_zca->zc_div.data(), v_zca->zc_div.size());
+	memcpy(pOut->ex_ad_town, v_zea->zc_town.data(), v_zea->zc_town.size());
+	memcpy(pOut->ex_ad_div,  v_zea->zc_div.data(),  v_zea->zc_div.size());
+
+
+	const company_competitor::key k_cp_0( co_id, 0, "    " );
+	const company_competitor::key k_cp_1( co_id, numeric_limits<int64_t>::max(), "ZZZZ" );
+	table_scanner cp_scanner(s_arena.get());
+	tbl_company_competitor(1)->scan(txn, Encode(obj_key0, k_cp_0), &Encode(obj_key1, k_cp_1), cp_scanner, s_arena.get());
+	ALWAYS_ASSERT( cp_scanner.output.size() );
+
+	for(uint64_t i = 0; i < max_comp_len; i++ )
+	{
+		auto &r_cp = cp_scanner.output[i];
+		company_competitor::key k_cp_temp;
+		company_competitor::value v_cp_temp;
+		const company_competitor::key* k_cp = Decode( *r_cp.first, k_cp_temp );
+		const company_competitor::value* v_cp = Decode( *r_cp.second, v_cp_temp );
+
+		const company::key k_co3(k_cp->cp_comp_co_id);
+		ALWAYS_ASSERT(tbl_company(1)->get(txn, Encode(obj_key0, k_co3), obj_v));
+		company::value v_co3_temp;
+		const company::value *v_co3 = Decode(obj_v, v_co3_temp);
+		 
+		const industry::key k_in(k_cp->cp_in_id);
+		ALWAYS_ASSERT(tbl_industry(1)->get(txn, Encode(obj_key0, k_in), obj_v));
+		industry::value v_in_temp;
+		const industry::value *v_in = Decode(obj_v, v_in_temp);
+
+		memcpy( pOut->cp_co_name[i], v_co3->co_name.data(), v_co3->co_name.size() );
+		memcpy( pOut->cp_in_name[i], v_in->in_name.data(), v_in->in_name.size() );
+	}
+
+	const financial::key k_fi_0( co_id, 0, 0 );
+	const financial::key k_fi_1( co_id, numeric_limits<int64_t>::max(), numeric_limits<int64_t>::max() );
+	table_scanner fi_scanner(s_arena.get());
+	tbl_financial(1)->scan(txn, Encode(obj_key0, k_fi_0), &Encode(obj_key1, k_fi_1), fi_scanner, s_arena.get());
+	ALWAYS_ASSERT( fi_scanner.output.size() );
+	for( uint64_t i = 0; i < max_fin_len; i++ )
+	{
+		auto &r_fi = fi_scanner.output[i];
+		financial::key k_fi_temp;
+		financial::value v_fi_temp;
+		const financial::key* k_fi = Decode( *r_fi.first, k_fi_temp );
+		const financial::value* v_fi = Decode( *r_fi.second, v_fi_temp );
+
+		// TODO. order by
+
+		pOut->fin[i].year = k_fi->fi_year;
+		pOut->fin[i].qtr = k_fi->fi_qtr;
+//		pOut->fin[i].start_date = v_fi->fi_qtr_start_date;
+		pOut->fin[i].rev = v_fi->fi_revenue;
+		pOut->fin[i].net_earn = v_fi->fi_net_earn;
+		pOut->fin[i].basic_eps = v_fi->fi_basic_eps;
+		pOut->fin[i].dilut_eps = v_fi->fi_dilut_eps;
+		pOut->fin[i].margin = v_fi->fi_margin;
+		pOut->fin[i].invent = v_fi->fi_inventory;
+		pOut->fin[i].assets = v_fi->fi_assets;
+		pOut->fin[i].liab = v_fi->fi_liability;
+		pOut->fin[i].out_basic = v_fi->fi_out_basic;
+		pOut->fin[i].out_dilut = v_fi->fi_out_dilut;
+
+	}
+	pOut->fin_len = max_fin_len; 
+
+	const daily_market::key k_dm_0( pIn->symbol, EgenTimeStampToTimeT(pIn->start_day) );		// FIXME. 
+	const daily_market::key k_dm_1( pIn->symbol, numeric_limits<int64_t>::max() );
+	table_scanner dm_scanner(s_arena.get());
+	tbl_daily_market(1)->scan(txn, Encode(obj_key0, k_dm_0), &Encode(obj_key1, k_dm_1), dm_scanner, s_arena.get());
+	ALWAYS_ASSERT( dm_scanner.output.size() );
+	for(int i=0; i <= pIn->max_rows_to_return; i++ )
+	{
+		if( i >= dm_scanner.output.size() )
+			break;
+
+		auto &r_dm = dm_scanner.output[i];
+
+		daily_market::key k_dm_temp;
+		daily_market::value v_dm_temp;
+		const daily_market::key* k_dm = Decode( *r_dm.first, k_dm_temp );
+		const daily_market::value* v_dm = Decode( *r_dm.second, v_dm_temp );
+
+//		pOut->day[i].date = k_dm->dm_date;		// FIXME. mytime To TIMESTAMP_STRUCT
+		pOut->day[i].close = v_dm->dm_close;
+		pOut->day[i].high = v_dm->dm_high;
+		pOut->day[i].low = v_dm->dm_low;
+		pOut->day[i].vol = v_dm->dm_vol;
+
+	}
+	// TODO. order by
+	pOut->day_len = min( pIn->max_rows_to_return, dm_scanner.output.size()); 
+
+	const last_trade::key k_lt(pIn->symbol);
+	ALWAYS_ASSERT(tbl_last_trade(1)->get(txn, Encode(obj_key0, k_lt), obj_v));
+	last_trade::value v_lt_temp;
+	const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
+
+	pOut->last_price = v_lt->lt_price;
+	pOut->last_open = v_lt->lt_open_price;
+	pOut->last_vol = v_lt->lt_vol;
+
+	const news_xref::key k_nx_0( 0, co_id );
+	const news_xref::key k_nx_1( numeric_limits<int64_t>::max(), co_id );
+	table_scanner nx_scanner(s_arena.get());
+	tbl_news_xref(1)->scan(txn, Encode(obj_key0, k_nx_0), &Encode(obj_key1, k_nx_1), nx_scanner, s_arena.get());
+	ALWAYS_ASSERT( nx_scanner.output.size() );
+
+	for(int i = 0; i < max_news_len; i++ )
+	{
+		auto &r_nx = nx_scanner.output[i];
+		news_xref::key k_nx_temp;
+		news_xref::value v_nx_temp;
+		const news_xref::key* k_nx = Decode( *r_nx.first, k_nx_temp );
+		const news_xref::value* v_nx = Decode( *r_nx.second, v_nx_temp );
+
+		const news_item::key k_ni(k_nx->nx_ni_id);
+		ALWAYS_ASSERT(tbl_news_item(1)->get(txn, Encode(obj_key0, k_ni), obj_v));
+		news_item::value v_ni_temp;
+		const news_item::value *v_ni = Decode(obj_v, v_ni_temp);
+
+		if( pIn->access_lob_flag )
+		{
+			memcpy(pOut->news[i].item, v_ni->ni_item.data(), v_ni->ni_item.size());
+//			pOut->news[i].dts = v_ni->ni_dts;
+			memcpy(pOut->news[i].src , v_ni->ni_source.data(), v_ni->ni_source.size());
+			memcpy(pOut->news[i].auth , v_ni->ni_author.data(), v_ni->ni_author.size());
+			pOut->news[i].headline[0] = 0;
+			pOut->news[i].summary[0] = 0;
+
+			//cout << " news lob : " << pOut->news[i].item << endl;
+		}
+		else
+		{
+			pOut->news[i].item[0] = 0;
+//			pOut->news[i].dts = v_ni->ni_dts;
+			memcpy(pOut->news[i].src , v_ni->ni_source.data(), v_ni->ni_source.size());
+			memcpy(pOut->news[i].auth , v_ni->ni_author.data(), v_ni->ni_author.size());
+			memcpy(pOut->news[i].headline , v_ni->ni_headline.data(), v_ni->ni_headline.size());
+			memcpy(pOut->news[i].summary , v_ni->ni_summary.data(), v_ni->ni_summary.size());
+			//cout << " news no-lob : " << pOut->news[i].summary<< endl;
+		}
+	}
+	pOut->news_len = min( max_news_len, nx_scanner.output.size() );
+
+	db->commit_txn(txn);
+}
+
 void tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTradeLookupFrame1Output *pOut){}
 void tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTradeLookupFrame2Output *pOut){}
 void tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTradeLookupFrame3Output *pOut){}
