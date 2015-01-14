@@ -26,8 +26,8 @@ public:
    */
   virtual rc_t get(
       void *txn,
-      const std::string &key,
-      std::string &value,
+      const varstr &key,
+      varstr &value,
       size_t max_bytes_read = std::string::npos) = 0;
 
   class scan_callback {
@@ -41,7 +41,7 @@ public:
     // we keep value as std::string b/c we have more control over how those
     // strings are generated
     virtual bool invoke(const char *keyp, size_t keylen,
-                        const std::string &value) = 0;
+                        const varstr &value) = 0;
   };
 
   /**
@@ -50,8 +50,8 @@ public:
    */
   virtual rc_t scan(
       void *txn,
-      const std::string &start_key,
-      const std::string *end_key,
+      const varstr &start_key,
+      const varstr *end_key,
       scan_callback &callback,
       str_arena *arena = nullptr) = 0;
 
@@ -62,8 +62,8 @@ public:
    */
   virtual rc_t rscan(
       void *txn,
-      const std::string &start_key,
-      const std::string *end_key,
+      const varstr &start_key,
+      const varstr *end_key,
       scan_callback &callback,
       str_arena *arena = nullptr) = 0;
 
@@ -83,16 +83,16 @@ public:
    */
   virtual rc_t
   put(void *txn,
-      const std::string &key,
-      const std::string &value) = 0;
+      const varstr &key,
+      const varstr &value) = 0;
 
   virtual rc_t
   put(void *txn,
-      std::string &&key,
-      std::string &&value)
+      varstr &&key,
+      varstr &&value)
   {
-    return put(txn, static_cast<const std::string &>(key),
-                    static_cast<const std::string &>(value));
+    return put(txn, static_cast<const varstr &>(key),
+                    static_cast<const varstr &>(value));
   }
 
   /**
@@ -105,19 +105,19 @@ public:
    */
   virtual rc_t
   insert(void *txn,
-         const std::string &key,
-         const std::string &value)
+         const varstr &key,
+         const varstr &value)
   {
     return put(txn, key, value);
   }
 
   virtual rc_t
   insert(void *txn,
-         std::string &&key,
-         std::string &&value)
+         varstr &&key,
+         varstr &&value)
   {
-    return insert(txn, static_cast<const std::string &>(key),
-                       static_cast<const std::string &>(value));
+    return insert(txn, static_cast<const varstr &>(key),
+                       static_cast<const varstr &>(value));
   }
 
   /**
@@ -125,16 +125,16 @@ public:
    */
   virtual rc_t remove(
       void *txn,
-      const std::string &key)
+      const varstr &key)
   {
-    return put(txn, key, "");
+    return put(txn, key, varstr());
   }
 
   virtual rc_t remove(
       void *txn,
-      std::string &&key)
+      varstr &&key)
   {
-    return remove(txn, static_cast<const std::string &>(key));
+    return remove(txn, static_cast<const varstr &>(key));
   }
 
   /**

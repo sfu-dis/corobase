@@ -106,6 +106,12 @@ public:
     deassign_reader_bitmap_entry();
 #endif
   }
+  inline ALWAYS_INLINE varstr &
+  str(uint64_t size)
+  {
+    return *arena.next(size);
+  }
+
 protected:
   inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
 
@@ -238,10 +244,10 @@ public:
   void run();
   void heap_prefault()
   {
-	  //uint64_t FAULT_SIZE = (((uint64_t)1<<30)*40);		// 45G for 24 warehouses
-	  //uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
-	  //ALWAYS_ASSERT(p);
-      //ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
+	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*40);		// 45G for 24 warehouses
+	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
+	  ALWAYS_ASSERT(p);
+      ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
 	  //ALWAYS_ASSERT(not mlockall(MCL_CURRENT));
 	  mallopt (M_TRIM_THRESHOLD, -1);
 	  mallopt (M_MMAP_MAX, 0);
@@ -250,7 +256,7 @@ public:
 	  getrusage(RUSAGE_SELF, &usage);
 	  std::cout<<"Major fault: " <<  usage.ru_majflt<< "Minor fault: " << usage.ru_minflt<< std::endl;
 
-	  //free(p);
+	  free(p);
   }
 protected:
   // only called once
@@ -279,14 +285,14 @@ public:
 
   virtual bool invoke(
       const char *keyp, size_t keylen,
-      const std::string &value)
+      const varstr &value)
   {
     INVARIANT(limit == -1 || n < size_t(limit));
-    values.emplace_back(std::string(keyp, keylen), value);
+    values.emplace_back(varstr(keyp, keylen), value);
     return (limit == -1) || (++n < size_t(limit));
   }
 
-  typedef std::pair<std::string, std::string> kv_pair;
+  typedef std::pair<varstr, varstr> kv_pair;
   std::vector<kv_pair> values;
 
   const ssize_t limit;
@@ -297,7 +303,7 @@ private:
 
 class latest_key_callback : public abstract_ordered_index::scan_callback {
 public:
-  latest_key_callback(std::string &k, ssize_t limit = -1)
+  latest_key_callback(varstr &k, ssize_t limit = -1)
     : limit(limit), n(0), k(&k)
   {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
@@ -305,21 +311,21 @@ public:
 
   virtual bool invoke(
       const char *keyp, size_t keylen,
-      const std::string &value)
+      const varstr &value)
   {
     INVARIANT(limit == -1 || n < size_t(limit));
-    k->assign(keyp, keylen);
+    k->copy_from(keyp, keylen);
     ++n;
     return (limit == -1) || (n < size_t(limit));
   }
 
   inline size_t size() const { return n; }
-  inline std::string &kstr() { return *k; }
+  inline varstr &kstr() { return *k; }
 
 private:
   ssize_t limit;
   size_t n;
-  std::string *k;
+  varstr *k;
 };
 
 // explicitly copies keys, because btree::search_range_call() interally
@@ -340,16 +346,16 @@ public:
 
   virtual bool invoke(
       const char *keyp, size_t keylen,
-      const std::string &value)
+      const varstr &value)
   {
     INVARIANT(n < N);
     INVARIANT(arena->manages(&value));
     if (ignore_key) {
       values.emplace_back(nullptr, &value);
     } else {
-      std::string * const s_px = arena->next();
-      INVARIANT(s_px && s_px->empty());
-      s_px->assign(keyp, keylen);
+      varstr * const s_px = arena->next(keylen);
+      INVARIANT(s_px);
+      s_px->copy_from(keyp, keylen);
       values.emplace_back(s_px, &value);
     }
     return ++n < N;
@@ -361,7 +367,7 @@ public:
     return values.size();
   }
 
-  typedef std::pair<const std::string *, const std::string *> kv_pair;
+  typedef std::pair<const varstr *, const varstr *> kv_pair;
   typename util::vec<kv_pair, N>::type values;
 
 private:

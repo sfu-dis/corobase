@@ -44,7 +44,7 @@ extern std::string (*g_proto_version_str)(uint64_t v);
 struct dbtuple {
 public:
   typedef uint32_t size_type;
-  typedef std::string string_type;
+  typedef varstr string_type;
 
   fat_ptr clsn;     // version creation stamp
 #ifdef USE_PARALLEL_SSN

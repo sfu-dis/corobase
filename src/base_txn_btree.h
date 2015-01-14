@@ -154,7 +154,7 @@ protected:
   // NOTE: both key and value are expected to be stable values already
   template <typename Traits>
   rc_t do_tree_put(Transaction<Traits> &t,
-                   const std::string *k,
+                   const varstr *k,
                    const typename P::Value *v,
                    dbtuple::tuple_writer_t writer,
                    bool expect_new);
@@ -181,14 +181,14 @@ base_txn_btree<Transaction, P>::do_search(
   t.ensure_active();
 
   typename P::KeyWriter key_writer(&k);
-  const std::string * const key_str =
+  const varstr * const key_str =
     key_writer.fully_materialize(true, t.string_allocator());
 
   // search the underlying btree to map k=>(btree_node|tuple)
   dbtuple * tuple{};
   oid_type oid;
   concurrent_btree::versioned_node_t search_info;
-  const bool found = this->underlying_btree.search(varkey(*key_str), oid, tuple, t.xid, &search_info);
+  const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xid, &search_info);
   if (found)
     return t.do_tuple_read(&this->underlying_btree, oid, tuple, value_reader);
   return rc_t{RC_FALSE};
@@ -232,7 +232,7 @@ template <template <typename> class Transaction, typename P>
 template <typename Traits>
 rc_t base_txn_btree<Transaction, P>::do_tree_put(
     Transaction<Traits> &t,
-    const std::string *k,
+    const varstr *k,
     const typename P::Value *v,
     dbtuple::tuple_writer_t writer,
     bool expect_new)
@@ -287,7 +287,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // do regular search
   dbtuple * bv = 0;
   oid_type oid = 0;
-  if (!this->underlying_btree.search(varkey(*k), oid, bv, t.xid))
+  if (!this->underlying_btree.search(varkey(k), oid, bv, t.xid))
     return rc_t{RC_ABORT};
 
   // After read the latest committed, and holding the version:
@@ -447,11 +447,11 @@ base_txn_btree<Transaction, P>::do_search_range_call(
                  << ", +inf)" << std::endl);
 
   typename P::KeyWriter lower_key_writer(&lower);
-  const std::string * const lower_str =
+  const varstr * const lower_str =
     lower_key_writer.fully_materialize(true, t.string_allocator());
 
   typename P::KeyWriter upper_key_writer(upper);
-  const std::string * const upper_str =
+  const varstr * const upper_str =
     upper_key_writer.fully_materialize(true, t.string_allocator());
 
   if (unlikely(upper_str && *upper_str <= *lower_str))
@@ -462,10 +462,10 @@ base_txn_btree<Transaction, P>::do_search_range_call(
 
   varkey uppervk;
   if (upper_str)
-    uppervk = varkey(*upper_str);
+    uppervk = varkey(upper_str);
   this->underlying_btree.search_range_call(
-      varkey(*lower_str), upper_str ? &uppervk : nullptr,
-      c, t.xid, t.string_allocator()());
+      varkey(lower_str), upper_str ? &uppervk : nullptr,
+      c, t.xid);
 }
 
 template <template <typename> class Transaction, typename P>
@@ -483,11 +483,11 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
   t.ensure_active();
 
   typename P::KeyWriter lower_key_writer(lower);
-  const std::string * const lower_str =
+  const varstr * const lower_str =
     lower_key_writer.fully_materialize(true, t.string_allocator());
 
   typename P::KeyWriter upper_key_writer(&upper);
-  const std::string * const upper_str =
+  const varstr * const upper_str =
     upper_key_writer.fully_materialize(true, t.string_allocator());
 
   if (unlikely(lower_str && *upper_str <= *lower_str))
@@ -498,10 +498,10 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
 
   varkey lowervk;
   if (lower_str)
-    lowervk = varkey(*lower_str);
+    lowervk = varkey(lower_str);
   this->underlying_btree.rsearch_range_call(
-      varkey(*upper_str), lower_str ? &lowervk : nullptr,
-      c,t.xid, t.string_allocator()());
+      varkey(upper_str), lower_str ? &lowervk : nullptr,
+      c,t.xid);
 }
 
 #endif /* _NDB_BASE_TXN_BTREE_H_ */

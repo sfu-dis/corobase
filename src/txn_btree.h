@@ -9,8 +9,8 @@ extern void txn_btree_test();
 struct txn_btree_ {
   class key_reader {
   public:
-    inline ALWAYS_INLINE const std::string &
-    operator()(const std::string &s)
+    inline ALWAYS_INLINE const varstr &
+    operator()(const varstr &s)
     {
       return s;
     }
@@ -23,30 +23,30 @@ struct txn_btree_ {
 
   class key_writer {
   public:
-    constexpr key_writer(const std::string *k)
+    constexpr key_writer(const varstr *k)
       : k(k) {}
 
     template <typename StringAllocator>
-    inline const std::string *
+    inline const varstr *
     fully_materialize(bool stable_input, StringAllocator &sa)
     {
       if (stable_input || !k)
         return k;
-      std::string * const ret = sa();
-      ret->assign(k->data(), k->size());
+      varstr * const ret = sa(k->size());
+      ret->copy_from(k->data(), k->size());
       return ret;
     }
 
   private:
-    const std::string *k;
+    const varstr *k;
   };
 
   // does not bother to interpret the bytes from a record
   class single_value_reader {
   public:
-    typedef std::string value_type;
+    typedef varstr value_type;
 
-    constexpr single_value_reader(std::string *px, size_t max_bytes_read)
+    constexpr single_value_reader(varstr *px, size_t max_bytes_read)
       : px(px), max_bytes_read(max_bytes_read) {}
 
     template <typename StringAllocator>
@@ -54,17 +54,17 @@ struct txn_btree_ {
     operator()(const uint8_t *data, size_t sz, StringAllocator &sa)
     {
       const size_t readsz = std::min(sz, max_bytes_read);
-      px->assign((const char *) data, readsz);
+      px->copy_from(data, readsz);
       return true;
     }
 
-    inline std::string &
+    inline varstr &
     results()
     {
       return *px;
     }
 
-    inline const std::string &
+    inline const varstr &
     results() const
     {
       return *px;
@@ -72,19 +72,19 @@ struct txn_btree_ {
 
     template <typename StringAllocator>
     inline void
-    dup(const std::string &vdup, StringAllocator &sa)
+    dup(const varstr &vdup, StringAllocator &sa)
     {
       *px = vdup;
     }
 
   private:
-    std::string *px;
+    varstr *px;
     size_t max_bytes_read;
   };
 
   class value_reader {
   public:
-    typedef std::string value_type;
+    typedef varstr value_type;
 
     constexpr value_reader(size_t max_bytes_read)
       : px(nullptr), max_bytes_read(max_bytes_read) {}
@@ -93,19 +93,19 @@ struct txn_btree_ {
     inline bool
     operator()(const uint8_t *data, size_t sz, StringAllocator &sa)
     {
-      px = sa();
+      px = sa(sz);
       const size_t readsz = std::min(sz, max_bytes_read);
-      px->assign((const char *) data, readsz);
+      px->copy_from((const char *) data, readsz);
       return true;
     }
 
-    inline std::string &
+    inline varstr &
     results()
     {
       return *px;
     }
 
-    inline const std::string &
+    inline const varstr &
     results() const
     {
       return *px;
@@ -113,33 +113,33 @@ struct txn_btree_ {
 
     template <typename StringAllocator>
     inline void
-    dup(const std::string &vdup, StringAllocator &sa)
+    dup(const varstr &vdup, StringAllocator &sa)
     {
-      px = sa();
+      px = sa(vdup.size());
       *px = vdup;
     }
 
   private:
-    std::string *px;
+    varstr *px;
     size_t max_bytes_read;
   };
 
   class value_writer {
   public:
-    constexpr value_writer(const std::string *v) : v(v) {}
+    constexpr value_writer(const varstr *v) : v(v) {}
     inline size_t
     compute_needed(const uint8_t *buf, size_t sz)
     {
       return v ? v->size() : 0;
     }
     template <typename StringAllocator>
-    inline const std::string *
+    inline const varstr *
     fully_materialize(bool stable_input, StringAllocator &sa)
     {
       if (stable_input || !v)
         return v;
-      std::string * const ret = sa();
-      ret->assign(v->data(), v->size());
+      varstr * const ret = sa(v->size());
+      ret->copy_from(v->data(), v->size());
       return ret;
     }
 
@@ -152,13 +152,13 @@ struct txn_btree_ {
       NDB_MEMCPY(buf, v->data(), v->size());
     }
   private:
-    const std::string *v;
+    const varstr *v;
   };
 
   static size_t
   tuple_writer(dbtuple::TupleWriterMode mode, const void *v, uint8_t *p, size_t sz)
   {
-    const std::string * const vx = reinterpret_cast<const std::string *>(v);
+    const varstr * const vx = reinterpret_cast<const varstr *>(v);
     switch (mode) {
     case dbtuple::TUPLE_WRITER_NEEDS_OLD_VALUE:
       return 0;
@@ -174,10 +174,10 @@ struct txn_btree_ {
     return 0;
   }
 
-  typedef std::string Key;
+  typedef varstr Key;
   typedef key_reader KeyReader;
   typedef key_writer KeyWriter;
-  typedef std::string Value;
+  typedef varstr Value;
   typedef single_value_reader SingleValueReader;
   typedef value_reader ValueReader;
   typedef value_writer ValueWriter;
@@ -254,29 +254,29 @@ private:
   }
 
   template <typename Traits>
-  static inline const std::string *
-  stablize(Transaction<Traits> &t, const std::string &s)
+  static inline const varstr *
+  stablize(Transaction<Traits> &t, const varstr &s)
   {
     if (Traits::stable_input_memory)
       return &s;
-    std::string * const px = t.string_allocator()();
+    varstr * const px = t.string_allocator()(s.size());
     *px = s;
     return px;
   }
 
   template <typename Traits>
-  static inline const std::string *
+  static inline const varstr *
   stablize(Transaction<Traits> &t, const uint8_t *p, size_t sz)
   {
     if (!sz)
       return nullptr;
-    std::string * const px = t.string_allocator()();
-    px->assign((const char *) p, sz);
+    varstr * const px = t.string_allocator()(sz);
+    px->copy_from((const char *) p, sz);
     return px;
   }
 
   template <typename Traits>
-  static inline const std::string *
+  static inline const varstr *
   stablize(Transaction<Traits> &t, const varkey &k)
   {
     return stablize(t, k.data(), k.size());
@@ -400,7 +400,6 @@ public:
   inline rc_t
   put(Transaction<Traits> &t, const key_type &k, const value_type &v)
   {
-    INVARIANT(!v.empty());
     return this->do_tree_put(
         t, stablize(t, k), stablize(t, v),
         txn_btree_::tuple_writer, false);
@@ -410,7 +409,6 @@ public:
   inline rc_t
   put(Transaction<Traits> &t, const varkey &k, const value_type &v)
   {
-    INVARIANT(!v.empty());
     return this->do_tree_put(
         t, stablize(t, k), stablize(t, v),
         txn_btree_::tuple_writer, false);
@@ -420,7 +418,6 @@ public:
   inline rc_t
   insert(Transaction<Traits> &t, const key_type &k, const value_type &v)
   {
-    INVARIANT(!v.empty());
     return this->do_tree_put(
         t, stablize(t, k), stablize(t, v),
         txn_btree_::tuple_writer, true);

@@ -296,8 +296,8 @@ template <template <typename> class Transaction>
 rc_t
 ndb_ordered_index<Transaction>::get(
     void *txn,
-    const std::string &key,
-    std::string &value, size_t max_bytes_read)
+    const varstr &key,
+    varstr &value, size_t max_bytes_read)
 {
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_get_probe0_cg);
@@ -314,7 +314,6 @@ ndb_ordered_index<Transaction>::get(
       ALWAYS_ASSERT(false);
     }
 #undef MY_OP_X
-    INVARIANT(!value.empty());
     return rc_t{RC_TRUE}; // FIXME: correct?
 }
 
@@ -324,8 +323,8 @@ template <template <typename> class Transaction>
 rc_t
 ndb_ordered_index<Transaction>::put(
     void *txn,
-    const std::string &key,
-    const std::string &value)
+    const varstr &key,
+    const varstr &value)
 {
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_put_probe0_cg);
@@ -351,8 +350,8 @@ template <template <typename> class Transaction>
 rc_t
 ndb_ordered_index<Transaction>::put(
     void *txn,
-    std::string &&key,
-    std::string &&value)
+    varstr &&key,
+    varstr &&value)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
 #define MY_OP_X(a, b) \
@@ -376,8 +375,8 @@ template <template <typename> class Transaction>
 rc_t
 ndb_ordered_index<Transaction>::insert(
     void *txn,
-    const std::string &key,
-    const std::string &value)
+    const varstr &key,
+    const varstr &value)
 {
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_insert_probe0_cg);
@@ -401,8 +400,8 @@ template <template <typename> class Transaction>
 rc_t
 ndb_ordered_index<Transaction>::insert(
     void *txn,
-    std::string &&key,
-    std::string &&value)
+    varstr &&key,
+    varstr &&value)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
 #define MY_OP_X(a, b) \
@@ -441,8 +440,8 @@ template <template <typename> class Transaction>
 rc_t
 ndb_ordered_index<Transaction>::scan(
     void *txn,
-    const std::string &start_key,
-    const std::string *end_key,
+    const varstr &start_key,
+    const varstr *end_key,
     scan_callback &callback,
     str_arena *arena)
 {
@@ -472,8 +471,8 @@ template <template <typename> class Transaction>
 rc_t
 ndb_ordered_index<Transaction>::rscan(
     void *txn,
-    const std::string &start_key,
-    const std::string *end_key,
+    const varstr &start_key,
+    const varstr *end_key,
     scan_callback &callback,
     str_arena *arena)
 {
@@ -499,7 +498,7 @@ ndb_ordered_index<Transaction>::rscan(
 
 template <template <typename> class Transaction>
 rc_t
-ndb_ordered_index<Transaction>::remove(void *txn, const std::string &key)
+ndb_ordered_index<Transaction>::remove(void *txn, const varstr &key)
 {
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_remove_probe0_cg);
@@ -521,7 +520,7 @@ ndb_ordered_index<Transaction>::remove(void *txn, const std::string &key)
 
 template <template <typename> class Transaction>
 rc_t
-ndb_ordered_index<Transaction>::remove(void *txn, std::string &&key)
+ndb_ordered_index<Transaction>::remove(void *txn, varstr &&key)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
 #define MY_OP_X(a, b) \

@@ -369,7 +369,7 @@ protected:
   bool
   try_insert_new_tuple(
       concurrent_btree *btr,
-      const std::string *key,
+      const varstr *key,
 	  object* value,
       dbtuple::tuple_writer_t writer);
 
