@@ -148,13 +148,13 @@ DO_STRUCT(watch_list, WATCH_LIST_KEY_FIELDS, WATCH_LIST_VALUE_FIELDS)
   y(double,b_comm_total)	
 DO_STRUCT(broker, BROKER_KEY_FIELDS, BROKER_VALUE_FIELDS)
 
-#define CASH_KEY_FIELDS(x, y)\
+#define CASH_TRANSACTION_KEY_FIELDS(x, y)\
   x(int64_t,ct_t_id)		
-#define CASH_VALUE_FIELDS(x, y)\
+#define CASH_TRANSACTION_VALUE_FIELDS(x, y)\
   x(int64_t,ct_dts )\
   y(float ,ct_amt )\
   y(inline_str_fixed<100>,ct_name )	
-DO_STRUCT(cash, CASH_KEY_FIELDS, CASH_VALUE_FIELDS)
+DO_STRUCT(cash_transaction, CASH_TRANSACTION_KEY_FIELDS, CASH_TRANSACTION_VALUE_FIELDS)
 
 
 #define CHARGE_KEY_FIELDS(x, y)\
@@ -188,7 +188,7 @@ DO_STRUCT(settlement, SETTLEMENT_KEY_FIELDS, SETTLEMENT_VALUE_FIELDS )
 #define TRADE_VALUE_FIELDS(x,y)\
 	x(int64_t, t_dts )\
 	y(inline_str_fixed<4>, t_st_id)\
-	y(inline_str_fixed<3>, t_tt_id)\
+	y(inline_str_fixed<4>, t_tt_id)\
     y(bool, t_is_cash )\
     y(inline_str_fixed<16>, t_s_symb)\
     y(int32_t,t_qty)\
@@ -214,7 +214,7 @@ DO_STRUCT(trade_history, TRADE_HISTORY_KEY_FIELDS, TRADE_HISTORY_VALUE_FIELDS )
     y(uint64_t,    tr_b_id)
 #define TRADE_REQUEST_VALUE_FIELDS(x,y)		\
     x(uint64_t,	tr_t_id)\
-    y(inline_str_fixed<3>,	tr_tt_id)\
+    y(inline_str_fixed<4>,	tr_tt_id)\
     y(int,     tr_qty)\
     y(float,   tr_bid_price)
 DO_STRUCT(trade_request, TRADE_REQUEST_KEY_FIELDS, TRADE_REQUEST_VALUE_FIELDS )
@@ -416,7 +416,7 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 	x(trade_request)\
 	x(trade_history)\
 	x(settlement)\
-	x(cash)\
+	x(cash_transaction)\
 	x(broker)\
 	x(holding_history)\
 	x(holding_summary)\
