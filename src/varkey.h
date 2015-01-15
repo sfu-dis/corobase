@@ -45,14 +45,12 @@ public:
     : p((const uint8_t *) s.data()), l(s.size())
   {
   }
-#endif
 
   explicit inline varkey(const char *s)
     : p((const uint8_t *) s), l(strlen(s))
   {
   }
 
-#if 0
   explicit inline varkey(const imstring &s)
     : p(s.data()), l(s.size())
   {
