@@ -22,8 +22,8 @@ using namespace TXN;
 #ifdef USE_PARALLEL_SSN
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
-static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
+static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
 #endif
 
 // base definitions
