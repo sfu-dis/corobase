@@ -1579,14 +1579,13 @@ class credit_check_order_scan_callback : public abstract_ordered_index::scan_cal
 
 class credit_check_order_line_scan_callback : public abstract_ordered_index::scan_callback {
 	public:
-		credit_check_order_line_scan_callback( str_arena* arena ) : _arena(arena) {}
+		credit_check_order_line_scan_callback( str_arena* arena ) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
 		{
 			_v_ol.emplace_back( &value);
 			return true;
 		}
 		std::vector<const varstr *> _v_ol;
-		str_arena* _arena;  // FIXME: unused??
 };
 
 tpcc_worker::txn_result
@@ -1694,7 +1693,8 @@ tpcc_worker::txn_credit_check()
 			//		ol_w_id = :w_id
 			//		ol_o_id = o_id
 			//		ol_number = 1-15
-			credit_check_order_line_scan_callback c_ol(s_arena.get());
+			static __thread credit_check_order_line_scan_callback c_ol(s_arena.get());
+            c_ol._v_ol.clear();
 			const order_line::key k_ol_0(warehouse_id, districtID, k_o->o_id, 1);
 			const order_line::key k_ol_1(warehouse_id, districtID, k_o->o_id, 15);
             try_catch(tbl_order_line(warehouse_id)->scan(txn, Encode(str(Size(k_ol_0)), k_ol_0), &Encode(str(Size(k_ol_1)), k_ol_1), c_ol, s_arena.get()));
