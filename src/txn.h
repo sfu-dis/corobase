@@ -41,8 +41,8 @@
 #include "ndb_type_traits.h"
 #include "object.h"
 
-//#include <sparsehash/dense_hash_map>
-//using google::dense_hash_map;
+#include <sparsehash/dense_hash_map>
+using google::dense_hash_map;
 
 using namespace TXN;
 
@@ -309,8 +309,11 @@ protected:
   // key is the new inserted version if it's an update of an insert
   // ^^^^^ note in the above case, do_tree_put should mark btr as null
   // for the older inserted tuple.
-  typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
-  //typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
+  //typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
+  // seems unordered_map has bad cache behavior: it might have to
+  // allocated elements individually, not putting all elems in a contiguous chunk
+  // like a vector does.
+  typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
   //typedef small_vector<read_record_t, SMALL_SIZE_MAP> read_set_map;
 #ifdef USE_PARALLEL_SSN
   typedef std::vector<read_record_t> read_set_map;

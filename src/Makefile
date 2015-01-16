@@ -83,7 +83,7 @@ else
 endif
 
 CXXFLAGS := -Wall -std=c++0x -g
-CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
+CXXFLAGS += -MD -Ithird-party/lz4 -Ithird-party/sparsehash/src -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(TRACE_FOOTPRINT_S),1)
 	CXXFLAGS+=-DTRACE_FOOTPRINT
 endif

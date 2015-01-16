@@ -253,6 +253,7 @@ install:
                 // the committed version read by the tx that's invoking
                 // this function. so this one must not be the rlsn that
                 // I'm trying to find.
+                prev_obj = cur_obj;
                 continue;
             }
 
