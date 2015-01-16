@@ -22,8 +22,8 @@ using namespace TXN;
 #ifdef USE_PARALLEL_SSN
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
 //static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
-static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
+static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
+//static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
 #endif
 
 // base definitions
@@ -40,7 +40,7 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   ssn_register_tx(xid);
 #endif
   xid_context *xc = xid_get_context(xid);
-  //write_set.set_empty_key(NULL);
+  write_set.set_empty_key(NULL);    // google dense map
   RCU::rcu_enter();
   xc->begin = logger->cur_lsn();
   xc->end = INVALID_LSN;
