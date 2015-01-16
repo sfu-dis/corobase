@@ -269,6 +269,9 @@ masstree/config.h: $(O)/buildstamp.masstree masstree/configure masstree/config.h
 masstree/configure masstree/config.h.in: masstree/configure.ac
 	cd masstree && autoreconf -i && touch configure config.h.in
 
+third-party/sparsehash/src/sparsehash/internal/sparseconfig.h:
+	cd third-party/sparsehash/ && ./configure && make -j
+
 .PHONY: dbtest
 dbtest: $(O)/benchmarks/dbtest
 
@@ -320,3 +323,4 @@ $(O)/buildstamp $(O)/buildstamp.bench $(O)/buildstamp.masstree:
 clean:
 	rm -rf out-*
 	make -C third-party/lz4 clean
+# NOTE: make clean won't clean third-party/sparsehash - too slow to compile it; so do it manually if you need to
