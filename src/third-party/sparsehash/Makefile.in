@@ -37,11 +37,8 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-TESTS = template_util_unittest$(EXEEXT) type_traits_unittest$(EXEEXT) \
-	libc_allocator_with_realloc_test$(EXEEXT) \
-	sparsetable_unittest$(EXEEXT) hashtable_test$(EXEEXT) \
-	simple_test$(EXEEXT) simple_compat_test$(EXEEXT)
-noinst_PROGRAMS = $(am__EXEEXT_1) time_hash_map$(EXEEXT)
+TESTS =
+noinst_PROGRAMS = $(am__EXEEXT_1)
 subdir = .
 DIST_COMMON = README $(am__configure_deps) $(dist_doc_DATA) \
 	$(googleinclude_HEADERS) $(googleinternalinclude_HEADERS) \
@@ -91,11 +88,7 @@ am__installdirs = "$(DESTDIR)$(libdir)" "$(DESTDIR)$(docdir)" \
 	"$(DESTDIR)$(internalincludedir)" \
 	"$(DESTDIR)$(sparsehashincludedir)"
 LTLIBRARIES = $(lib_LTLIBRARIES)
-am__EXEEXT_1 = template_util_unittest$(EXEEXT) \
-	type_traits_unittest$(EXEEXT) \
-	libc_allocator_with_realloc_test$(EXEEXT) \
-	sparsetable_unittest$(EXEEXT) hashtable_test$(EXEEXT) \
-	simple_test$(EXEEXT) simple_compat_test$(EXEEXT)
+am__EXEEXT_1 =
 PROGRAMS = $(noinst_PROGRAMS)
 am__objects_1 =
 am_hashtable_test_OBJECTS = hashtable_test.$(OBJEXT) $(am__objects_1) \
@@ -131,14 +124,6 @@ nodist_template_util_unittest_OBJECTS = $(am__objects_1)
 template_util_unittest_OBJECTS = $(am_template_util_unittest_OBJECTS) \
 	$(nodist_template_util_unittest_OBJECTS)
 template_util_unittest_LDADD = $(LDADD)
-am_time_hash_map_OBJECTS = time_hash_map-time_hash_map.$(OBJEXT) \
-	$(am__objects_1) $(am__objects_1)
-nodist_time_hash_map_OBJECTS = $(am__objects_1)
-time_hash_map_OBJECTS = $(am_time_hash_map_OBJECTS) \
-	$(nodist_time_hash_map_OBJECTS)
-time_hash_map_DEPENDENCIES =
-time_hash_map_LINK = $(CXXLD) $(time_hash_map_CXXFLAGS) $(CXXFLAGS) \
-	$(time_hash_map_LDFLAGS) $(LDFLAGS) -o $@
 am_type_traits_unittest_OBJECTS = type_traits_unittest.$(OBJEXT) \
 	$(am__objects_1)
 nodist_type_traits_unittest_OBJECTS = $(am__objects_1)
@@ -166,14 +151,12 @@ SOURCES = $(hashtable_test_SOURCES) $(nodist_hashtable_test_SOURCES) \
 	$(nodist_sparsetable_unittest_SOURCES) \
 	$(template_util_unittest_SOURCES) \
 	$(nodist_template_util_unittest_SOURCES) \
-	$(time_hash_map_SOURCES) $(nodist_time_hash_map_SOURCES) \
 	$(type_traits_unittest_SOURCES) \
 	$(nodist_type_traits_unittest_SOURCES)
 DIST_SOURCES = $(hashtable_test_SOURCES) \
 	$(libc_allocator_with_realloc_test_SOURCES) \
 	$(simple_compat_test_SOURCES) $(simple_test_SOURCES) \
 	$(sparsetable_unittest_SOURCES) \
-	$(template_util_unittest_SOURCES) $(time_hash_map_SOURCES) \
 	$(type_traits_unittest_SOURCES)
 DATA = $(dist_doc_DATA) $(pkgconfig_DATA)
 HEADERS = $(googleinclude_HEADERS) $(googleinternalinclude_HEADERS) \
@@ -322,7 +305,6 @@ dist_doc_DATA = AUTHORS COPYING ChangeLog INSTALL NEWS README README_windows.txt
 
 lib_LTLIBRARIES = 
 WINDOWS_PROJECTS = sparsehash.sln \
-	vsprojects/time_hash_map/time_hash_map.vcproj \
 	vsprojects/type_traits_unittest/type_traits_unittest.vcproj \
 	vsprojects/libc_allocator_with_realloc_test/libc_allocator_with_realloc_test.vcproj \
 	vsprojects/sparsetable_unittest/sparsetable_unittest.vcproj \
@@ -414,18 +396,6 @@ simple_compat_test_SOURCES = \
    $(googleinternalinclude_HEADERS)
 
 nodist_simple_compat_test_SOURCES = $(nodist_internalinclude_HEADERS)
-time_hash_map_SOURCES = \
-   src/time_hash_map.cc				\
-   $(internalinclude_HEADERS)			\
-   $(sparsehashinclude_HEADERS)
-
-nodist_time_hash_map_SOURCES = $(nodist_internalinclude_HEADERS)
-
-# If tcmalloc is installed, use it with time_hash_map; it gives us
-# heap-usage statistics for the hash_map routines, which is very nice
-time_hash_map_CXXFLAGS = @tcmalloc_flags@ $(AM_CXXFLAGS)
-time_hash_map_LDFLAGS = @tcmalloc_flags@
-time_hash_map_LDADD = @tcmalloc_libs@
 
 # http://linux.die.net/man/1/pkg-config, http://pkg-config.freedesktop.org/wiki
 pkgconfigdir = $(libdir)/pkgconfig
@@ -541,9 +511,6 @@ sparsetable_unittest$(EXEEXT): $(sparsetable_unittest_OBJECTS) $(sparsetable_uni
 template_util_unittest$(EXEEXT): $(template_util_unittest_OBJECTS) $(template_util_unittest_DEPENDENCIES) 
 	@rm -f template_util_unittest$(EXEEXT)
 	$(CXXLINK) $(template_util_unittest_OBJECTS) $(template_util_unittest_LDADD) $(LIBS)
-time_hash_map$(EXEEXT): $(time_hash_map_OBJECTS) $(time_hash_map_DEPENDENCIES) 
-	@rm -f time_hash_map$(EXEEXT)
-	$(time_hash_map_LINK) $(time_hash_map_OBJECTS) $(time_hash_map_LDADD) $(LIBS)
 type_traits_unittest$(EXEEXT): $(type_traits_unittest_OBJECTS) $(type_traits_unittest_DEPENDENCIES) 
 	@rm -f type_traits_unittest$(EXEEXT)
 	$(CXXLINK) $(type_traits_unittest_OBJECTS) $(type_traits_unittest_LDADD) $(LIBS)
@@ -560,7 +527,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/simple_test.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sparsetable_unittest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/template_util_unittest.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/time_hash_map-time_hash_map.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/type_traits_unittest.Po@am__quote@
 
 .cc.o:
@@ -660,20 +626,6 @@ template_util_unittest.obj: src/template_util_unittest.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='src/template_util_unittest.cc' object='template_util_unittest.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o template_util_unittest.obj `if test -f 'src/template_util_unittest.cc'; then $(CYGPATH_W) 'src/template_util_unittest.cc'; else $(CYGPATH_W) '$(srcdir)/src/template_util_unittest.cc'; fi`
-
-time_hash_map-time_hash_map.o: src/time_hash_map.cc
-@am__fastdepCXX_TRUE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(time_hash_map_CXXFLAGS) $(CXXFLAGS) -MT time_hash_map-time_hash_map.o -MD -MP -MF $(DEPDIR)/time_hash_map-time_hash_map.Tpo -c -o time_hash_map-time_hash_map.o `test -f 'src/time_hash_map.cc' || echo '$(srcdir)/'`src/time_hash_map.cc
-@am__fastdepCXX_TRUE@	$(am__mv) $(DEPDIR)/time_hash_map-time_hash_map.Tpo $(DEPDIR)/time_hash_map-time_hash_map.Po
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='src/time_hash_map.cc' object='time_hash_map-time_hash_map.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(time_hash_map_CXXFLAGS) $(CXXFLAGS) -c -o time_hash_map-time_hash_map.o `test -f 'src/time_hash_map.cc' || echo '$(srcdir)/'`src/time_hash_map.cc
-
-time_hash_map-time_hash_map.obj: src/time_hash_map.cc
-@am__fastdepCXX_TRUE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(time_hash_map_CXXFLAGS) $(CXXFLAGS) -MT time_hash_map-time_hash_map.obj -MD -MP -MF $(DEPDIR)/time_hash_map-time_hash_map.Tpo -c -o time_hash_map-time_hash_map.obj `if test -f 'src/time_hash_map.cc'; then $(CYGPATH_W) 'src/time_hash_map.cc'; else $(CYGPATH_W) '$(srcdir)/src/time_hash_map.cc'; fi`
-@am__fastdepCXX_TRUE@	$(am__mv) $(DEPDIR)/time_hash_map-time_hash_map.Tpo $(DEPDIR)/time_hash_map-time_hash_map.Po
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='src/time_hash_map.cc' object='time_hash_map-time_hash_map.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(time_hash_map_CXXFLAGS) $(CXXFLAGS) -c -o time_hash_map-time_hash_map.obj `if test -f 'src/time_hash_map.cc'; then $(CYGPATH_W) 'src/time_hash_map.cc'; else $(CYGPATH_W) '$(srcdir)/src/time_hash_map.cc'; fi`
 
 type_traits_unittest.o: src/type_traits_unittest.cc
 @am__fastdepCXX_TRUE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT type_traits_unittest.o -MD -MP -MF $(DEPDIR)/type_traits_unittest.Tpo -c -o type_traits_unittest.o `test -f 'src/type_traits_unittest.cc' || echo '$(srcdir)/'`src/type_traits_unittest.cc
