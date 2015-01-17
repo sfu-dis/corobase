@@ -163,8 +163,8 @@ bool read_bigendian_number(INPUT* fp, IntType* value, size_t length) {
   *value = 0;
   unsigned char byte;
   // We require IntType to be unsigned or else the shifting gets all screwy.
-  SPARSEHASH_COMPILE_ASSERT(static_cast<IntType>(-1) > static_cast<IntType>(0),
-                            serializing_int_requires_an_unsigned_type);
+  //SPARSEHASH_COMPILE_ASSERT(static_cast<IntType>(-1) > static_cast<IntType>(0),
+    //                        serializing_int_requires_an_unsigned_type);
   for (size_t i = 0; i < length; ++i) {
     if (!read_data(fp, &byte, sizeof(byte))) return false;
     *value |= static_cast<IntType>(byte) << ((length - 1 - i) * 8);
@@ -176,8 +176,8 @@ template <typename OUTPUT, typename IntType>
 bool write_bigendian_number(OUTPUT* fp, IntType value, size_t length) {
   unsigned char byte;
   // We require IntType to be unsigned or else the shifting gets all screwy.
-  SPARSEHASH_COMPILE_ASSERT(static_cast<IntType>(-1) > static_cast<IntType>(0),
-                            serializing_int_requires_an_unsigned_type);
+  //SPARSEHASH_COMPILE_ASSERT(static_cast<IntType>(-1) > static_cast<IntType>(0),
+    //                        serializing_int_requires_an_unsigned_type);
   for (size_t i = 0; i < length; ++i) {
     byte = (sizeof(value) <= length-1 - i)
         ? 0 : static_cast<unsigned char>((value >> ((length-1 - i) * 8)) & 255);
