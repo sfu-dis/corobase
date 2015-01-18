@@ -1889,10 +1889,6 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 		const holding_summary::value *v_hs = Decode(obj_v, v_hs_temp);
 		hs_qty = v_hs->hs_qty;
 	}
-	else
-	{
-		hs_qty = 0;
-	}
 
 	if( pOut->type_is_sell )
 	{
@@ -2150,7 +2146,38 @@ void tpce_worker::DoTradeOrderFrame6(void)
 
 void tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTradeResultFrame1Output *pOut)
 {
+	scoped_str_arena s_arena(arena);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
+	const trade::key k_t(pIn->trade_id);
+	ALWAYS_ASSERT(tbl_trade(1)->get(txn, Encode(obj_key0, k_t), obj_v));
+	trade::value v_t_temp;
+	const trade::value *v_t = Decode(obj_v, v_t_temp);
+	pOut->acct_id = v_t->t_ca_id;
+	memcpy(pOut->type_id, v_t->t_tt_id.data(), v_t->t_tt_id.size());
+	memcpy(pOut->symbol, v_t->t_s_symb.data(), v_t->t_s_symb.size());
+	pOut->trade_qty = v_t->t_qty;
+	pOut->charge = v_t->t_chrg;
+	pOut->is_lifo = v_t->t_lifo;
+	pOut->trade_is_cash = v_t->t_is_cash;
+	pOut->num_found = 1;
+
+	const trade_type::key k_tt(pOut->type_id);
+	ALWAYS_ASSERT(tbl_trade_type(1)->get(txn, Encode(obj_key0, k_tt), obj_v));
+	trade_type::value v_tt_temp;
+	const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
+	memcpy(pOut->type_name, v_tt->tt_name.data(), v_tt->tt_name.size());
+	pOut->type_is_sell = v_tt->tt_is_sell;
+	pOut->type_is_market = v_tt->tt_is_mrkt;
+
+	pOut->hs_qty = 0;
+	const holding_summary::key k_hs(pOut->acct_id, pOut->symbol);
+	if(tbl_holding_summary(1)->get(txn, Encode(obj_key0, k_hs), obj_v))
+	{
+		holding_summary::value v_hs_temp;
+		const holding_summary::value *v_hs = Decode(obj_v, v_hs_temp);
+		pOut->hs_qty = v_hs->hs_qty;
+	}
 }
 
 void tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTradeResultFrame2Output *pOut){}
