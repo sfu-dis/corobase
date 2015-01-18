@@ -16,6 +16,6 @@ export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
 export LD_PRELOAD="/usr/lib/libtcmalloc.so"
 #numactl --interleave=all ./out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor $1 --num-threads $2 --runtime $3 --log-dir $LOGDIR --pin-cpu
 
-# Default SF:500, working-days: 300 ( loading takes too long in this case )
-numactl --interleave=all ./out-perf.masstree/benchmarks/dbtest --verbose --bench tpce --scale-factor 500 --num-threads $1 --runtime $2 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 1000 --working-days 1"
+#  minimum Customers: 5000, Default SF:500, working-days: 300( it's too long to load and OOM would stop loading also. thus let's try 3days)
+numactl --interleave=all ./out-perf.masstree/benchmarks/dbtest --verbose --bench tpce --scale-factor 500 --num-threads $1 --runtime $2 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 3"
 

@@ -75,8 +75,6 @@ transaction<Protocol, Traits>::signal_abort(abort_reason reason)
   if (reason == ABORT_REASON_SSN_EXCLUSION_FAILURE)
     TXN::tls_ssn_abort_count++;
 #endif
-  if (likely(state() != TXN_COMMITTING))
-    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   throw transaction_abort_exception(reason);
 }
   
@@ -84,6 +82,8 @@ template <template <typename> class Protocol, typename Traits>
 void
 transaction<Protocol, Traits>::abort_impl()
 {
+  if (likely(state() != TXN_COMMITTING))
+    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
   for (auto &w : write_set) {
     if (not w.second.btr)   // for repeated overwrites
         continue;
