@@ -84,7 +84,6 @@ DO_STRUCT(customer_account, CUSTOMER_ACCOUNT_KEY_FIELDS, CUSTOMER_ACCOUNT_VALUE_
 #define CUSTOMER_TAXRATE_KEY_FIELDS(x,y)\
     x(int64_t,    cx_c_id)\
     y(inline_str_fixed<4>, cx_tx_id)
-	// FIXME. dummy value
 #define CUSTOMER_TAXRATE_VALUE_FIELDS(x,y)\
     x(bool,    dummy)
 DO_STRUCT(customer_taxrate, CUSTOMER_TAXRATE_KEY_FIELDS, CUSTOMER_TAXRATE_VALUE_FIELDS)
@@ -92,8 +91,8 @@ DO_STRUCT(customer_taxrate, CUSTOMER_TAXRATE_KEY_FIELDS, CUSTOMER_TAXRATE_VALUE_
 
 #define HOLDING_KEY_FIELDS(x,y)\
     x(int64_t,    h_ca_id)\
-    y(inline_str_fixed<16>, h_s_symb)\
-    y(int64_t,    h_dts)
+    y(int64_t,    h_dts)\
+    y(inline_str_fixed<15>, h_s_symb)
 #define HOLDING_VALUE_FIELDS(x,y)\
     x(uint64_t,    h_t_id)\
     y(double,   h_price)\
@@ -111,7 +110,7 @@ DO_STRUCT(holding_history, HOLDING_HISTORY_KEY_FIELDS, HOLDING_HISTORY_VALUE_FIE
 
 #define HOLDING_SUMMARY_KEY_FIELDS(x,y)\
     x(int64_t,    hs_ca_id)\
-    y(inline_str_fixed<16>, hs_s_symb)
+    y(inline_str_fixed<15>, hs_s_symb)
 #define HOLDING_SUMMARY_VALUE_FIELDS(x,y)\
     x(int32_t,     hs_qty)
 DO_STRUCT(holding_summary, HOLDING_SUMMARY_KEY_FIELDS, HOLDING_SUMMARY_VALUE_FIELDS)
@@ -119,8 +118,7 @@ DO_STRUCT(holding_summary, HOLDING_SUMMARY_KEY_FIELDS, HOLDING_SUMMARY_VALUE_FIE
 
 #define WATCH_ITEM_KEY_FIELDS(x,y)\
     x(int64_t,    wi_wl_id)\
-    y(inline_str_fixed<16>, wi_s_symb)	
-	// FIXME. dummy value
+    y(inline_str_fixed<15>, wi_s_symb)	
 #define WATCH_ITEM_VALUE_FIELDS(x,y)\
 	x(bool, dummy)
 DO_STRUCT(watch_item, WATCH_ITEM_KEY_FIELDS, WATCH_ITEM_VALUE_FIELDS)
@@ -129,7 +127,6 @@ DO_STRUCT(watch_item, WATCH_ITEM_KEY_FIELDS, WATCH_ITEM_VALUE_FIELDS)
 #define WATCH_LIST_KEY_FIELDS(x,y)\
     x(int64_t, wl_c_id)\
     y(int64_t, wl_id)
-	// FIXME. dummy value
 #define WATCH_LIST_VALUE_FIELDS(x,y)\
 	x(bool, dummy)
 DO_STRUCT(watch_list, WATCH_LIST_KEY_FIELDS, WATCH_LIST_VALUE_FIELDS)
@@ -142,8 +139,8 @@ DO_STRUCT(watch_list, WATCH_LIST_KEY_FIELDS, WATCH_LIST_VALUE_FIELDS)
 #define BROKER_KEY_FIELDS(x, y)\
   x(int64_t,b_id)
 #define BROKER_VALUE_FIELDS(x, y)\
-  x(inline_str_8<4>,b_st_id)\
-  y(inline_str_8<52>,b_name)\
+  x(inline_str_fixed<4>,b_st_id)\
+  y(inline_str_fixed<49>,b_name)\
   y(int32_t,b_num_trades)\
   y(double,b_comm_total)	
 DO_STRUCT(broker, BROKER_KEY_FIELDS, BROKER_VALUE_FIELDS)
@@ -158,8 +155,8 @@ DO_STRUCT(cash_transaction, CASH_TRANSACTION_KEY_FIELDS, CASH_TRANSACTION_VALUE_
 
 
 #define CHARGE_KEY_FIELDS(x, y)\
-  x(inline_str_fixed<4>,ch_tt_id)\
-  y(int32_t,ch_c_tier)
+  x(int32_t,ch_c_tier)\
+  y(inline_str_fixed<3>,ch_tt_id)
 #define CHARGE_VALUE_FIELDS(x, y)\
   x(double,ch_chrg) 
 DO_STRUCT(charge, CHARGE_KEY_FIELDS, CHARGE_VALUE_FIELDS)
@@ -167,11 +164,11 @@ DO_STRUCT(charge, CHARGE_KEY_FIELDS, CHARGE_VALUE_FIELDS)
 
 #define COMMISSION_RATE_KEY_FIELDS(x,y)\
 	x(int32_t, cr_c_tier)\
-	y(inline_str_fixed<4>, cr_tt_id )\
-	y(inline_str_fixed<6>, cr_ex_id )\
-	y(double, cr_from_qty)
+	y(int32_t, cr_from_qty)\
+	y(inline_str_fixed<3>, cr_tt_id )\
+	y(inline_str_fixed<6>, cr_ex_id )
 #define COMMISSION_RATE_VALUE_FIELDS(x,y)\
-	x(double, cr_to_qty)\
+	x(int32_t, cr_to_qty)\
 	y(double, cr_rate )		
 DO_STRUCT(commission_rate, COMMISSION_RATE_KEY_FIELDS, COMMISSION_RATE_VALUE_FIELDS )
 
@@ -188,9 +185,9 @@ DO_STRUCT(settlement, SETTLEMENT_KEY_FIELDS, SETTLEMENT_VALUE_FIELDS )
 #define TRADE_VALUE_FIELDS(x,y)\
 	x(int64_t, t_dts )\
 	y(inline_str_fixed<4>, t_st_id)\
-	y(inline_str_fixed<4>, t_tt_id)\
+	y(inline_str_fixed<3>, t_tt_id)\
     y(bool, t_is_cash )\
-    y(inline_str_fixed<16>, t_s_symb)\
+    y(inline_str_fixed<15>, t_s_symb)\
     y(int32_t,t_qty)\
     y(double,   t_bid_price)\
     y(int64_t,    t_ca_id)\
@@ -210,17 +207,17 @@ DO_STRUCT(trade, TRADE_KEY_FIELDS, TRADE_VALUE_FIELDS )
 DO_STRUCT(trade_history, TRADE_HISTORY_KEY_FIELDS, TRADE_HISTORY_VALUE_FIELDS )
 
 #define TRADE_REQUEST_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<16>, tr_s_symb)\
-    y(uint64_t,    tr_b_id)
+    x(uint64_t,    tr_b_id)\
+    y(inline_str_fixed<15>, tr_s_symb)
 #define TRADE_REQUEST_VALUE_FIELDS(x,y)		\
     x(uint64_t,	tr_t_id)\
-    y(inline_str_fixed<4>,	tr_tt_id)\
-    y(int,     tr_qty)\
-    y(float,   tr_bid_price)
+    y(inline_str_fixed<3>,	tr_tt_id)\
+    y(int32_t,     tr_qty)\
+    y(double,   tr_bid_price)
 DO_STRUCT(trade_request, TRADE_REQUEST_KEY_FIELDS, TRADE_REQUEST_VALUE_FIELDS )
 
 #define TRADE_TYPE_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<4>,	tt_id)
+    x(inline_str_fixed<3>,	tt_id)
 #define TRADE_TYPE_VALUE_FIELDS(x,y)\
     x(inline_str_fixed<12>,	tt_name)\
     y(bool,  	tt_is_sell)\
@@ -236,7 +233,7 @@ DO_STRUCT(trade_type, TRADE_TYPE_KEY_FIELDS, TRADE_TYPE_VALUE_FIELDS )
 #define COMPANY_VALUE_FIELDS(x,y)\
     x(inline_str_fixed<4>, co_st_id)\
     y(inline_str_fixed<60>, co_name)\
-    y(inline_str_fixed<4>,	co_in_id)\
+    y(inline_str_fixed<2>,	co_in_id)\
     y(inline_str_fixed<4>,	co_sp_rate)\
     y(inline_str_fixed<46>,	co_ceo)\
     y(int64_t,    co_ad_id)\
@@ -247,14 +244,14 @@ DO_STRUCT( company, COMPANY_KEY_FIELDS, COMPANY_VALUE_FIELDS )
 #define COMPANY_COMPETITOR_KEY_FIELDS(x,y)\
     x(int64_t,    cp_co_id)\
     y(int64_t,    cp_comp_co_id)\
-    y(inline_str_fixed<4>, cp_in_id)
+    y(inline_str_fixed<2>, cp_in_id)
 #define COMPANY_COMPETITOR_VALUE_FIELDS(x,y)\
     x(bool, dummy)
 DO_STRUCT( company_competitor, COMPANY_COMPETITOR_KEY_FIELDS, COMPANY_COMPETITOR_VALUE_FIELDS )
 
 #define DAILY_MARKET_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<16>, dm_s_symb)\
-    y(int64_t,    dm_date)
+    x(int64_t,    dm_date)\
+    y(inline_str_fixed<15>, dm_s_symb)
 #define DAILY_MARKET_VALUE_FIELDS(x,y)\
     x(double,   dm_close)\
     y(double,   dm_high)\
@@ -287,19 +284,19 @@ DO_STRUCT( exchange, EXCHANGE_KEY_FIELDS, EXCHANGE_VALUE_FIELDS )
     y(double,    fi_inventory)\
     y(double,   fi_assets)\
     y(double,   fi_liability)\
-    y(double,   fi_out_basic)\
-    y(double,   fi_out_dilut)
+    y(int64_t,   fi_out_basic)\
+    y(int64_t,   fi_out_dilut)
 DO_STRUCT( financial, FINANCIAL_KEY_FIELDS, FINANCIAL_VALUE_FIELDS )
 
 #define INDUSTRY_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<4>, in_id)
+    x(inline_str_fixed<2>, in_id)
 #define INDUSTRY_VALUE_FIELDS(x,y)\
     x(inline_str_fixed<50>, in_name)\
-    y(inline_str_fixed<4>, in_sc_id)
+    y(inline_str_fixed<2>, in_sc_id)
 DO_STRUCT( industry, INDUSTRY_KEY_FIELDS, INDUSTRY_VALUE_FIELDS )
 
 #define LAST_TRADE_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<16>, lt_s_symb)
+    x(inline_str_fixed<15>, lt_s_symb)
 #define LAST_TRADE_VALUE_FIELDS(x,y)\
     x(int64_t,  	lt_dts)\
     y(double,  	lt_price)\
@@ -328,16 +325,16 @@ DO_STRUCT( news_item, NEWS_ITEM_KEY_FIELDS, NEWS_ITEM_VALUE_FIELDS )
 DO_STRUCT( news_xref, NEWS_XREF_KEY_FIELDS, NEWS_XREF_VALUE_FIELDS )
 
 #define SECTOR_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<32>, sc_name)\
-    y(inline_str_fixed<4>, sc_id)
+    x(inline_str_fixed<30>, sc_name)\
+    y(inline_str_fixed<2>, sc_id)
 #define SECTOR_VALUE_FIELDS(x,y)\
     x(bool, dummy)
 DO_STRUCT( sector, SECTOR_KEY_FIELDS, SECTOR_VALUE_FIELDS )
 
 #define SECURITY_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<16>, s_symb)	//17, was 15, changed for padding
+    x(inline_str_fixed<15>, s_symb)	//17, was 15, changed for padding
 #define SECURITY_VALUE_FIELDS(x,y)\
-    x(inline_str_fixed<8>, s_issue)\
+    x(inline_str_fixed<6>, s_issue)\
     y(inline_str_fixed<4>, s_st_id)\
     y(inline_str_fixed<70>, s_name)\
     y(inline_str_fixed<6>, s_ex_id)\
