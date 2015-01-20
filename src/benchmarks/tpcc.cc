@@ -2611,23 +2611,15 @@ protected:
                                       &barrier_a, &barrier_b,
                                       (i % NumWarehouses()) + 1));
     }
-#if 0
     else {
-      // FIXME: tzwang: think this isn't interesting for testing a CC scheme...
-      auto N = NumWarehouses();
-      auto T = nthreads;
-        // try this in python: [i*N//T for i in range(T+1)]
       for (size_t i = 0; i < nthreads; i++) {
-        const unsigned wstart = i*N/T;
-        const unsigned wend   = (i + 1)*N/T;
         ret.push_back(
           new tpcc_worker(
             blockstart + i,
             r.next(), db, open_tables, partitions,
-            &barrier_a, &barrier_b, wstart+1, wend+1));
+            &barrier_a, &barrier_b, i));
       }
     }
-#endif
     return ret;
   }
 
