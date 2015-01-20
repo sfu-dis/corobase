@@ -42,7 +42,7 @@ TESTS_ENVIRONMENT =
 
 ## This should always include $(TESTS), but may also include other
 ## binaries that you compile but don't want automatically installed.
-noinst_PROGRAMS = $(TESTS) time_hash_map
+noinst_PROGRAMS = $(TESTS)
 WINDOWS_PROJECTS += vsprojects/time_hash_map/time_hash_map.vcproj
 
 
@@ -118,75 +118,6 @@ googleinternalinclude_HEADERS=		\
    src/google/sparsehash/sparsehashtable.h		\
    src/google/sparsehash/hashtable-common.h		\
    src/google/sparsehash/libc_allocator_with_realloc.h
-
-TESTS += template_util_unittest
-# TODO(csilvers): Update windows projects for template_util_unittest.
-# WINDOWS_PROJECTS += vsprojects/template_util_unittest/template_util_unittest.vcproj
-template_util_unittest_SOURCES =			\
-   src/template_util_unittest.cc		\
-   src/sparsehash/template_util.h
-nodist_template_util_unittest_SOURCES = $(nodist_internalinclude_HEADERS)
-
-TESTS += type_traits_unittest
-WINDOWS_PROJECTS += vsprojects/type_traits_unittest/type_traits_unittest.vcproj
-type_traits_unittest_SOURCES =			\
-   src/type_traits_unittest.cc			\
-   $(internalinclude_HEADERS)			\
-   src/sparsehash/type_traits.h
-nodist_type_traits_unittest_SOURCES = $(nodist_internalinclude_HEADERS)
-
-TESTS += libc_allocator_with_realloc_test
-WINDOWS_PROJECTS += vsprojects/libc_allocator_with_realloc_test/libc_allocator_with_realloc_test.vcproj
-libc_allocator_with_realloc_test_SOURCES =	\
-   src/libc_allocator_with_realloc_test.cc	\
-   $(internalinclude_HEADERS)			\
-   src/sparsehash/internal/libc_allocator_with_realloc.h
-
-
-TESTS += sparsetable_unittest
-WINDOWS_PROJECTS += vsprojects/sparsetable_unittest/sparsetable_unittest.vcproj
-sparsetable_unittest_SOURCES =			\
-   src/sparsetable_unittest.cc			\
-   $(internalinclude_HEADERS)			\
-   src/sparsehash/sparsetable
-nodist_sparsetable_unittest_SOURCES = $(nodist_internalinclude_HEADERS)
-
-TESTS += hashtable_test
-WINDOWS_PROJECTS += vsprojects/hashtable_test/hashtable_test.vcproj
-hashtable_test_SOURCES =			\
-   src/hashtable_test.cc			\
-   src/hash_test_interface.h			\
-   src/testutil.h				\
-   $(sparsehashinclude_HEADERS)			\
-   $(internalinclude_HEADERS)
-nodist_hashtable_test_SOURCES = $(nodist_internalinclude_HEADERS)
-
-TESTS += simple_test
-WINDOWS_PROJECTS += vsprojects/simple_test/simple_test.vcproj
-simple_test_SOURCES =	   		        \
-   src/simple_test.cc				\
-   $(internalinclude_HEADERS)
-nodist_simple_test_SOURCES = $(nodist_internalinclude_HEADERS)
-
-TESTS += simple_compat_test
-simple_compat_test_SOURCES =   		        \
-   src/simple_compat_test.cc			\
-   $(internalinclude_HEADERS)                   \
-   $(googleinclude_HEADERS)	\
-   $(googleinternalinclude_HEADERS)
-nodist_simple_compat_test_SOURCES = $(nodist_internalinclude_HEADERS)
-
-time_hash_map_SOURCES =				\
-   src/time_hash_map.cc				\
-   $(internalinclude_HEADERS)			\
-   $(sparsehashinclude_HEADERS)
-nodist_time_hash_map_SOURCES = $(nodist_internalinclude_HEADERS)
-
-# If tcmalloc is installed, use it with time_hash_map; it gives us
-# heap-usage statistics for the hash_map routines, which is very nice
-time_hash_map_CXXFLAGS = @tcmalloc_flags@ $(AM_CXXFLAGS)
-time_hash_map_LDFLAGS = @tcmalloc_flags@
-time_hash_map_LDADD = @tcmalloc_libs@
 
 ## ^^^^ END OF RULES TO MAKE THE LIBRARIES, BINARIES, AND UNITTESTS
 
