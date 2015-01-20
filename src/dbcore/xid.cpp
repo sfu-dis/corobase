@@ -88,6 +88,9 @@ take_one(thread_data *t)
 #ifdef USE_PARALLEL_SSN
     contexts[id].sstamp = ~uint64_t{0};
 #endif
+#ifdef USE_PARALLEL_SSI
+    contexts[id].ct3 = ~uint64_t{0};
+#endif
     return x;
 }
 
@@ -240,5 +243,13 @@ xid_get_context(XID x) {
         return NULL;
     return ctx;
 }
+
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+bool __attribute__((noinline))
+wait_for_commit_result(xid_context *xc) {
+    while (volatile_read(xc->state) == TXN_COMMITTING) { /* spin */ }
+    return volatile_read(xc->state) == TXN_CMMTD;
+}
+#endif
 
 } // end of namespace

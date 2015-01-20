@@ -89,7 +89,7 @@ public:
   virtual void
   run()
   {
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
     assign_reader_bitmap_entry();
 #endif
 	  // XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
@@ -102,7 +102,7 @@ public:
     load();
 	RA::ra_deregister();
 	RCU::rcu_deregister();
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
     deassign_reader_bitmap_entry();
 #endif
   }

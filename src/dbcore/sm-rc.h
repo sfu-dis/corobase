@@ -9,12 +9,14 @@ struct rc_t {
 #define RC_ABORT   0x4  // tx should abort, don't care reason
 #define RC_ABORT_SSN_EXCLUSION 0x8 // tx should abort due to SSN window excl.
 #define RC_ABORT_SI_CONFLICT    0x10    // tx should abort due to SI conflict (first writer wins)
-#define RC_FATAL    0x20    // sth is wrong, whole db system should stop
+#define RC_ABORT_SSI 0x20
+#define RC_FATAL    0x30    // sth is wrong, whole db system should stop
 
 inline bool rc_is_abort(rc_t rc)
 {
     return rc._val == RC_ABORT or
            rc._val == RC_ABORT_SSN_EXCLUSION or
-           rc._val == RC_ABORT_SI_CONFLICT;
+           rc._val == RC_ABORT_SI_CONFLICT or
+           rc._val == RC_ABORT_SSI;
 }
 

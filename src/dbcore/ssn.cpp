@@ -1,20 +1,25 @@
 #include "ssn.h"
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 namespace TXN {
 
-uint64_t ssn_abort_count = 0;
-uint64_t __thread tls_ssn_abort_count;
-readers_list rlist;
+// for SSN if USE_PARALLEL_SSN, for SSI if USE_PARALLEL_SSI
+uint64_t ssn_ssi_abort_count = 0;
+uint64_t __thread tls_ssn_ssi_abort_count;
 
-bool __attribute__((noinline))
-wait_for_commit_result(xid_context *xc) {
-    while (volatile_read(xc->state) == TXN_COMMITTING) { /* spin */ }
-    return volatile_read(xc->state) == TXN_CMMTD;
-}
+readers_list rlist;
 
 typedef dbtuple::rl_bitmap_t rl_bitmap_t;
 static __thread rl_bitmap_t tls_bitmap_entry = 0;
 static rl_bitmap_t claimed_bitmap_entries = 0;
+
+/* Return a bitmap with 1's representing active readers.
+ */
+readers_list::bitmap_t ssn_get_tuple_readers(dbtuple *tup, bool exclude_self)
+{
+    if (exclude_self)
+        return volatile_read(tup->rl_bitmap) & ~tls_bitmap_entry;
+    return volatile_read(tup->rl_bitmap);
+}
 
 void assign_reader_bitmap_entry() {
     if (tls_bitmap_entry)
@@ -39,14 +44,19 @@ void deassign_reader_bitmap_entry() {
     ALWAYS_ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
     __sync_fetch_and_xor(&claimed_bitmap_entries, tls_bitmap_entry);
     tls_bitmap_entry = 0;
-    summarize_ssn_aborts();
+    summarize_ssn_ssi_aborts();
 }
 
-void summarize_ssn_aborts()
+void summarize_ssn_ssi_aborts()
 {
-    __sync_fetch_and_add(&ssn_abort_count, tls_ssn_abort_count);
-    if (not claimed_bitmap_entries)
-        printf("--- SSN aborts: %lu\n", ssn_abort_count);
+    __sync_fetch_and_add(&ssn_ssi_abort_count, tls_ssn_ssi_abort_count);
+    if (not claimed_bitmap_entries) {
+#ifdef USE_PARALLEL_SSN
+        printf("--- SSN aborts: %lu\n", ssn_ssi_abort_count);
+#else
+        printf("--- SSI aborts: %lu\n", ssn_ssi_abort_count);
+#endif
+    }
 }
 
 bool

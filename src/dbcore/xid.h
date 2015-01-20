@@ -17,6 +17,9 @@ struct xid_context {
     uint64_t pstamp; // youngest predecessor (\eta)
     uint64_t sstamp; // oldest successor (\pi)
 #endif
+#ifdef USE_PARALLEL_SSI
+    uint64_t ct3;   // smallest commit stamp of T3 in the dangerous structure
+#endif
     txn_state state;
 };
 
@@ -37,4 +40,7 @@ void xid_free(XID x);
  */
 xid_context *xid_get_context(XID x);
 
+#if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
+bool wait_for_commit_result(xid_context *xc);
+#endif
 };  // end of namespace
