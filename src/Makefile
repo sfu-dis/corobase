@@ -237,7 +237,7 @@ $(MASSTREE_OBJFILES) : $(O)/%.o: masstree/%.cc masstree/config.h
 	$(CXX) $(CXXFLAGS) -include masstree/config.h -c $< -o $@
 
 third-party/sparsehash/src/sparsehash/internal/sparseconfig.h:
-	cd third-party/sparsehash && ./configure && make -j
+	cd third-party/sparsehash && autoreconf -f -i && ./configure && make -j
 
 third-party/lz4/liblz4.so:
 	make -C third-party/lz4 library
