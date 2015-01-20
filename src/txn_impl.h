@@ -36,7 +36,7 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   ssn_register_tx(xid);
 #endif
   xid_context *xc = xid_get_context(xid);
@@ -57,7 +57,7 @@ transaction<Protocol, Traits>::~transaction()
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   ssn_deregister_tx(xid);
 #endif
   xid_free(xid);
@@ -82,7 +82,7 @@ transaction<Protocol, Traits>::abort_impl()
     w.second.btr->unlink_tuple(w.second.oid, tuple);
   }
 
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   for (auto &r : read_set) {
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     ASSERT(r.tuple == r.btr->fetch_committed_version_at(r.oid, xid, LSN::from_ptr(r.tuple->clsn)));
@@ -90,6 +90,7 @@ transaction<Protocol, Traits>::abort_impl()
     ssn_deregister_reader_tx(r.tuple);
   }
 #endif
+
   RCU::rcu_enter();
   if (likely(state() != TXN_COMMITTING))
     log->pre_commit();
@@ -150,6 +151,8 @@ transaction<Protocol, Traits>::commit()
 {
 #ifdef USE_PARALLEL_SSN
   return ssn_parallel_si_commit();
+#elif defined USE_PARALLEL_SSI
+  return parallel_ssi_commit();
 #else
   return si_commit();
 #endif
@@ -375,6 +378,151 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   }
   return rc_t{RC_TRUE};
 }
+#elif defined(USE_PARALLEL_SSI)
+template <template <typename> class Protocol, typename Traits>
+rc_t
+transaction<Protocol, Traits>::parallel_ssi_commit()
+{
+  xid_context* xc = xid_get_context(xid);
+
+  PERF_DECL(
+      static std::string probe0_name(
+        std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
+  ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
+
+  switch (state()) {
+  case TXN_EMBRYO:
+  case TXN_ACTIVE:
+    xc->state = TXN_COMMITTING;
+    break;
+  case TXN_CMMTD:
+  case TXN_COMMITTING:
+  case TXN_ABRTD:
+    ALWAYS_ASSERT(false);
+  }
+
+  INVARIANT(log);
+  // get clsn, abort if failed
+  RCU::rcu_enter();
+  xc->end = log->pre_commit();
+  if (xc->end == INVALID_LSN)
+    return rc_t{RC_ABORT};
+  auto cstamp = xc->end.offset();
+
+  // get the smallest s1 in each tuple we have read (ie, the smallest cstamp
+  // of T3 in the dangerous structure that clobbered our read)
+  uint64_t min_read_s1 = 0;    // this will be the s2 of versions I clobbered
+  for (auto &r : read_set) {
+    if (write_set[r.tuple].btr)
+      continue;
+    auto tuple_s1 = volatile_read(r.tuple->s1);
+    if (not tuple_s1) {
+      // need to see if there's any overwritter (if so also its state)
+      dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.oid,
+                                                    LSN::from_ptr(r.tuple->clsn));
+      if (not overwriter_tuple)
+        continue;
+    get_overwriter:
+      fat_ptr overwriter_xid = volatile_read(overwriter_tuple->clsn);
+      if (overwriter_xid.asi_type() == fat_ptr::ASI_XID) {
+        XID ox = XID::from_ptr(overwriter_xid);
+        ASSERT(ox != xc->owner);
+        xid_context *overwriter_xc = xid_get_context(ox);
+        if (not overwriter_xc)
+          continue;
+        if (overwriter_xc->owner != ox)
+          goto get_overwriter;
+        // if the overwriter is serialized **before** me, I need to spin to find
+        // out its final commit result
+        uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
+        if (overwriter_end and overwriter_end < cstamp and wait_for_commit_result(overwriter_xc)) {
+          // re-read overwritten tuple's s1
+          // Note there's no way to know when the s1 will be stampped by the
+          // overwriter (even can't know if it will happen since it could be 0),
+          // so we must make sure filling s1 **before** post-commit, ie before
+          // changing tx state to "committed". So actually if a tuple has an
+          // s1>0, the tx must have already committed...
+          tuple_s1 = volatile_read(r.tuple->s1);
+          ASSERT(tuple_s1 >= xc->begin.offset());
+        }
+      }
+      else {    // already committed, re-read tuple's s1
+        if (tuple_s1 >= xc->begin.offset())
+          tuple_s1 = volatile_read(r.tuple->s1);
+      }
+    }
+    if (tuple_s1 and (not min_read_s1 or min_read_s1 > tuple_s1))
+      min_read_s1 = tuple_s1;
+    // will release read lock (readers bitmap) in post-commit
+  }
+
+  // now see if I'm the unlucky T2
+  if (min_read_s1) {
+    uint64_t max_rstamp = 0;
+    for (auto &w : write_set) {
+      dbtuple *overwritten_tuple = w.first;
+      if (not w.second.btr)
+        continue;
+      // abort if there's any in-flight reader of this tuple or
+      // if someone has read the tuple after someone else clobbered it...
+      if (ssn_get_tuple_readers(overwritten_tuple, true)) {
+        tls_ssn_ssi_abort_count++;
+        return rc_t{RC_ABORT_SSI};
+      }
+      else {
+        // find the latest reader (ie, largest rstamp of tuples I clobber)
+        // FIXME: tuple_rstamp > xc->begin, correct? ie the read should
+        // have happened after i started
+        auto tuple_rstamp = volatile_read(overwritten_tuple->rstamp);
+        if (tuple_rstamp > xc->begin.offset() and max_rstamp < tuple_rstamp)
+          max_rstamp = tuple_rstamp;
+        if (max_rstamp >= min_read_s1 and xc->ct3 != ~0) {
+          tls_ssn_ssi_abort_count++;
+          return rc_t{RC_ABORT_SSI};
+        }
+      }
+    }
+  }
+
+  // survived! remmember to stamp overwritten version's s1 before changing state
+  log->commit(NULL);
+  RCU::rcu_exit();
+
+  for (auto &w: write_set) {
+    dbtuple *overwritten_tuple = w.first;
+    if (not w.second.btr)
+      continue;
+    if (min_read_s1 > overwritten_tuple->s2)   // correct?
+      volatile_write(overwritten_tuple->s2, min_read_s1);
+  }
+
+  // change state
+  volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
+
+  // stamp overwritten versions, stuff clsn
+  for (auto &w : write_set) {
+    dbtuple *overwritten_tuple = w.first;
+    if (not w.second.btr)
+      continue;
+    volatile_write(overwritten_tuple->s1, cstamp);
+    dbtuple* tuple = w.second.new_tuple;
+    tuple->clsn = xc->end.to_log_ptr();
+    INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+  }
+
+  // update rstamps in read versions
+  for (auto &r : read_set) {
+    if (write_set[r.tuple].btr) // correct?
+      continue;
+    uint64_t rstamp;
+    do {
+      rstamp = volatile_read(r.tuple->rstamp);
+    }
+    while (rstamp < cstamp and not __sync_bool_compare_and_swap(&r.tuple->rstamp, rstamp, cstamp));
+    ssn_deregister_reader_tx(r.tuple);
+  }
+  return rc_t{RC_TRUE};
+}
 #else
 template <template <typename> class Protocol, typename Traits>
 rc_t
@@ -527,6 +675,37 @@ transaction<Protocol, Traits>::do_tuple_read(
         return {RC_ABORT_SSN_EXCLUSION};
 #endif
     }
+  }
+#endif
+#ifdef USE_PARALLEL_SSI
+  // Consider the dangerous structure that could lead to non-serializable
+  // execution: T1 r:w T2 r:w T3 where T3 committed first. Read() needs
+  // to check if I'm the T1 and do bookeeping if I'm the T2 (pivot).
+  if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
+    xid_context* xc = xid_get_context(xid);
+    ASSERT(xc);
+    // See tuple.h for explanation on what s2 means.
+    if (volatile_read(tuple->s2)) {
+      ASSERT(tuple->s1);    // s1 will be valid too if s2 is valid
+      // read-only optimization: if we're read-only and we started before tuple->s2
+      if (tuple->s1 > xc->begin.offset() and
+          (write_set.size() or xc->begin.offset() >= tuple->s2)) {
+        tls_ssn_ssi_abort_count++;
+        return rc_t{RC_ABORT_SSI};
+      }
+    }
+
+    uint64_t tuple_s1 = volatile_read(tuple->s1);
+    // see if there was a guy with cstamp=tuple_s1 who overwrote this version
+    if (tuple_s1 and tuple_s1 >= xc->begin.offset()) { // I'm T2
+      // remember the smallest s1 so that I can re-check at precommit
+      if (xc->ct3 > tuple_s1)
+        xc->ct3 = tuple_s1;
+    }
+
+    // survived, register as a reader and add to read set
+    if (ssn_register_reader_tx(tuple, xid))
+      read_set.emplace_back(tuple, btr_ptr, oid);
   }
 #endif
   return {RC_TRUE};

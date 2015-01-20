@@ -53,6 +53,20 @@ public:
   uint64_t sstamp;         // successor (overwriter) stamp (\pi), updated when writer commits
   rl_bitmap_t rl_bitmap;   // bitmap of readers
 #endif
+#ifdef USE_PARALLEL_SSI
+  typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
+  uint64_t s1;  // successor of this version (ie the tx who updated this version)
+  uint64_t s2;  // smallest successor stamp of all reads performed by the tx
+                // that clobbered this version
+                // Consider a transaction T which clobbers this version, upon commit,
+                // T writes its cstamp in s1, and the smallest s1 among all its reads
+                // in s2 of this version. This basically means T has clobbered this
+                // version, and meantime, some other transaction C clobbered T's read.
+                // So [X] r:w T r:w C. If anyone reads this version again, it will
+                // become the X in the dangerous structure above and must abort.
+  uint64_t rstamp;  // access (reader) stamp, similar to the xstamp in ssn
+  rl_bitmap_t rl_bitmap;   // bitmap of in-flight readers
+#endif
   size_type size; // actual size of record
   uint8_t value_start[0];   // must be last field
 
@@ -70,6 +84,12 @@ private:
 #ifdef USE_PARALLEL_SSN
       , xstamp(0)
       , sstamp(0)
+      , rl_bitmap(rl_bitmap_t(0))
+#endif
+#ifdef USE_PARALLEL_SSI
+      , s1(0)
+      , s2(0)
+      , rstamp(0)
       , rl_bitmap(rl_bitmap_t(0))
 #endif
       , size(CheckBounds(size))

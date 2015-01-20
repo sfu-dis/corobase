@@ -284,7 +284,7 @@ protected:
     INVARIANT(state() == TXN_ACTIVE);
   }
 
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   struct read_record_t {
     read_record_t(dbtuple *n, concurrent_btree *b, oid_type o) :
         tuple(n), btr(b), oid(o) {}
@@ -315,7 +315,7 @@ protected:
   // like a vector does.
   typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
   //typedef small_vector<read_record_t, SMALL_SIZE_MAP> read_set_map;
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   typedef std::vector<read_record_t> read_set_map;
 #endif
   //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
@@ -330,6 +330,8 @@ public:
   rc_t commit();
 #ifdef USE_PARALLEL_SSN
   rc_t ssn_parallel_si_commit();
+#elif defined USE_PARALLEL_SSI
+  rc_t parallel_ssi_commit();
 #else
   rc_t si_commit();
 #endif
@@ -401,7 +403,7 @@ protected:
   XID xid;
   sm_tx_log* log;
   string_allocator_type *sa;
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   read_set_map read_set;
 #endif
   write_set_map write_set;

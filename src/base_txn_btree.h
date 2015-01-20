@@ -307,6 +307,22 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   dbtuple *prev = this->underlying_btree.update_version(oid, version, t.xid);
 
   if (prev) { // succeeded
+#ifdef USE_PARALLEL_SSI
+    // check if there's any in-flight readers of the overwritten tuple
+    // (will form an inbound r:w edge to me) ie, am I the T2 (pivot)
+    // with T1 in-flight and T3 committed first (ie, before T1, ie,
+    // prev's creator) in the dangerous structure?
+    xid_context* xc = xid_get_context(t.xid);
+    ASSERT(xc);
+    auto in_flight_readers = ssn_get_tuple_readers(prev, true);
+    if (in_flight_readers and xc->ct3 != ~0 and xc->ct3 <= volatile_read(prev->clsn).offset()) {
+        tls_ssn_ssi_abort_count++;
+        // unlink the version here (note abort_impl won't be able to catch
+        // it because it's not yet in the write set), same as in SSN impl.
+        this->underlying_btree.unlink_tuple(oid, tuple);
+        return rc_t{RC_ABORT_SSI};
+    }
+#endif
     object *prev_obj = (object *)((char *)prev - sizeof(object));
 #ifdef USE_PARALLEL_SSN
     // update hi watermark
