@@ -436,13 +436,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         // out its final commit result
         uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
         if (overwriter_end and overwriter_end < cstamp and wait_for_commit_result(overwriter_xc)) {
-          // re-read overwritten tuple's s1
-          // Note there's no way to know when the s1 will be stampped by the
-          // overwriter (even can't know if it will happen since it could be 0),
-          // so we must make sure filling s1 **before** post-commit, ie before
-          // changing tx state to "committed". So actually if a tuple has an
-          // s1>0, the tx must have already committed...
-          tuple_s1 = volatile_read(r.tuple->s1);
+          tuple_s1 = overwriter_end;
           ASSERT(tuple_s1 >= xc->begin.offset());
         }
       }
@@ -484,17 +478,9 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     }
   }
 
-  // survived! remmember to stamp overwritten version's s1 before changing state
+  // survived!
   log->commit(NULL);
   RCU::rcu_exit();
-
-  for (auto &w: write_set) {
-    dbtuple *overwritten_tuple = w.first;
-    if (not w.second.btr)
-      continue;
-    if (min_read_s1 > overwritten_tuple->s2)   // correct?
-      volatile_write(overwritten_tuple->s2, min_read_s1);
-  }
 
   // change state
   volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
@@ -505,6 +491,8 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     if (not w.second.btr)
       continue;
     volatile_write(overwritten_tuple->s1, cstamp);
+    if (min_read_s1 > overwritten_tuple->s2)   // correct?
+      volatile_write(overwritten_tuple->s2, min_read_s1);
     dbtuple* tuple = w.second.new_tuple;
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
