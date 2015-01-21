@@ -69,7 +69,9 @@ public:
         Frame1Input.StatusAndTradeType = pTxnInput->StatusAndTradeType;
         for (int i=0; i<max_feed_len; i++)
         {
-          Frame1Input.Entries[0] = pTxnInput->Entries[0];
+			// XXX. Grrrr. This is buggy!. 
+//          Frame1Input.Entries[0] = pTxnInput->Entries[0];
+          Frame1Input.Entries[i] = pTxnInput->Entries[i];
         }
 
         // Execute Frame 1
