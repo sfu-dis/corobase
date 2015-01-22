@@ -147,7 +147,6 @@ void CMEETradingFloor::SendTradeResult( PTradeRequest pTradeRequest )
     }
 
     m_pSUT->TradeResult( &TxnInput );
-	//cout << "TO : " << TxnInput.trade_id <<"," << TxnInput.trade_price << endl;
 
     // Populate Ticker Entry information
     strncpy( TickerEntry.symbol, pTradeRequest->symbol, sizeof( TickerEntry.symbol ));
