@@ -154,7 +154,7 @@ class internode : public node_base<P> {
     kvtimestamp_t created_at_[P::debug_level > 0];
 
 	typedef basic_table<P> basic_table_type;
-	typedef object_vector<node_base<P>*> node_vector_type; 
+	typedef object_vector node_vector_type;
 	oid_type child_oid_[width + 1];
 	oid_type parent_oid_; 
     internode()
@@ -311,7 +311,7 @@ class leaf : public node_base<P> {
     typedef typename P::ikey_type ikey_type;
     typedef typename key_bound<width, P::bound_method>::type bound_type;
     typedef typename P::threadinfo_type threadinfo;
-	typedef object_vector<node_base<P>*> node_vector_type; 
+	typedef object_vector node_vector_type;
 
     int8_t extrasize64_;
     int8_t nremoved_;
@@ -549,8 +549,8 @@ template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
 
     masstree_precondition(!root_oid_);
-	tuple_vector = new object_vector<value_type>( 1024*1024);
-	node_vector = new object_vector<node_type*>( 1024*1024);
+	tuple_vector = new object_vector(1024*1024);
+	node_vector = new object_vector(1024*1024);
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
 	root_oid_ = root->oid;
 }

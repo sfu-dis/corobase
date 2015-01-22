@@ -88,8 +88,8 @@ class basic_table {
 
     inline void print(FILE* f = 0, int indent = 0) const;
 
-	typedef object_vector<value_type> tuple_vector_type; 
-	typedef object_vector<node_type*> node_vector_type; 
+	typedef object_vector tuple_vector_type;
+	typedef object_vector node_vector_type;
 
 	inline tuple_vector_type* get_tuple_vector()
 	{
@@ -333,8 +333,8 @@ install:
                 }
 
 				xid_context *holder = xid_get_context(holder_xid);
-                if (not holder) // invalid XID (dead tuple, either retry or goto next in the chain)
-                    continue;
+                if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
+                    goto start_over;
 
 				auto state = volatile_read(holder->state);
 				auto end = volatile_read(holder->end);

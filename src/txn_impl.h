@@ -560,7 +560,7 @@ transaction<Protocol, Traits>::si_commit()
 }
 #endif
 
-typedef object_vector<typename concurrent_btree::value_type> tuple_vector_type;
+typedef object_vector tuple_vector_type;
 // FIXME: tzwang: note: we only try once in this function. If it
 // failed (returns false) then the caller (supposedly do_tree_put)
 // should fallback to normal update procedure.
