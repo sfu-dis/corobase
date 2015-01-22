@@ -229,8 +229,8 @@ public:
     table_.destroy(ti);
   }
 
-  typedef object_vector<value_type> tuple_vector_type;
-  typedef object_vector<node_base_type*> node_vector_type;
+  typedef object_vector tuple_vector_type;
+  typedef object_vector node_vector_type;
 
   inline node_vector_type* get_node_vector()
   {
