@@ -236,9 +236,6 @@ $(MASSTREE_OBJFILES) : $(O)/%.o: masstree/%.cc masstree/config.h
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -include masstree/config.h -c $< -o $@
 
-third-party/sparsehash/src/sparsehash/internal/sparseconfig.h:
-	cd third-party/sparsehash && autoreconf -f -i && ./configure && make -j
-
 third-party/lz4/liblz4.so:
 	make -C third-party/lz4 library
 
@@ -275,7 +272,7 @@ masstree/configure masstree/config.h.in: masstree/configure.ac
 .PHONY: dbtest
 dbtest: $(O)/benchmarks/dbtest
 
-$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) third-party/lz4/liblz4.so third-party/sparsehash/src/sparsehash/internal/sparseconfig.h
+$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/benchmarks/dbtest $^ $(BENCH_LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: kvtest
@@ -323,4 +320,3 @@ $(O)/buildstamp $(O)/buildstamp.bench $(O)/buildstamp.masstree:
 clean:
 	rm -rf out-*
 	make -C third-party/lz4 clean
-	make -C third-party/sparsehash clean
