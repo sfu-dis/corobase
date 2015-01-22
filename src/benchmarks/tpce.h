@@ -332,7 +332,7 @@ DO_STRUCT( news_xref, NEWS_XREF_KEY_FIELDS, NEWS_XREF_VALUE_FIELDS )
 DO_STRUCT( sector, SECTOR_KEY_FIELDS, SECTOR_VALUE_FIELDS )
 
 #define SECURITY_KEY_FIELDS(x,y)\
-    x(inline_str_fixed<15>, s_symb)	//17, was 15, changed for padding
+    x(inline_str_fixed<15>, s_symb)	
 #define SECURITY_VALUE_FIELDS(x,y)\
     x(inline_str_fixed<6>, s_issue)\
     y(inline_str_fixed<4>, s_st_id)\

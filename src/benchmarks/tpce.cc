@@ -107,7 +107,7 @@ class table_scanner: public abstract_ordered_index::scan_callback {
 
 int64_t GetLastTradeID()
 {
-	//TODO. change to thread-local variable
+	//TODO. decentralize,  thread ID + local counter and TLS
 	auto ret = __sync_add_and_fetch(&lastTradeId,1);
 	ALWAYS_ASSERT( ret );
 	return ret;
@@ -630,7 +630,7 @@ class tpce_worker :
 			CTradeUpdate* harness= new CTradeUpdate(this);
 
 			try{
-			//	harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
+				harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -787,15 +787,15 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
-	const sector::key k_sc_0( pIn->sector_name,"  " );
-	const sector::key k_sc_1( pIn->sector_name,"ZZ" );
+	const sector::key k_sc_0( pIn->sector_name, string(cSC_ID_len, (char)0	));
+	const sector::key k_sc_1( pIn->sector_name, string(cSC_ID_len, (char)255));
 	table_scanner sc_scanner(s_arena.get());
 	tbl_sector(1)->scan(txn, Encode(obj_key0, k_sc_0), &Encode(obj_key1, k_sc_1), sc_scanner, s_arena.get());
 	ALWAYS_ASSERT(sc_scanner.output.size() == 1);
 
 	// Industry scan
-	const industry::key k_in_0( "  " );
-	const industry::key k_in_1( "ZZ" );
+	const industry::key k_in_0( string(cIN_ID_len, (char)0	) );
+	const industry::key k_in_1( string(cIN_ID_len, (char)255) );
 	table_scanner in_scanner(s_arena.get());
 	tbl_industry(1)->scan(txn, Encode(obj_key0, k_in_0), &Encode(obj_key1, k_in_1), in_scanner, s_arena.get());
 	ALWAYS_ASSERT(in_scanner.output.size());
@@ -808,8 +808,8 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	ALWAYS_ASSERT(co_scanner.output.size());
 
 	// Security scan
-	const security::key k_s_0( "               " );
-	const security::key k_s_1( "ZZZZZZZZZZZZZZZ" );
+	const security::key k_s_0( string(cSYMBOL_len, (char)0	) );
+	const security::key k_s_1( string(cSYMBOL_len, (char)255) );
 	table_scanner s_scanner(s_arena.get());
 	tbl_security(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
 	ALWAYS_ASSERT(s_scanner.output.size());
@@ -834,7 +834,7 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 			if( not pIn->broker_list[j] )
 				break;
 
-			inline_str_fixed<49> b_name = string(pIn->broker_list[j]);
+			inline_str_fixed<cB_NAME_len> b_name = string(pIn->broker_list[j]);
 			if( b_name != v_b->b_name )
 			{
 				brokers.push_back( r_b );
@@ -973,8 +973,8 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 	ALWAYS_ASSERT( ca_scanner.output.size() );
 
 	// HoldingSummary scan
-	const holding_summary::key k_hs_0( 0, "               " );
-	const holding_summary::key k_hs_1( numeric_limits<int64_t>::max(), "ZZZZZZZZZZZZZZZ" );
+	const holding_summary::key k_hs_0( 0, 							   string(cSYMBOL_len, (char)0	) );
+	const holding_summary::key k_hs_1( numeric_limits<int64_t>::max(), string(cSYMBOL_len, (char)255) );
 	table_scanner hs_scanner(s_arena.get());
 	tbl_holding_summary(1)->scan(txn, Encode(obj_key0, k_hs_0), &Encode(obj_key1, k_hs_1), hs_scanner, s_arena.get());
 	ALWAYS_ASSERT( hs_scanner.output.size() );
@@ -1050,8 +1050,8 @@ void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
 	tbl_trade_history(1)->scan(txn, Encode(obj_key0, k_th_0), &Encode(obj_key1, k_th_1), th_scanner, s_arena.get());
 	ALWAYS_ASSERT( th_scanner.output.size() );
 
-	const status_type::key k_st_0( "    " );
-	const status_type::key k_st_1( "ZZZZ"  );
+	const status_type::key k_st_0( string(cST_ID_len, (char)0	) );
+	const status_type::key k_st_1( string(cST_ID_len, (char)255) );
 	table_scanner st_scanner(s_arena.get());
 	tbl_status_type(1)->scan(txn, Encode(obj_key0, k_st_0), &Encode(obj_key1, k_st_1), st_scanner, s_arena.get());
 	ALWAYS_ASSERT( st_scanner.output.size() );
@@ -1117,7 +1117,7 @@ void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 	double req_price_quote = 0; 
 	uint64_t req_trade_id = 0; 
 	int32_t req_trade_qty = 0; 
-    inline_str_fixed<3> req_trade_type;
+    inline_str_fixed<cTT_ID_len> req_trade_type;
 	auto rows_sent = 0;
 
 	TStatusAndTradeType type = pIn->StatusAndTradeType;
@@ -1225,12 +1225,12 @@ void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 	scoped_str_arena s_arena(arena);
 	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
-	std::vector<inline_str_fixed<15>> stock_list_cursor;
+	std::vector<inline_str_fixed<cSYMBOL_len>> stock_list_cursor;
 
 	if( pIn->c_id )
 	{
-		const watch_item::key k_wi_0( 0,  "               " );
-		const watch_item::key k_wi_1( numeric_limits<int64_t>::max(), "ZZZZZZZZZZZZZZZ"  );
+		const watch_item::key k_wi_0( 0,  							 string(cSYMBOL_len, (char)0  ) );
+		const watch_item::key k_wi_1( numeric_limits<int64_t>::max(),string(cSYMBOL_len, (char)255) );
 		table_scanner wi_scanner(s_arena.get());
 		tbl_watch_item(1)->scan(txn, Encode(obj_key0, k_wi_0), &Encode(obj_key1, k_wi_1), wi_scanner, s_arena.get());
 		ALWAYS_ASSERT( wi_scanner.output.size() );
@@ -1258,8 +1258,8 @@ void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 	}
 	else if ( pIn->industry_name[0] )
 	{
-		const industry::key k_in_0( "  " );
-		const industry::key k_in_1( "ZZ" );
+		const industry::key k_in_0( string(cIN_ID_len, (char)0  )  );
+		const industry::key k_in_1( string(cIN_ID_len, (char)255)  );
 		table_scanner in_scanner(s_arena.get());
 		tbl_industry(1)->scan(txn, Encode(obj_key0, k_in_0), &Encode(obj_key1, k_in_1), in_scanner, s_arena.get());
 		ALWAYS_ASSERT( in_scanner.output.size() );
@@ -1270,8 +1270,8 @@ void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 		tbl_company(1)->scan(txn, Encode(obj_key0, k_co_0), &Encode(obj_key1, k_co_1), co_scanner, s_arena.get());
 		ALWAYS_ASSERT( co_scanner.output.size() );
 
-		const security::key k_s_0( "               ");
-		const security::key k_s_1( "ZZZZZZZZZZZZZZZ");
+		const security::key k_s_0( string(cSYMBOL_len, (char)0  ));
+		const security::key k_s_1( string(cSYMBOL_len, (char)255));
 		table_scanner s_scanner(s_arena.get());
 		tbl_security(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
 		ALWAYS_ASSERT( s_scanner.output.size() );
@@ -1313,8 +1313,8 @@ void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 	}
 	else if( pIn->acct_id )
 	{
-		const holding_summary::key k_hs_0( pIn->acct_id, "               " );
-		const holding_summary::key k_hs_1( pIn->acct_id, "ZZZZZZZZZZZZZZZ" );
+		const holding_summary::key k_hs_0( pIn->acct_id, string(cSYMBOL_len, (char)0  ) );
+		const holding_summary::key k_hs_1( pIn->acct_id, string(cSYMBOL_len, (char)255) );
 		table_scanner hs_scanner(s_arena.get());
 		tbl_holding_summary(1)->scan(txn, Encode(obj_key0, k_hs_0), &Encode(obj_key1, k_hs_1), hs_scanner, s_arena.get());
 		ALWAYS_ASSERT( hs_scanner.output.size() );
@@ -1445,8 +1445,8 @@ void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 	memcpy(pOut->ex_ad_div,  v_zea->zc_div.data(),  v_zea->zc_div.size());
 
 
-	const company_competitor::key k_cp_0( co_id, 0, "  " );
-	const company_competitor::key k_cp_1( co_id, numeric_limits<int64_t>::max(), "ZZ" );
+	const company_competitor::key k_cp_0( co_id, 0, 							 string(cIN_ID_len, (char)0  ));
+	const company_competitor::key k_cp_1( co_id, numeric_limits<int64_t>::max(), string(cIN_ID_len, (char)255));
 	table_scanner cp_scanner(s_arena.get());
 	tbl_company_competitor(1)->scan(txn, Encode(obj_key0, k_cp_0), &Encode(obj_key1, k_cp_1), cp_scanner, s_arena.get());
 	ALWAYS_ASSERT( cp_scanner.output.size() );
@@ -1942,8 +1942,8 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 	scoped_str_arena s_arena(arena);
 
 	int64_t co_id = 0;
-	char exch_id[6];
-	memset(exch_id, 0, 6);
+	char exch_id[cEX_ID_len ];
+	memset(exch_id, 0, cEX_ID_len );
 
 	if( not pIn->symbol[0] )
 	{
@@ -1968,8 +1968,8 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 		}
 		ALWAYS_ASSERT(co_id);
 
-		const security::key k_s_0( "               " );
-		const security::key k_s_1( "ZZZZZZZZZZZZZZZ" );
+		const security::key k_s_0( string(cSYMBOL_len, (char)0  ) );
+		const security::key k_s_1( string(cSYMBOL_len, (char)255) );
 		table_scanner s_scanner(s_arena.get());
 		tbl_security(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
 		ALWAYS_ASSERT( s_scanner.output.size() );
@@ -1993,7 +1993,7 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
 	else
 	{
-		memcpy(pOut->symbol, pIn->symbol, cSYMBOL_len+1);
+		memcpy(pOut->symbol, pIn->symbol, cSYMBOL_len);
 		const security::key k_s(pIn->symbol);
 		ALWAYS_ASSERT(tbl_security(1)->get(txn, Encode(obj_key0, k_s), obj_v));
 		security::value v_s_temp;
@@ -2144,8 +2144,8 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 	pOut->tax_amount = 0.0;
 	if( sell_value > buy_value and (pIn->tax_status == 1 or pIn->tax_status == 2 ))
 	{
-		const customer_taxrate::key k_cx_0( pIn->cust_id, "    ");
-		const customer_taxrate::key k_cx_1( pIn->cust_id, "ZZZZ");
+		const customer_taxrate::key k_cx_0( pIn->cust_id, string(cTX_ID_len, (char)0  ));
+		const customer_taxrate::key k_cx_1( pIn->cust_id, string(cTX_ID_len, (char)255));
 
 		string kcx1 = Encode(obj_key0, k_cx_0);
 		string kcx2 = Encode(obj_key1, k_cx_1);
@@ -2209,8 +2209,8 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 		const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
 		acct_bal = v_ca->ca_bal;
 
-		const holding_summary::key k_hs_0( pIn->acct_id, "               " );
-		const holding_summary::key k_hs_1( pIn->acct_id, "ZZZZZZZZZZZZZZZ" );
+		const holding_summary::key k_hs_0( pIn->acct_id, string(cSYMBOL_len, (char)0  ) );
+		const holding_summary::key k_hs_1( pIn->acct_id, string(cSYMBOL_len, (char)255) );
 		table_scanner hs_scanner(s_arena.get());
 		tbl_holding_summary(1)->scan(txn, Encode(obj_key0, k_hs_0), &Encode(obj_key1, k_hs_1), hs_scanner, s_arena.get());
 //		ALWAYS_ASSERT( hs_scanner.output.size() );				// XXX. allowed?
@@ -2238,9 +2238,9 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
 	}
 	if( pOut->type_is_market )
-		memcpy(pOut->status_id, pIn->st_submitted_id, cST_ID_len+1 );
+		memcpy(pOut->status_id, pIn->st_submitted_id, cST_ID_len );
 	else
-		memcpy(pOut->status_id, pIn->st_pending_id, cST_ID_len+1 );
+		memcpy(pOut->status_id, pIn->st_pending_id, cST_ID_len );
 
 //	cout << __FUNCTION__ << ","
 //		<< pOut->status_id<< ","
@@ -2636,8 +2636,8 @@ void tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
 void tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTradeResultFrame3Output *pOut)
 {
 	scoped_str_arena s_arena(arena);
-	const customer_taxrate::key k_cx_0( pIn->cust_id, "    " );
-	const customer_taxrate::key k_cx_1( pIn->cust_id, "ZZZZ" );
+	const customer_taxrate::key k_cx_0( pIn->cust_id, string(cTX_ID_len, (char)0  ) );
+	const customer_taxrate::key k_cx_1( pIn->cust_id, string(cTX_ID_len, (char)255) );
 	table_scanner cx_scanner(s_arena.get());
 	tbl_customer_taxrate(1)->scan(txn, Encode(obj_key0, k_cx_0), &Encode(obj_key1, k_cx_1), cx_scanner, s_arena.get());
 	ALWAYS_ASSERT( cx_scanner.output.size() );
@@ -2864,9 +2864,325 @@ void tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTrade
 	db->commit_txn(txn);
 }
 
-void tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTradeUpdateFrame1Output *pOut){}
-void tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTradeUpdateFrame2Output *pOut){}
-void tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTradeUpdateFrame3Output *pOut){}
+void tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTradeUpdateFrame1Output *pOut)
+{
+	scoped_str_arena s_arena(arena);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+
+	for( auto i = 0; i < pIn->max_trades; i++ )
+	{
+		const trade::key k_t(pIn->trade_id[i]);
+		ALWAYS_ASSERT(tbl_trade(1)->get(txn, Encode(obj_key0, k_t), obj_v));
+		trade::value v_t_temp;
+		const trade::value *v_t = Decode(obj_v, v_t_temp);
+		pOut->num_found++;
+		
+		const trade_type::key k_tt(v_t->t_tt_id);
+		ALWAYS_ASSERT(tbl_trade_type(1)->get(txn, Encode(obj_key0, k_tt), obj_v));
+		trade_type::value v_tt_temp;
+		const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
+
+		pOut->trade_info[i].bid_price = v_t->t_bid_price;
+		pOut->trade_info[i].is_cash = v_t->t_is_cash;
+		pOut->trade_info[i].is_market = v_tt->tt_is_mrkt;
+		pOut->trade_info[i].trade_price = v_t->t_trade_price;
+
+		if( pOut->num_updated < pIn->max_updates )
+		{
+			string temp_exec_name = v_t->t_exec_name.str();
+			size_t index = temp_exec_name.find(" X ");
+			if(index != string::npos){
+			temp_exec_name.replace(index, 3, "   ");
+			} else {
+			index = temp_exec_name.find("   ");
+			temp_exec_name.replace(index, 3, " X ");
+			}
+			
+			trade::value v_t_new(*v_t);
+			v_t_new.t_exec_name = temp_exec_name;
+			tbl_trade(1)->put(txn, Encode(k_t), Encode(obj_v, v_t_new));
+			pOut->num_updated++;
+			memcpy(pOut->trade_info[i].exec_name, temp_exec_name.data(), temp_exec_name.size());
+		}
+		else
+		{
+			memcpy(pOut->trade_info[i].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
+		}
+		
+		const settlement::key k_se(pIn->trade_id[i]);
+		ALWAYS_ASSERT(tbl_settlement(1)->get(txn, Encode(obj_key0, k_se), obj_v));
+		settlement::value v_se_temp;
+		const settlement::value *v_se = Decode(obj_v, v_se_temp);
+		pOut->trade_info[i].settlement_amount = v_se->se_amt;
+		pOut->trade_info[i].settlement_cash_due_date = TimeTToTimeStamp(v_se->se_cash_due_date);
+		memcpy(pOut->trade_info[i].settlement_cash_type, v_se->se_cash_type.data(), v_se->se_cash_type.size());
+		
+		if( pOut->trade_info[i].is_cash )
+		{
+			const cash_transaction::key k_ct(pIn->trade_id[i]);
+			ALWAYS_ASSERT(tbl_cash_transaction(1)->get(txn, Encode(obj_key0, k_ct), obj_v));
+			cash_transaction::value v_ct_temp;
+			const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
+			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
+			pOut->trade_info[i].cash_transaction_dts = TimeTToTimeStamp(v_ct->ct_dts);
+			memcpy(pOut->trade_info[i].cash_transaction_name, v_ct->ct_name.data(), v_ct->ct_name.size());
+		}
+
+		const trade_history::key k_th_0( pIn->trade_id[i], 0 );
+		const trade_history::key k_th_1( pIn->trade_id[i], numeric_limits<int64_t>::max() );
+		table_scanner th_scanner(s_arena.get());
+		tbl_trade_history(1)->scan(txn, Encode(obj_key0, k_th_0), &Encode(obj_key1, k_th_1), th_scanner, s_arena.get());
+		ALWAYS_ASSERT( th_scanner.output.size() );
+
+		auto n = min( 3, th_scanner.output.size() );
+		for( auto th_cursor = 0; th_cursor < n; th_cursor++ )
+		{
+			auto& r_th = th_scanner.output[th_cursor];
+			trade_history::key k_th_temp;
+			trade_history::value v_th_temp;
+			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
+			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
+
+			pOut->trade_info[i].trade_history_dts[th_cursor] = TimeTToTimeStamp(k_th->th_dts);
+			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], v_th->th_st_id.data(), v_th->th_st_id.size());
+		}
+	}
+
+	db->commit_txn(txn);
+}
+
+void tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTradeUpdateFrame2Output *pOut)
+{
+	scoped_str_arena s_arena(arena);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	const trade::key k_t_0( 0 );
+	const trade::key k_t_1( numeric_limits<int64_t>::max() );
+	table_scanner t_scanner(s_arena.get());
+	tbl_trade(1)->scan(txn, Encode(obj_key0, k_t_0), &Encode(obj_key1, k_t_1), t_scanner, s_arena.get());
+
+	auto n = min( t_scanner.output.size(), pIn->max_trades );
+	auto start_trade_dts = TimeStampToTimeT(pIn->start_trade_dts);
+	auto end_trade_dts = TimeStampToTimeT(pIn->end_trade_dts);
+
+	for( int i = 0; i < n; i++ )
+	{
+		auto &r_t = t_scanner.output[i];
+		trade::key k_t_temp;
+		trade::value v_t_temp;
+		const trade::key* k_t = Decode( *r_t.first, k_t_temp );
+		const trade::value* v_t = Decode( *r_t.second, v_t_temp );
+
+		if( v_t->t_ca_id != pIn->acct_id or v_t->t_dts < start_trade_dts  or v_t->t_dts > end_trade_dts )
+			continue;
+
+//		bid_price[]   = T_BID_PRICE, exec_name[]   = T_EXEC_NAME, is_cash[]     = T_IS_CASH, trade_list[]  = T_ID, trade_price[] = T_TRADE_PRICE 
+		pOut->trade_info[i].bid_price = v_t->t_bid_price;
+		memcpy(pOut->trade_info[i].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
+		pOut->trade_info[i].is_cash = v_t->t_is_cash;
+		pOut->trade_info[i].trade_id= k_t->t_id;
+		pOut->trade_info[i].trade_price = v_t->t_trade_price;
+
+		pOut->num_found = i;
+	}
+	pOut->num_updated = 0;
+
+	for( int i = 0; i < pOut->num_found; i++ )
+	{
+		const settlement::key k_se(pOut->trade_info[i].trade_id);
+		ALWAYS_ASSERT(tbl_settlement(1)->get(txn, Encode(obj_key0, k_se), obj_v));
+		settlement::value v_se_temp;
+		const settlement::value *v_se = Decode(obj_v, v_se_temp);
+
+		if( pOut->num_updated < pIn->max_updates )
+		{
+			settlement::value v_se_new(*v_se);
+
+			if( pOut->trade_info[i].is_cash ){
+				if( v_se_new.se_cash_type == "Cash Account" )
+					v_se_new.se_cash_type = "Cash";
+				else
+					v_se_new.se_cash_type = "Cash Account";
+			}
+			else{
+				if( v_se_new.se_cash_type == "Margin Account" )
+					v_se_new.se_cash_type = "Margin";
+				else
+					v_se_new.se_cash_type = "Margin Account";
+			}
+			tbl_settlement(1)->put(txn, Encode(k_se), Encode(obj_v, v_se_new));
+
+			pOut->num_updated++;
+		}
+
+		pOut->trade_info[i].settlement_amount = v_se->se_amt;
+		pOut->trade_info[i].settlement_cash_due_date = TimeTToTimeStamp(v_se->se_cash_due_date);
+		memcpy(pOut->trade_info[i].settlement_cash_type, v_se->se_cash_type.data(), v_se->se_cash_type.size());
+
+		if( pOut->trade_info[i].is_cash )
+		{
+			const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
+			ALWAYS_ASSERT(tbl_cash_transaction(1)->get(txn, Encode(obj_key0, k_ct), obj_v));
+			cash_transaction::value v_ct_temp;
+			const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
+			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
+			pOut->trade_info[i].cash_transaction_dts = TimeTToTimeStamp(v_ct->ct_dts);
+			memcpy(pOut->trade_info[i].cash_transaction_name, v_ct->ct_name.data(), v_ct->ct_name.size());
+		}
+
+		const trade_history::key k_th_0( pOut->trade_info[i].trade_id, 0 );
+		const trade_history::key k_th_1( pOut->trade_info[i].trade_id, numeric_limits<int64_t>::max() );
+		table_scanner th_scanner(s_arena.get());
+		tbl_trade_history(1)->scan(txn, Encode(obj_key0, k_th_0), &Encode(obj_key1, k_th_1), th_scanner, s_arena.get());
+		ALWAYS_ASSERT( th_scanner.output.size() );
+
+		auto n = min( 3, th_scanner.output.size() );
+		for( auto th_cursor = 0; th_cursor < n; th_cursor++ )
+		{
+			auto& r_th = th_scanner.output[th_cursor];
+			trade_history::key k_th_temp;
+			trade_history::value v_th_temp;
+			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
+			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
+
+			pOut->trade_info[i].trade_history_dts[th_cursor] = TimeTToTimeStamp(k_th->th_dts);
+			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], v_th->th_st_id.data(), v_th->th_st_id.size());
+		}
+	}
+
+	db->commit_txn(txn);
+}
+
+void tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTradeUpdateFrame3Output *pOut)
+{
+	scoped_str_arena s_arena(arena);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+
+	const trade::key k_t_0( 0 );
+	const trade::key k_t_1( numeric_limits<int64_t>::max() );
+	table_scanner t_scanner(s_arena.get());
+	tbl_trade(1)->scan(txn, Encode(obj_key0, k_t_0), &Encode(obj_key1, k_t_1), t_scanner, s_arena.get());
+
+	auto start_trade_dts = TimeStampToTimeT(pIn->start_trade_dts);
+	auto end_trade_dts = TimeStampToTimeT(pIn->end_trade_dts);
+
+	for( int i = 0; i < pIn->max_trades ; i++ )
+	{
+		auto &r_t = t_scanner.output[i];
+		trade::key k_t_temp;
+		trade::value v_t_temp;
+		const trade::key* k_t = Decode( *r_t.first, k_t_temp );
+		const trade::value* v_t = Decode( *r_t.second, v_t_temp );
+
+		if( v_t->t_s_symb != string(pIn->symbol) or v_t->t_dts < start_trade_dts  or v_t->t_dts > end_trade_dts )
+			continue;
+
+		const trade_type::key k_tt(v_t->t_tt_id);
+		ALWAYS_ASSERT(tbl_trade_type(1)->get(txn, Encode(obj_key0, k_tt), obj_v));
+		trade_type::value v_tt_temp;
+		const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
+
+		const security::key k_s(v_t->t_s_symb);
+		ALWAYS_ASSERT(tbl_security(1)->get(txn, Encode(obj_key0, k_s), obj_v));
+		security::value v_s_temp;
+		const security::value *v_s = Decode(obj_v, v_s_temp);
+
+		/*
+		   acct_id[]    = T_CA_ID, 
+		   exec_name[]  = T_EXEC_NAME, 
+		   is_cash[]    = T_IS_CASH, 
+		   price[]      = T_TRADE_PRICE, 
+		   quantity[]   = T_QTY, 
+		   s_name[]     = S_NAME, 
+		   trade_dts[]  = T_DTS, 
+		   trade_list[] = T_ID, 
+		   trade_type[] = T_TT_ID, 
+		   type_name[]  = TT_NAME
+		   */
+		pOut->trade_info[i].acct_id = v_t->t_ca_id;
+		memcpy(pOut->trade_info[i].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
+		pOut->trade_info[i].is_cash = v_t->t_is_cash;
+		pOut->trade_info[i].price = v_t->t_trade_price;
+		pOut->trade_info[i].quantity = v_t->t_qty;
+		memcpy(pOut->trade_info[i].s_name, v_s->s_name.data(), v_s->s_name.size());
+		pOut->trade_info[i].trade_dts = TimeTToTimeStamp(v_t->t_dts);
+		pOut->trade_info[i].trade_id = k_t->t_id;
+		memcpy(pOut->trade_info[i].trade_type, v_t->t_tt_id.data(), v_t->t_tt_id.size());
+		memcpy(pOut->trade_info[i].type_name, v_tt->tt_name.data(), v_tt->tt_name.size());
+
+		pOut->num_found = i;
+	}
+	pOut->num_updated = 0;
+
+	for( int i = 0; i < pOut->num_found; i++ )
+	{
+		const settlement::key k_se(pOut->trade_info[i].trade_id);
+		ALWAYS_ASSERT(tbl_settlement(1)->get(txn, Encode(obj_key0, k_se), obj_v));
+		settlement::value v_se_temp;
+		const settlement::value *v_se = Decode(obj_v, v_se_temp);
+
+		if( pOut->trade_info[i].is_cash )
+		{
+			const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
+			ALWAYS_ASSERT(tbl_cash_transaction(1)->get(txn, Encode(obj_key0, k_ct), obj_v));
+			cash_transaction::value v_ct_temp;
+			const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
+
+			if( pOut->num_updated < pIn->max_updates )
+			{
+				string temp_ct_name = v_ct->ct_name.str();
+				size_t index = temp_ct_name.find(" shares of ");
+				if(index != string::npos){
+					stringstream ss;
+					ss << pOut->trade_info[i].type_name <<  " " << pOut->trade_info[i].quantity
+						<< " Shares of " << pOut->trade_info[i].s_name;
+					temp_ct_name = ss.str();
+				} else {
+					stringstream ss;
+					ss << pOut->trade_info[i].type_name <<  " " << pOut->trade_info[i].quantity
+						<< " shares of " << pOut->trade_info[i].s_name;
+					temp_ct_name = ss.str();
+				}
+
+				cash_transaction::value v_ct_new(*v_ct);
+				v_ct_new.ct_name = temp_ct_name;
+
+				tbl_cash_transaction(1)->put(txn, Encode(k_ct), Encode(obj_v, v_ct_new));
+				pOut->num_updated++;
+
+				memcpy(pOut->trade_info[i].cash_transaction_name, v_ct_new.ct_name.data(), v_ct_new.ct_name.size());
+			}
+			else
+			{
+				memcpy(pOut->trade_info[i].cash_transaction_name, v_ct->ct_name.data(), v_ct->ct_name.size());
+			}
+			
+			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
+			pOut->trade_info[i].cash_transaction_dts = TimeTToTimeStamp(v_ct->ct_dts);
+		}
+
+		const trade_history::key k_th_0( pOut->trade_info[i].trade_id, 0 );
+		const trade_history::key k_th_1( pOut->trade_info[i].trade_id, numeric_limits<int64_t>::max() );
+		table_scanner th_scanner(s_arena.get());
+		tbl_trade_history(1)->scan(txn, Encode(obj_key0, k_th_0), &Encode(obj_key1, k_th_1), th_scanner, s_arena.get());
+		ALWAYS_ASSERT( th_scanner.output.size() );
+
+		auto n = min( 3, th_scanner.output.size() );
+		for( auto th_cursor = 0; th_cursor < n; th_cursor++ )
+		{
+			auto& r_th = th_scanner.output[th_cursor];
+			trade_history::key k_th_temp;
+			trade_history::value v_th_temp;
+			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
+			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
+
+			pOut->trade_info[i].trade_history_dts[th_cursor] = TimeTToTimeStamp(k_th->th_dts);
+			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], v_th->th_st_id.data(), v_th->th_st_id.size());
+		}
+	}
+
+	db->commit_txn(txn);
+}
+
 void tpce_worker::DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn){}
 void tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn){}
 
