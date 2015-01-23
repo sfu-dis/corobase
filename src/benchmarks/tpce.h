@@ -99,8 +99,8 @@ DO_STRUCT(customer_taxrate, CUSTOMER_TAXRATE_KEY_FIELDS, CUSTOMER_TAXRATE_VALUE_
 
 #define HOLDING_KEY_FIELDS(x,y)\
     x(int64_t,    h_ca_id)\
-    y(int64_t,    h_dts)\
-    y(inline_str_fixed<15>, h_s_symb)
+    y(inline_str_fixed<15>, h_s_symb)\
+    y(int64_t,    h_dts)
 #define HOLDING_VALUE_FIELDS(x,y)\
     x(uint64_t,    h_t_id)\
     y(double,   h_price)\
@@ -172,9 +172,9 @@ DO_STRUCT(charge, CHARGE_KEY_FIELDS, CHARGE_VALUE_FIELDS)
 
 #define COMMISSION_RATE_KEY_FIELDS(x,y)\
 	x(int32_t, cr_c_tier)\
-	y(int32_t, cr_from_qty)\
 	y(inline_str_fixed<3>, cr_tt_id )\
-	y(inline_str_fixed<6>, cr_ex_id )
+	y(inline_str_fixed<6>, cr_ex_id )\
+	y(int32_t, cr_from_qty)
 #define COMMISSION_RATE_VALUE_FIELDS(x,y)\
 	x(int32_t, cr_to_qty)\
 	y(double, cr_rate )		
@@ -215,8 +215,8 @@ DO_STRUCT(trade, TRADE_KEY_FIELDS, TRADE_VALUE_FIELDS )
 DO_STRUCT(trade_history, TRADE_HISTORY_KEY_FIELDS, TRADE_HISTORY_VALUE_FIELDS )
 
 #define TRADE_REQUEST_KEY_FIELDS(x,y)\
-    x(uint64_t,    tr_b_id)\
-    y(inline_str_fixed<15>, tr_s_symb)
+    x(inline_str_fixed<15>, tr_s_symb)\
+    y(uint64_t,    tr_b_id)
 #define TRADE_REQUEST_VALUE_FIELDS(x,y)		\
     x(uint64_t,	tr_t_id)\
     y(inline_str_fixed<3>,	tr_tt_id)\
@@ -258,8 +258,8 @@ DO_STRUCT( company, COMPANY_KEY_FIELDS, COMPANY_VALUE_FIELDS )
 DO_STRUCT( company_competitor, COMPANY_COMPETITOR_KEY_FIELDS, COMPANY_COMPETITOR_VALUE_FIELDS )
 
 #define DAILY_MARKET_KEY_FIELDS(x,y)\
-    x(int64_t,    dm_date)\
-    y(inline_str_fixed<15>, dm_s_symb)
+    x(inline_str_fixed<15>, dm_s_symb)\
+    y(int64_t,    dm_date)
 #define DAILY_MARKET_VALUE_FIELDS(x,y)\
     x(double,   dm_close)\
     y(double,   dm_high)\
@@ -326,8 +326,8 @@ DO_STRUCT( last_trade, LAST_TRADE_KEY_FIELDS, LAST_TRADE_VALUE_FIELDS )
 DO_STRUCT( news_item, NEWS_ITEM_KEY_FIELDS, NEWS_ITEM_VALUE_FIELDS )
 
 #define NEWS_XREF_KEY_FIELDS(x,y)\
-    x(int64_t,   	nx_ni_id)\
-    y(int64_t,   	nx_co_id)
+    x(int64_t,   	nx_co_id)\
+    y(int64_t,   	nx_ni_id)
 #define NEWS_XREF_VALUE_FIELDS(x,y)\
     x(bool,   	dummy)
 DO_STRUCT( news_xref, NEWS_XREF_KEY_FIELDS, NEWS_XREF_VALUE_FIELDS )
