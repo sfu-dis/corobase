@@ -76,7 +76,7 @@ struct thread_data {
     bool initialized;
 };
 
-__thread thread_data tls;
+__thread thread_data tls CACHE_ALIGNED;
 
 XID
 take_one(thread_data *t)

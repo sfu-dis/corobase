@@ -368,7 +368,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
         ASSERT(key_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
         ASSERT(t.write_set[key_tuple].new_tuple == prev);
       }
-      RA::deallocate(prev_obj);
+      //RA::deallocate(prev_obj);
       ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
     }
     else {  // prev is committed (or precommitted but in post-commit now) head
