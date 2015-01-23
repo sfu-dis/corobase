@@ -388,11 +388,13 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // the record is tooooo large).
     auto record_size = align_up(sz);
     auto size_code = encode_size_aligned(record_size);
+    RCU::rcu_enter();
     t.log->log_update(1,
                       oid,
                       fat_ptr::make(tuple, size_code),
                       DEFAULT_ALIGNMENT_BITS,
                       NULL);
+    RCU::rcu_exit();
     return rc_t{RC_TRUE};
   }
   else {  // somebody else acted faster than we did
