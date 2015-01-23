@@ -71,6 +71,14 @@ DO_STRUCT(account_permission, ACCOUNT_PERMISSION_KEY_FIELDS, ACCOUNT_PERMISSION_
     y(inline_str_fixed<50>, c_email_2)
 DO_STRUCT(customers, CUSTOMERS_KEY_FIELDS, CUSTOMERS_VALUE_FIELDS)				// XXX. MUST avoid use of same name with TPCC, otherwise one of the customer table definitions is overwritten
 
+#define CUSTOMERS_INDEX_TAX_ID_KEY_FIELDS(x,y)\
+    x(inline_str_fixed<20>,  c_tax_id)\
+    y(int64_t,     c_id)
+#define CUSTOMERS_INDEX_TAX_ID_VALUE_FIELDS(x,y)\
+    x(bool,    dummy)
+DO_STRUCT(customers_index_tax_id, CUSTOMERS_INDEX_TAX_ID_KEY_FIELDS, CUSTOMERS_INDEX_TAX_ID_VALUE_FIELDS)
+
+
 #define CUSTOMER_ACCOUNT_KEY_FIELDS(x,y)\
     x(int64_t,   	 ca_id)
 #define CUSTOMER_ACCOUNT_VALUE_FIELDS(x,y)\
@@ -396,6 +404,7 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 	x(zip_code)\
 	x(address)\
 	x(customers)\
+	x(customers_index_tax_id)\
 	x(customer_account)\
 	x(account_permission)\
 	x(customer_taxrate)\
