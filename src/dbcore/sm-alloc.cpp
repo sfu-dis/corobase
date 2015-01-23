@@ -83,9 +83,9 @@ namespace RA {
 		// created by the scoped_rcu_region in the transaction class.
 		LSN *lsn = (LSN *)malloc(sizeof(LSN));
 		//ALWAYS_ASSERT(lsn);
-		//RCU::rcu_enter();
+		RCU::rcu_enter();
 		*lsn = transaction_base::logger->cur_lsn();
-		//RCU::rcu_exit();
+		RCU::rcu_exit();
 		return lsn;
 	}
 

@@ -30,7 +30,7 @@ static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
 
 template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type &sa)
-  : transaction_base(flags), xid(TXN::xid_alloc()), log(logger->new_tx_log()), sa(&sa)
+  : transaction_base(flags), xid(TXN::xid_alloc()), sa(&sa)
 {
   RA::epoch_enter();
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
@@ -42,7 +42,9 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   xid_context *xc = xid_get_context(xid);
   write_set.set_empty_key(NULL);    // google dense map
   RCU::rcu_enter();
+  log = logger->new_tx_log();
   xc->begin = logger->cur_lsn();
+  RCU::rcu_exit();
   xc->end = INVALID_LSN;
   xc->state = TXN_EMBRYO;
 }
@@ -185,6 +187,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
   // get clsn, abort if failed
   RCU::rcu_enter();
   xc->end = log->pre_commit();
+  RCU::rcu_exit();
   LSN clsn = xc->end;
   auto cstamp = clsn.offset();
   if (xc->end == INVALID_LSN)
@@ -338,6 +341,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     return rc_t{RC_ABORT_SSN_EXCLUSION};
 
   // ok, can really commit if we reach here
+  RCU::rcu_enter();
   log->commit(NULL);
   RCU::rcu_exit();
 
@@ -405,6 +409,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   // get clsn, abort if failed
   RCU::rcu_enter();
   xc->end = log->pre_commit();
+  RCU::rcu_exit();
   if (xc->end == INVALID_LSN)
     return rc_t{RC_ABORT};
   auto cstamp = xc->end.offset();
@@ -479,6 +484,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   }
 
   // survived!
+  RCU::rcu_enter();
   log->commit(NULL);
   RCU::rcu_exit();
 
@@ -538,8 +544,10 @@ transaction<Protocol, Traits>::si_commit()
   // get clsn, abort if failed
   RCU::rcu_enter();
   xc->end = log->pre_commit();
+  RCU::rcu_exit();
   if (xc->end == INVALID_LSN)
     return rc_t{RC_ABORT};
+  RCU::rcu_enter();
   log->commit(NULL);
   RCU::rcu_exit();
 
@@ -594,10 +602,12 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   INVARIANT(log);
   auto record_size = align_up((size_t)tuple->size);
   auto size_code = encode_size_aligned(record_size);
+  RCU::rcu_enter();
   log->log_insert(1,
                   oid,
                   fat_ptr::make(tuple, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
+  RCU::rcu_exit();
   // update write_set
   write_set[tuple] = write_record_t(tuple, btr, oid);
   return true;
