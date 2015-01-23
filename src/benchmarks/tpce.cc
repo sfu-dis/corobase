@@ -37,7 +37,7 @@ using namespace util;
 using namespace TPCE;
 
 // TPC-E workload mix
-unsigned long lastTradeId;
+uint64_t lastTradeId;
 static double g_txn_workload_mix[] = { 4.9, 13, 1, 18, 14, 8, 10.1, 10, 19, 2 }; 
 
 // Egen
@@ -401,7 +401,7 @@ class tpce_worker :
 			CBrokerVolume* harness= new CBrokerVolume(this);
 
 			try{
-				harness->DoTxn( (PBrokerVolumeTxnInput)&input, (PBrokerVolumeTxnOutput)&output);
+//				harness->DoTxn( (PBrokerVolumeTxnInput)&input, (PBrokerVolumeTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -425,7 +425,7 @@ class tpce_worker :
 
 			try{
 				// FIXME. input generator's tax_id doesn't exist. 
-//			harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
+			harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -452,7 +452,7 @@ class tpce_worker :
 			CMarketFeed* harness= new CMarketFeed(this, this);
 
 			try{
-			harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
+//			harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -475,7 +475,7 @@ class tpce_worker :
 			CMarketWatch* harness= new CMarketWatch(this);
 
 			try{
-			harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
+//			harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -498,7 +498,7 @@ class tpce_worker :
 			CSecurityDetail* harness= new CSecurityDetail(this);
 
 			try{
-			harness->DoTxn( (PSecurityDetailTxnInput)&input, (PSecurityDetailTxnOutput)&output);
+//			harness->DoTxn( (PSecurityDetailTxnInput)&input, (PSecurityDetailTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -521,7 +521,7 @@ class tpce_worker :
 			CTradeLookup* harness= new CTradeLookup(this);
 
 			try{
-			harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
+//			harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -549,7 +549,7 @@ class tpce_worker :
 			CTradeOrder* harness= new CTradeOrder(this, this);
 
 			try{
-				harness->DoTxn( (PTradeOrderTxnInput)&input, (PTradeOrderTxnOutput)&output);
+//				harness->DoTxn( (PTradeOrderTxnInput)&input, (PTradeOrderTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -579,7 +579,7 @@ class tpce_worker :
 			CTradeResult* harness= new CTradeResult(this);
 
 			try{
-				harness->DoTxn( (PTradeResultTxnInput)input, (PTradeResultTxnOutput)&output);
+//				harness->DoTxn( (PTradeResultTxnInput)input, (PTradeResultTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -607,7 +607,7 @@ class tpce_worker :
 			CTradeStatus* harness= new CTradeStatus(this);
 
 			try{
-			harness->DoTxn( (PTradeStatusTxnInput)&input, (PTradeStatusTxnOutput)&output);
+//			harness->DoTxn( (PTradeStatusTxnInput)&input, (PTradeStatusTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -630,7 +630,7 @@ class tpce_worker :
 			CTradeUpdate* harness= new CTradeUpdate(this);
 
 			try{
-				harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
+//				harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -911,27 +911,19 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	// Get c_id;
-	const customers::key k_c_0( 0 );
-	const customers::key k_c_1( numeric_limits<int64_t>::max() );
+	const customers_index_tax_id::key k_c_0( pIn->tax_id, 0 );
+	const customers_index_tax_id::key k_c_1( pIn->tax_id, numeric_limits<int64_t>::max() );
 	table_scanner c_scanner(s_arena.get());
 
 	if(pIn->cust_id)
 		pOut->cust_id = pIn->cust_id;
 	else
 	{
-		tbl_customers(1)->scan(txn, Encode(obj_key0, k_c_0), &Encode(obj_key1, k_c_1), c_scanner, s_arena.get());
+		tbl_customers_index_tax_id(1)->scan(txn, Encode(obj_key0, k_c_0), &Encode(obj_key1, k_c_1), c_scanner, s_arena.get());
 		ALWAYS_ASSERT(c_scanner.output.size());
-		for( auto &r_c : c_scanner.output )
-		{
-			customers::key k_c_temp;
-			customers::value v_c_temp;
-			const customers::key* k_c = Decode( *r_c.first, k_c_temp );
-			const customers::value* v_c = Decode(*r_c.second, v_c_temp );
-
-			if( v_c->c_tax_id != string(pIn->tax_id))
-				continue;
-			pOut->cust_id = k_c->c_id;
-		}
+		customers_index_tax_id::key k_c_temp;
+		const customers_index_tax_id::key* k_c = Decode( *(c_scanner.output.front().first), k_c_temp );
+		pOut->cust_id = k_c->c_id;
 	}
 	ALWAYS_ASSERT( pOut->cust_id );
 
@@ -3844,8 +3836,15 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 							v.c_email_1		= string(record->C_EMAIL_1);
 							v.c_email_2		= string(record->C_EMAIL_2);
 
+							customers_index_tax_id::key k_idx_tax_id;
+							customers_index_tax_id::value v_idx_tax_id;
+
+							k_idx_tax_id.c_id			= record->C_ID;
+							k_idx_tax_id.c_tax_id		= string(record->C_TAX_ID);
+
 							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 							tbl_customers(1)->insert(txn, Encode(k), Encode(obj_buf, v));
+							tbl_customers_index_tax_id(1)->insert(txn, Encode(k_idx_tax_id), Encode(obj_buf, v_idx_tax_id));
 							db->commit_txn(txn);
 						}
 					}
