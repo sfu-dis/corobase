@@ -452,7 +452,7 @@ class tpce_worker :
 			CMarketFeed* harness= new CMarketFeed(this, this);
 
 			try{
-//			harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
+			harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -475,7 +475,7 @@ class tpce_worker :
 			CMarketWatch* harness= new CMarketWatch(this);
 
 			try{
-//			harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
+			harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -521,7 +521,7 @@ class tpce_worker :
 			CTradeLookup* harness= new CTradeLookup(this);
 
 			try{
-//			harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
+			harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -549,7 +549,7 @@ class tpce_worker :
 			CTradeOrder* harness= new CTradeOrder(this, this);
 
 			try{
-//				harness->DoTxn( (PTradeOrderTxnInput)&input, (PTradeOrderTxnOutput)&output);
+				harness->DoTxn( (PTradeOrderTxnInput)&input, (PTradeOrderTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -579,7 +579,7 @@ class tpce_worker :
 			CTradeResult* harness= new CTradeResult(this);
 
 			try{
-//				harness->DoTxn( (PTradeResultTxnInput)input, (PTradeResultTxnOutput)&output);
+				harness->DoTxn( (PTradeResultTxnInput)input, (PTradeResultTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -607,7 +607,7 @@ class tpce_worker :
 			CTradeStatus* harness= new CTradeStatus(this);
 
 			try{
-//			harness->DoTxn( (PTradeStatusTxnInput)&input, (PTradeStatusTxnOutput)&output);
+			harness->DoTxn( (PTradeStatusTxnInput)&input, (PTradeStatusTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -630,7 +630,7 @@ class tpce_worker :
 			CTradeUpdate* harness= new CTradeUpdate(this);
 
 			try{
-//				harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
+				harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -688,6 +688,9 @@ class tpce_worker :
 		virtual workload_desc_vec
 			get_workload() const
 			{
+
+//static double g_txn_workload_mix[] = { 4.9, 13, 1, 18, 14, 8, 10.1, 10, 19, 2 }; 
+
 				workload_desc_vec w;
 				double m = 0;
 				for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
@@ -835,7 +838,7 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 				break;
 
 			inline_str_fixed<cB_NAME_len> b_name = string(pIn->broker_list[j]);
-			if( b_name != v_b->b_name )
+			if( b_name == v_b->b_name )
 			{
 				brokers.push_back( r_b );
 			}
@@ -885,7 +888,7 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 						const broker::key* k_b = Decode( *r_b.first, k_b_temp );
 						const broker::value* v_b = Decode(*r_b.second, v_b_temp );
 
-						const trade_request::key k_tr( k_b->b_id, k_s->s_symb );
+						const trade_request::key k_tr( k_s->s_symb, k_b->b_id );
 						if(tbl_trade_request(1)->get(txn, Encode(obj_key0, k_tr), obj_v))
 						{
 							trade_request::value v_tr_temp;
@@ -1130,8 +1133,8 @@ void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 
 		rows_updated++;
 
-		const trade_request::key k_tr_0( 0, string(ticker.symbol) );
-		const trade_request::key k_tr_1( numeric_limits<uint64_t>::max(), string(ticker.symbol) );
+		const trade_request::key k_tr_0( string(ticker.symbol), 0 );
+		const trade_request::key k_tr_1( string(ticker.symbol), numeric_limits<uint64_t>::max() );
 		table_scanner tr_scanner(s_arena.get());
 		tbl_trade_request(1)->scan(txn, Encode(obj_key0, k_tr_0), &Encode(obj_key1, k_tr_1), tr_scanner, s_arena.get());
 		//ALWAYS_ASSERT( tr_scanner.output.size() );			// XXX. not certain this is okay
@@ -1337,7 +1340,7 @@ void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 		security::value v_s_temp;
 		const security::value *v_s = Decode(obj_v, v_s_temp);
 
-		const daily_market::key k_dm(TimeStampToTimeT(pIn->start_day), s);
+		const daily_market::key k_dm(s, TimeStampToTimeT(pIn->start_day) );
 		ALWAYS_ASSERT(tbl_daily_market(1)->get(txn, Encode(obj_key0, k_dm), obj_v));
 		daily_market::value v_dm_temp;
 		const daily_market::value *v_dm = Decode(obj_v, v_dm_temp);
@@ -1495,8 +1498,8 @@ void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 	}
 	pOut->fin_len = max_fin_len; 
 
-	const daily_market::key k_dm_0( TimeStampToTimeT(pIn->start_day) ,pIn->symbol );
-	const daily_market::key k_dm_1( numeric_limits<int64_t>::max() ,pIn->symbol);
+	const daily_market::key k_dm_0(pIn->symbol,TimeStampToTimeT(pIn->start_day) );
+	const daily_market::key k_dm_1(pIn->symbol,numeric_limits<uint64_t>::max());
 	table_scanner dm_scanner(s_arena.get());
 	tbl_daily_market(1)->scan(txn, Encode(obj_key0, k_dm_0), &Encode(obj_key1, k_dm_1), dm_scanner, s_arena.get());
 	ALWAYS_ASSERT( dm_scanner.output.size() );
@@ -1528,8 +1531,8 @@ void tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 	pOut->last_open = v_lt->lt_open_price;
 	pOut->last_vol = v_lt->lt_vol;
 
-	const news_xref::key k_nx_0( 0, co_id );
-	const news_xref::key k_nx_1( numeric_limits<int64_t>::max(), co_id );
+	const news_xref::key k_nx_0( co_id , 0 );
+	const news_xref::key k_nx_1( co_id , numeric_limits<int64_t>::max() );
 	table_scanner nx_scanner(s_arena.get());
 	tbl_news_xref(1)->scan(txn, Encode(obj_key0, k_nx_0), &Encode(obj_key1, k_nx_1), nx_scanner, s_arena.get());
 	ALWAYS_ASSERT( nx_scanner.output.size() );
@@ -1842,6 +1845,7 @@ void tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTrade
 	}
 	pOut->num_trades_found = 1;
 
+	// XXX. holding_history PK isn't unique. combine T_ID and row ID.
 	const holding_history::key k_hh_0(pOut->trade_id);
 	const holding_history::key k_hh_1(pOut->trade_id);
 	table_scanner hh_scanner(s_arena.get());
@@ -2043,8 +2047,8 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 		if( hs_qty > 0 )
 		{
 			vector<pair<int32_t, double>> hold_list;
-			const holding::key k_h_0( pIn->acct_id, 0, pOut->symbol );
-			const holding::key k_h_1( pIn->acct_id, numeric_limits<int64_t>::max(), pOut->symbol );
+			const holding::key k_h_0( pIn->acct_id, pOut->symbol ,0		   						 );
+			const holding::key k_h_1( pIn->acct_id, pOut->symbol ,numeric_limits<int64_t>::max() );
 			table_scanner h_scanner(s_arena.get());
 			tbl_holding(1)->scan(txn, Encode(obj_key0, k_h_0), &Encode(obj_key1, k_h_1), h_scanner, s_arena.get());
 			//ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
@@ -2090,8 +2094,8 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 		if( hs_qty < 0 )
 		{
 			vector<pair<int32_t, double>> hold_list;
-			const holding::key k_h_0( pIn->acct_id, 0, pOut->symbol );
-			const holding::key k_h_1( pIn->acct_id, numeric_limits<int64_t>::max(), pOut->symbol );
+			const holding::key k_h_0( pIn->acct_id, pOut->symbol, 0 );
+			const holding::key k_h_1( pIn->acct_id, pOut->symbol, numeric_limits<int64_t>::max() );
 			table_scanner h_scanner(s_arena.get());
 			tbl_holding(1)->scan(txn, Encode(obj_key0, k_h_0), &Encode(obj_key1, k_h_1), h_scanner, s_arena.get());
 		//	ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
@@ -2161,8 +2165,8 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 		pOut->tax_amount = (sell_value - buy_value) * tax_rates;
 	}
 	
-	const commission_rate::key k_cr_0( pIn->cust_tier, 0, string(pIn->trade_type_id), string(exch_id) );
-	const commission_rate::key k_cr_1( pIn->cust_tier, pIn->trade_qty, string(pIn->trade_type_id), string(exch_id) );
+	const commission_rate::key k_cr_0( pIn->cust_tier, string(pIn->trade_type_id), string(exch_id), 0 );
+	const commission_rate::key k_cr_1( pIn->cust_tier, string(pIn->trade_type_id), string(exch_id), pIn->trade_qty );
 
 	table_scanner cr_scanner(s_arena.get());
 	string k_cr_s0 = Encode(obj_key0, k_cr_0);
@@ -2397,8 +2401,8 @@ void tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
 
 		if( pIn->hs_qty > 0 )
 		{
-			const holding::key k_h_0( pIn->acct_id, 0, pIn->symbol );
-			const holding::key k_h_1( pIn->acct_id, numeric_limits<int64_t>::max(), pIn->symbol );
+			const holding::key k_h_0( pIn->acct_id, pIn->symbol, 0 );
+			const holding::key k_h_1( pIn->acct_id, pIn->symbol, numeric_limits<int64_t>::max() );
 			table_scanner h_scanner(s_arena.get());
 			tbl_holding(1)->scan(txn, Encode(obj_key0, k_h_0), &Encode(obj_key1, k_h_1), h_scanner, s_arena.get());
 //			ALWAYS_ASSERT( h_scanner.output.size() );		// guessing this could be empty set
@@ -2521,8 +2525,8 @@ void tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
 
 		if( pIn->hs_qty < 0 )
 		{
-			const holding::key k_h_0( pIn->acct_id, 0, pIn->symbol );
-			const holding::key k_h_1( pIn->acct_id, numeric_limits<int64_t>::max(), pIn->symbol );
+			const holding::key k_h_0( pIn->acct_id, pIn->symbol, 0 );
+			const holding::key k_h_1( pIn->acct_id, pIn->symbol, numeric_limits<int64_t>::max() );
 			table_scanner h_scanner(s_arena.get());
 			tbl_holding(1)->scan(txn, Encode(obj_key0, k_h_0), &Encode(obj_key1, k_h_1), h_scanner, s_arena.get());
 //			ALWAYS_ASSERT( h_scanner.output.size() );			// XXX. guessing could be empty
@@ -2678,8 +2682,8 @@ void tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn, TTrade
 	customers::value v_c_temp;
 	const customers::value *v_c = Decode(obj_v, v_c_temp);
 	
-	const commission_rate::key k_cr_0( v_c->c_tier, 0, string(pIn->type_id), v_s->s_ex_id );
-	const commission_rate::key k_cr_1( v_c->c_tier, pIn->trade_qty, string(pIn->type_id), v_s->s_ex_id);
+	const commission_rate::key k_cr_0( v_c->c_tier, string(pIn->type_id), v_s->s_ex_id, 0);
+	const commission_rate::key k_cr_1( v_c->c_tier, string(pIn->type_id), v_s->s_ex_id, pIn->trade_qty );
 
 	table_scanner cr_scanner(s_arena.get());
 	string k_cr_s0 = Encode(obj_key0, k_cr_0);
@@ -4468,8 +4472,8 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 							news_xref::value v;
 							string obj_buf;
 
-							k.nx_ni_id = record->NX_NI_ID;
 							k.nx_co_id = record->NX_CO_ID;
+							k.nx_ni_id = record->NX_NI_ID;
 
 							v.dummy = true;
 
