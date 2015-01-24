@@ -292,6 +292,13 @@ DO_STRUCT(trade_type, TRADE_TYPE_KEY_FIELDS, TRADE_TYPE_VALUE_FIELDS )
     y(int64_t,    co_open_date)
 DO_STRUCT( company, COMPANY_KEY_FIELDS, COMPANY_VALUE_FIELDS )
 
+#define CO_IN_ID_INDEX_KEY_FIELDS(x,y)\
+    x(inline_str_fixed<2>,	co_in_id)\
+    y(int64_t,    co_id)	
+#define CO_IN_ID_INDEX_VALUE_FIELDS(x,y)\
+	x(bool, dummy)
+DO_STRUCT( co_in_id_index, CO_IN_ID_INDEX_KEY_FIELDS, CO_IN_ID_INDEX_VALUE_FIELDS )
+
 #define CO_NAME_INDEX_KEY_FIELDS(x,y)\
     x(inline_str_fixed<60>, co_name)\
     y(int64_t,    co_id)	
@@ -359,6 +366,13 @@ DO_STRUCT( industry, INDUSTRY_KEY_FIELDS, INDUSTRY_VALUE_FIELDS )
 #define IN_NAME_INDEX_VALUE_FIELDS(x,y)\
     x(bool, dummy)
 DO_STRUCT( in_name_index, IN_NAME_INDEX_KEY_FIELDS, IN_NAME_INDEX_VALUE_FIELDS )
+
+#define IN_SC_ID_INDEX_KEY_FIELDS(x,y)\
+    x(inline_str_fixed<2>, in_sc_id)\
+    y(inline_str_fixed<2>, in_id)
+#define IN_SC_ID_INDEX_VALUE_FIELDS(x,y)\
+    x(bool, dummy)
+DO_STRUCT( in_sc_id_index, IN_SC_ID_INDEX_KEY_FIELDS, IN_SC_ID_INDEX_VALUE_FIELDS )
 
 #define LAST_TRADE_KEY_FIELDS(x,y)\
     x(inline_str_fixed<15>, lt_s_symb)
@@ -465,6 +479,7 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 	x(exchange)\
 	x(industry)\
 	x(in_name_index)\
+	x(in_sc_id_index)\
 	x(sector)\
 	x(status_type)\
 	x(tax_rate)\
@@ -480,6 +495,7 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 	x(watch_list)\
 	x(watch_item)\
 	x(company)\
+	x(co_in_id_index)\
 	x(co_name_index)\
 	x(company_competitor)\
 	x(daily_market)\
