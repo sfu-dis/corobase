@@ -522,7 +522,6 @@ class tpce_worker :
 			CTradeLookup* harness= new CTradeLookup(this);
 
 			try{
-				// FIXME. stack smashing 
 //			harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
@@ -1255,31 +1254,42 @@ void tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 
 	if( pIn->c_id )
 	{
+		/*
 		const watch_item::key k_wi_0( 0,  							 string(cSYMBOL_len, (char)0  ) );
 		const watch_item::key k_wi_1( numeric_limits<int64_t>::max(),string(cSYMBOL_len, (char)255) );
 		table_scanner wi_scanner(s_arena.get());
 		tbl_watch_item(1)->scan(txn, Encode(obj_key0, k_wi_0), &Encode(obj_key1, k_wi_1), wi_scanner, s_arena.get());
 		ALWAYS_ASSERT( wi_scanner.output.size() );
-		
+	*/	
 		const watch_list::key k_wl_0( pIn->c_id, 0 );
 		const watch_list::key k_wl_1( pIn->c_id, numeric_limits<int64_t>::max() );
 		table_scanner wl_scanner(s_arena.get());
 		tbl_watch_list(1)->scan(txn, Encode(obj_key0, k_wl_0), &Encode(obj_key1, k_wl_1), wl_scanner, s_arena.get());
 		ALWAYS_ASSERT( wl_scanner.output.size() );
 
-		for( auto &r_wi : wi_scanner.output )
+		for( auto &r_wl: wl_scanner.output )
 		{
-			watch_item::key k_wi_temp;
-			const watch_item::key* k_wi = Decode( *r_wi.first, k_wi_temp );
+			watch_list::key k_wl_temp;
+			const watch_list::key* k_wl = Decode( *r_wl.first, k_wl_temp );
 
-			for( auto &r_wl: wl_scanner.output )
+			const watch_item::key k_wi(k_wl->wl_id);
+			if( not tbl_watch_item(1)->get(txn, Encode(obj_key0, k_wi), obj_v))
+				continue;
+
+			watch_item::value v_wi_temp;
+			const watch_item::value *v_wi = Decode(obj_v, v_wi_temp);
+			stock_list_cursor.push_back( v_wi->wi_s_symb );
+
+		/*
+			for( auto &r_wi : wi_scanner.output )
 			{
-				watch_list::key k_wl_temp;
-				const watch_list::key* k_wl = Decode( *r_wl.first, k_wl_temp );
+				watch_item::key k_wi_temp;
+				const watch_item::key* k_wi = Decode( *r_wi.first, k_wi_temp );
+
 
 				if( k_wi->wi_wl_id == k_wl->wl_id )
-					stock_list_cursor.push_back( k_wi->wi_s_symb );
 			}
+			*/
 		}
 	}
 	else if ( pIn->industry_name[0] )
@@ -4208,8 +4218,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
 							string obj_buf;
 
 							k.wi_wl_id	= record->WI_WL_ID;
-							k.wi_s_symb   = record->WI_S_SYMB;
-							v.dummy = true;
+							v.wi_s_symb   = record->WI_S_SYMB;
 
 							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 							tbl_watch_item(1)->insert(txn, Encode(k), Encode(obj_buf, v));

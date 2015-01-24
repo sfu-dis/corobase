@@ -132,10 +132,9 @@ DO_STRUCT(holding_summary, HOLDING_SUMMARY_KEY_FIELDS, HOLDING_SUMMARY_VALUE_FIE
 
 
 #define WATCH_ITEM_KEY_FIELDS(x,y)\
-    x(int64_t,    wi_wl_id)\
-    y(inline_str_fixed<15>, wi_s_symb)	
+    x(int64_t,    wi_wl_id)
 #define WATCH_ITEM_VALUE_FIELDS(x,y)\
-	x(bool, dummy)
+    x(inline_str_fixed<15>, wi_s_symb)
 DO_STRUCT(watch_item, WATCH_ITEM_KEY_FIELDS, WATCH_ITEM_VALUE_FIELDS)
 
 
