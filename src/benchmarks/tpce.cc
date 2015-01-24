@@ -791,12 +791,8 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
-	const sector::key k_sc_0( pIn->sector_name, string(cSC_ID_len, (char)0	));
-	const sector::key k_sc_1( pIn->sector_name, string(cSC_ID_len, (char)255));
-	table_scanner sc_scanner(s_arena.get());
-	tbl_sector(1)->scan(txn, Encode(obj_key0, k_sc_0), &Encode(obj_key1, k_sc_1), sc_scanner, s_arena.get());
-	ALWAYS_ASSERT(sc_scanner.output.size() == 1);
 
+	/*
 	// Industry scan
 	const industry::key k_in_0( string(cIN_ID_len, (char)0	) );
 	const industry::key k_in_1( string(cIN_ID_len, (char)255) );
@@ -818,7 +814,6 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	tbl_security(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
 	ALWAYS_ASSERT(s_scanner.output.size());
 
-	/*
 	const broker::key k_b_0( 0 );
 	const broker::key k_b_1( numeric_limits<int64_t>::max() );
 	table_scanner b_scanner(s_arena.get());
@@ -828,7 +823,6 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	*/
 	std::vector<std::pair<std::string *, const std::string*>> brokers;
 
-	// BrokerVolume query processing
 	for( auto i = 0; i < max_broker_list_len and pIn->broker_list[i] ; i++ )
 	{
 		const b_name_index::key k_b_0( string(pIn->broker_list[i]), 0 );
@@ -844,47 +838,59 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 	// NLJ
 	pOut->list_len = 0;
+
+	const sector::key k_sc_0( pIn->sector_name, string(cSC_ID_len, (char)0	));
+	const sector::key k_sc_1( pIn->sector_name, string(cSC_ID_len, (char)255));
+	table_scanner sc_scanner(s_arena.get());
+	tbl_sector(1)->scan(txn, Encode(obj_key0, k_sc_0), &Encode(obj_key1, k_sc_1), sc_scanner, s_arena.get());
+	ALWAYS_ASSERT(sc_scanner.output.size() == 1);
 	for( auto &r_sc: sc_scanner.output )
 	{
 		sector::key k_sc_temp;
 		const sector::key* k_sc = Decode(*r_sc.first, k_sc_temp );
 
+		// in_sc_id_index scan
+		const in_sc_id_index::key k_in_0( k_sc->sc_id, string(cIN_ID_len, (char)0) );
+		const in_sc_id_index::key k_in_1( k_sc->sc_id, string(cIN_ID_len, (char)255) );
+		table_scanner in_scanner(s_arena.get());
+		tbl_in_sc_id_index(1)->scan(txn, Encode(obj_key0, k_in_0), &Encode(obj_key1, k_in_1), in_scanner, s_arena.get());
+		ALWAYS_ASSERT(in_scanner.output.size());
+
 		for( auto &r_in: in_scanner.output)
 		{
-			industry::key k_in_temp;
-			industry::value v_in_temp;
-			const industry::key* k_in = Decode(*r_in.first, k_in_temp );
-			const industry::value* v_in = Decode(*r_in.second, v_in_temp );
+			in_sc_id_index::key k_in_temp;
+			const in_sc_id_index::key* k_in = Decode(*r_in.first, k_in_temp );
 
-			if( k_sc->sc_id != v_in->in_sc_id )
-				continue;
-
+			// co_in_id_index scan
+			const co_in_id_index::key k_in_0( k_in->in_id, 0 );
+			const co_in_id_index::key k_in_1( k_in->in_id, numeric_limits<int64_t>::max() );
+			table_scanner co_scanner(s_arena.get());
+			tbl_co_in_id_index(1)->scan(txn, Encode(obj_key0, k_in_0), &Encode(obj_key1, k_in_1), co_scanner, s_arena.get());
+			ALWAYS_ASSERT(co_scanner.output.size());
 			for( auto &r_co : co_scanner.output )
 			{
-				company::key k_co_temp;
-				company::value v_co_temp;
-				const company::key* k_co = Decode(*r_co.first, k_co_temp );
-				const company::value* v_co = Decode(*r_co.second, v_co_temp );
+				co_in_id_index::key k_co_temp;
+				const co_in_id_index::key* k_co = Decode(*r_co.first, k_co_temp );
 
-				if( k_in->in_id != v_co->co_in_id )
-					continue;
-
+				// security_index scan
+				const security_index::key k_s_0( k_co->co_id, string(cS_ISSUE_len, (char)0)  );
+				const security_index::key k_s_1( k_co->co_id, string(cS_ISSUE_len, (char)255));
+				table_scanner s_scanner(s_arena.get());
+				tbl_security_index(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
+				ALWAYS_ASSERT(s_scanner.output.size());
 				for( auto &r_s : s_scanner.output )
 				{
-					security::key k_s_temp;
-					security::value v_s_temp;
-					const security::key* k_s = Decode( *r_s.first, k_s_temp );
-					const security::value* v_s = Decode(*r_s.second, v_s_temp );
-
-					if( v_s->s_co_id != k_co->co_id )
-						continue;
+					security_index::key k_s_temp;
+					security_index::value v_s_temp;
+					const security_index::key* k_s = Decode( *r_s.first, k_s_temp );
+					const security_index::value* v_s = Decode( *r_s.second, v_s_temp );
 
 					for( auto &r_b_idx : brokers )
 					{
 						b_name_index::key k_b_idx_temp;
 						const b_name_index::key* k_b_idx = Decode( *r_b_idx.first, k_b_idx_temp );
 
-						const trade_request::key k_tr( k_s->s_symb, k_b_idx->b_id );
+						const trade_request::key k_tr( v_s->s_symb, k_b_idx->b_id );
 						if(tbl_trade_request(1)->get(txn, Encode(obj_key0, k_tr), obj_v))
 						{
 							trade_request::value v_tr_temp;
@@ -3511,20 +3517,26 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
 						PINDUSTRY_ROW record = industryBuffer.get(i);
 						industry::key k_in;
 						industry::value v_in;
-						in_name_index::key k_in_idx;
-						in_name_index::value v_in_idx;
+						in_name_index::key k_in_idx1;
+						in_name_index::value v_in_idx1;
+						in_sc_id_index::key k_in_idx2;
+						in_sc_id_index::value v_in_idx2;
 						string obj_buf;
 
 						k_in.in_id = string(record->IN_ID);
 						v_in.in_name = string(record->IN_NAME);
 						v_in.in_sc_id = string(record->IN_SC_ID);
 
-						k_in_idx.in_name = string(record->IN_NAME);
-						k_in_idx.in_id = string(record->IN_ID);
+						k_in_idx1.in_name = string(record->IN_NAME);
+						k_in_idx1.in_id = string(record->IN_ID);
+
+						k_in_idx2.in_sc_id = string(record->IN_SC_ID);
+						k_in_idx2.in_id = string(record->IN_ID);
 
 						void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 						tbl_industry(1)->insert(txn, Encode(k_in), Encode(obj_buf, v_in));
-						tbl_in_name_index(1)->insert(txn, Encode(k_in_idx), Encode(obj_buf, v_in_idx));
+						tbl_in_name_index(1)->insert(txn, Encode(k_in_idx1), Encode(obj_buf, v_in_idx1));
+						tbl_in_sc_id_index(1)->insert(txn, Encode(k_in_idx2), Encode(obj_buf, v_in_idx2));
 						db->commit_txn(txn);
 					}
 					pGenerateAndLoad->ReleaseIndustry();
@@ -4278,6 +4290,8 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
 							company::value v;
 							co_name_index::key k_idx1;
 							co_name_index::value v_idx1;
+							co_in_id_index::key k_idx2;
+							co_in_id_index::value v_idx2;
 							string obj_buf;
 
 							k.co_id			= record->CO_ID;
@@ -4292,9 +4306,13 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
 							k_idx1.co_name	= string(record->CO_NAME);
 							k_idx1.co_id	= record->CO_ID;
 
+							k_idx2.co_in_id = string(record->CO_IN_ID);
+							k_idx2.co_id	= record->CO_ID;
+
 							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 							tbl_company(1)->insert(txn, Encode(k), Encode(obj_buf, v));
 							tbl_co_name_index(1)->insert(txn, Encode(k_idx1), Encode(obj_buf, v_idx1));
+							tbl_co_in_id_index(1)->insert(txn, Encode(k_idx2), Encode(obj_buf, v_idx2));
 							db->commit_txn(txn);
 						}
 					}
