@@ -3,7 +3,6 @@
 
    ASSERT to INVARIANT when doing real performance measurement
    after dotxn, check status and make return value
-   global last trade id variable -> thread-local 
    stop scanning if given selectivity is satisfied -> custom scanner
    partitioning and scaling, input parameter( configured customers ), CPU pinning for loaders and workers
    string->c_str
@@ -425,8 +424,7 @@ class tpce_worker :
 			CCustomerPosition* harness= new CCustomerPosition(this);
 
 			try{
-				// FIXME. input generator's tax_id doesn't exist. 
-//			harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
+			harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -791,38 +789,7 @@ void tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
-
-	/*
-	// Industry scan
-	const industry::key k_in_0( string(cIN_ID_len, (char)0	) );
-	const industry::key k_in_1( string(cIN_ID_len, (char)255) );
-	table_scanner in_scanner(s_arena.get());
-	tbl_industry(1)->scan(txn, Encode(obj_key0, k_in_0), &Encode(obj_key1, k_in_1), in_scanner, s_arena.get());
-	ALWAYS_ASSERT(in_scanner.output.size());
-
-	// Company scan
-	const company::key k_co_0( 0 );
-	const company::key k_co_1( numeric_limits<int64_t>::max() );
-	table_scanner co_scanner(s_arena.get());
-	tbl_company(1)->scan(txn, Encode(obj_key0, k_co_0), &Encode(obj_key1, k_co_1), co_scanner, s_arena.get());
-	ALWAYS_ASSERT(co_scanner.output.size());
-
-	// Security scan
-	const security::key k_s_0( string(cSYMBOL_len, (char)0	) );
-	const security::key k_s_1( string(cSYMBOL_len, (char)255) );
-	table_scanner s_scanner(s_arena.get());
-	tbl_security(1)->scan(txn, Encode(obj_key0, k_s_0), &Encode(obj_key1, k_s_1), s_scanner, s_arena.get());
-	ALWAYS_ASSERT(s_scanner.output.size());
-
-	const broker::key k_b_0( 0 );
-	const broker::key k_b_1( numeric_limits<int64_t>::max() );
-	table_scanner b_scanner(s_arena.get());
-	tbl_broker(1)->scan(txn, Encode(obj_key0, k_b_0), &Encode(obj_key1, k_b_1), b_scanner, s_arena.get());
-	ALWAYS_ASSERT(b_scanner.output.size());
-
-	*/
 	std::vector<std::pair<std::string *, const std::string*>> brokers;
-
 	for( auto i = 0; i < max_broker_list_len and pIn->broker_list[i] ; i++ )
 	{
 		const b_name_index::key k_b_0( string(pIn->broker_list[i]), 0 );
@@ -925,7 +892,9 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 	else
 	{
 		tbl_c_tax_id_index(1)->scan(txn, Encode(obj_key0, k_c_0), &Encode(obj_key1, k_c_1), c_scanner, s_arena.get());
-		ALWAYS_ASSERT(c_scanner.output.size());
+		// XXX. input generator's tax_id doesn't exist.  ???
+		if( not c_scanner.output.size())
+			return;
 		c_tax_id_index::key k_c_temp;
 		const c_tax_id_index::key* k_c = Decode( *(c_scanner.output.front().first), k_c_temp );
 		pOut->cust_id = k_c->c_id;
@@ -961,31 +930,13 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
     memcpy(pOut->c_email_1, v_c->c_email_1.data(), v_c->c_email_1.size());
     memcpy(pOut->c_email_2, v_c->c_email_2.data(), v_c->c_email_2.size());
 
-/*
-	const customer_account::key k_ca_0( 0 );
-	const customer_account::key k_ca_1( numeric_limits<int64_t>::max() );
-	table_scanner ca_scanner(s_arena.get());
-	tbl_customer_account(1)->scan(txn, Encode(obj_key0, k_ca_0), &Encode(obj_key1, k_ca_1), ca_scanner, s_arena.get());
-	cout << ca_scanner.output.size() << endl;
-	//ALWAYS_ASSERT( ca_scanner.output.size() );
-
-	*/
-
 	// CustomerAccount scan
 	const ca_id_index::key k_ca_0( pOut->cust_id, 0 );
 	const ca_id_index::key k_ca_1( pOut->cust_id, numeric_limits<int64_t>::max() );
 	table_scanner ca_scanner(s_arena.get());
 	tbl_ca_id_index(1)->scan(txn, Encode(obj_key0, k_ca_0), &Encode(obj_key1, k_ca_1), ca_scanner, s_arena.get());
-	cout << ca_scanner.output.size() << endl;
 	ALWAYS_ASSERT( ca_scanner.output.size() );
 	// XXX. input customer ID doesn't exist?
-
-	// HoldingSummary scan
-	const holding_summary::key k_hs_0( 0, 							   string(cSYMBOL_len, (char)0	) );
-	const holding_summary::key k_hs_1( numeric_limits<int64_t>::max(), string(cSYMBOL_len, (char)255) );
-	table_scanner hs_scanner(s_arena.get());
-	tbl_holding_summary(1)->scan(txn, Encode(obj_key0, k_hs_0), &Encode(obj_key1, k_hs_1), hs_scanner, s_arena.get());
-	ALWAYS_ASSERT( hs_scanner.output.size() );
 
 	for( auto& r_ca : ca_scanner.output )
 	{
@@ -993,7 +944,14 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 		ca_id_index::value v_ca_temp;
 		const ca_id_index::key* k_ca = Decode( *r_ca.first, k_ca_temp );
 		const ca_id_index::value* v_ca = Decode(*r_ca.second, v_ca_temp );
-		
+
+		// HoldingSummary scan
+		const holding_summary::key k_hs_0( k_ca->ca_id, string(cSYMBOL_len, (char)0	) );
+		const holding_summary::key k_hs_1( k_ca->ca_id, string(cSYMBOL_len, (char)255) );
+		table_scanner hs_scanner(s_arena.get());
+		tbl_holding_summary(1)->scan(txn, Encode(obj_key0, k_hs_0), &Encode(obj_key1, k_hs_1), hs_scanner, s_arena.get());
+	//	ALWAYS_ASSERT( hs_scanner.output.size() );		// left-outer join. S table could be empty.
+
 		auto asset = 0;
 		for( auto& r_hs : hs_scanner.output )
 		{
@@ -1002,19 +960,18 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 			const holding_summary::key* k_hs = Decode( *r_hs.first, k_hs_temp );
 			const holding_summary::value* v_hs = Decode(*r_hs.second, v_hs_temp );
 
-			if(  k_ca->ca_id == k_hs->hs_ca_id )
-			{
-				// LastTrade probe & equi-join
-				const last_trade::key k_lt(k_hs->hs_s_symb);
-				ALWAYS_ASSERT(tbl_last_trade(1)->get(txn, Encode(obj_key0, k_lt), obj_v));
-				last_trade::value v_lt_temp;
-				const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
+			// LastTrade probe & equi-join
+			const last_trade::key k_lt(k_hs->hs_s_symb);
+			ALWAYS_ASSERT(tbl_last_trade(1)->get(txn, Encode(obj_key0, k_lt), obj_v));
+			last_trade::value v_lt_temp;
+			const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
-				asset += v_hs->hs_qty * v_lt->lt_price;
-			}
+			asset += v_hs->hs_qty * v_lt->lt_price;
 		}
 
 		// TODO.  aggregation( if <CA_ID,CA_BAL> is not unique ) and sorting.
+
+		// Since we are doing left outer join, non-join rows just emit 0 asset here.
 		pOut->acct_id[pOut->acct_len] = k_ca->ca_id;
 		pOut->cash_bal[pOut->acct_len] = v_ca->ca_bal;
 		pOut->asset_total[pOut->acct_len] = asset;
@@ -1024,10 +981,18 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 
 void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *pIn, TCustomerPositionFrame2Output *pOut)
 {
+
+	// XXX. If, CP frame 1 doesn't give output, then, we don't have valid input at here. so just return
+	if( not pIn->acct_id )
+	{
+		db->commit_txn(txn);
+		return;
+	}
+
 	scoped_str_arena s_arena(arena);
 	// Trade scan and collect 10 TID
 	const t_ca_id_index::key k_t_0( pIn->acct_id, 0, 0 );
-	const t_ca_id_index::key k_t_1( pIn->acct_id, numeric_limits<int64_t>::max(), numeric_limits<int64_t>::max() );
+	const t_ca_id_index::key k_t_1( pIn->acct_id, numeric_limits<uint64_t>::max(), numeric_limits<int64_t>::max() );
 	table_scanner t_scanner(s_arena.get());
 	tbl_t_ca_id_index(1)->scan(txn, Encode(obj_key0, k_t_0), &Encode(obj_key1, k_t_1), t_scanner, s_arena.get());
 	ALWAYS_ASSERT( t_scanner.output.size() );
@@ -1035,34 +1000,25 @@ void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
 	std::vector<std::pair<std::string *, const std::string*>> tids;
 	for( auto &r_t : t_scanner.output )
 	{
-		t_ca_id_index::value v_t_temp;
-		const t_ca_id_index::value* v_t = Decode(*r_t.second, v_t_temp );
-
 		tids.push_back( r_t );
 		if( tids.size() >= 10 )
 			break;
 	}
 	reverse(tids.begin(), tids.end());
 
-	// Join
-	const trade_history::key k_th_0( 0, 0 );
-	const trade_history::key k_th_1(numeric_limits<int64_t>::max(), numeric_limits<int64_t>::max() );
-	table_scanner th_scanner(s_arena.get());
-	tbl_trade_history(1)->scan(txn, Encode(obj_key0, k_th_0), &Encode(obj_key1, k_th_1), th_scanner, s_arena.get());
-	ALWAYS_ASSERT( th_scanner.output.size() );
-
-	const status_type::key k_st_0( string(cST_ID_len, (char)0	) );
-	const status_type::key k_st_1( string(cST_ID_len, (char)255) );
-	table_scanner st_scanner(s_arena.get());
-	tbl_status_type(1)->scan(txn, Encode(obj_key0, k_st_0), &Encode(obj_key1, k_st_1), st_scanner, s_arena.get());
-	ALWAYS_ASSERT( st_scanner.output.size() );
-
 	for( auto &r_t : tids )
 	{
-		trade::key k_t_temp;
-		trade::value v_t_temp;
-		const trade::key* k_t = Decode( *r_t.first, k_t_temp );
-		const trade::value* v_t = Decode(*r_t.second, v_t_temp );
+		t_ca_id_index::key k_t_temp;
+		t_ca_id_index::value v_t_temp;
+		const t_ca_id_index::key* k_t = Decode( *r_t.first, k_t_temp );
+		const t_ca_id_index::value* v_t = Decode(*r_t.second, v_t_temp );
+
+		// Join
+		const trade_history::key k_th_0( k_t->t_id, 0 );
+		const trade_history::key k_th_1( k_t->t_id, numeric_limits<int64_t>::max() );
+		table_scanner th_scanner(s_arena.get());
+		tbl_trade_history(1)->scan(txn, Encode(obj_key0, k_th_0), &Encode(obj_key1, k_th_1), th_scanner, s_arena.get());
+		ALWAYS_ASSERT( th_scanner.output.size() );
 
 		for( auto &r_th : th_scanner.output )
 		{
@@ -1071,30 +1027,22 @@ void tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
 			const trade_history::value* v_th = Decode(*r_th.second, v_th_temp );
 
-			if( k_t->t_id != k_th->th_t_id )
-				continue;
 
-			for( auto &r_st : st_scanner.output )
-			{
-				status_type::key k_st_temp;
-				status_type::value v_st_temp;
-				const status_type::key* k_st = Decode( *r_st.first, k_st_temp );
-				const status_type::value* v_st = Decode(*r_st.second, v_st_temp );
+			status_type::key k_st(v_th->th_st_id);
+			ALWAYS_ASSERT(tbl_status_type(1)->get(txn, Encode(obj_key0, k_st), obj_v));
+			status_type::value v_st_temp;
+			const status_type::value *v_st = Decode(obj_v, v_st_temp);
 
-				if( v_th->th_st_id != k_st->st_id )
-					continue;
+			// TODO. order by and grab 30 rows
+			pOut->trade_id[pOut->hist_len] 	= k_t->t_id;
+			pOut->qty[pOut->hist_len] 		= v_t->t_qty;
+			pOut->hist_dts[pOut->hist_len] = TimeTToTimeStamp((time_t)k_th->th_dts);
+			memcpy(pOut->symbol[pOut->hist_len], v_t->t_s_symb.data(), v_t->t_s_symb.size());
+			memcpy(pOut->trade_status[pOut->hist_len], v_st->st_name.data(), v_st->st_name.size());
 
-				// TODO. order by and grab 30 rows
-				pOut->trade_id[pOut->hist_len] 	= k_t->t_id;
-				pOut->qty[pOut->hist_len] 		= v_t->t_qty;
-				pOut->hist_dts[pOut->hist_len] = TimeTToTimeStamp((time_t)k_th->th_dts);
-				memcpy(pOut->symbol[pOut->hist_len], v_t->t_s_symb.data(), v_t->t_s_symb.size());
-				memcpy(pOut->trade_status[pOut->hist_len], v_st->st_name.data(), v_st->st_name.size());
-
-				pOut->hist_len++;
-				if( pOut->hist_len >= max_hist_len )
-					goto commit;
-			}
+			pOut->hist_len++;
+			if( pOut->hist_len >= max_hist_len )
+				goto commit;
 
 		}
 
@@ -4070,6 +4018,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
 
 							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 							tbl_customer_account(1)->insert(txn, Encode(k), Encode(obj_buf, v));
+
 							tbl_ca_id_index(1)->insert(txn, Encode(k_idx1), Encode(obj_buf, v_idx1));
 							db->commit_txn(txn);
 						}
@@ -4905,6 +4854,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 
 					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 					tbl_trade(1)->insert(txn, Encode(k), Encode(obj_buf, v));
+
 					tbl_t_ca_id_index(1)->insert(txn, Encode(k_idx1), Encode(obj_buf, v_idx1));
 					tbl_t_s_symb_index(1)->insert(txn, Encode(k_idx2), Encode(obj_buf, v_idx2));
 					db->commit_txn(txn);
