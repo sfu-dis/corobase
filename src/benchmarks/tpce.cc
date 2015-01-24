@@ -520,7 +520,7 @@ class tpce_worker :
 			CTradeLookup* harness= new CTradeLookup(this);
 
 			try{
-//			harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
+			harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -1101,8 +1101,6 @@ void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 			const trade_request::key* k_tr = Decode( *r_tr.first, k_tr_temp );
 			const trade_request::value* v_tr = Decode(*r_tr.second, v_tr_temp );
 
-
-			//cout << "MF : " << v_tr->tr_tt_id << "," << v_tr->tr_bid_price << endl;
 			if( (v_tr->tr_tt_id == string(type.type_stop_loss) and v_tr->tr_bid_price >= ticker.price_quote) or
 				(v_tr->tr_tt_id == string(type.type_limit_sell) and v_tr->tr_bid_price <= ticker.price_quote) or
 				(v_tr->tr_tt_id == string(type.type_limit_buy) and v_tr->tr_bid_price >= ticker.price_quote) )
@@ -1188,13 +1186,6 @@ void tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 		for( auto i = 0; i < rows_sent; i++ )
 		{
 			SendToMarketFromFrame(TradeRequestBuffer[i]);
-/*			cout << "MF: " << 
-					TradeRequestBuffer[i].symbol 				<< "," <<
-					TradeRequestBuffer[i].trade_id				<< "," <<
-					TradeRequestBuffer[i].price_quote			<< "," <<
-					TradeRequestBuffer[i].trade_qty				<< "," <<
-					TradeRequestBuffer[i].trade_type_id			<< endl;
-					*/
 		}
 	}
 }
@@ -1749,7 +1740,7 @@ void tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
 		memcpy(pOut->trade_info[num_found].trade_type, v_t->t_tt_id.data(), v_t->t_tt_id.size() );
 
 		num_found++;
-		if( num_found > pIn->max_trades )
+		if( num_found >= pIn->max_trades )
 			break;
 	}
 
@@ -1889,11 +1880,6 @@ void tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn, TTradeOr
 	const broker::value *v_b = Decode(obj_v, v_b_temp);
 	memcpy( pOut->broker_name, v_b->b_name.data(), v_b->b_name.size() );
 
-//	cout << __FUNCTION__ << ","
-//		<< pOut->cust_f_name << ","
-//		<< pOut->cust_tier << ","
-//		<< pOut->broker_name << endl;
-
 }
 
 void tpce_worker::DoTradeOrderFrame2(const TTradeOrderFrame2Input *pIn, TTradeOrderFrame2Output *pOut)
@@ -1912,8 +1898,6 @@ void tpce_worker::DoTradeOrderFrame2(const TTradeOrderFrame2Input *pIn, TTradeOr
 		}
 	}
 	pOut->ap_acl[0] = '\0';
-//	cout << __FUNCTION__ << ","
-//		<< pOut->ap_acl << endl;
 }
 
 void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOrderFrame3Output *pOut)
@@ -2207,13 +2191,6 @@ void tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 		memcpy(pOut->status_id, pIn->st_submitted_id, cST_ID_len );
 	else
 		memcpy(pOut->status_id, pIn->st_pending_id, cST_ID_len );
-
-//	cout << __FUNCTION__ << ","
-//		<< pOut->status_id<< ","
-//		<< pOut->acct_assets<< ","
-//		<< pOut->comm_rate<< ","
-//		<< pOut->tax_amount<< ","
-//		<< pOut->charge_amount << endl;
 }
 
 void tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOrderFrame4Output *pOut)
@@ -2279,7 +2256,6 @@ void tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
 		v_tr.tr_tt_id = string(pIn->trade_type_id);
 		v_tr.tr_qty = pIn->trade_qty;
 		v_tr.tr_bid_price = pIn->requested_price;
-		//cout << "TO : " << v_tr.tr_tt_id <<"," << v_tr.tr_bid_price << endl;
 		tbl_trade_request(1)->insert(txn, Encode(k_tr), Encode(obj_v, v_tr));
 	}
 
@@ -2291,14 +2267,6 @@ void tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
 	v_th.th_st_id = string(pIn->status_id);
 
 	tbl_trade_history(1)->insert(txn, Encode(k_th), Encode(obj_v, v_th));
-
-//	cout << __FUNCTION__ << ","
-//		<< k_th.th_t_id << ","
-//		<< k_th.th_dts << ","
-//		<< v_t.t_tt_id << ","
-//		<< v_t.t_is_cash << ","
-//		<< v_t.t_s_symb<< "," 
-//		<< v_t.t_qty << endl;
 }
 
 void tpce_worker::DoTradeOrderFrame5(void)
@@ -2345,12 +2313,6 @@ void tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTrade
 		const holding_summary::value *v_hs = Decode(obj_v, v_hs_temp);
 		pOut->hs_qty = v_hs->hs_qty;
 	}
-//	cout << __FUNCTION__ << ","
-//		<< pOut->trade_qty<< ","
-//		<< pOut->charge << ","
-//		<< pOut->is_lifo << ","
-//		<< pOut->trade_is_cash << ","
-//		<< pOut->hs_qty << endl;
 }
 
 void tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTradeResultFrame2Output *pOut)
@@ -2622,11 +2584,6 @@ void tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
 			tbl_holding_summary(1)->remove(txn, Encode(k_hs));
 		}
 	}
-
-//	cout << __FUNCTION__ << ","
-//		<< pOut->broker_id << ","
-//		<< pOut->cust_id   << ","
-//		<< pOut->tax_status << endl;
 }
 
 void tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTradeResultFrame3Output *pOut)
@@ -2692,8 +2649,6 @@ void tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTrade
 	v_t_idx2.t_exec_name 	= v_t_new.t_exec_name ;
 	v_t_idx2.t_trade_price 	= v_t_new.t_trade_price ;
 	tbl_t_s_symb_index(1)->put(txn, Encode(k_t_idx2), Encode(obj_v, v_t_idx2));
-//	cout << __FUNCTION__ << ","
-//		<< pOut->tax_amount << endl;
 }
 
 void tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn, TTradeResultFrame4Output *pOut)
