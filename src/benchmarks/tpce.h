@@ -90,8 +90,8 @@ DO_STRUCT(c_tax_id_index, C_TAX_ID_INDEX_KEY_FIELDS, C_TAX_ID_INDEX_VALUE_FIELDS
 DO_STRUCT(customer_account, CUSTOMER_ACCOUNT_KEY_FIELDS, CUSTOMER_ACCOUNT_VALUE_FIELDS)
 
 #define CA_ID_INDEX_KEY_FIELDS(x,y)\
-    x(int64_t,   	 ca_id)\
-    y(int64_t,   	 ca_c_id)
+    x(int64_t,   	 ca_c_id)\
+    y(int64_t,   	 ca_id)
 #define CA_ID_INDEX_VALUE_FIELDS(x,y)\
     x(double,  	 ca_bal)
 DO_STRUCT(ca_id_index, CA_ID_INDEX_KEY_FIELDS, CA_ID_INDEX_VALUE_FIELDS)
