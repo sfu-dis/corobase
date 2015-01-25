@@ -933,7 +933,6 @@ void tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 	table_scanner ca_scanner(s_arena.get());
 	tbl_ca_id_index(1)->scan(txn, Encode(obj_key0, k_ca_0), &Encode(obj_key1, k_ca_1), ca_scanner, s_arena.get());
 	ALWAYS_ASSERT( ca_scanner.output.size() );
-	// XXX. input customer ID doesn't exist?
 
 	for( auto& r_ca : ca_scanner.output )
 	{

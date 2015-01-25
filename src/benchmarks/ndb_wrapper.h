@@ -72,7 +72,7 @@ public:
       str_arena &arena,
       void *buf,
       TxnProfileHint hint);
-  virtual void commit_txn(void *txn);
+  virtual rc_t commit_txn(void *txn);
   virtual void abort_txn(void *txn);
   virtual void print_txn_debug(void *txn) const;
 
@@ -95,44 +95,44 @@ protected:
 
 public:
   ndb_ordered_index(const std::string &name, size_t value_size_hint, bool mostly_append);
-  virtual bool get(
+  virtual rc_t get(
       void *txn,
-      const std::string &key,
-      std::string &value, size_t max_bytes_read);
-  virtual const char * put(
+      const varstr &key,
+      varstr &value, size_t max_bytes_read);
+  virtual rc_t put(
       void *txn,
-      const std::string &key,
-      const std::string &value);
-  virtual const char * put(
+      const varstr &key,
+      const varstr &value);
+  virtual rc_t put(
       void *txn,
-      std::string &&key,
-      std::string &&value);
-  virtual const char *
+      varstr &&key,
+      varstr &&value);
+  virtual rc_t
   insert(void *txn,
-         const std::string &key,
-         const std::string &value);
-  virtual const char *
+         const varstr &key,
+         const varstr &value);
+  virtual rc_t
   insert(void *txn,
-         std::string &&key,
-         std::string &&value);
-  virtual void scan(
+         varstr &&key,
+         varstr &&value);
+  virtual rc_t scan(
       void *txn,
-      const std::string &start_key,
-      const std::string *end_key,
+      const varstr &start_key,
+      const varstr *end_key,
       scan_callback &callback,
       str_arena *arena);
-  virtual void rscan(
+  virtual rc_t rscan(
       void *txn,
-      const std::string &start_key,
-      const std::string *end_key,
+      const varstr &start_key,
+      const varstr *end_key,
       scan_callback &callback,
       str_arena *arena);
-  virtual void remove(
+  virtual rc_t remove(
       void *txn,
-      const std::string &key);
-  virtual void remove(
+      const varstr &key);
+  virtual rc_t remove(
       void *txn,
-      std::string &&key);
+      varstr &&key);
   virtual size_t size() const;
   virtual std::map<std::string, uint64_t> clear();
 private:

@@ -21,6 +21,7 @@
 #include "dbcore/ssn.h"
 #include "dbcore/sm-log.h"
 #include "dbcore/sm-trace.h"
+#include "dbcore/sm-rc.h"
 #include "amd64.h"
 #include "btree_choice.h"
 #include "core.h"
@@ -40,8 +41,8 @@
 #include "ndb_type_traits.h"
 #include "object.h"
 
-//#include <sparsehash/dense_hash_map>
-//using google::dense_hash_map;
+#include <sparsehash/dense_hash_map>
+using google::dense_hash_map;
 
 using namespace TXN;
 
@@ -283,7 +284,7 @@ protected:
     INVARIANT(state() == TXN_ACTIVE);
   }
 
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   struct read_record_t {
     read_record_t(dbtuple *n, concurrent_btree *b, oid_type o) :
         tuple(n), btr(b), oid(o) {}
@@ -308,10 +309,13 @@ protected:
   // key is the new inserted version if it's an update of an insert
   // ^^^^^ note in the above case, do_tree_put should mark btr as null
   // for the older inserted tuple.
-  typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
-  //typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
+  //typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
+  // seems unordered_map has bad cache behavior: it might have to
+  // allocated elements individually, not putting all elems in a contiguous chunk
+  // like a vector does.
+  typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
   //typedef small_vector<read_record_t, SMALL_SIZE_MAP> read_set_map;
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   typedef std::vector<read_record_t> read_set_map;
 #endif
   //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
@@ -323,11 +327,13 @@ public:
 
   // returns on successful commit.
   // signals failure by throwing an abort exception
-  void commit();
+  rc_t commit();
 #ifdef USE_PARALLEL_SSN
-  void ssn_parallel_si_commit();
+  rc_t ssn_parallel_si_commit();
+#elif defined USE_PARALLEL_SSI
+  rc_t parallel_ssi_commit();
 #else
-  void si_commit();
+  rc_t si_commit();
 #endif
 
   // signal the caller that an abort is necessary by throwing an abort
@@ -368,14 +374,14 @@ protected:
   bool
   try_insert_new_tuple(
       concurrent_btree *btr,
-      const std::string *key,
+      const varstr *key,
 	  object* value,
       dbtuple::tuple_writer_t writer);
 
   // reads the contents of tuple into v
   // within this transaction context
   template <typename ValueReader>
-  bool
+  rc_t
   do_tuple_read(concurrent_btree *btr_ptr, oid_type oid, dbtuple *tuple, ValueReader &value_reader);
 
 public:
@@ -397,7 +403,7 @@ protected:
   XID xid;
   sm_tx_log* log;
   string_allocator_type *sa;
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   read_set_map read_set;
 #endif
   write_set_map write_set;

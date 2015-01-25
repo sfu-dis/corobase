@@ -122,7 +122,7 @@ protected:
   };
 
   template <typename Traits, typename ValueReader>
-  inline bool
+  inline rc_t
   do_search(Transaction<Traits> &t,
             const typename P::Key &k,
             ValueReader &value_reader);
@@ -153,8 +153,8 @@ protected:
   //
   // NOTE: both key and value are expected to be stable values already
   template <typename Traits>
-  void do_tree_put(Transaction<Traits> &t,
-                   const std::string *k,
+  rc_t do_tree_put(Transaction<Traits> &t,
+                   const varstr *k,
                    const typename P::Value *v,
                    dbtuple::tuple_writer_t writer,
                    bool expect_new);
@@ -172,7 +172,7 @@ namespace private_ {
 
 template <template <typename> class Transaction, typename P>
 template <typename Traits, typename ValueReader>
-bool
+rc_t
 base_txn_btree<Transaction, P>::do_search(
     Transaction<Traits> &t,
     const typename P::Key &k,
@@ -181,19 +181,17 @@ base_txn_btree<Transaction, P>::do_search(
   t.ensure_active();
 
   typename P::KeyWriter key_writer(&k);
-  const std::string * const key_str =
+  const varstr * const key_str =
     key_writer.fully_materialize(true, t.string_allocator());
 
   // search the underlying btree to map k=>(btree_node|tuple)
   dbtuple * tuple{};
   oid_type oid;
   concurrent_btree::versioned_node_t search_info;
-  const bool found = this->underlying_btree.search(varkey(*key_str), oid, tuple, t.xid, &search_info);
-  if (found) {
+  const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xid, &search_info);
+  if (found)
     return t.do_tuple_read(&this->underlying_btree, oid, tuple, value_reader);
-  } else {
-    return false;
-  }
+  return rc_t{RC_FALSE};
 }
 
 template <template <typename> class Transaction, typename P>
@@ -232,9 +230,9 @@ base_txn_btree<Transaction, P>::purge_tree_walker::on_node_failure()
 
 template <template <typename> class Transaction, typename P>
 template <typename Traits>
-void base_txn_btree<Transaction, P>::do_tree_put(
+rc_t base_txn_btree<Transaction, P>::do_tree_put(
     Transaction<Traits> &t,
-    const std::string *k,
+    const varstr *k,
     const typename P::Value *v,
     dbtuple::tuple_writer_t writer,
     bool expect_new)
@@ -284,16 +282,13 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   // (fall back to) with the normal update procedure.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
   if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, version, writer))
-		return;
+    return rc_t{RC_TRUE};
 
   // do regular search
   dbtuple * bv = 0;
   oid_type oid = 0;
-  if (!this->underlying_btree.search(varkey(*k), oid, bv, t.xid)) {
-    // only version is uncommitted -> cannot overwrite it
-    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-    t.signal_abort(r);
-  }
+  if (!this->underlying_btree.search(varkey(k), oid, bv, t.xid))
+    return rc_t{RC_ABORT};
 
   // After read the latest committed, and holding the version:
   // if the latest tuple in the chained is dirty then abort
@@ -312,6 +307,22 @@ void base_txn_btree<Transaction, P>::do_tree_put(
   dbtuple *prev = this->underlying_btree.update_version(oid, version, t.xid);
 
   if (prev) { // succeeded
+#ifdef USE_PARALLEL_SSI
+    // check if there's any in-flight readers of the overwritten tuple
+    // (will form an inbound r:w edge to me) ie, am I the T2 (pivot)
+    // with T1 in-flight and T3 committed first (ie, before T1, ie,
+    // prev's creator) in the dangerous structure?
+    xid_context* xc = xid_get_context(t.xid);
+    ASSERT(xc);
+    auto in_flight_readers = ssn_get_tuple_readers(prev, true);
+    if (in_flight_readers and xc->ct3 != ~0 and xc->ct3 <= volatile_read(prev->clsn).offset()) {
+        tls_ssn_ssi_abort_count++;
+        // unlink the version here (note abort_impl won't be able to catch
+        // it because it's not yet in the write set), same as in SSN impl.
+        this->underlying_btree.unlink_tuple(oid, tuple);
+        return rc_t{RC_ABORT_SSI};
+    }
+#endif
     object *prev_obj = (object *)((char *)prev - sizeof(object));
 #ifdef USE_PARALLEL_SSN
     // update hi watermark
@@ -330,7 +341,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
       // unlink the version here (note abort_impl won't be able to catch
       // it because it's not yet in the write set)
       this->underlying_btree.unlink_tuple(oid, tuple);
-      t.signal_abort(transaction_base::ABORT_REASON_SSN_EXCLUSION_FAILURE);
+      return rc_t{RC_ABORT_SSN_EXCLUSION};
     }
 #endif
 
@@ -357,7 +368,7 @@ void base_txn_btree<Transaction, P>::do_tree_put(
         ASSERT(key_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
         ASSERT(t.write_set[key_tuple].new_tuple == prev);
       }
-      RA::deallocate(prev_obj);
+      //RA::deallocate(prev_obj);
       ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
     }
     else {  // prev is committed (or precommitted but in post-commit now) head
@@ -377,15 +388,17 @@ void base_txn_btree<Transaction, P>::do_tree_put(
     // the record is tooooo large).
     auto record_size = align_up(sz);
     auto size_code = encode_size_aligned(record_size);
+    RCU::rcu_enter();
     t.log->log_update(1,
                       oid,
                       fat_ptr::make(tuple, size_code),
                       DEFAULT_ALIGNMENT_BITS,
                       NULL);
+    RCU::rcu_exit();
+    return rc_t{RC_TRUE};
   }
   else {  // somebody else acted faster than we did
-    const transaction_base::abort_reason r = transaction_base::ABORT_REASON_VERSION_INTERFERENCE;
-    t.signal_abort(r);
+    return rc_t{RC_ABORT_SI_CONFLICT};
   }
 }
 
@@ -418,9 +431,14 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x" << util::hexify(n)
                     << ", version=" << version << ">" << std::endl
                     << "  " << *((dbtuple *) v) << std::endl);
-  if (t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), o, v, *value_reader))
-    return caller_callback->invoke(
-        (*key_reader)(k), value_reader->results());
+  caller_callback->return_code = t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), o, v, *value_reader);
+  if (caller_callback->return_code._val == RC_TRUE)
+    return caller_callback->invoke((*key_reader)(k), value_reader->results());
+  else if (rc_is_abort(caller_callback->return_code))
+    return false;   // don't continue the read if the tx should abort
+                    // ^^^^^ note: see masstree_scan.hh, whose scan() calls
+                    // visit_value(), which calls this function to determine
+                    // if it should stop reading.
   return true;
 }
 
@@ -447,11 +465,11 @@ base_txn_btree<Transaction, P>::do_search_range_call(
                  << ", +inf)" << std::endl);
 
   typename P::KeyWriter lower_key_writer(&lower);
-  const std::string * const lower_str =
+  const varstr * const lower_str =
     lower_key_writer.fully_materialize(true, t.string_allocator());
 
   typename P::KeyWriter upper_key_writer(upper);
-  const std::string * const upper_str =
+  const varstr * const upper_str =
     upper_key_writer.fully_materialize(true, t.string_allocator());
 
   if (unlikely(upper_str && *upper_str <= *lower_str))
@@ -462,10 +480,10 @@ base_txn_btree<Transaction, P>::do_search_range_call(
 
   varkey uppervk;
   if (upper_str)
-    uppervk = varkey(*upper_str);
+    uppervk = varkey(upper_str);
   this->underlying_btree.search_range_call(
-      varkey(*lower_str), upper_str ? &uppervk : nullptr,
-      c, t.xid, t.string_allocator()());
+      varkey(lower_str), upper_str ? &uppervk : nullptr,
+      c, t.xid);
 }
 
 template <template <typename> class Transaction, typename P>
@@ -483,11 +501,11 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
   t.ensure_active();
 
   typename P::KeyWriter lower_key_writer(lower);
-  const std::string * const lower_str =
+  const varstr * const lower_str =
     lower_key_writer.fully_materialize(true, t.string_allocator());
 
   typename P::KeyWriter upper_key_writer(&upper);
-  const std::string * const upper_str =
+  const varstr * const upper_str =
     upper_key_writer.fully_materialize(true, t.string_allocator());
 
   if (unlikely(lower_str && *upper_str <= *lower_str))
@@ -498,10 +516,10 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
 
   varkey lowervk;
   if (lower_str)
-    lowervk = varkey(*lower_str);
+    lowervk = varkey(lower_str);
   this->underlying_btree.rsearch_range_call(
-      varkey(*upper_str), lower_str ? &lowervk : nullptr,
-      c,t.xid, t.string_allocator()());
+      varkey(upper_str), lower_str ? &lowervk : nullptr,
+      c,t.xid);
 }
 
 #endif /* _NDB_BASE_TXN_BTREE_H_ */

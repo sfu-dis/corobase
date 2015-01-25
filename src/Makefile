@@ -83,7 +83,7 @@ else
 endif
 
 CXXFLAGS := -Wall -std=c++0x -g
-CXXFLAGS += -MD -Ithird-party/lz4 -DCONFIG_H=\"$(CONFIG_H)\"
+CXXFLAGS += -MD -Ithird-party/lz4 -Ithird-party/sparsehash/src -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(TRACE_FOOTPRINT_S),1)
 	CXXFLAGS+=-DTRACE_FOOTPRINT
 endif
@@ -143,6 +143,7 @@ SRCFILES = allocator.cc \
 	core.cc \
 	counter.cc \
 	memory.cc \
+	object.cc \
 	rcu-wrapper.cc \
 	stats_server.cc \
 	thread.cc \
@@ -193,7 +194,8 @@ BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
 
 BENCH_SRCFILES = \
 	benchmarks/bench.cc \
-	benchmarks/encstress.cc \
+	benchmarks/tpcc.cc
+	#benchmarks/encstress.cc \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \

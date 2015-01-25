@@ -44,7 +44,7 @@ extern std::string (*g_proto_version_str)(uint64_t v);
 struct dbtuple {
 public:
   typedef uint32_t size_type;
-  typedef std::string string_type;
+  typedef varstr string_type;
 
   fat_ptr clsn;     // version creation stamp
 #ifdef USE_PARALLEL_SSN
@@ -52,6 +52,20 @@ public:
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
   uint64_t sstamp;         // successor (overwriter) stamp (\pi), updated when writer commits
   rl_bitmap_t rl_bitmap;   // bitmap of readers
+#endif
+#ifdef USE_PARALLEL_SSI
+  typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
+  uint64_t s1;  // successor of this version (ie the tx who updated this version)
+  uint64_t s2;  // smallest successor stamp of all reads performed by the tx
+                // that clobbered this version
+                // Consider a transaction T which clobbers this version, upon commit,
+                // T writes its cstamp in s1, and the smallest s1 among all its reads
+                // in s2 of this version. This basically means T has clobbered this
+                // version, and meantime, some other transaction C clobbered T's read.
+                // So [X] r:w T r:w C. If anyone reads this version again, it will
+                // become the X in the dangerous structure above and must abort.
+  uint64_t rstamp;  // access (reader) stamp, similar to the xstamp in ssn
+  rl_bitmap_t rl_bitmap;   // bitmap of in-flight readers
 #endif
   size_type size; // actual size of record
   uint8_t value_start[0];   // must be last field
@@ -72,9 +86,19 @@ private:
       , sstamp(0)
       , rl_bitmap(rl_bitmap_t(0))
 #endif
+#ifdef USE_PARALLEL_SSI
+      , s1(0)
+      , s2(0)
+      , rstamp(0)
+      , rl_bitmap(rl_bitmap_t(0))
+#endif
       , size(CheckBounds(size))
   {
+#ifdef USE_PARALLEL_SSN
+    // FIXME: seems this assumes some 8-byte alignment, which isn't the
+    // case when dbtuple is without those ssn-related fields.
     INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
+#endif
     ++g_evt_dbtuple_creates;
   }
 

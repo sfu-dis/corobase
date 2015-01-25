@@ -65,6 +65,9 @@ parse_memory_spec(const string &s)
 int
 main(int argc, char **argv)
 {
+#if defined(USE_PARALLEL_SSN) and defined(USE_PARALLEL_SSI)
+  static_assert(false, "SSI + SSN?");
+#endif
   abstract_db *db = NULL;
   void (*test_fn)(abstract_db *, int argc, char **argv) = NULL;
   string bench_type = "ycsb";
@@ -190,14 +193,14 @@ main(int argc, char **argv)
       abort();
     }
   }
-// FIXME: tzwang: don't bother for ycsb now
+// FIXME: tzwang: only keep tpcc for now
 /* if (bench_type == "ycsb")
     test_fn = ycsb_do_test;
   else */
   if (bench_type == "tpcc")
     test_fn = tpcc_do_test;
-  else if (bench_type == "tpce")
-    test_fn = tpce_do_test;
+//  else if (bench_type == "tpce")
+  //  test_fn = tpce_do_test;
   else
     ALWAYS_ASSERT(false);
 
@@ -349,6 +352,7 @@ main(int argc, char **argv)
     thread(&stats_server::serve_forever, srvr).detach();
   }
 
+  //RA::init();
   vector<string> bench_toks = split_ws(bench_opts);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];

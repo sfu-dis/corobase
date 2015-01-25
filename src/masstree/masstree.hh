@@ -88,8 +88,8 @@ class basic_table {
 
     inline void print(FILE* f = 0, int indent = 0) const;
 
-	typedef object_vector<value_type> tuple_vector_type; 
-	typedef object_vector<node_type*> node_vector_type; 
+	typedef object_vector tuple_vector_type;
+	typedef object_vector node_vector_type;
 
 	inline tuple_vector_type* get_tuple_vector()
 	{
@@ -135,8 +135,13 @@ class basic_table {
 			//xid tracking
 			auto holder_xid = XID::from_ptr(clsn);
             xid_context *holder= xid_get_context(holder_xid);
-            if (not holder)
-                return NULL;
+            if (not holder) {
+#if CHECK_INVARIANTS
+                auto t = volatile_read(version->clsn).asi_type();
+                ASSERT(t == fat_ptr::ASI_LOG or tuple_vector->begin(oid) != head);
+#endif
+                goto start_over;
+            }
 			INVARIANT(holder);
             auto state = volatile_read(holder->state);
 			auto owner = volatile_read(holder->owner);
@@ -248,6 +253,7 @@ install:
                 // the committed version read by the tx that's invoking
                 // this function. so this one must not be the rlsn that
                 // I'm trying to find.
+                prev_obj = cur_obj;
                 continue;
             }
 
@@ -327,8 +333,8 @@ install:
                 }
 
 				xid_context *holder = xid_get_context(holder_xid);
-                if (not holder) // invalid XID (dead tuple, either retry or goto next in the chain)
-                    continue;
+                if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
+                    goto start_over;
 
 				auto state = volatile_read(holder->state);
 				auto end = volatile_read(holder->end);
@@ -354,8 +360,10 @@ install:
 			}
 			else
 			{
+#ifndef USE_READ_COMMITTED
 				if( LSN::from_ptr(clsn) > visitor->begin ) 	// invisible
 					continue;
+#endif
 			}
         out:
             // try if we can trim
