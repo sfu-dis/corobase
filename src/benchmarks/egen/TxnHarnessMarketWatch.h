@@ -52,8 +52,9 @@ public:
     {
     };
 
-    void DoTxn(PMarketWatchTxnInput pTxnInput, PMarketWatchTxnOutput pTxnOutput)
+    bench_worker::txn_result DoTxn(PMarketWatchTxnInput pTxnInput, PMarketWatchTxnOutput pTxnOutput)
     {
+		bench_worker::txn_result ret;
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         if ( pTxnInput->acct_id != 0  ||
@@ -65,7 +66,8 @@ public:
             memset(&Frame1Output, 0, sizeof(Frame1Output));
 
             // Execute Frame 1
-            m_db->DoMarketWatchFrame1(pTxnInput, &Frame1Output);
+            ret = m_db->DoMarketWatchFrame1(pTxnInput, &Frame1Output);
+			if( not ret.first ) return ret;
 
             // Copy Frame 1 Output
             pTxnOutput->pct_change = Frame1Output.pct_change;
@@ -74,6 +76,7 @@ public:
         {
             TXN_HARNESS_PROPAGATE_STATUS(CBaseTxnErr::MWF1_ERROR1);
         }
+		return bench_worker::txn_result(true, 0);
     }
 };
 
