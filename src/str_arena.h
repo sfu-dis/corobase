@@ -1,24 +1,20 @@
 #pragma once
 
-#include <string>
 #include <memory>
 #include "small_vector.h"
+#include "varstr.h"
+#include "dbcore/sm-common.h"
 
 // XXX: str arena hardcoded now to handle at most 1024 strings
 class str_arena {
 public:
 
-  static const size_t PreAllocBufSize = 32678;
-  static const size_t NStrs = 32768;
-
+  static const uint64_t ReserveBytes = 8 * 1024 * 1024;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
-  static_assert(PreAllocBufSize >= MinStrReserveLength, "xx");
 
   str_arena()
-    : n(0)
   {
-    for (size_t i = 0; i < NStrs; i++)
-      strs[i].reserve(PreAllocBufSize);
+    reset();
   }
 
   // non-copyable/non-movable for the time being
@@ -30,70 +26,40 @@ public:
   reset()
   {
     n = 0;
-    overflow.clear();
+#if CHECK_INVARIANTS
+    memset(str, '\0', ReserveBytes);
+#endif
   }
 
   // next() is guaranteed to return an empty string
-  std::string *
-  next()
+  varstr *
+  next(uint64_t size)
   {
-    if (likely(n < NStrs)) {
-      std::string * const px = &strs[n++];
-      px->clear();
-      INVARIANT(manages(px));
-      return px;
-    }
-    // only loaders need this- and this allows us to use a unified
-    // str_arena for loaders/workers
-    overflow.emplace_back(new std::string);
-    ++n;
-    return overflow.back().get();
+    uint64_t off = n;
+    n += size + sizeof(varstr);
+    ALWAYS_ASSERT(n < ReserveBytes);
+    varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
+#if CHECK_INVARIANTS
+    ASSERT(ret->data()[0] == '\0');
+#endif
+    return ret;
   }
 
-  inline std::string *
-  operator()()
+  inline varstr *
+  operator()(uint64_t size)
   {
-    return next();
-  }
-
-  void
-  return_last(std::string *px)
-  {
-    INVARIANT(n > 0);
-    --n;
+    return next(size);
   }
 
   bool
-  manages(const std::string *px) const
+  manages(const varstr *px) const
   {
-    return manages_local(px) || manages_overflow(px);
+    return (char *)px >= str and
+           (uint64_t)px->data() + px->size() <= (uint64_t)str + n;
   }
 
 private:
-
-  bool
-  manages_local(const std::string *px) const
-  {
-    if (px < &strs[0])
-      return false;
-    if (px >= &strs[NStrs])
-      return false;
-    return 0 == ((reinterpret_cast<const char *>(px) -
-                  reinterpret_cast<const char *>(&strs[0])) % sizeof(std::string));
-  }
-
-  bool
-  manages_overflow(const std::string *px) const
-  {
-    for (auto &p : overflow)
-      if (p.get() == px)
-        return true;
-    return false;
-  }
-
-private:
-  std::string strs[NStrs];
-  std::vector<std::unique_ptr<std::string>> overflow;
+  char str[ReserveBytes];
   size_t n;
 };
 

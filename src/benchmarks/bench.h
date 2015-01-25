@@ -17,6 +17,7 @@
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/ssn.h"
 #include "../dbcore/sm-trace.h"
+#include "../dbcore/sm-rc.h"
 #include <stdio.h>
 #include <sys/mman.h> // Needed for mlockall()
 #include <malloc.h>
@@ -104,7 +105,7 @@ public:
   virtual void
   run()
   {
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
     assign_reader_bitmap_entry();
 #endif
 	  // XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
@@ -117,10 +118,16 @@ public:
     load();
 	RA::ra_deregister();
 	RCU::rcu_deregister();
-#ifdef USE_PARALLEL_SSN
+#if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
     deassign_reader_bitmap_entry();
 #endif
   }
+  inline ALWAYS_INLINE varstr &
+  str(uint64_t size)
+  {
+    return *arena.next(size);
+  }
+
 protected:
   inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
 
@@ -253,7 +260,8 @@ public:
   void run();
   void heap_prefault()
   {
-	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);		// 45G for 24 warehouses
+#ifndef CHECK_INVARIANTS
+	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*40);		// 45G for 24 warehouses
 	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
 	  ALWAYS_ASSERT(p);
       ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
@@ -266,7 +274,7 @@ public:
 	  std::cout<<"Major fault: " <<  usage.ru_majflt<< "Minor fault: " << usage.ru_minflt<< std::endl;
 
 	  free(p);
-
+#endif
   }
 protected:
   // only called once
@@ -295,14 +303,14 @@ public:
 
   virtual bool invoke(
       const char *keyp, size_t keylen,
-      const std::string &value)
+      const varstr &value)
   {
     INVARIANT(limit == -1 || n < size_t(limit));
-    values.emplace_back(std::string(keyp, keylen), value);
+    values.emplace_back(varstr(keyp, keylen), value);
     return (limit == -1) || (++n < size_t(limit));
   }
 
-  typedef std::pair<std::string, std::string> kv_pair;
+  typedef std::pair<varstr, varstr> kv_pair;
   std::vector<kv_pair> values;
 
   const ssize_t limit;
@@ -313,7 +321,7 @@ private:
 
 class latest_key_callback : public abstract_ordered_index::scan_callback {
 public:
-  latest_key_callback(std::string &k, ssize_t limit = -1)
+  latest_key_callback(varstr &k, ssize_t limit = -1)
     : limit(limit), n(0), k(&k)
   {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
@@ -321,21 +329,21 @@ public:
 
   virtual bool invoke(
       const char *keyp, size_t keylen,
-      const std::string &value)
+      const varstr &value)
   {
     INVARIANT(limit == -1 || n < size_t(limit));
-    k->assign(keyp, keylen);
+    k->copy_from(keyp, keylen);
     ++n;
     return (limit == -1) || (n < size_t(limit));
   }
 
   inline size_t size() const { return n; }
-  inline std::string &kstr() { return *k; }
+  inline varstr &kstr() { return *k; }
 
 private:
   ssize_t limit;
   size_t n;
-  std::string *k;
+  varstr *k;
 };
 
 // explicitly copies keys, because btree::search_range_call() interally
@@ -356,16 +364,16 @@ public:
 
   virtual bool invoke(
       const char *keyp, size_t keylen,
-      const std::string &value)
+      const varstr &value)
   {
     INVARIANT(n < N);
     INVARIANT(arena->manages(&value));
     if (ignore_key) {
       values.emplace_back(nullptr, &value);
     } else {
-      std::string * const s_px = arena->next();
-      INVARIANT(s_px && s_px->empty());
-      s_px->assign(keyp, keylen);
+      varstr * const s_px = arena->next(keylen);
+      INVARIANT(s_px);
+      s_px->copy_from(keyp, keylen);
       values.emplace_back(s_px, &value);
     }
     return ++n < N;
@@ -377,7 +385,7 @@ public:
     return values.size();
   }
 
-  typedef std::pair<const std::string *, const std::string *> kv_pair;
+  typedef std::pair<const varstr *, const varstr *> kv_pair;
   typename util::vec<kv_pair, N>::type values;
 
 private:
@@ -385,5 +393,45 @@ private:
   str_arena *arena;
   bool ignore_key;
 };
+
+#define __abort_txn \
+{   \
+  db->abort_txn(txn); \
+  return bench_worker::txn_result(false, 0); \
+}
+
+// NOTE: only use these in transaction benchmark (e.g., TPCC) code, not in engine code
+
+// reminescent the try...catch block:
+// if return code is one of those RC_ABORT* then abort
+#define try_catch(rc) \
+{ \
+  if (rc_is_abort(rc)) \
+    __abort_txn; \
+}
+
+// if rc == RC_FALSE then do op
+#define try_catch_cond(rc, op) \
+{ \
+  rc_t r = rc; \
+  if (rc_is_abort(r)) \
+    __abort_txn; \
+  if (r._val == RC_FALSE) \
+    op; \
+}
+
+#define try_catch_cond_abort(rc) try_catch_cond(rc, __abort_txn)
+
+// combines the try...catch block with ALWAYS_ASSERT
+// TODO: change to use rc_t by bits, i.e., set abort bit and
+// return value (true/false) bit, rather than use the whole int.
+// The rc_is_abort case is there because sometimes we want to make
+// sure say, a get, succeeds, but the read itsef could also cause
+// abort (by SSN).
+#define try_verify(oper) \
+{ \
+  rc_t rc = oper;   \
+  ALWAYS_ASSERT(rc._val == RC_TRUE or rc_is_abort(rc)); \
+}
 
 #endif /* _NDB_BENCH_H_ */

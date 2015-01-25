@@ -32,6 +32,15 @@ Encode(uint8_t *buf, const T &t)
 }
 
 template <typename T>
+static inline const varstr &
+Encode(varstr &s, const T &t)
+{
+  const encoder<T> enc;
+  enc.write(s.data(), &t);
+  return s;
+}
+
+template <typename T>
 static inline std::string &
 Encode(std::string &buf, const T &t)
 {
@@ -53,6 +62,14 @@ Decode(const char *buf, T &obj)
 {
   const encoder<T> enc;
   return enc.read(buf, &obj);
+}
+
+template <typename T>
+static inline const T *
+Decode(const varstr &str, T &obj)
+{
+  const encoder<T> enc;
+  return enc.read(str.data(), &obj);
 }
 
 template <typename T>

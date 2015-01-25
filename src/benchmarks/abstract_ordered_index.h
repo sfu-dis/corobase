@@ -8,6 +8,7 @@
 
 #include "../macros.h"
 #include "../str_arena.h"
+#include "../dbcore/sm-rc.h"
 
 /**
  * The underlying index manages memory for keys/values, but
@@ -23,10 +24,10 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. Returns true if found, false otherwise
    */
-  virtual bool get(
+  virtual rc_t get(
       void *txn,
-      const std::string &key,
-      std::string &value,
+      const varstr &key,
+      varstr &value,
       size_t max_bytes_read = std::string::npos) = 0;
 
   class scan_callback {
@@ -40,17 +41,17 @@ public:
     // we keep value as std::string b/c we have more control over how those
     // strings are generated
     virtual bool invoke(const char *keyp, size_t keylen,
-                        const std::string &value) = 0;
+                        const varstr &value) = 0;
   };
 
   /**
    * Search [start_key, *end_key) if end_key is not null, otherwise
    * search [start_key, +infty)
    */
-  virtual void scan(
+  virtual rc_t scan(
       void *txn,
-      const std::string &start_key,
-      const std::string *end_key,
+      const varstr &start_key,
+      const varstr *end_key,
       scan_callback &callback,
       str_arena *arena = nullptr) = 0;
 
@@ -59,10 +60,10 @@ public:
    * search (-infty, start_key] (starting at start_key and traversing
    * backwards)
    */
-  virtual void rscan(
+  virtual rc_t rscan(
       void *txn,
-      const std::string &start_key,
-      const std::string *end_key,
+      const varstr &start_key,
+      const varstr *end_key,
       scan_callback &callback,
       str_arena *arena = nullptr) = 0;
 
@@ -80,18 +81,18 @@ public:
    * returned is guaranteed to be valid memory until the key associated with
    * value is overriden.
    */
-  virtual const char *
+  virtual rc_t
   put(void *txn,
-      const std::string &key,
-      const std::string &value) = 0;
+      const varstr &key,
+      const varstr &value) = 0;
 
-  virtual const char *
+  virtual rc_t
   put(void *txn,
-      std::string &&key,
-      std::string &&value)
+      varstr &&key,
+      varstr &&value)
   {
-    return put(txn, static_cast<const std::string &>(key),
-                    static_cast<const std::string &>(value));
+    return put(txn, static_cast<const varstr &>(key),
+                    static_cast<const varstr &>(value));
   }
 
   /**
@@ -102,38 +103,38 @@ public:
    *
    * Default implementation calls put(). See put() for meaning of return value.
    */
-  virtual const char *
+  virtual rc_t
   insert(void *txn,
-         const std::string &key,
-         const std::string &value)
+         const varstr &key,
+         const varstr &value)
   {
     return put(txn, key, value);
   }
 
-  virtual const char *
+  virtual rc_t
   insert(void *txn,
-         std::string &&key,
-         std::string &&value)
+         varstr &&key,
+         varstr &&value)
   {
-    return insert(txn, static_cast<const std::string &>(key),
-                       static_cast<const std::string &>(value));
+    return insert(txn, static_cast<const varstr &>(key),
+                       static_cast<const varstr &>(value));
   }
 
   /**
    * Default implementation calls put() with NULL (zero-length) value
    */
-  virtual void remove(
+  virtual rc_t remove(
       void *txn,
-      const std::string &key)
+      const varstr &key)
   {
-    put(txn, key, "");
+    return put(txn, key, varstr());
   }
 
-  virtual void remove(
+  virtual rc_t remove(
       void *txn,
-      std::string &&key)
+      varstr &&key)
   {
-    remove(txn, static_cast<const std::string &>(key));
+    return remove(txn, static_cast<const varstr &>(key));
   }
 
   /**
