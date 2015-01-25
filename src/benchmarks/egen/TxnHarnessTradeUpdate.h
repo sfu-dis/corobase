@@ -56,8 +56,9 @@ public:
     {
     };
 
-    void DoTxn( PTradeUpdateTxnInput pTxnInput, PTradeUpdateTxnOutput pTxnOutput )
+    bench_worker::txn_result DoTxn( PTradeUpdateTxnInput pTxnInput, PTradeUpdateTxnOutput pTxnOutput )
     {
+		bench_worker::txn_result ret;
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         switch( pTxnInput->frame_to_execute )
@@ -76,6 +77,7 @@ public:
 
             // Execute Frame 1
             m_db->DoTradeUpdateFrame1( &Frame1Input, &Frame1Output );
+			if( not ret.first ) return ret;
 
             // Validate Frame 1 Output
             if (   Frame1Output.num_found != pTxnInput->max_trades
@@ -112,6 +114,7 @@ public:
 
             // Execute Frame 2
             m_db->DoTradeUpdateFrame2( &Frame2Input, &Frame2Output );
+			if( not ret.first ) return ret;
 
             /* valid relationships           */
             /* 1) num_found   <= max_trades  */
@@ -162,6 +165,7 @@ public:
 
             // Execute Frame 3
             m_db->DoTradeUpdateFrame3( &Frame3Input, &Frame3Output );
+			if( not ret.first ) return ret;
 
             /* valid relationships           */
             /* 1) num_found   <= max_trades  */
@@ -202,6 +206,7 @@ public:
             assert( false );
             break;
         }
+		return bench_worker::txn_result(true, 0);
     }
 };
 

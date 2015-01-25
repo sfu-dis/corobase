@@ -52,11 +52,13 @@ public:
     {
     }
 
-    void DoTxn( PTradeCleanupTxnInput pTxnInput, PTradeCleanupTxnOutput pTxnOutput)
+    bench_worker::txn_result DoTxn( PTradeCleanupTxnInput pTxnInput, PTradeCleanupTxnOutput pTxnOutput)
     {
+		bench_worker::txn_result ret;
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
-        m_db->DoTradeCleanupFrame1(pTxnInput);
+        ret = m_db->DoTradeCleanupFrame1(pTxnInput);
+		return ret;
     }
 };
 

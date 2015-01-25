@@ -199,8 +199,8 @@ main(int argc, char **argv)
   else */
   if (bench_type == "tpcc")
     test_fn = tpcc_do_test;
-//  else if (bench_type == "tpce")
-  //  test_fn = tpce_do_test;
+  else if (bench_type == "tpce")
+    test_fn = tpce_do_test;
   else
     ALWAYS_ASSERT(false);
 

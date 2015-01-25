@@ -194,12 +194,12 @@ BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
 
 BENCH_SRCFILES = \
 	benchmarks/bench.cc \
+	benchmarks/tpce.cc	\
 	benchmarks/tpcc.cc
 	#benchmarks/encstress.cc \
 	benchmarks/bid.cc \
 	benchmarks/masstree/kvrandom.cc \
 	benchmarks/queue.cc \
-	benchmarks/tpce.cc	\
 	benchmarks/tpcc.cc	
 
 EGEN_SRCFILES = \
