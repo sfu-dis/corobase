@@ -445,7 +445,7 @@ class tpce_worker :
 		{
 			TMarketFeedTxnInput* input= MarketFeedInputBuffer->get();
 			if( not input )
-				return txn_result(false, 0);		// XXX. do we have to do this? MFQueue is empty, meaning no Trade-order submitted yet
+				return txn_result(true, 0);		// XXX. do we have to do this? MFQueue is empty, meaning no Trade-order submitted yet
 
 			TMarketFeedTxnOutput output;
 			CMarketFeed* harness= new CMarketFeed(this, this);
@@ -629,7 +629,7 @@ class tpce_worker :
 			CTradeUpdate* harness= new CTradeUpdate(this);
 
 			try{
-//				harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
+				harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
 			} catch (abstract_db::abstract_abort_exception &ex) {
 				db->abort_txn(txn);
 				return txn_result(false, 0);
@@ -687,9 +687,6 @@ class tpce_worker :
 		virtual workload_desc_vec
 			get_workload() const
 			{
-
-//static double g_txn_workload_mix[] = { 4.9, 13, 1, 18, 14, 8, 10.1, 10, 19, 2 }; 
-
 				workload_desc_vec w;
 				double m = 0;
 				for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
@@ -3008,10 +3005,10 @@ void tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
 	for( int i = 0; i < pIn->max_trades and i < t_scanner.output.size(); i++ )
 	{
 		auto &r_t = t_scanner.output[i];
-		trade::key k_t_temp;
-		trade::value v_t_temp;
-		const trade::key* k_t = Decode( *r_t.first, k_t_temp );
-		const trade::value* v_t = Decode( *r_t.second, v_t_temp );
+		t_ca_id_index::key k_t_temp;
+		t_ca_id_index::value v_t_temp;
+		const t_ca_id_index::key* k_t = Decode( *r_t.first, k_t_temp );
+		const t_ca_id_index::value* v_t = Decode( *r_t.second, v_t_temp );
 
 		pOut->trade_info[i].bid_price = v_t->t_bid_price;
 		memcpy(pOut->trade_info[i].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
