@@ -1,10 +1,27 @@
-#include "ssn.h"
+#include "serial.h"
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 namespace TXN {
 
+/* Versions with more than 2.5 billion LSN delta from current are
+   "old" and treated as read-mode. Readers do not apply SSN to these
+   tuples, and writers (expected to be rare) must assume that the
+   tuple has been read by a transaction that committed just before the
+   writer. The upside is that readers pay vastly less than normal; the
+   downside is this effectively means that any transaction that
+   overwrites an old version cannot read under other committed
+   overwrites: any meaningful sstamp would violate the exclusion
+   window.
+ */
+#ifdef USE_PARALLEL_SSN
+//int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
+//int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
+//int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
+int64_t OLD_VERSION_THRESHOLD = 0;
+#endif
+
 // for SSN if USE_PARALLEL_SSN, for SSI if USE_PARALLEL_SSI
-uint64_t ssn_ssi_abort_count = 0;
-uint64_t __thread tls_ssn_ssi_abort_count;
+uint64_t serial_abort_count = 0;
+uint64_t __thread tls_serial_abort_count;
 
 readers_list rlist;
 
@@ -44,23 +61,23 @@ void deassign_reader_bitmap_entry() {
     ALWAYS_ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
     __sync_fetch_and_xor(&claimed_bitmap_entries, tls_bitmap_entry);
     tls_bitmap_entry = 0;
-    summarize_ssn_ssi_aborts();
+    summarize_serial_aborts();
 }
 
-void summarize_ssn_ssi_aborts()
+void summarize_serial_aborts()
 {
-    __sync_fetch_and_add(&ssn_ssi_abort_count, tls_ssn_ssi_abort_count);
+    __sync_fetch_and_add(&serial_abort_count, tls_serial_abort_count);
     if (not claimed_bitmap_entries) {
 #ifdef USE_PARALLEL_SSN
-        printf("--- SSN aborts: %lu\n", ssn_ssi_abort_count);
+        printf("--- SSN aborts: %lu\n", serial_abort_count);
 #else
-        printf("--- SSI aborts: %lu\n", ssn_ssi_abort_count);
+        printf("--- SSI aborts: %lu\n", serial_abort_count);
 #endif
     }
 }
 
 bool
-ssn_register_reader_tx(dbtuple *t, XID xid)
+serial_register_reader_tx(dbtuple *t, XID xid)
 {
     rl_bitmap_t old_bitmap = volatile_read(t->rl_bitmap);
     if (old_bitmap & tls_bitmap_entry)
@@ -73,7 +90,7 @@ ssn_register_reader_tx(dbtuple *t, XID xid)
 }
 
 void
-ssn_deregister_reader_tx(dbtuple *t)
+serial_deregister_reader_tx(dbtuple *t)
 {
     ASSERT(tls_bitmap_entry);
     __sync_fetch_and_xor(&t->rl_bitmap, tls_bitmap_entry);
@@ -81,14 +98,14 @@ ssn_deregister_reader_tx(dbtuple *t)
 
 // register tx in the global rlist (called at tx start)
 void
-ssn_register_tx(XID xid)
+serial_register_tx(XID xid)
 {
     volatile_write(rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val, xid._val);
 }
 
 // deregister tx in the global rlist (called at tx end)
 void
-ssn_deregister_tx(XID xid)
+serial_deregister_tx(XID xid)
 {
     volatile_write(rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val, 0);
 }

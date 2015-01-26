@@ -248,17 +248,9 @@ main(int argc, char **argv)
     db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
     transaction_proto2_static::set_hack_status(true);
     ALWAYS_ASSERT(transaction_proto2_static::get_hack_status());
-#ifdef PROTO2_CAN_DISABLE_GC
-    if (!disable_gc)
-      transaction_proto2_static::InitGC();
-#endif
   } else if (db_type == "ndb-proto2") {
     db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
     ALWAYS_ASSERT(!transaction_proto2_static::get_hack_status());
-#ifdef PROTO2_CAN_DISABLE_GC
-    if (!disable_gc)
-      transaction_proto2_static::InitGC();
-#endif
   } 
   // FIXME: tzwang: don't bother other benches for now...
   /*

@@ -169,7 +169,7 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/w_rand.cpp \
 	dbcore/size-encode.cpp \
 	dbcore/xid.cpp		\
-	dbcore/ssn.cpp	\
+	dbcore/serial.cpp	\
 	dbcore/dynarray.cpp
 
 ifeq ($(TRACE_FOOTPRINT_S),1)
@@ -292,12 +292,6 @@ test: $(O)/test
 
 $(O)/test: $(O)/test.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) third-party/lz4/liblz4.so
 	$(CXX) -o $(O)/test $^ $(LDFLAGS) $(LZ4LDFLAGS)
-
-.PHONY: persist_test
-persist_test: $(O)/persist_test
-
-$(O)/persist_test: $(O)/persist_test.o third-party/lz4/liblz4.so
-	$(CXX) -o $(O)/persist_test $(O)/persist_test.o  $(LDFLAGS) $(LZ4LDFLAGS)
 
 .PHONY: stats_client
 stats_client: $(O)/stats_client
