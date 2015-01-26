@@ -38,9 +38,9 @@
 %
 % For tracking purposes - this is V1.9 - April 2009
 
-\documentclass{sig-alternate}
+%%\documentclass{sig-alternate}
 %%\documentclass[letter]{sig-alternate}
-%%\documentclass{vldb}
+\documentclass{vldb}
 
 \usepackage{microtype}
 
@@ -49,7 +49,7 @@
 \usepackage[usenames,dvipsnames]{color}
 \usepackage[numbers,sort]{natbib}
 \usepackage{verbatim}
-
+%\newcommand{\newblock}{} 
 % allow code listings with line numbering
 \usepackage{listings}
 %define how inlined source code should be displayed
@@ -77,7 +77,7 @@ morekeywords={}
 \usepackage[hang,splitrule]{footmisc}
 \setlength{\footnotemargin}{1em}
 
-\def\thepapertitle{ERMIA: An architecture for fast and robust memory-optimized OLTP} 
+\def\thepapertitle{ERMIA: An architecture for fast and robust memory-optimized OLTP}
 \def\thepaperkeywords{Indirection array, Epoch-based, OLTP, Concurrency control}
   
 % must import before hyperref (and algorithm, which imports it, must come after)
@@ -244,18 +244,11 @@ morekeywords={}
 
 
 \begin{document}
-%
-% --- Author Metadata here ---
-\conferenceinfo{7th Biennial Conference on Innovative Data Systems Research (CIDR'15)}{January 4-7, 2015, Asilomar, California, USA.}
-%% \conferenceinfo{CIDR'13,}{Jan 6--9, Asilomar, CA, U.S.A.}
-%% \CopyrightYear{2013}
-%% \crdata{978-1-4503-1429-9/13/01}
-% --- End of Author Metadata ---
-
 \title{\thepapertitle}
 
 \numberofauthors{1}
 \author{
+\alignauthor
 Kangnyeon Kim
 ~~
 Tianzheng Wang
@@ -268,10 +261,12 @@ $
 \begin{array}{cc}
   \mbox{\affaddr{University of Toronto}} &
   \mbox{$^\star$\affaddr{Cloudera}}\\
-  \email{{\large \sf {knkim,tzwang,ryan.johnson}@cs.utoronto.ca}} &
-  \email{{\large \sf ippokratis@cloudera.com}}
+  \mbox{{\large \sf {knkim,tzwang,ryan.johnson}@cs.utoronto.ca}} &
+  \mbox{{\large \sf ippokratis@cloudera.com}}
 \end{array}
 $
+\\
+\tianzheng{(ERMIA: )Fast and robust main-memory databases? feel the title is a bit long}
 }
 
 \maketitle
@@ -289,8 +284,8 @@ $
 
 %% IP: We should paste the .bbl here for the camera-ready
 \bibliographystyle{abbrv}
-%% \bibliographystyle{acm-custom}
-\setlength{\bibsep}{4pt}
+%%\bibliographystyle{acm-custom}
+%\setlength{\bibsep}{4pt}
 {\small  %\scriptsize % no need for big print here...
 \bibliography{../common/biblio}
 }
