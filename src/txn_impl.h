@@ -403,7 +403,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   for (auto &r : read_set) {
     if (write_set[r.tuple].btr)
       continue;
-    auto tuple_s1 = volatile_read(r.tuple->s1);
+    auto tuple_s1 = volatile_read(r.tuple->sstamp);
     if (not tuple_s1) {
       // need to see if there's any overwritter (if so also its state)
       dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.oid,
@@ -430,7 +430,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
       }
       else {    // already committed, re-read tuple's s1
         if (tuple_s1 >= xc->begin.offset())
-          tuple_s1 = volatile_read(r.tuple->s1);
+          tuple_s1 = volatile_read(r.tuple->sstamp);
       }
     }
     if (tuple_s1 and (not min_read_s1 or min_read_s1 > tuple_s1))
@@ -440,7 +440,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
 
   // now see if I'm the unlucky T2
   if (min_read_s1) {
-    uint64_t max_rstamp = 0;
+    uint64_t max_xstamp = 0;
     for (auto &w : write_set) {
       dbtuple *overwritten_tuple = w.first;
       if (not w.second.btr)
@@ -448,18 +448,18 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
       // abort if there's any in-flight reader of this tuple or
       // if someone has read the tuple after someone else clobbered it...
       if (ssn_get_tuple_readers(overwritten_tuple, true)) {
-        tls_ssn_ssi_abort_count++;
+        tls_serial_abort_count++;
         return rc_t{RC_ABORT_SSI};
       }
       else {
-        // find the latest reader (ie, largest rstamp of tuples I clobber)
-        // FIXME: tuple_rstamp > xc->begin, correct? ie the read should
+        // find the latest reader (ie, largest xstamp of tuples I clobber)
+        // FIXME: tuple_xstamp > xc->begin, correct? ie the read should
         // have happened after i started
-        auto tuple_rstamp = volatile_read(overwritten_tuple->rstamp);
-        if (tuple_rstamp > xc->begin.offset() and max_rstamp < tuple_rstamp)
-          max_rstamp = tuple_rstamp;
-        if (max_rstamp >= min_read_s1 and xc->ct3 != ~0) {
-          tls_ssn_ssi_abort_count++;
+        auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
+        if (tuple_xstamp > xc->begin.offset() and max_xstamp < tuple_xstamp)
+          max_xstamp = tuple_xstamp;
+        if (max_xstamp >= min_read_s1 and xc->ct3 != ~0) {
+          tls_serial_abort_count++;
           return rc_t{RC_ABORT_SSI};
         }
       }
@@ -479,7 +479,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     dbtuple *overwritten_tuple = w.first;
     if (not w.second.btr)
       continue;
-    volatile_write(overwritten_tuple->s1, cstamp);
+    volatile_write(overwritten_tuple->sstamp, cstamp);
     if (min_read_s1 > overwritten_tuple->s2)   // correct?
       volatile_write(overwritten_tuple->s2, min_read_s1);
     dbtuple* tuple = w.second.new_tuple;
@@ -487,15 +487,15 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
 
-  // update rstamps in read versions
+  // update xstamps in read versions
   for (auto &r : read_set) {
     if (write_set[r.tuple].btr) // correct?
       continue;
-    uint64_t rstamp;
+    uint64_t xstamp;
     do {
-      rstamp = volatile_read(r.tuple->rstamp);
+      xstamp = volatile_read(r.tuple->xstamp);
     }
-    while (rstamp < cstamp and not __sync_bool_compare_and_swap(&r.tuple->rstamp, rstamp, cstamp));
+    while (xstamp < cstamp and not __sync_bool_compare_and_swap(&r.tuple->xstamp, xstamp, cstamp));
     serial_deregister_reader_tx(r.tuple);
   }
   return rc_t{RC_TRUE};
@@ -667,16 +667,16 @@ transaction<Protocol, Traits>::do_tuple_read(
     ASSERT(xc);
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
-      ASSERT(tuple->s1);    // s1 will be valid too if s2 is valid
+      ASSERT(tuple->sstamp);    // s1 will be valid too if s2 is valid
       // read-only optimization: if we're read-only and we started before tuple->s2
-      if (tuple->s1 > xc->begin.offset() and
+      if (tuple->sstamp > xc->begin.offset() and
           (write_set.size() or xc->begin.offset() >= tuple->s2)) {
-        tls_ssn_ssi_abort_count++;
+        tls_serial_abort_count++;
         return rc_t{RC_ABORT_SSI};
       }
     }
 
-    uint64_t tuple_s1 = volatile_read(tuple->s1);
+    uint64_t tuple_s1 = volatile_read(tuple->sstamp);
     // see if there was a guy with cstamp=tuple_s1 who overwrote this version
     if (tuple_s1 and tuple_s1 >= xc->begin.offset()) { // I'm T2
       // remember the smallest s1 so that I can re-check at precommit

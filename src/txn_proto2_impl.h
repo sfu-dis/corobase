@@ -6,13 +6,10 @@
 #include <vector>
 #include <set>
 
-#include <lz4.h>
-
 #include "txn.h"
 #include "txn_impl.h"
 #include "txn_btree.h"
 #include "macros.h"
-#include "circbuf.h"
 #include "spinbarrier.h"
 #include "record/serializer.h"
 
