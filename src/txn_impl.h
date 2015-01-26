@@ -9,23 +9,6 @@
 
 using namespace TXN;
 
-/* Versions with more than 2.5 billion LSN delta from current are
-   "old" and treated as read-mode. Readers do not apply SSN to these
-   tuples, and writers (expected to be rare) must assume that the
-   tuple has been read by a transaction that committed just before the
-   writer. The upside is that readers pay vastly less than normal; the
-   downside is this effectively means that any transaction that
-   overwrites an old version cannot read under other committed
-   overwrites: any meaningful sstamp would violate the exclusion
-   window.
- */
-#ifdef USE_PARALLEL_SSN
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
-//static int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
-static int64_t constexpr OLD_VERSION_THRESHOLD = 0;
-#endif
-
 // base definitions
 
 template <template <typename> class Protocol, typename Traits>
@@ -37,7 +20,7 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   concurrent_btree::NodeLockRegionBegin();
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  ssn_register_tx(xid);
+  serial_register_tx(xid);
 #endif
   xid_context *xc = xid_get_context(xid);
   write_set.set_empty_key(NULL);    // google dense map
@@ -60,7 +43,7 @@ transaction<Protocol, Traits>::~transaction()
   concurrent_btree::AssertAllNodeLocksReleased();
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  ssn_deregister_tx(xid);
+  serial_deregister_tx(xid);
 #endif
   xid_free(xid);
   //write_set.clear();
@@ -89,7 +72,7 @@ transaction<Protocol, Traits>::abort_impl()
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     ASSERT(r.tuple == r.btr->fetch_committed_version_at(r.oid, xid, LSN::from_ptr(r.tuple->clsn)));
     // remove myself from reader list
-    ssn_deregister_reader_tx(r.tuple);
+    serial_deregister_reader_tx(r.tuple);
   }
 #endif
 
@@ -143,7 +126,7 @@ transaction<Protocol, Traits>::dump_debug_info() const
 {
   std::cerr << "Transaction (obj=" << util::hexify(this) << ") -- state "
        << transaction_state_to_cstr(state()) << std::endl;
-  std::cerr << "  Abort Reason: " << AbortReasonStr(reason) << std::endl;
+  //std::cerr << "  Abort Reason: " << AbortReasonStr(reason) << std::endl;
   std::cerr << "  Flags: " << transaction_flags_to_str(flags) << std::endl;
 }
 
@@ -378,7 +361,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
     }
     while (xlsn < cstamp and not __sync_bool_compare_and_swap(&r.tuple->xstamp, xlsn, cstamp));
     // remove myself from readers set, so others won't see "invalid XID" while enumerating readers
-    ssn_deregister_reader_tx(r.tuple);
+    serial_deregister_reader_tx(r.tuple);
   }
   return rc_t{RC_TRUE};
 }
@@ -513,7 +496,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
       rstamp = volatile_read(r.tuple->rstamp);
     }
     while (rstamp < cstamp and not __sync_bool_compare_and_swap(&r.tuple->rstamp, rstamp, cstamp));
-    ssn_deregister_reader_tx(r.tuple);
+    serial_deregister_reader_tx(r.tuple);
   }
   return rc_t{RC_TRUE};
 }
@@ -662,7 +645,7 @@ transaction<Protocol, Traits>::do_tuple_read(
       // already read a (then latest) version, then T2 comes to overwrite it).
       auto tuple_sstamp = volatile_read(tuple->sstamp);
       if (not tuple_sstamp) {   // no overwrite so far
-        if (ssn_register_reader_tx(tuple, xid))
+        if (serial_register_reader_tx(tuple, xid))
             read_set.emplace_back(tuple, btr_ptr, oid);
       }
       else if (xc->sstamp > tuple_sstamp)
@@ -702,7 +685,7 @@ transaction<Protocol, Traits>::do_tuple_read(
     }
 
     // survived, register as a reader and add to read set
-    if (ssn_register_reader_tx(tuple, xid))
+    if (serial_register_reader_tx(tuple, xid))
       read_set.emplace_back(tuple, btr_ptr, oid);
   }
 #endif

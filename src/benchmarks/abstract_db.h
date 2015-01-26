@@ -46,27 +46,6 @@ public:
   virtual size_t
   sizeof_txn_object(uint64_t txn_flags) const { NDB_UNIMPLEMENTED("sizeof_txn_object"); };
 
-  /**
-   * XXX(stephentu): hack
-   */
-  virtual void do_txn_epoch_sync() const {}
-
-  /**
-   * XXX(stephentu): hack
-   */
-  virtual void do_txn_finish() const {}
-
-  /** loader should be used as a performance hint, not for correctness */
-  virtual void thread_init(bool loader) {}
-
-  virtual void thread_end() {}
-
-  // [ntxns_persisted, ntxns_committed, avg latency]
-  virtual std::tuple<uint64_t, uint64_t, double>
-    get_ntxn_persisted() const { return std::make_tuple(0, 0, 0.0); }
-
-  virtual void reset_ntxn_persisted() { }
-
   enum TxnProfileHint {
     HINT_DEFAULT,
 

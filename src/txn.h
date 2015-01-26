@@ -18,7 +18,7 @@
 
 #include <unordered_map>
 #include "dbcore/xid.h"
-#include "dbcore/ssn.h"
+#include "dbcore/serial.h"
 #include "dbcore/sm-log.h"
 #include "dbcore/sm-trace.h"
 #include "dbcore/sm-rc.h"
@@ -50,8 +50,8 @@ using namespace TXN;
 template <template <typename> class Transaction, typename P>
   class base_txn_btree;
 
-class transaction_unusable_exception {};
-class transaction_read_only_exception {};
+//class transaction_unusable_exception {};
+//class transaction_read_only_exception {};
 
 // XXX: hacky
 extern std::string (*g_proto_version_str)(uint64_t v);
@@ -115,9 +115,8 @@ public:
     return 0;
   }
 
-  // FIXME: tzwang: allocate td here
   transaction_base(uint64_t flags)
-    : reason(ABORT_REASON_NONE),
+    : /*reason(ABORT_REASON_NONE),*/
       flags(flags) {}
 
   transaction_base(const transaction_base &) = delete;
@@ -169,7 +168,7 @@ protected:
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
 
-  abort_reason reason;
+  //abort_reason reason;
   const uint64_t flags;
 };
 
@@ -350,7 +349,7 @@ public:
   }
 
   void dump_debug_info() const;
-
+/*
 #ifdef DIE_ON_ABORT
   void
   abort_trap(abort_reason reason)
@@ -367,7 +366,7 @@ public:
     AbortReasonCounter(reason)->inc();
   }
 #endif
-
+*/
 protected:
   void abort_impl();
 
@@ -409,6 +408,7 @@ protected:
   write_set_map write_set;
 };
 
+/*
 class transaction_abort_exception : public std::exception {
 public:
   transaction_abort_exception(transaction_base::abort_reason r)
@@ -426,5 +426,5 @@ public:
 private:
   transaction_base::abort_reason r;
 };
-
+*/
 #endif /* _NDB_TXN_H_ */

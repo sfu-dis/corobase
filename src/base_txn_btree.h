@@ -14,14 +14,6 @@
 
 using namespace TXN;
 
-// each Transaction implementation should specialize this for special
-// behavior- the default implementation is just nops
-template <template <typename> class Transaction>
-struct base_txn_btree_handler {
-  static inline void on_construct() {} // called when initializing
-  //static const bool has_background_task = false;
-};
-
 template <template <typename> class Transaction, typename P>
 class base_txn_btree {
 public:
@@ -37,7 +29,6 @@ public:
       name(name),
       been_destructed(false)
   {
-    base_txn_btree_handler<Transaction>::on_construct();
 	//RA::register_table(&underlying_btree, name);		// Register to GC system 
 #ifdef TRACE_FOOTPRINT
     TRACER::register_table((uintptr_t)underlying_btree.get_tuple_vector(), name);
