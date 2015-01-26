@@ -1,3 +1,7 @@
+ERMIA
+-----
+Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
+
 Choosing CC schemes
 ===================
 Currently we support RC, SI, SSI, and SI/RC + SSN (with/without read optimization)
@@ -53,7 +57,8 @@ Useful options:
 
 7. TPC-C specific options: specify with -o "[options]" (with double quotes)
    (1) --warehouse-spread=[s], chance of choosing a random warehouse = s%, 0 <= s <= 100
-   (2) --workload-mix="[% of NewOrder,Payment,CreditCheck,Delivery,OrderStatus,Microbenchmark,Microbenchmark-simple,Microbenchmark-random]" (with double quotes).
+   (2) --80-20-dist, focus 80% of accesses on 20% of warehouses; ignores --warehouse-spread
+   (3) --workload-mix="[% of NewOrder,Payment,CreditCheck,Delivery,OrderStatus,Microbenchmark,Microbenchmark-simple,Microbenchmark-random]" (with double quotes).
        * TPC-C and TPC-C++: the "microbenchmark*" percents should be 0.
          For example, to run standard TPC-C mix, give:
            --workload-mix="45,43,0,4,4,4,0,0,0".
