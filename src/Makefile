@@ -83,7 +83,7 @@ else
 endif
 
 CXXFLAGS := -Wall -std=c++0x -g
-CXXFLAGS += -MD -Ithird-party/lz4 -Ithird-party/sparsehash/src -DCONFIG_H=\"$(CONFIG_H)\"
+CXXFLAGS += -MD -Ithird-party/sparsehash/src -DCONFIG_H=\"$(CONFIG_H)\"
 ifeq ($(TRACE_FOOTPRINT_S),1)
 	CXXFLAGS+=-DTRACE_FOOTPRINT
 endif
@@ -112,8 +112,6 @@ LDFLAGS := -lpthread -lnuma -lrt -static-libstdc++
 #ifeq ($(DEBUG_S),1)
 #LDFLAGS += -lasan
 #endif
-
-LZ4LDFLAGS := -Lthird-party/lz4 -llz4 -Wl,-rpath,$(TOP)/third-party/lz4
 
 GPERFTOOLS :=
 
@@ -190,7 +188,7 @@ MASSTREE_OBJFILES := $(patsubst masstree/%.cc, $(O)/%.o, $(MASSTREE_SRCFILES))
 DBCORE_OBJFILES := $(patsubst dbcore/%.cpp, $(O)/dbcore/%.o, $(DBCORE_SRCFILES))
 
 BENCH_CXXFLAGS := $(CXXFLAGS)
-BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lz -lrt -lcrypt -laio -ldl -lssl -lcrypto
+BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lrt -lcrypt -laio -ldl -lssl -lcrypto
 
 BENCH_SRCFILES = \
 	benchmarks/bench.cc \
@@ -280,9 +278,6 @@ $(MASSTREE_OBJFILES) : $(O)/%.o: masstree/%.cc masstree/config.h
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -include masstree/config.h -c $< -o $@
 
-third-party/lz4/liblz4.so:
-	make -C third-party/lz4 library
-
 $(DBCORE_OBJFILES) : $(O)/dbcore/%.o: dbcore/%.cpp $(OBJDEP)
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -290,8 +285,8 @@ $(DBCORE_OBJFILES) : $(O)/dbcore/%.o: dbcore/%.cpp $(OBJDEP)
 .PHONY: test
 test: $(O)/test
 
-$(O)/test: $(O)/test.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) third-party/lz4/liblz4.so
-	$(CXX) -o $(O)/test $^ $(LDFLAGS) $(LZ4LDFLAGS)
+$(O)/test: $(O)/test.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES)
+	$(CXX) -o $(O)/test $^ $(LDFLAGS)
 
 .PHONY: stats_client
 stats_client: $(O)/stats_client
@@ -310,8 +305,8 @@ masstree/configure masstree/config.h.in: masstree/configure.ac
 .PHONY: dbtest
 dbtest: $(O)/benchmarks/dbtest
 
-$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) $(EGEN_OBJFILES) third-party/lz4/liblz4.so
-	$(CXX) -o $(O)/benchmarks/dbtest $^ $(BENCH_LDFLAGS) $(LZ4LDFLAGS)
+$(O)/benchmarks/dbtest: $(O)/benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(BENCH_OBJFILES) $(EGEN_OBJFILES)
+	$(CXX) -o $(O)/benchmarks/dbtest $^ $(BENCH_LDFLAGS)
 
 .PHONY: kvtest
 kvtest: $(O)/benchmarks/masstree/kvtest
@@ -322,8 +317,8 @@ $(O)/benchmarks/masstree/kvtest: $(O)/benchmarks/masstree/kvtest.o $(OBJFILES) $
 .PHONY: newdbtest
 newdbtest: $(O)/new-benchmarks/dbtest
 
-$(O)/new-benchmarks/dbtest: $(O)/new-benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(NEWBENCH_OBJFILES) third-party/lz4/liblz4.so
-	$(CXX) -o $(O)/new-benchmarks/dbtest $^ $(LDFLAGS) $(LZ4LDFLAGS)
+$(O)/new-benchmarks/dbtest: $(O)/new-benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(NEWBENCH_OBJFILES)
+	$(CXX) -o $(O)/new-benchmarks/dbtest $^ $(LDFLAGS)
 
 DEPFILES := $(wildcard $(O)/*.d $(O)/*/*.d $(O)/*/*/*.d masstree/_masstree_config.d)
 ifneq ($(DEPFILES),)
@@ -357,4 +352,3 @@ $(O)/buildstamp $(O)/buildstamp.bench $(O)/buildstamp.masstree:
 .PHONY: clean
 clean:
 	rm -rf out-*
-	make -C third-party/lz4 clean

@@ -86,6 +86,7 @@ serial_register_reader_tx(dbtuple *t, XID xid)
     int xid_pos = __builtin_ctz(tls_bitmap_entry);
     ASSERT(xid_pos >= 0 and xid_pos < readers_list::XIDS_PER_READER_KEY);
     __sync_fetch_and_or(&t->rl_bitmap, tls_bitmap_entry);
+    ASSERT(t->rl_bitmap & tls_bitmap_entry);
     return true;
 }
 
@@ -94,6 +95,7 @@ serial_deregister_reader_tx(dbtuple *t)
 {
     ASSERT(tls_bitmap_entry);
     __sync_fetch_and_xor(&t->rl_bitmap, tls_bitmap_entry);
+    ASSERT(not (t->rl_bitmap & tls_bitmap_entry));
 }
 
 // register tx in the global rlist (called at tx start)
