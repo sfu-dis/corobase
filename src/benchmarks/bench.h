@@ -417,15 +417,30 @@ private:
 }
 
 #define try_catch_cond_abort(rc) try_catch_cond(rc, __abort_txn)
-
-// combines the try...catch block with ALWAYS_ASSERT
+// combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
-// abort (by SSN).
-#define try_verify(oper) \
+// abort (by SSN). Use try_verify_strict if you need rc=true.
+#define try_verify_relax(oper) \
 { \
   rc_t rc = oper;   \
   ALWAYS_ASSERT(rc._val == RC_TRUE or rc_is_abort(rc)); \
+  if (rc_is_abort(rc))  \
+      __abort_txn;  \
+}
+
+// No abort is allowed, usually for loading
+#define try_verify_strict(oper) \
+{ \
+  rc_t rc = oper;   \
+  ALWAYS_ASSERT(rc._val == RC_TRUE);    \
+}
+
+// for tpce, need to change tpce to use *relax/strict
+#define try_verify(oper) \
+{ \
+  rc_t rc = oper;   \
+  ALWAYS_ASSERT(rc._val == RC_TRUE);    \
 }
 
 #endif /* _NDB_BENCH_H_ */

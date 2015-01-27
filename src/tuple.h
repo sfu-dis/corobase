@@ -92,7 +92,7 @@ private:
 #ifdef USE_PARALLEL_SSN
     // FIXME: seems this assumes some 8-byte alignment, which isn't the
     // case when dbtuple is without those ssn-related fields.
-    INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
+    //INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
 #endif
     ++g_evt_dbtuple_creates;
   }

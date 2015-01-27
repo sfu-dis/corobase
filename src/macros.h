@@ -5,13 +5,13 @@
 #include <stdexcept>
 
 /** options */
-//#define USE_PARALLEL_SSN
+#define USE_PARALLEL_SSN
 #ifdef USE_PARALLEL_SSN
 #define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
 #define USE_READ_COMMITTED
 #endif
 
-#define USE_PARALLEL_SSI
+//#define USE_PARALLEL_SSI
 
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH

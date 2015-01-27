@@ -762,24 +762,24 @@ protected:
         const size_t sz = Size(v);
         warehouse_total_sz += sz;
         n_warehouses++;
-        try_verify(tbl_warehouse(i)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+        try_verify_strict(tbl_warehouse(i)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
 
         warehouses.push_back(v);
       }
-      try_verify(db->commit_txn(txn));
+      try_verify_strict(db->commit_txn(txn));
       arena.reset();
       txn = db->new_txn(txn_flags, arena, txn_buf());
       for (uint i = 1; i <= NumWarehouses(); i++) {
         const warehouse::key k(i);
         warehouse::value warehouse_temp;
         varstr warehouse_v = str(Size(warehouse_temp));
-        try_verify(tbl_warehouse(i)->get(txn, Encode(str(Size(k)), k), warehouse_v));
+        try_verify_strict(tbl_warehouse(i)->get(txn, Encode(str(Size(k)), k), warehouse_v));
         const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
         ALWAYS_ASSERT(warehouses[i - 1] == *v);
 
         checker::SanityCheckWarehouse(&k, v);
       }
-      try_verify(db->commit_txn(txn));
+      try_verify_strict(db->commit_txn(txn));
     if (verbose) {
       cerr << "[INFO] finished loading warehouse" << endl;
       cerr << "[INFO]   * average warehouse record length: "
@@ -828,15 +828,15 @@ protected:
         checker::SanityCheckItem(&k, &v);
         const size_t sz = Size(v);
         total_sz += sz;
-        try_verify(tbl_item(1)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v))); // this table is shared, so any partition is OK
+        try_verify_strict(tbl_item(1)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v))); // this table is shared, so any partition is OK
 
         if (bsize != -1 && !(i % bsize)) {
-          try_verify(db->commit_txn(txn));
+          try_verify_strict(db->commit_txn(txn));
           txn = db->new_txn(txn_flags, arena, txn_buf());
           arena.reset();
         }
       }
-      try_verify(db->commit_txn(txn));
+      try_verify_strict(db->commit_txn(txn));
     if (verbose) {
       cerr << "[INFO] finished loading item" << endl;
       cerr << "[INFO]   * average item record length: "
@@ -919,10 +919,10 @@ protected:
             const size_t sz = Size(v);
             stock_total_sz += sz;
             n_stocks++;
-            try_verify(tbl_stock(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
-            try_verify(tbl_stock_data(w)->insert(txn, Encode(str(Size(k_data)), k_data), Encode(str(Size(v_data)), v_data)));
+            try_verify_strict(tbl_stock(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+            try_verify_strict(tbl_stock_data(w)->insert(txn, Encode(str(Size(k_data)), k_data), Encode(str(Size(v_data)), v_data)));
           }
-          try_verify(db->commit_txn(txn));
+          try_verify_strict(db->commit_txn(txn));
           b++;
 
         // loop update
@@ -985,16 +985,16 @@ protected:
           const size_t sz = Size(v);
           district_total_sz += sz;
           n_districts++;
-          try_verify(tbl_district(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+          try_verify_strict(tbl_district(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
 
           if (bsize != -1 && !((cnt + 1) % bsize)) {
-            try_verify(db->commit_txn(txn));
+            try_verify_strict(db->commit_txn(txn));
             txn = db->new_txn(txn_flags, arena, txn_buf());
             arena.reset();
           }
         }
       }
-      try_verify(db->commit_txn(txn));
+      try_verify_strict(db->commit_txn(txn));
     if (verbose) {
       cerr << "[INFO] finished loading district" << endl;
       cerr << "[INFO]   * average district record length: "
@@ -1085,7 +1085,7 @@ protected:
               checker::SanityCheckCustomer(&k, &v);
               const size_t sz = Size(v);
               total_sz += sz;
-              try_verify(tbl_customer(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+              try_verify_strict(tbl_customer(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
 
               // customer name index
               const customer_name_idx::key k_idx(k.c_w_id, k.c_d_id, v.c_last.str(true), v.c_first.str(true));
@@ -1094,7 +1094,7 @@ protected:
               // index structure is:
               // (c_w_id, c_d_id, c_last, c_first) -> (c_id)
 
-              try_verify(tbl_customer_name_idx(w)->insert(txn, Encode(str(Size(k_idx)), k_idx), Encode(str(Size(v_idx)), v_idx)));
+              try_verify_strict(tbl_customer_name_idx(w)->insert(txn, Encode(str(Size(k_idx)), k_idx), Encode(str(Size(v_idx)), v_idx)));
 
               history::key k_hist;
               k_hist.h_c_id = c;
@@ -1108,9 +1108,9 @@ protected:
               v_hist.h_amount = 10;
               v_hist.h_data.assign(RandomStr(r, RandomNumber(r, 10, 24)));
 
-              try_verify(tbl_history(w)->insert(txn, Encode(str(Size(k_hist)), k_hist), Encode(str(Size(v_hist)), v_hist)));
+              try_verify_strict(tbl_history(w)->insert(txn, Encode(str(Size(k_hist)), k_hist), Encode(str(Size(v_hist)), v_hist)));
             }
-            try_verify(db->commit_txn(txn));
+            try_verify_strict(db->commit_txn(txn));
             batch++;
         }
       }
@@ -1204,12 +1204,12 @@ protected:
             const size_t sz = Size(v_oo);
             oorder_total_sz += sz;
             n_oorders++;
-            try_verify(tbl_oorder(w)->insert(txn, Encode(str(Size(k_oo)), k_oo), Encode(str(sz), v_oo)));
+            try_verify_strict(tbl_oorder(w)->insert(txn, Encode(str(Size(k_oo)), k_oo), Encode(str(sz), v_oo)));
 
             const oorder_c_id_idx::key k_oo_idx(k_oo.o_w_id, k_oo.o_d_id, v_oo.o_c_id, k_oo.o_id);
             const oorder_c_id_idx::value v_oo_idx(0);
 
-            try_verify(tbl_oorder_c_id_idx(w)->insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), Encode(str(Size(v_oo_idx)), v_oo_idx)));
+            try_verify_strict(tbl_oorder_c_id_idx(w)->insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), Encode(str(Size(v_oo_idx)), v_oo_idx)));
 
             if (c >= 2101) {
               const new_order::key k_no(w, d, c);
@@ -1219,7 +1219,7 @@ protected:
               const size_t sz = Size(v_no);
               new_order_total_sz += sz;
               n_new_orders++;
-              try_verify(tbl_new_order(w)->insert(txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no)));
+              try_verify_strict(tbl_new_order(w)->insert(txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no)));
             }
 
             for (uint l = 1; l <= uint(v_oo.o_ol_cnt); l++) {
@@ -1245,9 +1245,9 @@ protected:
               const size_t sz = Size(v_ol);
               order_line_total_sz += sz;
               n_order_lines++;
-              try_verify(tbl_order_line(w)->insert(txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol)));
+              try_verify_strict(tbl_order_line(w)->insert(txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol)));
             }
-            try_verify(db->commit_txn(txn));
+            try_verify_strict(db->commit_txn(txn));
             c++;
         }
       }
@@ -1349,21 +1349,21 @@ tpcc_worker::txn_new_order()
     const customer::key k_c(warehouse_id, districtID, customerID);
     customer::value v_c_temp;
     varstr sv_c_temp = str(Size(v_c_temp));
-    try_verify(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
+    try_verify_relax(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
     const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
     checker::SanityCheckCustomer(&k_c, v_c);
 
     const warehouse::key k_w(warehouse_id);
     warehouse::value v_w_temp;
     varstr sv_w_temp = str(Size(v_w_temp));
-    try_verify(tbl_warehouse(warehouse_id)->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
+    try_verify_relax(tbl_warehouse(warehouse_id)->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
     const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
     checker::SanityCheckWarehouse(&k_w, v_w);
 
     const district::key k_d(warehouse_id, districtID);
     district::value v_d_temp;
     varstr sv_d_temp = str(Size(v_d_temp));
-    try_verify(tbl_district(warehouse_id)->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
+    try_verify_relax(tbl_district(warehouse_id)->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
     const district::value *v_d = Decode(sv_d_temp, v_d_temp);
     checker::SanityCheckDistrict(&k_d, v_d);
 
@@ -1407,14 +1407,14 @@ tpcc_worker::txn_new_order()
       const item::key k_i(ol_i_id);
       item::value v_i_temp;
       varstr sv_i_temp = str(Size(v_i_temp));
-      try_verify(tbl_item(1)->get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
+      try_verify_relax(tbl_item(1)->get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
       const item::value *v_i = Decode(sv_i_temp, v_i_temp);
       checker::SanityCheckItem(&k_i, v_i);
 
       const stock::key k_s(ol_supply_w_id, ol_i_id);
       stock::value v_s_temp;
       varstr sv_s_temp = str(Size(v_s_temp));
-      try_verify(tbl_stock(ol_supply_w_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s_temp));
+      try_verify_relax(tbl_stock(ol_supply_w_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s_temp));
       const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
       checker::SanityCheckStock(&k_s, v_s);
 
@@ -1569,7 +1569,7 @@ tpcc_worker::txn_delivery()
       const customer::key k_c(warehouse_id, d, c_id);
       customer::value v_c_temp;
       varstr sv_c_temp = str(Size(v_c_temp));
-      try_verify(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
+      try_verify_relax(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
 
       const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
       customer::value v_c_new(*v_c);
@@ -1676,7 +1676,7 @@ tpcc_worker::txn_credit_check()
 		k_c.c_w_id = customerWarehouseID;
 		k_c.c_d_id = customerDistrictID;
 		k_c.c_id = customerID;
-		try_verify(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
+		try_verify_relax(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
 		const customer::value* v_c = Decode(sv_c_temp, v_c_temp);
 		checker::SanityCheckCustomer(&k_c, v_c);
 
@@ -1789,7 +1789,7 @@ tpcc_worker::txn_payment()
     const warehouse::key k_w(warehouse_id);
     warehouse::value v_w_temp;
     varstr sv_w_temp = str(Size(v_w_temp));
-    try_verify(tbl_warehouse(warehouse_id)->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
+    try_verify_relax(tbl_warehouse(warehouse_id)->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
     const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
     checker::SanityCheckWarehouse(&k_w, v_w);
 
@@ -1800,7 +1800,7 @@ tpcc_worker::txn_payment()
     const district::key k_d(warehouse_id, districtID);
     district::value v_d_temp;
     varstr sv_d_temp = str(Size(v_d_temp));
-    try_verify(tbl_district(warehouse_id)->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
+    try_verify_relax(tbl_district(warehouse_id)->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
     const district::value *v_d = Decode(sv_d_temp, v_d_temp);
     checker::SanityCheckDistrict(&k_d, v_d);
 
@@ -1848,7 +1848,7 @@ tpcc_worker::txn_payment()
       k_c.c_w_id = customerWarehouseID;
       k_c.c_d_id = customerDistrictID;
       k_c.c_id = v_c_idx->c_id;
-      try_verify(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
+      try_verify_relax(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
       Decode(sv_c, v_c);
 
     } else {
@@ -1857,7 +1857,7 @@ tpcc_worker::txn_payment()
       k_c.c_w_id = customerWarehouseID;
       k_c.c_d_id = customerDistrictID;
       k_c.c_id = customerID;
-      try_verify(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
+      try_verify_relax(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
       Decode(sv_c, v_c);
     }
     checker::SanityCheckCustomer(&k_c, &v_c);
@@ -1990,7 +1990,7 @@ tpcc_worker::txn_order_status()
       k_c.c_w_id = warehouse_id;
       k_c.c_d_id = districtID;
       k_c.c_id = v_c_idx->c_id;
-      try_verify(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
+      try_verify_relax(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
       Decode(sv_c, v_c);
 
     } else {
@@ -1999,7 +1999,7 @@ tpcc_worker::txn_order_status()
       k_c.c_w_id = warehouse_id;
       k_c.c_d_id = districtID;
       k_c.c_id = customerID;
-      try_verify(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
+      try_verify_relax(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
       Decode(sv_c, v_c);
     }
     checker::SanityCheckCustomer(&k_c, &v_c);
@@ -2106,7 +2106,7 @@ tpcc_worker::txn_stock_level()
     const district::key k_d(warehouse_id, districtID);
     district::value v_d_temp;
     varstr sv_d_temp = str(Size(v_d_temp));
-    try_verify(tbl_district(warehouse_id)->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
+    try_verify_relax(tbl_district(warehouse_id)->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
     const district::value *v_d = Decode(sv_d_temp, v_d_temp);
     checker::SanityCheckDistrict(&k_d, v_d);
 
@@ -2132,11 +2132,11 @@ tpcc_worker::txn_stock_level()
 
         const stock::key k_s(warehouse_id, p.first);
         stock::value v_s;
-        varstr sv_s = str(Size(v_s));
+        varstr sv_s = str(sizeof(stock::value));
         INVARIANT(p.first >= 1 && p.first <= NumItems());
         {
           ANON_REGION("StockLevelLoopJoinGet:", &stock_level_probe2_cg);
-          try_verify(tbl_stock(warehouse_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s, nbytesread));
+          try_verify_relax(tbl_stock(warehouse_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s, nbytesread));
         }
         INVARIANT(sv_s.size() <= nbytesread);
         const uint8_t *ptr = (const uint8_t *) sv_s.data();
