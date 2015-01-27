@@ -234,7 +234,7 @@ transaction<Protocol, Traits>::ssn_parallel_si_commit()
      */
     if (age < OLD_VERSION_THRESHOLD) {
       // need access stamp , i.e., who read this version that I'm trying to overwrite?
-      readers_list::bitmap_t readers = ssn_get_tuple_readers(overwritten_tuple);
+      readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple);
       while (readers) {
         int i = __builtin_ctz(readers);
         ASSERT(i >= 0 and i < 24);
@@ -418,18 +418,18 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         xid_context *overwriter_xc = xid_get_context(ox);
         if (not overwriter_xc)
           continue;
-        if (overwriter_xc->owner != ox)
+        // read what i need before verifying ownership
+        uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
+        if (volatile_read(overwriter_xc->owner) != ox)
           goto get_overwriter;
         // if the overwriter is serialized **before** me, I need to spin to find
         // out its final commit result
-        uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
+        // don't bother if it's serialized after me or not even in precommit
         if (overwriter_end and overwriter_end < cstamp and wait_for_commit_result(overwriter_xc)) {
           tuple_s1 = overwriter_end;
-          ASSERT(tuple_s1 >= xc->begin.offset());
         }
       }
-      else {    // already committed, re-read tuple's s1
-        if (tuple_s1 >= xc->begin.offset())
+      else {    // already committed, re-read tuple's sstamp
           tuple_s1 = volatile_read(r.tuple->sstamp);
       }
     }
@@ -447,7 +447,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         continue;
       // abort if there's any in-flight reader of this tuple or
       // if someone has read the tuple after someone else clobbered it...
-      if (ssn_get_tuple_readers(overwritten_tuple, true)) {
+      if (serial_get_tuple_readers(overwritten_tuple, true)) {
         tls_serial_abort_count++;
         return rc_t{RC_ABORT_SSI};
       }
@@ -456,7 +456,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         // FIXME: tuple_xstamp > xc->begin, correct? ie the read should
         // have happened after i started
         auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
-        if (tuple_xstamp > xc->begin.offset() and max_xstamp < tuple_xstamp)
+        if (max_xstamp < tuple_xstamp)
           max_xstamp = tuple_xstamp;
         if (max_xstamp >= min_read_s1 and xc->ct3 != ~0) {
           tls_serial_abort_count++;
@@ -479,10 +479,13 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     dbtuple *overwritten_tuple = w.first;
     if (not w.second.btr)
       continue;
-    volatile_write(overwritten_tuple->sstamp, cstamp);
-    if (min_read_s1 > overwritten_tuple->s2)   // correct?
-      volatile_write(overwritten_tuple->s2, min_read_s1);
+    ASSERT(not volatile_read(overwritten_tuple->sstamp));
     dbtuple* tuple = w.second.new_tuple;
+    if (overwritten_tuple != tuple) {    // update
+      volatile_write(overwritten_tuple->sstamp, cstamp);
+      if (min_read_s1 > overwritten_tuple->s2)   // correct?
+        volatile_write(overwritten_tuple->s2, min_read_s1);
+    }
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
@@ -605,23 +608,6 @@ transaction<Protocol, Traits>::do_tuple_read(
   INVARIANT(tuple);
   ++evt_local_search_lookups;
 
-  // do the actual tuple read
-  dbtuple::ReadStatus stat;
-  {
-    PERF_DECL(static std::string probe0_name(std::string(__PRETTY_FUNCTION__) + std::string(":do_read:")));
-    ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
-    tuple->prefetch();
-    stat = tuple->stable_read(value_reader, this->string_allocator());
-    if (unlikely(stat == dbtuple::READ_FAILED))
-      return rc_t{RC_ABORT};
-  }
-  INVARIANT(stat == dbtuple::READ_EMPTY ||
-            stat == dbtuple::READ_RECORD);
-  if (stat == dbtuple::READ_EMPTY) {
-    ++transaction_base::g_evt_read_logical_deleted_node_search;
-    return {RC_FALSE};
-  }
-
 #ifdef USE_PARALLEL_SSN
   // SSN stamps and check
   if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
@@ -667,19 +653,16 @@ transaction<Protocol, Traits>::do_tuple_read(
     ASSERT(xc);
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
-      ASSERT(tuple->sstamp);    // s1 will be valid too if s2 is valid
+      ASSERT(tuple->sstamp);    // sstamp will be valid too if s2 is valid
       // read-only optimization: if we're read-only and we started before tuple->s2
-      if (tuple->sstamp > xc->begin.offset() and
-          (write_set.size() or xc->begin.offset() >= tuple->s2)) {
-        tls_serial_abort_count++;
-        return rc_t{RC_ABORT_SSI};
-      }
+      tls_serial_abort_count++;
+      return rc_t{RC_ABORT_SSI};
     }
 
     uint64_t tuple_s1 = volatile_read(tuple->sstamp);
     // see if there was a guy with cstamp=tuple_s1 who overwrote this version
-    if (tuple_s1 and tuple_s1 >= xc->begin.offset()) { // I'm T2
-      // remember the smallest s1 so that I can re-check at precommit
+    if (tuple_s1) { // I'm T2
+      // remember the smallest sstamp so that I can re-check at precommit
       if (xc->ct3 > tuple_s1)
         xc->ct3 = tuple_s1;
     }
@@ -689,6 +672,24 @@ transaction<Protocol, Traits>::do_tuple_read(
       read_set.emplace_back(tuple, btr_ptr, oid);
   }
 #endif
+
+  // do the actual tuple read
+  dbtuple::ReadStatus stat;
+  {
+    PERF_DECL(static std::string probe0_name(std::string(__PRETTY_FUNCTION__) + std::string(":do_read:")));
+    ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
+    tuple->prefetch();
+    stat = tuple->stable_read(value_reader, this->string_allocator());
+    if (unlikely(stat == dbtuple::READ_FAILED))
+      return rc_t{RC_ABORT};
+  }
+  INVARIANT(stat == dbtuple::READ_EMPTY ||
+            stat == dbtuple::READ_RECORD);
+  if (stat == dbtuple::READ_EMPTY) {
+    ++transaction_base::g_evt_read_logical_deleted_node_search;
+    return {RC_FALSE};
+  }
+
   return {RC_TRUE};
 }
 
