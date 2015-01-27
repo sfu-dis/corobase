@@ -7,7 +7,8 @@
 
 namespace TXN {
 
-extern uint64_t __thread tls_ssn_ssi_abort_count;
+extern uint64_t __thread tls_serial_abort_count;
+extern int64_t OLD_VERSION_THRESHOLD;
 
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
@@ -22,7 +23,7 @@ inline bool ssn_check_exclusion(xid_context *xc) {
     // note xc->sstamp is initialized to ~0, xc->pstamp's init value is 0,
     // so don't return xc->pstamp < xc->sstamp...
     if (xc->pstamp >= xc->sstamp) {
-        tls_ssn_ssi_abort_count++;
+        tls_serial_abort_count++;
         return false;
     }
     return true;
@@ -47,11 +48,11 @@ public:
     }
 };
 
-bool ssn_register_reader_tx(dbtuple *tup, XID xid);
-void ssn_deregister_reader_tx(dbtuple *tup);
-void ssn_register_tx(XID xid);
-void ssn_deregister_tx(XID xid);
-void summarize_ssn_ssi_aborts();
+bool serial_register_reader_tx(dbtuple *tup, XID xid);
+void serial_deregister_reader_tx(dbtuple *tup);
+void serial_register_tx(XID xid);
+void serial_deregister_tx(XID xid);
+void summarize_serial_aborts();
 
 readers_list::bitmap_t ssn_get_tuple_readers(dbtuple *tup, bool exclude_self = false);
 

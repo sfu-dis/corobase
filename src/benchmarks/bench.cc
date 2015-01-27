@@ -195,29 +195,9 @@ bench_runner::run()
       cerr << "DB size: " << delta_mb << " MB" << endl;
   }
 
-  db->do_txn_epoch_sync(); // also waits for worker threads to be persisted
-  {
-    const auto persisted_info = db->get_ntxn_persisted();
-    if (get<0>(persisted_info) != get<1>(persisted_info))
-      cerr << "ERROR: " << persisted_info << endl;
-    //ALWAYS_ASSERT(get<0>(persisted_info) == get<1>(persisted_info));
-    if (verbose)
-      cerr << persisted_info << " txns persisted in loading phase" << endl;
-  }
-  db->reset_ntxn_persisted();
-
   if (!no_reset_counters) {
     event_counter::reset_all_counters(); // XXX: for now - we really should have a before/after loading
     PERF_EXPR(scopedperf::perfsum_base::resetall());
-  }
-  {
-    const auto persisted_info = db->get_ntxn_persisted();
-    if (get<0>(persisted_info) != 0 ||
-        get<1>(persisted_info) != 0 ||
-        get<2>(persisted_info) != 0.0) {
-      cerr << persisted_info << endl;
-      ALWAYS_ASSERT(false);
-    }
   }
 
   map<string, size_t> table_sizes_before;
@@ -254,7 +234,6 @@ bench_runner::run()
   for (size_t i = 0; i < nthreads; i++)
     workers[i]->join();
   const unsigned long elapsed_nosync = t_nosync.lap();
-  db->do_txn_finish(); // waits for all worker txns to persist
   size_t n_commits = 0;
   size_t n_aborts = 0;
   uint64_t latency_numer_us = 0;
@@ -263,17 +242,8 @@ bench_runner::run()
     n_aborts += workers[i]->get_ntxn_aborts();
     latency_numer_us += workers[i]->get_latency_numer_us();
   }
-  const auto persisted_info = db->get_ntxn_persisted();
 
-  const unsigned long elapsed = t.lap(); // lap() must come after do_txn_finish(),
-                                         // because do_txn_finish() potentially
-                                         // waits a bit
-
-  // various sanity checks
-  ALWAYS_ASSERT(get<0>(persisted_info) == get<1>(persisted_info));
-  // not == b/c persisted_info does not count read-only txns
-  ALWAYS_ASSERT(n_commits >= get<1>(persisted_info));
-
+  const unsigned long elapsed = t.lap();
   const double elapsed_nosync_sec = double(elapsed_nosync) / 1000000.0;
   const double agg_nosync_throughput = double(n_commits) / elapsed_nosync_sec;
   const double avg_nosync_per_core_throughput = agg_nosync_throughput / double(workers.size());
@@ -285,18 +255,10 @@ bench_runner::run()
   const double agg_abort_rate = double(n_aborts) / elapsed_sec;
   const double avg_per_core_abort_rate = agg_abort_rate / double(workers.size());
 
-  // we can use n_commits here, because we explicitly wait for all txns
-  // run to be durable
-  const double agg_persist_throughput = double(n_commits) / elapsed_sec;
-  const double avg_per_core_persist_throughput =
-    agg_persist_throughput / double(workers.size());
-
   // XXX(stephentu): latency currently doesn't account for read-only txns
   const double avg_latency_us =
     double(latency_numer_us) / double(n_commits);
   const double avg_latency_ms = avg_latency_us / 1000.0;
-  const double avg_persist_latency_ms =
-    get<2>(persisted_info) / 1000.0;
 
   if (verbose) {
     const pair<uint64_t, uint64_t> mem_info_after = get_system_memory_info();
@@ -344,10 +306,7 @@ bench_runner::run()
     cerr << "avg_nosync_per_core_throughput: " << avg_nosync_per_core_throughput << " ops/sec/core" << endl;
     cerr << "agg_throughput: " << agg_throughput << " ops/sec" << endl;
     cerr << "avg_per_core_throughput: " << avg_per_core_throughput << " ops/sec/core" << endl;
-    cerr << "agg_persist_throughput: " << agg_persist_throughput << " ops/sec" << endl;
-    cerr << "avg_per_core_persist_throughput: " << avg_per_core_persist_throughput << " ops/sec/core" << endl;
     cerr << "avg_latency: " << avg_latency_ms << " ms" << endl;
-    cerr << "avg_persist_latency: " << avg_persist_latency_ms << " ms" << endl;
     cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << endl;
     cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate << " aborts/sec/core" << endl;
     cerr << "txn breakdown: " << format_list(agg_txn_counts.begin(), agg_txn_counts.end()) << endl;
@@ -357,9 +316,6 @@ bench_runner::run()
       cerr << it->first << ": " << it->second << endl;
     cerr << "--- perf counters (if enabled, for benchmark) ---" << endl;
     PERF_EXPR(scopedperf::perfsum_base::printall());
-    // FIXME: tzwang: no real allocator for now
-    // cerr << "--- allocator stats ---" << endl;
-    // ::allocator::DumpStats();
 
 	RCU::rcu_gc_info gc_info = RCU::rcu_get_gc_info();
 	cerr << "--- RCU stat --- " << endl;
@@ -383,9 +339,7 @@ bench_runner::run()
 
   // output for plotting script
   cout << agg_throughput << " "
-       << agg_persist_throughput << " "
        << avg_latency_ms << " "
-       << avg_persist_latency_ms << " "
        << agg_abort_rate << endl;
   cout << n_commits << " commits, "
        << n_aborts << " aborts" << endl;
@@ -422,12 +376,6 @@ struct map_maxer {
       agg[it->first] = std::max(agg[it->first], it->second);
   }
 };
-
-//template <typename KOuter, typename KInner, typename VInner>
-//struct map_maxer<KOuter, map<KInner, VInner>> {
-//  typedef map<KInner, VInner> inner_map_type;
-//  typedef map<KOuter, inner_map_type> map_type;
-//};
 
 #ifdef ENABLE_BENCH_TXN_COUNTERS
 void

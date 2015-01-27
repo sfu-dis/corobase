@@ -151,6 +151,7 @@ static int g_order_status_scan_hack = 0;
 static int g_microbench_static = 0;
 static int g_microbench_simple = 0;
 static int g_microbench_random = 0;
+static int g_wh_temperature = 0;
 static uint g_microbench_rows = 100000;  // this many rows
 
 // can't have both ratio and rows at the same time
@@ -686,18 +687,38 @@ private:
   inline ALWAYS_INLINE unsigned
   pick_wh(fast_random &r)
   {
-    INVARIANT(g_wh_spread >= 0 and g_wh_spread <= 1);
-    // wh_spread = 0: always use home wh
-    // wh_spread = 1: always use random wh
-    if (g_wh_spread == 0 or r.next_uniform() >= g_wh_spread)
-      return home_warehouse_id;
-    return r.next() % NumWarehouses() + 1;
+    if (g_wh_temperature) { // do it 80/20 way
+      uint w = 0;
+      if (r.next_uniform() >= 0.2)  // 80% access
+        w = hot_whs[r.next() % hot_whs.size()];
+      else
+        w = cold_whs[r.next() % cold_whs.size()];
+      ALWAYS_ASSERT(w >= 1 and w <= NumWarehouses());
+      return w;
+    }
+    else {
+      INVARIANT(g_wh_spread >= 0 and g_wh_spread <= 1);
+      // wh_spread = 0: always use home wh
+      // wh_spread = 1: always use random wh
+      if (g_wh_spread == 0 or r.next_uniform() >= g_wh_spread)
+        return home_warehouse_id;
+      return r.next() % NumWarehouses() + 1;
+    }
   }
 
+public:
+  // 80/20 access: 80% of all accesses touch 20% of WHs (randmonly
+  // choose one from hot_whs), while the 20% of accesses touch the
+  // remaining 80% of WHs.
+  static vector<uint> hot_whs;
+  static vector<uint> cold_whs;
 private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10]; // XXX(stephentu): hack
 };
+
+vector<uint> tpcc_worker::hot_whs;
+vector<uint> tpcc_worker::cold_whs;
 
 class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 public:
@@ -2631,7 +2652,8 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
       {"uniform-item-dist"                    , no_argument       , &g_uniform_item_dist                  , 1}   ,
       {"order-status-scan-hack"               , no_argument       , &g_order_status_scan_hack             , 1}   ,
       {"workload-mix"                         , required_argument , 0                                     , 'w'} ,
-      {"warehouse-spread"                     , required_argument , 0                                     , 's'}   ,
+      {"warehouse-spread"                     , required_argument , 0                                     , 's'} ,
+      {"80-20-dist"                           , no_argument       , &g_wh_temperature                     , 't'} ,
       {"microbench-static"                    , no_argument       , &g_microbench_static                  , 1}   ,
       {"microbench-simple"                    , no_argument       , &g_microbench_simple                  , 1}   ,
       {"microbench-random"                    , no_argument       , &g_microbench_random                  , 1}   ,
@@ -2719,9 +2741,37 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
     cerr << "  --new-order-remote-item-pct will have no effect" << endl;
   }
 
+  if (g_wh_temperature) {
+    // set up hot and cold WHs
+    ALWAYS_ASSERT(NumWarehouses() * 0.2 >= 1);
+    uint num_hot_whs = NumWarehouses() * 0.2;
+    fast_random r(23984543);
+    for (uint i = 1; i <= num_hot_whs; i++) {
+    try_push:
+        uint w = r.next() % NumWarehouses() + 1;
+        if (find(tpcc_worker::hot_whs.begin(), tpcc_worker::hot_whs.end(), w) == tpcc_worker::hot_whs.end())
+            tpcc_worker::hot_whs.push_back(w);
+        else
+            goto try_push;
+    }
+
+    for (uint i = 1; i <= NumWarehouses(); i++) {
+        if (find(tpcc_worker::hot_whs.begin(), tpcc_worker::hot_whs.end(), i) == tpcc_worker::hot_whs.end())
+            tpcc_worker::cold_whs.push_back(i);
+    }
+    ALWAYS_ASSERT(tpcc_worker::cold_whs.size() + tpcc_worker::hot_whs.size() == NumWarehouses());
+  }
+
   if (verbose) {
     cerr << "tpcc settings:" << endl;
-    cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << endl;
+    if (g_wh_temperature) {
+      cerr << "  hot whs for 80% accesses     :";
+      for (uint i = 0; i < tpcc_worker::hot_whs.size(); i++)
+        cerr << " " << tpcc_worker::hot_whs[i];
+      cerr << endl;
+    }
+    else
+      cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << endl;
     cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn << endl;
     cerr << "  read_only_snapshots          : " << !g_disable_read_only_scans << endl;
     cerr << "  partition_locks              : " << g_enable_partition_locks << endl;

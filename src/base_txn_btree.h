@@ -14,14 +14,6 @@
 
 using namespace TXN;
 
-// each Transaction implementation should specialize this for special
-// behavior- the default implementation is just nops
-template <template <typename> class Transaction>
-struct base_txn_btree_handler {
-  static inline void on_construct() {} // called when initializing
-  //static const bool has_background_task = false;
-};
-
 template <template <typename> class Transaction, typename P>
 class base_txn_btree {
 public:
@@ -37,7 +29,6 @@ public:
       name(name),
       been_destructed(false)
   {
-    base_txn_btree_handler<Transaction>::on_construct();
 	//RA::register_table(&underlying_btree, name);		// Register to GC system 
 #ifdef TRACE_FOOTPRINT
     TRACER::register_table((uintptr_t)underlying_btree.get_tuple_vector(), name);
@@ -316,7 +307,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     ASSERT(xc);
     auto in_flight_readers = ssn_get_tuple_readers(prev, true);
     if (in_flight_readers and xc->ct3 != ~0 and xc->ct3 <= volatile_read(prev->clsn).offset()) {
-        tls_ssn_ssi_abort_count++;
+        tls_serial_abort_count++;
         // unlink the version here (note abort_impl won't be able to catch
         // it because it's not yet in the write set), same as in SSN impl.
         this->underlying_btree.unlink_tuple(oid, tuple);
