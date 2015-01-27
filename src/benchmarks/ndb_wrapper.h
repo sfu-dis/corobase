@@ -44,26 +44,6 @@ public:
 
   virtual ssize_t txn_max_batch_size() const OVERRIDE { return 100; }
 
-  virtual void
-  do_txn_epoch_sync() const
-  {
-  }
-
-  virtual void
-  do_txn_finish() const
-  {
-  }
-
-  virtual void
-  thread_init(bool loader)
-  {
-  }
-
-  virtual void
-  thread_end()
-  {
-  }
-
   virtual size_t
   sizeof_txn_object(uint64_t txn_flags) const;
 

@@ -6,20 +6,15 @@
 #include <vector>
 #include <set>
 
-#include <lz4.h>
-
 #include "txn.h"
 #include "txn_impl.h"
 #include "txn_btree.h"
 #include "macros.h"
-#include "circbuf.h"
 #include "spinbarrier.h"
 #include "record/serializer.h"
 
 // forward decl
 template <typename Traits> class transaction_proto2;
-template <template <typename> class Transaction>
-  class txn_epoch_sync;
 
 class transaction_proto2_static {
 public:
@@ -36,7 +31,6 @@ public:
   }
 
   // thread-safe, can be called many times
-  static void InitGC();
 
 protected:
 
@@ -89,16 +83,4 @@ public:
   ~transaction_proto2() {}
 };
 
-// txn_btree_handler specialization
-template <>
-struct base_txn_btree_handler<transaction_proto2> {
-  static inline void
-  on_construct()
-  {
-#ifndef PROTO2_CAN_DISABLE_GC
-    transaction_proto2_static::InitGC();
-#endif
-  }
-  //static const bool has_background_task = true;
-};
 #endif /* _NDB_TXN_PROTO2_IMPL_H_ */

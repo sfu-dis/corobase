@@ -15,7 +15,7 @@
 #include "../spinbarrier.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-alloc.h"
-#include "../dbcore/ssn.h"
+#include "../dbcore/serial.h"
 #include "../dbcore/sm-trace.h"
 #include "../dbcore/sm-rc.h"
 #include <stdio.h>
@@ -77,11 +77,9 @@ public:
   scoped_db_thread_ctx(abstract_db *db, bool loader)
     : db(db)
   {
-    db->thread_init(loader);
   }
   ~scoped_db_thread_ctx()
   {
-    db->thread_end();
   }
 private:
   abstract_db *const db;
@@ -185,7 +183,6 @@ public:
 
   virtual void run();
 
-
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
   inline size_t get_ntxn_aborts() const { return ntxn_aborts; }
 
@@ -265,7 +262,6 @@ public:
 	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
 	  ALWAYS_ASSERT(p);
       ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
-	  //ALWAYS_ASSERT(not mlockall(MCL_CURRENT));
 	  mallopt (M_TRIM_THRESHOLD, -1);
 	  mallopt (M_MMAP_MAX, 0);
 
@@ -423,8 +419,6 @@ private:
 #define try_catch_cond_abort(rc) try_catch_cond(rc, __abort_txn)
 
 // combines the try...catch block with ALWAYS_ASSERT
-// TODO: change to use rc_t by bits, i.e., set abort bit and
-// return value (true/false) bit, rather than use the whole int.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
 // abort (by SSN).
