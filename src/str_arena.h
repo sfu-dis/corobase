@@ -9,7 +9,7 @@
 class str_arena {
 public:
 
-  static const uint64_t ReserveBytes = 8 * 1024 * 1024;
+  static const uint64_t ReserveBytes = 80 * 1024 * 1024;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
 
   str_arena()
@@ -27,7 +27,7 @@ public:
   {
     n = 0;
 #if CHECK_INVARIANTS
-    memset(str, '\0', ReserveBytes);
+//    memset(str, '\0', ReserveBytes);
 #endif
   }
 
@@ -40,7 +40,7 @@ public:
     ALWAYS_ASSERT(n < ReserveBytes);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
 #if CHECK_INVARIANTS
-    ASSERT(ret->data()[0] == '\0');
+  //  ASSERT(ret->data()[0] == '\0');
 #endif
     return ret;
   }

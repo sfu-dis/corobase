@@ -128,7 +128,7 @@ public:
                 TXN_HARNESS_PROPAGATE_STATUS(CBaseTxnErr::TOF2_ERROR1);
 
                 // Rollback
-            //    ret = m_db->DoTradeOrderFrame5();		// XXX. abort_txn is already called.
+                ret = m_db->DoTradeOrderFrame5();
                 return bench_worker::txn_result(false, 0);
             }
         }
