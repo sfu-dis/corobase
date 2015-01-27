@@ -13,9 +13,9 @@ namespace TXN {
    window.
  */
 #ifdef USE_PARALLEL_SSN
-//int64_t constexpr OLD_VERSION_THRESHOLD = 0xa0000000ll;
-//int64_t constexpr OLD_VERSION_THRESHOLD = 0x10000000ll;
-//int64_t constexpr OLD_VERSION_THRESHOLD = 0xffffffffll;
+//int64_t OLD_VERSION_THRESHOLD = 0xa0000000ll;
+//int64_t OLD_VERSION_THRESHOLD = 0x10000000ll;
+//int64_t OLD_VERSION_THRESHOLD = 0xffffffffll;
 int64_t OLD_VERSION_THRESHOLD = 0;
 #endif
 
