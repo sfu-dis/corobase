@@ -31,7 +31,7 @@ static rl_bitmap_t claimed_bitmap_entries = 0;
 
 /* Return a bitmap with 1's representing active readers.
  */
-readers_list::bitmap_t ssn_get_tuple_readers(dbtuple *tup, bool exclude_self)
+readers_list::bitmap_t serial_get_tuple_readers(dbtuple *tup, bool exclude_self)
 {
     if (exclude_self)
         return volatile_read(tup->rl_bitmap) & ~tls_bitmap_entry;
@@ -102,6 +102,7 @@ serial_deregister_reader_tx(dbtuple *t)
 void
 serial_register_tx(XID xid)
 {
+    ASSERT(not rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val);
     volatile_write(rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val, xid._val);
 }
 
@@ -110,6 +111,7 @@ void
 serial_deregister_tx(XID xid)
 {
     volatile_write(rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val, 0);
+    ASSERT(not rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val);
 }
 
 };  // end of namespace

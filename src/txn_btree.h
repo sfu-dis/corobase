@@ -34,6 +34,8 @@ struct txn_btree_ {
         return k;
       varstr * const ret = sa(k->size());
       ret->copy_from(k->data(), k->size());
+      // copy_from will set size to readsz
+      ASSERT(ret->size() == k->size());
       return ret;
     }
 
@@ -55,6 +57,8 @@ struct txn_btree_ {
     {
       const size_t readsz = std::min(sz, max_bytes_read);
       px->copy_from(data, readsz);
+      // copy_from will set size to readsz
+      ASSERT(px->size() == readsz);
       return true;
     }
 
@@ -96,6 +100,8 @@ struct txn_btree_ {
       px = sa(sz);
       const size_t readsz = std::min(sz, max_bytes_read);
       px->copy_from((const char *) data, readsz);
+      // copy_from will set size to readsz
+      ASSERT(px->size() == readsz);
       return true;
     }
 
@@ -140,6 +146,8 @@ struct txn_btree_ {
         return v;
       varstr * const ret = sa(v->size());
       ret->copy_from(v->data(), v->size());
+      // copy_from will set size to readsz
+      ASSERT(ret->size() == v->size());
       return ret;
     }
 
@@ -272,6 +280,8 @@ private:
       return nullptr;
     varstr * const px = t.string_allocator()(sz);
     px->copy_from((const char *) p, sz);
+    // copy_from will set size to readsz
+    ASSERT(px->size() == sz);
     return px;
   }
 

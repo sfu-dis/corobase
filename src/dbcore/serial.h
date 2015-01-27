@@ -54,7 +54,7 @@ void serial_register_tx(XID xid);
 void serial_deregister_tx(XID xid);
 void summarize_serial_aborts();
 
-readers_list::bitmap_t ssn_get_tuple_readers(dbtuple *tup, bool exclude_self = false);
+readers_list::bitmap_t serial_get_tuple_readers(dbtuple *tup, bool exclude_self = false);
 
 extern readers_list rlist;
 };  // end of namespace

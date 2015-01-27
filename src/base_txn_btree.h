@@ -305,7 +305,8 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // prev's creator) in the dangerous structure?
     xid_context* xc = xid_get_context(t.xid);
     ASSERT(xc);
-    auto in_flight_readers = ssn_get_tuple_readers(prev, true);
+    ASSERT(not prev->sstamp);
+    auto in_flight_readers = serial_get_tuple_readers(prev, true);
     if (in_flight_readers and xc->ct3 != ~0 and xc->ct3 <= volatile_read(prev->clsn).offset()) {
         tls_serial_abort_count++;
         // unlink the version here (note abort_impl won't be able to catch
@@ -323,6 +324,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // access stamp to tell if the read happened.
     xid_context* xc = xid_get_context(t.xid);
     ASSERT(xc);
+    ASSERT(not prev->sstamp);
     auto prev_xstamp = volatile_read(prev->xstamp);
     if (xc->pstamp < prev_xstamp)
       xc->pstamp = prev_xstamp;
