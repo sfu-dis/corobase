@@ -126,16 +126,29 @@ int64_t CDateTimeToTimeT(CDateTime &cdt)
 	return (int64_t)x;
 }
 
-TIMESTAMP_STRUCT TimeTToTimeStamp(time_t t) 
+TIMESTAMP_STRUCT TimeTToTimeStamp(time_t time) 
 { 
-	struct tm* ts = gmtime(&t);
+//	struct tm* ts = gmtime(&t);					// gmtime is evil for scalability
 	TIMESTAMP_STRUCT tss;
-	tss.year  = ts->tm_year + 1900; 
-	tss.month = ts->tm_mon+1; 
-	tss.day   = ts->tm_mday; 
-	tss.hour  = ts->tm_hour; 
-	tss.minute= ts->tm_min; 
-	tss.second= ts->tm_sec; 
+
+	struct tm br_time;
+	register struct tm *timep = &br_time;
+	register unsigned long dayclock, dayno;
+	int year = 1970;
+
+	dayclock = (unsigned long)time % (24L*60L*60L);
+	dayno = (unsigned long)time / (24L*60L*60L);
+
+	tss.second = dayclock % 60;
+	tss.minute = (dayclock % 3600) / 60;
+	tss.hour = dayclock / 3600;
+	tss.year = dayno / 365;
+
+	dayno = dayno % 365;
+	tss.month = dayno / 31 + 1;
+
+	dayno = dayno % 31;
+	tss.day = dayno + 1;
 	return tss;
 }
 
