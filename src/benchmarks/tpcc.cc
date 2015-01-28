@@ -2132,7 +2132,7 @@ tpcc_worker::txn_stock_level()
 
         const stock::key k_s(warehouse_id, p.first);
         stock::value v_s;
-        varstr sv_s = str(sizeof(stock::value));
+        varstr sv_s = str(Size(v_s));
         INVARIANT(p.first >= 1 && p.first <= NumItems());
         {
           ANON_REGION("StockLevelLoopJoinGet:", &stock_level_probe2_cg);

@@ -135,7 +135,7 @@ rc_t
 transaction<Protocol, Traits>::commit()
 {
 #ifdef USE_PARALLEL_SSN
-  return ssn_parallel_si_commit();
+  return parallel_ssn_commit();
 #elif defined USE_PARALLEL_SSI
   return parallel_ssi_commit();
 #else
@@ -146,7 +146,7 @@ transaction<Protocol, Traits>::commit()
 #ifdef USE_PARALLEL_SSN
 template <template <typename> class Protocol, typename Traits>
 rc_t
-transaction<Protocol, Traits>::ssn_parallel_si_commit()
+transaction<Protocol, Traits>::parallel_ssn_commit()
 {
   xid_context* xc = xid_get_context(xid);
 
