@@ -328,7 +328,7 @@ public:
   // signals failure by throwing an abort exception
   rc_t commit();
 #ifdef USE_PARALLEL_SSN
-  rc_t ssn_parallel_si_commit();
+  rc_t parallel_ssn_commit();
 #elif defined USE_PARALLEL_SSI
   rc_t parallel_ssi_commit();
 #else
