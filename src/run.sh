@@ -18,6 +18,6 @@ export LD_PRELOAD="/usr/lib/libtcmalloc.so"
 
 #  minimum Customers: 5000, Default SF:500, working-days: 300( it's too long to load and OOM would stop loading also. thus let's try 3days)
 #numactl --interleave=all ./out-perf.debug.check.masstree/benchmarks/dbtest --verbose --bench tpce --scale-factor 500 --num-threads $1 --runtime $2 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 3"
-numactl --interleave=all ./out-perf.masstree/benchmarks/dbtest --verbose --bench tpce --scale-factor 500 --num-threads $1 --runtime $2 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 3"
+numactl --interleave=all $1 --verbose --bench tpce --scale-factor 500 --num-threads $2 --runtime $3 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 3"
 #numactl --interleave=all ./out-perf.debug.check.masstree/benchmarks/dbtest --verbose --bench tpce --scale-factor 500 --num-threads 1 --runtime 2000 --log-dir /tmpfs/knkim/silo-log --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 3"
 
