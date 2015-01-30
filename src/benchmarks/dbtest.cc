@@ -22,6 +22,10 @@
 #include "mysql_wrapper.h"
 #endif
 
+#if defined(USE_PARALLEL_SSI) && defined(USE_PARALLEL_SSN)
+#error "SSI + SSN?"
+#endif
+
 using namespace std;
 using namespace util;
 
@@ -65,9 +69,6 @@ parse_memory_spec(const string &s)
 int
 main(int argc, char **argv)
 {
-#if defined(USE_PARALLEL_SSN) and defined(USE_PARALLEL_SSI)
-  static_assert(false, "SSI + SSN?");
-#endif
   abstract_db *db = NULL;
   void (*test_fn)(abstract_db *, int argc, char **argv) = NULL;
   string bench_type = "ycsb";

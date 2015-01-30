@@ -458,7 +458,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
         if (max_xstamp < tuple_xstamp)
           max_xstamp = tuple_xstamp;
-        if (max_xstamp >= min_read_s1 and xc->ct3 != ~0) {
+        if (max_xstamp >= min_read_s1 and has_committed_t3(xc)) {
           tls_serial_abort_count++;
           return rc_t{RC_ABORT_SSI};
         }
@@ -654,7 +654,6 @@ transaction<Protocol, Traits>::do_tuple_read(
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
       ASSERT(tuple->sstamp);    // sstamp will be valid too if s2 is valid
-      // read-only optimization: if we're read-only and we started before tuple->s2
       tls_serial_abort_count++;
       return rc_t{RC_ABORT_SSI};
     }
