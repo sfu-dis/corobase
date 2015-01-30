@@ -762,7 +762,7 @@ bench_worker::txn_result tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFr
 						const trade_request::key k_tr_1( k_s->s_symb, k_b_idx->b_id, numeric_limits<decltype(k_tr_1.tr_t_id)>::max()  );
 						table_scanner tr_scanner(&arena);
 						try_catch(tbl_trade_request(1)->scan(txn, Encode(obj_key0=str(sizeof(k_tr_0)), k_tr_0), &Encode(obj_key1=str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
-						//ALWAYS_ASSERT( tr_scanner.output.size() );			// XXX. If there's no previous trade, this can happen
+//						ALWAYS_ASSERT( tr_scanner.output.size() );			// XXX. If there's no previous trade, this can happen
 
 						for( auto &r_tr : tr_scanner.output )
 						{
@@ -862,7 +862,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame1(const TCustomerPo
 		const holding_summary::key k_hs_1( k_ca->ca_id, string(cSYMBOL_len, (char)255) );
 		table_scanner hs_scanner(&arena);
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-	//	ALWAYS_ASSERT( hs_scanner.output.size() );		// left-outer join. S table could be empty.
+		ALWAYS_ASSERT( hs_scanner.output.size() );		// left-outer join. S table could be empty.
 
 		auto asset = 0;
 		for( auto& r_hs : hs_scanner.output )
@@ -1008,7 +1008,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 		const trade_request::key k_tr_1( string(ticker.symbol),  numeric_limits<decltype(k_tr_1.tr_b_id)>::max(), numeric_limits<decltype(k_tr_1.tr_t_id)>::max() );
 		table_scanner tr_scanner(&arena);
 		try_catch(tbl_trade_request(1)->scan(txn, Encode(obj_key0=str(sizeof(k_tr_0)), k_tr_0), &Encode(obj_key1=str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
-		//ALWAYS_ASSERT( tr_scanner.output.size() );			// XXX. If there's no previous trade, this can happen
+		ALWAYS_ASSERT( tr_scanner.output.size() );			// XXX. If there's no previous trade, this can happen
 
 		std::vector<std::pair<varstr *, const varstr *>> request_list_cursor;
 		for( auto &r_tr : tr_scanner.output )
@@ -1740,7 +1740,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame4(const TTradeLookupFram
 	const holding_history::key k_hh_1(pOut->trade_id, numeric_limits<decltype(k_hh_1.hh_h_t_id)>::max());
 	table_scanner hh_scanner(&arena);
 	try_catch(tbl_holding_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hh_0)), k_hh_0), &Encode(obj_key1=str(sizeof(k_hh_1)), k_hh_1), hh_scanner, &arena));
-//	ALWAYS_ASSERT( t_scanner.output.size() );		// possible case. no holding for the customer
+	ALWAYS_ASSERT( hh_scanner.output.size() );		// possible case. no holding for the customer
 
 	auto hh_cursor = 0;
 	for( auto& r_hh : hh_scanner.output )
@@ -1931,7 +1931,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 			const holding::key k_h_1( pIn->acct_id, pOut->symbol ,numeric_limits<int64_t>::max(),numeric_limits<int64_t>::max() );
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-			//ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
+			ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
 
 			for( auto &r_h : h_scanner.output )
 			{
@@ -1978,7 +1978,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 			const holding::key k_h_1( pIn->acct_id, pOut->symbol, numeric_limits<int64_t>::max(),numeric_limits<int64_t>::max() 	);
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-		//	ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
+			ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
 
 			for( auto &r_h : h_scanner.output )
 			{
@@ -2085,7 +2085,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 		const holding_summary::key k_hs_1( pIn->acct_id, string(cSYMBOL_len, (char)255) );
 		table_scanner hs_scanner(&arena);
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-//		ALWAYS_ASSERT( hs_scanner.output.size() );				// XXX. allowed?
+		ALWAYS_ASSERT( hs_scanner.output.size() );				// XXX. allowed?
 
 		for( auto &r_hs : hs_scanner.output )
 		{
@@ -2152,7 +2152,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4
 	v_t_idx1.t_exec_name 	= v_t.t_exec_name ;
 	v_t_idx1.t_trade_price 	= v_t.t_trade_price ;
 	v_t_idx1.t_chrg 		= v_t.t_chrg ;
-	try_catch(tbl_t_ca_id_index(1)->put(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1), Encode(obj_v=str(sizeof(v_t_idx1)), v_t_idx1)));
+	try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1), Encode(obj_v=str(sizeof(v_t_idx1)), v_t_idx1)));
 
 	t_s_symb_index::key k_t_idx2;
 	t_s_symb_index::value v_t_idx2;
@@ -2166,7 +2166,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4
 	v_t_idx2.t_qty 			= v_t.t_qty ;
 	v_t_idx2.t_exec_name 	= v_t.t_exec_name ;
 	v_t_idx2.t_trade_price 	= v_t.t_trade_price ;
-	try_catch(tbl_t_s_symb_index(1)->put(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
+	try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
 
 	if( not pIn->type_is_market )
 	{
@@ -2296,7 +2296,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 			const holding::key k_h_1( pIn->acct_id, pIn->symbol, numeric_limits<int64_t>::max() ,numeric_limits<int64_t>::max());
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-//			ALWAYS_ASSERT( h_scanner.output.size() );		// guessing this could be empty set
+			ALWAYS_ASSERT( h_scanner.output.size() );		// guessing this could be empty set
 
 			if( pIn->is_lifo )
 			{
@@ -2420,7 +2420,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 			const holding::key k_h_1( pIn->acct_id, pIn->symbol, numeric_limits<int64_t>::max() ,numeric_limits<int64_t>::max());
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-//			ALWAYS_ASSERT( h_scanner.output.size() );			// XXX. guessing could be empty
+			ALWAYS_ASSERT( h_scanner.output.size() );			// XXX. guessing could be empty
 
 			if( pIn->is_lifo )
 			{
@@ -3032,7 +3032,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 	const t_s_symb_index::key k_t_1( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).DayNo(), numeric_limits<uint64_t>::max() );
 	table_scanner t_scanner(&arena);
 	try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
-//	ALWAYS_ASSERT( t_scanner.output.size() );		// XXX. short innitial trading day can make this case happening?
+	ALWAYS_ASSERT( t_scanner.output.size() );		// XXX. short innitial trading day can make this case happening?
 
 	for( int i = 0; i < pIn->max_trades and i < t_scanner.output.size() ; i++ )
 	{
