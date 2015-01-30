@@ -40,6 +40,14 @@ void xid_free(XID x);
  */
 xid_context *xid_get_context(XID x);
 
+#ifdef USE_PARALLEL_SSI
+inline bool has_committed_t3(xid_context *xc)
+{
+    uint64_t s = volatile_read(xc->ct3);
+    return s and s < ~uint64_t{0};
+}
+#endif
+
 #if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
 bool wait_for_commit_result(xid_context *xc);
 #endif
