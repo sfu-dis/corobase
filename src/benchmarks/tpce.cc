@@ -390,7 +390,7 @@ class tpce_worker :
 			scoped_str_arena s_arena(arena);
 			TMarketFeedTxnInput* input= MarketFeedInputBuffer->get();
 			if( not input )
-				return bench_worker::txn_result(true, 0);		// XXX. do we have to do this? MFQueue is empty, meaning no Trade-order submitted yet
+				return bench_worker::txn_result(false, 0);		// XXX. do we have to do this? MFQueue is empty, meaning no Trade-order submitted yet
 
 			TMarketFeedTxnOutput output;
 			CMarketFeed* harness= new CMarketFeed(this, this);
@@ -492,7 +492,7 @@ class tpce_worker :
 			scoped_str_arena s_arena(arena);
 			TTradeResultTxnInput* input = TradeResultInputBuffer->get();
 			if( not input )
-				return bench_worker::txn_result(true, 0);		// XXX. do we have to do this? TRQueue is empty, meaning no Trade-order submitted yet
+				return bench_worker::txn_result(false, 0);		// XXX. do we have to do this? TRQueue is empty, meaning no Trade-order submitted yet
 
 			TTradeResultTxnOutput output;
 			CTradeResult* harness= new CTradeResult(this);
@@ -1008,7 +1008,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 		const trade_request::key k_tr_1( string(ticker.symbol),  numeric_limits<decltype(k_tr_1.tr_b_id)>::max(), numeric_limits<decltype(k_tr_1.tr_t_id)>::max() );
 		table_scanner tr_scanner(&arena);
 		try_catch(tbl_trade_request(1)->scan(txn, Encode(obj_key0=str(sizeof(k_tr_0)), k_tr_0), &Encode(obj_key1=str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
-		ALWAYS_ASSERT( tr_scanner.output.size() );			// XXX. If there's no previous trade, this can happen
+//		ALWAYS_ASSERT( tr_scanner.output.size() );			// XXX. If there's no previous trade, this can happen. Higher initial trading days would enlarge this scan set
 
 		std::vector<std::pair<varstr *, const varstr *>> request_list_cursor;
 		for( auto &r_tr : tr_scanner.output )

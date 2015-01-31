@@ -33,11 +33,13 @@
 #define MEE_SUT_H
 
 #include <mutex>
+#include <queue>
 #include "egen/MEESUTInterface.h"
 
 namespace TPCE{
-const int max_buffer = 512000;
+//const int max_buffer = 512000;
 
+//    mcs_lock a_lock;
 std::mutex a_lock;
 class CRITICAL_SECTION
 {
@@ -55,8 +57,8 @@ class CRITICAL_SECTION
 template <typename T>
 class InputBuffer 
 {
-//    mcs_lock a_lock;
-    T* buffer[max_buffer];
+//    T* buffer[max_buffer];
+	std::queue<T*> buffer;
     int size, first, last;
     //    int flag;
 public:
@@ -64,26 +66,37 @@ public:
     {};	
     bool isEmpty(){
 	{
-//	    CRITICAL_SECTION(cs, a_lock);
 		CRITICAL_SECTION cs;
+
+		return buffer.empty();
+		/*
+//	    CRITICAL_SECTION(cs, a_lock);
 	    //	    if(flag==1) return true;    
 	    if(size==0) return true;
 	    else {
 		//flag=1;
 		return false;
 	    }              
+		*/
 	}
     }
     T* get(){
 	{
 //	    CRITICAL_SECTION(cs, a_lock);
 		CRITICAL_SECTION cs;
+		if( buffer.empty() )
+			return NULL;
+		T* tmp = buffer.front();
+		buffer.pop();
+		return tmp;
+		/*
 	    if (size==0) return NULL;
 	    T* tmp=buffer[first];
 	    size--;
 	    first=(first+1)%max_buffer;
 	    //	    flag=0; 
 	    return tmp;
+		*/
 	}
     }
 
@@ -91,12 +104,15 @@ public:
 	{
 //	    CRITICAL_SECTION(cs, a_lock);
 		CRITICAL_SECTION cs;
+		buffer.push( tmp );
 	    //assert(size<max_buffer);
+		/*
 	    if(size < max_buffer) {
 		buffer[last]=tmp;
 		last=(last+1)%max_buffer;
 		size++;
 	    }
+		*/
 	}
     }
 };
