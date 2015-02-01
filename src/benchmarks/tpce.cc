@@ -2123,6 +2123,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4
 	trade::key k_t;
 	trade::value v_t;
 	k_t.t_id = pOut->trade_id;
+	v_t.t_dts = now_dts;
 	v_t.t_st_id = string(pIn->status_id);
 	v_t.t_tt_id = string(pIn->trade_type_id);
 	v_t.t_is_cash = pIn->is_cash;
