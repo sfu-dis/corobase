@@ -86,7 +86,7 @@ public:
 
         ComputeNumSecurities(iConfiguredCustomerCount);
 
-        m_iCurExchange = 1;
+        m_iCurExchange = 0;
     };
 
     ~CExchangeTable( )
@@ -99,17 +99,16 @@ public:
     */
     bool GenerateNextRecord()
     {
-        if( InFile.good() )
+        if( InFile.good() and m_iCurExchange < 4)
         {
             m_row.Load(InFile);
             m_row.EX_AD_ID += iTIdentShift;
-            m_row.EX_NUM_SYMB = m_iNumSecurities[m_iCurExchange-1];
-
-            m_iCurExchange++;
+            m_row.EX_NUM_SYMB = m_iNumSecurities[m_iCurExchange];
         }
 	
-	bool xx =InFile.eof();
-        return ( xx );
+		bool xx =InFile.eof() or m_iCurExchange >= 4;
+		m_iCurExchange++;
+		return ( xx );
     }
 };
 

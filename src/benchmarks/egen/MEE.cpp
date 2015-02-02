@@ -109,7 +109,7 @@ CMEE::CMEE( INT32 TradingTimeSoFar, CMEESUTInterface *pSUT, CBaseLogger *pLogger
     , m_PriceBoard( TradingTimeSoFar, &m_BaseTime, &m_CurrentTime, inputFiles )
     , m_TickerTape( pSUT, &m_PriceBoard, &m_BaseTime, &m_CurrentTime, inputFiles )
     , m_TradingFloor( pSUT, &m_PriceBoard, &m_TickerTape, &m_BaseTime, &m_CurrentTime )
-    , m_MEELock()
+//    , m_MEELock()
 {
     m_pLogger->SendToLogger("MEE object constructed using c'tor 1 (valid for publication: YES).");
     
@@ -126,7 +126,7 @@ CMEE::CMEE( INT32 TradingTimeSoFar, CMEESUTInterface *pSUT, CBaseLogger *pLogger
     , m_PriceBoard( TradingTimeSoFar, &m_BaseTime, &m_CurrentTime, inputFiles )
     , m_TickerTape( pSUT, &m_PriceBoard, &m_BaseTime, &m_CurrentTime, TickerTapeRNGSeed, inputFiles )
     , m_TradingFloor( pSUT, &m_PriceBoard, &m_TickerTape, &m_BaseTime, &m_CurrentTime, TradingFloorRNGSeed )
-    , m_MEELock()
+//    , m_MEELock()
 {
     m_pLogger->SendToLogger("MEE object constructed using c'tor 2 (valid for publication: NO).");
     m_pLogger->SendToLogger(m_DriverMEESettings);
@@ -149,47 +149,62 @@ RNGSEED CMEE::GetTradingFloorRNGSeed( void )
 
 void CMEE::SetBaseTime( void )
 {
-    m_MEELock.lock();
+	{
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
+//    m_MEELock.lock();
     m_BaseTime.SetToCurrent( );
-    m_MEELock.unlock();
+//    m_MEELock.unlock();
+	}
 }
 
 bool CMEE::DisableTickerTape( void )
 {
+	{
     bool    Result;
-    m_MEELock.lock();
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
+    //m_MEELock.lock();
     Result = m_TickerTape.DisableTicker();
-    m_MEELock.unlock();
+    //m_MEELock.unlock();
     return( Result );
+	}
 }
 
 bool CMEE::EnableTickerTape( void )
 {
+	{
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
     bool    Result;
-    m_MEELock.lock();
+//    m_MEELock.lock();
     Result = m_TickerTape.EnableTicker();
-    m_MEELock.unlock();
+//    m_MEELock.unlock();
     return( Result );
+	}
 }
 
 INT32 CMEE::GenerateTradeResult( void )
 {
+	{
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
     INT32   NextTime;
 
-    m_MEELock.lock();
+//    m_MEELock.lock();
     m_CurrentTime.SetToCurrent( );
     NextTime = m_TradingFloor.GenerateTradeResult( );
-    m_MEELock.unlock();
+//    m_MEELock.unlock();
     return( NextTime );
+	}
 }
 
 INT32 CMEE::SubmitTradeRequest( PTradeRequest pTradeRequest )
 {
+	{
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
     INT32 NextTime;
 
-    m_MEELock.lock();
+   // m_MEELock.lock();
     m_CurrentTime.SetToCurrent( );
     NextTime = m_TradingFloor.SubmitTradeRequest( pTradeRequest );
-    m_MEELock.unlock();
+//    m_MEELock.unlock();
     return( NextTime );
+	}
 }

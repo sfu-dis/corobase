@@ -436,11 +436,4 @@ private:
   ALWAYS_ASSERT(rc._val == RC_TRUE);    \
 }
 
-// for tpce, need to change tpce to use *relax/strict
-#define try_verify(oper) \
-{ \
-  rc_t rc = oper;   \
-  ALWAYS_ASSERT(rc._val == RC_TRUE);    \
-}
-
 #endif /* _NDB_BENCH_H_ */

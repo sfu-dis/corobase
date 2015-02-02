@@ -35,6 +35,7 @@
  */
 
 #include "EGenUtilities_stdafx.h"
+#include "user_time.h"
 
 using namespace TPCE;
 
@@ -314,7 +315,7 @@ void CDateTime::SetToCurrent(void)
     struct tm ltr;
     int secs;
     gettimeofday(&tv, NULL);
-    struct tm* lt = localtime_r(&tv.tv_sec, &ltr);  //expand into year/month/day/...
+    struct tm* lt = user_localtime_r(&tv.tv_sec, &ltr);  //expand into year/month/day/...
     // NOTE: 1 is added to tm_mon because it is 0 based, but YMDtoDayno expects it to
     // be 1 based.
     m_dayno = YMDtoDayno(lt->tm_year+1900, lt->tm_mon+1, lt->tm_mday);  // tm_year is based on 1900, not 0.
@@ -322,6 +323,7 @@ void CDateTime::SetToCurrent(void)
     secs = (lt->tm_hour * MinutesPerHour + lt->tm_min)*SecondsPerMinute +
             lt->tm_sec;
     m_msec = static_cast<INT32>((long)secs * MsPerSecond + tv.tv_usec / 1000);
+
 #else
 #error No system routine to get time.
 #endif

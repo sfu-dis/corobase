@@ -33,70 +33,42 @@
 #define MEE_SUT_H
 
 #include <mutex>
+#include <queue>
 #include "egen/MEESUTInterface.h"
+#include "../dbcore/mcs_lock.h"
 
 namespace TPCE{
-const int max_buffer = 512000;
-
-std::mutex a_lock;
-class CRITICAL_SECTION
-{
-	public:
-	CRITICAL_SECTION()
-	{
-		a_lock.lock();
-	}
-	~CRITICAL_SECTION()
-	{
-		a_lock.unlock();
-	}
-};
 
 template <typename T>
 class InputBuffer 
 {
-//    mcs_lock a_lock;
-    T* buffer[max_buffer];
+	mcs_lock buffer_lock;
+	std::queue<T*> buffer;
     int size, first, last;
-    //    int flag;
 public:
-    InputBuffer():size(0), first(0), last(0)//, flag(0)
+    InputBuffer():size(0), first(0), last(0)
     {};	
     bool isEmpty(){
 	{
-//	    CRITICAL_SECTION(cs, a_lock);
-		CRITICAL_SECTION cs;
-	    //	    if(flag==1) return true;    
-	    if(size==0) return true;
-	    else {
-		//flag=1;
-		return false;
-	    }              
+//	    CRITICAL_SECTION(meesut_cs, buffer_lock);				// XXX. Assuming CMEE is thread-local, CS is not necessary. 
+		return buffer.empty();
 	}
     }
     T* get(){
 	{
-//	    CRITICAL_SECTION(cs, a_lock);
-		CRITICAL_SECTION cs;
-	    if (size==0) return NULL;
-	    T* tmp=buffer[first];
-	    size--;
-	    first=(first+1)%max_buffer;
-	    //	    flag=0; 
-	    return tmp;
+//	    CRITICAL_SECTION(meesut_cs, buffer_lock);
+		if( buffer.empty() )
+			return NULL;
+		T* tmp = buffer.front();
+		buffer.pop();
+		return tmp;
 	}
     }
 
     void put(T* tmp){
 	{
-//	    CRITICAL_SECTION(cs, a_lock);
-		CRITICAL_SECTION cs;
-	    //assert(size<max_buffer);
-	    if(size < max_buffer) {
-		buffer[last]=tmp;
-		last=(last+1)%max_buffer;
-		size++;
-	    }
+//	    CRITICAL_SECTION(meesut_cs, buffer_lock);
+		buffer.push( tmp );
 	}
     }
 };
