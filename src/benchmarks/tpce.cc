@@ -398,7 +398,9 @@ class tpce_worker :
 			TMarketFeedTxnOutput output;
 			CMarketFeed* harness= new CMarketFeed(this, this);
 
-			return harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
+			auto ret = harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
+			delete input;
+			return ret;
 		}
 		bench_worker::txn_result DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketFeedFrame1Output *pOut, CSendToMarketInterface *pSendToMarket);
 
@@ -500,7 +502,9 @@ class tpce_worker :
 			TTradeResultTxnOutput output;
 			CTradeResult* harness= new CTradeResult(this);
 
-			return harness->DoTxn( (PTradeResultTxnInput)input, (PTradeResultTxnOutput)&output);
+			auto ret = harness->DoTxn( (PTradeResultTxnInput)input, (PTradeResultTxnOutput)&output);
+			delete input;
+			return ret;
 		}
 		bench_worker::txn_result DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTradeResultFrame1Output *pOut);
 		bench_worker::txn_result DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTradeResultFrame2Output *pOut);
