@@ -50,13 +50,13 @@ public:
     {};	
     bool isEmpty(){
 	{
-	    CRITICAL_SECTION(meesut_cs, buffer_lock);
+//	    CRITICAL_SECTION(meesut_cs, buffer_lock);				// XXX. Assuming CMEE is thread-local, CS is not necessary. 
 		return buffer.empty();
 	}
     }
     T* get(){
 	{
-	    CRITICAL_SECTION(meesut_cs, buffer_lock);
+//	    CRITICAL_SECTION(meesut_cs, buffer_lock);
 		if( buffer.empty() )
 			return NULL;
 		T* tmp = buffer.front();
@@ -67,7 +67,7 @@ public:
 
     void put(T* tmp){
 	{
-	    CRITICAL_SECTION(meesut_cs, buffer_lock);
+//	    CRITICAL_SECTION(meesut_cs, buffer_lock);
 		buffer.push( tmp );
 	}
     }
