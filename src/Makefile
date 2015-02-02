@@ -168,7 +168,8 @@ DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
 	dbcore/size-encode.cpp \
 	dbcore/xid.cpp		\
 	dbcore/serial.cpp	\
-	dbcore/dynarray.cpp
+	dbcore/dynarray.cpp	\
+	dbcore/mcs_lock.cpp	
 
 ifeq ($(TRACE_FOOTPRINT_S),1)
 DBCORE_SRCFILES += dbcore/sm-trace.cpp
