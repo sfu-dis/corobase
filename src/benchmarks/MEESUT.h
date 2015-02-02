@@ -42,7 +42,7 @@ namespace TPCE{
 template <typename T>
 class InputBuffer 
 {
-	mcs_lock a_lock;
+	mcs_lock buffer_lock;
 	std::queue<T*> buffer;
     int size, first, last;
 public:
