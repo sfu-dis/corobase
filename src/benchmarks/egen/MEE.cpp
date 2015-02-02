@@ -150,7 +150,7 @@ RNGSEED CMEE::GetTradingFloorRNGSeed( void )
 void CMEE::SetBaseTime( void )
 {
 	{
-	CRITICAL_SECTION(mee_cs, m_MEELock);
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
 //    m_MEELock.lock();
     m_BaseTime.SetToCurrent( );
 //    m_MEELock.unlock();
@@ -161,7 +161,7 @@ bool CMEE::DisableTickerTape( void )
 {
 	{
     bool    Result;
-	CRITICAL_SECTION(mee_cs, m_MEELock);
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
     //m_MEELock.lock();
     Result = m_TickerTape.DisableTicker();
     //m_MEELock.unlock();
@@ -172,7 +172,7 @@ bool CMEE::DisableTickerTape( void )
 bool CMEE::EnableTickerTape( void )
 {
 	{
-	CRITICAL_SECTION(mee_cs, m_MEELock);
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
     bool    Result;
 //    m_MEELock.lock();
     Result = m_TickerTape.EnableTicker();
@@ -184,7 +184,7 @@ bool CMEE::EnableTickerTape( void )
 INT32 CMEE::GenerateTradeResult( void )
 {
 	{
-	CRITICAL_SECTION(mee_cs, m_MEELock);
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
     INT32   NextTime;
 
 //    m_MEELock.lock();
@@ -198,7 +198,7 @@ INT32 CMEE::GenerateTradeResult( void )
 INT32 CMEE::SubmitTradeRequest( PTradeRequest pTradeRequest )
 {
 	{
-	CRITICAL_SECTION(mee_cs, m_MEELock);
+//	CRITICAL_SECTION(mee_cs, m_MEELock);			// XXX. Assuming CMEE is thread-local
     INT32 NextTime;
 
    // m_MEELock.lock();

@@ -49,10 +49,10 @@ CMEE* 						market_init(INT32 TradingTimeSoFar, CMEESUTInterface *pSUT, UINT32 U
 extern CGenerateAndLoad*	pGenerateAndLoad;
 CCETxnInputGenerator*		m_TxnInputGenerator;
 CDM*						m_CDM;
-CMEESUT*					meesut;
-CMEE* 						mee; 
-MFBuffer* 					MarketFeedInputBuffer;
-TRBuffer* 					TradeResultInputBuffer;
+//CMEESUT*					meesut;
+vector<CMEE*> 						mees; 
+vector<MFBuffer*> 					MarketFeedInputBuffers;
+vector<TRBuffer*> 					TradeResultInputBuffers;
 
 //Buffers
 const int loadUnit = 1000;
@@ -329,9 +329,12 @@ class tpce_worker :
 				<< ", " << partition_id_end << ")"
 				<< endl;
 		}
-//		obj_key0.reserve(str_arena::MinStrReserveLength);
-//		obj_key1.reserve(str_arena::MinStrReserveLength);
-//		obj_v.reserve(str_arena::MinStrReserveLength);
+
+		const unsigned base = coreid::num_cpus_online();
+		mee = mees[worker_id - base ];
+		MarketFeedInputBuffer = MarketFeedInputBuffers[worker_id - base ];
+		TradeResultInputBuffer = TradeResultInputBuffers[worker_id - base ];
+		ALWAYS_ASSERT( TradeResultInputBuffer and MarketFeedInputBuffer and mee );
 	}
 
 		// Market Interface
@@ -640,6 +643,10 @@ class tpce_worker :
 		varstr obj_key0;
 		varstr obj_key1;
 		varstr obj_v;
+
+		CMEE* mee;				// thread-local MEE
+		MFBuffer* MarketFeedInputBuffer;
+		TRBuffer* TradeResultInputBuffer;
 };
 
 bench_worker::txn_result tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBrokerVolumeFrame1Output *pOut)
@@ -5081,13 +5088,19 @@ void tpce_do_test(abstract_db *db, int argc, char **argv)
 	m_CDM = data_maintenance_init(customers, scaling_factor_tpce, working_days);
 
 	//Initialize Market side
-	MarketFeedInputBuffer = new MFBuffer();
-	TradeResultInputBuffer = new TRBuffer();
 
-	meesut = new CMEESUT();
-	meesut->setMFQueue(MarketFeedInputBuffer);
-	meesut->setTRQueue(TradeResultInputBuffer);
-	mee = market_init( working_days*8, meesut, AutoRand()); 		
+	for( int i = 0; i < nthreads; i++ )
+	{
+		auto mf_buf= new MFBuffer();
+		auto tr_buf= new TRBuffer();
+		MarketFeedInputBuffers.emplace_back( mf_buf );
+		TradeResultInputBuffers.emplace_back( tr_buf );
+		auto meesut = new CMEESUT();
+		meesut->setMFQueue(mf_buf);
+		meesut->setTRQueue(tr_buf);
+		auto mee = market_init( working_days*8, meesut, AutoRand()); 		
+		mees.emplace_back( mee );
+	}
 
 	if (verbose) {
 		cerr << "tpce settings:" << endl;
