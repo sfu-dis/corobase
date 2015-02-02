@@ -96,6 +96,7 @@
 #include "MEESUTInterface.h"
 #include "BaseLogger.h"
 #include "DriverParamSettings.h"
+#include "../../dbcore/mcs_lock.h"
 
 namespace TPCE
 {
@@ -114,7 +115,9 @@ private:
     CDateTime           m_BaseTime;
     CDateTime           m_CurrentTime;
 
-    CMutex              m_MEELock;
+//    CMutex              m_MEELock;
+	
+	mcs_lock			m_MEELock;
 
     // Automatically generate unique RNG seeds
     void AutoSetRNGSeeds( UINT32 UniqueId );

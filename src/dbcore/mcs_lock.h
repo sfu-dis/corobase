@@ -40,6 +40,8 @@
    - queue-based locks: higher overhead but scalable
    - pthread mutexes : high overhead and blocks, but frees up cpu for other threads
 */
+#define CRITICAL_SECTION(name, lock) critical_section name(lock)
+
 struct mcs_lock {
     struct qnode;
     struct qnode {
@@ -56,7 +58,7 @@ struct mcs_lock {
     };
 #define MCS_EXT_QNODE_INITIALIZER {{0,false,0},0}
     qnode* volatile _tail;
-    mcs_lock() : _tail(NULL) { }
+    mcs_lock() : _tail(0) { }
 
     /* This spinning occurs whenever there are critical sections ahead
        of us.
@@ -75,14 +77,14 @@ struct mcs_lock {
         return false;
     }
     bool attempt(qnode* me) {
-        me->_next = NULL;
+        me->_next = 0;
         me->_waiting = true;
-        membar_producer();
-        qnode* pred = (qnode*) atomic_cas_ptr(&_tail, 0, (void*) me);
+		__sync_synchronize();
+        qnode* pred = (qnode*) __sync_val_compare_and_swap(&_tail, 0, (void*) me);
         // lock held?
         if(pred)
             return false;
-        membar_enter();
+		__sync_synchronize();
         return true;
     }
     // return true if the lock was free
@@ -95,10 +97,10 @@ struct mcs_lock {
     }
 
     qnode* __unsafe_begin_acquire(qnode* me) {
-        me->_next = NULL;
+        me->_next = 0;
         me->_waiting = true;
-        membar_producer();
-        qnode* pred = (qnode*) atomic_swap_ptr(&_tail, (void*) me);
+		__sync_synchronize();
+        qnode* pred = (qnode*) __sync_lock_test_and_set(&_tail, (void*) me);
         if(pred) {
             pred->_next = me;
         }
@@ -108,7 +110,7 @@ struct mcs_lock {
         if(pred) {
             spin_on_waiting(me);
         }
-        membar_enter();
+		__sync_synchronize();
         return (void*) pred;
     }
     
@@ -127,12 +129,12 @@ struct mcs_lock {
     void release(qnode &me) { release(&me); }
     void release(qnode* me) {
       //w_assert1(is_mine(me));
-        membar_exit();
+		__sync_synchronize();
 
         qnode* next;
         if(!(next=me->_next)) {
-            if(me == _tail && me == (qnode*) 
-                    atomic_cas_ptr(&_tail, (void*) me, NULL))
+            if(me == _tail && me == (qnode*)
+					__sync_val_compare_and_swap((char ** volatile)&_tail, (void*) me, 0))
             return;
             next = spin_on_next(me);
         }
@@ -141,6 +143,30 @@ struct mcs_lock {
   //bool is_mine(qnode* me) { return me->_held == this; }
     bool is_mine(ext_qnode* me) { return me->_held == this; }
 };
+
+
+struct critical_section 
+{ 
+	critical_section(mcs_lock &mutex) 
+		: _mutex(&mutex)          
+	{
+		_me._held=0;
+		_mutex->acquire(&_me);
+	}
+
+	~critical_section() 
+	{
+		if(_mutex)
+			_mutex->release(&_me);
+		_mutex = 0;    
+	}
+
+	private:
+	mcs_lock* _mutex;
+	mcs_lock::ext_qnode _me;
+	critical_section(critical_section const &);
+};
+
 /**\endcond skip */
 #endif
 
