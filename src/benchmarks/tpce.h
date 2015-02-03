@@ -29,6 +29,9 @@
 #include "egen/TxnHarnessTradeOrder.h"
 #include "MEESUT.h"
 
+#define MIN_VAL(x) 0
+#define MAX_VAL(x) numeric_limits<decltype(x)>::max()
+
 	/*
 	   Customer Tables
 	   */
@@ -107,7 +110,7 @@ DO_STRUCT(customer_taxrate, CUSTOMER_TAXRATE_KEY_FIELDS, CUSTOMER_TAXRATE_VALUE_
 #define HOLDING_KEY_FIELDS(x,y)\
     x(int64_t,    h_ca_id)\
     y(inline_str_fixed<15>, h_s_symb)\
-    y(int32_t,    h_dts)\
+    y(uint32_t,    h_dts)\
     y(uint64_t,    h_t_id)
 #define HOLDING_VALUE_FIELDS(x,y)\
     x(double,   h_price)\
@@ -139,6 +142,7 @@ DO_STRUCT(holding_summary, HOLDING_SUMMARY_KEY_FIELDS, HOLDING_SUMMARY_VALUE_FIE
 DO_STRUCT(watch_item, WATCH_ITEM_KEY_FIELDS, WATCH_ITEM_VALUE_FIELDS)
 
 
+// added wl_c_id to PK, read-only table. ( no FK integrity issue )
 #define WATCH_LIST_KEY_FIELDS(x,y)\
     x(int64_t, wl_c_id)\
     y(int64_t, wl_id)
@@ -170,7 +174,7 @@ DO_STRUCT(b_name_index, B_NAME_INDEX_KEY_FIELDS, B_NAME_INDEX_VALUE_FIELDS)
 #define CASH_TRANSACTION_KEY_FIELDS(x, y)\
   x(int64_t,ct_t_id)		
 #define CASH_TRANSACTION_VALUE_FIELDS(x, y)\
-  x(int32_t,ct_dts )\
+  x(uint32_t,ct_dts )\
   y(float ,ct_amt )\
   y(inline_str_fixed<100>,ct_name )	
 DO_STRUCT(cash_transaction, CASH_TRANSACTION_KEY_FIELDS, CASH_TRANSACTION_VALUE_FIELDS)
@@ -198,14 +202,14 @@ DO_STRUCT(commission_rate, COMMISSION_RATE_KEY_FIELDS, COMMISSION_RATE_VALUE_FIE
 	x(int64_t, se_t_id )
 #define SETTLEMENT_VALUE_FIELDS(x,y)\
 	x(inline_str_fixed<40>, se_cash_type)\
-	y(int32_t, se_cash_due_date)\
+	y(uint32_t, se_cash_due_date)\
 	y(double, se_amt )
 DO_STRUCT(settlement, SETTLEMENT_KEY_FIELDS, SETTLEMENT_VALUE_FIELDS )
 
 #define TRADE_KEY_FIELDS(x,y)\
 	x(int64_t, t_id )
 #define TRADE_VALUE_FIELDS(x,y)\
-	x(int32_t, t_dts )\
+	x(uint32_t, t_dts )\
 	y(inline_str_fixed<4>, t_st_id)\
 	y(inline_str_fixed<3>, t_tt_id)\
     y(bool, t_is_cash )\
@@ -223,7 +227,7 @@ DO_STRUCT(trade, TRADE_KEY_FIELDS, TRADE_VALUE_FIELDS )
 
 #define T_CA_ID_INDEX_KEY_FIELDS(x,y)\
     x(int64_t,    t_ca_id)\
-	y(int32_t, t_dts )\
+	y(uint32_t, t_dts )\
 	y(int64_t, t_id )
 #define T_CA_ID_INDEX_VALUE_FIELDS(x,y)\
 	x(inline_str_fixed<4>, t_st_id)\
@@ -239,7 +243,7 @@ DO_STRUCT(t_ca_id_index, T_CA_ID_INDEX_KEY_FIELDS, T_CA_ID_INDEX_VALUE_FIELDS )
 
 #define T_S_SYMB_INDEX_KEY_FIELDS(x,y)\
     x(inline_str_fixed<15>, t_s_symb)\
-	y(int32_t, t_dts )\
+	y(uint32_t, t_dts )\
 	y(int64_t, t_id )
 #define T_S_SYMB_INDEX_VALUE_FIELDS(x,y)\
     x(int64_t,    t_ca_id)\
@@ -251,10 +255,11 @@ DO_STRUCT(t_ca_id_index, T_CA_ID_INDEX_KEY_FIELDS, T_CA_ID_INDEX_VALUE_FIELDS )
     y(double,  t_trade_price)
 DO_STRUCT(t_s_symb_index, T_S_SYMB_INDEX_KEY_FIELDS, T_S_SYMB_INDEX_VALUE_FIELDS )
 
+// Added th_dts to PK, queries usually require sorting on dts column. 
 #define TRADE_HISTORY_KEY_FIELDS(x,y)\
     x(int64_t,    th_t_id)\
     y(inline_str_fixed<4>, th_st_id)\
-    y(int32_t,    th_dts)
+    y(uint32_t,    th_dts)
 #define TRADE_HISTORY_VALUE_FIELDS(x,y)\
 	x(bool, dummy)
 DO_STRUCT(trade_history, TRADE_HISTORY_KEY_FIELDS, TRADE_HISTORY_VALUE_FIELDS )
@@ -291,7 +296,7 @@ DO_STRUCT(trade_type, TRADE_TYPE_KEY_FIELDS, TRADE_TYPE_VALUE_FIELDS )
     y(inline_str_fixed<46>,	co_ceo)\
     y(int64_t,    co_ad_id)\
     y(inline_str_fixed<150>, co_desc)\
-    y(int32_t,    co_open_date)
+    y(uint32_t,    co_open_date)
 DO_STRUCT( company, COMPANY_KEY_FIELDS, COMPANY_VALUE_FIELDS )
 
 #define CO_IN_ID_INDEX_KEY_FIELDS(x,y)\
@@ -318,7 +323,7 @@ DO_STRUCT( company_competitor, COMPANY_COMPETITOR_KEY_FIELDS, COMPANY_COMPETITOR
 
 #define DAILY_MARKET_KEY_FIELDS(x,y)\
     x(inline_str_fixed<15>, dm_s_symb)\
-    y(int32_t,    dm_date)
+    y(uint32_t,    dm_date)
 #define DAILY_MARKET_VALUE_FIELDS(x,y)\
     x(double,   dm_close)\
     y(double,   dm_high)\
@@ -342,7 +347,7 @@ DO_STRUCT( exchange, EXCHANGE_KEY_FIELDS, EXCHANGE_VALUE_FIELDS )
     y(int32_t,      fi_year)\
     y(int32_t, fi_qtr)
 #define FINANCIAL_VALUE_FIELDS(x,y)\
-    x(int32_t,     fi_qtr_start_date)\
+    x(uint32_t,     fi_qtr_start_date)\
     y(double,    fi_revenue)\
     y(double,    fi_net_earn)\
     y(double,    fi_basic_eps)\
@@ -379,7 +384,7 @@ DO_STRUCT( in_sc_id_index, IN_SC_ID_INDEX_KEY_FIELDS, IN_SC_ID_INDEX_VALUE_FIELD
 #define LAST_TRADE_KEY_FIELDS(x,y)\
     x(inline_str_fixed<15>, lt_s_symb)
 #define LAST_TRADE_VALUE_FIELDS(x,y)\
-    x(int32_t,  	lt_dts)\
+    x(uint32_t,  	lt_dts)\
     y(double,  	lt_price)\
     y(double,  	lt_open_price)\
     y(int64_t,  	lt_vol)
@@ -393,7 +398,7 @@ DO_STRUCT( last_trade, LAST_TRADE_KEY_FIELDS, LAST_TRADE_VALUE_FIELDS )
     x(inline_str_fixed<80>, ni_headline)\
     y(inline_str_fixed<255>, ni_summary)\
     y(inline_str_fixed<1000>, ni_item)\
-    y(int32_t,  	ni_dts)\
+    y(uint32_t,  	ni_dts)\
     y(inline_str_fixed<30>, ni_source)\
     y(inline_str_fixed<30>, ni_author)
 DO_STRUCT( news_item, NEWS_ITEM_KEY_FIELDS, NEWS_ITEM_VALUE_FIELDS )
@@ -405,6 +410,7 @@ DO_STRUCT( news_item, NEWS_ITEM_KEY_FIELDS, NEWS_ITEM_VALUE_FIELDS )
     x(bool,   	dummy)
 DO_STRUCT( news_xref, NEWS_XREF_KEY_FIELDS, NEWS_XREF_VALUE_FIELDS )
 
+// Added sc_name to PK
 #define SECTOR_KEY_FIELDS(x,y)\
     x(inline_str_fixed<30>, sc_name)\
     y(inline_str_fixed<2>, sc_id)
@@ -421,13 +427,13 @@ DO_STRUCT( sector, SECTOR_KEY_FIELDS, SECTOR_VALUE_FIELDS )
     y(inline_str_fixed<6>, s_ex_id)\
     y(int64_t,   	s_co_id)\
     y(int64_t,   s_num_out)\
-    y(int32_t,  	s_start_date)\
-    y(int32_t,   	s_exch_date)\
+    y(uint32_t,  	s_start_date)\
+    y(uint32_t,   	s_exch_date)\
     y(double,	s_pe)\
     y(float, 	s_52wk_high)\
-    y(int32_t,	s_52wk_high_date)\
+    y(uint32_t,	s_52wk_high_date)\
     y(float,	s_52wk_low)\
-    y(int32_t,	s_52wk_low_date)\
+    y(uint32_t,	s_52wk_low_date)\
     y(double,  s_dividend)\
     y(double,  s_yield)
 DO_STRUCT( security, SECURITY_KEY_FIELDS, SECURITY_VALUE_FIELDS )
