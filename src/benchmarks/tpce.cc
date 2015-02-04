@@ -866,7 +866,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame1(const TCustomerPo
 		const holding_summary::key k_hs_1( k_ca->ca_id, string(cSYMBOL_len, (char)255) );
 		table_scanner hs_scanner(&arena);
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-		ALWAYS_ASSERT( hs_scanner.output.size() );		// left-outer join. S table could be empty.
+		//ALWAYS_ASSERT( hs_scanner.output.size() );		// left-outer join. S table could be empty.
 
 		auto asset = 0;
 		for( auto& r_hs : hs_scanner.output )
@@ -1082,7 +1082,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 			try_catch(tbl_t_s_symb_index(1)->put(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
 
 			trade_request::key k_tr_new(*k_tr);
-//			try_catch(tbl_trade_request(1)->remove(txn, Encode(obj_key0=str(sizeof(k_tr_new)), k_tr_new)));
+			try_catch(tbl_trade_request(1)->remove(txn, Encode(obj_key0=str(sizeof(k_tr_new)), k_tr_new)));
 
 			trade_history::key k_th;
 			trade_history::value v_th;
@@ -1204,7 +1204,7 @@ bench_worker::txn_result tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFra
 		const holding_summary::key k_hs_1( pIn->acct_id, string(cSYMBOL_len, (char)255) );
 		table_scanner hs_scanner(&arena);
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-		ALWAYS_ASSERT( hs_scanner.output.size() );
+//		ALWAYS_ASSERT( hs_scanner.output.size() );
 
 		for( auto& r_hs : hs_scanner.output )
 		{
@@ -1933,7 +1933,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 			const holding::key k_h_1( pIn->acct_id, pOut->symbol, MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-			ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
+//			ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
 
 			for( auto &r_h : h_scanner.output )
 			{
@@ -1980,7 +1980,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 			const holding::key k_h_1( pIn->acct_id, pOut->symbol, MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-			ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
+//			ALWAYS_ASSERT( h_scanner.output.size() );		// this set could be empty
 
 			for( auto &r_h : h_scanner.output )
 			{
@@ -2087,7 +2087,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 		const holding_summary::key k_hs_1( pIn->acct_id, string(cSYMBOL_len, (char)255) );
 		table_scanner hs_scanner(&arena);
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-		ALWAYS_ASSERT( hs_scanner.output.size() );				// XXX. allowed?
+//		ALWAYS_ASSERT( hs_scanner.output.size() );				// XXX. allowed?
 
 		for( auto &r_hs : hs_scanner.output )
 		{
@@ -2299,7 +2299,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 			const holding::key k_h_1( pIn->acct_id, pIn->symbol, MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-			ALWAYS_ASSERT( h_scanner.output.size() );		// guessing this could be empty set
+//			ALWAYS_ASSERT( h_scanner.output.size() );		// guessing this could be empty set
 
 			if( pIn->is_lifo )
 			{
@@ -2350,7 +2350,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 					try_catch(tbl_holding_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hh)), k_hh), Encode(obj_v=str(sizeof(v_hh)), v_hh)));
 
 					holding::key k_h_new(*k_h);
-//					try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+					try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
 
 					buy_value += hold_qty * hold_price;
 					sell_value += hold_qty * pIn->trade_price;
@@ -2388,7 +2388,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 				holding_summary::key k_hs;
 				k_hs.hs_ca_id		= pIn->acct_id;
 				k_hs.hs_s_symb		= string(pIn->symbol);
-//				try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
+				try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
 			}
 			
 		}
@@ -2423,7 +2423,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 			const holding::key k_h_1( pIn->acct_id, pIn->symbol, MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
 			table_scanner h_scanner(&arena);
 			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
-			ALWAYS_ASSERT( h_scanner.output.size() );			// XXX. guessing could be empty
+//			ALWAYS_ASSERT( h_scanner.output.size() );			// XXX. guessing could be empty
 
 			if( pIn->is_lifo )
 			{
@@ -2479,7 +2479,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 
 					// H delete
 					holding::key k_h_new(*k_h);
-//					try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+					try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
 
 					hold_qty *= -1;
 					sell_value += hold_qty * hold_price;
@@ -2513,7 +2513,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 			holding_summary::key k_hs;
 			k_hs.hs_ca_id		= pIn->acct_id;
 			k_hs.hs_s_symb		= string(pIn->symbol);
-//			try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
+			try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
 		}
 	}
 	return bench_worker::txn_result(true, 0);
