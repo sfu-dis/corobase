@@ -114,7 +114,8 @@ DO_STRUCT(customer_taxrate, CUSTOMER_TAXRATE_KEY_FIELDS, CUSTOMER_TAXRATE_VALUE_
     y(uint64_t,    h_t_id)
 #define HOLDING_VALUE_FIELDS(x,y)\
     x(double,   h_price)\
-    y(int32_t,     h_qty)
+    y(int32_t,     h_qty)\
+    y(inline_str_fixed<23>, dummy)
 DO_STRUCT(holding, HOLDING_KEY_FIELDS, HOLDING_VALUE_FIELDS)
 
 #define HOLDING_HISTORY_KEY_FIELDS(x,y)\
@@ -130,7 +131,8 @@ DO_STRUCT(holding_history, HOLDING_HISTORY_KEY_FIELDS, HOLDING_HISTORY_VALUE_FIE
     x(int64_t,    hs_ca_id)\
     y(inline_str_fixed<15>, hs_s_symb)
 #define HOLDING_SUMMARY_VALUE_FIELDS(x,y)\
-    x(int32_t,     hs_qty)
+    x(int32_t,     hs_qty)\
+    y(inline_str_fixed<19>, dummy)
 DO_STRUCT(holding_summary, HOLDING_SUMMARY_KEY_FIELDS, HOLDING_SUMMARY_VALUE_FIELDS)
 
 
@@ -271,7 +273,8 @@ DO_STRUCT(trade_history, TRADE_HISTORY_KEY_FIELDS, TRADE_HISTORY_VALUE_FIELDS )
 #define TRADE_REQUEST_VALUE_FIELDS(x,y)		\
     x(inline_str_fixed<3>,	tr_tt_id)\
     y(int32_t,     tr_qty)\
-    y(double,   tr_bid_price)
+    y(double,   tr_bid_price)\
+    y(inline_str_fixed<16>, dummy)
 DO_STRUCT(trade_request, TRADE_REQUEST_KEY_FIELDS, TRADE_REQUEST_VALUE_FIELDS )
 
 #define TRADE_TYPE_KEY_FIELDS(x,y)\
