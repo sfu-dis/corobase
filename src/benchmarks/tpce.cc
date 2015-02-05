@@ -5081,14 +5081,14 @@ void tpce_do_test(abstract_db *db, int argc, char **argv)
 				{
 					const vector<string> toks = split(optarg, ',');
 					ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
-					unsigned s = 0;
+					double s = 0;
 					for (size_t i = 0; i < toks.size(); i++) {
-						unsigned p = strtoul(toks[i].c_str(), nullptr, 10);
-						ALWAYS_ASSERT(p >= 0 && p <= 100);
+						double p = atof(toks[i].c_str());
+						ALWAYS_ASSERT(p >= 0.0 && p <= 100.0);
 						s += p;
 						g_txn_workload_mix[i] = p;
 					}
-					ALWAYS_ASSERT(s == 100);
+					ALWAYS_ASSERT(s == 100.0);
 				}
 				break;
 
