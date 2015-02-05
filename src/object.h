@@ -111,9 +111,6 @@ public:
 
 private:
 #ifdef PHANTOM_PROT_TABLE_LOCK
-    // table lock for phantom protection (ref count).
-    // inserter marks first MSB (can do so iff lock=0, no readers)
-    // reader can only increment when lock>=0
     table_lock_t _lock;
 #endif
 	dynarray 		_obj_table;
