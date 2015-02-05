@@ -12,7 +12,6 @@
 #include "dbcore/sm-alloc.h"
 #include "core.h"
 
-#define NR_SOCKETS 4
 // each socket requests this many oids a time from global alloc
 #define OID_EXT_SIZE 8192
 
