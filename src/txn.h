@@ -319,6 +319,11 @@ protected:
 #endif
   //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 
+#ifdef PHANTOM_PROT_TABLE_LOCK
+  typedef std::vector<table_lock_t*> table_lock_set_t;
+  table_lock_set_t table_locks;
+#endif
+
 public:
 
   inline transaction(uint64_t flags, string_allocator_type &sa);

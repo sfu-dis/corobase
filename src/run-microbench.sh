@@ -4,7 +4,8 @@ type=$1
 EXEC="./out-perf.masstree/benchmarks/dbtest --verbose --runtime 30 --bench tpcc --scale-factor 32 --pin-cpu --log-dir /tmpfs/tzwang/silo-log/"
 
 export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
-export LD_PRELOAD="/usr/lib/libtcmalloc.so"
+#export LD_PRELOAD="/usr/lib/libtcmalloc.so"
+export LD_PRELOAD="/home/tzwang/tools/build/lib/libtcmalloc.so"
 
 for READ_ROWS in 100000 300000; do
     echo $READ_ROWS

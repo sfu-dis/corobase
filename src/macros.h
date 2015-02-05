@@ -16,6 +16,10 @@
 
 //#define USE_PARALLEL_SSI
 
+//#define PHANTOM_PROT_TABLE_LOCK
+#ifdef PHANTOM_PROT_TABLE_LOCK
+#endif
+
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
 //#define DIE_ON_ABORT
