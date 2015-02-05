@@ -282,13 +282,16 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     return rc_t{RC_ABORT};
 #ifdef PHANTOM_PROT_TABLE_LOCK
   // for delete
+  bool instant_lock = false;
+  table_lock_t *l = NULL;
   if (not v) {
-    table_lock_t *l = this->underlying_btree.get_tuple_vector()->lock_ptr();
+    l = this->underlying_btree.get_tuple_vector()->lock_ptr();
     typename transaction<Transaction, Traits>::table_lock_set_t::iterator it =
       std::find(t.table_locks.begin(), t.table_locks.end(), l);
     if (it == t.table_locks.end()) {
       if (not object_vector::lock(l, TABLE_LOCK_X))
         return rc_t{RC_ABORT};
+      instant_lock = true;
     }
     else {
       if (not object_vector::upgrade_lock(l))
@@ -330,6 +333,10 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
         // unlink the version here (note abort_impl won't be able to catch
         // it because it's not yet in the write set), same as in SSN impl.
         this->underlying_btree.unlink_tuple(oid, tuple);
+#ifdef PHANTOM_PROT_TABLE_LOCK
+        if (instant_lock)
+          object_vector::unlock(l);
+#endif
         return rc_t{RC_ABORT_SSI};
     }
 #endif
@@ -352,6 +359,10 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
       // unlink the version here (note abort_impl won't be able to catch
       // it because it's not yet in the write set)
       this->underlying_btree.unlink_tuple(oid, tuple);
+#ifdef PHANTOM_PROT_TABLE_LOCK
+      if (instant_lock)
+        object_vector::unlock(l);
+#endif
       return rc_t{RC_ABORT_SSN_EXCLUSION};
     }
 #endif
@@ -393,6 +404,11 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xid) == tuple);
 
+#ifdef PHANTOM_PROT_TABLE_LOCK
+      if (instant_lock)
+        object_vector::unlock(l);
+#endif
+
     INVARIANT(t.log);
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
@@ -407,6 +423,10 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     return rc_t{RC_TRUE};
   }
   else {  // somebody else acted faster than we did
+#ifdef PHANTOM_PROT_TABLE_LOCK
+    if (instant_lock)
+      object_vector::unlock(l);
+#endif
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 }
