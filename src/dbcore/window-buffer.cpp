@@ -164,6 +164,8 @@ window_buffer::window_buffer(size_t bufsz, size_t start_offset)
     strcpy(_data, msg);
     ASSERT(not strcmp(_data+bufsz, msg));
 #endif    
+    // prefault the buffer
+    memset(_data, '\0', 2*window_size());
 }
 
 window_buffer::~window_buffer() {
