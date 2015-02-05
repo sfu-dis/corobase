@@ -339,8 +339,7 @@ install:
 				auto state = volatile_read(holder->state);
 				auto end = volatile_read(holder->end);
 				auto owner = volatile_read(holder->owner);
-				holder = NULL; // use cached values instead!
-				
+
 				// context still valid for this XID?
 				if( unlikely(owner != holder_xid) ) {
 #if CHECK_INVARIANTS
@@ -350,13 +349,20 @@ install:
 					goto start_over;
 				}
 
-				// invalid data
-				if( state != TXN_CMMTD)	   // only see committed data.
+                if (state != TXN_CMMTD) {
+#ifdef READ_COMMITTED_SPIN
+                    // spin until the tx is settled (either aborted or committed)
+                    if (not wait_for_commit_result(holder))
+                        continue;
+#else
 					continue;
+#endif
+                }
 
 				if( end > visitor->begin  			// committed(but invisible) data, 
 						|| end == INVALID_LSN)		// aborted data
 					continue;
+
 			}
 			else
 			{
