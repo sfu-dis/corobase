@@ -2389,6 +2389,22 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 				k_hs.hs_ca_id		= pIn->acct_id;
 				k_hs.hs_s_symb		= string(pIn->symbol);
 				try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
+
+				// Cascade delete for FK integrity
+				const holding::key k_h_0( pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
+				const holding::key k_h_1( pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
+				table_scanner h_scanner(&arena);
+				try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+
+				for( auto& r_h : h_scanner.output )
+				{
+					holding::key k_h_temp;
+					const holding::key* k_h = Decode( *r_h.first, k_h_temp );
+
+					holding::key k_h_new(*k_h);
+					try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+				}
+
 			}
 			
 		}
@@ -2514,6 +2530,21 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 			k_hs.hs_ca_id		= pIn->acct_id;
 			k_hs.hs_s_symb		= string(pIn->symbol);
 			try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
+
+			// Cascade delete for FK integrity
+			const holding::key k_h_0( pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
+			const holding::key k_h_1( pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
+			table_scanner h_scanner(&arena);
+			try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+
+			for( auto& r_h : h_scanner.output )
+			{
+				holding::key k_h_temp;
+				const holding::key* k_h = Decode( *r_h.first, k_h_temp );
+
+				holding::key k_h_new(*k_h);
+				try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+			}
 		}
 	}
 	return bench_worker::txn_result(true, 0);
