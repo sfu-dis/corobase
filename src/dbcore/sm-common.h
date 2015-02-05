@@ -418,6 +418,11 @@ struct os_condvar_pod {
         int err = pthread_cond_wait(&_cond, &mutex._mutex);
         DIE_IF(err, "pthread_cond_wait returned %d", err);
     }
+
+    int timedwait(os_mutex_pod &mutex, struct timespec *abstime) {
+        return pthread_cond_timedwait(&_cond, &mutex._mutex, abstime);
+    }
+
     void signal() {
         int err = pthread_cond_signal(&_cond);
         DIE_IF(err, "pthread_cond_signal returned %d", err);

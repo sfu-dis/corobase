@@ -318,11 +318,12 @@ sm_log_alloc_mgr::release(log_allocation *x)
 {
     /* Short and sweet for the common case */
     _block_list.remove_fast(x);
+    bool should_kick = cur_lsn_offset() - dur_lsn_offset() >= _logbuf.window_size() / 2;
 
     /* Hopefully the log daemon is already awake, but be ready to give
        it a kick if need be.
      */
-    if (not (volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
+    if (should_kick and not (volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
         // have to at least announce the new log record
         auto old_state = __sync_fetch_and_or(&_write_daemon_state, DAEMON_HAS_WORK);
         if (old_state == DAEMON_SLEEPING) {
@@ -536,10 +537,16 @@ sm_log_alloc_mgr::_log_write_daemon()
             auto old_state = __sync_fetch_and_or(&_write_daemon_state, DAEMON_SLEEPING);
             if (old_state & DAEMON_HAS_WORK or _write_daemon_should_wake) {
                 // never mind!
-                _write_daemon_state = DAEMON_HAS_WORK;
+                volatile_write(_write_daemon_state, DAEMON_HAS_WORK);
             }
             else {
-                _write_daemon_cond.wait(_write_daemon_mutex);
+                // wake up after 5 seconds if nobody kicks me
+                // to prevent when there's nobody writing to the case of:
+                // logbuf => nobody kicking => log buffer never flushed
+                struct timespec ts;
+                clock_gettime(CLOCK_REALTIME, &ts);
+                ts.tv_sec += 5;
+                _write_daemon_cond.timedwait(_write_daemon_mutex, &ts);
             }
             
             _write_daemon_should_wake = false;
