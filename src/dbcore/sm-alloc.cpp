@@ -143,7 +143,7 @@ namespace RA {
         //int skt = sched_getcpu() % nr_sockets;
 		//char *p = &mem[skt][__sync_fetch_and_add(&alloc_offset[skt], align_up(size, 1 << DEFAULT_ALIGNMENT_BITS))];
         void* p =  malloc(size);
-		ALWAYS_ASSERT(p);
+		ASSERT(p);
 		epoch_tls.nbytes += size;
 		epoch_tls.counts += 1;
 
