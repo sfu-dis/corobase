@@ -70,7 +70,7 @@ public:
 		uint64_t noffset = __sync_fetch_and_add(&_global_oid_alloc_offset, OID_EXT_SIZE);
 
 		uint64_t obj_table_size = sizeof(fat_ptr) * (_global_oid_alloc_offset);
-		_obj_table.ensure_size( obj_table_size + ( obj_table_size / 10) );			// 10% increase
+        _obj_table.ensure_size(obj_table_size * 2);
 
         return noffset;
 	}
