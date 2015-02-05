@@ -280,6 +280,24 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   oid_type oid = 0;
   if (!this->underlying_btree.search(varkey(k), oid, bv, t.xid))
     return rc_t{RC_ABORT};
+#ifdef PHANTOM_PROT_TABLE_LOCK
+  // for delete
+  if (not v) {
+    table_lock_t *l = this->underlying_btree.get_tuple_vector()->lock_ptr();
+    typename transaction<Transaction, Traits>::table_lock_set_t::iterator it =
+      std::find(t.table_locks.begin(), t.table_locks.end(), l);
+    if (it == t.table_locks.end()) {
+      if (not object_vector::lock(l, TABLE_LOCK_X))
+        return rc_t{RC_ABORT};
+    }
+    else {
+      if (not object_vector::upgrade_lock(l))
+        return rc_t{RC_ABORT};
+    }
+    ASSERT((volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_X or
+           (volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX);
+  }
+#endif
 
   // After read the latest committed, and holding the version:
   // if the latest tuple in the chained is dirty then abort
@@ -466,6 +484,22 @@ base_txn_btree<Transaction, P>::do_search_range_call(
   if (unlikely(upper_str && *upper_str <= *lower_str))
     return;
 
+#ifdef PHANTOM_PROT_TABLE_LOCK
+  table_lock_t *l = this->underlying_btree.get_tuple_vector()->lock_ptr();
+  if (std::find(t.table_locks.begin(), t.table_locks.end(), l) == t.table_locks.end()) {
+    if (object_vector::lock(l, TABLE_LOCK_S))
+      t.table_locks.push_back(l);
+    else {
+      callback.return_code = rc_t{RC_ABORT};
+      return;
+    }
+  }
+  else {
+    ASSERT((volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_S or
+           (volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX);
+  }
+#endif
+
   txn_search_range_callback<Traits, Callback, KeyReader, ValueReader> c(
 			&t, &callback, &key_reader, &value_reader);
 
@@ -501,6 +535,22 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
 
   if (unlikely(lower_str && *upper_str <= *lower_str))
     return;
+
+#ifdef PHANTOM_PROT_TABLE_LOCK
+  table_lock_t *l = this->underlying_btree.get_tuple_vector()->lock_ptr();
+  if (std::find(t.table_locks.begin(), t.table_locks.end(), l) == t.table_locks.end()) {
+    if (object_vector::lock(l, TABLE_LOCK_S))
+      t.table_locks.push_back(l);
+    else {
+      callback.return_code = rc_t{RC_ABORT};
+      return;
+    }
+  }
+  else {
+    ASSERT((volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_S or
+           (volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX);
+  }
+#endif
 
   txn_search_range_callback<Traits, Callback, KeyReader, ValueReader> c(
 			&t, &callback, &key_reader, &value_reader);

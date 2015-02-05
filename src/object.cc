@@ -1,6 +1,9 @@
 #include "object.h"
 
 object_vector::object_vector(unsigned long long nelems)
+#ifdef PHANTOM_PROT_TABLE_LOCK
+    : _lock(0)
+#endif
 {
     _global_oid_alloc_offset = 0;
     _obj_table = dynarray(std::numeric_limits<unsigned int>::max() * sizeof(fat_ptr),
@@ -86,4 +89,66 @@ retry:
         ALWAYS_ASSERT(false);
 #endif
 }
+
+#ifdef PHANTOM_PROT_TABLE_LOCK
+bool
+object_vector::lock(table_lock_t *lock, table_lock_t rmode)
+{
+    table_lock_t l = -1;
+    table_lock_t counter = -1;
+    do {
+        l = volatile_read(*lock);
+        counter = l & (~TABLE_LOCK_MODE_MASK);
+
+        // counter == 0 is the same as mode = 0... unlock doesn't clear mode bits
+        // doomed if requesting SIX and the lock is granted, no matter what type
+        // (so it's important the same tx doesn't call lock() twice...)
+        if (rmode == TABLE_LOCK_SIX and counter)
+            return false;
+
+        table_lock_t mode = l & TABLE_LOCK_MODE_MASK;
+        if (counter and mode != rmode and mode != TABLE_LOCK_N)
+            return false;
+    }
+    while (not __sync_bool_compare_and_swap(lock, l, rmode | (counter + 1)));
+
+    // check overflow
+    ASSERT(volatile_read(*lock) and volatile_read(*lock) & TABLE_LOCK_MODE_MASK);
+    return true;
+}
+
+void
+object_vector::unlock(table_lock_t *lock)
+{
+    // no need to worry about MSB, lock() will handle it
+    __sync_fetch_and_sub(lock, 1);
+}
+
+// upgrade from S/X to SIX if I'm the only user
+// for S, wait for other readers to go away
+// for X, wait for other inserters to go away
+// ^^^^^this could cause deadlock, two threads originally holding S
+// lock wait for each other. We sacrifice the tx that has retried 3 times
+// IMPORTANT: caller should make sure it owns this lock before calling
+// TODO: figure out when should spin, or block?
+bool
+object_vector::upgrade_lock(table_lock_t *lock)
+{
+    table_lock_t mode = -1;
+    int8_t attempts = 0;
+    do {
+        if (attempts++ == 3)
+            return false;
+        table_lock_t l = volatile_read(*lock);
+        // no need to do anything if mode is already SIX
+        if ((l & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX)
+            return true;
+        ALWAYS_ASSERT(l & TABLE_LOCK_MODE_MASK and (l << TABLE_LOCK_MODE_BITS));
+        mode = l & TABLE_LOCK_MODE_MASK;
+    }
+    while (not __sync_bool_compare_and_swap(lock, mode | 1, TABLE_LOCK_SIX | 1));
+    return true;
+}
+
+#endif
 
