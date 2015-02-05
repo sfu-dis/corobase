@@ -11,12 +11,13 @@ struct dynarray;
 class str_arena {
 public:
 
-  static const uint64_t ReserveBytes = (((uint64_t)1<<30));
+  uint64_t ReserveBytes;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
 
-  str_arena()
+  str_arena() : ReserveBytes(128 * 1024 * 1024)
   {
-	  str = dynarray(ReserveBytes, 100*1024*1024 );
+      str = dynarray(std::numeric_limits<unsigned int>::max(), ReserveBytes);
+      memset(str, '\0', ReserveBytes);  // prefault
 	  reset();
   }
 
@@ -29,9 +30,6 @@ public:
   reset()
   {
     n = 0;
-#if CHECK_INVARIANTS
-//    memset(str, '\0', ReserveBytes);
-#endif
   }
 
   // next() is guaranteed to return an empty string
@@ -40,18 +38,11 @@ public:
   {
     uint64_t off = n;
     n += size + sizeof(varstr);
-    if (n >= ReserveBytes)
-	{
-		str.truncate(100*1024*1024);
-		reset();
-		off = 0;
-
-	}
-	str.ensure_size( (uint64_t)n*1.2 );
+    if (n >= ReserveBytes) {
+        ReserveBytes *= 2;
+        str.ensure_size(ReserveBytes);
+    }
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
-#if CHECK_INVARIANTS
-//    ASSERT(ret->data()[0] == '\0');
-#endif
     return ret;
   }
 
