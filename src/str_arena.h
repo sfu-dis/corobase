@@ -4,17 +4,20 @@
 #include "small_vector.h"
 #include "varstr.h"
 #include "dbcore/sm-common.h"
+#include "dbcore/dynarray.h"
 
+struct dynarray;
 // XXX: str arena hardcoded now to handle at most 1024 strings
 class str_arena {
 public:
 
-  static const uint64_t ReserveBytes = 80 * 1024 * 1024;
+  static const uint64_t ReserveBytes = (((uint64_t)1<<30));
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
 
   str_arena()
   {
-    reset();
+	  str = dynarray(ReserveBytes, 100*1024*1024 );
+	  reset();
   }
 
   // non-copyable/non-movable for the time being
@@ -37,10 +40,17 @@ public:
   {
     uint64_t off = n;
     n += size + sizeof(varstr);
-    ALWAYS_ASSERT(n < ReserveBytes);
+    if (n >= ReserveBytes)
+	{
+		str.truncate(100*1024*1024);
+		reset();
+		off = 0;
+
+	}
+	str.ensure_size( (uint64_t)n*1.2 );
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
 #if CHECK_INVARIANTS
-  //  ASSERT(ret->data()[0] == '\0');
+//    ASSERT(ret->data()[0] == '\0');
 #endif
     return ret;
   }
@@ -54,12 +64,13 @@ public:
   bool
   manages(const varstr *px) const
   {
-    return (char *)px >= str and
-           (uint64_t)px->data() + px->size() <= (uint64_t)str + n;
+    return (char *)px >= &str[0] and
+           (uint64_t)px->data() + px->size() <= (uint64_t)(&str[n]);
   }
 
 private:
-  char str[ReserveBytes];
+//  char str[ReserveBytes];
+	dynarray 		str;
   size_t n;
 };
 

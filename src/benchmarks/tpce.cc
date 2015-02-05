@@ -2854,13 +2854,13 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFram
 	{
 		const trade::key k_t(pIn->trade_id[i]);
 		trade::value v_t_temp;
-		try_verify_strict(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
+		try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
 		const trade::value *v_t = Decode(obj_v,v_t_temp);
 		pOut->num_found++;
 		
 		const trade_type::key k_tt(v_t->t_tt_id);
 		trade_type::value v_tt_temp;
-		try_verify_strict(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
+		try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
 		const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
 
 		pOut->trade_info[i].bid_price = v_t->t_bid_price;
@@ -2922,7 +2922,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFram
 		
 		const settlement::key k_se(pIn->trade_id[i]);
 		settlement::value v_se_temp;
-		try_verify_strict(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
+		try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
 		const settlement::value *v_se = Decode(obj_v,v_se_temp);
 		pOut->trade_info[i].settlement_amount = v_se->se_amt;
 		CDateTime(v_se->se_cash_due_date).GetTimeStamp(&pOut->trade_info[i].settlement_cash_due_date);
@@ -2932,7 +2932,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFram
 		{
 			const cash_transaction::key k_ct(pIn->trade_id[i]);
 			cash_transaction::value v_ct_temp;
-			try_verify_strict(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
+			try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
 			const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
 			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
 			CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
