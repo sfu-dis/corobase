@@ -111,6 +111,7 @@ public:
 
     inline UINT32 DayNo(void) { return (UINT32)m_dayno; };
     inline UINT32 MSec(void) { return (UINT32)m_msec; };
+    inline UINT64 GetDate(void) { return  (((UINT64)m_dayno << 32) | (UINT64)m_msec); };
     void GetYMD(INT32* year, INT32* month, INT32* day);
     void GetYMDHMS(INT32* year, INT32* month, INT32* day, INT32* hour, INT32* minute, INT32* second, INT32* msec);
     void GetHMS(INT32* hour, INT32* minute, INT32* second, INT32* msec);
