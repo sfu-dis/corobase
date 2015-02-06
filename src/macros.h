@@ -16,6 +16,10 @@
 
 //#define USE_PARALLEL_SSI
 
+#if defined(USE_PARALLEL_SSI) && defined(USE_PARALLEL_SSN)
+#error "can't use SSI and SSN together."
+#endif
+
 //#define PHANTOM_PROT_TABLE_LOCK
 #ifdef PHANTOM_PROT_TABLE_LOCK
 #endif
