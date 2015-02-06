@@ -20,6 +20,6 @@ export LD_PRELOAD="/usr/lib/libtcmalloc.so"
 #numactl --interleave=all $1 --verbose --bench tpcc --scale-factor $2 --num-threads $2 --runtime $3 --log-dir $LOGDIR --pin-cpu -o --workload-mix="41,43,4,4,4,4,0,0,0"
 
 #TPCE
-numactl --interleave=all $1 --verbose --bench tpce --scale-factor 500 --num-threads $2 --runtime $3 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --workload-mix="4.9,13,1,18,14,8,10.1,10,19,2""
+numactl --interleave=all $1 --verbose --bench tpce --scale-factor 500 --num-threads $2 --runtime $3 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --workload-mix="4.9,13,2,18,4,8,20.1,20,9,1""
 #  minimum Customers: 5000, Default SF:500, working-days: 300( it's too long to load and OOM would stop loading also. thus let's try 10 days)
 
