@@ -236,10 +236,12 @@ bench_runner::run()
   const unsigned long elapsed_nosync = t_nosync.lap();
   size_t n_commits = 0;
   size_t n_aborts = 0;
+  size_t n_user_aborts = 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < nthreads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
+    n_user_aborts += workers[i]->get_ntxn_user_aborts();
     latency_numer_us += workers[i]->get_latency_numer_us();
   }
 
@@ -254,6 +256,9 @@ bench_runner::run()
 
   const double agg_abort_rate = double(n_aborts) / elapsed_sec;
   const double avg_per_core_abort_rate = agg_abort_rate / double(workers.size());
+
+  const double agg_user_abort_rate = double(n_user_aborts) / elapsed_sec;
+  const double avg_per_core_user_abort_rate = agg_user_abort_rate / double(workers.size());
 
   // XXX(stephentu): latency currently doesn't account for read-only txns
   const double avg_latency_us =
@@ -340,9 +345,12 @@ bench_runner::run()
   // output for plotting script
   cout << agg_throughput << " "
        << avg_latency_ms << " "
-       << agg_abort_rate << endl;
+       << agg_abort_rate << " "
+       << agg_user_abort_rate << endl;
   cout << n_commits << " commits, "
-       << n_aborts << " aborts" << endl;
+       << n_aborts << " aborts, " 
+	   << n_user_aborts << " user aborts"
+	   << endl;
   cout.flush();
 
   if (!slow_exit)
