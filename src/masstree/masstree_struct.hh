@@ -181,7 +181,7 @@ class internode : public node_base<P> {
 		// Node init
 		n->table_ = table;
 		n->oid = oid;
-		memset( n->child_oid_, 0, sizeof(oid_type)*width+1 );
+        memset(n->child_oid_, 0, sizeof(oid_type)*(width+1));
 
 		// drop to oid array
 		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
