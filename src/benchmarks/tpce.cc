@@ -415,7 +415,10 @@ class tpce_worker :
 			scoped_str_arena s_arena(arena);
 			TMarketFeedTxnInput* input= MarketFeedInputBuffer->get();
 			if( not input )
+			{
+				inc_ntxn_user_aborts();
 				return bench_worker::txn_result(false, 0);		// XXX. do we have to do this? MFQueue is empty, meaning no Trade-order submitted yet
+			}
 
 			TMarketFeedTxnOutput output;
 			CMarketFeed* harness= new CMarketFeed(this, this);
@@ -573,7 +576,10 @@ class tpce_worker :
 			scoped_str_arena s_arena(arena);
 			TTradeResultTxnInput* input = TradeResultInputBuffer->get();
 			if( not input )
+			{
+				inc_ntxn_user_aborts();
 				return bench_worker::txn_result(false, 0);		// XXX. do we have to do this? TRQueue is empty, meaning no Trade-order submitted yet
+			}
 
 			TTradeResultTxnOutput output;
 			CTradeResult* harness= new CTradeResult(this);
@@ -914,6 +920,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame1(const TCustomerPo
 		{
 		//	return;
 			db->abort_txn(txn);
+			inc_ntxn_user_aborts();
 			return txn_result(false, 0);
 		}
 		c_tax_id_index::key k_c_temp;
@@ -1009,6 +1016,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame2(const TCustomerPo
 //		try_catch(db->commit_txn(txn));
 //		return txn_result(true, 0);
 		db->abort_txn(txn);
+		inc_ntxn_user_aborts();
 		return txn_result(false, 0);
 	}
 
@@ -1823,6 +1831,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame4(const TTradeLookupFram
 	{
 		pOut->num_trades_found = 0;
 		db->abort_txn(txn);
+		inc_ntxn_user_aborts();
 		return txn_result(false, 0);
 	}
 
@@ -2296,6 +2305,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4
 bench_worker::txn_result tpce_worker::DoTradeOrderFrame5(void)
 {
 	db->abort_txn(txn);
+	inc_ntxn_user_aborts();
 	return bench_worker::txn_result(false, 0);
 }
 
