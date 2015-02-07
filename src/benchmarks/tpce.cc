@@ -358,7 +358,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateBrokerVolumeInput(input);
 			CBrokerVolume* harness= new CBrokerVolume(this);
 
-			return harness->DoTxn( (PBrokerVolumeTxnInput)&input, (PBrokerVolumeTxnOutput)&output);
+			auto ret = harness->DoTxn( (PBrokerVolumeTxnInput)&input, (PBrokerVolumeTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBrokerVolumeFrame1Output *pOut);
 
@@ -376,7 +387,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateCustomerPositionInput(input);
 			CCustomerPosition* harness= new CCustomerPosition(this);
 
-			return harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
+			auto ret = harness->DoTxn( (PCustomerPositionTxnInput)&input, (PCustomerPositionTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut);
 		bench_worker::txn_result DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *pIn, TCustomerPositionFrame2Output *pOut);
@@ -400,7 +422,17 @@ class tpce_worker :
 
 			auto ret = harness->DoTxn( (PMarketFeedTxnInput)input, (PMarketFeedTxnOutput)&output);
 			delete input;
-			return ret;
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketFeedFrame1Output *pOut, CSendToMarketInterface *pSendToMarket);
 
@@ -418,7 +450,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateMarketWatchInput(input);
 			CMarketWatch* harness= new CMarketWatch(this);
 
-			return harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
+			auto ret = harness->DoTxn( (PMarketWatchTxnInput)&input, (PMarketWatchTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut);
 
@@ -436,7 +479,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateSecurityDetailInput(input);
 			CSecurityDetail* harness= new CSecurityDetail(this);
 
-			return harness->DoTxn( (PSecurityDetailTxnInput)&input, (PSecurityDetailTxnOutput)&output);
+			auto ret = harness->DoTxn( (PSecurityDetailTxnInput)&input, (PSecurityDetailTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut);
 
@@ -454,7 +508,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeLookupInput(input);
 			CTradeLookup* harness= new CTradeLookup(this);
 
-			return harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
+			auto ret = harness->DoTxn( (PTradeLookupTxnInput)&input, (PTradeLookupTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTradeLookupFrame1Output *pOut);
 		bench_worker::txn_result DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTradeLookupFrame2Output *pOut);
@@ -477,7 +542,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeOrderInput(input, iTradeType, bExecutorIsAccountOwner);
 			CTradeOrder* harness= new CTradeOrder(this, this);
 
-			return harness->DoTxn( (PTradeOrderTxnInput)&input, (PTradeOrderTxnOutput)&output);
+			auto ret = harness->DoTxn( (PTradeOrderTxnInput)&input, (PTradeOrderTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn, TTradeOrderFrame1Output *pOut);
 		bench_worker::txn_result DoTradeOrderFrame2(const TTradeOrderFrame2Input *pIn, TTradeOrderFrame2Output *pOut);
@@ -504,7 +580,17 @@ class tpce_worker :
 
 			auto ret = harness->DoTxn( (PTradeResultTxnInput)input, (PTradeResultTxnOutput)&output);
 			delete input;
-			return ret;
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTradeResultFrame1Output *pOut);
 		bench_worker::txn_result DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTradeResultFrame2Output *pOut);
@@ -527,7 +613,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeStatusInput(input);
 			CTradeStatus* harness= new CTradeStatus(this);
 
-			return harness->DoTxn( (PTradeStatusTxnInput)&input, (PTradeStatusTxnOutput)&output);
+			auto ret = harness->DoTxn( (PTradeStatusTxnInput)&input, (PTradeStatusTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTradeStatusFrame1Output *pOut);
 
@@ -545,7 +642,18 @@ class tpce_worker :
 			m_TxnInputGenerator->GenerateTradeUpdateInput(input);
 			CTradeUpdate* harness= new CTradeUpdate(this);
 
-			return harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
+			auto ret = harness->DoTxn( (PTradeUpdateTxnInput)&input, (PTradeUpdateTxnOutput)&output);
+			if( ret.first )
+			{
+				if( output.status == 0 )
+					return txn_result(true, 0 );
+				else
+				{
+					inc_ntxn_user_aborts();
+					return txn_result(false, 0 );			// No DB aborts, TXN output isn't correct or user abort case
+				}
+			}
+			return txn_result(false, 0 );
 		}
 		bench_worker::txn_result DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTradeUpdateFrame1Output *pOut);
 		bench_worker::txn_result DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTradeUpdateFrame2Output *pOut);
@@ -750,9 +858,7 @@ bench_worker::txn_result tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFr
 				for( auto &r_s : s_scanner.output )
 				{
 					security_index::key k_s_temp;
-					security_index::value v_s_temp;
 					const security_index::key* k_s = Decode( *r_s.first, k_s_temp );
-					const security_index::value* v_s = Decode( *r_s.second, v_s_temp );
 
 					for( auto &r_b_idx : brokers )
 					{
@@ -770,9 +876,7 @@ bench_worker::txn_result tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFr
 
 						for( auto &r_tr : tr_scanner.output )
 						{
-							trade_request::key k_tr_temp;
 							trade_request::value v_tr_temp;
-							const trade_request::key* k_tr = Decode( *r_tr.first, k_tr_temp );
 							const trade_request::value* v_tr = Decode(*r_tr.second, v_tr_temp );
 
 							pOut->volume[pOut->list_len] += v_tr->tr_bid_price * v_tr->tr_qty; 
@@ -942,9 +1046,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame2(const TCustomerPo
 		for( auto &r_th : th_scanner.output )
 		{
 			trade_history::key k_th_temp;
-			trade_history::value v_th_temp;
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
-			const trade_history::value* v_th = Decode(*r_th.second, v_th_temp );
 
 
 			status_type::key k_st(k_th->th_st_id);
@@ -982,7 +1084,6 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 
 
 	auto now_dts = CDateTime().GetDate();	
-	auto rows_updated = 0;
 	vector<TTradeRequest> TradeRequestBuffer;
 	double req_price_quote = 0; 
 	uint64_t req_trade_id = 0; 
@@ -1016,9 +1117,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 		std::vector<std::pair<varstr *, const varstr *>> request_list_cursor;
 		for( auto &r_tr : tr_scanner.output )
 		{
-			trade_request::key k_tr_temp;
 			trade_request::value v_tr_temp;
-			const trade_request::key* k_tr = Decode( *r_tr.first, k_tr_temp );
 			const trade_request::value* v_tr = Decode(*r_tr.second, v_tr_temp );
 
 			if( (v_tr->tr_tt_id == string(type.type_stop_loss) and v_tr->tr_bid_price >= ticker.price_quote) or
@@ -1113,7 +1212,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 		try_catch(db->commit_txn(txn));
 
 		pOut->send_len += request_list_cursor.size();
-		for( auto i = 0; i < request_list_cursor.size(); i++ )
+		for( size_t i = 0; i < request_list_cursor.size(); i++ )
 		{
 			SendToMarketFromFrame(TradeRequestBuffer[i]);
 		}
@@ -1179,9 +1278,7 @@ bench_worker::txn_result tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFra
 		for( auto &r_in : in_scanner.output )
 		{
 			in_name_index::key k_in_temp;
-			in_name_index::value v_in_temp;
 			const in_name_index::key* k_in = Decode( *r_in.first, k_in_temp );
-			const in_name_index::value* v_in = Decode( *r_in.second, v_in_temp );
 
 			for( auto &r_co: co_scanner.output )
 			{
@@ -1406,7 +1503,7 @@ bench_worker::txn_result tpce_worker::DoSecurityDetailFrame1(const TSecurityDeta
 	table_scanner dm_scanner(&arena);
 	try_catch(tbl_daily_market(1)->scan(txn, Encode(obj_key0=str(sizeof(k_dm_0)), k_dm_0), &Encode(obj_key1=str(sizeof(k_dm_1)), k_dm_1), dm_scanner, &arena));
 	ALWAYS_ASSERT( dm_scanner.output.size() );
-	for(auto i=0; i < pIn->max_rows_to_return and i< dm_scanner.output.size(); i++ )
+	for(size_t i=0; i < (size_t)pIn->max_rows_to_return and i< dm_scanner.output.size(); i++ )
 	{
 		auto &r_dm = dm_scanner.output[i];
 
@@ -1423,7 +1520,7 @@ bench_worker::txn_result tpce_worker::DoSecurityDetailFrame1(const TSecurityDeta
 
 	}
 	// TODO. order by
-	pOut->day_len = (pIn->max_rows_to_return > dm_scanner.output.size()) ? pIn->max_rows_to_return : dm_scanner.output.size(); 
+	pOut->day_len = ((size_t)pIn->max_rows_to_return > dm_scanner.output.size()) ? pIn->max_rows_to_return : dm_scanner.output.size(); 
 
 	const last_trade::key k_lt(string(pIn->symbol));
 	last_trade::value v_lt_temp;
@@ -1536,9 +1633,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame1(const TTradeLookupFram
 		for( auto &r_th : th_scanner.output )
 		{
 			trade_history::key k_th_temp;
-			trade_history::value v_th_temp;
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
-			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
 			
 			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], k_th->th_st_id.data(), k_th->th_st_id.size() );
 			CDateTime(k_th->th_dts).GetTimeStamp(&pOut->trade_info[i].trade_history_dts[th_cursor] );
@@ -1616,9 +1711,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame2(const TTradeLookupFram
 		for( auto &r_th : th_scanner.output )
 		{
 			trade_history::key k_th_temp;
-			trade_history::value v_th_temp;
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
-			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
 			
 			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], k_th->th_st_id.data(), k_th->th_st_id.size() );
 			CDateTime(k_th->th_dts).GetTimeStamp(&pOut->trade_info[i].trade_history_dts[th_cursor] );
@@ -1703,9 +1796,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame3(const TTradeLookupFram
 		for( auto &r_th : th_scanner.output )
 		{
 			trade_history::key k_th_temp;
-			trade_history::value v_th_temp;
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
-			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
 			
 			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], k_th->th_st_id.data(), k_th->th_st_id.size() );
 			CDateTime(k_th->th_dts).GetTimeStamp(&pOut->trade_info[i].trade_history_dts[th_cursor] );
@@ -1738,9 +1829,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame4(const TTradeLookupFram
 	for( auto &r_t : t_scanner.output )
 	{
 		t_ca_id_index::key k_t_temp;
-		t_ca_id_index::value v_t_temp;
 		const t_ca_id_index::key* k_t = Decode( *r_t.first, k_t_temp );
-		const t_ca_id_index::value* v_t = Decode( *r_t.second, v_t_temp );
 
 		pOut->trade_id = k_t->t_id;
 		break;
@@ -1851,9 +1940,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 		ALWAYS_ASSERT( co_scanner.output.size() );
 
 		co_name_index::key k_co_temp;
-		co_name_index::value v_co_temp;
 		const co_name_index::key* k_co = Decode( *co_scanner.output.front().first, k_co_temp );
-		const co_name_index::value* v_co = Decode( *co_scanner.output.front().second, v_co_temp );
 
 		co_id = k_co->co_id;
 		ALWAYS_ASSERT(co_id);
@@ -2936,13 +3023,11 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFram
 		try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
 		ALWAYS_ASSERT( th_scanner.output.size() );
 
-		for( auto th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++ )
+		for( size_t th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++ )
 		{
 			auto& r_th = th_scanner.output[th_cursor];
 			trade_history::key k_th_temp;
-			trade_history::value v_th_temp;
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
-			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
 
 			CDateTime(k_th->th_dts).GetTimeStamp(&pOut->trade_info[i].trade_history_dts[th_cursor]);
 			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], k_th->th_st_id.data(), k_th->th_st_id.size());
@@ -2964,7 +3049,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFram
 	try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
 	ALWAYS_ASSERT( t_scanner.output.size() );
 
-	for( int i = 0; i < pIn->max_trades and i < t_scanner.output.size(); i++ )
+	for( size_t i = 0; i < (size_t)pIn->max_trades and i < t_scanner.output.size(); i++ )
 	{
 		auto &r_t = t_scanner.output[i];
 		t_ca_id_index::key k_t_temp;
@@ -3031,13 +3116,11 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFram
 		try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
 		ALWAYS_ASSERT( th_scanner.output.size() );
 
-		for( auto th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++ )
+		for( size_t th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++ )
 		{
 			auto& r_th = th_scanner.output[th_cursor];
 			trade_history::key k_th_temp;
-			trade_history::value v_th_temp;
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
-			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
 
 			CDateTime(k_th->th_dts).GetTimeStamp(&pOut->trade_info[i].trade_history_dts[th_cursor]);
 			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], k_th->th_st_id.data(), k_th->th_st_id.size());
@@ -3059,7 +3142,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 	try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
 	ALWAYS_ASSERT( t_scanner.output.size() );		// XXX. short innitial trading day can make this case happening?
 
-	for( int i = 0; i < pIn->max_trades and i < t_scanner.output.size() ; i++ )
+	for( size_t i = 0; i < pIn->max_trades and i < t_scanner.output.size() ; i++ )
 	{
 		auto &r_t = t_scanner.output[i];
 		t_s_symb_index::key k_t_temp;
@@ -3110,7 +3193,6 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 		const settlement::key k_se(pOut->trade_info[i].trade_id);
 		settlement::value v_se_temp;
 		try_verify_strict(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
-		const settlement::value *v_se = Decode(obj_v,v_se_temp);
 
 		if( pOut->trade_info[i].is_cash )
 		{
@@ -3158,13 +3240,11 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 		try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
 		ALWAYS_ASSERT( th_scanner.output.size() );
 
-		for( auto th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++ )
+		for( size_t th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++ )
 		{
 			auto& r_th = th_scanner.output[th_cursor];
 			trade_history::key k_th_temp;
-			trade_history::value v_th_temp;
 			const trade_history::key* k_th = Decode( *r_th.first, k_th_temp );
-			const trade_history::value* v_th = Decode( *r_th.second, v_th_temp );
 
 			CDateTime(k_th->th_dts).GetTimeStamp(&pOut->trade_info[i].trade_history_dts[th_cursor]);
 			memcpy( pOut->trade_info[i].trade_history_status_id[th_cursor], k_th->th_st_id.data(), k_th->th_st_id.size());
@@ -4719,7 +4799,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					trade_history::value v;
 
 					k.th_t_id = record->TH_T_ID;
-					k.th_dts	=  record->TH_DTS .DayNo();
+					k.th_dts	=  record->TH_DTS.GetDate();
 					k.th_st_id = string( record->TH_ST_ID );
 
 					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
@@ -5106,7 +5186,7 @@ void tpce_do_test(abstract_db *db, int argc, char **argv)
 
 	//Initialize Market side
 
-	for( int i = 0; i < nthreads; i++ )
+	for( unsigned int i = 0; i < nthreads; i++ )
 	{
 		auto mf_buf= new MFBuffer();
 		auto tr_buf= new TRBuffer();

@@ -151,7 +151,7 @@ public:
       r(seed), db(db), open_tables(open_tables),
       barrier_a(barrier_a), barrier_b(barrier_b),
       // the ntxn_* numbers are per worker
-      ntxn_commits(0), ntxn_aborts(0),
+      ntxn_commits(0), ntxn_aborts(0), ntxn_user_aborts(0),
       latency_numer_us(0),
       backoff_shifts(0), // spin between [0, 2^backoff_shifts) times before retry
       size_delta(0)
@@ -185,6 +185,8 @@ public:
 
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
   inline size_t get_ntxn_aborts() const { return ntxn_aborts; }
+  inline size_t get_ntxn_user_aborts() const { return ntxn_user_aborts; }
+  inline void inc_ntxn_user_aborts() { ++ntxn_user_aborts; }
 
   inline uint64_t get_latency_numer_us() const { return latency_numer_us; }
 
@@ -226,6 +228,7 @@ protected:
 private:
   size_t ntxn_commits;
   size_t ntxn_aborts;
+  size_t ntxn_user_aborts;
   uint64_t latency_numer_us;
   unsigned backoff_shifts;
 
