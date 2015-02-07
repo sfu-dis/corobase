@@ -95,6 +95,7 @@ private:
 public:
     CDateTime(void);        // current local date/time
     CDateTime(INT32 dayno); // date as specified; time set to 0:00:00 (midnight)
+    CDateTime(uint64_t full_date); // date as specified; time set to 0:00:00 (midnight)
     CDateTime(INT32 year, INT32 month, INT32 day);  // date as specified; time set to 0:00:00 (midnight)
     CDateTime(INT32 year, INT32 month, INT32 day, INT32 hour, INT32 minute, INT32 second, INT32 msec);
 

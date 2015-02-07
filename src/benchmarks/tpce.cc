@@ -2263,7 +2263,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 	auto buy_value = 0.0;
 	auto sell_value = 0.0;
 	auto needed_qty = pIn->trade_qty;
-	auto trade_dts = CDateTime().GetDate();
+	uint64_t trade_dts = CDateTime().GetDate();
 	auto hold_id=0;
 	auto hold_price=0;
 	auto hold_qty=0;
