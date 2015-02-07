@@ -24,6 +24,9 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #endif
   xid_context *xc = xid_get_context(xid);
   write_set.set_empty_key(NULL);    // google dense map
+#ifdef PHANTOM_PROT_NODE_SET
+  absent_set.set_empty_key(NULL);    // google dense map
+#endif
   RCU::rcu_enter();
   log = logger->new_tx_log();
   xc->begin = logger->cur_lsn();
@@ -138,6 +141,10 @@ template <template <typename> class Protocol, typename Traits>
 rc_t
 transaction<Protocol, Traits>::commit()
 {
+#ifdef PHANTOM_PROT_NODE_SET
+  if (not check_phantom())
+    return rc_t{RC_ABORT};
+#endif
 #ifdef USE_PARALLEL_SSN
   return parallel_ssn_commit();
 #elif defined USE_PARALLEL_SSI
@@ -546,6 +553,21 @@ transaction<Protocol, Traits>::si_commit()
 }
 #endif
 
+// returns true if btree versions have changed, ie there's phantom
+template <template <typename> class Protocol, typename Traits>
+bool
+transaction<Protocol, Traits>::check_phantom()
+{
+#ifdef PHANTOM_PROT_NODE_SET
+  for (auto &r : absent_set) {
+    const uint64_t v = concurrent_btree::ExtractVersionNumber(r.first);
+    if (unlikely(v != r.second.version))
+      return false;
+  }
+  return true;
+#endif
+}
+
 typedef object_vector tuple_vector_type;
 // FIXME: tzwang: note: we only try once in this function. If it
 // failed (returns false) then the caller (supposedly do_tree_put)
@@ -634,6 +656,23 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
   write_set[tuple] = write_record_t(tuple, btr, oid);
+
+#ifdef PHANTOM_PROT_NODE_SET
+  // update node #s
+  INVARIANT(insert_info.node);
+  if (!absent_set.empty()) {
+    auto it = absent_set.find(insert_info.node);
+    if (it != absent_set.end()) {
+      if (unlikely(it->second.version != insert_info.old_version)) {
+        return false;
+      }
+      // otherwise, bump the version
+      it->second.version = insert_info.new_version;
+      SINGLE_THREADED_INVARIANT(concurrent_btree::ExtractVersionNumber(it->first) == it->second);
+    }
+  }
+#endif
+
   return true;
 }
 
@@ -729,5 +768,22 @@ transaction<Protocol, Traits>::do_tuple_read(
 
   return {RC_TRUE};
 }
+
+#ifdef PHANTOM_PROT_NODE_SET
+template <template <typename> class Protocol, typename Traits>
+rc_t
+transaction<Protocol, Traits>::do_node_read(
+    const typename concurrent_btree::node_opaque_t *n, uint64_t v)
+{
+  INVARIANT(n);
+  auto it = absent_set.find(n);
+  if (it == absent_set.end()) {
+    absent_set[n].version = v;
+  } else if (it->second.version != v) {
+    return rc_t{RC_ABORT};
+  }
+  return rc_t{RC_TRUE};
+}
+#endif
 
 #endif /* _NDB_TXN_IMPL_H_ */

@@ -182,6 +182,13 @@ base_txn_btree<Transaction, P>::do_search(
   const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xid, &search_info);
   if (found)
     return t.do_tuple_read(&this->underlying_btree, oid, tuple, value_reader);
+#ifdef PHANTOM_PROT_NODE_SET
+  else {
+    rc_t rc = t.do_node_read(search_info.first, search_info.second);
+    if (rc_is_abort(rc))
+      return rc;
+  }
+#endif
   return rc_t{RC_FALSE};
 }
 
@@ -443,6 +450,11 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "on_resp_node(): <node=0x" << util::hexify(intptr_t(n))
                << ", version=" << version << ">" << std::endl);
   VERBOSE(std::cerr << "  " << concurrent_btree::NodeStringify(n) << std::endl);
+#ifdef PHANTOM_PROT_NODE_SET
+  rc_t rc = t->do_node_read(n, version);
+  if (rc_is_abort(rc))
+      caller_callback->return_code = rc;
+#endif
 }
 
 template <template <typename> class Transaction, typename P>

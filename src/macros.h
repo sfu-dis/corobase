@@ -24,6 +24,8 @@
 #ifdef PHANTOM_PROT_TABLE_LOCK
 #endif
 
+//#define PHANTOM_PROT_NODE_SET   // silo's phantom protection scheme
+
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
 //#define DIE_ON_ABORT
