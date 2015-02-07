@@ -258,6 +258,13 @@ CDateTime::CDateTime(INT32 dayno)
     m_msec = 0;
 }
 
+CDateTime::CDateTime(uint64_t full_date)
+{
+    m_szText = NULL;
+    m_dayno = INT32(full_date >> 32);
+    m_msec = INT32(full_date & 0x00000000ffffffff);
+}
+
 CDateTime::CDateTime(INT32 year, INT32 month, INT32 day)
 {
     assert( IsValid( year, month, day, 0, 0, 0, 0 ) );
