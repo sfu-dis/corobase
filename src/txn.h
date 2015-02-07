@@ -322,6 +322,11 @@ protected:
 #ifdef PHANTOM_PROT_TABLE_LOCK
   typedef std::vector<table_lock_t*> table_lock_set_t;
   table_lock_set_t table_locks;
+#elif defined(PHANTOM_PROT_NODE_SET)
+  // the absent set is a mapping from (btree_node -> version_number).
+  struct absent_record_t { uint64_t version; };
+  typedef dense_hash_map<const concurrent_btree::node_opaque_t*, absent_record_t> absent_set_map;
+  absent_set_map absent_set;
 #endif
 
 public:
@@ -329,8 +334,6 @@ public:
   inline transaction(uint64_t flags, string_allocator_type &sa);
   inline ~transaction();
 
-  // returns on successful commit.
-  // signals failure by throwing an abort exception
   rc_t commit();
 #ifdef USE_PARALLEL_SSN
   rc_t parallel_ssn_commit();
@@ -340,10 +343,12 @@ public:
   rc_t si_commit();
 #endif
 
+  bool check_phantom();
+
   // signal the caller that an abort is necessary by throwing an abort
   // exception. 
-  void __attribute__((noreturn))
-  signal_abort(abort_reason r=ABORT_REASON_USER);
+  //void __attribute__((noreturn))
+  //signal_abort(abort_reason r=ABORT_REASON_USER);
 
   // if an abort has been signaled, perform the actual abort and clean
   // up. always succeeds, so caller should rethrow if needed.
@@ -387,6 +392,11 @@ protected:
   template <typename ValueReader>
   rc_t
   do_tuple_read(concurrent_btree *btr_ptr, oid_type oid, dbtuple *tuple, ValueReader &value_reader);
+
+#ifdef PHANTOM_PROT_NODE_SET
+  rc_t
+  do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
+#endif
 
 public:
   // expected public overrides
