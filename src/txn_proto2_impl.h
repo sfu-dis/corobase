@@ -72,6 +72,9 @@ public:
 #ifdef USE_PARALLEL_SSN
   typedef typename super_type::read_set_map read_set_map;
 #endif
+#ifdef PHANTOM_PROT_NODE_SET
+  typedef typename super_type::absent_set_map absent_set_map;
+#endif
   typedef typename super_type::write_set_map write_set_map;
 
   transaction_proto2(uint64_t flags,
