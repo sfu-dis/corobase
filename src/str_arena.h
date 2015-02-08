@@ -3,21 +3,20 @@
 #include <memory>
 #include "small_vector.h"
 #include "varstr.h"
-#include "dbcore/sm-common.h"
 #include "dbcore/dynarray.h"
 
 struct dynarray;
-// XXX: str arena hardcoded now to handle at most 1024 strings
 class str_arena {
 public:
 
-  uint64_t ReserveBytes;
+  static const uint64_t ReserveBytes = ((uint64_t)1<<32);			// 4GB.
+  static const uint64_t InitialSize= ((uint64_t)1<<24);				// 16MB. Initial allocate size
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
 
-  str_arena() : ReserveBytes(128 * 1024 * 1024)
+  str_arena()
   {
-      str = dynarray(std::numeric_limits<unsigned int>::max(), ReserveBytes);
-      memset(str, '\0', ReserveBytes);  // prefault
+      str = dynarray(ReserveBytes, InitialSize );
+      memset(str, '\0', InitialSize);  							// run-time prefault?
 	  reset();
   }
 
@@ -38,10 +37,11 @@ public:
   {
     uint64_t off = n;
     n += size + sizeof(varstr);
-    if (n >= ReserveBytes) {
-        ReserveBytes *= 2;
-        str.ensure_size(ReserveBytes);
-    }
+	ALWAYS_ASSERT( n <= ReserveBytes );						// can't exceed reserved size
+	if( n > str.size() )
+	{
+		str.ensure_size( str.size() * 1.5 );				// get real memory allocation from reserved mapping. rapid grow
+	}
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
   }
@@ -60,8 +60,7 @@ public:
   }
 
 private:
-//  char str[ReserveBytes];
-	dynarray 		str;
+  dynarray 		str;
   size_t n;
 };
 
