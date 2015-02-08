@@ -10,7 +10,7 @@ class str_arena {
 public:
 
   static const uint64_t ReserveBytes = ((uint64_t)1<<32);			// 4GB.
-  static const uint64_t InitialSize= ((uint64_t)1<<24);				// 16MB. Initial allocate size
+  static const uint64_t InitialSize= ((uint64_t)1<<28);				// 256MB. Initial allocate size
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
 
   str_arena()
@@ -37,10 +37,10 @@ public:
   {
     uint64_t off = n;
     n += size + sizeof(varstr);
-	ALWAYS_ASSERT( n <= ReserveBytes );						// can't exceed reserved size
+	ALWAYS_ASSERT( n <= ReserveBytes );			// can't exceed reserved size
 	if( n > str.size() )
 	{
-		str.ensure_size( str.size() * 1.5 );				// get real memory allocation from reserved mapping. rapid grow
+		str.ensure_size( str.size() * 2 );		// get real memory allocation from reserved mapping. rapid grow
 	}
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
