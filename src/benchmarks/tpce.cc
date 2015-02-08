@@ -24,7 +24,9 @@ using namespace TPCE;
 
 // TPC-E workload mix
 int64_t lastTradeId;
-static double g_txn_workload_mix[] = { 4.9, 13, 1, 18, 14, 8, 10.1, 10, 19, 2 }; 
+int64_t min_ca_id = numeric_limits<int64_t>::max();
+int64_t max_ca_id = 0;
+static double g_txn_workload_mix[] = { 4.9, 13, 1, 8, 14, 8, 10.1, 10, 9, 2, 20 }; 
 
 // Egen
 int egen_init(int argc, char* argv[]);
@@ -651,6 +653,20 @@ class tpce_worker :
 		bench_worker::txn_result DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTradeUpdateFrame2Output *pOut);
 		bench_worker::txn_result DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTradeUpdateFrame3Output *pOut);
 
+		// Long query 
+		static bench_worker::txn_result LongQuery(bench_worker *w)
+		{
+			ANON_REGION("LongQuery:", &tpce_txn_cg);
+			return static_cast<tpce_worker *>(w)->long_query();
+		}
+
+		bench_worker::txn_result long_query()
+		{
+			scoped_str_arena s_arena(arena);
+			return DoLongQueryFrame1();
+		}
+		bench_worker::txn_result DoLongQueryFrame1();
+
 		// DataMaintenance
 		static bench_worker::txn_result DataMaintenance(bench_worker *w)
 		{
@@ -713,6 +729,8 @@ class tpce_worker :
 					w.push_back(workload_desc("TradeStatus", double(g_txn_workload_mix[8])/100.0, TradeStatus));
 				if (g_txn_workload_mix[9])
 					w.push_back(workload_desc("TradeUpdate", double(g_txn_workload_mix[9])/100.0, TradeUpdate));
+				if (g_txn_workload_mix[10])
+					w.push_back(workload_desc("LongQuery", double(g_txn_workload_mix[10])/100.0, LongQuery));
 				//    if (g_txn_workload_mix[10])
 				//      w.push_back(workload_desc("DataMaintenance", double(g_txn_workload_mix[10])/100.0, DataMaintenance));
 				//    if (g_txn_workload_mix[11])
@@ -3251,6 +3269,38 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 	return bench_worker::txn_result(true, 0);
 }
 
+bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
+{
+	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+
+	auto total_range = max_ca_id - min_ca_id;
+	auto scan_range_size = (max_ca_id - min_ca_id) / 10;
+	auto start_pos = min_ca_id + RandomNumber( r, 0, total_range - scan_range_size  );
+	auto end_pos = start_pos + scan_range_size;
+
+	const customer_account::key k_ca_0( start_pos);
+	const customer_account::key k_ca_1( end_pos  );
+	table_scanner ca_scanner(&arena);
+	try_catch(tbl_customer_account(1)->scan(txn, Encode(obj_key0=str(sizeof(k_ca_0)), k_ca_0), &Encode(obj_key1=str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
+	ALWAYS_ASSERT( ca_scanner.output.size() );
+
+	for( auto& r_ca : ca_scanner.output )
+	{
+		customer_account::key k_ca_temp;
+		const customer_account::key* k_ca = Decode( *r_ca.first, k_ca_temp );
+
+		const holding_summary::key k_hs_0( k_ca->ca_id, string(cSYMBOL_len, (char)0	) );
+		const holding_summary::key k_hs_1( k_ca->ca_id, string(cSYMBOL_len, (char)255) );
+		table_scanner hs_scanner(&arena);
+		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
+	}
+
+
+	// nothing to do actually. just bothering writers. 
+	try_catch(db->commit_txn(txn));
+	return bench_worker::txn_result(true, 0);
+}
+
 bench_worker::txn_result tpce_worker::DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn){}
 bench_worker::txn_result tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn){}
 
@@ -3965,6 +4015,12 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
 							
 
 							k.ca_id 		= record->CA_ID;
+
+							if( likely( record->CA_ID > max_ca_id ) )
+								max_ca_id = record->CA_ID;
+							if( unlikely( record->CA_ID < min_ca_id ) )
+								min_ca_id = record->CA_ID;
+
 							v.ca_b_id 	= record->CA_B_ID;
 							v.ca_c_id 	= record->CA_C_ID;
 							v.ca_name 	= string(record->CA_NAME);
