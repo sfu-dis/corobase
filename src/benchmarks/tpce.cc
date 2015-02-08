@@ -26,7 +26,7 @@ using namespace TPCE;
 int64_t lastTradeId;
 int64_t min_ca_id = numeric_limits<int64_t>::max();
 int64_t max_ca_id = 0;
-static double g_txn_workload_mix[] = { 4.9, 13, 1, 8, 14, 8, 10.1, 10, 9, 2, 20 }; 
+static double g_txn_workload_mix[] = {4.9,13,1,18,14,8,10.1,10,19,2,0}; 
 
 // Egen
 int egen_init(int argc, char* argv[]);
@@ -1870,7 +1870,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame4(const TTradeLookupFram
 		pOut->trade_info[hh_cursor].quantity_before = v_hh->hh_before_qty;
 
 		hh_cursor++;
-		if( hh_cursor >= 20 )
+		if( hh_cursor >= TradeLookupFrame4MaxRows )
 			break;
 	}
 
