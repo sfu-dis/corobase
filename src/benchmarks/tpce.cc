@@ -1,16 +1,3 @@
-/*
-   TODOs
-
-   ASSERT to INVARIANT when doing real performance measurement
-   after dotxn, check status and make return value
-   stop scanning if given selectivity is satisfied -> custom scanner
-   partitioning and scaling, input parameter( configured customers ), CPU pinning for loaders and workers
-   string->c_str
-   scan key
-   sanity check & carninality check 
-   for non unique key indices, add ROWID as a new key.  masstree can't deal with duplicate key. 
- */
-
 #include <sys/time.h>
 #include <string>
 #include <ctype.h>
@@ -35,7 +22,6 @@ using namespace util;
 using namespace TPCE;
 
 
-//typedef TUPLE std::vector<std::pair<std::string *, const std::string*>>;
 // TPC-E workload mix
 int64_t lastTradeId;
 static double g_txn_workload_mix[] = { 4.9, 13, 1, 18, 14, 8, 10.1, 10, 19, 2 }; 
