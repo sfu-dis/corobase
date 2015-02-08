@@ -110,8 +110,8 @@ const int       iSecurityDetailMinRows = 5;
 const int       iSecurityDetailMaxRows = 20;    // max_fin_len
 
 // Trade-Lookup constants
-const INT32     TradeLookupMaxTradeHistoryRowsReturned  = 10;    //Based on the maximum number of status changes a trade can go through.
-const INT32     TradeLookupMaxRows                      = 50;   // Max number of rows for the frames
+const INT32     TradeLookupMaxTradeHistoryRowsReturned  = 3;    //Based on the maximum number of status changes a trade can go through.
+const INT32     TradeLookupMaxRows                      = 20;   // Max number of rows for the frames
 const INT32     TradeLookupFrame1MaxRows                = TradeLookupMaxRows;
 const INT32     TradeLookupFrame2MaxRows                = TradeLookupMaxRows;
 const INT32     TradeLookupFrame3MaxRows                = TradeLookupMaxRows;
