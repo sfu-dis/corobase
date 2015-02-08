@@ -3274,7 +3274,7 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	auto total_range = max_ca_id - min_ca_id;
-	auto scan_range_size = (max_ca_id - min_ca_id) / 10;
+	auto scan_range_size = (max_ca_id - min_ca_id) / 5;
 	auto start_pos = min_ca_id + RandomNumber( r, 0, total_range - scan_range_size  );
 	auto end_pos = start_pos + scan_range_size;
 

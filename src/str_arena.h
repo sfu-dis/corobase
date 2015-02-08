@@ -10,7 +10,7 @@ class str_arena {
 public:
 
   static const uint64_t ReserveBytes = ((uint64_t)1<<32);			// 4GB.
-  static const uint64_t InitialSize= ((uint64_t)1<<28);				// 256MB. Initial allocate size
+  static const uint64_t InitialSize= ((uint64_t)1<<27);				// 128MB. Initial allocate size
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
 
   str_arena()
