@@ -257,6 +257,9 @@ bench_runner::run()
   const double agg_abort_rate = double(n_aborts) / elapsed_sec;
   const double avg_per_core_abort_rate = agg_abort_rate / double(workers.size());
 
+  const double agg_system_abort_rate = double(n_aborts - n_user_aborts) / elapsed_sec;
+  const double avg_per_core_system_abort_rate = agg_system_abort_rate / double(workers.size());
+
   const double agg_user_abort_rate = double(n_user_aborts) / elapsed_sec;
   const double avg_per_core_user_abort_rate = agg_user_abort_rate / double(workers.size());
 
@@ -343,13 +346,16 @@ bench_runner::run()
   }
 
   // output for plotting script
-  cout << agg_throughput << " "
-       << avg_latency_ms << " "
-       << agg_abort_rate << " "
-       << agg_user_abort_rate << endl;
+  cout << agg_throughput << " commits/s, "
+//       << avg_latency_ms << " "
+       << agg_system_abort_rate << " system_aborts/s, "
+       << agg_user_abort_rate << " user_aborts/s, " 
+       << agg_abort_rate << " total_aborts/s, "
+	   << endl;
   cout << n_commits << " commits, "
-       << n_aborts << " aborts, " 
-	   << n_user_aborts << " user aborts"
+	   << n_aborts - n_user_aborts << " system aborts, "
+	   << n_user_aborts << " user aborts, "
+       << n_aborts << " total aborts" 
 	   << endl;
   cout.flush();
 
