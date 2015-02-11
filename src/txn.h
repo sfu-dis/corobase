@@ -343,7 +343,9 @@ public:
   rc_t si_commit();
 #endif
 
+#ifdef PHANTOM_PROT_NODE_SET
   bool check_phantom();
+#endif
 
   // signal the caller that an abort is necessary by throwing an abort
   // exception. 
