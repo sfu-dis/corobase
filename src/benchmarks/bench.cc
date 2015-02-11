@@ -258,10 +258,7 @@ bench_runner::run()
   const double avg_per_core_abort_rate = agg_abort_rate / double(workers.size());
 
   const double agg_system_abort_rate = double(n_aborts - n_user_aborts) / elapsed_sec;
-  const double avg_per_core_system_abort_rate = agg_system_abort_rate / double(workers.size());
-
   const double agg_user_abort_rate = double(n_user_aborts) / elapsed_sec;
-  const double avg_per_core_user_abort_rate = agg_user_abort_rate / double(workers.size());
 
   // XXX(stephentu): latency currently doesn't account for read-only txns
   const double avg_latency_us =
@@ -325,6 +322,7 @@ bench_runner::run()
     cerr << "--- perf counters (if enabled, for benchmark) ---" << endl;
     PERF_EXPR(scopedperf::perfsum_base::printall());
 
+#if 0
 	RCU::rcu_gc_info gc_info = RCU::rcu_get_gc_info();
 	cerr << "--- RCU stat --- " << endl;
 	cerr << "gc_passes: " << gc_info.gc_passes << endl;
@@ -333,6 +331,7 @@ bench_runner::run()
 	cerr << "objects_stashed : " << gc_info.objects_stashed<< endl;
 	cerr << "bytes_stashed: " << gc_info.bytes_stashed << endl;
     cerr << "---------------------------------------" << endl;
+#endif
 
 #ifdef USE_JEMALLOC
     cerr << "dumping heap profile..." << endl;
