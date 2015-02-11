@@ -271,7 +271,7 @@ protected:
 
   inline txn_state state() const
   {
-    return TXN::xid_get_context(xid)->state;
+    return xc->state;
   }
 
   // only fires during invariant checking
@@ -279,7 +279,7 @@ protected:
   ensure_active()
   {
     if (state() == TXN_EMBRYO)
-      xid_get_context(xid)->state = TXN_ACTIVE;
+      volatile_write(xc->state, TXN_ACTIVE);
     INVARIANT(state() == TXN_ACTIVE);
   }
 
@@ -417,6 +417,7 @@ protected:
   }
 
   XID xid;
+  xid_context *xc;
   sm_tx_log* log;
   string_allocator_type *sa;
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)

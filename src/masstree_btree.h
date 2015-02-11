@@ -240,9 +240,9 @@ public:
   {
 	  return table_.get_tuple_vector();
   }
-  dbtuple *update_version(oid_type oid, object* obj, XID xid)
+  dbtuple *update_version(oid_type oid, object* obj, xid_context *updater_xc)
   {
-	  return table_.update_version( oid, obj, xid );
+      return table_.update_version(oid, obj, updater_xc);
   }
   dbtuple* fetch_overwriter(oid_type oid, LSN rlsn) const
   {
@@ -252,9 +252,9 @@ public:
   {
 	  return table_.fetch_committed_version_at(oid, xid, at_clsn);
   }
-  dbtuple* fetch_version( oid_type oid, XID xid ) const
+  dbtuple* fetch_version(oid_type oid, xid_context *visitor_xc) const
   {
-	  return table_.fetch_version( oid, xid );
+      return table_.fetch_version(oid, visitor_xc);
   }
   inline bool update_tuple( oid_type oid, value_type val )
   {
@@ -290,7 +290,7 @@ public:
           /** NOTE: the public interface assumes that the caller has taken care
            * of setting up RCU */
 
-  inline bool search(const key_type &k, oid_type &o, dbtuple* &v, XID xid,
+  inline bool search(const key_type &k, oid_type &o, dbtuple* &v, xid_context *xc,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -366,14 +366,14 @@ public:
   search_range_call(const key_type &lower,
                     const key_type *upper,
                     low_level_search_range_callback &callback,
-					XID xid) const;
+                    xid_context *xc) const;
 
   // (lower, upper]
   void
   rsearch_range_call(const key_type &upper,
                      const key_type *lower,
                      low_level_search_range_callback &callback,
-					 XID xid) const;
+                     xid_context *xc) const;
 
   class search_range_callback : public low_level_search_range_callback {
   public:
@@ -403,7 +403,7 @@ public:
   search_range(const key_type &lower,
                const key_type *upper,
                F& callback,
-			   XID xid) const;
+               xid_context *xc) const;
 
   /**
    * (*lower, upper]
@@ -416,7 +416,7 @@ public:
   rsearch_range(const key_type &upper,
                 const key_type *lower,
                 F& callback,
-				XID xid) const;
+                xid_context *xc) const;
 
   /**
    * returns true if key k did not already exist, false otherwise
@@ -613,7 +613,7 @@ inline size_t mbtree<P>::size() const
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, oid_type &o, dbtuple* &v, XID xid,
+inline bool mbtree<P>::search(const key_type &k, oid_type &o, dbtuple* &v, xid_context *xc,
                               versioned_node_t *search_info) const
 {
   threadinfo ti;
@@ -622,7 +622,7 @@ inline bool mbtree<P>::search(const key_type &k, oid_type &o, dbtuple* &v, XID x
   if (found)
   {
 	  o = lp.value();
-	  v = fetch_version(o, xid);
+      v = fetch_version(o, xc);
 	  if( !v )
 		  found = false;
   }
@@ -789,42 +789,42 @@ template <typename P>
 inline void mbtree<P>::search_range_call(const key_type &lower,
                                          const key_type *upper,
                                          low_level_search_range_callback &callback,
-										 XID xid) const {
+                                         xid_context *xc) const {
   low_level_search_range_scanner<false> scanner(this, upper, callback);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xc, ti);
 }
 
 template <typename P>
 inline void mbtree<P>::rsearch_range_call(const key_type &upper,
                                           const key_type *lower,
                                           low_level_search_range_callback &callback,
-										  XID xid) const {
+                                          xid_context *xc) const {
   low_level_search_range_scanner<true> scanner(this, lower, callback);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xc, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::search_range(const key_type &lower,
                                     const key_type *upper,
                                     F& callback,
-									XID xid) const {
+                                    xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(this, upper, wrapper);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xid, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xc, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::rsearch_range(const key_type &upper,
                                      const key_type *lower,
                                      F& callback,
-									 XID xid) const {
+                                     xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xid, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xc, ti);
 }
 
 template <typename P>

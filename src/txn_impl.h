@@ -13,7 +13,7 @@ using namespace TXN;
 
 template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type &sa)
-  : transaction_base(flags), xid(TXN::xid_alloc()), sa(&sa)
+  : transaction_base(flags), xid(TXN::xid_alloc()), xc(xid_get_context(xid)), sa(&sa)
 {
   RA::epoch_enter();
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
@@ -22,7 +22,6 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   serial_register_tx(xid);
 #endif
-  xid_context *xc = xid_get_context(xid);
   write_set.set_empty_key(NULL);    // google dense map
 #ifdef PHANTOM_PROT_NODE_SET
   absent_set.set_empty_key(NULL);    // google dense map
@@ -65,7 +64,7 @@ void
 transaction<Protocol, Traits>::abort_impl()
 {
   if (likely(state() != TXN_COMMITTING))
-    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
+    volatile_write(xc->state, TXN_ABRTD);
 
   for (auto &w : write_set) {
     if (not w.second.btr)   // for repeated overwrites
@@ -89,7 +88,7 @@ transaction<Protocol, Traits>::abort_impl()
     log->pre_commit();
   log->discard();
   if (unlikely(state() == TXN_COMMITTING))
-    volatile_write(xid_get_context(xid)->state, TXN_ABRTD);
+    volatile_write(xc->state, TXN_ABRTD);
 }
 
 namespace {
@@ -159,8 +158,6 @@ template <template <typename> class Protocol, typename Traits>
 rc_t
 transaction<Protocol, Traits>::parallel_ssn_commit()
 {
-  xid_context* xc = xid_get_context(xid);
-
   PERF_DECL(
       static std::string probe0_name(
         std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
@@ -223,8 +220,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
       // calculate age
       XID overwritten_xid = XID::from_ptr(overwritten_tuple_clsn);
       xid_context *overwritten_xc = xid_get_context(overwritten_xid);
-      if (not overwritten_xc)
-        goto try_get_age;
       auto overwritten_end = volatile_read(overwritten_xc->end).offset();
       ASSERT(overwritten_end);
       XID overwritten_owner = volatile_read(overwritten_xc->owner);
@@ -249,8 +244,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
       if (not rxid._val or rxid == xc->owner)
         continue; // ignore invalid entries and ignore my own reads
       xid_context *reader_xc = xid_get_context(rxid);
-      if (not reader_xc)
-        continue;
       // copy everything before doing anything
       auto reader_owner = volatile_read(reader_xc->owner);
       auto reader_end = volatile_read(reader_xc->end).offset();
@@ -298,8 +291,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
       XID successor_xid = XID::from_ptr(sucessor_clsn);
       xid_context *sucessor_xc = xid_get_context(successor_xid);
-      if (not sucessor_xc)
-        continue;
       auto successor_owner = volatile_read(sucessor_xc->owner);
       if (successor_owner == xc->owner)  // myself
           continue;
@@ -380,8 +371,6 @@ template <template <typename> class Protocol, typename Traits>
 rc_t
 transaction<Protocol, Traits>::parallel_ssi_commit()
 {
-  xid_context* xc = xid_get_context(xid);
-
   PERF_DECL(
       static std::string probe0_name(
         std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
@@ -424,8 +413,6 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         XID ox = XID::from_ptr(overwriter_xid);
         ASSERT(ox != xc->owner);
         xid_context *overwriter_xc = xid_get_context(ox);
-        if (not overwriter_xc)
-          continue;
         // read what i need before verifying ownership
         uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
         if (volatile_read(overwriter_xc->owner) != ox)
@@ -478,7 +465,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   log->commit(NULL);
 
   // change state
-  volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
+  volatile_write(xc->state, TXN_CMMTD);
 
   // stamp overwritten versions, stuff clsn
   for (auto &w : write_set) {
@@ -514,8 +501,6 @@ template <template <typename> class Protocol, typename Traits>
 rc_t
 transaction<Protocol, Traits>::si_commit()
 {
-  xid_context* xc = xid_get_context(xid);
-
   PERF_DECL(
       static std::string probe0_name(
         std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
@@ -540,7 +525,7 @@ transaction<Protocol, Traits>::si_commit()
   log->commit(NULL);
 
   // change state
-  volatile_write(xid_get_context(xid)->state, TXN_CMMTD);
+  volatile_write(xc->state, TXN_CMMTD);
 
   // post-commit cleanup: install clsn to tuples
   // (traverse write-tuple)
@@ -687,12 +672,11 @@ transaction<Protocol, Traits>::do_tuple_read(
 {
   INVARIANT(tuple);
   ++evt_local_search_lookups;
+  ASSERT(xc);
 
 #ifdef USE_PARALLEL_SSN
   // SSN stamps and check
   if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
-    xid_context* xc = xid_get_context(xid);
-    ASSERT(xc);
     auto v_clsn = tuple->clsn.offset();
     int64_t age = xc->begin.offset() - v_clsn;
     auto tuple_sstamp = volatile_read(tuple->sstamp);
@@ -741,8 +725,6 @@ transaction<Protocol, Traits>::do_tuple_read(
   // execution: T1 r:w T2 r:w T3 where T3 committed first. Read() needs
   // to check if I'm the T1 and do bookeeping if I'm the T2 (pivot).
   if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
-    xid_context* xc = xid_get_context(xid);
-    ASSERT(xc);
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
       ASSERT(tuple->sstamp);    // sstamp will be valid too if s2 is valid

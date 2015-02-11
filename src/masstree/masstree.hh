@@ -77,9 +77,9 @@ class basic_table {
     bool get(Str key, value_type& value, threadinfo& ti) const;
 
     template <typename F>
-    int scan(Str firstkey, bool matchfirst, F& scanner, XID xid, threadinfo& ti) const;
+    int scan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
     template <typename F>
-    int rscan(Str firstkey, bool matchfirst, F& scanner, XID xid, threadinfo& ti) const;
+    int rscan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
 
     template <typename F>
     inline int modify(Str key, F& f, threadinfo& ti);
@@ -103,7 +103,7 @@ class basic_table {
 	}
 
     // return the overwritten version (could be an in-flight version!)
-	dbtuple *update_version(oid_type oid, object* new_desc, XID xid)
+    dbtuple *update_version(oid_type oid, object* new_desc, xid_context *updater_xc)
 	{
 		INVARIANT( tuple_vector );
 		
@@ -114,8 +114,6 @@ class basic_table {
 	start_over:
         fat_ptr head = tuple_vector->begin(oid);
 		object* ptr = (object*)head.offset();
-		xid_context *visitor = xid_get_context(xid);
-		INVARIANT(visitor->owner == xid);
 		dbtuple* version;
         bool overwrite = false;
 
@@ -155,6 +153,7 @@ class basic_table {
 #endif
 				goto start_over;
 			}
+            XID updater_xid = volatile_read(updater_xc->owner);
 			switch (state)
 			{
                 // Allow installing a new version if the tx committed (might
@@ -163,7 +162,7 @@ class basic_table {
                 // returned version (prev) to see if this is an overwrite
                 // (ie xids match) or not (xids don't match).
                 case TXN_CMMTD:
-                    ASSERT(holder_xid != xid);
+                    ASSERT(holder_xid != updater_xid);
                     goto install;
 
 				case TXN_COMMITTING:
@@ -174,7 +173,7 @@ class basic_table {
 				case TXN_EMBRYO:
 				case TXN_ACTIVE:
                     // in-place update case ( multiple updates on the same record  by same transaction)
-                    if (holder_xid == xid ) {
+                    if (holder_xid == updater_xid) {
                         overwrite = true;
                         goto install;
                     }
@@ -191,7 +190,7 @@ class basic_table {
 			// make sure this is valid committed data, or aborted data that is not reclaimed yet.
 			// aborted, but not yet reclaimed.
 			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
-			if ( LSN::from_ptr(clsn) > visitor->begin )
+            if (LSN::from_ptr(clsn) > updater_xc->begin)
 				return NULL;
 			else
 				goto install;
@@ -209,7 +208,7 @@ install:
             TRACER::record(xid._val, 'u', (uint64_t)tuple_vector, oid,
                            (uint64_t)version, (uint64_t)new_ptr.offset(),
                            version->size, ((dbtuple*)(((object *)new_ptr.offset())->payload()))->size,
-                           old_age, visitor->begin._val);
+                           old_age, updater_xc->begin._val);
 #endif
             return version;
         }
@@ -291,12 +290,10 @@ install:
         return 0;
     }
 
-	dbtuple *fetch_version( oid_type oid, XID xid ) const
+    dbtuple *fetch_version(oid_type oid, xid_context *visitor_xc) const
 	{
 		INVARIANT( tuple_vector );
 		ALWAYS_ASSERT( oid );
-		xid_context *visitor= xid_get_context(xid);
-		INVARIANT(visitor->owner == xid);
 
 #if CHECK_INVARIANTS
 		int attempts = 0;
@@ -323,7 +320,7 @@ install:
 				auto holder_xid = XID::from_ptr(clsn);
 
 				// dirty data made by me is visible!
-				if (holder_xid == xid) {
+                if (holder_xid == visitor_xc->owner) {
 					goto out;
 #if CHECK_INVARIANTS
                     // don't do this if it's not my own tuple!
@@ -359,15 +356,15 @@ install:
 #endif
                 }
 
-				if( end > visitor->begin  			// committed(but invisible) data, 
-						|| end == INVALID_LSN)		// aborted data
+                if (end > visitor_xc->begin or  // committed but invisible data,
+                    end == INVALID_LSN)         // aborted data
 					continue;
 
 			}
 			else
 			{
 #ifndef USE_READ_COMMITTED
-				if( LSN::from_ptr(clsn) > visitor->begin ) 	// invisible
+                if (LSN::from_ptr(clsn) > visitor_xc->begin)    // invisible
 					continue;
 #endif
 			}
@@ -409,7 +406,7 @@ install:
                 ver_age = xid._val;
             }
             TRACER::record(xid._val, 'r', (uint64_t)tuple_vector, oid, (uint64_t)ret_ver,
-                           ret_ver->size, pos, ver_age, visitor->begin._val);
+                           ret_ver->size, pos, ver_age, visitor_xc->begin._val);
 #endif
             return ret_ver;
 		}
@@ -448,7 +445,7 @@ install:
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,
-	     F& scanner, XID xid, threadinfo& ti) const;
+         F& scanner, xid_context *xc, threadinfo& ti) const;
 
     friend class unlocked_tcursor<P>;
     friend class tcursor<P>;
