@@ -52,6 +52,7 @@ public:
   rl_bitmap_t rl_bitmap;   // bitmap of in-flight readers
   uint64_t sstamp;         // successor (overwriter) stamp (\pi), updated when writer commits
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
+  uint64_t bstamp;         // for SSN's (possibly SSI's too) read optimization
 #endif
 #ifdef USE_PARALLEL_SSI
   uint64_t s2;  // smallest successor stamp of all reads performed by the tx
@@ -83,6 +84,7 @@ private:
       , rl_bitmap(rl_bitmap_t(0))
       , sstamp(0)
       , xstamp(0)
+      , bstamp(0)
 #endif
 #ifdef USE_PARALLEL_SSI
       , s2(0)

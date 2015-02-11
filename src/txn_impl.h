@@ -238,39 +238,42 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     }
     ASSERT(volatile_read(overwritten_tuple->sstamp) == 0);
 
-    /* for old tuples, just assume xstamp = cstamp-1 otherwise, check
-       reader list and such
-     */
-    if (age < OLD_VERSION_THRESHOLD) {
-      // need access stamp , i.e., who read this version that I'm trying to overwrite?
-      readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple);
-      while (readers) {
-        int i = __builtin_ctz(readers);
-        ASSERT(i >= 0 and i < 24);
-        readers &= (readers-1);
-      get_reader:
-        XID rxid = volatile_read(rlist.xids[i]);
-        if (not rxid._val or rxid == xc->owner)
-          continue; // ignore invalid entries and ignore my own reads
-        xid_context *reader_xc = xid_get_context(rxid);
-        if (not reader_xc)
-          continue;
-        // copy everything before doing anything
-        auto reader_owner = volatile_read(reader_xc->owner);
-        auto reader_end = volatile_read(reader_xc->end).offset();
-        if (reader_owner != rxid)
-            goto get_reader;
-        // reader committed
+    // need access stamp , i.e., who read this version that I'm trying to overwrite?
+    readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple);
+    while (readers) {
+      int i = __builtin_ctz(readers);
+      ASSERT(i >= 0 and i < 24);
+      readers &= (readers-1);
+    get_reader:
+      XID rxid = volatile_read(rlist.xids[i]);
+      if (not rxid._val or rxid == xc->owner)
+        continue; // ignore invalid entries and ignore my own reads
+      xid_context *reader_xc = xid_get_context(rxid);
+      if (not reader_xc)
+        continue;
+      // copy everything before doing anything
+      auto reader_owner = volatile_read(reader_xc->owner);
+      auto reader_end = volatile_read(reader_xc->end).offset();
+      auto reader_begin = volatile_read(reader_xc->begin).offset();
+      if (reader_owner != rxid)
+          goto get_reader;
+      if (age < OLD_VERSION_THRESHOLD) {
         if (reader_end and reader_end < cstamp and wait_for_commit_result(reader_xc)) {
           if (xc->pstamp < reader_end)
             xc->pstamp = reader_end;
         }
       }
-    }
-    else {
-        // pstamp can't be larger than this, no need to check
+      else {  // old version
+        auto tuple_bs = volatile_read(overwritten_tuple->bstamp);
+        // I (as the writer) need to backoff if the reader has the
+        // possibility of having read the version, and it is or will
+        // be serialized after me.
+        if (reader_begin < tuple_bs and reader_end >= cstamp) {
+          tls_rw_conflict_abort_count++;
+          return rc_t{RC_ABORT_RW_CONFLICT};
+        }
         xc->pstamp = cstamp - 1;
-        break;
+      }
     }
   }
   ASSERT(xc->pstamp <= cstamp - 1);
@@ -692,6 +695,7 @@ transaction<Protocol, Traits>::do_tuple_read(
     ASSERT(xc);
     auto v_clsn = tuple->clsn.offset();
     int64_t age = xc->begin.offset() - v_clsn;
+    auto tuple_sstamp = volatile_read(tuple->sstamp);
     if (age < OLD_VERSION_THRESHOLD) {
       // \eta - largest predecessor. So if I read this tuple, I should commit
       // after the tuple's creator (trivial, as this is committed version, so
@@ -706,10 +710,9 @@ transaction<Protocol, Traits>::do_tuple_read(
       // successor of mine), so I need to update my \pi for the SSN check.
       // This is the easier case of anti-dependency (the other case is T1
       // already read a (then latest) version, then T2 comes to overwrite it).
-      auto tuple_sstamp = volatile_read(tuple->sstamp);
       if (not tuple_sstamp) {   // no overwrite so far
-        if (serial_register_reader_tx(tuple, xid))
-            read_set.emplace_back(tuple, btr_ptr, oid);
+        serial_register_reader_tx(tuple, xid);
+        read_set.emplace_back(tuple, btr_ptr, oid);
       }
       else if (xc->sstamp > tuple_sstamp)
         xc->sstamp = tuple_sstamp; // \pi
@@ -718,6 +721,18 @@ transaction<Protocol, Traits>::do_tuple_read(
       if (not ssn_check_exclusion(xc))
         return {RC_ABORT_SSN_EXCLUSION};
 #endif
+    }
+    else {
+      if (tuple_sstamp and xc->sstamp > tuple_sstamp)
+        xc->sstamp = tuple_sstamp; // \pi
+
+      uint64_t bs = 0;
+      do {
+        bs = volatile_read(tuple->bstamp);
+      }
+      while (tuple->bstamp < xc->begin.offset() and
+             not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
+      serial_register_reader_tx(tuple, xid);
     }
   }
 #endif
