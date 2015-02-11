@@ -3291,7 +3291,8 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 
 		const holding_summary::key k_hs_0( k_ca->ca_id, string(cSYMBOL_len, (char)0	) );
 		const holding_summary::key k_hs_1( k_ca->ca_id, string(cSYMBOL_len, (char)255) );
-		table_scanner hs_scanner(&arena);
+        static __thread table_scanner hs_scanner(&arena);
+        hs_scanner.output.clear();
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
 	}
 
