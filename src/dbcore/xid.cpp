@@ -228,6 +228,9 @@ void xid_free(XID x) {
     ASSERT(id < NCONTEXTS);
     auto *ctx = &contexts[id];
     THROW_IF(ctx->owner != x, illegal_argument, "Invalid XID");
+    // destroy the owner field (for SSN read-opt, which might
+    // read very stale XID and try to find its context)
+    ctx->owner._val = 0;
     
     auto &b = bitmaps[x.epoch() % NBITMAPS];
     auto &w = b.data[(id/bitmap::BITS_PER_WORD) % bitmap::NWORDS];
@@ -238,9 +241,11 @@ void xid_free(XID x) {
 xid_context *
 xid_get_context(XID x) {
     auto *ctx = &contexts[x.local()];
-    ASSERT(ctx->owner.local() == x.local());
-    if (ctx->owner.epoch() < x.epoch() or ctx->owner.epoch() >= x.epoch()+3)
-        return NULL;
+    // sort of expensive to do this; let the caller decide
+    //ASSERT(ctx->owner.local() == x.local());
+    // (the caller just needs to see if the xid=ctx.owner)
+    //if (ctx->owner.epoch() < x.epoch() or ctx->owner.epoch() >= x.epoch()+3)
+    //    return NULL;
     return ctx;
 }
 

@@ -179,7 +179,7 @@ base_txn_btree<Transaction, P>::do_search(
   dbtuple * tuple{};
   oid_type oid;
   concurrent_btree::versioned_node_t search_info;
-  const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xid, &search_info);
+  const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xc, &search_info);
   if (found)
     return t.do_tuple_read(&this->underlying_btree, oid, tuple, value_reader);
 #ifdef PHANTOM_PROT_NODE_SET
@@ -285,7 +285,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // do regular search
   dbtuple * bv = 0;
   oid_type oid = 0;
-  if (!this->underlying_btree.search(varkey(k), oid, bv, t.xid))
+  if (!this->underlying_btree.search(varkey(k), oid, bv, t.xc))
     return rc_t{RC_ABORT};
 #ifdef PHANTOM_PROT_TABLE_LOCK
   // for delete
@@ -323,19 +323,18 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // result (either succeeded or failed, i.e., need to abort).
 
 
-  dbtuple *prev = this->underlying_btree.update_version(oid, version, t.xid);
+  dbtuple *prev = this->underlying_btree.update_version(oid, version, t.xc);
 
   if (prev) { // succeeded
+    ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
     // check if there's any in-flight readers of the overwritten tuple
     // (will form an inbound r:w edge to me) ie, am I the T2 (pivot)
     // with T1 in-flight and T3 committed first (ie, before T1, ie,
     // prev's creator) in the dangerous structure?
-    xid_context* xc = xid_get_context(t.xid);
-    ASSERT(xc);
     ASSERT(not prev->sstamp);
     auto in_flight_readers = serial_get_tuple_readers(prev, true);
-    if (in_flight_readers and has_committed_t3(xc)) {
+    if (in_flight_readers and has_committed_t3(t.xc)) {
         tls_serial_abort_count++;
         // unlink the version here (note abort_impl won't be able to catch
         // it because it's not yet in the write set), same as in SSN impl.
@@ -354,15 +353,13 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // i.e., I'll depend on some tx who has read the version that's
     // being overwritten by me. So I'll need to see the version's
     // access stamp to tell if the read happened.
-    xid_context* xc = xid_get_context(t.xid);
-    ASSERT(xc);
     ASSERT(not prev->sstamp);
     auto prev_xstamp = volatile_read(prev->xstamp);
-    if (xc->pstamp < prev_xstamp)
-      xc->pstamp = prev_xstamp;
+    if (t.xc->pstamp < prev_xstamp)
+      t.xc->pstamp = prev_xstamp;
 
 #ifdef DO_EARLY_SSN_CHECKS
-    if (not ssn_check_exclusion(xc)) {
+    if (not ssn_check_exclusion(t.xc)) {
       // unlink the version here (note abort_impl won't be able to catch
       // it because it's not yet in the write set)
       this->underlying_btree.unlink_tuple(oid, tuple);
@@ -409,7 +406,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     ASSERT(t.write_set[key_tuple].new_tuple == tuple and t.write_set[key_tuple].btr == &this->underlying_btree);
 
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
-    ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xid) == tuple);
+    ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xc) == tuple);
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
       if (instant_lock)
@@ -540,7 +537,7 @@ base_txn_btree<Transaction, P>::do_search_range_call(
     uppervk = varkey(upper_str);
   this->underlying_btree.search_range_call(
       varkey(lower_str), upper_str ? &uppervk : nullptr,
-      c, t.xid);
+      c, t.xc);
 }
 
 template <template <typename> class Transaction, typename P>
@@ -592,7 +589,7 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
     lowervk = varkey(lower_str);
   this->underlying_btree.rsearch_range_call(
       varkey(upper_str), lower_str ? &lowervk : nullptr,
-      c,t.xid);
+      c,t.xc);
 }
 
 #endif /* _NDB_BASE_TXN_BTREE_H_ */
