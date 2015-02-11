@@ -553,20 +553,20 @@ transaction<Protocol, Traits>::si_commit()
 }
 #endif
 
+#ifdef PHANTOM_PROT_NODE_SET
 // returns true if btree versions have changed, ie there's phantom
 template <template <typename> class Protocol, typename Traits>
 bool
 transaction<Protocol, Traits>::check_phantom()
 {
-#ifdef PHANTOM_PROT_NODE_SET
   for (auto &r : absent_set) {
     const uint64_t v = concurrent_btree::ExtractVersionNumber(r.first);
     if (unlikely(v != r.second.version))
       return false;
   }
   return true;
-#endif
 }
+#endif
 
 typedef object_vector tuple_vector_type;
 // FIXME: tzwang: note: we only try once in this function. If it
