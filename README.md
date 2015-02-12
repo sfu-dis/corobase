@@ -7,6 +7,7 @@ Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
 Currently we support RC, SI, SSI, and SI/RC + SSN (with/without read optimization)
 Switches are defined in src/macros.h:
+
 1. #define USE_PARALLEL_SSI -> use SSI
 2. #define USE_PARALLEL_SSN -> use SSN
    * Extra options for SSN:
@@ -37,7 +38,6 @@ Memory allocation settings
 3. Environment variables needed by tcmalloc:
    TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
    LD_PRELOAD="/usr/lib/libtcmalloc.so"
-
 
 Building
 --------
