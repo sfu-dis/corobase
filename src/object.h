@@ -26,7 +26,7 @@ class object
 		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
 
 		fat_ptr _next;
-		size_t _size;			// contraint on object size( practical enough )
+        uint64_t _size;
 };
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
