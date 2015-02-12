@@ -1,9 +1,9 @@
-# ERMIA
+## ERMIA
 -----
 Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
-## Choosing CC schemes
-===================
+### Choosing CC schemes
+
 Currently we support RC, SI, SSI, and SI/RC + SSN (with/without read optimization)
 Switches are defined in src/macros.h:
 1. #define USE_PARALLEL_SSI -> use SSI
@@ -18,7 +18,7 @@ Switches are defined in src/macros.h:
 Notes: USE_PARALLEL_SSI and USE_PARALLEL_SSN should be mutually exclusive. Defining both
 is undefined.
 
-## Memory allocation settings
+### Memory allocation settings
 ==========================
 1. Prefault size
    Defined in src/benchmarks/bench.h, heap_prefault() function.
