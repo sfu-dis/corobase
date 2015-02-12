@@ -74,9 +74,9 @@ CCustomerTable::CCustomerTable(CInputFiles  inputFiles,
 , m_iRowsToGenerate(iCustomerCount)
 , m_person(inputFiles, iStartFromCustomer, true)
 , m_Phones(inputFiles.AreaCodes)
-, m_StatusTypeFile(inputFiles.StatusType)
 , m_iStartFromCustomer(iStartFromCustomer)
 , m_iCustomerCount(iCustomerCount)
+, m_StatusTypeFile(inputFiles.StatusType)
 {
     m_iCompanyCount = inputFiles.Company->GetSize();
     m_iExchangeCount = inputFiles.Exchange->GetSize();
