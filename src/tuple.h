@@ -67,6 +67,8 @@ public:
                 // and must abort.
 #endif
   size_type size; // actual size of record
+  varstr *pvalue;    // points to the value that will be put into value_start if committed
+                     // so that read-my-own-update can copy from here.
   uint8_t value_start[0];   // must be last field
 
 private:
@@ -151,11 +153,37 @@ private:
 public:
   template <typename Reader, typename StringAllocator>
   inline ALWAYS_INLINE ReadStatus
-  stable_read(Reader &reader, StringAllocator &sa) const
+  // Note: the stable=false option will try to read from pvalue,
+  // instead of the real data area; so giving stable=false is only
+  // safe for the updating transaction itself to read its own write.
+  do_read(Reader &reader, StringAllocator &sa, bool stable) const
   {
-    if (unlikely(size && !reader(get_value_start(), size, sa)))
+    const uint8_t *data = NULL;
+    if (stable)
+      data = get_value_start();
+    else {
+      if (not pvalue) {   // so I just deleted this tuple... return empty?
+        ASSERT(not size);
+        return READ_EMPTY;
+      }
+      data = pvalue->data();
+      ASSERT(pvalue->size() == size);
+    }
+
+    if (unlikely(size && !reader(data, size, sa)))
       return READ_FAILED;
     return size ? READ_RECORD : READ_EMPTY;
+  }
+
+  // move data from the user's varstr pvalue to this tuple
+  template <typename Writer>
+  inline ALWAYS_INLINE void
+  do_write(Writer &writer) const
+  {
+    if (pvalue) {
+      ASSERT(pvalue->size() == size);
+      writer(TUPLE_WRITER_DO_WRITE, pvalue, (unsigned uint8_t *)get_value_start(), 0);
+    }
   }
 
   // XXX: kind of hacky, but we do this to avoid virtual

@@ -335,14 +335,12 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   // ok, can really commit if we reach here
   log->commit(NULL);
 
-  // change state
-  volatile_write(xc->state, TXN_CMMTD);
-
   // post-commit: stuff access stamps for reads; init new versions
   for (auto &w : write_set) {
     if (not w.second.btr)   // for repeated overwrites
         continue;
     dbtuple *tuple = w.second.new_tuple;
+    tuple->do_write(w.second.writer);
     dbtuple *next_tuple = w.first;
     ASSERT(tuple == next_tuple or
            ((object *)((char *)tuple - sizeof(object)))->_next.offset() ==
@@ -357,6 +355,9 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     volatile_write(tuple->clsn, clsn.to_log_ptr());
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
+
+  // change state
+  volatile_write(xc->state, TXN_CMMTD);
 
   for (auto &r : read_set) {
     if (write_set[r.tuple].btr)
@@ -385,7 +386,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   switch (state()) {
   case TXN_EMBRYO:
   case TXN_ACTIVE:
-    xc->state = TXN_COMMITTING;
+    volatile_write(xc->state, TXN_COMMITTING);
     break;
   case TXN_CMMTD:
   case TXN_COMMITTING:
@@ -472,9 +473,6 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   // survived!
   log->commit(NULL);
 
-  // change state
-  volatile_write(xc->state, TXN_CMMTD);
-
   // stamp overwritten versions, stuff clsn
   for (auto &w : write_set) {
     dbtuple *overwritten_tuple = w.first;
@@ -482,6 +480,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
       continue;
     ASSERT(not volatile_read(overwritten_tuple->sstamp));
     dbtuple* tuple = w.second.new_tuple;
+    tuple->do_write(w.second.writer);
     if (overwritten_tuple != tuple) {    // update
       volatile_write(overwritten_tuple->sstamp, cstamp);
       if (min_read_s1 > overwritten_tuple->s2)   // correct?
@@ -490,6 +489,11 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
+
+  // NOTE: make sure this happens after populating log block,
+  // otherwise readers will see inconsistent data!
+  // This is where (committed) tuple data are made visible to readers
+  volatile_write(xc->state, TXN_CMMTD);
 
   // update xstamps in read versions
   for (auto &r : read_set) {
@@ -517,7 +521,7 @@ transaction<Protocol, Traits>::si_commit()
   switch (state()) {
   case TXN_EMBRYO:
   case TXN_ACTIVE:
-    xc->state = TXN_COMMITTING;
+    volatile_write(xc->state, TXN_COMMITTING);
     break;
   case TXN_CMMTD:
   case TXN_COMMITTING: 
@@ -530,10 +534,7 @@ transaction<Protocol, Traits>::si_commit()
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
     return rc_t{RC_ABORT};
-  log->commit(NULL);
-
-  // change state
-  volatile_write(xc->state, TXN_CMMTD);
+  log->commit(NULL);    // will populate log block
 
   // post-commit cleanup: install clsn to tuples
   // (traverse write-tuple)
@@ -542,9 +543,16 @@ transaction<Protocol, Traits>::si_commit()
     if (not w.second.btr)
       continue;
     dbtuple* tuple = w.second.new_tuple;
+    tuple->do_write(w.second.writer);
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
+
+  // NOTE: make sure this happens after populating log block,
+  // otherwise readers will see inconsistent data!
+  // This is where (committed) tuple data are made visible to readers
+  volatile_write(xc->state, TXN_CMMTD);
+
   return rc_t{RC_TRUE};
 }
 #endif
@@ -657,7 +665,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   fat_ptr::make((void *)value, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
-  write_set[tuple] = write_record_t(tuple, btr, oid);
+  write_set[tuple] = write_record_t(tuple, writer, btr, oid);
 
 #ifdef PHANTOM_PROT_NODE_SET
   // update node #s
@@ -766,7 +774,8 @@ transaction<Protocol, Traits>::do_tuple_read(
     PERF_DECL(static std::string probe0_name(std::string(__PRETTY_FUNCTION__) + std::string(":do_read:")));
     ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
     tuple->prefetch();
-    stat = tuple->stable_read(value_reader, this->string_allocator());
+    stat = tuple->do_read(value_reader, this->string_allocator(), write_set.find(tuple) == write_set.end());
+
     if (unlikely(stat == dbtuple::READ_FAILED))
       return rc_t{RC_ABORT};
   }

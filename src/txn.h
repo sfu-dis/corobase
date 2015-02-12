@@ -295,10 +295,12 @@ protected:
 #endif
 
   struct write_record_t {
-    write_record_t(dbtuple *n, concurrent_btree *b, oid_type o) :
-        new_tuple(n), btr(b), oid(o) {}
-    write_record_t() : new_tuple(NULL), btr(NULL), oid(0) {}
+    write_record_t(dbtuple *n, dbtuple::tuple_writer_t w,
+                   concurrent_btree *b, oid_type o) :
+        new_tuple(n), writer(w), btr(b), oid(o) {}
+    write_record_t() : new_tuple(NULL), writer(), btr(NULL), oid(0) {}
     dbtuple *new_tuple;
+    dbtuple::tuple_writer_t writer;
     concurrent_btree *btr;
     oid_type oid;
   };

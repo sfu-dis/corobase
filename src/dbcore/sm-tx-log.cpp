@@ -109,6 +109,9 @@ sm_tx_log::commit(LSN *pdest) {
     LSN clsn = pre_commit();
 
     auto *impl = get_log_impl(this);
+    // now copy log record data
+    impl->_populate_block(impl->_commit_block->block);
+
     if (pdest)
         *pdest = impl->_commit_block->block->lsn;
     
@@ -329,8 +332,9 @@ void sm_tx_log_impl::enter_precommit() {
     _commit_block = ENTERING_PRECOMMIT;
     auto *a = _install_commit_block(ENTERING_PRECOMMIT);
     DEFER_UNLESS(it_worked, _log->_lm.discard(a));
-        
-    _populate_block(a->block);
+
+    // tzwang: avoid copying data here, commit() will do it
+    //_populate_block(a->block);
 
     // leave these in place for late-comers to the race
     //_nreq = 0;
