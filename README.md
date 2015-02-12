@@ -1,11 +1,14 @@
 ERMIA
------
+=====
+
 Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
 Choosing CC schemes
-===================
+-------------------
+
 Currently we support RC, SI, SSI, and SI/RC + SSN (with/without read optimization)
 Switches are defined in src/macros.h:
+
 1. #define USE_PARALLEL_SSI -> use SSI
 2. #define USE_PARALLEL_SSN -> use SSN
    * Extra options for SSN:
@@ -19,7 +22,8 @@ Notes: USE_PARALLEL_SSI and USE_PARALLEL_SSN should be mutually exclusive. Defin
 is undefined.
 
 Memory allocation settings
-==========================
+--------------------------
+
 1. Prefault size
    Defined in src/benchmarks/bench.h, heap_prefault() function.
    The default value is 40GB, to have a 20GB prefaulted area:
@@ -36,9 +40,9 @@ Memory allocation settings
    TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
    LD_PRELOAD="/usr/lib/libtcmalloc.so"
 
-
 Building
-========
+--------
+
 Use src/build.sh to compile Ermia.
 For performance runs, use: $ build.sh
 For debug runs, use: $ build.sh 1
@@ -46,7 +50,8 @@ For debug runs, use: $ build.sh 1
 The '1' argument will enable DEBUG and CHECK_INVARIANTS options. 
 
 Running
-=======
+-------
+
 Useful options:
 1. --bench [benchmark], e.g., --bench tpcc for running TPC-C.
 2. --scale-factor [x], specify scaling factor.
@@ -62,6 +67,7 @@ Useful options:
        * TPC-C and TPC-C++: the "microbenchmark*" percents should be 0.
          For example, to run standard TPC-C mix, give:
            --workload-mix="45,43,0,4,4,4,0,0,0".
+
          To run TPC-C++:
            --workload-mix="43,41,4,4,4,4,0,0,0".
            Note this is the default mix if no --workload-mix option is given.
