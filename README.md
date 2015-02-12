@@ -3,7 +3,8 @@ ERMIA
 
 Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
-### Choosing CC schemes
+Choosing CC schemes
+-------------------
 
 Currently we support RC, SI, SSI, and SI/RC + SSN (with/without read optimization)
 Switches are defined in src/macros.h:
@@ -66,6 +67,7 @@ Useful options:
        * TPC-C and TPC-C++: the "microbenchmark*" percents should be 0.
          For example, to run standard TPC-C mix, give:
            --workload-mix="45,43,0,4,4,4,0,0,0".
+
          To run TPC-C++:
            --workload-mix="43,41,4,4,4,4,0,0,0".
            Note this is the default mix if no --workload-mix option is given.
