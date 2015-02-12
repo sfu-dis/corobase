@@ -276,10 +276,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   ASSERT(xc->pstamp <= cstamp - 1);
 
   for (auto &r : read_set) {
-    // skip writes (note we didn't remove the one in read set)
-    if (write_set[r.tuple].btr)
-      continue;
-
   try_get_sucessor:
     // so tuple should be the committed version I read
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -361,8 +357,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   volatile_write(xc->state, TXN_CMMTD);
 
   for (auto &r : read_set) {
-    if (write_set[r.tuple].btr)
-      continue;
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     uint64_t xlsn;
     do {
@@ -406,8 +400,6 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   // of T3 in the dangerous structure that clobbered our read)
   uint64_t min_read_s1 = 0;    // this will be the s2 of versions I clobbered
   for (auto &r : read_set) {
-    if (write_set[r.tuple].btr)
-      continue;
     auto tuple_s1 = volatile_read(r.tuple->sstamp);
     if (not tuple_s1) {
     get_overwriter:
@@ -419,6 +411,8 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
       fat_ptr overwriter_xid = volatile_read(overwriter_tuple->clsn);
       if (overwriter_xid.asi_type() == fat_ptr::ASI_XID) {
         XID ox = XID::from_ptr(overwriter_xid);
+        if (ox == xc->owner)    // myself
+          continue;
         ASSERT(ox != xc->owner);
         xid_context *overwriter_xc = xid_get_context(ox);
         if (not overwriter_xc)
@@ -498,8 +492,12 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
 
   // update xstamps in read versions
   for (auto &r : read_set) {
-    if (write_set[r.tuple].btr) // correct?
-      continue;
+    // no need to look into write set and skip: do_tuple_read will
+    // skip inserting to read set if it's already in write set; it's
+    // possible to see a tuple in both read and write sets, only if
+    // the tuple is first read, then updated - updating the xstamp
+    // of such a tuple won't hurt, and it eliminates unnecessary
+    // cycles spent on hashtable.
     uint64_t xstamp;
     do {
       xstamp = volatile_read(r.tuple->xstamp);
@@ -741,7 +739,8 @@ transaction<Protocol, Traits>::do_tuple_read(
              not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
       serial_register_reader_tx(tuple, xid);
     }
-  }
+  } // otherwise it's my own update/insert, just read it
+
 #endif
 #ifdef USE_PARALLEL_SSI
   // Consider the dangerous structure that could lead to non-serializable
