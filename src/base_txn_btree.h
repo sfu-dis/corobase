@@ -252,9 +252,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // Tuple setup
   dbtuple* tuple = (dbtuple *)obj->payload();
   tuple = dbtuple::init((char*)tuple, sz);
-  if (v)
-    writer(dbtuple::TUPLE_WRITER_DO_WRITE,
-        v, tuple->get_value_start(), 0);
+  tuple->pvalue = (varstr *)v;
 
   // initialize the version
   tuple->clsn = t.xid.to_ptr();		// XID state is set
@@ -386,7 +384,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
       key_tuple = prev;
     }
 
-    t.write_set[key_tuple] = typename transaction<Transaction, Traits>::write_record_t(tuple, &this->underlying_btree, oid);
+    t.write_set[key_tuple] = typename transaction<Transaction, Traits>::write_record_t(tuple, writer, &this->underlying_btree, oid);
     ASSERT(t.write_set[key_tuple].new_tuple == tuple and t.write_set[key_tuple].btr == &this->underlying_btree);
 
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
@@ -401,7 +399,6 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
     // the record is tooooo large).
-    ASSERT(sz == v->size());
     // for simplicity and alignment, we write the whole varstr
     // (because varstr's data must be the last field, which has a size
     // field (size_t) before it; putting data before size will make it hard to
@@ -409,7 +406,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // by posix_memalign).
     //
     // FIXME: combine the size field in dbtuple and varstr.
-    ASSERT((not sz and not v) or (sz and v));
+    ASSERT((not sz and not v) or (sz and v and sz == v->size()));
     auto record_size = align_up(sz + v ? sizeof(varstr) : 0);
     auto size_code = encode_size_aligned(record_size);
     ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));

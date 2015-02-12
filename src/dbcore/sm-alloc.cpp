@@ -142,9 +142,9 @@ namespace RA {
     void *allocate(uint64_t size) {
         //int skt = sched_getcpu() % nr_sockets;
 		//char *p = &mem[skt][__sync_fetch_and_add(&alloc_offset[skt], align_up(size, 1 << DEFAULT_ALIGNMENT_BITS))];
-        void* p = NULL;
-        ALWAYS_ASSERT(not posix_memalign(&p, DEFAULT_ALIGNMENT, size));
-		epoch_tls.nbytes += size;
+        void* p = malloc(size);
+        ASSERT(p);
+        epoch_tls.nbytes += size;
 		epoch_tls.counts += 1;
 
 		if( epoch_tls.nbytes >= (1<<28) or epoch_tls.counts >= (20000) )
