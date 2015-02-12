@@ -87,10 +87,10 @@ CMEETickerTape::CMEETickerTape( CMEESUTInterface* pSUT, CMEEPriceBoard* pPriceBo
     , m_BatchDuplicates( 0 )
     , m_rnd( RNGSeedBaseMEETickerTape )
     , m_Enabled( true )
-    , m_pBaseTime( pBaseTime )
-    , m_pCurrentTime( pCurrentTime )
     , m_pStatusType( inputFiles.StatusType )
     , m_pTradeType( inputFiles.TradeType )
+    , m_pBaseTime( pBaseTime )
+    , m_pCurrentTime( pCurrentTime )
 {
     Initialize();
 }
@@ -103,10 +103,10 @@ CMEETickerTape::CMEETickerTape( CMEESUTInterface* pSUT, CMEEPriceBoard* pPriceBo
     , m_BatchDuplicates( 0 )
     , m_rnd( RNGSeed )
     , m_Enabled( true )
-    , m_pBaseTime( pBaseTime )
-    , m_pCurrentTime( pCurrentTime )
     , m_pStatusType( inputFiles.StatusType )
     , m_pTradeType( inputFiles.TradeType )
+    , m_pBaseTime( pBaseTime )
+    , m_pCurrentTime( pCurrentTime )
 {
     Initialize();
 }

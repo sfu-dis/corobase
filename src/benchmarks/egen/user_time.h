@@ -13,11 +13,10 @@ const int _ytab[2][12] = {
 struct tm* user_localtime_r(time_t* timer, struct tm* timep)
 {
 	time_t time = *timer;
-	register unsigned long dayclock, dayno;
 	int year = EPOCH_YR;
 
-	dayclock = (unsigned long)time % SECS_DAY;
-	dayno = (unsigned long)time / SECS_DAY;
+    register auto dayclock = time % SECS_DAY;
+    register auto dayno = time / SECS_DAY;
 
 	timep->tm_sec = dayclock % 60;
 	timep->tm_min = (dayclock % 3600) / 60;

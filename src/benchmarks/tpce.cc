@@ -675,13 +675,16 @@ class tpce_worker :
 		}
 		bench_worker::txn_result data_maintenance()
 		{
-			scoped_str_arena s_arena(arena);
-			TDataMaintenanceTxnInput* input = m_CDM->createDMInput();
-			TDataMaintenanceTxnOutput output;
-			CDataMaintenance* harness= new CDataMaintenance(this);
+            //scoped_str_arena s_arena(arena);
+            //TDataMaintenanceTxnInput* input = m_CDM->createDMInput();
+            //TDataMaintenanceTxnOutput output;
+            //CDataMaintenance* harness= new CDataMaintenance(this);
 
-			//	return harness->DoTxn( (PDataMaintenanceTxnInput)&input, (PDataMaintenanceTxnOutput)&output);
-		}
+            // return harness->DoTxn( (PDataMaintenanceTxnInput)&input, (PDataMaintenanceTxnOutput)&output);
+            // FIXME
+            ALWAYS_ASSERT(0);
+            return txn_result(true, 0);
+        }
 		bench_worker::txn_result DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn);
 
 		// TradeCleanup
@@ -692,12 +695,14 @@ class tpce_worker :
 		}
 		bench_worker::txn_result trade_cleanup()
 		{
-			scoped_str_arena s_arena(arena);
-			TTradeCleanupTxnInput*  input = m_CDM->createTCInput();
-			TTradeCleanupTxnOutput output;
-			CTradeCleanup* harness= new CTradeCleanup(this);
+            //scoped_str_arena s_arena(arena);
+            //TTradeCleanupTxnInput*  input = m_CDM->createTCInput();
+            //TTradeCleanupTxnOutput output;
+            //CTradeCleanup* harness= new CTradeCleanup(this);
 
-			//	return harness->DoTxn( (PTradeCleanupTxnInput)&input, (PTradeCleanupTxnOutput)&output);
+            // return harness->DoTxn( (PTradeCleanupTxnInput)&input, (PTradeCleanupTxnOutput)&output);
+            ALWAYS_ASSERT(0);
+            return txn_result(true, 0);
 		}
 		bench_worker::txn_result DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn);
 
@@ -3156,7 +3161,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 	try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
 	ALWAYS_ASSERT( t_scanner.output.size() );		// XXX. short innitial trading day can make this case happening?
 
-	for( size_t i = 0; i < pIn->max_trades and i < t_scanner.output.size() ; i++ )
+    for( size_t i = 0; i < (size_t)pIn->max_trades and i < t_scanner.output.size() ; i++ )
 	{
 		auto &r_t = t_scanner.output[i];
 		t_s_symb_index::key k_t_temp;
@@ -3302,8 +3307,19 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 	return bench_worker::txn_result(true, 0);
 }
 
-bench_worker::txn_result tpce_worker::DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn){}
-bench_worker::txn_result tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn){}
+bench_worker::txn_result tpce_worker::DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn)
+{
+    // FIXME
+    ALWAYS_ASSERT(0);
+    return txn_result(true, 0);
+}
+
+bench_worker::txn_result tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn)
+{
+    // FIXME
+    ALWAYS_ASSERT(0);
+    return txn_result(true, 0);
+}
 
 class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
 	public:
