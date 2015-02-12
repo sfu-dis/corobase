@@ -279,6 +279,8 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     // skip writes (note we didn't remove the one in read set)
     if (write_set[r.tuple].btr)
       continue;
+
+  try_get_sucessor:
     // so tuple should be the committed version I read
     ASSERT(r.tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
     dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.oid,
@@ -286,7 +288,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     if (not overwriter_tuple)
       continue;
 
-  try_get_sucessor:
     // read tuple->slsn to a local variable before doing anything relying on it,
     // it might be changed any time...
     fat_ptr sucessor_clsn = volatile_read(overwriter_tuple->clsn);
@@ -409,12 +410,12 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
       continue;
     auto tuple_s1 = volatile_read(r.tuple->sstamp);
     if (not tuple_s1) {
+    get_overwriter:
       // need to see if there's any overwritter (if so also its state)
       dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.oid,
                                                     LSN::from_ptr(r.tuple->clsn));
       if (not overwriter_tuple)
         continue;
-    get_overwriter:
       fat_ptr overwriter_xid = volatile_read(overwriter_tuple->clsn);
       if (overwriter_xid.asi_type() == fat_ptr::ASI_XID) {
         XID ox = XID::from_ptr(overwriter_xid);
