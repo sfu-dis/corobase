@@ -386,7 +386,8 @@ protected:
   try_insert_new_tuple(
       concurrent_btree *btr,
       const varstr *key,
-	  object* value,
+      const varstr *value,
+      object* object,
       dbtuple::tuple_writer_t writer);
 
   // reads the contents of tuple into v

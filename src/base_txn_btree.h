@@ -146,7 +146,7 @@ protected:
   template <typename Traits>
   rc_t do_tree_put(Transaction<Traits> &t,
                    const varstr *k,
-                   const typename P::Value *v,
+                   const varstr *v,
                    dbtuple::tuple_writer_t writer,
                    bool expect_new);
 
@@ -231,7 +231,7 @@ template <typename Traits>
 rc_t base_txn_btree<Transaction, P>::do_tree_put(
     Transaction<Traits> &t,
     const varstr *k,
-    const typename P::Value *v,
+    const varstr *v,
     dbtuple::tuple_writer_t writer,
     bool expect_new)
 {
@@ -263,7 +263,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // it fails if somebody else acted faster to insert new, we then
   // (fall back to) with the normal update procedure.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-  if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, obj, writer))
+  if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, obj, writer))
     return rc_t{RC_TRUE};
 
   // do regular search
@@ -401,11 +401,21 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
     // pointers, instead of doing memcpy here (looks like this is the case unless
     // the record is tooooo large).
-    auto record_size = align_up(sz);
+    ASSERT(sz == v->size());
+    // for simplicity and alignment, we write the whole varstr
+    // (because varstr's data must be the last field, which has a size
+    // field (size_t) before it; putting data before size will make it hard to
+    // get the data field 16-byte alignment, although varstr* itself is aligned
+    // by posix_memalign).
+    //
+    // FIXME: combine the size field in dbtuple and varstr.
+    ASSERT((not sz and not v) or (sz and v));
+    auto record_size = align_up(sz + v ? sizeof(varstr) : 0);
     auto size_code = encode_size_aligned(record_size);
+    ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
     t.log->log_update(1,
                       oid,
-                      fat_ptr::make(tuple, size_code),
+                      fat_ptr::make((void *)v, size_code),
                       DEFAULT_ALIGNMENT_BITS,
                       NULL);
     return rc_t{RC_TRUE};
