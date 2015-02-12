@@ -220,6 +220,8 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
       // calculate age
       XID overwritten_xid = XID::from_ptr(overwritten_tuple_clsn);
       xid_context *overwritten_xc = xid_get_context(overwritten_xid);
+      if (not overwritten_xc)
+        goto try_get_age;
       auto overwritten_end = volatile_read(overwritten_xc->end).offset();
       ASSERT(overwritten_end);
       XID overwritten_owner = volatile_read(overwritten_xc->owner);
@@ -244,6 +246,8 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
       if (not rxid._val or rxid == xc->owner)
         continue; // ignore invalid entries and ignore my own reads
       xid_context *reader_xc = xid_get_context(rxid);
+      if (not reader_xc)
+        continue;
       // copy everything before doing anything
       auto reader_owner = volatile_read(reader_xc->owner);
       auto reader_end = volatile_read(reader_xc->end).offset();
@@ -292,6 +296,8 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
       XID successor_xid = XID::from_ptr(sucessor_clsn);
       xid_context *sucessor_xc = xid_get_context(successor_xid);
       auto successor_owner = volatile_read(sucessor_xc->owner);
+      if (not successor_owner)
+          goto try_get_sucessor;
       if (successor_owner == xc->owner)  // myself
           continue;
 
@@ -413,6 +419,8 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         XID ox = XID::from_ptr(overwriter_xid);
         ASSERT(ox != xc->owner);
         xid_context *overwriter_xc = xid_get_context(ox);
+        if (not overwriter_xc)
+          goto get_overwriter;
         // read what i need before verifying ownership
         uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
         if (volatile_read(overwriter_xc->owner) != ox)
@@ -766,7 +774,7 @@ transaction<Protocol, Traits>::do_tuple_read(
             stat == dbtuple::READ_RECORD);
   if (stat == dbtuple::READ_EMPTY) {
     ++transaction_base::g_evt_read_logical_deleted_node_search;
-    return {RC_FALSE};
+    return rc_t{RC_FALSE};
   }
 
   return {RC_TRUE};

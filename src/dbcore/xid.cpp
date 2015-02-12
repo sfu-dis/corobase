@@ -241,11 +241,9 @@ void xid_free(XID x) {
 xid_context *
 xid_get_context(XID x) {
     auto *ctx = &contexts[x.local()];
-    // sort of expensive to do this; let the caller decide
-    //ASSERT(ctx->owner.local() == x.local());
-    // (the caller just needs to see if the xid=ctx.owner)
-    //if (ctx->owner.epoch() < x.epoch() or ctx->owner.epoch() >= x.epoch()+3)
-    //    return NULL;
+    ASSERT(ctx->owner.local() == x.local());
+    if (ctx->owner.epoch() < x.epoch() or ctx->owner.epoch() >= x.epoch()+3)
+        return NULL;
     return ctx;
 }
 
