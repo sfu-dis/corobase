@@ -565,7 +565,8 @@ bool
 transaction<Protocol, Traits>::try_insert_new_tuple(
     concurrent_btree *btr,
     const varstr *key,
-	object* object,
+    const varstr *value,
+    object* object,
     dbtuple::tuple_writer_t writer)
 {
   INVARIANT(key);
@@ -636,13 +637,16 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   // insert to log
   // FIXME: tzwang: leave pdest as null and FID is always 1 now.
   INVARIANT(log);
-  auto record_size = align_up((size_t)tuple->size);
+  ASSERT(tuple->size == value->size());
+  auto record_size = align_up((size_t)tuple->size + sizeof(varstr));
   auto size_code = encode_size_aligned(record_size);
   ASSERT(not ((uint64_t)p & ((uint64_t)0xf)));
   ASSERT(not ((uint64_t)tuple & ((uint64_t)0xf)));
+  ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));
+  ASSERT(tuple->size);
   log->log_insert(1,
                   oid,
-                  fat_ptr::make(tuple, size_code),
+                  fat_ptr::make((void *)value, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
   write_set[tuple] = write_record_t(tuple, btr, oid);

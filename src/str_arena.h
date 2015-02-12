@@ -15,9 +15,10 @@ public:
 
   static const uint64_t ReserveBytes = 128 * 1024 * 1024;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
-
   str_arena()
   {
+    // adler32 (log checksum) needs it aligned
+    ALWAYS_ASSERT(not posix_memalign((void **)&str, DEFAULT_ALIGNMENT, ReserveBytes));
     memset(str, '\0', ReserveBytes);
     reset();
   }
@@ -37,7 +38,7 @@ public:
   next(uint64_t size)
   {
     uint64_t off = n;
-    n += size + sizeof(varstr);
+    n += align_up(size + sizeof(varstr));   // for adler32's 16-byte alignment
     ASSERT(n < ReserveBytes);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
@@ -57,7 +58,7 @@ public:
   }
 
 private:
-  char str[ReserveBytes];
+  char *str;
   size_t n;
 };
 
