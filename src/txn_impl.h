@@ -565,12 +565,12 @@ bool
 transaction<Protocol, Traits>::try_insert_new_tuple(
     concurrent_btree *btr,
     const varstr *key,
-	object* value,
+	object* object,
     dbtuple::tuple_writer_t writer)
 {
   INVARIANT(key);
-  char*p = (char*)value;
-  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
+  char*p = (char*)object;
+  dbtuple* tuple = (dbtuple *)object->payload();
   tuple_vector_type* tuple_vector = btr->get_tuple_vector();
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
@@ -607,7 +607,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
 #endif
 
   oid_type oid = tuple_vector->alloc();
-  fat_ptr new_head = fat_ptr::make( value, INVALID_SIZE_CODE, 0);
+  fat_ptr new_head = fat_ptr::make(object, INVALID_SIZE_CODE, 0);
   if (not tuple_vector->put(oid, new_head)) {
 #ifdef PHANTOM_PROT_TABLE_LOCK
     if (instant_xlock)
@@ -638,6 +638,8 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   INVARIANT(log);
   auto record_size = align_up((size_t)tuple->size);
   auto size_code = encode_size_aligned(record_size);
+  ASSERT(not ((uint64_t)p & ((uint64_t)0xf)));
+  ASSERT(not ((uint64_t)tuple & ((uint64_t)0xf)));
   log->log_insert(1,
                   oid,
                   fat_ptr::make(tuple, size_code),

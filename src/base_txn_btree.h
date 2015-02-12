@@ -241,29 +241,16 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
                                // for now [since this would indicate a suboptimality]
   t.ensure_active();
 
-  // Prepare new tuple
-
   // Calculate Tuple Size
-  typedef uint16_t node_size_type;
   const size_t sz =
     v ? writer(dbtuple::TUPLE_WRITER_COMPUTE_NEEDED, v, nullptr, 0) : 0;
-
-  INVARIANT(sz <= std::numeric_limits<node_size_type>::max());
-  const size_t max_alloc_sz =
-	  std::numeric_limits<node_size_type>::max() + sizeof(dbtuple) + sizeof(object);
-  const size_t alloc_sz =
-	  std::min(
-			  util::round_up<size_t, allocator::LgAllocAlignment>(sizeof(dbtuple) + sizeof(object) + sz),
-			  max_alloc_sz);
-  INVARIANT((alloc_sz - sizeof(dbtuple) - sizeof(object)) >= sz);
+  size_t alloc_sz = sizeof(dbtuple) + sizeof(object) +  align_up(sz);
 
   // Allocate a version
-  char *p = NULL;
-  p = reinterpret_cast<char*>(RA::allocate(alloc_sz));
-  INVARIANT(p);
+  object *obj = new (RA::allocate(alloc_sz)) object(alloc_sz);
 
   // Tuple setup
-  dbtuple* tuple = reinterpret_cast<dbtuple*>(p + sizeof(object));
+  dbtuple* tuple = (dbtuple *)obj->payload();
   tuple = dbtuple::init((char*)tuple, sz);
   if (v)
     writer(dbtuple::TUPLE_WRITER_DO_WRITE,
@@ -272,14 +259,11 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // initialize the version
   tuple->clsn = t.xid.to_ptr();		// XID state is set
 
-  // Create object
-  object* version = new (p) object( sizeof(object) + alloc_sz );
-
   // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
   // it fails if somebody else acted faster to insert new, we then
   // (fall back to) with the normal update procedure.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-  if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, version, writer))
+  if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, obj, writer))
     return rc_t{RC_TRUE};
 
   // do regular search
@@ -323,7 +307,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // result (either succeeded or failed, i.e., need to abort).
 
 
-  dbtuple *prev = this->underlying_btree.update_version(oid, version, t.xc);
+  dbtuple *prev = this->underlying_btree.update_version(oid, obj, t.xc);
 
   if (prev) { // succeeded
     ASSERT(t.xc);
@@ -383,7 +367,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // might change to ASI_LOG anytime
     fat_ptr prev_clsn = volatile_read(prev->clsn);
     if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {  // in-place update!
-      volatile_write(version->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
+      volatile_write(obj->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       if (not prev_obj->_next.offset()) {    // update of myself's insert
         ASSERT(t.write_set[prev].new_tuple == prev and t.write_set[prev].btr == &this->underlying_btree);
         key_tuple = tuple;
@@ -395,10 +379,10 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
         ASSERT(t.write_set[key_tuple].new_tuple == prev);
       }
       //RA::deallocate(prev_obj);
-      ASSERT(version->_next.offset() != (uintptr_t)prev_obj);
+      ASSERT(obj->_next.offset() != (uintptr_t)prev_obj);
     }
     else {  // prev is committed (or precommitted but in post-commit now) head
-      volatile_write(version->_next, fat_ptr::make(prev_obj, 0));
+      volatile_write(obj->_next, fat_ptr::make(prev_obj, 0));
       key_tuple = prev;
     }
 

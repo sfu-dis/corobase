@@ -33,15 +33,13 @@ public:
     n = 0;
   }
 
-  // next() is guaranteed to return an empty string
   varstr *
   next(uint64_t size)
   {
     uint64_t off = n;
     n += size + sizeof(varstr);
-    ALWAYS_ASSERT(n < ReserveBytes);
+    ASSERT(n < ReserveBytes);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
-    ASSERT(ret->data()[0] == '\0');
     return ret;
   }
 
