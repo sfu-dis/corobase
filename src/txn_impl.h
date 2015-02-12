@@ -295,9 +295,9 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
       XID successor_xid = XID::from_ptr(sucessor_clsn);
       xid_context *sucessor_xc = xid_get_context(successor_xid);
-      auto successor_owner = volatile_read(sucessor_xc->owner);
-      if (not successor_owner)
+      if (not sucessor_xc)
           goto try_get_sucessor;
+      auto successor_owner = volatile_read(sucessor_xc->owner);
       if (successor_owner == xc->owner)  // myself
           continue;
 
