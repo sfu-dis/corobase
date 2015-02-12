@@ -1,5 +1,5 @@
-## ERMIA
------
+ERMIA
+=====
 Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
 ### Choosing CC schemes
@@ -18,8 +18,8 @@ Switches are defined in src/macros.h:
 Notes: USE_PARALLEL_SSI and USE_PARALLEL_SSN should be mutually exclusive. Defining both
 is undefined.
 
-### Memory allocation settings
-==========================
+Memory allocation settings
+--------------------------
 1. Prefault size
    Defined in src/benchmarks/bench.h, heap_prefault() function.
    The default value is 40GB, to have a 20GB prefaulted area:
@@ -37,16 +37,16 @@ is undefined.
    LD_PRELOAD="/usr/lib/libtcmalloc.so"
 
 
-## Building
-========
+Building
+--------
 Use src/build.sh to compile Ermia.
 For performance runs, use: $ build.sh
 For debug runs, use: $ build.sh 1
 
 The '1' argument will enable DEBUG and CHECK_INVARIANTS options. 
 
-## Running
-=======
+Running
+-------
 Useful options:
 1. --bench [benchmark], e.g., --bench tpcc for running TPC-C.
 2. --scale-factor [x], specify scaling factor.
