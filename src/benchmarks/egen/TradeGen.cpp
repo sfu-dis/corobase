@@ -341,9 +341,7 @@ bool CTradeGen::GenerateNextTrade()
         // Set up for GenerateNextHoldingSummary
         FindNextHoldingList();
 
-        size_t iSize = m_CurrentTrades.size();  // info for debugging
-
-        assert(iSize == 0);
+        assert(m_CurrentTrades.size() == 0);
 
         return false;
     }
@@ -837,7 +835,7 @@ TTrade CTradeGen::GenerateNextTradeId()
 */
 eTradeTypeID CTradeGen::GenerateTradeType()
 {
-    eTradeTypeID    eTradeType;
+    eTradeTypeID    eTradeType = eMarketBuy;    // arbitrary value to surpress compiler warnings
     // Generate Trade Type
     // NOTE:    The order of these "if" tests is significant!!
     //          Do not alter it unless you know what you are doing.
