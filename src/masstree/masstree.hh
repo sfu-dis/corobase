@@ -229,6 +229,7 @@ install:
 			return NULL;
 	}
 
+#if 0
     // return the sucessor of the version with rlsn (could be dirty)
     // used only for commit path, no xid checking etc.
     // for reads in commit path ONLY
@@ -268,6 +269,7 @@ install:
         }
         return 0;
 	}
+#endif
 
     // return the (latest) committed version (at verify_lsn)
     dbtuple *fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
