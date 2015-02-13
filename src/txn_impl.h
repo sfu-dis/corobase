@@ -304,16 +304,10 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
         goto try_get_sucessor;
 
       // overwriter might haven't committed, be serialized after me, or before me
-      if (not sucessor_end) // not even in precommit, don't bother
-          ;
-      else if (sucessor_end > cstamp)    // serialzed after me, (dependency trivially satisfied as I as the reader will (hopefully) commit first)
-          ;
-      else {
-        if (wait_for_commit_result(sucessor_xc)) {    // either wait or give conservative estimation
-          // now read the sucessor stamp (sucessor's clsn, as sucessor needs to fill its clsn to the overwritten tuple's slsn at post-commit)
-          if (sucessor_end < xc->sstamp)
-            xc->sstamp = sucessor_end;
-        } // otherwise aborted, ignore
+      // we only care if the successor is serialized *before* me.
+      if (sucessor_end and sucessor_end < cstamp and wait_for_commit_result(sucessor_xc)) {
+        if (sucessor_end < xc->sstamp)
+          xc->sstamp = sucessor_end;
       }
     }
     else {
@@ -400,38 +394,37 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   // of T3 in the dangerous structure that clobbered our read)
   uint64_t min_read_s1 = 0;    // this will be the s2 of versions I clobbered
   for (auto &r : read_set) {
-    auto tuple_s1 = volatile_read(r.tuple->sstamp);
-    if (not tuple_s1) {
-    get_overwriter:
-      // need to see if there's any overwritter (if so also its state)
-      dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.oid,
-                                                    LSN::from_ptr(r.tuple->clsn));
-      if (not overwriter_tuple)
+  get_overwriter:
+    // need to see if there's any overwritter (if so also its state)
+    dbtuple *overwriter_tuple = (dbtuple *)r.btr->fetch_overwriter(r.oid,
+                                                  LSN::from_ptr(r.tuple->clsn));
+    if (not overwriter_tuple)
+      continue;
+
+    uint64_t tuple_s1 = 0;
+    fat_ptr overwriter_xid = volatile_read(overwriter_tuple->clsn);
+    if (overwriter_xid.asi_type() == fat_ptr::ASI_XID) {
+      XID ox = XID::from_ptr(overwriter_xid);
+      if (ox == xc->owner)    // myself
         continue;
-      fat_ptr overwriter_xid = volatile_read(overwriter_tuple->clsn);
-      if (overwriter_xid.asi_type() == fat_ptr::ASI_XID) {
-        XID ox = XID::from_ptr(overwriter_xid);
-        if (ox == xc->owner)    // myself
-          continue;
-        ASSERT(ox != xc->owner);
-        xid_context *overwriter_xc = xid_get_context(ox);
-        if (not overwriter_xc)
-          goto get_overwriter;
-        // read what i need before verifying ownership
-        uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
-        if (volatile_read(overwriter_xc->owner) != ox)
-          goto get_overwriter;
-        // if the overwriter is serialized **before** me, I need to spin to find
-        // out its final commit result
-        // don't bother if it's serialized after me or not even in precommit
-        if (overwriter_end and overwriter_end < cstamp and wait_for_commit_result(overwriter_xc)) {
-          tuple_s1 = overwriter_end;
-        }
-      }
-      else {    // already committed, re-read tuple's sstamp
-          tuple_s1 = volatile_read(r.tuple->sstamp);
-      }
+      ASSERT(ox != xc->owner);
+      xid_context *overwriter_xc = xid_get_context(ox);
+      if (not overwriter_xc)
+        goto get_overwriter;
+      // read what i need before verifying ownership
+      uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
+      if (volatile_read(overwriter_xc->owner) != ox)
+        goto get_overwriter;
+      // if the overwriter is serialized **before** me, I need to spin to find
+      // out its final commit result
+      // don't bother if it's serialized after me or not even in precommit
+      if (overwriter_end and overwriter_end < cstamp and wait_for_commit_result(overwriter_xc))
+        tuple_s1 = overwriter_end;
     }
+    else {    // already committed, read tuple's sstamp
+        tuple_s1 = volatile_read(r.tuple->sstamp);
+    }
+
     if (tuple_s1 and (not min_read_s1 or min_read_s1 > tuple_s1))
       min_read_s1 = tuple_s1;
     // will release read lock (readers bitmap) in post-commit
@@ -441,9 +434,9 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   if (min_read_s1) {
     uint64_t max_xstamp = 0;
     for (auto &w : write_set) {
-      dbtuple *overwritten_tuple = w.first;
       if (not w.second.btr)
         continue;
+      dbtuple *overwritten_tuple = w.first;
       // abort if there's any in-flight reader of this tuple or
       // if someone has read the tuple after someone else clobbered it...
       if (serial_get_tuple_readers(overwritten_tuple, true)) {
@@ -470,9 +463,9 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
 
   // stamp overwritten versions, stuff clsn
   for (auto &w : write_set) {
-    dbtuple *overwritten_tuple = w.first;
     if (not w.second.btr)
       continue;
+    dbtuple *overwritten_tuple = w.first;
     ASSERT(not volatile_read(overwritten_tuple->sstamp));
     dbtuple* tuple = w.second.new_tuple;
     tuple->do_write(w.second.writer);
