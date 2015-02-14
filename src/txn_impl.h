@@ -266,7 +266,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
         // possibility of having read the version, and it is or will
         // be serialized after me.
         if (reader_begin < tuple_bs and reader_end >= cstamp) {
-          tls_rw_conflict_abort_count++;
           return rc_t{RC_ABORT_RW_CONFLICT};
         }
         xc->pstamp = cstamp - 1;
@@ -440,7 +439,6 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
       // abort if there's any in-flight reader of this tuple or
       // if someone has read the tuple after someone else clobbered it...
       if (serial_get_tuple_readers(overwritten_tuple, true)) {
-        tls_serial_abort_count++;
         return rc_t{RC_ABORT_SSI};
       }
       else {
@@ -451,7 +449,6 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         if (max_xstamp < tuple_xstamp)
           max_xstamp = tuple_xstamp;
         if (max_xstamp >= min_read_s1 and has_committed_t3(xc)) {
-          tls_serial_abort_count++;
           return rc_t{RC_ABORT_SSI};
         }
       }
@@ -743,7 +740,6 @@ transaction<Protocol, Traits>::do_tuple_read(
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
       ASSERT(tuple->sstamp);    // sstamp will be valid too if s2 is valid
-      tls_serial_abort_count++;
       return rc_t{RC_ABORT_SSI};
     }
 

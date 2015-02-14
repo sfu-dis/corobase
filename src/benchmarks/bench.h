@@ -150,10 +150,10 @@ public:
     : worker_id(worker_id), set_core_id(set_core_id),
       r(seed), db(db), open_tables(open_tables),
       barrier_a(barrier_a), barrier_b(barrier_b),
-      // the ntxn_* numbers are per worker
-      ntxn_commits(0), ntxn_aborts(0), ntxn_user_aborts(0),
       latency_numer_us(0),
       backoff_shifts(0), // spin between [0, 2^backoff_shifts) times before retry
+      // the ntxn_* numbers are per worker
+      ntxn_commits(0), ntxn_aborts(0), ntxn_user_aborts(0), ntxn_si_aborts(0),ntxn_serial_aborts(0),ntxn_rw_aborts(0),
       size_delta(0)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
@@ -186,7 +186,13 @@ public:
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
   inline size_t get_ntxn_aborts() const { return ntxn_aborts; }
   inline size_t get_ntxn_user_aborts() const { return ntxn_user_aborts; }
+  inline size_t get_ntxn_si_aborts() const { return ntxn_si_aborts; }
+  inline size_t get_ntxn_serial_aborts() const { return ntxn_serial_aborts; }
+  inline size_t get_ntxn_rw_aborts() const { return ntxn_rw_aborts; }
   inline void inc_ntxn_user_aborts() { ++ntxn_user_aborts; }
+  inline void inc_ntxn_si_aborts() { ++ntxn_si_aborts; }
+  inline void inc_ntxn_serial_aborts() { ++ntxn_serial_aborts; }
+  inline void inc_ntxn_rw_aborts() { ++ntxn_rw_aborts; }
 
   inline uint64_t get_latency_numer_us() const { return latency_numer_us; }
 
@@ -226,11 +232,16 @@ protected:
   spin_barrier *const barrier_b;
 
 private:
+  uint64_t latency_numer_us;
+  unsigned backoff_shifts;
+
+  // stats
   size_t ntxn_commits;
   size_t ntxn_aborts;
   size_t ntxn_user_aborts;
-  uint64_t latency_numer_us;
-  unsigned backoff_shifts;
+  size_t ntxn_si_aborts;
+  size_t ntxn_serial_aborts;
+  size_t ntxn_rw_aborts;
 
 protected:
 
@@ -405,8 +416,18 @@ private:
 // if return code is one of those RC_ABORT* then abort
 #define try_catch(rc) \
 { \
-  if (rc_is_abort(rc)) \
-    __abort_txn; \
+  rc_t r = rc; \
+  if (rc_is_abort(r)) \
+	{\
+		switch(r._val){\
+			case RC_ABORT_SSN_EXCLUSION: \
+			case RC_ABORT_SSI: inc_ntxn_serial_aborts(); break;\
+			case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
+			case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
+			default: break;\
+		}\
+		__abort_txn; \
+	}\
 }
 
 // if rc == RC_FALSE then do op
@@ -414,7 +435,16 @@ private:
 { \
   rc_t r = rc; \
   if (rc_is_abort(r)) \
+	{\
+		switch(r._val){\
+			case RC_ABORT_SSN_EXCLUSION: \
+			case RC_ABORT_SSI: inc_ntxn_serial_aborts(); break;\
+			case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
+			case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
+			default: break;\
+		}\
     __abort_txn; \
+	}\
   if (r._val == RC_FALSE) \
     op; \
 }
@@ -426,10 +456,19 @@ private:
 // abort (by SSN). Use try_verify_strict if you need rc=true.
 #define try_verify_relax(oper) \
 { \
-  rc_t rc = oper;   \
-  ALWAYS_ASSERT(rc._val == RC_TRUE or rc_is_abort(rc)); \
-  if (rc_is_abort(rc))  \
+  rc_t r = oper;   \
+  ALWAYS_ASSERT(r._val == RC_TRUE or rc_is_abort(r)); \
+  if (rc_is_abort(r))  \
+	{\
+		switch(r._val){\
+			case RC_ABORT_SSN_EXCLUSION: \
+			case RC_ABORT_SSI: inc_ntxn_serial_aborts(); break;\
+			case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
+			case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
+			default: break;\
+		}\
       __abort_txn;  \
+	}\
 }
 
 // No abort is allowed, usually for loading

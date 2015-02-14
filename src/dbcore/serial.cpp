@@ -65,12 +65,6 @@ int64_t OLD_VERSION_THRESHOLD = 0x1000000ll;
 //int64_t OLD_VERSION_THRESHOLD = 0;
 #endif
 
-// for SSN if USE_PARALLEL_SSN, for SSI if USE_PARALLEL_SSI
-uint64_t serial_abort_count = 0;
-uint64_t rw_conflict_abort_count = 0;
-uint64_t __thread tls_serial_abort_count;
-uint64_t __thread tls_rw_conflict_abort_count;
-
 readers_list rlist;
 
 typedef dbtuple::rl_bitmap_t rl_bitmap_t;
@@ -109,22 +103,8 @@ void deassign_reader_bitmap_entry() {
     ALWAYS_ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
     __sync_fetch_and_xor(&claimed_bitmap_entries, tls_bitmap_entry);
     tls_bitmap_entry = 0;
-    summarize_serial_aborts();
 }
 
-void summarize_serial_aborts()
-{
-    __sync_fetch_and_add(&serial_abort_count, tls_serial_abort_count);
-    __sync_fetch_and_add(&rw_conflict_abort_count, tls_rw_conflict_abort_count);
-    if (not claimed_bitmap_entries) {
-#ifdef USE_PARALLEL_SSN
-        printf("--- SSN aborts: %lu\n", serial_abort_count);
-#else
-        printf("--- SSI aborts: %lu\n", serial_abort_count);
-#endif
-        printf("--- Read-optimization aborts: %lu\n", rw_conflict_abort_count);
-    }
-}
 
 bool
 serial_register_reader_tx(dbtuple *t, XID xid)

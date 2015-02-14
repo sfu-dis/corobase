@@ -237,11 +237,17 @@ bench_runner::run()
   size_t n_commits = 0;
   size_t n_aborts = 0;
   size_t n_user_aborts = 0;
+  size_t n_si_aborts = 0;
+  size_t n_serial_aborts = 0;
+  size_t n_rw_aborts = 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < nthreads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
     n_user_aborts += workers[i]->get_ntxn_user_aborts();
+    n_si_aborts += workers[i]->get_ntxn_si_aborts();
+    n_serial_aborts += workers[i]->get_ntxn_serial_aborts();
+    n_rw_aborts += workers[i]->get_ntxn_rw_aborts();
     latency_numer_us += workers[i]->get_latency_numer_us();
   }
 
@@ -259,6 +265,9 @@ bench_runner::run()
 
   const double agg_system_abort_rate = double(n_aborts - n_user_aborts) / elapsed_sec;
   const double agg_user_abort_rate = double(n_user_aborts) / elapsed_sec;
+  const double agg_si_abort_rate = double(n_si_aborts) / elapsed_sec;
+  const double agg_serial_abort_rate = double(n_serial_aborts) / elapsed_sec;
+  const double agg_rw_abort_rate = double(n_rw_aborts) / elapsed_sec;
 
   // XXX(stephentu): latency currently doesn't account for read-only txns
   const double avg_latency_us =
@@ -349,12 +358,18 @@ bench_runner::run()
 //       << avg_latency_ms << " "
        << agg_system_abort_rate << " system_aborts/s, "
        << agg_user_abort_rate << " user_aborts/s, " 
+       << agg_si_abort_rate << " si_aborts/s, " 
+       << agg_serial_abort_rate << " serial_aborts/s, " 
+       << agg_rw_abort_rate << " rw_aborts/s, " 
        << agg_abort_rate << " total_aborts/s, "
 	   << endl;
   cout << n_commits << " commits, "
-	   << n_aborts - n_user_aborts << " system aborts, "
-	   << n_user_aborts << " user aborts, "
-       << n_aborts << " total aborts" 
+	   << n_aborts - n_user_aborts << " system_aborts, "
+	   << n_user_aborts << " user_aborts, "
+	   << n_si_aborts << " si_aborts, "
+	   << n_serial_aborts << " serial_aborts, "
+	   << n_rw_aborts << " rw_aborts, "
+       << n_aborts << " total_aborts" 
 	   << endl;
   cout.flush();
 
