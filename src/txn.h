@@ -283,17 +283,6 @@ protected:
     INVARIANT(state() == TXN_ACTIVE);
   }
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  struct read_record_t {
-    read_record_t(dbtuple *n, concurrent_btree *b, oid_type o) :
-        tuple(n), btr(b), oid(o) {}
-    read_record_t() : tuple(NULL), btr(NULL), oid(0) {}
-    dbtuple *tuple;
-    concurrent_btree *btr;
-    oid_type oid;
-  };
-#endif
-
   struct write_record_t {
     write_record_t(dbtuple *n, dbtuple::tuple_writer_t w,
                    concurrent_btree *b, oid_type o) :
@@ -317,7 +306,7 @@ protected:
   typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
   //typedef small_vector<read_record_t, SMALL_SIZE_MAP> read_set_map;
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  typedef std::vector<read_record_t> read_set_map;
+  typedef std::vector<dbtuple *> read_set_map;
 #endif
   //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 

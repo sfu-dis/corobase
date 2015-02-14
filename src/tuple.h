@@ -50,7 +50,8 @@ public:
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   typedef unsigned int rl_bitmap_t;  // _builtin_ctz needs it to be uint
   rl_bitmap_t rl_bitmap;   // bitmap of in-flight readers
-  uint64_t sstamp;         // successor (overwriter) stamp (\pi), updated when writer commits
+  fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
+                           // normal write to indicate its existence; become writer cstamp at commit
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
 #endif
 #ifdef USE_PARALLEL_SSN
@@ -86,7 +87,7 @@ private:
       clsn(NULL_PTR)
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
       , rl_bitmap(rl_bitmap_t(0))
-      , sstamp(0)
+      , sstamp(NULL_PTR)
       , xstamp(0)
 #ifdef USE_PARALLEL_SSN
       , bstamp(0)

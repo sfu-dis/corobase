@@ -314,7 +314,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // (will form an inbound r:w edge to me) ie, am I the T2 (pivot)
     // with T1 in-flight and T3 committed first (ie, before T1, ie,
     // prev's creator) in the dangerous structure?
-    ASSERT(not prev->sstamp);
+    ASSERT(prev->sstamp == NULL_PTR);
     auto in_flight_readers = serial_get_tuple_readers(prev, true);
     if (in_flight_readers and has_committed_t3(t.xc)) {
         // unlink the version here (note abort_impl won't be able to catch
@@ -334,7 +334,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     // i.e., I'll depend on some tx who has read the version that's
     // being overwritten by me. So I'll need to see the version's
     // access stamp to tell if the read happened.
-    ASSERT(not prev->sstamp);
+    ASSERT(prev->sstamp == NULL_PTR);
     auto prev_xstamp = volatile_read(prev->xstamp);
     if (t.xc->pstamp < prev_xstamp)
       t.xc->pstamp = prev_xstamp;
@@ -380,6 +380,9 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     }
     else {  // prev is committed (or precommitted but in post-commit now) head
       volatile_write(obj->_next, fat_ptr::make(prev_obj, 0));
+#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+      volatile_write(prev->sstamp, t.xc->owner.to_ptr());
+#endif
       key_tuple = prev;
     }
 
