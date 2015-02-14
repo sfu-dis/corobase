@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 /** options */
-//#define USE_PARALLEL_SSN
+#define USE_PARALLEL_SSN
 #ifdef USE_PARALLEL_SSN
 #define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
 //#define USE_READ_COMMITTED
