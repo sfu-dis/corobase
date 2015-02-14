@@ -317,7 +317,6 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     ASSERT(not prev->sstamp);
     auto in_flight_readers = serial_get_tuple_readers(prev, true);
     if (in_flight_readers and has_committed_t3(t.xc)) {
-        tls_serial_abort_count++;
         // unlink the version here (note abort_impl won't be able to catch
         // it because it's not yet in the write set), same as in SSN impl.
         this->underlying_btree.unlink_tuple(oid, tuple);

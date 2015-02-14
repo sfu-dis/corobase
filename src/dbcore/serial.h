@@ -7,8 +7,6 @@
 
 namespace TXN {
 
-extern uint64_t __thread tls_serial_abort_count;
-extern uint64_t __thread tls_rw_conflict_abort_count;
 extern int64_t OLD_VERSION_THRESHOLD;
 
 void assign_reader_bitmap_entry();
@@ -24,7 +22,6 @@ inline bool ssn_check_exclusion(xid_context *xc) {
     // note xc->sstamp is initialized to ~0, xc->pstamp's init value is 0,
     // so don't return xc->pstamp < xc->sstamp...
     if (xc->pstamp >= xc->sstamp) {
-        tls_serial_abort_count++;
         return false;
     }
     return true;
