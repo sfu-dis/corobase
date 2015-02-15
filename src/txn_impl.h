@@ -235,7 +235,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
       ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
       age = xc->begin.offset() - overwritten_tuple->clsn.offset();
     }
-    ASSERT(volatile_read(overwritten_tuple->sstamp) == NULL_PTR);
+    ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
 
     // need access stamp , i.e., who read this version that I'm trying to overwrite?
     readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple);
@@ -462,10 +462,10 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     if (not w.second.btr)
       continue;
     dbtuple *overwritten_tuple = w.first;
-    ASSERT(volatile_read(overwritten_tuple->sstamp) == NULL_PTR);
     dbtuple* tuple = w.second.new_tuple;
     tuple->do_write(w.second.writer);
     if (overwritten_tuple != tuple) {    // update
+      ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
       volatile_write(overwritten_tuple->sstamp, LSN::make(cstamp, 0).to_log_ptr());
       if (min_read_s1 > overwritten_tuple->s2)   // correct?
         volatile_write(overwritten_tuple->s2, min_read_s1);
