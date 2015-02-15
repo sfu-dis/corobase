@@ -241,8 +241,13 @@ void xid_free(XID x) {
 xid_context *
 xid_get_context(XID x) {
     auto *ctx = &contexts[x.local()];
-    ASSERT(ctx->owner.local() == x.local());
-    if (ctx->owner.epoch() < x.epoch() or ctx->owner.epoch() >= x.epoch()+3)
+    // read a consistent copy of owner (in case xid_free is destroying
+    // it while we're trying to use the epoch() fields)
+    XID owner = volatile_read(ctx->owner);
+    if (not owner._val)
+        return NULL;
+    ASSERT(owner.local() == x.local());
+    if (owner.epoch() < x.epoch() or owner.epoch() >= x.epoch()+3)
         return NULL;
     return ctx;
 }
