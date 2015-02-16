@@ -55,8 +55,11 @@ object_vector::unlink(oid_type oid, void *item)
     // Otherwise use the commented out old code.
     fat_ptr head_ptr = begin(oid);
     object *head = (object *)head_ptr.offset();
-    ALWAYS_ASSERT(head->payload() == item);
-    ALWAYS_ASSERT(__sync_bool_compare_and_swap(&begin_ptr(oid)->_ptr, head_ptr._ptr, head->_next._ptr));
+    INVARIANT(head->payload() == item);
+    //ALWAYS_ASSERT(__sync_bool_compare_and_swap(&begin_ptr(oid)->_ptr, head_ptr._ptr, head->_next._ptr));
+    // actually the CAS is overkill: head is guaranteed to be the (only) dirty version
+    volatile_write(begin_ptr(oid)->_ptr, head->_next._ptr);
+    __sync_synchronize();
     // FIXME: tzwang: also need to free the old head during GC
     // Note that a race exists here: some reader might be using
     // that old head in fetch_version while we do the above CAS.
