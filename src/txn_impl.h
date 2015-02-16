@@ -22,7 +22,6 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   serial_register_tx(xid);
 #endif
-  write_set.set_empty_key(NULL);    // google dense map
 #ifdef PHANTOM_PROT_NODE_SET
   absent_set.set_empty_key(NULL);    // google dense map
 #endif
@@ -67,19 +66,21 @@ transaction<Protocol, Traits>::abort_impl()
     volatile_write(xc->state, TXN_ABRTD);
 
   for (auto &w : write_set) {
-    if (not w.second.btr)   // for repeated overwrites
-        continue;
-    dbtuple *tuple = w.second.new_tuple;
+    dbtuple *tuple = w.new_tuple;
     ASSERT(tuple);
     ASSERT(XID::from_ptr(tuple->clsn) == xid);
-    w.second.btr->unlink_tuple(w.second.oid, tuple);
+    if (tuple->is_defunct())   // for repeated overwrites
+        continue;
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
-    volatile_write(w.first->sstamp, NULL_PTR);
+    if (tuple->next())
+      volatile_write(tuple->next()->sstamp, NULL_PTR);
 #endif
+    w.btr->unlink_tuple(w.oid, tuple);
   }
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   for (auto &r : read_set) {
+    ASSERT(not r->is_defunct());
     ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
     // remove myself from reader list
     serial_deregister_reader_tx(r);
@@ -198,21 +199,21 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   // for writes, see if sb. has read the tuples - look at access lsn
 
   for (auto &w : write_set) {
-    if (not w.second.btr)   // for repeated overwrites
+    dbtuple *tuple = w.new_tuple;
+    if (tuple->is_defunct())    // repeated overwrites
         continue;
-    dbtuple *tuple = w.second.new_tuple;
 
     // go to the precommitted or committed version I (am about to)
     // overwrite for the reader list
-    dbtuple *overwritten_tuple = w.first;   // the key
-    ASSERT(tuple == overwritten_tuple or
+    dbtuple *overwritten_tuple = tuple->next();
+    ASSERT(not overwritten_tuple or
            ((object *)((char *)tuple - sizeof(object)))->_next.offset() ==
            (uint64_t)((char *)overwritten_tuple - sizeof(object)));
-    if (overwritten_tuple == tuple) // insert, see do_tree_put for the rules
+    if (not overwritten_tuple) // insert
       continue;
 
     int64_t age = 0;
-    // note fetch_overwriter might return a tuple with clsn being an XID
+    // note fetch_overwriter/tuple->next() might return a tuple with clsn being an XID
     // (of a precommitted but still in post-commit transaction).
   try_get_age:
     fat_ptr overwritten_tuple_clsn = volatile_read(overwritten_tuple->clsn);
@@ -326,15 +327,15 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
 
   // post-commit: stuff access stamps for reads; init new versions
   for (auto &w : write_set) {
-    if (not w.second.btr)   // for repeated overwrites
+    dbtuple *tuple = w.new_tuple;
+    if (tuple->is_defunct())
         continue;
-    dbtuple *tuple = w.second.new_tuple;
-    tuple->do_write(w.second.writer);
-    dbtuple *next_tuple = w.first;
-    ASSERT(tuple == next_tuple or
+    tuple->do_write(w.writer);
+    dbtuple *next_tuple = tuple->next();
+    ASSERT(not next_tuple or
            ((object *)((char *)tuple - sizeof(object)))->_next.offset() ==
            (uint64_t)((char *)next_tuple - sizeof(object)));
-    if (tuple != next_tuple) {   // update, not insert
+    if (next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
       // FIXME: tuple's sstamp should never decrease?
       ASSERT(xc->sstamp and xc->sstamp != ~uint64_t{0});
@@ -432,9 +433,11 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   if (min_read_s1) {
     uint64_t max_xstamp = 0;
     for (auto &w : write_set) {
-      if (not w.second.btr)
+      if (w.new_tuple->is_defunct())
         continue;
-      dbtuple *overwritten_tuple = w.first;
+      dbtuple *overwritten_tuple = w.new_tuple->next();
+      if (not overwritten_tuple)
+        continue;
       // abort if there's any in-flight reader of this tuple or
       // if someone has read the tuple after someone else clobbered it...
       if (serial_get_tuple_readers(overwritten_tuple, true)) {
@@ -459,12 +462,12 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
 
   // stamp overwritten versions, stuff clsn
   for (auto &w : write_set) {
-    if (not w.second.btr)
+    dbtuple* tuple = w.new_tuple;
+    if (tuple->is_defunct())
       continue;
-    dbtuple *overwritten_tuple = w.first;
-    dbtuple* tuple = w.second.new_tuple;
-    tuple->do_write(w.second.writer);
-    if (overwritten_tuple != tuple) {    // update
+    tuple->do_write(w.writer);
+    dbtuple *overwritten_tuple = tuple->next();
+    if (overwritten_tuple) {    // update
       ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
       volatile_write(overwritten_tuple->sstamp, LSN::make(cstamp, 0).to_log_ptr());
       if (min_read_s1 > overwritten_tuple->s2)   // correct?
@@ -528,10 +531,10 @@ transaction<Protocol, Traits>::si_commit()
   // (traverse write-tuple)
   // stuff clsn in tuples in write-set
   for (auto &w : write_set) {
-    if (not w.second.btr)
+    dbtuple* tuple = w.new_tuple;
+    if (tuple->is_defunct())
       continue;
-    dbtuple* tuple = w.second.new_tuple;
-    tuple->do_write(w.second.writer);
+    tuple->do_write(w.writer);
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
   }
@@ -670,7 +673,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   fat_ptr::make((void *)value, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
-  write_set[tuple] = write_record_t(tuple, writer, btr, oid);
+  write_set.emplace_back(tuple, writer, btr, oid);
   return true;
 }
 
@@ -683,10 +686,11 @@ transaction<Protocol, Traits>::do_tuple_read(
   INVARIANT(tuple);
   ++evt_local_search_lookups;
   ASSERT(xc);
+  bool read_my_own = (tuple->clsn.asi_type() == fat_ptr::ASI_XID);
 
 #ifdef USE_PARALLEL_SSN
   // SSN stamps and check
-  if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
+  if (not read_my_own) {
     auto v_clsn = tuple->clsn.offset();
     int64_t age = xc->begin.offset() - v_clsn;
     auto tuple_sstamp = volatile_read(tuple->sstamp);
@@ -739,7 +743,7 @@ transaction<Protocol, Traits>::do_tuple_read(
   // Consider the dangerous structure that could lead to non-serializable
   // execution: T1 r:w T2 r:w T3 where T3 committed first. Read() needs
   // to check if I'm the T1 and do bookeeping if I'm the T2 (pivot).
-  if (tuple->clsn.asi_type() == fat_ptr::ASI_LOG) {
+  if (not read_my_own) {
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
       ASSERT(tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);    // sstamp will be valid too if s2 is valid
@@ -766,7 +770,7 @@ transaction<Protocol, Traits>::do_tuple_read(
     PERF_DECL(static std::string probe0_name(std::string(__PRETTY_FUNCTION__) + std::string(":do_read:")));
     ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
     tuple->prefetch();
-    stat = tuple->do_read(value_reader, this->string_allocator(), write_set.find(tuple) == write_set.end());
+    stat = tuple->do_read(value_reader, this->string_allocator(), not read_my_own);
 
     if (unlikely(stat == dbtuple::READ_FAILED))
       return rc_t{RC_ABORT};
