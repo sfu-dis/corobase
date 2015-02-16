@@ -357,24 +357,12 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     volatile_write(tuple->xstamp, prev->xstamp);
 #endif
 
-    // use the committed version as key, if not, use the new version
-    // this should cover the update of myself's insert too
-    dbtuple *key_tuple = NULL;
     // read prev's clsn first, in case it's a committing XID, the clsn's state
     // might change to ASI_LOG anytime
     fat_ptr prev_clsn = volatile_read(prev->clsn);
     if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {  // in-place update!
       volatile_write(obj->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
-      if (not prev_obj->_next.offset()) {    // update of myself's insert
-        ASSERT(t.write_set[prev].new_tuple == prev and t.write_set[prev].btr == &this->underlying_btree);
-        key_tuple = tuple;
-        t.write_set[prev].btr = NULL;
-      }
-      else {
-        key_tuple = (dbtuple *)((object *)prev_obj->_next.offset())->payload();
-        ASSERT(key_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-        ASSERT(t.write_set[key_tuple].new_tuple == prev);
-      }
+      prev->mark_defunct();
       //RA::deallocate(prev_obj);
       ASSERT(obj->_next.offset() != (uintptr_t)prev_obj);
     }
@@ -383,12 +371,9 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
       volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
-      key_tuple = prev;
     }
 
-    t.write_set[key_tuple] = typename transaction<Transaction, Traits>::write_record_t(tuple, writer, &this->underlying_btree, oid);
-    ASSERT(t.write_set[key_tuple].new_tuple == tuple and t.write_set[key_tuple].btr == &this->underlying_btree);
-
+    t.write_set.emplace_back(tuple, writer, &this->underlying_btree, oid);
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xc) == tuple);
 

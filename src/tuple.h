@@ -36,6 +36,9 @@ template <template <typename> class Protocol, typename Traits>
 // XXX: hack
 extern std::string (*g_proto_version_str)(uint64_t v);
 
+// differentiate with delete case (pvalue = null)
+#define DEFUNCT_TUPLE_MARK ((varstr *)0x1)
+
 /**
  * A dbtuple is the type of value which we stick
  * into underlying (non-transactional) data structures- it
@@ -97,6 +100,7 @@ private:
       , s2(0)
 #endif
       , size(CheckBounds(size))
+      , pvalue(NULL)
   {
 #ifdef USE_PARALLEL_SSN
     // FIXME: seems this assumes some 8-byte alignment, which isn't the
@@ -135,6 +139,31 @@ public:
   get_value_start() const
   {
     return &value_start[0];
+  }
+
+  inline ALWAYS_INLINE dbtuple*
+  next()
+  {
+    object *myobj = (object *)((char *)this - sizeof(object));
+    ASSERT(myobj->payload() == (char *)this);
+    if (myobj->_next.offset())
+      return (dbtuple *)((object *)myobj->_next.offset())->payload();
+    else
+      return NULL;
+  }
+
+  inline ALWAYS_INLINE bool
+  is_defunct()
+  {
+    return volatile_read(pvalue) == DEFUNCT_TUPLE_MARK;
+  }
+
+  inline ALWAYS_INLINE void
+  mark_defunct()
+  {
+    // pvalue is only readable by the writer itself,
+    // so this won't confuse readers.
+    volatile_write(pvalue, DEFUNCT_TUPLE_MARK);
   }
 
 private:
