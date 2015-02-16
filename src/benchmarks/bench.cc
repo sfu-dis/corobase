@@ -240,6 +240,7 @@ bench_runner::run()
   size_t n_si_aborts = 0;
   size_t n_serial_aborts = 0;
   size_t n_rw_aborts = 0;
+  size_t n_query_commits= 0;
   uint64_t latency_numer_us = 0;
   for (size_t i = 0; i < nthreads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
@@ -248,6 +249,7 @@ bench_runner::run()
     n_si_aborts += workers[i]->get_ntxn_si_aborts();
     n_serial_aborts += workers[i]->get_ntxn_serial_aborts();
     n_rw_aborts += workers[i]->get_ntxn_rw_aborts();
+    n_query_commits+= workers[i]->get_ntxn_query_commits();
     latency_numer_us += workers[i]->get_latency_numer_us();
   }
 
@@ -366,10 +368,11 @@ bench_runner::run()
   cout << n_commits << " commits, "
 	   << n_aborts - n_user_aborts << " system_aborts, "
 	   << n_user_aborts << " user_aborts, "
+       << n_aborts << " total_aborts, " 
+	   << n_query_commits << " query_commits, "
 	   << n_si_aborts << " si_aborts, "
 	   << n_serial_aborts << " serial_aborts, "
 	   << n_rw_aborts << " rw_aborts, "
-       << n_aborts << " total_aborts" 
 	   << endl;
   cout.flush();
 

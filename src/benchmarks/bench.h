@@ -153,7 +153,7 @@ public:
       latency_numer_us(0),
       backoff_shifts(0), // spin between [0, 2^backoff_shifts) times before retry
       // the ntxn_* numbers are per worker
-      ntxn_commits(0), ntxn_aborts(0), ntxn_user_aborts(0), ntxn_si_aborts(0),ntxn_serial_aborts(0),ntxn_rw_aborts(0),
+      ntxn_commits(0), ntxn_aborts(0), ntxn_user_aborts(0), ntxn_si_aborts(0),ntxn_serial_aborts(0),ntxn_rw_aborts(0), ntxn_query_commits(0),
       size_delta(0)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
@@ -189,10 +189,12 @@ public:
   inline size_t get_ntxn_si_aborts() const { return ntxn_si_aborts; }
   inline size_t get_ntxn_serial_aborts() const { return ntxn_serial_aborts; }
   inline size_t get_ntxn_rw_aborts() const { return ntxn_rw_aborts; }
+  inline size_t get_ntxn_query_commits() const { return ntxn_query_commits; }
   inline void inc_ntxn_user_aborts() { ++ntxn_user_aborts; }
   inline void inc_ntxn_si_aborts() { ++ntxn_si_aborts; }
   inline void inc_ntxn_serial_aborts() { ++ntxn_serial_aborts; }
   inline void inc_ntxn_rw_aborts() { ++ntxn_rw_aborts; }
+  inline void inc_ntxn_query_commits() { ++ntxn_query_commits; }
 
   inline uint64_t get_latency_numer_us() const { return latency_numer_us; }
 
@@ -242,6 +244,7 @@ private:
   size_t ntxn_si_aborts;
   size_t ntxn_serial_aborts;
   size_t ntxn_rw_aborts;
+  size_t ntxn_query_commits;
 
 protected:
 

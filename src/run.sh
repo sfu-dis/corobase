@@ -17,7 +17,7 @@ trap "rm -f $LOGDIR/*" EXIT
 export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
 export LD_PRELOAD="/usr/lib/libtcmalloc.so"
 
-if [ "$2" == "tpcc" ]; then
+if [ "$2" == "tpcc-org" ]; then
 #TPCC
 numactl --interleave=all	$1 --verbose --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="45,43,0,4,4,4,0,0,0""
 
@@ -29,8 +29,11 @@ elif [ "$2" == "tpcc++" ]; then
 #TPCC++ ( /w credit check )
 numactl --interleave=all	$1 --verbose --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="41,43,4,4,4,4,0,0,0" --warehouse-spread=100"
 
-elif [ "$2" == "tpce" ]; then
+elif [ "$2" == "tpce-org" ]; then
 numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --workload-mix="4.9,13,1,18,14,8,10.1,10,19,2,0""
+
+elif [ "$2" == "tpce5" ]; then
+numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 5 --workload-mix="4.9,13,1,8,9,8,10.1,10,14,2,20""
 
 elif [ "$2" == "tpce10" ]; then
 numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 10 --workload-mix="4.9,13,1,8,9,8,10.1,10,14,2,20""
