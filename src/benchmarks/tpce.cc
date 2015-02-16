@@ -27,6 +27,7 @@ int64_t lastTradeId;
 int64_t min_ca_id = numeric_limits<int64_t>::max();
 int64_t max_ca_id = 0;
 static double g_txn_workload_mix[] = {4.9,13,1,18,14,8,10.1,10,19,2,0}; 
+int64_t long_query_scan_range=20;
 
 // Egen
 int egen_init(int argc, char* argv[]);
@@ -3279,7 +3280,7 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	auto total_range = max_ca_id - min_ca_id;
-	auto scan_range_size = (max_ca_id - min_ca_id) / 5;
+	auto scan_range_size = (max_ca_id - min_ca_id) / 100 * long_query_scan_range;
 	auto start_pos = min_ca_id + RandomNumber( r, 0, total_range - scan_range_size  );
 	auto end_pos = start_pos + scan_range_size;
 
@@ -5193,6 +5194,7 @@ void tpce_do_test(abstract_db *db, int argc, char **argv)
 			{"egen-dir"                         , required_argument , 0                                     , 'e'} ,
 			{"customers"                        , required_argument , 0                                     , 'c'} ,
 			{"working-days"                     , required_argument , 0                                     , 'd'} ,
+			{"query-range"                     , required_argument , 0                                     , 'r'} ,
 			{0, 0, 0, 0}
 		};
 		int option_index = 0;
@@ -5204,6 +5206,11 @@ void tpce_do_test(abstract_db *db, int argc, char **argv)
 				if (long_options[option_index].flag != 0)
 					break;
 				abort();
+				break;
+
+			case 'r':
+				long_query_scan_range = atoi( optarg );
+				ALWAYS_ASSERT( long_query_scan_range >= 0 or long_query_scan_range <= 100 );
 				break;
 
 			case 'c':
@@ -5276,6 +5283,7 @@ void tpce_do_test(abstract_db *db, int argc, char **argv)
 		cerr << "  scale factor                 :" << " " << sfe_str << endl;
 		cerr << "  working days                 :" << " " << wd_str << endl;
 		cerr << "  customers                    :" << " " << cust_str << endl;
+		cerr << "  long query scan range		:" << " " << long_query_scan_range << "%" << endl;
 	}
 
 	tpce_bench_runner r(db);
