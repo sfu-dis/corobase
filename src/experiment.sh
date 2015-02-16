@@ -1,4 +1,4 @@
-for bench in tpcc tpcc++ tpce tpce-contention 
+for bench in tpce10 tpce20 tpce40 tpcc tpcc-contention #tpcc++ tpce 
 do
 for i in 1 6 12 18 24
 do
