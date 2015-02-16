@@ -13,9 +13,9 @@
 class str_arena {
 public:
 
-  static const uint64_t ReserveBytes = 128 * 1024 * 1024;
+  static const uint64_t ReserveBytes = 1024 * 1024 * 1024;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
-  str_arena()
+  str_arena() : n(0)
   {
     // adler32 (log checksum) needs it aligned
     ALWAYS_ASSERT(not posix_memalign((void **)&str, DEFAULT_ALIGNMENT, ReserveBytes));
@@ -31,6 +31,7 @@ public:
   inline void
   reset()
   {
+    ASSERT(n < ReserveBytes);
     n = 0;
   }
 
