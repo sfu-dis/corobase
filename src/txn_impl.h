@@ -636,6 +636,23 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
 #ifdef PHANTOM_PROT_TABLE_LOCK
     if (instant_xlock)
       object_vector::unlock(l);
+#elif defined(PHANTOM_PROT_NODE_SET)
+  // update node #s
+  INVARIANT(insert_info.node);
+  if (!absent_set.empty()) {
+    auto it = absent_set.find(insert_info.node);
+    if (it != absent_set.end()) {
+      if (unlikely(it->second.version != insert_info.old_version)) {
+        // important: unlink the version, otherwise we risk leaving a dead
+        // version at chain head -> infinite loop or segfault...
+        btr->unlink_tuple(oid, tuple);
+        return false;
+      }
+      // otherwise, bump the version
+      it->second.version = insert_info.new_version;
+      SINGLE_THREADED_INVARIANT(concurrent_btree::ExtractVersionNumber(it->first) == it->second);
+    }
+  }
 #endif
 
   // insert to log
@@ -654,23 +671,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
   write_set[tuple] = write_record_t(tuple, writer, btr, oid);
-
-#ifdef PHANTOM_PROT_NODE_SET
-  // update node #s
-  INVARIANT(insert_info.node);
-  if (!absent_set.empty()) {
-    auto it = absent_set.find(insert_info.node);
-    if (it != absent_set.end()) {
-      if (unlikely(it->second.version != insert_info.old_version)) {
-        return false;
-      }
-      // otherwise, bump the version
-      it->second.version = insert_info.new_version;
-      SINGLE_THREADED_INVARIANT(concurrent_btree::ExtractVersionNumber(it->first) == it->second);
-    }
-  }
-#endif
-
   return true;
 }
 
