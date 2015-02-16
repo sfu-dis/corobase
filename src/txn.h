@@ -294,21 +294,10 @@ protected:
     oid_type oid;
   };
 
-  // key is committed version if it's an update;
-  // key is the new inserted version if it's an insert
-  // key is the new inserted version if it's an update of an insert
-  // ^^^^^ note in the above case, do_tree_put should mark btr as null
-  // for the older inserted tuple.
-  //typedef std::unordered_map<dbtuple*, write_record_t> write_set_map;
-  // seems unordered_map has bad cache behavior: it might have to
-  // allocated elements individually, not putting all elems in a contiguous chunk
-  // like a vector does.
-  typedef dense_hash_map<dbtuple *, write_record_t> write_set_map;
-  //typedef small_vector<read_record_t, SMALL_SIZE_MAP> read_set_map;
+  typedef std::vector<write_record_t> write_set_map;
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   typedef std::vector<dbtuple *> read_set_map;
 #endif
-  //typedef std::vector<std::pair<dbtuple*, concurrent_btree*>> read_set_map;
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
   typedef std::vector<table_lock_t*> table_lock_set_t;
@@ -402,12 +391,6 @@ public:
   }
 
 protected:
-  typename write_set_map::iterator
-  find_write_set(dbtuple *k)
-  {
-    return write_set.find(k);
-  }
-
   XID xid;
   xid_context *xc;
   sm_tx_log* log;
