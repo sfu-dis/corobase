@@ -3305,6 +3305,7 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 
 	// nothing to do actually. just bothering writers. 
 	try_catch(db->commit_txn(txn));
+	inc_ntxn_query_commits();
 	return bench_worker::txn_result(true, 0);
 }
 
