@@ -942,7 +942,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame1(const TCustomerPo
 	// probe Customers
 	const customers::key k_c(pOut->cust_id);
     customers::value v_c_temp;
-	try_verify_strict(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
+	try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
     const customers::value *v_c = Decode(obj_v,v_c_temp);
 
     memcpy(pOut->c_st_id, v_c->c_st_id.data(), v_c->c_st_id.size() );
@@ -1000,7 +1000,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame1(const TCustomerPo
 			// LastTrade probe & equi-join
 			const last_trade::key k_lt(k_hs->hs_s_symb);
 			last_trade::value v_lt_temp;
-			try_verify_strict(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
+			try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
 			const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
 
 			asset += v_hs->hs_qty * v_lt->lt_price;
@@ -1069,7 +1069,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame2(const TCustomerPo
 
 			status_type::key k_st(k_th->th_st_id);
 			status_type::value v_st_temp;
-			try_verify_strict(tbl_status_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_st)), k_st), obj_v=str(sizeof(v_st_temp))));
+			try_verify_relax(tbl_status_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_st)), k_st), obj_v=str(sizeof(v_st_temp))));
 			const status_type::value *v_st = Decode(obj_v,v_st_temp);
 
 			// TODO. order by and grab 30 rows
@@ -1116,7 +1116,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 
 		last_trade::key k_lt(ticker.symbol);
 		last_trade::value v_lt_temp;
-		try_verify_strict(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
+		try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
 		const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
 		last_trade::value v_lt_new(*v_lt);
 		v_lt_new.lt_dts = now_dts;
@@ -1160,7 +1160,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 
 			const trade::key k_t(req_trade_id);
 			trade::value v_t_temp;
-			try_verify_strict(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
+			try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
 			const trade::value *v_t = Decode(obj_v,v_t_temp);
 			trade::value v_t_new(*v_t);
 			v_t_new.t_dts = now_dts;
@@ -1173,7 +1173,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 			k_t_idx1.t_ca_id 		= v_t->t_ca_id;
 			k_t_idx1.t_dts 			= v_t->t_dts;
 			k_t_idx1.t_id 			= k_t.t_id;
-			try_verify_strict(tbl_t_ca_id_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1)));
+			try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1)));
 
 			k_t_idx1.t_ca_id 		= v_t_new.t_ca_id;
 			k_t_idx1.t_dts 			= v_t_new.t_dts;
@@ -1194,7 +1194,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 			k_t_idx2.t_s_symb 		= v_t->t_s_symb;
 			k_t_idx2.t_dts 			= v_t->t_dts;
 			k_t_idx2.t_id 			= k_t.t_id;
-			try_verify_strict(tbl_t_s_symb_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2)));
+			try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2)));
 			k_t_idx2.t_s_symb 		= v_t_new.t_s_symb ;
 			k_t_idx2.t_dts 			= v_t_new.t_dts;
 			k_t_idx2.t_id 			= k_t.t_id;
@@ -1208,7 +1208,7 @@ bench_worker::txn_result tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1
 			try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
 
 			trade_request::key k_tr_new(*k_tr);
-			try_verify_strict(tbl_trade_request(1)->remove(txn, Encode(obj_key0=str(sizeof(k_tr_new)), k_tr_new)));
+			try_verify_relax(tbl_trade_request(1)->remove(txn, Encode(obj_key0=str(sizeof(k_tr_new)), k_tr_new)));
 
 			trade_history::key k_th;
 			trade_history::value v_th;
@@ -1388,38 +1388,38 @@ bench_worker::txn_result tpce_worker::DoSecurityDetailFrame1(const TSecurityDeta
 
 	const security::key k_s(string(pIn->symbol));
 	security::value v_s_temp;
-	try_verify_strict(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
+	try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
 	const security::value *v_s = Decode(obj_v,v_s_temp);
 	co_id = v_s->s_co_id;
 
 	const company::key k_co(co_id);
 	company::value v_co_temp;
-	try_verify_strict(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co)), k_co), obj_v=str(sizeof(v_co_temp))));
+	try_verify_relax(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co)), k_co), obj_v=str(sizeof(v_co_temp))));
 	const company::value *v_co = Decode(obj_v,v_co_temp);
 
 	const address::key k_ca(v_co->co_ad_id);
 	address::value v_ca_temp;
-	try_verify_strict(tbl_address(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
+	try_verify_relax(tbl_address(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
 	const address::value *v_ca = Decode(obj_v,v_ca_temp);
 
 	const zip_code::key k_zca(v_ca->ad_zc_code);
 	zip_code::value v_zca_temp;
-	try_verify_strict(tbl_zip_code(1)->get(txn, Encode(obj_key0=str(sizeof(k_zca)), k_zca), obj_v=str(sizeof(v_zca_temp))));
+	try_verify_relax(tbl_zip_code(1)->get(txn, Encode(obj_key0=str(sizeof(k_zca)), k_zca), obj_v=str(sizeof(v_zca_temp))));
 	const zip_code::value *v_zca = Decode(obj_v,v_zca_temp);
 
 	const exchange::key k_ex(v_s->s_ex_id);
 	exchange::value v_ex_temp;
-	try_verify_strict(tbl_exchange(1)->get(txn, Encode(obj_key0=str(sizeof(k_ex)), k_ex), obj_v=str(sizeof(v_ex_temp))));
+	try_verify_relax(tbl_exchange(1)->get(txn, Encode(obj_key0=str(sizeof(k_ex)), k_ex), obj_v=str(sizeof(v_ex_temp))));
 	const exchange::value *v_ex = Decode(obj_v,v_ex_temp);
 
 	const address::key k_ea(v_ex->ex_ad_id);
 	address::value v_ea_temp;
-	try_verify_strict(tbl_address(1)->get(txn, Encode(obj_key0=str(sizeof(k_ea)), k_ea), obj_v=str(sizeof(v_ea_temp))));
+	try_verify_relax(tbl_address(1)->get(txn, Encode(obj_key0=str(sizeof(k_ea)), k_ea), obj_v=str(sizeof(v_ea_temp))));
 	const address::value *v_ea = Decode(obj_v,v_ea_temp);
 
 	const zip_code::key k_zea(v_ea->ad_zc_code);
 	zip_code::value v_zea_temp;
-	try_verify_strict(tbl_zip_code(1)->get(txn, Encode(obj_key0=str(sizeof(k_zea)), k_zea), obj_v=str(sizeof(v_zea_temp))));
+	try_verify_relax(tbl_zip_code(1)->get(txn, Encode(obj_key0=str(sizeof(k_zea)), k_zea), obj_v=str(sizeof(v_zea_temp))));
 	const zip_code::value *v_zea = Decode(obj_v,v_zea_temp);
 	
 	memcpy(pOut->s_name,  v_s->s_name.data(), v_s->s_name.size());
@@ -1472,12 +1472,12 @@ bench_worker::txn_result tpce_worker::DoSecurityDetailFrame1(const TSecurityDeta
 
 		const company::key k_co3(k_cp->cp_comp_co_id);
 		company::value v_co3_temp;
-		try_verify_strict(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co3)), k_co3), obj_v=str(sizeof(v_co3_temp))));
+		try_verify_relax(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co3)), k_co3), obj_v=str(sizeof(v_co3_temp))));
 		const company::value *v_co3 = Decode(obj_v,v_co3_temp);
 		 
 		const industry::key k_in(k_cp->cp_in_id);
 		industry::value v_in_temp;
-		try_verify_strict(tbl_industry(1)->get(txn, Encode(obj_key0=str(sizeof(k_in)), k_in), obj_v=str(sizeof(v_in_temp))));
+		try_verify_relax(tbl_industry(1)->get(txn, Encode(obj_key0=str(sizeof(k_in)), k_in), obj_v=str(sizeof(v_in_temp))));
 		const industry::value *v_in = Decode(obj_v,v_in_temp);
 
 		memcpy( pOut->cp_co_name[i], v_co3->co_name.data(), v_co3->co_name.size() );
@@ -1542,7 +1542,7 @@ bench_worker::txn_result tpce_worker::DoSecurityDetailFrame1(const TSecurityDeta
 
 	const last_trade::key k_lt(string(pIn->symbol));
 	last_trade::value v_lt_temp;
-	try_verify_strict(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
+	try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
 	const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
 
 	pOut->last_price = v_lt->lt_price;
@@ -1563,7 +1563,7 @@ bench_worker::txn_result tpce_worker::DoSecurityDetailFrame1(const TSecurityDeta
 
 		const news_item::key k_ni(k_nx->nx_ni_id);
 		news_item::value v_ni_temp;
-		try_verify_strict(tbl_news_item(1)->get(txn, Encode(obj_key0=str(sizeof(k_ni)), k_ni), obj_v=str(sizeof(v_ni_temp))));
+		try_verify_relax(tbl_news_item(1)->get(txn, Encode(obj_key0=str(sizeof(k_ni)), k_ni), obj_v=str(sizeof(v_ni_temp))));
 		const news_item::value *v_ni = Decode(obj_v,v_ni_temp);
 
 		if( pIn->access_lob_flag )
@@ -1603,12 +1603,12 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame1(const TTradeLookupFram
 	{
 		const trade::key k_t(pIn->trade_id[i]);
 		trade::value v_t_temp;
-		try_verify_strict(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
+		try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
 		const trade::value *v_t = Decode(obj_v,v_t_temp);
 
 		const trade_type::key k_tt(v_t->t_tt_id);
 		trade_type::value v_tt_temp;
-		try_verify_strict(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
+		try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
 		const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
 
 		pOut->trade_info[i].bid_price = v_t->t_bid_price;
@@ -1621,7 +1621,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame1(const TTradeLookupFram
 
 		const settlement::key k_se(pIn->trade_id[i]);
 		settlement::value v_se_temp;
-		try_verify_strict(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
+		try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
 		const settlement::value *v_se = Decode(obj_v,v_se_temp);
 
 		pOut->trade_info[i].settlement_amount = v_se->se_amt;
@@ -1632,7 +1632,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame1(const TTradeLookupFram
 		{
 			const cash_transaction::key k_ct(pIn->trade_id[i]);
 			cash_transaction::value v_ct_temp;
-			try_verify_strict(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
+			try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
 			const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
 			
 			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
@@ -1700,7 +1700,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame2(const TTradeLookupFram
 	{
 		const settlement::key k_se(pOut->trade_info[i].trade_id);
 		settlement::value v_se_temp;
-		try_verify_strict(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
+		try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
 		const settlement::value *v_se = Decode(obj_v,v_se_temp);
 
 		pOut->trade_info[i].settlement_amount = v_se->se_amt;
@@ -1711,7 +1711,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame2(const TTradeLookupFram
 		{
 			const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
 			cash_transaction::value v_ct_temp;
-			try_verify_strict(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
+			try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
 			const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
 			
 			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
@@ -1784,7 +1784,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame3(const TTradeLookupFram
 	{
 		const settlement::key k_se(pOut->trade_info[i].trade_id);
 		settlement::value v_se_temp;
-		try_verify_strict(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
+		try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
 		const settlement::value *v_se = Decode(obj_v,v_se_temp);
 
 		pOut->trade_info[i].settlement_amount = v_se->se_amt;
@@ -1795,7 +1795,7 @@ bench_worker::txn_result tpce_worker::DoTradeLookupFrame3(const TTradeLookupFram
 		{
 			const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
 			cash_transaction::value v_ct_temp;
-			try_verify_strict(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
+			try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
 			const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
 			
 			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
@@ -1893,7 +1893,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1
 
 	const customer_account::key k_ca(pIn->acct_id);
 	customer_account::value v_ca_temp;
-	try_verify_strict(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
+	try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
 	const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
 
 	memcpy( pOut->acct_name, v_ca->ca_name.data(), v_ca->ca_name.size() );
@@ -1904,7 +1904,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1
 
 	const customers::key k_c(pOut->cust_id);
 	customers::value v_c_temp;
-	try_verify_strict(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
+	try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
 	const customers::value *v_c = Decode(obj_v,v_c_temp);
 
 	memcpy( pOut->cust_f_name, v_c->c_f_name.data(), v_c->c_f_name.size() );
@@ -1914,7 +1914,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1
 
 	const broker::key k_b(pOut->broker_id);
 	broker::value v_b_temp;
-	try_verify_strict(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
+	try_verify_relax(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
 	const broker::value *v_b = Decode(obj_v,v_b_temp);
 	memcpy( pOut->broker_name, v_b->b_name.data(), v_b->b_name.size() );
 
@@ -1988,7 +1988,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 		memcpy(pOut->symbol, pIn->symbol, cSYMBOL_len);
 		const security::key k_s(string(pIn->symbol));
 		security::value v_s_temp;
-		try_verify_strict(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
+		try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
 		const security::value *v_s = Decode(obj_v,v_s_temp);
 
 		co_id = v_s->s_co_id;
@@ -1997,20 +1997,20 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 
 		const company::key k_co(co_id);
 		company::value v_co_temp;
-		try_verify_strict(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co)), k_co), obj_v=str(sizeof(v_co_temp))));
+		try_verify_relax(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co)), k_co), obj_v=str(sizeof(v_co_temp))));
 		const company::value *v_co = Decode(obj_v,v_co_temp);
 		memcpy(pOut->co_name, v_co->co_name.data(), v_co->co_name.size() );
 	}
 	const last_trade::key k_lt(string(pOut->symbol));
 	last_trade::value v_lt_temp;
-	try_verify_strict(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
+	try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
 	const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
 
 	pOut->market_price = v_lt->lt_price;
 
 	const trade_type::key k_tt(pIn->trade_type_id);
 	trade_type::value v_tt_temp;
-	try_verify_strict(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
+	try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
 	const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
 
 	pOut->type_is_market = v_tt->tt_is_mrkt;
@@ -2153,7 +2153,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 
 			const tax_rate::key k_tx(k_cx->cx_tx_id);
 			tax_rate::value v_tx_temp;
-			try_verify_strict(tbl_tax_rate(1)->get(txn, Encode(obj_key0=str(sizeof(k_tx)), k_tx), obj_v=str(sizeof(v_tx_temp))));
+			try_verify_relax(tbl_tax_rate(1)->get(txn, Encode(obj_key0=str(sizeof(k_tx)), k_tx), obj_v=str(sizeof(v_tx_temp))));
 			const tax_rate::value *v_tx = Decode(obj_v,v_tx_temp);
 
 			tax_rates += v_tx->tx_rate;
@@ -2182,7 +2182,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 
 	const charge::key k_ch(pIn->trade_type_id, pIn->cust_tier );
 	charge::value v_ch_temp;
-	try_verify_strict(tbl_charge(1)->get(txn, Encode(obj_key0=str(sizeof(k_ch)), k_ch), obj_v=str(sizeof(v_ch_temp))));
+	try_verify_relax(tbl_charge(1)->get(txn, Encode(obj_key0=str(sizeof(k_ch)), k_ch), obj_v=str(sizeof(v_ch_temp))));
 	const charge::value *v_ch = Decode(obj_v,v_ch_temp);
 	pOut->charge_amount = v_ch->ch_chrg;
 
@@ -2195,7 +2195,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 	{
 		const customer_account::key k_ca(pIn->acct_id);
 		customer_account::value v_ca_temp;
-		try_verify_strict(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
+		try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
 		const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
 		acct_bal = v_ca->ca_bal;
 
@@ -2214,7 +2214,7 @@ bench_worker::txn_result tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3
 
 			const last_trade::key k_lt(k_hs->hs_s_symb);
 			last_trade::value v_lt_temp;
-			try_verify_strict(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
+			try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
 			const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
 
 			hold_assets += v_hs->hs_qty * v_lt->lt_price;
@@ -2332,7 +2332,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame1(const TTradeResultFram
 
 	const trade::key k_t(pIn->trade_id);
 	trade::value v_t_temp;
-	try_verify_strict(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
+	try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
 	const trade::value *v_t = Decode(obj_v,v_t_temp);
 	pOut->acct_id = v_t->t_ca_id;
 	memcpy(pOut->type_id, v_t->t_tt_id.data(), v_t->t_tt_id.size());
@@ -2345,7 +2345,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame1(const TTradeResultFram
 
 	const trade_type::key k_tt(pOut->type_id);
 	trade_type::value v_tt_temp;
-	try_verify_strict(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
+	try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
 	const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
 	memcpy(pOut->type_name, v_tt->tt_name.data(), v_tt->tt_name.size());
 	pOut->type_is_sell = v_tt->tt_is_sell;
@@ -2379,7 +2379,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame2(const TTradeResultFram
 
 	const customer_account::key k_ca(pIn->acct_id);
 	customer_account::value v_ca_temp;
-	try_verify_strict(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
+	try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
 	const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
 	pOut->broker_id = v_ca->ca_b_id;
 	pOut->cust_id = v_ca->ca_c_id;
@@ -2685,7 +2685,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame3(const TTradeResultFram
 
 		const tax_rate::key k_tx(k_cx->cx_tx_id);
 		tax_rate::value v_tx_temp;
-		try_verify_strict(tbl_tax_rate(1)->get(txn, Encode(obj_key0=str(sizeof(k_tx)), k_tx), obj_v=str(sizeof(v_tx_temp))));
+		try_verify_relax(tbl_tax_rate(1)->get(txn, Encode(obj_key0=str(sizeof(k_tx)), k_tx), obj_v=str(sizeof(v_tx_temp))));
 		const tax_rate::value *v_tx = Decode(obj_v,v_tx_temp);
 
 		tax_rates += v_tx->tx_rate;
@@ -2695,7 +2695,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame3(const TTradeResultFram
 
 	const trade::key k_t(pIn->trade_id);
 	trade::value v_t_temp;
-	try_verify_strict(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
+	try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
 	const trade::value *v_t = Decode(obj_v,v_t_temp);
 	trade::value v_t_new(*v_t);
 	v_t_new.t_tax = pOut->tax_amount;			// secondary indices don't have t_tax field. no need for cascading update
@@ -2711,13 +2711,13 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame4(const TTradeResultFram
 
 	const security::key k_s(string(pIn->symbol));
 	security::value v_s_temp;
-	try_verify_strict(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
+	try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
 	const security::value *v_s = Decode(obj_v,v_s_temp);
 	memcpy(pOut->s_name, v_s->s_name.data(), v_s->s_name.size() );
 
 	const customers::key k_c(pIn->cust_id);
 	customers::value v_c_temp;
-	try_verify_strict(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
+	try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
 	const customers::value *v_c = Decode(obj_v,v_c_temp);
 	
 	const commission_rate::key k_cr_0( v_c->c_tier, string(pIn->type_id), v_s->s_ex_id, 0);
@@ -2744,7 +2744,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame5(const TTradeResultFram
 {
 	const trade::key k_t(pIn->trade_id);
 	trade::value v_t_temp;
-	try_verify_strict(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
+	try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
 	const trade::value *v_t = Decode(obj_v,v_t_temp);
 	trade::value v_t_new(*v_t);
 	v_t_new.t_comm = pIn->comm_amount;
@@ -2759,7 +2759,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame5(const TTradeResultFram
 	k_t_idx1.t_ca_id 		= v_t->t_ca_id;
 	k_t_idx1.t_dts 			= v_t->t_dts;
 	k_t_idx1.t_id 			= k_t.t_id;
-	try_verify_strict(tbl_t_ca_id_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1)));
+	try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1)));
 	k_t_idx1.t_ca_id 		= v_t_new.t_ca_id;
 	k_t_idx1.t_dts 			= v_t_new.t_dts;
 	k_t_idx1.t_id 			= k_t.t_id;
@@ -2779,7 +2779,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame5(const TTradeResultFram
 	k_t_idx2.t_s_symb 		= v_t->t_s_symb;
 	k_t_idx2.t_dts 			= v_t->t_dts;
 	k_t_idx2.t_id 			= k_t.t_id;
-	try_verify_strict(tbl_t_s_symb_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2)));
+	try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2)));
 	k_t_idx2.t_s_symb 		= v_t_new.t_s_symb ;
 	k_t_idx2.t_dts 			= v_t_new.t_dts;
 	k_t_idx2.t_id 			= k_t.t_id;
@@ -2801,7 +2801,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame5(const TTradeResultFram
 
 	const broker::key k_b(pIn->broker_id);
 	broker::value v_b_temp;
-	try_verify_strict(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
+	try_verify_relax(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
 	const broker::value *v_b = Decode(obj_v,v_b_temp);
 	broker::value v_b_new(*v_b);
 	v_b_new.b_comm_total += pIn->comm_amount;
@@ -2831,7 +2831,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame6(const TTradeResultFram
 	{
 		const customer_account::key k_ca(pIn->acct_id);
 		customer_account::value v_ca_temp;
-		try_verify_strict(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
+		try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
 		const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
 		customer_account::value v_ca_new(*v_ca);
 		v_ca_new.ca_bal += pIn->se_amount;
@@ -2855,7 +2855,7 @@ bench_worker::txn_result tpce_worker::DoTradeResultFrame6(const TTradeResultFram
 
 	const customer_account::key k_ca(pIn->acct_id);
 	customer_account::value v_ca_temp;
-	try_verify_strict(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
+	try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
 	const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
 	pOut->acct_bal = v_ca->ca_bal;
 	
@@ -2884,22 +2884,22 @@ bench_worker::txn_result tpce_worker::DoTradeStatusFrame1(const TTradeStatusFram
 
 		const status_type::key k_st(v_t->t_st_id);
 		status_type::value v_st_temp;
-		try_verify_strict(tbl_status_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_st)), k_st), obj_v=str(sizeof(v_st_temp))));
+		try_verify_relax(tbl_status_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_st)), k_st), obj_v=str(sizeof(v_st_temp))));
 		const status_type::value *v_st = Decode(obj_v,v_st_temp);
 
 		const trade_type::key k_tt(v_t->t_tt_id);
 		trade_type::value v_tt_temp;
-		try_verify_strict(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
+		try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
 		const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
 
 		const security::key k_s(v_t->t_s_symb);
 		security::value v_s_temp;
-		try_verify_strict(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
+		try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
 		const security::value *v_s = Decode(obj_v,v_s_temp);
 
 		const exchange::key k_ex(v_s->s_ex_id);
 		exchange::value v_ex_temp;
-		try_verify_strict(tbl_exchange(1)->get(txn, Encode(obj_key0=str(sizeof(k_ex)), k_ex), obj_v=str(sizeof(v_ex_temp))));
+		try_verify_relax(tbl_exchange(1)->get(txn, Encode(obj_key0=str(sizeof(k_ex)), k_ex), obj_v=str(sizeof(v_ex_temp))));
 		const exchange::value *v_ex = Decode(obj_v,v_ex_temp);
 
 		pOut->trade_id[t_cursor] = k_t->t_id;
@@ -2922,17 +2922,17 @@ bench_worker::txn_result tpce_worker::DoTradeStatusFrame1(const TTradeStatusFram
 
 	const customer_account::key k_ca(pIn->acct_id);
 	customer_account::value v_ca_temp;
-	try_verify_strict(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
+	try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
 	const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
 
 	const customers::key k_c(v_ca->ca_c_id);
 	customers::value v_c_temp;
-	try_verify_strict(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
+	try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
 	const customers::value *v_c = Decode(obj_v,v_c_temp);
 
 	const broker::key k_b(v_ca->ca_b_id);
 	broker::value v_b_temp;
-	try_verify_strict(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
+	try_verify_relax(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
 	const broker::value *v_b = Decode(obj_v,v_b_temp);
 
 	memcpy(pOut->cust_f_name, v_c->c_f_name.data(), v_c->c_f_name.size() );
@@ -2952,13 +2952,13 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFram
 	{
 		const trade::key k_t(pIn->trade_id[i]);
 		trade::value v_t_temp;
-		try_verify_strict(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
+		try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
 		const trade::value *v_t = Decode(obj_v,v_t_temp);
 		pOut->num_found++;
 		
 		const trade_type::key k_tt(v_t->t_tt_id);
 		trade_type::value v_tt_temp;
-		try_verify_strict(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
+		try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
 		const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
 
 		pOut->trade_info[i].bid_price = v_t->t_bid_price;
@@ -3030,7 +3030,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFram
 		{
 			const cash_transaction::key k_ct(pIn->trade_id[i]);
 			cash_transaction::value v_ct_temp;
-			try_verify_strict(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
+			try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
 			const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
 			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
 			CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
@@ -3091,7 +3091,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFram
 	{
 		const settlement::key k_se(pOut->trade_info[i].trade_id);
 		settlement::value v_se_temp;
-		try_verify_strict(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
+		try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
 		const settlement::value *v_se = Decode(obj_v,v_se_temp);
 
 		if( pOut->num_updated < pIn->max_updates )
@@ -3123,7 +3123,7 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFram
 		{
 			const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
 			cash_transaction::value v_ct_temp;
-			try_verify_strict(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
+			try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
 			const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
 			pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
 			CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
@@ -3173,12 +3173,12 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 
 		const trade_type::key k_tt(v_t->t_tt_id);
 		trade_type::value v_tt_temp;
-		try_verify_strict(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
+		try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
 		const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
 
 		const security::key k_s(k_t->t_s_symb);
 		security::value v_s_temp;
-		try_verify_strict(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
+		try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
 		const security::value *v_s = Decode(obj_v,v_s_temp);
 
 		/*
@@ -3212,13 +3212,13 @@ bench_worker::txn_result tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFram
 	{
 		const settlement::key k_se(pOut->trade_info[i].trade_id);
 		settlement::value v_se_temp;
-		try_verify_strict(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
+		try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
 
 		if( pOut->trade_info[i].is_cash )
 		{
 			const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
 			cash_transaction::value v_ct_temp;
-			try_verify_strict(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
+			try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
 			const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
 
 			if( pOut->num_updated < pIn->max_updates )
