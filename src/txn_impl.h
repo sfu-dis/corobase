@@ -577,7 +577,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
     dbtuple::tuple_writer_t writer)
 {
   INVARIANT(key);
-  char*p = (char*)object;
   dbtuple* tuple = (dbtuple *)object->payload();
   tuple_vector_type* tuple_vector = btr->get_tuple_vector();
 
@@ -664,8 +663,6 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
   ASSERT(tuple->size == value->size());
   auto record_size = align_up((size_t)tuple->size + sizeof(varstr));
   auto size_code = encode_size_aligned(record_size);
-  ASSERT(not ((uint64_t)p & ((uint64_t)0xf)));
-  ASSERT(not ((uint64_t)tuple & ((uint64_t)0xf)));
   ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));
   ASSERT(tuple->size);
   log->log_insert(1,
