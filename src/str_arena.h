@@ -13,7 +13,7 @@
 class str_arena {
 public:
 
-  static const uint64_t ReserveBytes = 1024 * 1024 * 1024;
+  static const uint64_t ReserveBytes = 128 * 1024 * 1024;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
   str_arena() : n(0)
   {
