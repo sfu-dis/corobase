@@ -1,0 +1,463 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2b05a3ab1000, 0x2b0d23cb1000)
+cpu0 owns [0x2b05a3c00000, 0x2b05f3c00000)
+cpu1 owns [0x2b05f3c00000, 0x2b0643c00000)
+cpu2 owns [0x2b0643c00000, 0x2b0693c00000)
+cpu3 owns [0x2b0693c00000, 0x2b06e3c00000)
+cpu4 owns [0x2b06e3c00000, 0x2b0733c00000)
+cpu5 owns [0x2b0733c00000, 0x2b0783c00000)
+cpu6 owns [0x2b0783c00000, 0x2b07d3c00000)
+cpu7 owns [0x2b07d3c00000, 0x2b0823c00000)
+cpu8 owns [0x2b0823c00000, 0x2b0873c00000)
+cpu9 owns [0x2b0873c00000, 0x2b08c3c00000)
+cpu10 owns [0x2b08c3c00000, 0x2b0913c00000)
+cpu11 owns [0x2b0913c00000, 0x2b0963c00000)
+cpu12 owns [0x2b0963c00000, 0x2b09b3c00000)
+cpu13 owns [0x2b09b3c00000, 0x2b0a03c00000)
+cpu14 owns [0x2b0a03c00000, 0x2b0a53c00000)
+cpu15 owns [0x2b0a53c00000, 0x2b0aa3c00000)
+cpu16 owns [0x2b0aa3c00000, 0x2b0af3c00000)
+cpu17 owns [0x2b0af3c00000, 0x2b0b43c00000)
+cpu18 owns [0x2b0b43c00000, 0x2b0b93c00000)
+cpu19 owns [0x2b0b93c00000, 0x2b0be3c00000)
+cpu20 owns [0x2b0be3c00000, 0x2b0c33c00000)
+cpu21 owns [0x2b0c33c00000, 0x2b0c83c00000)
+cpu22 owns [0x2b0c83c00000, 0x2b0cd3c00000)
+cpu23 owns [0x2b0cd3c00000, 0x2b0d23c00000)
+[logging subsystem]
+  assignments: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]]
+  call fsync : 1
+  compression: 0
+  fake_writes: 0
+Database Benchmark:
+  pid: 13826
+settings:
+  par-loading : 0
+  pin-cpus    : 1
+  slow-exit   : 0
+  retry-txns  : 0
+  backoff-txns: 0
+  bench       : tpce
+  scale       : 500
+  num-cpus    : 48
+  num-threads : 24
+  db-type     : ndb-proto2
+  basedir     : /home/knkim/silo/silo-src
+  txn-flags   : 0
+  runtime     : 40
+  var-encode  : yes
+  allocator   : tcmalloc
+  numa-memory : 32212254720
+  logfiles : [/tmpfs/knkim/silo-log/log]
+  assignments : []
+  disable-gc : 0
+  disable-snapshots : 1
+  stats-server-sockfile: 
+system properties:
+  btree_internal_node_size: 264
+  btree_leaf_node_size    : 312
+  tuple_prefetch          : no
+  btree_node_prefetch     : yes
+
+
+Using the following settings.
+
+	In Directory:		./benchmarks/egen/flat/egen_flat_in/
+	Start From Customer:	1
+	Customer Count:		5000
+	Total customers:	5000
+	Load Unit:		1000
+	Scale Factor:		500
+	Initial Trade Days:	10
+	Caching Enabled:	true
+
+
+Loading input files:
+
+	Security................loaded.
+	StatusType..............loaded.
+	TradeType...............loaded.
+	Company.................loaded.
+	Exchange................loaded.
+	TaxRatesDivision........loaded.
+	FemaleFirstName.........loaded.
+	Industry................loaded.
+	LastName................loaded.
+	MaleFirstName...........loaded.
+	Sector..................loaded.
+	AreaCode................loaded.
+	Charge..................loaded.
+	CommissionRate..........loaded.
+	CompanyCompetitor.......loaded.
+	CompanySPRate...........loaded.
+	LastName................loaded.
+	StreetName..............loaded.
+	StreetSuffix............loaded.
+	TaxableAccountName......loaded.
+	NonTaxableAccountName...loaded.
+	TaxRatesCountry.........loaded.
+	ZipCode.................loaded.
+
+Loading complete (0.069sec).
+
+tpce settings:
+  workload_mix                 : [4.9, 13, 1, 18, 9, 8, 10.1, 10, 14, 2, 10]
+  scale factor                 : 500
+  working days                 : 10
+  customers                    : 5000
+  long query scan range		: 10%
+
+
+ customers= 5000, loadunit= 1000
+
+timed region dataloading took 56188.4 ms
+DB size: 10787.6 MB
+wait_an_epoch(): consistent reads happening in e-1: 56
+waiting for system_sync_epoch_=1448 to be < e=1450
+[25129065, 25129065, 143724] txns persisted in loading phase
+table account_permission_0 size 25000
+table address_0 size 7504
+table b_name_index_0 size 50
+table broker_0 size 50
+table c_tax_id_index_0 size 5000
+table ca_id_index_0 size 25000
+table cash_transaction_0 size 2649349
+table charge_0 size 15
+table co_in_id_index_0 size 2500
+table co_name_index_0 size 2500
+table commission_rate_0 size 240
+table company_0 size 2500
+table company_competitor_0 size 7500
+table customer_account_0 size 25000
+table customer_taxrate_0 size 10000
+table customers_0 size 5000
+table daily_market_0 size 4469625
+table exchange_0 size 4
+table financial_0 size 50000
+table holding_0 size 814368
+table holding_history_0 size 3611655
+table holding_summary_0 size 241862
+table in_name_index_0 size 102
+table in_sc_id_index_0 size 102
+table industry_0 size 102
+table last_trade_0 size 3425
+table news_item_0 size 5000
+table news_xref_0 size 5000
+table sector_0 size 12
+table security_0 size 3425
+table security_index_0 size 3425
+table settlement_0 size 2880000
+table status_type_0 size 5
+table t_ca_id_index_0 size 2880000
+table t_s_symb_index_0 size 2880000
+table tax_rate_0 size 320
+table trade_0 size 2880000
+table trade_history_0 size 6911641
+table trade_request_0 size 0
+table trade_type_0 size 5
+table watch_item_0 size 500717
+table watch_list_0 size 5000
+table zip_code_0 size 14741
+starting benchmark...
+tpce: worker id 48 => partitions [1, 21)
+tpce: worker id 49 => partitions [21, 42)
+tpce: worker id 50 => partitions [42, 63)
+tpce: worker id 51 => partitions [63, 84)
+tpce: worker id 52 => partitions [84, 105)
+tpce: worker id 53 => partitions [105, 126)
+tpce: worker id 54 => partitions [126, 146)
+tpce: worker id 55 => partitions [146, 167)
+tpce: worker id 56 => partitions [167, 188)
+tpce: worker id 57 => partitions [188, 209)
+tpce: worker id 58 => partitions [209, 230)
+tpce: worker id 59 => partitions [230, 251)
+tpce: worker id 60 => partitions [251, 271)
+tpce: worker id 61 => partitions [271, 292)
+tpce: worker id 62 => partitions [292, 313)
+tpce: worker id 63 => partitions [313, 334)
+tpce: worker id 64 => partitions [334, 355)
+tpce: worker id 65 => partitions [355, 376)
+tpce: worker id 66 => partitions [376, 396)
+tpce: worker id 67 => partitions [396, 417)
+tpce: worker id 68 => partitions [417, 438)
+tpce: worker id 69 => partitions [438, 459)
+tpce: worker id 70 => partitions [459, 480)
+tpce: worker id 71 => partitions [480, 501)
+cpu0 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu14 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu7 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu10 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu16 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu15 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu19 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu11 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu9 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu12 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu18 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu1 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu6 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu21 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu13 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu8 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu5 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu23 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu20 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu4 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu3 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu22 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu17 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu2 starting faulting region (1342177280 bytes / 640 hugepgs)
+cpu14 finished faulting region in 11179.4 ms
+cpu6 finished faulting region in 11192.7 ms
+cpu18 finished faulting region in 11848.1 ms
+cpu22 finished faulting region in 11957.2 ms
+cpu10 finished faulting region in 12017.6 ms
+cpu0 finished faulting region in 12052.6 ms
+cpu2 finished faulting region in 12022.6 ms
+cpu20 finished faulting region in 12127.7 ms
+cpu16 finished faulting region in 12185.2 ms
+cpu8 finished faulting region in 12198.4 ms
+cpu4 finished faulting region in 12199.4 ms
+cpu12 finished faulting region in 12231.8 ms
+cpu23 finished faulting region in 12266.2 ms
+cpu7 finished faulting region in 12330.9 ms
+cpu3 finished faulting region in 12303.3 ms
+cpu17 finished faulting region in 12364.5 ms
+cpu9 finished faulting region in 12410.7 ms
+cpu1 finished faulting region in 12405 ms
+cpu11 finished faulting region in 12418.5 ms
+cpu15 finished faulting region in 12420.2 ms
+cpu5 finished faulting region in 12395.6 ms
+cpu19 finished faulting region in 12454.5 ms
+cpu13 finished faulting region in 12459.9 ms
+cpu21 finished faulting region in 12501.5 ms
+waiting for system_sync_epoch_=2817 to be < e=2823
+--- table statistics ---
+table account_permission_0 size 25000 (+0 records)
+table address_0 size 7504 (+0 records)
+table b_name_index_0 size 50 (+0 records)
+table broker_0 size 50 (+0 records)
+table c_tax_id_index_0 size 5000 (+0 records)
+table ca_id_index_0 size 25000 (+0 records)
+table cash_transaction_0 size 2676522 (+27173 records)
+table charge_0 size 15 (+0 records)
+table co_in_id_index_0 size 2500 (+0 records)
+table co_name_index_0 size 2500 (+0 records)
+table commission_rate_0 size 240 (+0 records)
+table company_0 size 2500 (+0 records)
+table company_competitor_0 size 7500 (+0 records)
+table customer_account_0 size 25000 (+0 records)
+table customer_taxrate_0 size 10000 (+0 records)
+table customers_0 size 5000 (+0 records)
+table daily_market_0 size 4469625 (+0 records)
+table exchange_0 size 4 (+0 records)
+table financial_0 size 50000 (+0 records)
+table holding_0 size 818945 (+4577 records)
+table holding_history_0 size 3650521 (+38866 records)
+table holding_summary_0 size 241845 (-17 records)
+table in_name_index_0 size 102 (+0 records)
+table in_sc_id_index_0 size 102 (+0 records)
+table industry_0 size 102 (+0 records)
+table last_trade_0 size 3425 (+0 records)
+table news_item_0 size 5000 (+0 records)
+table news_xref_0 size 5000 (+0 records)
+table sector_0 size 12 (+0 records)
+table security_0 size 3425 (+0 records)
+table security_index_0 size 3425 (+0 records)
+table settlement_0 size 2909660 (+29660 records)
+table status_type_0 size 5 (+0 records)
+table t_ca_id_index_0 size 2914122 (+34122 records)
+table t_s_symb_index_0 size 2914122 (+34122 records)
+table tax_rate_0 size 320 (+0 records)
+table trade_0 size 2913097 (+33097 records)
+table trade_history_0 size 6985267 (+73626 records)
+table trade_request_0 size 2754 (+2754 records)
+table trade_type_0 size 5 (+0 records)
+table watch_item_0 size 500717 (+0 records)
+table watch_list_0 size 5000 (+0 records)
+table zip_code_0 size 14741 (+0 records)
+--- benchmark statistics ---
+runtime: 40.0523 sec
+memory delta: 33957 MB
+memory delta rate: 847.816 MB/sec
+logical memory delta: 0 MB
+logical memory delta rate: 0 MB/sec
+agg_nosync_throughput: 8934.84 ops/sec
+avg_nosync_per_core_throughput: 372.285 ops/sec/core
+agg_throughput: 8926.75 ops/sec
+avg_per_core_throughput: 371.948 ops/sec/core
+agg_persist_throughput: 8926.75 ops/sec
+avg_per_core_persist_throughput: 371.948 ops/sec/core
+avg_latency: 1.2876 ms
+avg_persist_latency: 232.904 ms
+agg_abort_rate: 2923.3 aborts/sec
+avg_per_core_abort_rate: 121.804 aborts/sec/core
+txn breakdown: [[BrokerVolume, 23063], [CustomerPosition, 61711], [LongQuery, 47501], [MarketFeed, 4754], [MarketWatch, 85640], [SecurityDetail, 42768], [TradeLookup, 37860], [TradeOrder, 47858], [TradeResult, 47356], [TradeStatus, 66542], [TradeUpdate, 9569]]
+--- system counters (for benchmark) ---
+ABORT_REASON_FUTURE_TID_READ: count=0
+ABORT_REASON_INSERT_NODE_INTERFERENCE: count=0
+ABORT_REASON_NODE_SCAN_READ_VERSION_CHANGED: count=216
+ABORT_REASON_NODE_SCAN_WRITE_VERSION_CHANGED: count=0
+ABORT_REASON_NONE: count=0
+ABORT_REASON_READ_ABSENCE_INTEREFERENCE: count=0
+ABORT_REASON_READ_NODE_INTEREFERENCE: count=29846
+ABORT_REASON_UNSTABLE_READ: count=0
+ABORT_REASON_USER: count=44864
+ABORT_REASON_WRITE_NODE_INTERFERENCE: count=22
+allocator_arena0_allocation: count=0
+allocator_arena0_deallocation: count=0
+allocator_arena10_allocation: count=0
+allocator_arena10_deallocation: count=0
+allocator_arena11_allocation: count=0
+allocator_arena11_deallocation: count=0
+allocator_arena12_allocation: count=0
+allocator_arena12_deallocation: count=0
+allocator_arena13_allocation: count=0
+allocator_arena13_deallocation: count=0
+allocator_arena14_allocation: count=0
+allocator_arena14_deallocation: count=0
+allocator_arena15_allocation: count=13087
+allocator_arena15_deallocation: count=186
+allocator_arena16_allocation: count=0
+allocator_arena16_deallocation: count=0
+allocator_arena17_allocation: count=0
+allocator_arena17_deallocation: count=0
+allocator_arena18_allocation: count=0
+allocator_arena18_deallocation: count=0
+allocator_arena19_allocation: count=23239
+allocator_arena19_deallocation: count=2222
+allocator_arena1_allocation: count=114260
+allocator_arena1_deallocation: count=1715
+allocator_arena20_allocation: count=0
+allocator_arena20_deallocation: count=0
+allocator_arena21_allocation: count=0
+allocator_arena21_deallocation: count=0
+allocator_arena22_allocation: count=0
+allocator_arena22_deallocation: count=0
+allocator_arena23_allocation: count=0
+allocator_arena23_deallocation: count=0
+allocator_arena24_allocation: count=0
+allocator_arena24_deallocation: count=0
+allocator_arena25_allocation: count=0
+allocator_arena25_deallocation: count=0
+allocator_arena26_allocation: count=0
+allocator_arena26_deallocation: count=0
+allocator_arena27_allocation: count=47792
+allocator_arena27_deallocation: count=1167
+allocator_arena28_allocation: count=0
+allocator_arena28_deallocation: count=0
+allocator_arena29_allocation: count=0
+allocator_arena29_deallocation: count=0
+allocator_arena2_allocation: count=3827
+allocator_arena2_deallocation: count=3052
+allocator_arena30_allocation: count=0
+allocator_arena30_deallocation: count=0
+allocator_arena31_allocation: count=243
+allocator_arena31_deallocation: count=0
+allocator_arena3_allocation: count=30741
+allocator_arena3_deallocation: count=10767
+allocator_arena4_allocation: count=29706
+allocator_arena4_deallocation: count=45
+allocator_arena5_allocation: count=0
+allocator_arena5_deallocation: count=0
+allocator_arena6_allocation: count=74061
+allocator_arena6_deallocation: count=38842
+allocator_arena7_allocation: count=80405
+allocator_arena7_deallocation: count=39963
+allocator_arena8_allocation: count=27217
+allocator_arena8_deallocation: count=43
+allocator_arena9_allocation: count=33484
+allocator_arena9_deallocation: count=377
+allocator_large_allocation: count=0
+allocator_total_region_usage_bytes: count=7096762368
+avg_abort_spins: count=0, max=0, avg=-nan
+avg_cust_name_idx_scan_size: count=0, max=0, avg=-nan
+avg_dbtuple_chain_len: count=0, max=0, avg=-nan
+avg_dbtuple_lock_acquire_spins: count=734228, max=977, avg=0.0068589
+avg_dbtuple_read_retries: count=1407901275, max=0, avg=0
+avg_dbtuple_stable_version_spins: count=1407901264, max=3574, avg=2.02919e-05
+avg_gc_reaper_queue_len: count=0, max=0, avg=-nan
+avg_log_buffer_compress_time_us: count=0, max=0, avg=-nan
+avg_log_buffer_iov_len: count=19951, max=36340, avg=4403.54
+avg_log_entry_ntxns_per_entry: count=19951, max=85, avg=6.58052
+avg_log_entry_size: count=131288, max=7609, avg=666.746
+avg_logger_bytes_per_sec: count=1483, max=612761904, avg=2.85839e+08
+avg_logger_bytes_per_writev: count=1483, max=170408, avg=59241.4
+avg_max_unordered_map_chain_length: count=0, max=0, avg=-nan
+avg_proto_gc_queue_len: count=935, max=238, avg=110.059
+avg_rcu_delete_queue_len: count=0, max=0, avg=-nan
+avg_rcu_local_delete_queue_len: count=925, max=262, avg=120.93
+avg_rcu_sync_try_release: count=0, max=0, avg=-nan
+avg_record_spill_len: count=3, max=23, avg=23
+avg_time_inbetween_allocator_releases_usec: count=0, max=0, avg=-nan
+avg_time_inbetween_rcu_epochs_usec: count=960, max=13048641, avg=1.30055e+06
+avg_time_inbetween_ro_epochs_usec: count=936, max=1039634, avg=1.00189e+06
+dbtuple_bytes_allocated: count=35046320
+dbtuple_bytes_freed: count=10900944
+dbtuple_creates: count=382994
+dbtuple_inplace_buf_insufficient: count=0
+dbtuple_inplace_buf_insufficient_on_spill: count=3
+dbtuple_latest_replacement: count=3
+dbtuple_logical_deletes: count=105557
+dbtuple_no_space_for_delkey: count=0
+dbtuple_physical_deletes: count=102147
+dbtuple_spills: count=3
+dbtuple_write_insert_failed: count=27
+dbtuple_write_search_failed: count=0
+local_chain_cleanups: count=0
+local_search_lookups: count=1407929605
+local_search_write_set_hits: count=28330
+log_buffer_bytes_after_compress: count=0
+log_buffer_bytes_before_compress: count=0
+log_buffer_epoch_boundary: count=19927
+log_buffer_out_of_space: count=0
+logger_max_lag_wait: count=0
+logger_writev_limit_met: count=0
+proto_gc_delete_requeue: count=3
+rcu::delete_entry_px_group_creates: count=1536
+rcu_deletes: count=111860
+rcu_frees: count=115066
+rcu_incomplete_local_reaps: count=0
+rcu_local_reaps: count=0
+rcu_loop_reaps: count=0
+read_logical_deleted_node_scan: count=0
+read_logical_deleted_node_search: count=58305
+stock_level_loop_join_lookups: count=0, max=0, avg=-nan
+tpcc_cross_partition_credit_check_txns: count=0
+tpcc_cross_partition_new_order_txns: count=0
+tpcc_cross_partition_payment_txns: count=0
+transaction_proto2_static::delete_entry_px_group_creates: count=1536
+try_delete_unlinks: count=0
+worker_thread_wait_log_buffer: count=0
+--- perf counters (if enabled, for benchmark) ---
+--- allocator stats ---
+[allocator] ncpus=24
+[allocator] cpu=0 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=1 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=2 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=3 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=4 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=5 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=6 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=7 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=8 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=9 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=10 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=11 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=12 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=13 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=14 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=15 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=16 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=17 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=18 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=19 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=20 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=21 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=22 fully_faulted?=1 remaining=1046478848 bytes
+[allocator] cpu=23 fully_faulted?=1 remaining=1046478848 bytes
+---------------------------------------
+8926.75 commits/s, 990.105 system_aborts/s, 1933.2 user_aborts/s, 2923.3 total_aborts/s, 
+357537 commits, 39656 system_aborts, 77429 user_aborts, 117085 total_aborts, 18541 query_commits

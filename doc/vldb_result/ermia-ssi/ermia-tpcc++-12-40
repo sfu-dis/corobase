@@ -1,0 +1,159 @@
+benchmarks/ndb_wrapper_impl.h:143: ndb_wrapper<Transaction>::ndb_wrapper(const char*, size_t, size_t) [with Transaction = transaction_proto2; size_t = long unsigned int]::__lambda4: Log recovery is a no-op here
+
+[logging subsystem]
+  lordir : /tmpfs/knkim/silo-log
+  segment size : 8589934592
+  buffer size : 536870912
+Database Benchmark:
+  pid: 24018
+settings:
+  par-loading : 0
+  pin-cpus    : 1
+  slow-exit   : 0
+  retry-txns  : 0
+  backoff-txns: 0
+  bench       : tpcc
+  scale       : 12
+  num-cpus    : 48
+  num-threads : 12
+  db-type     : ndb-proto2
+  basedir     : /home/knkim/ermia/src
+  txn-flags   : 0
+  runtime     : 40
+  var-encode  : yes
+  allocator   : tcmalloc
+  log-dir : /tmpfs/knkim/silo-log
+  log-segsize : 8589934592
+  log-bufsize : 536870912
+  disable-gc : 0
+  disable-snapshots : 0
+  stats-server-sockfile: 
+system properties:
+  btree_internal_node_size: 216
+  btree_leaf_node_size    : 320
+  tuple_prefetch          : no
+  btree_node_prefetch     : yes
+tpcc settings:
+  random home warehouse (%)    : 100
+  cross_partition_transactions : 1
+  read_only_snapshots          : 1
+  partition_locks              : 0
+  separate_tree_per_partition  : 0
+  new_order_remote_item_pct    : 1
+  new_order_fast_id_gen        : 0
+  uniform_item_dist            : 0
+  order_status_scan_hack       : 0
+  microbench_static            : 0
+  microbench_random            : 0
+  workload_mix                 : [41, 43, 4, 4, 4, 4, 0, 0, 0]
+tcmalloc: large alloc 42949672960 bytes == 0x3400000 @  0x2af93dc28d9c 0x2af93dc471a0 0x4705ca 0x4c35f2 0x404ac8 0x2af93e9efec5 0x4083e7 (nil)
+Major fault: 0Minor fault: 287692
+PinToWarehouseId(): coreid=PinToWarehouseId(): coreid=3 pinned to whse=1 (partid=0)1num batches: 30
+PinToWarehouseId(): coreid=6 pinned to whse=1 (partid=0)
+ pinned to whse=1 (partid=0)
+
+PinToWarehouseId(): coreid=2 pinned to whse=1 (partid=0)
+[INFO] finished loading warehouse
+[INFO]   * average warehouse record length: 97 bytes
+PinToWarehouseId(): coreid=3 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=3 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=3 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=3 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=3 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=3 pinned to whse=7 (partid=6)
+PinToWarehouseId(): coreid=3 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=3 pinned to whse=9 (partid=8)
+PinToWarehouseId(): coreid=3 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=3 pinned to whse=11 (partid=10)
+PinToWarehouseId(): coreid=3 pinned to whse=12 (partid=11)
+[INFO] finished loading district
+[INFO]   * average district record length: 99 bytes
+PinToWarehouseId(): coreid=1 pinned to whse=2 (partid=1)
+[INFO] finished loading item
+[INFO]   * average item record length: 84.1739 bytes
+PinToWarehouseId(): coreid=1 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=6 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=1 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=1 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=2 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=1 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=6 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=1 pinned to whse=7 (partid=6)
+PinToWarehouseId(): coreid=1 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=6 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=1 pinned to whse=9 (partid=8)
+PinToWarehouseId(): coreid=1 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=2 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=1 pinned to whse=11 (partid=10)
+PinToWarehouseId(): coreid=6 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=1 pinned to whse=12 (partid=11)
+[INFO] finished loading order
+[INFO]   * average order_line record length: 11.2841 bytes
+[INFO]   * average oorder record length: 7.93313 bytes
+[INFO]   * average new_order record length: 12 bytes
+PinToWarehouseId(): coreid=6 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=2 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=6 pinned to whse=7 (partid=6)
+PinToWarehouseId(): coreid=6 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=2 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=6 pinned to whse=9 (partid=8)
+PinToWarehouseId(): coreid=6 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=2 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=6 pinned to whse=11 (partid=10)
+PinToWarehouseId(): coreid=2 pinned to whse=7 (partid=6)
+PinToWarehouseId(): coreid=6 pinned to whse=12 (partid=11)
+[INFO] finished loading customer
+[INFO]   * average customer record length: 656.977 bytes 
+PinToWarehouseId(): coreid=2 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=2 pinned to whse=9 (partid=8)
+PinToWarehouseId(): coreid=2 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=2 pinned to whse=11 (partid=10)
+PinToWarehouseId(): coreid=2 pinned to whse=12 (partid=11)
+[INFO] finished loading stock
+[INFO]   * average stock record length: 8 bytes
+timed region dataloading took 17602.3 ms
+DB size: 87.043 MB
+table customer_0 size 360000
+table customer_name_idx_0 size 360000
+table district_0 size 120
+table history_0 size 360000
+table item_0 size 100000
+table new_order_0 size 108000
+table oorder_0 size 360000
+table oorder_c_id_idx_0 size 360000
+table order_line_0 size 3600092
+table stock_0 size 1200000
+table stock_data_0 size 1200000
+table warehouse_0 size 12
+starting benchmark...
+--- table statistics ---
+table customer_0 size 360000 (+0 records)
+table customer_name_idx_0 size 360000 (+0 records)
+table district_0 size 120 (+0 records)
+table history_0 size 766939 (+406939 records)
+table item_0 size 100000 (+0 records)
+table new_order_0 size 502259 (+394259 records)
+table oorder_0 size 754259 (+394259 records)
+table oorder_c_id_idx_0 size 754857 (+394857 records)
+table order_line_0 size 7543472 (+3943380 records)
+table stock_0 size 1200000 (+0 records)
+table stock_data_0 size 1200000 (+0 records)
+table warehouse_0 size 12 (+0 records)
+--- benchmark statistics ---
+runtime: 40.0198 sec
+memory delta: 39.4414 MB
+memory delta rate: 0.985547 MB/sec
+logical memory delta: 56.3616 MB
+logical memory delta rate: 1.40834 MB/sec
+agg_nosync_throughput: 23463.3 ops/sec
+avg_nosync_per_core_throughput: 1955.28 ops/sec/core
+agg_throughput: 23463.3 ops/sec
+avg_per_core_throughput: 1955.28 ops/sec/core
+avg_latency: 0.329401 ms
+agg_abort_rate: 792.133 aborts/sec
+avg_per_core_abort_rate: 66.0111 aborts/sec/core
+txn breakdown: [[CreditCheck, 38960], [Delivery, 38761], [NewOrder, 398029], [OrderStatus, 38892], [Payment, 417099], [StockLevel, 38957]]
+--- system counters (for benchmark) ---
+--- perf counters (if enabled, for benchmark) ---
+23463.3 commits/s, 792.133 system_aborts/s, 0 user_aborts/s, 291.98 si_aborts/s, 9.12048 serial_aborts/s, 0 rw_aborts/s, 792.133 total_aborts/s, 
+938997 commits, 31701 system_aborts, 0 user_aborts, 31701 total_aborts, 0 query_commits, 11685 si_aborts, 365 serial_aborts, 0 rw_aborts, 

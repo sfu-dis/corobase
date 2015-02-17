@@ -1,0 +1,373 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2b1d72501000, 0x2b24f2701000)
+cpu0 owns [0x2b1d72600000, 0x2b1eb2600000)
+cpu1 owns [0x2b1eb2600000, 0x2b1ff2600000)
+cpu2 owns [0x2b1ff2600000, 0x2b2132600000)
+cpu3 owns [0x2b2132600000, 0x2b2272600000)
+cpu4 owns [0x2b2272600000, 0x2b23b2600000)
+cpu5 owns [0x2b23b2600000, 0x2b24f2600000)
+[logging subsystem]
+  assignments: [[0, 1, 2, 3, 4, 5]]
+  call fsync : 1
+  compression: 0
+  fake_writes: 0
+Database Benchmark:
+  pid: 77372
+settings:
+  par-loading : 0
+  pin-cpus    : 1
+  slow-exit   : 0
+  retry-txns  : 0
+  backoff-txns: 0
+  bench       : tpce
+  scale       : 500
+  num-cpus    : 48
+  num-threads : 6
+  db-type     : ndb-proto2
+  basedir     : /home/knkim/silo/silo-src
+  txn-flags   : 0
+  runtime     : 40
+  var-encode  : yes
+  allocator   : tcmalloc
+  numa-memory : 32212254720
+  logfiles : [/tmpfs/knkim/silo-log/log]
+  assignments : []
+  disable-gc : 0
+  disable-snapshots : 1
+  stats-server-sockfile: 
+system properties:
+  btree_internal_node_size: 264
+  btree_leaf_node_size    : 312
+  tuple_prefetch          : no
+  btree_node_prefetch     : yes
+
+
+Using the following settings.
+
+	In Directory:		./benchmarks/egen/flat/egen_flat_in/
+	Start From Customer:	1
+	Customer Count:		5000
+	Total customers:	5000
+	Load Unit:		1000
+	Scale Factor:		500
+	Initial Trade Days:	10
+	Caching Enabled:	true
+
+
+Loading input files:
+
+	Security................loaded.
+	StatusType..............loaded.
+	TradeType...............loaded.
+	Company.................loaded.
+	Exchange................loaded.
+	TaxRatesDivision........loaded.
+	FemaleFirstName.........loaded.
+	Industry................loaded.
+	LastName................loaded.
+	MaleFirstName...........loaded.
+	Sector..................loaded.
+	AreaCode................loaded.
+	Charge..................loaded.
+	CommissionRate..........loaded.
+	CompanyCompetitor.......loaded.
+	CompanySPRate...........loaded.
+	LastName................loaded.
+	StreetName..............loaded.
+	StreetSuffix............loaded.
+	TaxableAccountName......loaded.
+	NonTaxableAccountName...loaded.
+	TaxRatesCountry.........loaded.
+	ZipCode.................loaded.
+
+Loading complete (0.068sec).
+
+tpce settings:
+  workload_mix                 : [4.9, 13, 1, 18, 9, 8, 10.1, 10, 14, 2, 10]
+  scale factor                 : 500
+  working days                 : 10
+  customers                    : 5000
+  long query scan range		: 10%
+
+
+ customers= 5000, loadunit= 1000
+
+timed region dataloading took 54440.9 ms
+DB size: 10785.8 MB
+wait_an_epoch(): consistent reads happening in e-1: 54
+waiting for system_sync_epoch_=1398 to be < e=1400
+[25129065, 25129065, 193694] txns persisted in loading phase
+table account_permission_0 size 25000
+table address_0 size 7504
+table b_name_index_0 size 50
+table broker_0 size 50
+table c_tax_id_index_0 size 5000
+table ca_id_index_0 size 25000
+table cash_transaction_0 size 2649349
+table charge_0 size 15
+table co_in_id_index_0 size 2500
+table co_name_index_0 size 2500
+table commission_rate_0 size 240
+table company_0 size 2500
+table company_competitor_0 size 7500
+table customer_account_0 size 25000
+table customer_taxrate_0 size 10000
+table customers_0 size 5000
+table daily_market_0 size 4469625
+table exchange_0 size 4
+table financial_0 size 50000
+table holding_0 size 814368
+table holding_history_0 size 3611655
+table holding_summary_0 size 241862
+table in_name_index_0 size 102
+table in_sc_id_index_0 size 102
+table industry_0 size 102
+table last_trade_0 size 3425
+table news_item_0 size 5000
+table news_xref_0 size 5000
+table sector_0 size 12
+table security_0 size 3425
+table security_index_0 size 3425
+table settlement_0 size 2880000
+table status_type_0 size 5
+table t_ca_id_index_0 size 2880000
+table t_s_symb_index_0 size 2880000
+table tax_rate_0 size 320
+table trade_0 size 2880000
+table trade_history_0 size 6911641
+table trade_request_0 size 0
+table trade_type_0 size 5
+table watch_item_0 size 500717
+table watch_list_0 size 5000
+table zip_code_0 size 14741
+starting benchmark...
+tpce: worker id 48 => partitions [1, 84)
+tpce: worker id 49 => partitions [84, 167)
+tpce: worker id 50 => partitions [167, 251)
+tpce: worker id 51 => partitions [251, 334)
+tpce: worker id 52 => partitions [334, 417)
+tpce: worker id 53 => partitions [417, 501)
+cpu0 starting faulting region (5368709120 bytes / 2560 hugepgs)
+cpu5 starting faulting region (5368709120 bytes / 2560 hugepgs)
+cpu1 starting faulting region (5368709120 bytes / 2560 hugepgs)
+cpu2 starting faulting region (5368709120 bytes / 2560 hugepgs)
+cpu4 starting faulting region (5368709120 bytes / 2560 hugepgs)
+cpu3 starting faulting region (5368709120 bytes / 2560 hugepgs)
+cpu3 finished faulting region in 9106.68 ms
+cpu2 finished faulting region in 9528.29 ms
+cpu5 finished faulting region in 10665.5 ms
+cpu0 finished faulting region in 10697 ms
+cpu1 finished faulting region in 10721.1 ms
+cpu4 finished faulting region in 10767.4 ms
+waiting for system_sync_epoch_=2688 to be < e=2692
+--- table statistics ---
+table account_permission_0 size 25000 (+0 records)
+table address_0 size 7504 (+0 records)
+table b_name_index_0 size 50 (+0 records)
+table broker_0 size 50 (+0 records)
+table c_tax_id_index_0 size 5000 (+0 records)
+table ca_id_index_0 size 25000 (+0 records)
+table cash_transaction_0 size 2661039 (+11690 records)
+table charge_0 size 15 (+0 records)
+table co_in_id_index_0 size 2500 (+0 records)
+table co_name_index_0 size 2500 (+0 records)
+table commission_rate_0 size 240 (+0 records)
+table company_0 size 2500 (+0 records)
+table company_competitor_0 size 7500 (+0 records)
+table customer_account_0 size 25000 (+0 records)
+table customer_taxrate_0 size 10000 (+0 records)
+table customers_0 size 5000 (+0 records)
+table daily_market_0 size 4469625 (+0 records)
+table exchange_0 size 4 (+0 records)
+table financial_0 size 50000 (+0 records)
+table holding_0 size 816304 (+1936 records)
+table holding_history_0 size 3628393 (+16738 records)
+table holding_summary_0 size 241831 (-31 records)
+table in_name_index_0 size 102 (+0 records)
+table in_sc_id_index_0 size 102 (+0 records)
+table industry_0 size 102 (+0 records)
+table last_trade_0 size 3425 (+0 records)
+table news_item_0 size 5000 (+0 records)
+table news_xref_0 size 5000 (+0 records)
+table sector_0 size 12 (+0 records)
+table security_0 size 3425 (+0 records)
+table security_index_0 size 3425 (+0 records)
+table settlement_0 size 2892748 (+12748 records)
+table status_type_0 size 5 (+0 records)
+table t_ca_id_index_0 size 2895011 (+15011 records)
+table t_s_symb_index_0 size 2895011 (+15011 records)
+table tax_rate_0 size 320 (+0 records)
+table trade_0 size 2894657 (+14657 records)
+table trade_history_0 size 6943539 (+31898 records)
+table trade_request_0 size 1576 (+1576 records)
+table trade_type_0 size 5 (+0 records)
+table watch_item_0 size 500717 (+0 records)
+table watch_list_0 size 5000 (+0 records)
+table zip_code_0 size 14741 (+0 records)
+--- benchmark statistics ---
+runtime: 40.062 sec
+memory delta: 31552.5 MB
+memory delta rate: 787.591 MB/sec
+logical memory delta: 0 MB
+logical memory delta rate: 0 MB/sec
+agg_nosync_throughput: 4134.86 ops/sec
+avg_nosync_per_core_throughput: 689.144 ops/sec/core
+agg_throughput: 4129.32 ops/sec
+avg_per_core_throughput: 688.22 ops/sec/core
+agg_persist_throughput: 4129.32 ops/sec
+avg_per_core_persist_throughput: 688.22 ops/sec/core
+avg_latency: 1.21697 ms
+avg_persist_latency: 149.111 ms
+agg_abort_rate: 1044.53 aborts/sec
+avg_per_core_abort_rate: 174.088 aborts/sec/core
+txn breakdown: [[BrokerVolume, 10019], [CustomerPosition, 26925], [LongQuery, 20703], [MarketFeed, 1996], [MarketWatch, 37606], [SecurityDetail, 18518], [TradeLookup, 16605], [TradeOrder, 21016], [TradeResult, 20644], [TradeStatus, 29027], [TradeUpdate, 4216]]
+--- system counters (for benchmark) ---
+ABORT_REASON_FUTURE_TID_READ: count=0
+ABORT_REASON_INSERT_NODE_INTERFERENCE: count=0
+ABORT_REASON_NODE_SCAN_READ_VERSION_CHANGED: count=70
+ABORT_REASON_NODE_SCAN_WRITE_VERSION_CHANGED: count=0
+ABORT_REASON_NONE: count=0
+ABORT_REASON_READ_ABSENCE_INTEREFERENCE: count=0
+ABORT_REASON_READ_NODE_INTEREFERENCE: count=3839
+ABORT_REASON_UNSTABLE_READ: count=0
+ABORT_REASON_USER: count=10284
+ABORT_REASON_WRITE_NODE_INTERFERENCE: count=10
+allocator_arena0_allocation: count=0
+allocator_arena0_deallocation: count=0
+allocator_arena10_allocation: count=0
+allocator_arena10_deallocation: count=0
+allocator_arena11_allocation: count=0
+allocator_arena11_deallocation: count=0
+allocator_arena12_allocation: count=0
+allocator_arena12_deallocation: count=0
+allocator_arena13_allocation: count=0
+allocator_arena13_deallocation: count=0
+allocator_arena14_allocation: count=0
+allocator_arena14_deallocation: count=0
+allocator_arena15_allocation: count=6175
+allocator_arena15_deallocation: count=125
+allocator_arena16_allocation: count=0
+allocator_arena16_deallocation: count=0
+allocator_arena17_allocation: count=0
+allocator_arena17_deallocation: count=0
+allocator_arena18_allocation: count=0
+allocator_arena18_deallocation: count=0
+allocator_arena19_allocation: count=9782
+allocator_arena19_deallocation: count=629
+allocator_arena1_allocation: count=49230
+allocator_arena1_deallocation: count=577
+allocator_arena20_allocation: count=0
+allocator_arena20_deallocation: count=0
+allocator_arena21_allocation: count=0
+allocator_arena21_deallocation: count=0
+allocator_arena22_allocation: count=0
+allocator_arena22_deallocation: count=0
+allocator_arena23_allocation: count=0
+allocator_arena23_deallocation: count=0
+allocator_arena24_allocation: count=0
+allocator_arena24_deallocation: count=0
+allocator_arena25_allocation: count=0
+allocator_arena25_deallocation: count=0
+allocator_arena26_allocation: count=0
+allocator_arena26_deallocation: count=0
+allocator_arena27_allocation: count=21177
+allocator_arena27_deallocation: count=376
+allocator_arena28_allocation: count=0
+allocator_arena28_deallocation: count=0
+allocator_arena29_allocation: count=0
+allocator_arena29_deallocation: count=0
+allocator_arena2_allocation: count=1271
+allocator_arena2_deallocation: count=924
+allocator_arena30_allocation: count=0
+allocator_arena30_deallocation: count=0
+allocator_arena31_allocation: count=153
+allocator_arena31_deallocation: count=0
+allocator_arena3_allocation: count=13437
+allocator_arena3_deallocation: count=4393
+allocator_arena4_allocation: count=12763
+allocator_arena4_deallocation: count=15
+allocator_arena5_allocation: count=0
+allocator_arena5_deallocation: count=0
+allocator_arena6_allocation: count=32088
+allocator_arena6_deallocation: count=16627
+allocator_arena7_allocation: count=34792
+allocator_arena7_deallocation: count=16976
+allocator_arena8_allocation: count=11703
+allocator_arena8_deallocation: count=13
+allocator_arena9_allocation: count=14832
+allocator_arena9_deallocation: count=171
+allocator_large_allocation: count=0
+allocator_total_region_usage_bytes: count=1774190592
+avg_abort_spins: count=0, max=0, avg=-nan
+avg_cust_name_idx_scan_size: count=0, max=0, avg=-nan
+avg_dbtuple_chain_len: count=0, max=0, avg=-nan
+avg_dbtuple_lock_acquire_spins: count=318917, max=0, avg=0
+avg_dbtuple_read_retries: count=613832984, max=0, avg=0
+avg_dbtuple_stable_version_spins: count=613832983, max=218, avg=8.99267e-07
+avg_gc_reaper_queue_len: count=0, max=0, avg=-nan
+avg_log_buffer_compress_time_us: count=0, max=0, avg=-nan
+avg_log_buffer_iov_len: count=5758, max=39757, avg=6657.09
+avg_log_entry_ntxns_per_entry: count=5758, max=81, avg=9.88208
+avg_log_entry_size: count=56901, max=7609, avg=672.034
+avg_logger_bytes_per_sec: count=1181, max=875093750, avg=4.48634e+08
+avg_logger_bytes_per_writev: count=1181, max=90178, avg=32456.8
+avg_max_unordered_map_chain_length: count=0, max=0, avg=-nan
+avg_proto_gc_queue_len: count=234, max=279, avg=187.799
+avg_rcu_delete_queue_len: count=0, max=0, avg=-nan
+avg_rcu_local_delete_queue_len: count=235, max=315, avg=199.085
+avg_rcu_sync_try_release: count=0, max=0, avg=-nan
+avg_record_spill_len: count=0, max=0, avg=-nan
+avg_time_inbetween_allocator_releases_usec: count=0, max=0, avg=-nan
+avg_time_inbetween_rcu_epochs_usec: count=246, max=10905835, avg=1.22481e+06
+avg_time_inbetween_ro_epochs_usec: count=240, max=1016351, avg=983791
+dbtuple_bytes_allocated: count=15219248
+dbtuple_bytes_freed: count=4662832
+dbtuple_creates: count=166083
+dbtuple_inplace_buf_insufficient: count=0
+dbtuple_inplace_buf_insufficient_on_spill: count=0
+dbtuple_latest_replacement: count=0
+dbtuple_logical_deletes: count=44873
+dbtuple_no_space_for_delkey: count=0
+dbtuple_physical_deletes: count=43673
+dbtuple_spills: count=0
+dbtuple_write_insert_failed: count=10
+dbtuple_write_search_failed: count=0
+local_chain_cleanups: count=0
+local_search_lookups: count=613845196
+local_search_write_set_hits: count=12212
+log_buffer_bytes_after_compress: count=0
+log_buffer_bytes_before_compress: count=0
+log_buffer_epoch_boundary: count=5752
+log_buffer_out_of_space: count=0
+logger_max_lag_wait: count=0
+logger_writev_limit_met: count=0
+proto_gc_delete_requeue: count=0
+rcu::delete_entry_px_group_creates: count=384
+rcu_deletes: count=46785
+rcu_frees: count=48086
+rcu_incomplete_local_reaps: count=0
+rcu_local_reaps: count=0
+rcu_loop_reaps: count=0
+read_logical_deleted_node_scan: count=0
+read_logical_deleted_node_search: count=12253
+stock_level_loop_join_lookups: count=0, max=0, avg=-nan
+tpcc_cross_partition_credit_check_txns: count=0
+tpcc_cross_partition_new_order_txns: count=0
+tpcc_cross_partition_payment_txns: count=0
+transaction_proto2_static::delete_entry_px_group_creates: count=384
+try_delete_unlinks: count=0
+worker_thread_wait_log_buffer: count=0
+--- perf counters (if enabled, for benchmark) ---
+--- allocator stats ---
+[allocator] ncpus=6
+[allocator] cpu=0 fully_faulted?=1 remaining=5073010688 bytes
+[allocator] cpu=1 fully_faulted?=1 remaining=5073010688 bytes
+[allocator] cpu=2 fully_faulted?=1 remaining=5073010688 bytes
+[allocator] cpu=3 fully_faulted?=1 remaining=5073010688 bytes
+[allocator] cpu=4 fully_faulted?=1 remaining=5073010688 bytes
+[allocator] cpu=5 fully_faulted?=1 remaining=5073010688 bytes
+---------------------------------------
+4129.32 commits/s, 203.11 system_aborts/s, 841.42 user_aborts/s, 1044.53 total_aborts/s, 
+165429 commits, 8137 system_aborts, 33709 user_aborts, 41846 total_aborts, 16950 query_commits
