@@ -1588,13 +1588,13 @@ class credit_check_order_scan_callback : public abstract_ordered_index::scan_cal
 		credit_check_order_scan_callback( str_arena* arena ) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
 		{
-			varstr * const k_oo = _arena->next(keylen);
-			INVARIANT(k_oo);
-			k_oo->copy_from(keyp, keylen);
-			_k_oo.emplace_back(k_oo);
+			varstr * const k= _arena->next(keylen);
+			INVARIANT(k);
+			k->copy_from(keyp, keylen);
+			output.emplace_back(k);
 			return true;
 		}
-		std::vector<varstr *> _k_oo;
+		std::vector<varstr *> output;
 		str_arena* _arena;
 };
 
@@ -1684,31 +1684,22 @@ tpcc_worker::txn_credit_check()
 		//		c_w_id = :w_id;
 		//		c_d_id = :d_id;
 		//		c_id = :c_id;
-		credit_check_order_scan_callback c_oorder(s_arena.get());
-		const oorder::key k_oo_0(warehouse_id, districtID, 0);
-		const oorder::key k_oo_1(warehouse_id, districtID, numeric_limits<int32_t>::max());
-		try_catch(tbl_oorder(warehouse_id)->scan(txn, Encode(str(Size(k_oo_0)), k_oo_0), &Encode(str(Size(k_oo_1)), k_oo_1), c_oorder, s_arena.get()));
-		ALWAYS_ASSERT(c_oorder._k_oo.size());
+		credit_check_order_scan_callback c_no(s_arena.get());
+		const new_order::key k_no_0(warehouse_id, districtID, 0);
+		const new_order::key k_no_1(warehouse_id, districtID, numeric_limits<int32_t>::max());
+		try_catch(tbl_new_order(warehouse_id)->scan(txn, Encode(str(Size(k_no_0)), k_no_0), &Encode(str(Size(k_no_1)), k_no_1), c_no, s_arena.get()));
+		ALWAYS_ASSERT(c_no.output.size());
 
 		double sum = 0;
-		for( auto &k_oo : c_oorder._k_oo)
+		for( auto &k : c_no.output)
 		{
-			oorder::key k_o_temp;
-			const oorder::key *k_o = Decode(*k_oo, k_o_temp);
+			new_order::key k_no_temp;
+			const new_order::key *k_no = Decode(*k, k_no_temp);
 
-			// New order fetch - test existence only 
-			//const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
-			//		no_d_id = :d_id
-			//		no_w_id = :w_id
-			//		no_o_id = o_id
-			const new_order::key k_no(warehouse_id, districtID, k_o->o_id);
-            new_order::value v;
+			const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
+            oorder::value v;
             varstr sv = str(Size(v));
-			try_catch_cond(tbl_new_order(warehouse_id)->get(txn, Encode(str(Size(k_no)), k_no), sv),
-                           continue);
-			//if( not tbl_new_order(warehouse_id)->get(txn, Encode(obj_key0, k_no), obj_v) )
-			//	continue;
-
+			try_catch_cond(tbl_oorder(warehouse_id)->get(txn, Encode(str(Size(k_oo)), k_oo), sv),continue);
 			// Order line scan
 			//		ol_d_id = :d_id
 			//		ol_w_id = :w_id
@@ -1716,8 +1707,8 @@ tpcc_worker::txn_credit_check()
 			//		ol_number = 1-15
 			static __thread credit_check_order_line_scan_callback c_ol(s_arena.get());
             c_ol._v_ol.clear();
-			const order_line::key k_ol_0(warehouse_id, districtID, k_o->o_id, 1);
-			const order_line::key k_ol_1(warehouse_id, districtID, k_o->o_id, 15);
+			const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
+			const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
             try_catch(tbl_order_line(warehouse_id)->scan(txn, Encode(str(Size(k_ol_0)), k_ol_0), &Encode(str(Size(k_ol_1)), k_ol_1), c_ol, s_arena.get()));
 			ALWAYS_ASSERT(c_ol._v_ol.size());
 
