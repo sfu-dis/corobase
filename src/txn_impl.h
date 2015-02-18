@@ -244,7 +244,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
         // I (as the writer) need to backoff if the reader has the
         // possibility of having read the version, and it is or will
         // be serialized after me.
-        if (reader_begin < tuple_bs and reader_end >= cstamp) {
+        if (reader_end >= cstamp and reader_begin <= tuple_bs) {
           return rc_t{RC_ABORT_RW_CONFLICT};
         }
         xc->pstamp = cstamp - 1;
