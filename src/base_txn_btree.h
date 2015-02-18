@@ -310,13 +310,19 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   if (prev) { // succeeded
     ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
+    // if I clobberred an old tuple, then as the T2 I have to assume
+    // a committed T3 exists for me; so set it to its minimum.
+    if (prev->is_old(t.xc))
+      volatile_write(t.xc->ct3, 1);
     // check if there's any in-flight readers of the overwritten tuple
     // (will form an inbound r:w edge to me) ie, am I the T2 (pivot)
     // with T1 in-flight and T3 committed first (ie, before T1, ie,
     // prev's creator) in the dangerous structure?
     ASSERT(prev->sstamp == NULL_PTR);
-    auto in_flight_readers = serial_get_tuple_readers(prev, true);
-    if (in_flight_readers and has_committed_t3(t.xc)) {
+    // the read-opt makes the readers list inaccurate, so we only do
+    // the check here if read-opt is not enabled
+    if (has_read_opt() == INT64_MAX) {
+      if (t.xc->ct3 and serial_get_tuple_readers(prev, true)) {
         // unlink the version here (note abort_impl won't be able to catch
         // it because it's not yet in the write set), same as in SSN impl.
         this->underlying_btree.unlink_tuple(oid, tuple);
@@ -325,6 +331,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
           object_vector::unlock(l);
 #endif
         return rc_t{RC_ABORT_SSI};
+      }
     }
 #endif
     object *prev_obj = (object *)((char *)prev - sizeof(object));

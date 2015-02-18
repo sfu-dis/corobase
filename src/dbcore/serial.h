@@ -12,6 +12,11 @@ extern int64_t OLD_VERSION_THRESHOLD;
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
 
+inline bool has_read_opt()
+{
+    return OLD_VERSION_THRESHOLD < INT64_MAX;
+}
+
 #ifdef USE_PARALLEL_SSN
 // returns true if serializable, false means exclusion window violation
 inline bool ssn_check_exclusion(xid_context *xc) {

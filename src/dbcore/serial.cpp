@@ -56,14 +56,12 @@ namespace TXN {
    to have used this xid context that was used by some evil reader before.
    Hopefully 2) will be able to eliminate some false positives.
  */
-#ifdef USE_PARALLEL_SSN
 //int64_t OLD_VERSION_THRESHOLD = 0xa0000000ll;
 //int64_t OLD_VERSION_THRESHOLD = 0x10000000ll;
 int64_t OLD_VERSION_THRESHOLD = 0x1000000ll;
 //int64_t OLD_VERSION_THRESHOLD = 0x100ll;
 //int64_t OLD_VERSION_THRESHOLD = INT64_MAX;
 //int64_t OLD_VERSION_THRESHOLD = 0;
-#endif
 
 readers_list rlist;
 

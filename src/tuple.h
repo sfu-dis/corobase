@@ -56,8 +56,6 @@ public:
   fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
                            // normal write to indicate its existence; become writer cstamp at commit
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
-#endif
-#ifdef USE_PARALLEL_SSN
   uint64_t bstamp;         // for SSN's (possibly SSI's too) read optimization
 #endif
 #ifdef USE_PARALLEL_SSI
@@ -121,7 +119,7 @@ public:
     READ_RECORD,
   };
 
-#if defined(USE_PARALLEL_SSN)
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   int64_t age(xid_context *visitor);
   bool is_old(xid_context *visitor);
 #endif
