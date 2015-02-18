@@ -16,7 +16,7 @@ dbtuple::~dbtuple()
   VERBOSE(cerr << "dbtuple: " << hexify(intptr_t(this)) << " is being deleted" << endl);
 }
 
-#if defined(USE_PARALLEL_SSN)
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 /* return the tuple's age based on a safe_lsn provided by the calling tx.
  * safe_lsn usually = the calling tx's begin offset.
  *

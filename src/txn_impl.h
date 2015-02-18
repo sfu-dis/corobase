@@ -368,7 +368,9 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
 
   // get the smallest s1 in each tuple we have read (ie, the smallest cstamp
   // of T3 in the dangerous structure that clobbered our read)
-  uint64_t min_read_s1 = 0;    // this will be the s2 of versions I clobbered
+  uint64_t ct3 = volatile_read(xc->ct3);   // this will be the s2 of versions I clobbered
+  if (ct3 == 1) // poor guy clobbered some old version...
+    goto examine_writes;
   for (auto &r : read_set) {
   get_overwriter:
     // need to see if there's any overwriter (if so also its state)
@@ -400,35 +402,72 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
         tuple_s1 = volatile_read(overwriter_clsn).offset();
     }
 
-    if (tuple_s1 and (not min_read_s1 or min_read_s1 > tuple_s1))
-      min_read_s1 = tuple_s1;
+    if (tuple_s1 and (not ct3 or ct3 > tuple_s1))
+      ct3 = tuple_s1;
     // will release read lock (readers bitmap) in post-commit
   }
 
+examine_writes:
   // now see if I'm the unlucky T2
-  if (min_read_s1) {
-    uint64_t max_xstamp = 0;
-    for (auto &w : write_set) {
-      if (w.new_tuple->is_defunct())
+  uint64_t max_xstamp = 0;
+  for (auto &w : write_set) {
+    if (w.new_tuple->is_defunct())
+      continue;
+    dbtuple *overwritten_tuple = w.new_tuple->next();
+    if (not overwritten_tuple)
+      continue;
+    // abort if there's any in-flight reader of this tuple or
+    // if someone has read the tuple after someone else clobbered it...
+    readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple);
+    while (readers) {
+      int i = __builtin_ctz(readers);
+      ASSERT(i >= 0 and i < 24);
+      readers &= (readers-1);
+    get_reader:
+      XID rxid = volatile_read(rlist.xids[i]);
+      if (not rxid._val or rxid == xc->owner)
+        continue; // ignore invalid entries and ignore my own reads
+      xid_context *reader_xc = xid_get_context(rxid);
+      if (not reader_xc)
         continue;
-      dbtuple *overwritten_tuple = w.new_tuple->next();
-      if (not overwritten_tuple)
+      // copy everything before doing anything
+      auto reader_owner = volatile_read(reader_xc->owner);
+      auto reader_end = volatile_read(reader_xc->end).offset();
+      auto reader_begin = volatile_read(reader_xc->begin).offset();
+      auto reader_state = volatile_read(reader_xc->state);
+      if (reader_owner != rxid)
+          goto get_reader;
+      // If I clobbered an old version, I have to assume a committed T3
+      // exists (since there's no way to check my reads). If a reader of
+      // that version exists, I also have to assume it (as T1) is serialized
+      // **after** the committed T3. The the remaining is to check if this
+      // "T1" is serialized **after** me and has a begin ts <= the version's
+      // bstamp (to reduce false +ves, b/c the readers list is not accurate
+      // for old versions; it's accurate for young versions tho).
+      // (might also spin for reader to really commit to reduce false +ves)
+
+      // all good if the reader is serialized before me
+      if (reader_end and reader_end < cstamp)
         continue;
-      // abort if there's any in-flight reader of this tuple or
-      // if someone has read the tuple after someone else clobbered it...
-      if (serial_get_tuple_readers(overwritten_tuple, true)) {
-        return rc_t{RC_ABORT_SSI};
+      // So now the reader is destined to be serialized after me, have to check.
+      if (overwritten_tuple->is_old(xc)) {
+        uint64_t tuple_bs = volatile_read(overwritten_tuple->bstamp);
+        if (reader_begin > tuple_bs) {  // then this is not our guy
+          INVARIANT(ct3 == 1);
+          continue;
+        }
+        return rc_t{RC_ABORT_RW_CONFLICT};
       }
-      else {
+      else {    // young tuple, do usual SSI
+        // if the reader is still alive, I'm doomed (standard SSI)
+        if (reader_state == TXN_ACTIVE)
+          return rc_t{RC_ABORT_SSI};
         // find the latest reader (ie, largest xstamp of tuples I clobber)
-        // FIXME: tuple_xstamp > xc->begin, correct? ie the read should
-        // have happened after i started
         auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
         if (max_xstamp < tuple_xstamp)
           max_xstamp = tuple_xstamp;
-        if (max_xstamp >= min_read_s1 and has_committed_t3(xc)) {
+        if (ct3 and max_xstamp >= ct3)
           return rc_t{RC_ABORT_SSI};
-        }
       }
     }
   }
@@ -446,8 +485,8 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
     if (overwritten_tuple) {    // update
       ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
       volatile_write(overwritten_tuple->sstamp, LSN::make(cstamp, 0).to_log_ptr());
-      if (min_read_s1 > overwritten_tuple->s2)   // correct?
-        volatile_write(overwritten_tuple->s2, min_read_s1);
+      if (ct3 > overwritten_tuple->s2)
+        volatile_write(overwritten_tuple->s2, ct3);
     }
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -660,14 +699,14 @@ transaction<Protocol, Traits>::do_tuple_read(
   ++evt_local_search_lookups;
   ASSERT(xc);
   bool read_my_own = (tuple->clsn.asi_type() == fat_ptr::ASI_XID);
+  ASSERT(read_my_own or (not read_my_own and XID::from_ptr(volatile_read(tuple->clsn)) == xc->owner));
 
 #ifdef USE_PARALLEL_SSN
   // SSN stamps and check
   if (not read_my_own) {
-    auto v_clsn = tuple->clsn.offset();
-    int64_t age = xc->begin.offset() - v_clsn;
     auto tuple_sstamp = volatile_read(tuple->sstamp);
-    if (age < OLD_VERSION_THRESHOLD) {
+    if (not tuple->is_old(xc)) {
+      auto v_clsn = tuple->clsn.offset();
       // \eta - largest predecessor. So if I read this tuple, I should commit
       // after the tuple's creator (trivial, as this is committed version, so
       // this tuple's clsn can only be a predecessor of me): so just update
@@ -731,9 +770,19 @@ transaction<Protocol, Traits>::do_tuple_read(
         xc->ct3 = tuple_s1.offset();
     }
 
-    // survived, register as a reader and add to read set
-    if (serial_register_reader_tx(tuple, xid))
+    if (not tuple->is_old(xc))
       read_set.emplace_back(tuple);
+    else {
+      uint64_t bs = 0;
+      do {
+        bs = volatile_read(tuple->bstamp);
+      }
+      while (tuple->bstamp < xc->begin.offset() and
+             not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
+    }
+
+    // survived, register as a reader
+    serial_register_reader_tx(tuple, xid);
   }
 #endif
 
