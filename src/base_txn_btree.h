@@ -321,7 +321,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     ASSERT(prev->sstamp == NULL_PTR);
     // the read-opt makes the readers list inaccurate, so we only do
     // the check here if read-opt is not enabled
-    if (has_read_opt() == INT64_MAX) {
+    if (not has_read_opt()) {
       if (t.xc->ct3 and serial_get_tuple_readers(prev, true)) {
         // unlink the version here (note abort_impl won't be able to catch
         // it because it's not yet in the write set), same as in SSN impl.
