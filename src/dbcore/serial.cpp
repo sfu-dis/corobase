@@ -112,9 +112,10 @@ serial_register_reader_tx(dbtuple *t, XID xid)
     rl_bitmap_t old_bitmap = volatile_read(t->rl_bitmap);
     if (old_bitmap & tls_bitmap_entry)
         return false;
-    
+#if CHECK_INVARIANTS
     int xid_pos = __builtin_ctz(tls_bitmap_entry);
     ASSERT(xid_pos >= 0 and xid_pos < readers_list::XIDS_PER_READER_KEY);
+#endif
     __sync_fetch_and_or(&t->rl_bitmap, tls_bitmap_entry);
     ASSERT(t->rl_bitmap & tls_bitmap_entry);
     return true;

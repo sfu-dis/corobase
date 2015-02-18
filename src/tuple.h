@@ -121,6 +121,11 @@ public:
     READ_RECORD,
   };
 
+#if defined(USE_PARALLEL_SSN)
+  int64_t age(xid_context *visitor);
+  bool is_old(xid_context *visitor);
+#endif
+
   inline void
   prefetch() const
   {

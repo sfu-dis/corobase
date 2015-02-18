@@ -212,30 +212,6 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     if (not overwritten_tuple) // insert
       continue;
 
-    int64_t age = 0;
-    // note fetch_overwriter/tuple->next() might return a tuple with clsn being an XID
-    // (of a precommitted but still in post-commit transaction).
-  try_get_age:
-    fat_ptr overwritten_tuple_clsn = volatile_read(overwritten_tuple->clsn);
-    if (overwritten_tuple_clsn.asi_type() == fat_ptr::ASI_XID) {
-      // then that tx must have pre-committed, ie it has a valid xc->end
-      // and need to go to the tx's context to find out its cstamp to
-      // calculate age
-      XID overwritten_xid = XID::from_ptr(overwritten_tuple_clsn);
-      xid_context *overwritten_xc = xid_get_context(overwritten_xid);
-      if (not overwritten_xc)
-        goto try_get_age;
-      auto overwritten_end = volatile_read(overwritten_xc->end).offset();
-      ASSERT(overwritten_end);
-      XID overwritten_owner = volatile_read(overwritten_xc->owner);
-      if (overwritten_owner != overwritten_xid)
-        goto try_get_age;
-      age = xc->begin.offset() - overwritten_end;
-    }
-    else {
-      ASSERT(overwritten_tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
-      age = xc->begin.offset() - overwritten_tuple->clsn.offset();
-    }
     ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
 
     // need access stamp , i.e., who read this version that I'm trying to overwrite?
@@ -257,7 +233,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
       auto reader_begin = volatile_read(reader_xc->begin).offset();
       if (reader_owner != rxid)
           goto get_reader;
-      if (age < OLD_VERSION_THRESHOLD) {
+      if (not overwritten_tuple->is_old(xc)) {
         if (reader_end and reader_end < cstamp and wait_for_commit_result(reader_xc)) {
           if (xc->pstamp < reader_end)
             xc->pstamp = reader_end;
@@ -268,7 +244,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
         // I (as the writer) need to backoff if the reader has the
         // possibility of having read the version, and it is or will
         // be serialized after me.
-        if (reader_begin < tuple_bs and reader_end >= cstamp) {
+        if (reader_end >= cstamp and reader_begin <= tuple_bs) {
           return rc_t{RC_ABORT_RW_CONFLICT};
         }
         xc->pstamp = cstamp - 1;
