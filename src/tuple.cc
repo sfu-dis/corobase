@@ -16,3 +16,42 @@ dbtuple::~dbtuple()
   VERBOSE(cerr << "dbtuple: " << hexify(intptr_t(this)) << " is being deleted" << endl);
 }
 
+#if defined(USE_PARALLEL_SSN)
+/* return the tuple's age based on a safe_lsn provided by the calling tx.
+ * safe_lsn usually = the calling tx's begin offset.
+ *
+ * and we need to check the type of clsn because a "committed" tx might
+ * change the clsn to ASI_LOG type after changing state.
+ */
+int64_t
+dbtuple::age(xid_context *visitor)
+{
+  uint64_t end = 0;
+  XID owner = volatile_read(visitor->owner);
+
+retry:
+  fat_ptr cstamp = volatile_read(clsn);
+
+  if (cstamp.asi_type() == fat_ptr::ASI_XID) {
+    XID xid = XID::from_ptr(cstamp);
+    if (xid == owner)   // my own update
+      return 0;
+    xid_context *xc = xid_get_context(xid);
+    end = volatile_read(xc->end).offset();
+    if (not xc or xc->owner != xid)
+      goto retry;
+  }
+  else {
+    end = cstamp.offset();
+  }
+
+  // the caller must alive...
+  return volatile_read(visitor->begin).offset() - end;
+}
+
+bool
+dbtuple::is_old(xid_context *xc)
+{
+  return age(xc) >= OLD_VERSION_THRESHOLD;
+}
+#endif
