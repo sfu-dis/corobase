@@ -6,12 +6,12 @@ struct rc_t {
 
 // 8 bits for return code:
 // bit  meaning
-//  7   fatal error, db should stop
+//  7   there's phantom, tx should abort
 //  6   abort due to rw conflict with the read optimization
-//  5   SSI determines tx should abort
+//  5   SSN/SSI determines tx should abort
 //  4   should abort due to SI conflict (first writer wins)
-//  3   SSN determines tx should abort
-//  2   tx should abort, don't care reason
+//  3   tx should abort due to internal error (eg got an invalid cstamp)
+//  2   abort marker - must be used in conjunction with one of the detailed reasons
 //  1   false (e.g., read a deleted tuple)
 //  0   true (success)
 //
@@ -22,11 +22,11 @@ struct rc_t {
 #define RC_TRUE                 0x1
 #define RC_FALSE                0x2
 #define RC_ABORT                0x4
-#define RC_ABORT_SSN_EXCLUSION  (RC_ABORT | 0x8)
+#define RC_ABORT_INTERNAL       (RC_ABORT | 0x8)
 #define RC_ABORT_SI_CONFLICT    (RC_ABORT | 0x10)
-#define RC_ABORT_SSI            (RC_ABORT | 0x20)
+#define RC_ABORT_SERIAL         (RC_ABORT | 0x20)
 #define RC_ABORT_RW_CONFLICT    (RC_ABORT | 0x40)
-#define RC_FATAL                0x80
+#define RC_ABORT_PHANTOM        (RC_ABORT | 0x80)
 
 inline bool rc_is_abort(rc_t rc)
 {
