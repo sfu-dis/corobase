@@ -1006,7 +1006,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame1(const TCustomerPo
 			asset += v_hs->hs_qty * v_lt->lt_price;
 		}
 
-		// TODO.  aggregation( if <CA_ID,CA_BAL> is not unique ) and sorting.
+		// TODO.  sorting
 
 		// Since we are doing left outer join, non-join rows just emit 0 asset here.
 		pOut->acct_id[pOut->acct_len] = k_ca->ca_id;
@@ -3300,8 +3300,29 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
         static __thread table_scanner hs_scanner(&arena);
         hs_scanner.output.clear();
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-	}
 
+		auto asset = 0;
+		for( auto& r_hs : hs_scanner.output )
+		{
+			holding_summary::key k_hs_temp;
+			holding_summary::value v_hs_temp;
+			const holding_summary::key* k_hs = Decode( *r_hs.first, k_hs_temp );
+			const holding_summary::value* v_hs = Decode(*r_hs.second, v_hs_temp );
+
+			// LastTrade probe & equi-join
+			const last_trade::key k_lt(k_hs->hs_s_symb);
+			last_trade::value v_lt_temp;
+			try_catch(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
+			const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+
+			asset += v_hs->hs_qty * v_lt->lt_price;
+		}
+		assets::key k_a;
+		assets::value v_a;
+		k_a.a_ca_id = k_ca->ca_id;
+		v_a.asset = asset;
+		try_catch(tbl_assets(1)->put(txn, Encode(str(sizeof(k_a)), k_a), Encode(str(sizeof(v_a)), v_a)));
+	}
 
 	// nothing to do actually. just bothering writers. 
 	try_catch(db->commit_txn(txn));
