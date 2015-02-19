@@ -1,7 +1,6 @@
 time=40
 
 for bench in tpce5 tpce10 tpce20 tpce40 tpce_org tpcc_org tpcc_contention tpcc++ 
-#for bench in tpcc++ 
 do
 for i in 1 6 12 18 24
 do
