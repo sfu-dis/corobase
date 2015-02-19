@@ -699,7 +699,7 @@ transaction<Protocol, Traits>::do_tuple_read(
   ++evt_local_search_lookups;
   ASSERT(xc);
   bool read_my_own = (tuple->clsn.asi_type() == fat_ptr::ASI_XID);
-  ASSERT(read_my_own or (not read_my_own and XID::from_ptr(volatile_read(tuple->clsn)) == xc->owner));
+  ASSERT(not read_my_own or (read_my_own and XID::from_ptr(volatile_read(tuple->clsn)) == xc->owner));
 
 #ifdef USE_PARALLEL_SSN
   // SSN stamps and check
