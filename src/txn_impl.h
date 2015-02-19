@@ -145,7 +145,7 @@ transaction<Protocol, Traits>::commit()
 {
 #ifdef PHANTOM_PROT_NODE_SET
   if (not check_phantom())
-    return rc_t{RC_ABORT};
+    return rc_t{RC_ABORT_PHANTOM};
 #endif
 #ifdef USE_PARALLEL_SSN
   return parallel_ssn_commit();
@@ -183,7 +183,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   LSN clsn = xc->end;
   auto cstamp = clsn.offset();
   if (xc->end == INVALID_LSN)
-    return rc_t{RC_ABORT};
+    return rc_t{RC_ABORT_INTERNAL};
 
   // note that sstamp comes from reads, but the read optimization might
   // ignore looking at tuple's sstamp at all, so if tx sstamp is still
@@ -296,7 +296,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   }
 
   if (not ssn_check_exclusion(xc))
-    return rc_t{RC_ABORT_SSN_EXCLUSION};
+    return rc_t{RC_ABORT_SERIAL};
 
   // ok, can really commit if we reach here
   log->commit(NULL);
@@ -363,7 +363,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   // get clsn, abort if failed
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
-    return rc_t{RC_ABORT};
+    return rc_t{RC_ABORT_INTERNAL};
   auto cstamp = xc->end.offset();
 
   // get the smallest s1 in each tuple we have read (ie, the smallest cstamp
@@ -461,13 +461,13 @@ examine_writes:
       else {    // young tuple, do usual SSI
         // if the reader is still alive, I'm doomed (standard SSI)
         if (reader_state == TXN_ACTIVE)
-          return rc_t{RC_ABORT_SSI};
+          return rc_t{RC_ABORT_SERIAL};
         // find the latest reader (ie, largest xstamp of tuples I clobber)
         auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
         if (max_xstamp < tuple_xstamp)
           max_xstamp = tuple_xstamp;
         if (ct3 and max_xstamp >= ct3)
-          return rc_t{RC_ABORT_SSI};
+          return rc_t{RC_ABORT_SERIAL;
       }
     }
   }
@@ -539,7 +539,7 @@ transaction<Protocol, Traits>::si_commit()
   // get clsn, abort if failed
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
-    return rc_t{RC_ABORT};
+    return rc_t{RC_ABORT_INTERNAL};
   log->commit(NULL);    // will populate log block
 
   // post-commit cleanup: install clsn to tuples
@@ -731,7 +731,7 @@ transaction<Protocol, Traits>::do_tuple_read(
 
 #ifdef DO_EARLY_SSN_CHECKS
       if (not ssn_check_exclusion(xc))
-        return {RC_ABORT_SSN_EXCLUSION};
+        return {RC_ABORT_SERIAL};
 #endif
     }
     else {
@@ -759,7 +759,7 @@ transaction<Protocol, Traits>::do_tuple_read(
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
       ASSERT(tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);    // sstamp will be valid too if s2 is valid
-      return rc_t{RC_ABORT_SSI};
+      return rc_t{RC_ABORT_SERIAL};
     }
 
     fat_ptr tuple_s1 = volatile_read(tuple->sstamp);
@@ -795,7 +795,7 @@ transaction<Protocol, Traits>::do_tuple_read(
     stat = tuple->do_read(value_reader, this->string_allocator(), not read_my_own);
 
     if (unlikely(stat == dbtuple::READ_FAILED))
-      return rc_t{RC_ABORT};
+      return rc_t{RC_ABORT_INTERNAL};
   }
   INVARIANT(stat == dbtuple::READ_EMPTY ||
             stat == dbtuple::READ_RECORD);
@@ -818,7 +818,7 @@ transaction<Protocol, Traits>::do_node_read(
   if (it == absent_set.end()) {
     absent_set[n].version = v;
   } else if (it->second.version != v) {
-    return rc_t{RC_ABORT};
+    return rc_t{RC_ABORT_PHANTOM};
   }
   return rc_t{RC_TRUE};
 }

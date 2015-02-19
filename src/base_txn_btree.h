@@ -268,7 +268,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   dbtuple * bv = 0;
   oid_type oid = 0;
   if (!this->underlying_btree.search(varkey(k), oid, bv, t.xc))
-    return rc_t{RC_ABORT};
+    return rc_t{RC_ABORT_INTERNAL};
 #ifdef PHANTOM_PROT_TABLE_LOCK
   // for delete
   bool instant_lock = false;
@@ -279,12 +279,12 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
       std::find(t.table_locks.begin(), t.table_locks.end(), l);
     if (it == t.table_locks.end()) {
       if (not object_vector::lock(l, TABLE_LOCK_X))
-        return rc_t{RC_ABORT};
+        return rc_t{RC_ABORT_PHANTOM};
       instant_lock = true;
     }
     else {
       if (not object_vector::upgrade_lock(l))
-        return rc_t{RC_ABORT};
+        return rc_t{RC_ABORT_PHANTOM};
     }
     ASSERT((volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_X or
            (volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX);
@@ -355,7 +355,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
       if (instant_lock)
         object_vector::unlock(l);
 #endif
-      return rc_t{RC_ABORT_SSN_EXCLUSION};
+      return rc_t{RC_ABORT_SERIAL};
     }
 #endif
 
@@ -504,7 +504,7 @@ base_txn_btree<Transaction, P>::do_search_range_call(
     if (object_vector::lock(l, TABLE_LOCK_S))
       t.table_locks.push_back(l);
     else {
-      callback.return_code = rc_t{RC_ABORT};
+      callback.return_code = rc_t{RC_ABORT_PHANTOM};
       return;
     }
   }
@@ -556,7 +556,7 @@ base_txn_btree<Transaction, P>::do_rsearch_range_call(
     if (object_vector::lock(l, TABLE_LOCK_S))
       t.table_locks.push_back(l);
     else {
-      callback.return_code = rc_t{RC_ABORT};
+      callback.return_code = rc_t{RC_ABORT_PHANTOM};
       return;
     }
   }

@@ -153,7 +153,15 @@ public:
       latency_numer_us(0),
       backoff_shifts(0), // spin between [0, 2^backoff_shifts) times before retry
       // the ntxn_* numbers are per worker
-      ntxn_commits(0), ntxn_aborts(0), ntxn_user_aborts(0), ntxn_si_aborts(0),ntxn_serial_aborts(0),ntxn_rw_aborts(0), ntxn_query_commits(0),
+      ntxn_commits(0),
+      ntxn_aborts(0),
+      ntxn_user_aborts(0),
+      ntxn_int_aborts(0),
+      ntxn_si_aborts(0),
+      ntxn_serial_aborts(0),
+      ntxn_rw_aborts(0),
+      ntxn_phantom_aborts(0),
+      ntxn_query_commits(0),
       size_delta(0)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
@@ -189,11 +197,15 @@ public:
   inline size_t get_ntxn_si_aborts() const { return ntxn_si_aborts; }
   inline size_t get_ntxn_serial_aborts() const { return ntxn_serial_aborts; }
   inline size_t get_ntxn_rw_aborts() const { return ntxn_rw_aborts; }
+  inline size_t get_ntxn_int_aborts() const { return ntxn_int_aborts; }
+  inline size_t get_ntxn_phantom_aborts() const { return ntxn_phantom_aborts; }
   inline size_t get_ntxn_query_commits() const { return ntxn_query_commits; }
   inline void inc_ntxn_user_aborts() { ++ntxn_user_aborts; }
   inline void inc_ntxn_si_aborts() { ++ntxn_si_aborts; }
   inline void inc_ntxn_serial_aborts() { ++ntxn_serial_aborts; }
   inline void inc_ntxn_rw_aborts() { ++ntxn_rw_aborts; }
+  inline void inc_ntxn_int_aborts() { ++ntxn_int_aborts; }
+  inline void inc_ntxn_phantom_aborts() { ++ntxn_phantom_aborts; }
   inline void inc_ntxn_query_commits() { ++ntxn_query_commits; }
 
   inline uint64_t get_latency_numer_us() const { return latency_numer_us; }
@@ -241,9 +253,11 @@ private:
   size_t ntxn_commits;
   size_t ntxn_aborts;
   size_t ntxn_user_aborts;
+  size_t ntxn_int_aborts;
   size_t ntxn_si_aborts;
   size_t ntxn_serial_aborts;
   size_t ntxn_rw_aborts;
+  size_t ntxn_phantom_aborts;
   size_t ntxn_query_commits;
 
 protected:
@@ -407,8 +421,17 @@ private:
   bool ignore_key;
 };
 
-#define __abort_txn \
+#define __abort_txn(r) \
 {   \
+  ASSERT(r._val != RC_ABORT and r._val & RC_ABORT); \
+  switch(r._val){\
+    case RC_ABORT_SERIAL: inc_ntxn_serial_aborts(); break;\
+    case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
+    case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
+    case RC_ABORT_INTERNAL: inc_ntxn_int_aborts(); break;\
+    case RC_ABORT_PHANTOM: inc_ntxn_phantom_aborts(); break;\
+    default: ALWAYS_ASSERT(false);\
+  }\
   db->abort_txn(txn); \
   return bench_worker::txn_result(false, 0); \
 }
@@ -421,16 +444,7 @@ private:
 { \
   rc_t r = rc; \
   if (rc_is_abort(r)) \
-	{\
-		switch(r._val){\
-			case RC_ABORT_SSN_EXCLUSION: \
-			case RC_ABORT_SSI: inc_ntxn_serial_aborts(); break;\
-			case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
-			case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
-			default: break;\
-		}\
-		__abort_txn; \
-	}\
+    __abort_txn(r); \
 }
 
 // if rc == RC_FALSE then do op
@@ -438,21 +452,17 @@ private:
 { \
   rc_t r = rc; \
   if (rc_is_abort(r)) \
-	{\
-		switch(r._val){\
-			case RC_ABORT_SSN_EXCLUSION: \
-			case RC_ABORT_SSI: inc_ntxn_serial_aborts(); break;\
-			case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
-			case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
-			default: break;\
-		}\
-    __abort_txn; \
-	}\
+    __abort_txn(r); \
   if (r._val == RC_FALSE) \
     op; \
 }
 
-#define try_catch_cond_abort(rc) try_catch_cond(rc, __abort_txn)
+#define try_catch_cond_abort(rc) \
+{ \
+  rc_t r = rc; \
+  if (rc_is_abort(r) or r._val == RC_FALSE) \
+    __abort_txn(r); \
+}
 // combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
@@ -462,16 +472,7 @@ private:
   rc_t r = oper;   \
   ALWAYS_ASSERT(r._val == RC_TRUE or rc_is_abort(r)); \
   if (rc_is_abort(r))  \
-	{\
-		switch(r._val){\
-			case RC_ABORT_SSN_EXCLUSION: \
-			case RC_ABORT_SSI: inc_ntxn_serial_aborts(); break;\
-			case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
-			case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
-			default: break;\
-		}\
-      __abort_txn;  \
-	}\
+    __abort_txn(r);  \
 }
 
 // No abort is allowed, usually for loading
