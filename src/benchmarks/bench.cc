@@ -361,12 +361,14 @@ bench_runner::run()
 #endif
   }
 
+  /*
   ALWAYS_ASSERT(n_aborts == n_user_aborts +
                             n_int_aborts +
                             n_si_aborts +
                             n_serial_aborts +
                             n_rw_aborts +
                             n_phantom_aborts);
+							*/
 
   // output for plotting script
   cout << "---------------------------------------\n";
@@ -383,14 +385,14 @@ bench_runner::run()
 	   << endl;
   cout << n_commits << " commits, "
 	   << n_query_commits << " query_commits, "
-       << n_aborts << " total_aborts.\n"
+       << n_aborts << " total_aborts, "
        << n_aborts - n_user_aborts << " system_aborts, "
-       << n_user_aborts << " user_aborts.\n"
-       << n_int_aborts << " internal aborts, "
+       << n_user_aborts << " user_aborts, "
+       << n_int_aborts << " internal_aborts, "
 	   << n_si_aborts << " si_aborts, "
 	   << n_serial_aborts << " serial_aborts, "
 	   << n_rw_aborts << " rw_aborts, "
-       << n_phantom_aborts << " phantom aborts."
+       << n_phantom_aborts << " phantom_aborts"
 	   << endl;
   cout.flush();
 
