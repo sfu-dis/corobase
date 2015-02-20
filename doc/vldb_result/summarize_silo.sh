@@ -1,5 +1,6 @@
 # $1 : raw output files' directory path
-echo "system,bench,threads,runtime,total_commits, total_sys_aborts, user_aborts, total_aborts, long_query_commits, read_aborts, write_aborts, absent_aborts, longquery_tried"
+echo "system,bench,threads,runtime,total_commits,total_query_commits,total_aborts,total_sys_aborts,user_aborts,read_aborts,write_aborts,absent_aborts,longquery_tried"
+
 for file in `ls $1`
 do
 	system=`echo $file | awk -F"," '{print $1}' | awk -F"-" '{print $1}'`
