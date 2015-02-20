@@ -9,7 +9,7 @@ from pylab import *
 # Load the results
 ermia_si = MyData("../vldb_result/ermia-si.csv", header_str="system", delimiter=',');
 ermia_ssi = MyData("../vldb_result/ermia-ssi.csv", header_str="system", delimiter=',');
-silo = MyData("../vldb_result/silo-native.csv", header_str="system", delimiter=',');
+silo = MyData("../vldb_result/silo.csv", header_str="system", delimiter=',');
 
 rcParams['figure.figsize'] = 6.9, 2.4
 matplotlib.rcParams.update({'font.size': 9})
