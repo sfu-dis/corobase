@@ -3320,8 +3320,9 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 		assets::key k_a;
 		assets::value v_a;
 		k_a.a_ca_id = k_ca->ca_id;
+		k_a.dts = CDateTime().GetDate();
 		v_a.asset = asset;
-		try_catch(tbl_assets(1)->put(txn, Encode(str(sizeof(k_a)), k_a), Encode(str(sizeof(v_a)), v_a)));
+		try_catch(tbl_assets(1)->insert(txn, Encode(str(sizeof(k_a)), k_a), Encode(str(sizeof(v_a)), v_a)));
 	}
 
 	// nothing to do actually. just bothering writers. 
