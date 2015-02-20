@@ -467,7 +467,7 @@ examine_writes:
         if (max_xstamp < tuple_xstamp)
           max_xstamp = tuple_xstamp;
         if (ct3 and max_xstamp >= ct3)
-          return rc_t{RC_ABORT_SERIAL;
+          return rc_t{RC_ABORT_SERIAL};
       }
     }
   }

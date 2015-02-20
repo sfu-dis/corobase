@@ -330,7 +330,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
         if (instant_lock)
           object_vector::unlock(l);
 #endif
-        return rc_t{RC_ABORT_SSI};
+        return rc_t{RC_ABORT_SERIAL};
       }
     }
 #endif
