@@ -81,12 +81,13 @@ DO_STRUCT(customers, CUSTOMERS_KEY_FIELDS, CUSTOMERS_VALUE_FIELDS)				// XXX. MU
     x(bool,    dummy)
 DO_STRUCT(c_tax_id_index, C_TAX_ID_INDEX_KEY_FIELDS, C_TAX_ID_INDEX_VALUE_FIELDS)
 
-#define ASSETS_KEY_FIELDS(x,y)\
-    x(int64_t,   	 a_ca_id)\
-    y(uint64_t,    dts)
-#define ASSETS_VALUE_FIELDS(x,y)\
-    x(double,   	 asset)
-DO_STRUCT(assets, ASSETS_KEY_FIELDS, ASSETS_VALUE_FIELDS)
+#define ASSETS_HISTORY_KEY_FIELDS(x,y)\
+    x(int64_t,   	 ah_id)
+#define ASSETS_HISTORY_VALUE_FIELDS(x,y)\
+    x(int64_t,   	 start_ca_id)\
+    y(int64_t,   	 end_ca_id)\
+    y(double,   	 total_assets)
+DO_STRUCT(assets_history, ASSETS_HISTORY_KEY_FIELDS, ASSETS_HISTORY_VALUE_FIELDS)
 
 #define CUSTOMER_ACCOUNT_KEY_FIELDS(x,y)\
     x(int64_t,   	 ca_id)
@@ -505,7 +506,7 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 	x(address)\
 	x(customers)\
 	x(c_tax_id_index)\
-	x(assets)\
+	x(assets_history)\
 	x(customer_account)\
 	x(ca_id_index)\
 	x(account_permission)\

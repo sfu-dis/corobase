@@ -24,6 +24,7 @@ using namespace TPCE;
 
 // TPC-E workload mix
 int64_t lastTradeId;
+int64_t last_list = 0;
 int64_t min_ca_id = numeric_limits<int64_t>::max();
 int64_t max_ca_id = 0;
 static double g_txn_workload_mix[] = {4.9,13,1,18,14,8,10.1,10,19,2,0}; 
@@ -93,6 +94,14 @@ class table_scanner: public abstract_ordered_index::scan_callback {
 		std::vector<std::pair<varstr *, const varstr *>> output;
 		str_arena* _arena;
 };
+
+int64_t GetLastListID()
+{
+	//TODO. decentralize,  thread ID + local counter and TLS
+	auto ret = __sync_add_and_fetch(&last_list,1);
+	ALWAYS_ASSERT( ret );
+	return ret;
+}
 
 int64_t GetLastTradeID()
 {
@@ -676,16 +685,13 @@ class tpce_worker :
 		}
 		bench_worker::txn_result data_maintenance()
 		{
-            //scoped_str_arena s_arena(arena);
-            //TDataMaintenanceTxnInput* input = m_CDM->createDMInput();
-            //TDataMaintenanceTxnOutput output;
-            //CDataMaintenance* harness= new CDataMaintenance(this);
+			scoped_str_arena s_arena(arena);
+			TDataMaintenanceTxnInput* input = m_CDM->createDMInput();
+			TDataMaintenanceTxnOutput output;
+			CDataMaintenance* harness= new CDataMaintenance(this);
 
-            // return harness->DoTxn( (PDataMaintenanceTxnInput)&input, (PDataMaintenanceTxnOutput)&output);
-            // FIXME
-            ALWAYS_ASSERT(0);
-            return txn_result(true, 0);
-        }
+			//	return harness->DoTxn( (PDataMaintenanceTxnInput)&input, (PDataMaintenanceTxnOutput)&output);
+		}
 		bench_worker::txn_result DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn);
 
 		// TradeCleanup
@@ -696,14 +702,12 @@ class tpce_worker :
 		}
 		bench_worker::txn_result trade_cleanup()
 		{
-            //scoped_str_arena s_arena(arena);
-            //TTradeCleanupTxnInput*  input = m_CDM->createTCInput();
-            //TTradeCleanupTxnOutput output;
-            //CTradeCleanup* harness= new CTradeCleanup(this);
+			scoped_str_arena s_arena(arena);
+			TTradeCleanupTxnInput*  input = m_CDM->createTCInput();
+			TTradeCleanupTxnOutput output;
+			CTradeCleanup* harness= new CTradeCleanup(this);
 
-            // return harness->DoTxn( (PTradeCleanupTxnInput)&input, (PTradeCleanupTxnOutput)&output);
-            ALWAYS_ASSERT(0);
-            return txn_result(true, 0);
+			//	return harness->DoTxn( (PTradeCleanupTxnInput)&input, (PTradeCleanupTxnOutput)&output);
 		}
 		bench_worker::txn_result DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn);
 
@@ -942,7 +946,7 @@ bench_worker::txn_result tpce_worker::DoCustomerPositionFrame1(const TCustomerPo
 	// probe Customers
 	const customers::key k_c(pOut->cust_id);
     customers::value v_c_temp;
-	try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
+	try_verify_strict(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
     const customers::value *v_c = Decode(obj_v,v_c_temp);
 
     memcpy(pOut->c_st_id, v_c->c_st_id.data(), v_c->c_st_id.size() );
@@ -3290,6 +3294,7 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 	try_catch(tbl_customer_account(1)->scan(txn, Encode(obj_key0=str(sizeof(k_ca_0)), k_ca_0), &Encode(obj_key1=str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
 	ALWAYS_ASSERT( ca_scanner.output.size() );
 
+	auto asset = 0;
 	for( auto& r_ca : ca_scanner.output )
 	{
 		customer_account::key k_ca_temp;
@@ -3301,7 +3306,6 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
         hs_scanner.output.clear();
 		try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
 
-		auto asset = 0;
 		for( auto& r_hs : hs_scanner.output )
 		{
 			holding_summary::key k_hs_temp;
@@ -3317,13 +3321,15 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 
 			asset += v_hs->hs_qty * v_lt->lt_price;
 		}
-		assets::key k_a;
-		assets::value v_a;
-		k_a.a_ca_id = k_ca->ca_id;
-		k_a.dts = CDateTime().GetDate();
-		v_a.asset = asset;
-		try_catch(tbl_assets(1)->insert(txn, Encode(str(sizeof(k_a)), k_a), Encode(str(sizeof(v_a)), v_a)));
 	}
+
+	assets_history::key k_ah;
+	assets_history::value v_ah;
+	k_ah.ah_id = GetLastListID();
+	v_ah.start_ca_id = start_pos;
+	v_ah.end_ca_id = start_pos;
+	v_ah.total_assets = asset;
+	try_catch(tbl_assets_history(1)->insert(txn, Encode(str(sizeof(k_ah)), k_ah), Encode(str(sizeof(v_ah)), v_ah)));
 
 	// nothing to do actually. just bothering writers. 
 	try_catch(db->commit_txn(txn));
@@ -3331,19 +3337,8 @@ bench_worker::txn_result tpce_worker::DoLongQueryFrame1()
 	return bench_worker::txn_result(true, 0);
 }
 
-bench_worker::txn_result tpce_worker::DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn)
-{
-    // FIXME
-    ALWAYS_ASSERT(0);
-    return txn_result(true, 0);
-}
-
-bench_worker::txn_result tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn)
-{
-    // FIXME
-    ALWAYS_ASSERT(0);
-    return txn_result(true, 0);
-}
+bench_worker::txn_result tpce_worker::DoDataMaintenanceFrame1(const TDataMaintenanceFrame1Input *pIn){}
+bench_worker::txn_result tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn){}
 
 class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
 	public:
