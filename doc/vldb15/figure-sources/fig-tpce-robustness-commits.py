@@ -16,7 +16,7 @@ rcParams['figure.figsize'] = 6.9, 2.4
 matplotlib.rcParams.update({'font.size': 9})
 
 def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
-    xvalues=['tpce10', 'tpce20', 'tpce40']
+    xvalues=['tpce5', 'tpce10', 'tpce20']
     plots=[]
     plotsLabel=['ERMIA-SI','ERMIA-SSI','SILO']
 
@@ -42,7 +42,7 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
     plots.append( ax.bar( ind+width+width+0.2, Ys, width, color='b'))
 
     ax.set_xticks( ind + 0.2 + (width*1.5) )
-    ax.set_xticklabels(('10%', '20%', '40%'), minor=False)
+    ax.set_xticklabels(('5%', '10%', '20%'), minor=False)
 
     # If shared axis then get_ylim not avail
     ax.set_ylim(0, ymax)
