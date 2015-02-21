@@ -1,0 +1,305 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2ad5137fe000, 0x2adf141fe000)
+cpu0 owns [0x2ad513800000, 0x2ad6be400000)
+cpu1 owns [0x2ad6be400000, 0x2ad869000000)
+cpu2 owns [0x2ad869000000, 0x2ada13c00000)
+cpu3 owns [0x2ada13c00000, 0x2adbbe800000)
+cpu4 owns [0x2adbbe800000, 0x2add69400000)
+cpu5 owns [0x2add69400000, 0x2adf14000000)
+[logging subsystem]
+  assignments: [[0, 1, 2, 3, 4, 5]]
+  call fsync : 1
+  compression: 0
+  fake_writes: 0
+Database Benchmark:
+  pid: 73552
+settings:
+  par-loading : 0
+  pin-cpus    : 1
+  slow-exit   : 0
+  retry-txns  : 0
+  backoff-txns: 0
+  bench       : tpcc
+  scale       : 6
+  num-cpus    : 48
+  num-threads : 6
+  db-type     : ndb-proto2
+  basedir     : /home/knkim/silo/silo-src
+  txn-flags   : 0
+  runtime     : 40
+  var-encode  : yes
+  allocator   : tcmalloc
+  numa-memory : 42958061568
+  logfiles : [/tmpfs/knkim/silo-log/log]
+  assignments : []
+  disable-gc : 0
+  disable-snapshots : 1
+  stats-server-sockfile: 
+system properties:
+  btree_internal_node_size: 264
+  btree_leaf_node_size    : 312
+  tuple_prefetch          : no
+  btree_node_prefetch     : yes
+tpcc settings:
+  random home warehouse (%)    : 100
+  cross_partition_transactions : 1
+  read_only_snapshots          : 1
+  partition_locks              : 0
+  separate_tree_per_partition  : 0
+  new_order_remote_item_pct    : 1
+  new_order_fast_id_gen        : 0
+  uniform_item_dist            : 0
+  order_status_scan_hack       : 0
+  microbench_static            : 0
+  microbench_random            : 0
+  workload_mix                 : [41, 43, 4, 4, 4, 4, 0, 0, 0]
+PinToWarehouseId(): coreid=6 pinned to whse=1 (partid=0)
+cpu0 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=4 pinned to whse=1 (partid=0)
+num batches: 30
+PinToWarehouseId(): coreid=5 pinned to whse=1 (partid=0)
+[INFO] finished loading warehouse
+[INFO]   * average warehouse record length: 97 bytes
+PinToWarehouseId(): coreid=3 pinned to whse=1 (partid=0)
+[INFO] finished loading item
+[INFO]   * average item record length: 84.1739 bytes
+cpu0 finished faulting region in 4809.4 ms
+PinToWarehouseId(): coreid=4 pinned to whse=2 (partid=1)
+cpu1 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=5 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=3 pinned to whse=2 (partid=1)
+cpu1 finished faulting region in 4809.81 ms
+PinToWarehouseId(): coreid=4 pinned to whse=3 (partid=2)
+cpu2 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=5 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=3 pinned to whse=3 (partid=2)
+cpu2 finished faulting region in 4903.32 ms
+PinToWarehouseId(): coreid=4 pinned to whse=4 (partid=3)
+cpu3 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=5 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=3 pinned to whse=4 (partid=3)
+cpu3 finished faulting region in 4788.41 ms
+PinToWarehouseId(): coreid=4 pinned to whse=5 (partid=4)
+cpu4 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=5 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=3 pinned to whse=5 (partid=4)
+cpu4 finished faulting region in 4764.27 ms
+PinToWarehouseId(): coreid=4 pinned to whse=6 (partid=5)
+cpu5 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=5 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=3 pinned to whse=6 (partid=5)
+cpu5 finished faulting region in 5147.5 ms
+[INFO] finished loading district
+[INFO]   * average district record length: 99 bytes
+[INFO] finished loading order
+[INFO]   * average order_line record length: 11.2511 bytes
+[INFO]   * average oorder record length: 7.88727 bytes
+[INFO]   * average new_order record length: 12 bytes
+[INFO] finished loading customer
+[INFO]   * average customer record length: 656.954 bytes 
+[INFO] finished loading stock
+[INFO]   * average stock record length: 8 bytes
+timed region dataloading took 31308 ms
+DB size: 42728 MB
+wait_an_epoch(): consistent reads happening in e-1: 0
+waiting for system_sync_epoch_=48 to be < e=50
+[188802, 188802, 2.05574e+07] txns persisted in loading phase
+table customer_0 size 180000
+table customer_name_idx_0 size 180000
+table district_0 size 60
+table history_0 size 180000
+table item_0 size 100000
+table new_order_0 size 54000
+table oorder_0 size 180000
+table oorder_c_id_idx_0 size 180000
+table order_line_0 size 1799644
+table stock_0 size 600000
+table stock_data_0 size 600000
+table warehouse_0 size 6
+starting benchmark...
+waiting for system_sync_epoch_=1063 to be < e=1068
+--- table statistics ---
+table customer_0 size 180000 (+0 records)
+table customer_name_idx_0 size 180000 (+0 records)
+table district_0 size 60 (+0 records)
+table history_0 size 463606 (+283606 records)
+table item_0 size 100000 (+0 records)
+table new_order_0 size 176851 (+122851 records)
+table oorder_0 size 442007 (+262007 records)
+table oorder_c_id_idx_0 size 442007 (+262007 records)
+table order_line_0 size 4410293 (+2610649 records)
+table stock_0 size 600000 (+0 records)
+table stock_data_0 size 600000 (+0 records)
+table warehouse_0 size 6 (+0 records)
+--- benchmark statistics ---
+runtime: 40.0588 sec
+memory delta: 786.219 MB
+memory delta rate: 19.6266 MB/sec
+logical memory delta: 37.7568 MB
+logical memory delta rate: 0.942536 MB/sec
+agg_nosync_throughput: 15946.9 ops/sec
+avg_nosync_per_core_throughput: 2657.82 ops/sec/core
+agg_throughput: 15928.9 ops/sec
+avg_per_core_throughput: 2654.82 ops/sec/core
+agg_persist_throughput: 15928.9 ops/sec
+avg_per_core_persist_throughput: 2654.82 ops/sec/core
+avg_latency: 0.202472 ms
+avg_persist_latency: 128.575 ms
+agg_abort_rate: 819.097 aborts/sec
+avg_per_core_abort_rate: 136.516 aborts/sec/core
+txn breakdown: [[CreditCheck, 26957], [Delivery, 26868], [NewOrder, 275042], [OrderStatus, 26817], [Payment, 288376], [StockLevel, 26846]]
+--- system counters (for benchmark) ---
+ABORT_REASON_FUTURE_TID_READ: count=0
+ABORT_REASON_INSERT_NODE_INTERFERENCE: count=0
+ABORT_REASON_NODE_SCAN_READ_VERSION_CHANGED: count=9232
+ABORT_REASON_NODE_SCAN_WRITE_VERSION_CHANGED: count=0
+ABORT_REASON_NONE: count=0
+ABORT_REASON_READ_ABSENCE_INTEREFERENCE: count=0
+ABORT_REASON_READ_NODE_INTEREFERENCE: count=23111
+ABORT_REASON_UNSTABLE_READ: count=0
+ABORT_REASON_USER: count=32812
+ABORT_REASON_WRITE_NODE_INTERFERENCE: count=415
+allocator_arena0_allocation: count=0
+allocator_arena0_deallocation: count=0
+allocator_arena10_allocation: count=0
+allocator_arena10_deallocation: count=0
+allocator_arena11_allocation: count=0
+allocator_arena11_deallocation: count=0
+allocator_arena12_allocation: count=0
+allocator_arena12_deallocation: count=0
+allocator_arena13_allocation: count=0
+allocator_arena13_deallocation: count=0
+allocator_arena14_allocation: count=0
+allocator_arena14_deallocation: count=0
+allocator_arena15_allocation: count=3698
+allocator_arena15_deallocation: count=0
+allocator_arena16_allocation: count=0
+allocator_arena16_deallocation: count=0
+allocator_arena17_allocation: count=0
+allocator_arena17_deallocation: count=0
+allocator_arena18_allocation: count=0
+allocator_arena18_deallocation: count=0
+allocator_arena19_allocation: count=312277
+allocator_arena19_deallocation: count=14024
+allocator_arena1_allocation: count=552473
+allocator_arena1_deallocation: count=27167
+allocator_arena20_allocation: count=0
+allocator_arena20_deallocation: count=0
+allocator_arena21_allocation: count=0
+allocator_arena21_deallocation: count=0
+allocator_arena22_allocation: count=0
+allocator_arena22_deallocation: count=0
+allocator_arena23_allocation: count=0
+allocator_arena23_deallocation: count=0
+allocator_arena24_allocation: count=0
+allocator_arena24_deallocation: count=0
+allocator_arena25_allocation: count=0
+allocator_arena25_deallocation: count=0
+allocator_arena26_allocation: count=0
+allocator_arena26_deallocation: count=0
+allocator_arena27_allocation: count=9821
+allocator_arena27_deallocation: count=1
+allocator_arena28_allocation: count=0
+allocator_arena28_deallocation: count=0
+allocator_arena29_allocation: count=0
+allocator_arena29_deallocation: count=0
+allocator_arena2_allocation: count=3023619
+allocator_arena2_deallocation: count=289400
+allocator_arena30_allocation: count=0
+allocator_arena30_deallocation: count=0
+allocator_arena31_allocation: count=0
+allocator_arena31_deallocation: count=0
+allocator_arena3_allocation: count=288376
+allocator_arena3_deallocation: count=4742
+allocator_arena4_allocation: count=0
+allocator_arena4_deallocation: count=0
+allocator_arena5_allocation: count=0
+allocator_arena5_deallocation: count=0
+allocator_arena6_allocation: count=0
+allocator_arena6_deallocation: count=0
+allocator_arena7_allocation: count=0
+allocator_arena7_deallocation: count=0
+allocator_arena8_allocation: count=0
+allocator_arena8_deallocation: count=0
+allocator_arena9_allocation: count=0
+allocator_arena9_deallocation: count=0
+allocator_large_allocation: count=0
+allocator_total_region_usage_bytes: count=1897922560
+avg_abort_spins: count=0, max=0, avg=-nan
+avg_cust_name_idx_scan_size: count=189210, max=78, avg=3.40151
+avg_dbtuple_chain_len: count=0, max=0, avg=-nan
+avg_dbtuple_lock_acquire_spins: count=5909290, max=566001, avg=0.153004
+avg_dbtuple_read_retries: count=612098888, max=0, avg=0
+avg_dbtuple_stable_version_spins: count=612098772, max=433277, avg=0.0039925
+avg_gc_reaper_queue_len: count=0, max=0, avg=-nan
+avg_log_buffer_compress_time_us: count=0, max=0, avg=-nan
+avg_log_buffer_iov_len: count=5984, max=497548, avg=98019.8
+avg_log_entry_ntxns_per_entry: count=5984, max=359, avg=97.5652
+avg_log_entry_size: count=583830, max=11188, avg=1004.5
+avg_logger_bytes_per_sec: count=1138, max=1241343465, avg=9.15974e+08
+avg_logger_bytes_per_writev: count=1138, max=2080366, avg=515422
+avg_max_unordered_map_chain_length: count=0, max=0, avg=-nan
+avg_proto_gc_queue_len: count=240, max=2306, avg=584.408
+avg_rcu_delete_queue_len: count=0, max=0, avg=-nan
+avg_rcu_local_delete_queue_len: count=240, max=4255, avg=1341.94
+avg_rcu_sync_try_release: count=30, max=12181, avg=10778.4
+avg_record_spill_len: count=0, max=0, avg=-nan
+avg_time_inbetween_allocator_releases_usec: count=24, max=18071569, avg=7.90386e+06
+avg_time_inbetween_rcu_epochs_usec: count=240, max=1019722, avg=987766
+avg_time_inbetween_ro_epochs_usec: count=240, max=1017968, avg=983484
+dbtuple_bytes_allocated: count=181266560
+dbtuple_bytes_freed: count=15061680
+dbtuple_creates: count=3864406
+dbtuple_inplace_buf_insufficient: count=1107
+dbtuple_inplace_buf_insufficient_on_spill: count=0
+dbtuple_latest_replacement: count=1107
+dbtuple_logical_deletes: count=139842
+dbtuple_no_space_for_delkey: count=0
+dbtuple_physical_deletes: count=321247
+dbtuple_spills: count=0
+dbtuple_write_insert_failed: count=12166
+dbtuple_write_search_failed: count=0
+local_chain_cleanups: count=0
+local_search_lookups: count=612098888
+local_search_write_set_hits: count=0
+log_buffer_bytes_after_compress: count=0
+log_buffer_bytes_before_compress: count=0
+log_buffer_epoch_boundary: count=5978
+log_buffer_out_of_space: count=0
+logger_max_lag_wait: count=0
+logger_writev_limit_met: count=0
+proto_gc_delete_requeue: count=0
+rcu::delete_entry_px_group_creates: count=384
+rcu_deletes: count=322066
+rcu_frees: count=324212
+rcu_incomplete_local_reaps: count=0
+rcu_local_reaps: count=0
+rcu_loop_reaps: count=0
+read_logical_deleted_node_scan: count=0
+read_logical_deleted_node_search: count=1384505
+stock_level_loop_join_lookups: count=26846, max=255, avg=195.988
+tpcc_cross_partition_credit_check_txns: count=4003
+tpcc_cross_partition_new_order_txns: count=26033
+tpcc_cross_partition_payment_txns: count=43125
+transaction_proto2_static::delete_entry_px_group_creates: count=384
+try_delete_unlinks: count=0
+worker_thread_wait_log_buffer: count=0
+--- perf counters (if enabled, for benchmark) ---
+--- allocator stats ---
+[allocator] ncpus=6
+[allocator] cpu=0 fully_faulted?=1 remaining=6754926592 bytes
+[allocator] cpu=1 fully_faulted?=1 remaining=6746537984 bytes
+[allocator] cpu=2 fully_faulted?=1 remaining=6759120896 bytes
+[allocator] cpu=3 fully_faulted?=1 remaining=6761218048 bytes
+[allocator] cpu=4 fully_faulted?=1 remaining=6759120896 bytes
+[allocator] cpu=5 fully_faulted?=1 remaining=6744440832 bytes
+---------------------------------------
+15928.9 commits/s, 819.097 system_aborts/s, 0 user_aborts/s, 819.097 total_aborts/s, 
+638094 commits, 32812 system_aborts, 0 user_aborts, 32812 total_aborts, 0 query_commits
