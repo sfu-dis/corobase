@@ -68,8 +68,8 @@ def drawLinesPayload(ax, bench, ycol, ymax=10000, showLegend=True):
 
 f,(ax_1,ax_2) = plt.subplots(1,2,sharey=False)
 f.subplots_adjust(left=0.12, bottom=0.22, right=0.98, top=0.87, wspace=0.4)
-drawLinesPayload(ax_1, 'tpce10', 'total_commits', 10000, False)
-drawLinesPayload(ax_2, 'tpce_org', 'total_commits', 100000)
+drawLinesPayload(ax_1, 'tpce10', 'total_commits', 10000 )
+drawLinesPayload(ax_2, 'tpce_org', 'total_commits', 100000, False)
 ax_1.set_ylabel('Throughput (Tps)', fontsize=9)
 ax_2.set_ylabel('Throughput (Tps)', fontsize=9)
 MyData.MyShow(plt) # show or save plot
