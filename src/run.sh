@@ -33,13 +33,13 @@ elif [ "$2" == "tpce_org" ]; then
 numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --workload-mix="4.9,13,1,18,14,8,10.1,10,19,2,0""
 
 elif [ "$2" == "tpce5" ]; then
-numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 5 --workload-mix="4.9,13,1,13,14,8,10.1,10,14,2,10""
+numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 5 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20""
 
 elif [ "$2" == "tpce10" ]; then
-numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 10 --workload-mix="4.9,13,1,13,14,8,10.1,10,14,2,10""
+numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 10 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20""
 
 elif [ "$2" == "tpce20" ]; then
-numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 20 --workload-mix="4.9,13,1,13,14,8,10.1,10,14,2,10""
+numactl --interleave=all	$1 --verbose --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 20 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20""
 
 else
 	echo "wrong bench type, check run.sh"
