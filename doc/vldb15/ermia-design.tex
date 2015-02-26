@@ -43,9 +43,52 @@ Depending on the targeted workload, ERMIA can use read set validation, two-phase
 
 {\bf Stamp-based tracking.}
 % basically copied from Ryan's SSI simulator.
-SSI ensures serailizability by tracking the ``dangerous structure'' that must exist in every serial dependency cycle under SI as shown in \figref{ssi-dang-struct}~\cite{Cahill08RF}: T1 or T2 must abort if the read-write dependency exists and T3 committed first. Since ERMIA provides global ordering through the log, tracking and detecting the dangerous structure becomes straightforward. We associate each version with three stamps: \texttt{s0}, \texttt{s1}, and \texttt{s2}. \texttt{s0} indicates the versions creation timestamp, which is the commit timestamp of the transaction that created this version. \texttt{s2} records the smallest successor stamp (\texttt{s1}) among all the transactions' reads. Whenever transaction T performs a read, it checks whether \texttt{s2} is set on any version. If so, T must abort (being the T1 of a dangerous structure where T3 committed first). T next checks whether \texttt{s1} is set. If so, T is the ``pivot'' and we prefer to abort it if T has overwritten any in-flight readers. If no such reader exists, then T is allowed to continue but it must remember the smallest \texttt{s1} it encounters, in order to re-check overwritten readers during pre-commit. T also remembers the smallest \texttt{s0} of any version it has read. At pre-commit, T checks again whether it is the ``pivot'' of any dangerous structure involving an in-flight T1, aborting if so. Otherwise, T can enter post-commit and finalize the three stamps in each version it created, with \texttt{s0} being its commit stamp, \texttt{s1} as the remembered \texttt{s0}, and \texttt{s2} as the remembered \texttt{s1}, if any was seen. There is no need to update in-flight readers because of the pivot test already performed. We next describe how the commit protocol works.
+SSI ensures serailizability by tracking the ``dangerous structure'' that must exist in every serial dependency cycle under SI as shown in \figref{ssi-dang-struct}~\cite{Cahill08RF}: T1 or T2 must abort if the read-write dependency exists and T3 committed first. Since ERMIA provides global ordering through the log, tracking and detecting the dangerous structure becomes straightforward. We associate each version with three stamps: \texttt{s0}, \texttt{s1}, and \texttt{s2}. \texttt{s0} indicates the versions creation timestamp, which is the commit timestamp of the transaction that created this version. \texttt{s2} records the smallest successor stamp (\texttt{s1}) among all the transactions' reads. An \texttt{rstamp} is also maintained in each version to indicate the commit stamp of the latest reader transaction. Whenever transaction T performs a read, it checks whether \texttt{s2} is set on any version. If so, T must abort (being the T1 of a dangerous structure where T3 committed first). T next checks whether \texttt{s1} is set. If so, T is the ``pivot'' and we prefer to abort it if T has overwritten any in-flight readers. If no such reader exists, then T is allowed to continue but it must remember the smallest \texttt{s1} it encounters, in order to re-check overwritten readers during pre-commit. T also remembers the smallest \texttt{s0} of any version it has read. At pre-commit, T checks again whether it is the ``pivot'' of any dangerous structure involving an in-flight T1, aborting if so. Otherwise, T can enter post-commit and finalize the three stamps in each version it created, with \texttt{s0} being its commit stamp, \texttt{s1} as the remembered \texttt{s0}, and \texttt{s2} as the remembered \texttt{s1}, if any was seen. There is no need to update in-flight readers because of the pivot test already performed. We next describe how the commit protocol works.
 
-{\bf Commit protocol.} \tianzheng{blah blah really parallel...great.}
+{\bf Commit protocol.}
+We divide the commit process into two parts: pre-commit and post-commit. Pre-commit under SSI involves three major steps: (1) obtain a commit stamp; (2) examine the read set to find out the smallest \texttt{s1}, as shown in the first half of Algorithm~\ref{alg-ssi-commit}; (3) examine overwritten versions by iterating the write set to update T's rstamp. As shown in the second half of Algorithm~\ref{alg-ssi-commit}, during step 3, T must abort if we found there is any in-flight readers of any overwritten version or T's rstamp is greater than the minimal s1 we obtained in step 2 (i.e., T will be the T2 in a dangerous structure if committed). If the transaction survived pre-commit, version stamps will be updated. Note that these version stamps (except the commit stamp) are only needed at runtime; the log will store the version data and header without SSI stamps.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\STATE {\bf Input:} Committing transaction \textit{T}
+\STATE T.cstamp = get\_commit\_stamp()
+\STATE /* Get the smallest s1 from all reads. */
+\STATE \texttt{ts1} = 0;
+\FOR{$each~read~version~\texttt{v}:$}
+\STATE T = overwriter transaction of \texttt{v}
+\IF{$T_s~exists~and~T_s.cstamp~<~cstamp$}
+\STATE Spin until T$_s$ is resolved
+\IF{$T_s~is~committed$}
+\STATE T.s1 = min(T$_s$.cstamp, T.s1)
+\ENDIF
+\ELSE
+\STATE T.s1 = min(T$_s$.cstamp, v.s1)
+\ENDIF
+\ENDFOR
+\STATE
+\STATE /* Check writes. */
+\FOR{$each~written~version~\texttt{w}:$}
+\IF{$\texttt{w}~is~an~insert$}
+\STATE \textbf{continue}
+\ENDIF
+\STATE \texttt{v} = the overwritten version
+\FOR{$each~reader~transaction~T_r:$}
+\IF{$T_r~is~active$}
+\STATE T.abort()
+\ENDIF
+\IF{$T_r.cstamp~<~T.cstamp$}
+\STATE continue
+\ENDIF
+\STATE T.rstamp = max(T.rstamp, w.rstamp)
+\IF{$T.rstamp\geq~T.s1$}
+\STATE T.abort()
+\ENDIF
+\ENDFOR
+\ENDFOR
+\end{algorithmic}
+\label{alg-ssi-commit}
+\caption{ERMIA SSI commit protocol.}
+\end{algorithm}
 
 {\bf Lightweight readers tracking.}
 To track reads of a certain version when the overwriter's pre-commits, one might maintain a list of the TIDs of readers in each version. Readers will register themselves to the list when they read the version and deregister when they commit or abort. However, embedding a list in version headers will increase the size of a version significantly, causing more cache misses, especially for versions that are frequently read by multiple transactions (which is common in main-memory systems with massively parallel hardware). Since ERMIA executes each transaction from beginning to end by a single thread, without changing transaction context, we use a centralized TID list to record all in-flight transactions, and a bitmap in each old version to indicate the positions of readers in the centralized list. A transaction will register itself by setting the bitmap and putting its TID in the list's slot that corresponds to its thread ID. Note that the TID list is indexed by thread ID, so there is no contention upon transaction registration. The writer will be able to find out all readers through the bitmap and TID list at pre-commit.
