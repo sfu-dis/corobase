@@ -143,10 +143,6 @@ template <template <typename> class Protocol, typename Traits>
 rc_t
 transaction<Protocol, Traits>::commit()
 {
-#ifdef PHANTOM_PROT_NODE_SET
-  if (not check_phantom())
-    return rc_t{RC_ABORT_PHANTOM};
-#endif
 #ifdef USE_PARALLEL_SSN
   return parallel_ssn_commit();
 #elif defined USE_PARALLEL_SSI
@@ -297,6 +293,11 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
 
   if (not ssn_check_exclusion(xc))
     return rc_t{RC_ABORT_SERIAL};
+
+#ifdef PHANTOM_PROT_NODE_SET
+  if (not check_phantom())
+    return rc_t{RC_ABORT_PHANTOM};
+#endif
 
   // ok, can really commit if we reach here
   log->commit(NULL);
@@ -472,6 +473,11 @@ examine_writes:
     }
   }
 
+#ifdef PHANTOM_PROT_NODE_SET
+  if (not check_phantom())
+    return rc_t{RC_ABORT_PHANTOM};
+#endif
+
   // survived!
   log->commit(NULL);
 
@@ -540,6 +546,12 @@ transaction<Protocol, Traits>::si_commit()
   xc->end = log->pre_commit();
   if (xc->end == INVALID_LSN)
     return rc_t{RC_ABORT_INTERNAL};
+
+#ifdef PHANTOM_PROT_NODE_SET
+  if (not check_phantom())
+    return rc_t{RC_ABORT_PHANTOM};
+#endif
+
   log->commit(NULL);    // will populate log block
 
   // post-commit cleanup: install clsn to tuples
