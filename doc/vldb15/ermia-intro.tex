@@ -39,14 +39,21 @@ In \secref{desired} we lay out the design principles that we believe are critica
 \secref{eval} compares the performance of an ERMIA prototype against a representative of the new breed of memory-optimized shared-everything transaction processing systems, and shows how the resulting architecture achieves its goals without necessarily sacrificing performance in other areas.
 
 
-\begin{itemize}
-\item contribution summary
-\end{itemize}
+%\begin{itemize}
+%\item contribution summary
+%\end{itemize}
 
 \section{Design directions}
 \seclabel{desired}
 
 In this section we briefly discuss desired properties of transaction processing system architectures. We primarily focus on three areas: the concurrency control mechanism that determines the interaction between concurrent transactions at the logical level; the mechanism that controls the interaction/communication of threads at the physical level; and recovery. As we already argued in \secref{intro}, we are aiming for a scalable single-node design that achieves scale-up with minimal physical partitioning.  
+
+
+\begin{figure}
+\includegraphics[width=\columnwidth]{ermia-arch}
+\caption{Architecture of ERMIA.}
+\tianzheng{this diagram fits in \$3 more?}
+\end{figure}
 
 \vspace{2mm} 
 {\bf Append-only storage.}
