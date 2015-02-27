@@ -26,7 +26,7 @@ PS2PDF = ps2pdf
 TEX_EXT_TO_CLEAN = aux bbl blg brf dvi lof log lot out toc spl
 FIG_EXT_TO_CLEAN = prn raw.eps raw.pdf cropped.pdf
 
-FIGURES = fig-tpce-scalability fig-tpcc-scalability fig-tpce-robustness
+FIGURES = fig-tpce-scalability fig-tpcc-scalability fig-tpce-robustness fig-write-ratio ermia-arch ssi-dang-struct
 
 ## Testing the python / matplotlib
 # FIGURES += demo-barchart
