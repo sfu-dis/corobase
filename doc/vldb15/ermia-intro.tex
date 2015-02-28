@@ -35,7 +35,7 @@ Therefore, we focus on the performance of non-partitioning-based memory-optimize
 
 \vspace{2mm}
 {\bf ERMIA.} 
-In \secref{desired} we lay out the design principles that we believe are critical for transaction processing engines in the environment of highly-parallel servers with ample main memory. Next, on \secref{design}, we present {\em ERMIA}, a memory-optimized transaction processing architecture that carefully combines several techniques---epoch-based resource management, indirection arrays \cite{SadoghiRCB13}, anti-caching \cite{DeBrabantPTSZ13}\tianzheng{we don't have this now, remove?}, and a specially-designed log manager---to enable robust CC, scalable thread interactions, and easy recovery.  
+In \secref{desired} we lay out the design principles that we believe are critical for transaction processing engines in the environment of highly-parallel servers with ample main memory. Next, on \secref{design}, we present {\em ERMIA}, a memory-optimized transaction processing architecture that carefully combines several techniques---epoch-based resource management, indirection arrays \cite{SadoghiRCB13}, and a specially-designed log manager---to enable robust CC, scalable thread interactions, and easy recovery.  
 \secref{eval} compares the performance of an ERMIA prototype against a representative of the new breed of memory-optimized shared-everything transaction processing systems, and shows how the resulting architecture achieves its goals without necessarily sacrificing performance in other areas.
 
 \section{Design directions}
@@ -78,7 +78,7 @@ For example, an indirection array reduces the amount of logging required for upd
 
 As a comparison, Silo does not employ indirection arrays. Instead, it performs in place updates: there is effectively a single committed version of an object with perhaps a private uncommitted copy, unless a special heavyweight snapshot mechanism is invoked. Hekaton is technically multi-versioned, but because of the CC scheme it uses, versions become unusable to non read-only transactions as soon as any overwrite commits. For all practical purposes, both systems are multi-versioned only for read-only transactions.
 
-Indirection arrays are suitable for the physical implementation of CC for multi-versioned systems, as a single compare-and-swap (CAS) operation suffices to install a new version of an object. \kk{ With indirection array as a backing store,  we can install versions without latching overhead minimizing inter-thread communication, and also it allows background reclaiming of old versions without interferring foreground transaction processing as well. }
+Indirection arrays are suitable for the physical implementation of CC for multi-versioned systems, as a single compare-and-swap (CAS) operation suffices to install a new version of an object. \tianzheng{As a result, we can install versions without latching overhead, minimizing inter-thread communication. It also eases the reclamation of obsolete versions in the background without interfering foreground transaction processing.}
 
 With indirection arrays, even anti-caching~\cite{DeBrabantPTSZ13} is largely simplified: in the vanilla anti-caching algorithm all the secondary indexes have to be updated, whenever a record is evicted from memory---with some considerable overhead. The indirection array gives a convenient place to replace an in-memory pointer with an on-disk pointer, and in some sense acts as a lightweight buffer pool. 
 
@@ -86,4 +86,3 @@ There are also low-level reasons, detailed in \secref{design:oid}, for using ind
 
 The flexibility in implementing various CC schemes is greatly enhanced if we can establish total ordering. One way to achieve total ordering, is through a centralized log, which can be used for establishing the transaction commit order. Therefore we opt using a centralized log, but we minimize the interaction with it to only a single communication per transaction. 
 In contrast, Silo employs a epoch-based ordering that is only partial. 
-
