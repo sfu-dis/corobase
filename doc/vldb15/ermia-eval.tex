@@ -15,15 +15,20 @@ We run the TPC-C and TPC-E benchmarks on all variants. In each run, we load data
 
 \textbf{TPC-C.}
 
-\textbf{Standard TPC-E.}
+\textbf{TPCE-original}
 TPC-E is a new standard OLTP benchmark. Although TPC-C has been dominantly used to evaluate OLTP systems performance for the past few decades, TPC-E was designed as a more realistic OLTP benchmark with modern features. \tianzheng{cite HANA paper} TPC-E models brokerage firm activities and has more sophisticated schema model and transaction execution control. It is also known for higher read to write ratio than TPC-C.
 
 
 %TPCE + contention
-\textbf{Analytic-heavy TPC-E.}
+\textbf{TPCE-contention}
 Since TPC-E is not a heterogeneous workload, we introduce a new read-mostly analytic transaction that evaluates total assets of a random customer account group and inserts the analytic activity log into \textit{analytic\_history} table. Total assets of the accounts are computed by joining \textit{holding\_summary} and \textit{last\_trade} tables. The vast majority of contentions occur between the analytic transaction and \textit{trade-result} transaction.
 The parameters we set for this experiment are 5000 customers, 500 scale factor and 10 initial trading days(the initial trading day parameter was limited by our machine's memory capacity).
 The analytic transaction takes 20\% out of the original TPC-E transaction mix. % TODO. new workload mix, footnote?
+
+\textbf{TPCC-dedicated}
+TPC-C is well-known for update-heavy workload and small transaction footprints. Also, it is well-partitionable workload; conflicts can be reduced even further by partitioning and single-threadinging on the partition, setting the almost ideal environment for the lightweight OCC. The only source of contention under partitioned TPC-C is multi-partition transaction, however, its impact on CC is dampened by small transaction footprints, avoiding the majority of read-write conflicts. We call this partitioned and single-threaded TPC-C as, TPCC-dedicated. 
+
+\textbf{TPCC-random}
 
 \subsection{TPC-E}
 \seclabel{eval:tpce}
@@ -39,15 +44,15 @@ we now focus on the throughput of the analytic transactions to see how well both
 
 % scalability 
 \labeledfigurewide{fig-tpce-scalability}{Throughput when running TPCE-hybrid(left); TPCE-original(right)}
-\labeledfigurewide{fig-tpcc-scalability}{Throughput when running TPCC-contention(left); TPCC-partitioned(right)}
+\labeledfigurewide{fig-tpcc-scalability}{Throughput when running TPCC-contention(left); TPCC-dedicate(right)}
 In \figref{fig-tpce-scalability}(left), we fix contention degree to 20\% scan range and see scalability trends, increasing the number of workers. Overwhelmed by contentions, SILO does not achieve linear scalability, even with its excellent scalability of the underlying physical layer. ERMIA benefits from its robust CC scheme and its storage manager did not forestall achieving linear scalability. This figure shows that not only the scalability of underlying physical layer, but also CC scheme's capability to deal with contention in logical level dictates overall performance. We also performed the same experiment in the original TPC-E, without the analytic transaction. As illustrated in \figref{fig-tpce-scalability}(right), both ERMIA-SI and SILO achieve linear scalability over 24 cores. SILO does not suffer from contention, since TPCE-original has insignificant contentions. ERMIA-SSI delivered 83\% of ERMIA-SI performance with 24 threads due to the serializability cost.
 
 \subsection{TPC-C} 
 \seclabel{eval:tpcc}
-We also run TPC-C where lightweight OCC camp shine. This experiment will be focusing on evaluating storage manager's scalability naturally, as TPC-C imposes little pressure on CC scheme. TPC-C is well-known for update-heavy workload and small transaction footprints. Also, it is well-partitionable workload; conflicts can be reduced even further by partitioning and single-threadinging on the partition, setting the almost ideal environment for the lightweight OCC. The only source of contention under partitioned TPC-C is multi-partition transaction, however, its impact on CC is dampened by small transaction footprints, avoiding the majority of read-write conflicts. 
+We also run TPC-C where lightweight OCC camp shine. This experiment will be focusing on evaluating storage manager's scalability naturally, as TPC-C imposes little pressure on CC scheme. 
 
 % TPCC-original
-We measure throughput of both systems in such partitioned TPC-C(TPCC-partitioned), varying the number of worker threads. All worker threads are given home warehouse and does not change the home warehouse during runtime. The fraction of cross partition transaction is 1\%. \figref{fig-tpcc-scalability}(right) shows that both systems scale reasonably over 24 cores. Compared to SILO, ERMIA falls behind SILO by 10\% and 20\%, with SI and SSI respectively, at the peak performance for the following reasons. First, CC did not suppress throughput due to lack of contention. Second, SILO benefit from TPC-C's small cache footprint. Unlike SILO, ERMIA maintains multi-versions in the indirection array. It pays additional cache miss costs during traversing indirection array to find a visible version. This was invisible in the TPC-E because its large cache footprint supressed caching effect. Thus, SILO outperforms ERMIA in workloads where 1) contention is rare and 2) transaction footprint is small enough to take advantage of cache-optimization; TPC-C is the compelling example of such workload. ERMIA-SSI had extra 10\% cost to guarantee serializability due to serial dependency checking.
+We measure throughput of both systems in TPCC-dedicated, varying the number of worker threads. All worker threads are given home warehouse and does not change the home warehouse during runtime. The fraction of cross partition transaction is 1\%. \figref{fig-tpcc-scalability}(right) shows that both systems scale reasonably over 24 cores. Compared to SILO, ERMIA falls behind SILO by 10\% and 20\%, with SI and SSI respectively, at the peak performance for the following reasons. First, CC did not suppress throughput due to lack of contention. Second, SILO benefit from TPC-C's small cache footprint. Unlike SILO, ERMIA maintains multi-versions in the indirection array. It pays additional cache miss costs during traversing indirection array to find a visible version. This was invisible in the TPC-E because its large cache footprint supressed caching effect. Thus, SILO outperforms ERMIA in workloads where 1) contention is rare and 2) transaction footprint is small enough to take advantage of cache-optimization; TPC-C is the compelling example of such workload. ERMIA-SSI had extra 10\% cost to guarantee serializability due to serial dependency checking.
 
 % TPCC-random WH
 We now enforce worker threads to pick a random working partition, following non-uniform distribution, before starting transactions. The purpose of this modification is to bring reasonable amount of contentions in TPC-C and to see how the previous results change. As shown in the \figref{fig-tpcc-scalability}(right), we can see that SILO is more sensitive to contentions than ERMIA-SI. Compared to TPCC-partitioned, the throughput of SILO decreased by approximately 30\%, while ERMIA delivered 15\% lower performance, catching up with SILO.
