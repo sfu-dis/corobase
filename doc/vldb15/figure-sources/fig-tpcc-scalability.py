@@ -18,7 +18,7 @@ attrs = ('b^-', 'rd-', 'yo--', 'gs-.', 'b<-')
 def drawLinesPayload(ax, bench, ycol, ymax=10000, divide=1, showLegend=True):
     xvalues=[1,6,12,18,24]
     plots=[]
-    plotsLabel=['ERMIA-SI','ERMIA-SSI','SILO']
+    plotsLabel=['ERMIA-SI','ERMIA-SSI','Silo']
 
     Xs, Ys = \
         ermia_si.filterSelect(xcol='threads', ycol=ycol, xvalues=xvalues,
