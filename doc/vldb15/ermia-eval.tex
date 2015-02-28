@@ -33,7 +33,7 @@ In TPCC-random, we enforce worker threads to pick a partition randomly during ru
 \subsection{TPC-E}
 \seclabel{eval:tpce}
 
-\labeledfigurewide{fig-tpce-robustness}{Total throughput (left); analytic transaction throughput(right) of TPCE-hybrid, varying contention degree}
+\labeledfigurewide{fig-tpce-robustness}{Total throughput (left); analytic transaction throughput(right) of TPCE-hybrid, varying contention degree.}
 
 % chart - Commit rates / Abort rates, varying contention degree. 
 We first explore how ERMIA and Silo react to contention in the TPC-E. \figref{fig-tpce-robustness}(left) shows the throughput with 24 worker threads, varying contention degree when we run TPC-E with the analytic transaction(TPCE-hybrid). To vary contention degree, we adjust the size of a customer account group to be scanned by the analytic transaction from 5\% to 20\%. The key observation is that SILO is more sensitive to contention. ERMIA-SI outperforms SILO at all contention degrees and the performance gap gets larger as we increase contentions(SILO is slower than ERMIA-SI by 15\%, 20\%, and 31\% at 5\%, 10\% and 20\%, respectively). In case of ERMIA-SSI, it falls behind the SILO by 26\% at 5\%, however, it starts to close the gap at higher contention level and finally catches up with SILO at 20\%. 
@@ -42,8 +42,8 @@ The main cause for the result is that the contention in the workload imposed hea
 we now focus on the throughput of the analytic transactions to see how well both systems support analytics on transactional data set. As shown in the \figref{fig-tpce-robustness}(right), the analytic transactions were shoot down massively even under small contention degree on SILO andthe analytic transaction throughput drops more sharply than ERMIA, as we double transaction footprint. We can derive that the massive reader aborts critically affected the overall throughput. This is obviously a negative implication to run heterogenous workload under OCC. ERMIA provides balanced query/transaction performance, while SILO extremely gives penalty to read-intensive long transactions. 
 
 % scalability 
-\labeledfigurewide{fig-tpce-scalability}{Throughput when running TPCE-hybrid(left); TPCE-original(right)}
-\labeledfigurewide{fig-tpcc-scalability}{Throughput when running TPCC-random(left); TPCC-fixed(right)}
+\labeledfigurewide{fig-tpce-scalability}{Throughput when running TPCE-hybrid(left); TPCE-original(right).}
+\labeledfigurewide{fig-tpcc-scalability}{Throughput when running TPCC-random(left); TPCC-fixed(right).}
 In \figref{fig-tpce-scalability}(left), we fix contention degree to 20\% scan range and see scalability trends, increasing the number of workers. Overwhelmed by contentions, SILO does not achieve linear scalability, even with its excellent scalability of the underlying physical layer. ERMIA benefits from its robust CC scheme and its storage manager did not forestall achieving linear scalability. This figure shows that not only the scalability of underlying physical layer, but also CC scheme performance in logical level dictates overall performance. We also performed the same experiment in the original TPC-E, without the analytic transaction. As illustrated in \figref{fig-tpce-scalability}(right), both ERMIA-SI and SILO achieve linear scalability over 24 cores. SILO does not suffer from contention, since TPCE-original has insignificant contentions. ERMIA-SSI delivered 83\% of ERMIA-SI performance with 24 threads due to the serializability cost.
 
 \subsection{TPC-C} 
