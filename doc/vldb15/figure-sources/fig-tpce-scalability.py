@@ -15,7 +15,7 @@ rcParams['figure.figsize'] = 6.9, 2.4
 matplotlib.rcParams.update({'font.size': 9})
 attrs = ('b^-', 'rd-', 'yo--', 'gs-.', 'b<-')
 
-def drawLinesPayload(ax, bench, ycol, ymax=10000, showLegend=True):
+def drawLinesPayload(ax, bench, ycol, ymax=10000, divide=1,  showLegend=True):
     xvalues=[1,6,12,18,24]
     plots=[]
     plotsLabel=['ERMIA-SI','ERMIA-SSI','SILO']
@@ -23,21 +23,21 @@ def drawLinesPayload(ax, bench, ycol, ymax=10000, showLegend=True):
     Xs, Ys = \
         ermia_si.filterSelect(xcol='threads', ycol=ycol, xvalues=xvalues,
                           include={'bench':bench})
-    Ys[:] = [ y/40 for y in Ys]
+    Ys[:] = [ y/40/divide for y in Ys]
     print Xs, Ys
     plots.append( ax.plot(Xs, Ys, attrs[0])[0] )
 
     Xs, Ys = \
         ermia_ssi.filterSelect(xcol='threads', ycol=ycol, xvalues=xvalues,
                           include={'bench':bench})
-    Ys[:] = [ y/40 for y in Ys]
+    Ys[:] = [ y/40/divide for y in Ys]
     print Xs, Ys
     plots.append( ax.plot(Xs, Ys, attrs[1])[0] )
 
     Xs, Ys = \
         silo.filterSelect(xcol='threads', ycol=ycol, xvalues=xvalues,
                           include={'bench':bench})
-    Ys[:] = [ y/40 for y in Ys]
+    Ys[:] = [ y/40/divide for y in Ys]
     print Xs, Ys
     plots.append( ax.plot(Xs, Ys, attrs[2])[0] )
 
@@ -68,8 +68,8 @@ def drawLinesPayload(ax, bench, ycol, ymax=10000, showLegend=True):
 
 f,(ax_1,ax_2) = plt.subplots(1,2,sharey=False)
 f.subplots_adjust(left=0.12, bottom=0.22, right=0.98, top=0.87, wspace=0.4)
-drawLinesPayload(ax_1, 'tpce20', 'total_commits', 2000 )
-drawLinesPayload(ax_2, 'tpce_org', 'total_commits', 80000, False)
+drawLinesPayload(ax_1, 'tpce20', 'total_commits', 2000, 1, True )
+drawLinesPayload(ax_2, 'tpce_org', 'total_commits', 80000, 1,  False)
 ax_1.set_ylabel('Throughput (Tps)', fontsize=9)
 ax_2.set_ylabel('Throughput (Tps)', fontsize=9)
 MyData.MyShow(plt) # show or save plot
