@@ -2,12 +2,14 @@
 
 \section{ERMIA: Fast and robust memory-optimized OLTP}
 \seclabel{design}
+In this section, we start with an overview of ERMIA, and then describe the key pieces of ERMIA, with a focus on why we choose the design trade-offs we do.
 
-In this section we describe the key pieces of ERMIA, with a focus on why we choose the design trade-offs we do.
+\subsection{Overview}
+ERMIA is designed around epoch-based resource management and an extreme efficient, centralized log. \figref{ermia-arch} shows the major components in ERMIA and how they interact with each other. The log manager, TID manager, and garbage collector are three major entities that uses the epoch-based resource management machinery. To avoid log buffer contention~\cite{WangJ14}, each transaction acquires its log private log buffer (hence its global start stamp) from the log manager. Upon commit, the transaction will fix its global order in the log via a single CAS instruction and flush all its log records in one go (see~\ref{subsec:logging} for details). Although both log buffers and TIDs are managed by the epoch-based resource management mechanism, they use separate epoch lengths and can track stragglers efficiently. Transaction threads access the database through indexes. Different from traditional tree structures which give access to data in the leaf level, in ERMIA we embed in each index an indirection array, which can provide easy implementation of snapshot isolation and garbage collection. Indexed by object IDs, each array entry points to a chain of historic version for the object (tuple). The garbage collector periodically goes over all version chains and remove unnecessary, superseded versions that are not needed by any transactions.
+\labeledfigure{ermia-arch}{Architecture of ERMIA.}
 
-%\subsection{Overview}
-\tianzheng{blah blah...}
 \subsection{Logging}
+\label{subsec:logging}
 The log manager is a pivotal component in most database engines. It provides---if anything does---a centralized point of coordination that other pieces of the system build off of and depend on. ERMIA's log manager generates a commit log sequence number (LSN) for the transaction and reserves log buffer space for the transaction's log records with a \textit{single global atomic operation}. Achieving this required two key insights: first, the transaction can combine its log records into large blocks, avoiding the redundancy of writing individual log record headers and reducing the number of trips to the log. Second, the LSN space need not be contiguous as long as we can still convert easily between an LSN and the corresponding disk address.
 
 The first property arises from our use of append-only storage. We achieve the second property by assigning each LSN to a ``segment'' and storing its segment number in the low order bits; the LSN's position on disk can be determined by looking up, and subtracting off, its segment's starting offset (read-only). Transactions race to ``open'' a new segment if they obtain an LSN past the end of the current one. Unlucky transactions holding an LSN in the gap between two segments can simply discard it and request a new one. Segments can be as large as 100GB or more, however, so overflows will be rare. Once an LSN and segment have been assigned, the transaction verifies availability of space in the log's circular memory buffer (again, read-only); only in case the buffer is full will transactions have to block pending space, but disk arrays can readily absorb the sequential write-only I/O stream.

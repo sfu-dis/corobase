@@ -43,13 +43,6 @@ In \secref{desired} we lay out the design principles that we believe are critica
 
 In this section we briefly discuss desired properties of transaction processing system architectures. We primarily focus on three areas: the concurrency control mechanism that determines the interaction between concurrent transactions at the logical level; the mechanism that controls the interaction/communication of threads at the physical level; and recovery. As we already argued in \secref{intro}, we are aiming for a scalable single-node design that achieves scale-up with minimal physical partitioning.  
 
-
-\begin{figure}
-\includegraphics[width=\columnwidth]{ermia-arch}
-\caption{Architecture of ERMIA.}
-%\tianzheng{this diagram fits in \$3 more?}
-\end{figure}
-
 \vspace{2mm} 
 {\bf Append-only storage.}
 Append-only storage allows drastic simplifications of both I/O patterns and corner cases in the code. When combined with a carefully designed log manager and indirection arrays (below), we are able to achieve a single-copy system where the log is a significant fraction of the database (with records graduating from the log to secondary storage only if they go a long time with no updates). The resulting system is also easier to recover, as both undo and redo are largely unnecessary (the log can be truncated at the first hole without losing any committed work).

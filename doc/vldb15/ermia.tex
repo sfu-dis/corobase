@@ -171,7 +171,7 @@ morekeywords={}
 \newcommand{\labeledfigurerelay}[2][]{%
   \begin{figure}[t]%
     \centering%
-    \includegraphics{\thelabeledfigure}%
+    \includegraphics[width=\columnwidth]{\thelabeledfigure}%
     \ifthenelse{\equal{#1}{}}%
                {\caption{#2}}% then
                {\caption[#1]{#2}}% else
