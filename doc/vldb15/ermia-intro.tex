@@ -6,7 +6,7 @@
 %1. new hw trend has led to new systems
 Modern systems with massively parallel processors and large main memories have inspired a new breed of high-performance, memory-optimized transaction processing systems \cite{Kallman+08,PandisJHA10,KemperN11,LarsonBDFPZ11,LevandoskiLSSW15,TuZKLM13}. These systems leverage spacious main memory to fit the whole working set in DRAM with streamlined, memory-friendly data structures. Further, multicore and multi-socket hardware optimizations allow a much higher level of parallelism compared to conventional systems. With disk overheads and delays removed, transaction latencies drop precipitously and threads can usually execute transactions to completion without interruption. The result is a welcome reduction in contention at the logical level and less pressure on whatever concurrency control (CC) scheme might be in place. A less welcome result is an increasing pressure for scalable data structures and algorithms to cope with the growing number of threads that concurrently execute transactions and need to communicate \cite{JohnsonPA13}.
 
-\labeledfigurewide{fig-write-ratio}{Performance of a memory-efficient OLTP engine with lightweight optimistic concurrency control, as the ratio of writes increases (left); and as the size of the database decreases (right).\kk{remove no-log from the graph, also we don't have detail about this experiment.}}
+\labeledfigurewide{fig-write-ratio}{Performance of a memory-efficient OLTP engine with lightweight optimistic concurrency control, as the ratio of writes increases (left); and as the size of the database decreases (right).}
 
 \vspace{2mm}
 {\bf Interactions at the logical level.} 
@@ -42,13 +42,13 @@ In \secref{desired} we lay out the design principles that we believe are critica
 
 In this section we briefly discuss desired properties of transaction processing system architectures. We focus on three areas: the concurrency control mechanism that determines the interaction between concurrent transactions at the logical level; the mechanism that controls the interaction/communication of threads at the physical level; and recovery. As we already argued, we are aiming for a single-node design that achieves scale-up with minimal physical partitioning.  
 
-\vspace{2mm} 
+\vspace{1mm} 
 {\bf Append-only storage.}
 Append-only storage allows drastic simplifications of both I/O patterns and corner cases in the code. Combining a carefully designed log manager and indirection arrays (below) produces a single-copy system where the log is a significant fraction of the database. Records graduate from the log to secondary storage only if they go a long time with no updates. The resulting system is also easier to recover, as both undo and redo are largely unnecessary---the log can be truncated at the first hole without losing any committed work.
 
-\vspace{2mm} 
+\vspace{1mm} 
 {\bf Logging.}
-System designers should also treat recovery as a first class citizen when designing a transaction processing system. Log managers are a well-known source of complexity and bottlenecks in a database system. Many of the recent proposals do not provide a thorough design for recovery, in stark contrast to more venerable loging protocols such as ARIES \cite{MohanHLPS92}.
+Recovery should be centerpiece in transaction processing system designs. Log managers are a well-known source of complexity and bottlenecks in a database system. Many of the recent proposals do not provide a thorough design for recovery, in stark contrast to more venerable logging protocols such as ARIES \cite{MohanHLPS92}.
 
 The in-memory log buffer is a central point of communication that simplifies a variety of other tasks in the system, but which tends to kill scalability. Past work has attempted to optimize \cite{JohnsonPSAA10} or distribute \cite{WangJ14} the log, with partial success and significant additional complexity. Systems such as H-Store \cite{Kallman+08} (and its commercial version, VoltDB) largely dispense with logging and rely instead on replication. These systems replace the logging bottleneck with a transaction dispatch bottleneck. Silo avoids the logging bottleneck by giving up the traditional total order in transactions. Avoiding total ordering is efficient but prevents the system from using any but the simplest of CC schemes---there is no practical way to implement repeatable read or snapshot isolation, for example, and transactions {\it cannot see their own writes without sacrificing performance}.
 
