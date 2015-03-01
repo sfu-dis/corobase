@@ -10,13 +10,13 @@ from pylab import *
 ermia_si = MyData("../vldb_result/ermia-si.csv", header_str="system", delimiter=',');
 ermia_ssi = MyData("../vldb_result/ermia-ssi.csv", header_str="system", delimiter=',');
 silo = MyData("../vldb_result/silo.csv", header_str="system", delimiter=',');
-ind = np.arange(5)
+ind = np.arange(6)
 width = 0.20
 rcParams['figure.figsize'] = 6.9, 2.4
 matplotlib.rcParams.update({'font.size': 9})
 
 def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
-    xvalues=['tpce1', 'tpce5', 'tpce10', 'tpce20', 'tpce40']
+    xvalues=['tpce1', 'tpce5', 'tpce10', 'tpce20', 'tpce40', 'tpce60']
     plots=[]
     plotsLabel=['ERMIA-SI','ERMIA-SSI','Silo']
 
@@ -42,13 +42,13 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
     plots.append( ax.bar( ind+width+width + 0.2, Ys, width, color='y'))
 
     ax.set_xticks( ind + 0.2+ (width*1.5) )
-    ax.set_xticklabels(('1%', '5%', '10%', '20%', '40%'), minor=False)
+    ax.set_xticklabels(('1%', '5%', '10%', '20%', '40%', '60%' ), minor=False)
 
     # If shared axis then get_ylim not avail
     ax.set_ylim(0, ymax)
 
     # Print ratio in the title
-    ax.set_xlabel('Contention degree')
+    ax.set_xlabel('Analytic query range')
     for tick in ax.xaxis.get_major_ticks():
         tick.label.set_fontsize(9)
     for tick in ax.yaxis.get_major_ticks():
