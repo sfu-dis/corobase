@@ -23,21 +23,21 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
     Xs, Ys = \
         ermia_si.filterSelect(xcol='bench', ycol=ycol, xvalues=xvalues,
                           include={'threads':24})
-    Ys[:] = [ math.log10(y/40) for y in Ys]
+    Ys[:] = [ y/40 for y in Ys]
     print Xs, Ys
     plots.append( ax.bar( ind + 0.2 , Ys, width, color='b'))
 
     Xs, Ys = \
         ermia_ssi.filterSelect(xcol='bench', ycol=ycol, xvalues=xvalues,
                           include={'threads':24})
-    Ys[:] = [ math.log10(y/40) for y in Ys]
+    Ys[:] = [ y/40 for y in Ys]
     print Xs, Ys
     plots.append( ax.bar( ind+width + 0.2, Ys, width, color='r'))
 
     Xs, Ys = \
         silo.filterSelect(xcol='bench', ycol=ycol, xvalues=xvalues,
                           include={'threads':24})
-    Ys[:] = [ math.log10(y/40) for y in Ys]
+    Ys[:] = [ y/40 for y in Ys]
     print Xs, Ys
     plots.append( ax.bar( ind+width+width + 0.2, Ys, width, color='y'))
 
