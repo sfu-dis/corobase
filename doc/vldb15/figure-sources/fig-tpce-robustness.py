@@ -45,7 +45,8 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
     ax.set_xticklabels(('1%', '5%', '10%', '20%', '40%', '60%' ), minor=False)
 
     # If shared axis then get_ylim not avail
-    ax.set_ylim(0, ymax)
+    ax.set_ylim(1, ymax)
+    ax.set_yscale('log', nonposy='clip')
 
     # Print ratio in the title
     ax.set_xlabel('Contention degree')
@@ -65,8 +66,8 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
 
 f,(ax_1,ax_2) = plt.subplots(1,2,sharey=False)
 f.subplots_adjust(left=0.12, bottom=0.22, right=0.98, top=0.87, wspace=0.4)
-drawBarsPayload(ax_1, 'total_commits', 5, False)
-drawBarsPayload(ax_2, 'total_query_commits', 5, True)
-ax_1.set_ylabel('log10(txns/s)', fontsize=9)
-ax_2.set_ylabel('log10(queries/s)', fontsize=9)
+drawBarsPayload(ax_1, 'total_commits', 100000, False)
+drawBarsPayload(ax_2, 'total_query_commits', 100000, True)
+ax_1.set_ylabel('Throughput (tps)', fontsize=9)
+ax_2.set_ylabel('Throughput (queries/s)', fontsize=9)
 MyData.MyShow(plt) # show or save plot

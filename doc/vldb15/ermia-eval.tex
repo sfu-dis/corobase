@@ -13,8 +13,8 @@ We used a 4-socket server with 6-core Intel Xeon E7-4807 processors, for a total
 \seclabel{eval:benchmarks}
 We run the microbenchmark, TPC-C and TPC-E benchmarks on all variants. In each run, we load data from scratch and run the benchmark for 40 seconds.
 
-\textbf{Micro benchmark.}
-We design a microbenchmark to 
+\textbf{Microbenchmark.}
+We use the Stock table of TLC-C database(32 warehouses) for the microbenchmark transactions. The Stock table has 100K*Warehouses (3.2M) records. Each transaction randomly peaks a number of records to read and a smaller fraction of records to update.
 
 \textbf{TPCE-original.}
 TPC-E is a new standard OLTP benchmark. Although TPC-C has been dominantly used to evaluate OLTP systems performance for the past few decades, TPC-E was designed as a more realistic OLTP benchmark with modern features. TPC-E models brokerage firm activities and has more sophisticated schema model and transaction execution control\cite{TPCE}. It is also known for higher read to write ratio than TPC-C.
