@@ -25,7 +25,7 @@ PDFTOPSEXEC = /usr/bin/pdftops
 #%.eps: %.pdf
 #	${PDFTOPSEXEC} -eps $< $@
 
-%.eps: %.eps.in
+%.eps: figure-sources/%.eps.in
 	cp figure-sources/$*.eps.in $*.eps
 
 %.pdf: %.eps
