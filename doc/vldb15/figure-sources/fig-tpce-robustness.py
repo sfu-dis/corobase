@@ -23,21 +23,21 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
     Xs, Ys = \
         ermia_si.filterSelect(xcol='bench', ycol=ycol, xvalues=xvalues,
                           include={'threads':24})
-    Ys[:] = [ y/40 for y in Ys]
+    Ys[:] = [ math.log10(y/40) for y in Ys]
     print Xs, Ys
     plots.append( ax.bar( ind + 0.2 , Ys, width, color='b'))
 
     Xs, Ys = \
         ermia_ssi.filterSelect(xcol='bench', ycol=ycol, xvalues=xvalues,
                           include={'threads':24})
-    Ys[:] = [ y/40 for y in Ys]
+    Ys[:] = [ math.log10(y/40) for y in Ys]
     print Xs, Ys
     plots.append( ax.bar( ind+width + 0.2, Ys, width, color='r'))
 
     Xs, Ys = \
         silo.filterSelect(xcol='bench', ycol=ycol, xvalues=xvalues,
                           include={'threads':24})
-    Ys[:] = [ y/40 for y in Ys]
+    Ys[:] = [ math.log10(y/40) for y in Ys]
     print Xs, Ys
     plots.append( ax.bar( ind+width+width + 0.2, Ys, width, color='y'))
 
@@ -48,7 +48,7 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
     ax.set_ylim(0, ymax)
 
     # Print ratio in the title
-    ax.set_xlabel('Analytic query range')
+    ax.set_xlabel('Contention degree')
     for tick in ax.xaxis.get_major_ticks():
         tick.label.set_fontsize(9)
     for tick in ax.yaxis.get_major_ticks():
@@ -65,8 +65,8 @@ def drawBarsPayload(ax, ycol, ymax=10000, showLegend=True):
 
 f,(ax_1,ax_2) = plt.subplots(1,2,sharey=False)
 f.subplots_adjust(left=0.12, bottom=0.22, right=0.98, top=0.87, wspace=0.4)
-drawBarsPayload(ax_1, 'total_commits', 35000)
-drawBarsPayload(ax_2, 'total_query_commits', 8000, False)
-ax_1.set_ylabel('Throughput (tps)', fontsize=9)
-ax_2.set_ylabel('Analytic queries/s', fontsize=9)
+drawBarsPayload(ax_1, 'total_commits', 5, False)
+drawBarsPayload(ax_2, 'total_query_commits', 5, True)
+ax_1.set_ylabel('log10(txns/s)', fontsize=9)
+ax_2.set_ylabel('log10(queries/s)', fontsize=9)
 MyData.MyShow(plt) # show or save plot
