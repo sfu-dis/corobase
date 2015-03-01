@@ -1,6 +1,6 @@
 %% -*- tex-main-file:"ermia.tex" -*-
 
-\section{ERMIA: Fast and robust memory-optimized OLTP}
+\section{ERMIA}
 \seclabel{design}
 In this section, we start with an overview of ERMIA, and then describe its key pieces, with a focus on why we choose the design trade-offs we do.
 
@@ -10,38 +10,46 @@ ERMIA is designed around epoch-based resource management and extremely efficient
 
 \subsection{Logging}
 \label{subsec:logging}
-The log manager is a pivotal component in most database engines. It provides---if anything does---a centralized point of coordination that other pieces of the system build off of and depend on. Because of its central nature, the log is also a notorious source of contention in many systems. ERMIA's log manager retains the benefits of a serial ``history of the world'' while largely avoiding the contention issues that normally accompany it. Useful features of the log include:
-\begin{itemize}
+The log manager is a pivotal component in most database engines. It provides a centralized point of coordination that other pieces of the system build off of and depend on. Because of its central nature, the log is also a notorious source of contention in many systems. ERMIA's log manager retains the benefits of a serial ``history of the world'' while largely avoiding the contention issues that normally accompany it. Useful features of the log include:
+
+\setcounter{mycounter}{0}
+\begin{list}{\arabic{mycounter}.}{\usecounter{mycounter}\leftmargin=1.4em}
+  \itemsep=0.1em
+  \parsep=0em
+  \parskip=0em
 \item Communication in the log manager is extremely sparse. Most update transactions will issue just one global atomic compare-and-swap before committing, even in the presence of high contention and corner cases such as full log buffer or log file rotations.
 \item Transactions maintain log records privately while in flight, and aggregate them into large blocks before inserting them into the log.
 \item Transactions can acquire their commit LSN before entering pre-commit, thus simplifying the latter significantly (as all committing transactions agree on their relative commit order).
 \item Large object writes can be diverted to secondary storage, requiring only an indirect pointer in the actual log.
-\end{itemize}
+\end{list}
 
-The central feature of the log---{\em a single global atomic operation per insert}---rests on a key observation: while the LSN space must be monotonic, it need not be contiguous as long as sequence numbers can be translated efficiently to physical locations on disk. Therefore, each log sequence number (LSN) consists of two parts: the higher-order bits identify an offset in a logical LSN space, while the lowest-order bits identify the physical log segment file the offset maps to. There are a fixed number of log segments in existence at any time (16 in our implementation), but segments may be arbitrarily large and are sized independently of each other.\footnote{A system can thus scale log segment sizes upward to handle higher loads, and downward to conserve disk space.} Placing the segment number in low-order bits preserves the total of log offsets.
+The central feature of the log---{\em a single global atomic operation per insert}---rests on a key observation: while the LSN space must be monotonic, it need not be contiguous as long as sequence numbers can be translated efficiently to physical locations on disk. Therefore, each log sequence number (LSN) consists of two parts: the higher-order bits identify an offset in a logical LSN space, while the lowest-order bits identify the physical log segment file the offset maps to. There are a fixed number of log segments in existence at any time (16 in our prototype), but segments may be arbitrarily large and are sized independently of each other.\footnote{A system can thus scale log segment sizes upward to handle higher loads, and downward to conserve disk space.} Placing the segment number in low-order bits preserves the total of log offsets.
 
 \labeledfigure{ermia-log}{ERMIA's log manager.}
 
 \figref{ermia-log}(a) illustrates how the system converts between LSN and physical file offsets. Each modulo segment number is assigned a physical log segment, which consists of a start and end offset, and the name of the file that holds the segment's log records. The file name is chosen so the segment table can be reconstructed easily at startup/recovery time, even if the current system's log segment size is different than that of the existing segments. Given the mapping table, LSN can be validated and converted to file offsets using a constant-time lookup into the table.
 
-Because we allow holes in the LSN space, acquiring space in the log is a two-step process. First, the thread increments a globally shared log offset by the size of the requested allocation, thus claiming a section of the LSN space. Having acquired this block of logical LSN space, the transaction must then validate it against various corner cases that could arise:
-\begin{itemize}
+Because we allow holes in the LSN space, acquiring space in the log is a two-step process. First, the thread claims a section of the LSN space by incrementing a globally shared log offset by the size of the requested allocation. Then, having acquired this block of logical LSN space, the transaction must validates it against various corner cases:
+
+\begin{list}{$\bullet$}{\usecounter{mycounter}\leftmargin=1em}
+  \itemsep=0.1em
+  \parsep=0em
+  \parskip=0em
 \item Log segment full. If the block straddles the end of the current segment file, it cannot be used and a skip record is written in its place to ``close'' the segment. The thread competes to open the next segment file (see below) before requesting a new LSN.
 \item Between segments. Threads that acquire a log block that starts after the current segment file must compete to open the next segment. Blocks preceding the winner's block must be discarded as they do not correspond to a valid location on disk; losers retry.
 \item Log buffer full. The transaction retains its LSN but must wait for the corresponding buffer space to drain before using it.
-\end{itemize}
+\end{list}
 
-Once a thread has validated its LSN offset, it combines the segment and offset to form a valid LSN. A transaction can request log space at any time, for example to enter pre-commit with a valid commit LSN or to spill an oversized write footprint to disk; should it later abort, it simply writes a skip record.
+Once a thread validates its LSN offset, it combines the segment and offset to form a valid LSN. A transaction can request log space at any time, for example to enter pre-commit with a valid commit LSN or to spill an oversized write footprint to disk; should it later abort, it simply writes a skip record.
 
 \figref{ermia-log}(b) illustrates the various types of log blocks that might exist near a log segment boundary. Skip records in the middle of the segment come from aborted transactions (or are overflow blocks disguised as skip records). The skip record at the end of the segment ``closes'' the segment and points to the first valid block of the next segment. The ``dead zone'' between segments $i$ and $i+1$ contains blocks that lost the race to open segment $i+1$; these do not map to any location on disk and should never be referenced. 
 
-Decoupling LSN offsets from log buffer and log file management simplifies the log protocol to the point that a single atomic operation suffices in the common case. There are only two times a transaction might require additional atomic operations: (a) Occasionally, a segment file will close and several unlucky transactions will race to open the next one. We expect this case to be very rare, as segment files can be hundreds of GB in size if desired. (b) A large write transaction may not be able to fit all of its log records in a single block, and so would be forced to write some number of overflow log blocks in a backward-linked list before committing. We expect this case to {\em reduce} contention, because a thread servicing large transactions---even with overflow blocks---will not visit the log nearly as often as a thread servicing short requests.
+Decoupling LSN offsets from log buffer and log file management simplifies the log protocol to the point that a single atomic operation suffices in the common case. There are only two times a transaction might require additional atomic operations: (a) Occasionally, a segment file will close and several unlucky transactions will race to open the next one. This case is very rare, as segment files can be hundreds of GB in size if desired. (b) A large write transaction may not be able to fit all of its log records in a single block, and so would be forced to write some number of overflow log blocks in a backward-linked list before committing. We expect this case to {\em reduce} contention, because a thread servicing large transactions---even with overflow blocks---will not visit the log nearly as often as a thread servicing short requests.
 
-Because the log allocation scheme is fully non-blocking, there is no reliable way to know a thread has left. A thread with a reference to a segment that is about to be recycled could end up accessing invalid data (e.g. from segment $i+16$ rather than segment $i$). Therefore, we use an epoch manager to ensure that stragglers do not suffer the ABA problem when the system recycles modulo segment numbers, and that background cleaning has migrated live records to secondary storage before a segment is reclaimed (reassigning its modulo segment number effectively removes it from the log's ``address space'').
+Because the log allocation scheme is fully non-blocking, there is no reliable way to know whether a thread has left. A thread with a reference to a segment that is about to be recycled could end up accessing invalid data (e.g. from segment $i+16$ rather than segment $i$). Therefore, we use an epoch manager to ensure that stragglers do not suffer the ABA problem when the system recycles modulo segment numbers, and that background cleaning has migrated live records to secondary storage before a segment is reclaimed (reassigning its modulo segment number effectively removes it from the log's ``address space'').
 
 As a final note, we observe that, for many objects in the system, their physical location is the log record that created their latest version. We therefore extend the LSN with a notion of ``address spaces'' that identify whether the offset points to the log, secondary storage, or memory; the indirection array stores these augmented LSN to implement anti-caching very cleanly. 
 
-log records into a 
 By carefully designing the protocols for log buffer management and log file rotation on disk, the log manager can assign transactions a serial order before they enter pre-commit generates a commit log sequence number (LSN) for the transaction and reserves log buffer space for the transaction's log records with a \textit{single global atomic operation}. Achieving this required two key insights: first, the transaction can combine its log records into large blocks, avoiding the redundancy of writing individual log record headers and reducing the number of trips to the log. Second, the LSN space need not be contiguous as long as we can still convert easily between an LSN and the corresponding disk address.
 
 The first property arises from our use of append-only storage. We achieve the second property by assigning each LSN to a ``segment'' and storing its segment number in the low order bits; the LSN's position on disk can be determined by looking up, and subtracting off, its segment's starting offset (read-only). Transactions race to ``open'' a new segment if they obtain an LSN past the end of the current one. Unlucky transactions holding an LSN in the gap between two segments can simply discard it and request a new one. Segments can be as large as 100GB or more, however, so overflows will be rare. Once an LSN and segment have been assigned, the transaction verifies availability of space in the log's circular memory buffer (again, read-only); only in case the buffer is full will transactions have to block pending space, but disk arrays can readily absorb the sequential write-only I/O stream.
