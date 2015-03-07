@@ -5,7 +5,7 @@ benchmarks/ndb_wrapper_impl.h:143: ndb_wrapper<Transaction>::ndb_wrapper(const c
   segment size : 8589934592
   buffer size : 536870912
 Database Benchmark:
-  pid: 47698
+  pid: 23550
 settings:
   par-loading : 0
   pin-cpus    : 1
@@ -13,9 +13,9 @@ settings:
   retry-txns  : 0
   backoff-txns: 0
   bench       : tpcc
-  scale       : 32
+  scale       : 24
   num-cpus    : 48
-  num-threads : 32
+  num-threads : 24
   db-type     : ndb-proto2
   basedir     : /home/knkim/ermia/src
   txn-flags   : 0
@@ -46,20 +46,20 @@ tpcc settings:
   order_status_scan_hack       : 0
   microbench_static            : 0
   microbench_random            : 1
-  microbench rows            : 300000
+  microbench rows            : 100000
   microbench wr ratio (%)    : 0
-  microbench wr rows         : 300
+  microbench wr rows         : 100
   workload_mix                 : [0, 0, 0, 0, 0, 0, 0, 0, 100]
-tcmalloc: large alloc 42949672960 bytes == 0x2412000 @  0x2b0f96c1cd9c 0x2b0f96c3b1a0 0x466b1a 0x4bcbf2 0x404b78 0x2b0f979e3ec5 0x4083d7 (nil)
-Major fault: 0Minor fault: 287582
-num batches: PinToWarehouseId(): coreid=PinToWarehouseId(): coreid=1 pinned to whse=1 (partid=0)
-3 pinned to whse=1 (partid=0)
-30
-PinToWarehouseId(): coreid=6 pinned to whse=1 (partid=0PinToWarehouseId(): coreid=2 pinned to whse=1 (partid=0)
-)
+tcmalloc: large alloc 42949672960 bytes == 0x2184000 @  0x2ab149f73d9c 0x2ab149f921a0 0x466b1a 0x4bcbf2 0x404b78 0x2ab14ad3aec5 0x4083d7 (nil)
+Major fault: 0Minor fault: 287794
+PinToWarehouseId(): coreid=2 pinned to whse=PinToWarehouseId(): coreid=1 pinned to whse=1 (partid=0)
+PinToWarehouseId(): coreid=3 pinned to whse=1 (partid=0)
+num batches: 30
+PinToWarehouseId(): coreid=5 pinned to whse=1 (partid=0)
+1 (partid=0)
+PinToWarehouseId(): coreid=3 pinned to whse=2 (partid=1)
 [INFO] finished loading warehouse
 [INFO]   * average warehouse record length: 97 bytes
-PinToWarehouseId(): coreid=3 pinned to whse=2 (partid=1)
 PinToWarehouseId(): coreid=3 pinned to whse=3 (partid=2)
 PinToWarehouseId(): coreid=3 pinned to whse=4 (partid=3)
 PinToWarehouseId(): coreid=3 pinned to whse=5 (partid=4)
@@ -82,164 +82,131 @@ PinToWarehouseId(): coreid=3 pinned to whse=21 (partid=20)
 PinToWarehouseId(): coreid=3 pinned to whse=22 (partid=21)
 PinToWarehouseId(): coreid=3 pinned to whse=23 (partid=22)
 PinToWarehouseId(): coreid=3 pinned to whse=24 (partid=23)
-PinToWarehouseId(): coreid=3 pinned to whse=25 (partid=24)
-PinToWarehouseId(): coreid=3 pinned to whse=26 (partid=25)
-PinToWarehouseId(): coreid=3 pinned to whse=27 (partid=26)
-PinToWarehouseId(): coreid=3 pinned to whse=28 (partid=27)
-PinToWarehouseId(): coreid=3 pinned to whse=29 (partid=28)
-PinToWarehouseId(): coreid=3 pinned to whse=30 (partid=29)
-PinToWarehouseId(): coreid=3 pinned to whse=31 (partid=30)
-PinToWarehouseId(): coreid=3 pinned to whse=32 (partid=31)
 [INFO] finished loading district
 [INFO]   * average district record length: 99 bytes
 PinToWarehouseId(): coreid=1 pinned to whse=2 (partid=1)
 [INFO] finished loading item
 [INFO]   * average item record length: 84.1739 bytes
 PinToWarehouseId(): coreid=1 pinned to whse=3 (partid=2)
-PinToWarehouseId(): coreid=6 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=5 pinned to whse=2 (partid=1)
 PinToWarehouseId(): coreid=1 pinned to whse=4 (partid=3)
 PinToWarehouseId(): coreid=1 pinned to whse=5 (partid=4)
 PinToWarehouseId(): coreid=2 pinned to whse=2 (partid=1)
 PinToWarehouseId(): coreid=1 pinned to whse=6 (partid=5)
-PinToWarehouseId(): coreid=6 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=5 pinned to whse=3 (partid=2)
 PinToWarehouseId(): coreid=1 pinned to whse=7 (partid=6)
 PinToWarehouseId(): coreid=1 pinned to whse=8 (partid=7)
+PinToWarehouseId(): coreid=5 pinned to whse=4 (partid=3)
 PinToWarehouseId(): coreid=1 pinned to whse=9 (partid=8)
-PinToWarehouseId(): coreid=6 pinned to whse=4 (partid=3)
 PinToWarehouseId(): coreid=1 pinned to whse=10 (partid=9)
 PinToWarehouseId(): coreid=2 pinned to whse=3 (partid=2)
 PinToWarehouseId(): coreid=1 pinned to whse=11 (partid=10)
-PinToWarehouseId(): coreid=6 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=5 pinned to whse=5 (partid=4)
 PinToWarehouseId(): coreid=1 pinned to whse=12 (partid=11)
 PinToWarehouseId(): coreid=1 pinned to whse=13 (partid=12)
 PinToWarehouseId(): coreid=1 pinned to whse=14 (partid=13)
-PinToWarehouseId(): coreid=6 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=5 pinned to whse=6 (partid=5)
 PinToWarehouseId(): coreid=1 pinned to whse=15 (partid=14)
 PinToWarehouseId(): coreid=2 pinned to whse=4 (partid=3)
 PinToWarehouseId(): coreid=1 pinned to whse=16 (partid=15)
-PinToWarehouseId(): coreid=6 pinned to whse=7 (partid=6)
+PinToWarehouseId(): coreid=5 pinned to whse=7 (partid=6)
 PinToWarehouseId(): coreid=1 pinned to whse=17 (partid=16)
 PinToWarehouseId(): coreid=1 pinned to whse=18 (partid=17)
 PinToWarehouseId(): coreid=1 pinned to whse=19 (partid=18)
-PinToWarehouseId(): coreid=6 pinned to whse=8 (partid=7)
-PinToWarehouseId(): coreid=2 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=5 pinned to whse=8 (partid=7)
 PinToWarehouseId(): coreid=1 pinned to whse=20 (partid=19)
+PinToWarehouseId(): coreid=2 pinned to whse=5 (partid=4)
 PinToWarehouseId(): coreid=1 pinned to whse=21 (partid=20)
-PinToWarehouseId(): coreid=6 pinned to whse=9 (partid=8)
+PinToWarehouseId(): coreid=5 pinned to whse=9 (partid=8)
 PinToWarehouseId(): coreid=1 pinned to whse=22 (partid=21)
 PinToWarehouseId(): coreid=1 pinned to whse=23 (partid=22)
 PinToWarehouseId(): coreid=1 pinned to whse=24 (partid=23)
-PinToWarehouseId(): coreid=6 pinned to whse=10 (partid=9)
+PinToWarehouseId(): coreid=5 pinned to whse=10 (partid=9)
 PinToWarehouseId(): coreid=2 pinned to whse=6 (partid=5)
-PinToWarehouseId(): coreid=1 pinned to whse=25 (partid=24)
-PinToWarehouseId(): coreid=1 pinned to whse=26 (partid=25)
-PinToWarehouseId(): coreid=6 pinned to whse=11 (partid=10)
-PinToWarehouseId(): coreid=1 pinned to whse=27 (partid=26)
-PinToWarehouseId(): coreid=1 pinned to whse=28 (partid=27)
-PinToWarehouseId(): coreid=1 pinned to whse=29 (partid=28)
-PinToWarehouseId(): coreid=2 pinned to whse=7 (partid=6)
-PinToWarehouseId(): coreid=6 pinned to whse=12 (partid=11)
-PinToWarehouseId(): coreid=1 pinned to whse=30 (partid=29)
-PinToWarehouseId(): coreid=1 pinned to whse=31 (partid=30)
-PinToWarehouseId(): coreid=6 pinned to whse=13 (partid=12)
-PinToWarehouseId(): coreid=1 pinned to whse=32 (partid=31)
 [INFO] finished loading order
-[INFO]   * average order_line record length: 11.3049 bytes
-[INFO]   * average oorder record length: 7.9618 bytes
+[INFO]   * average order_line record length: 11.3009 bytes
+[INFO]   * average oorder record length: 7.95607 bytes
 [INFO]   * average new_order record length: 12 bytes
+PinToWarehouseId(): coreid=5 pinned to whse=11 (partid=10)
+PinToWarehouseId(): coreid=2 pinned to whse=7 (partid=6)
+PinToWarehouseId(): coreid=5 pinned to whse=12 (partid=11)
+PinToWarehouseId(): coreid=5 pinned to whse=13 (partid=12)
 PinToWarehouseId(): coreid=2 pinned to whse=8 (partid=7)
-PinToWarehouseId(): coreid=6 pinned to whse=14 (partid=13)
-PinToWarehouseId(): coreid=6 pinned to whse=15 (partid=14)
+PinToWarehouseId(): coreid=5 pinned to whse=14 (partid=13)
+PinToWarehouseId(): coreid=5 pinned to whse=15 (partid=14)
 PinToWarehouseId(): coreid=2 pinned to whse=9 (partid=8)
-PinToWarehouseId(): coreid=6 pinned to whse=16 (partid=15)
-PinToWarehouseId(): coreid=6 pinned to whse=17 (partid=16)
+PinToWarehouseId(): coreid=5 pinned to whse=16 (partid=15)
+PinToWarehouseId(): coreid=5 pinned to whse=17 (partid=16)
 PinToWarehouseId(): coreid=2 pinned to whse=10 (partid=9)
-PinToWarehouseId(): coreid=6 pinned to whse=18 (partid=17)
+PinToWarehouseId(): coreid=5 pinned to whse=18 (partid=17)
+PinToWarehouseId(): coreid=5 pinned to whse=19 (partid=18)
 PinToWarehouseId(): coreid=2 pinned to whse=11 (partid=10)
-PinToWarehouseId(): coreid=6 pinned to whse=19 (partid=18)
-PinToWarehouseId(): coreid=6 pinned to whse=20 (partid=19)
+PinToWarehouseId(): coreid=5 pinned to whse=20 (partid=19)
 PinToWarehouseId(): coreid=2 pinned to whse=12 (partid=11)
-PinToWarehouseId(): coreid=6 pinned to whse=21 (partid=20)
-PinToWarehouseId(): coreid=6 pinned to whse=22 (partid=21)
+PinToWarehouseId(): coreid=5 pinned to whse=21 (partid=20)
+PinToWarehouseId(): coreid=5 pinned to whse=22 (partid=21)
 PinToWarehouseId(): coreid=2 pinned to whse=13 (partid=12)
-PinToWarehouseId(): coreid=6 pinned to whse=23 (partid=22)
-PinToWarehouseId(): coreid=6 pinned to whse=24 (partid=23)
+PinToWarehouseId(): coreid=5 pinned to whse=23 (partid=22)
+PinToWarehouseId(): coreid=5 pinned to whse=24 (partid=23)
 PinToWarehouseId(): coreid=2 pinned to whse=14 (partid=13)
-PinToWarehouseId(): coreid=6 pinned to whse=25 (partid=24)
-PinToWarehouseId(): coreid=6 pinned to whse=26 (partid=25)
-PinToWarehouseId(): coreid=2 pinned to whse=15 (partid=14)
-PinToWarehouseId(): coreid=6 pinned to whse=27 (partid=26)
-PinToWarehouseId(): coreid=6 pinned to whse=28 (partid=27)
-PinToWarehouseId(): coreid=2 pinned to whse=16 (partid=15)
-PinToWarehouseId(): coreid=6 pinned to whse=29 (partid=28)
-PinToWarehouseId(): coreid=2 pinned to whse=17 (partid=16)
-PinToWarehouseId(): coreid=6 pinned to whse=30 (partid=29)
-PinToWarehouseId(): coreid=6 pinned to whse=31 (partid=30)
-PinToWarehouseId(): coreid=2 pinned to whse=18 (partid=17)
-PinToWarehouseId(): coreid=6 pinned to whse=32 (partid=31)
 [INFO] finished loading customer
-[INFO]   * average customer record length: 656.991 bytes 
+[INFO]   * average customer record length: 656.989 bytes 
+PinToWarehouseId(): coreid=2 pinned to whse=15 (partid=14)
+PinToWarehouseId(): coreid=2 pinned to whse=16 (partid=15)
+PinToWarehouseId(): coreid=2 pinned to whse=17 (partid=16)
+PinToWarehouseId(): coreid=2 pinned to whse=18 (partid=17)
 PinToWarehouseId(): coreid=2 pinned to whse=19 (partid=18)
 PinToWarehouseId(): coreid=2 pinned to whse=20 (partid=19)
 PinToWarehouseId(): coreid=2 pinned to whse=21 (partid=20)
 PinToWarehouseId(): coreid=2 pinned to whse=22 (partid=21)
 PinToWarehouseId(): coreid=2 pinned to whse=23 (partid=22)
 PinToWarehouseId(): coreid=2 pinned to whse=24 (partid=23)
-PinToWarehouseId(): coreid=2 pinned to whse=25 (partid=24)
-PinToWarehouseId(): coreid=2 pinned to whse=26 (partid=25)
-PinToWarehouseId(): coreid=2 pinned to whse=27 (partid=26)
-PinToWarehouseId(): coreid=2 pinned to whse=28 (partid=27)
-PinToWarehouseId(): coreid=2 pinned to whse=29 (partid=28)
-PinToWarehouseId(): coreid=2 pinned to whse=30 (partid=29)
-PinToWarehouseId(): coreid=2 pinned to whse=31 (partid=30)
-PinToWarehouseId(): coreid=2 pinned to whse=32 (partid=31)
 [INFO] finished loading stock
 [INFO]   * average stock record length: 8 bytes
-timed region dataloading took 47879.5 ms
-DB size: 476.551 MB
-table customer_0 size 960000
-table customer_name_idx_0 size 960000
-table district_0 size 320
-table history_0 size 960000
+timed region dataloading took 35750.6 ms
+DB size: 154.172 MB
+table customer_0 size 720000
+table customer_name_idx_0 size 720000
+table district_0 size 240
+table history_0 size 720000
 table item_0 size 100000
-table new_order_0 size 288000
-table oorder_0 size 960000
-table oorder_c_id_idx_0 size 960000
-table order_line_0 size 9602444
-table stock_0 size 3200000
-table stock_data_0 size 3200000
-table warehouse_0 size 32
+table new_order_0 size 216000
+table oorder_0 size 720000
+table oorder_c_id_idx_0 size 720000
+table order_line_0 size 7199060
+table stock_0 size 2400000
+table stock_data_0 size 2400000
+table warehouse_0 size 24
 starting benchmark...
 --- table statistics ---
-table customer_0 size 960000 (+0 records)
-table customer_name_idx_0 size 960000 (+0 records)
-table district_0 size 320 (+0 records)
-table history_0 size 960000 (+0 records)
+table customer_0 size 720000 (+0 records)
+table customer_name_idx_0 size 720000 (+0 records)
+table district_0 size 240 (+0 records)
+table history_0 size 720000 (+0 records)
 table item_0 size 100000 (+0 records)
-table new_order_0 size 288000 (+0 records)
-table oorder_0 size 960000 (+0 records)
-table oorder_c_id_idx_0 size 960000 (+0 records)
-table order_line_0 size 9602444 (+0 records)
-table stock_0 size 3200000 (+0 records)
-table stock_data_0 size 3200000 (+0 records)
-table warehouse_0 size 32 (+0 records)
+table new_order_0 size 216000 (+0 records)
+table oorder_0 size 720000 (+0 records)
+table oorder_c_id_idx_0 size 720000 (+0 records)
+table order_line_0 size 7199060 (+0 records)
+table stock_0 size 2400000 (+0 records)
+table stock_data_0 size 2400000 (+0 records)
+table warehouse_0 size 24 (+0 records)
 --- benchmark statistics ---
-runtime: 30.1812 sec
-memory delta: -277.305 MB
-memory delta rate: -9.18799 MB/sec
+runtime: 30.0386 sec
+memory delta: -12.1484 MB
+memory delta rate: -0.404427 MB/sec
 logical memory delta: 0 MB
 logical memory delta rate: 0 MB/sec
-agg_nosync_throughput: 118.915 ops/sec
-avg_nosync_per_core_throughput: 3.7161 ops/sec/core
-agg_throughput: 118.915 ops/sec
-avg_per_core_throughput: 3.7161 ops/sec/core
-avg_latency: 260.135 ms
-agg_abort_rate: 4.27418 aborts/sec
-avg_per_core_abort_rate: 0.133568 aborts/sec/core
-txn breakdown: [[MicroBenchRandom, 3718]]
+agg_nosync_throughput: 364.397 ops/sec
+avg_nosync_per_core_throughput: 15.1832 ops/sec/core
+agg_throughput: 364.397 ops/sec
+avg_per_core_throughput: 15.1832 ops/sec/core
+avg_latency: 63.9196 ms
+agg_abort_rate: 16.0793 aborts/sec
+avg_per_core_abort_rate: 0.66997 aborts/sec/core
+txn breakdown: [[MicroBenchRandom, 11429]]
 --- system counters (for benchmark) ---
 --- perf counters (if enabled, for benchmark) ---
 ---------------------------------------
-118.915 commits/s, 4.27418 total_aborts/s, 4.27418 system_aborts/s, 0 user_aborts/s.
-3.61152 internal aborts/s, 0.662664 si_aborts/s, 0 serial_aborts/s, 0 rw_aborts/s, 0 phantom aborts/s.
-3589 commits, 0 query_commits, 129 total_aborts, 129 system_aborts, 0 user_aborts, 109 internal_aborts, 20 si_aborts, 0 serial_aborts, 0 rw_aborts, 0 phantom_aborts
+364.397 commits/s, 16.0793 total_aborts/s, 16.0793 system_aborts/s, 0 user_aborts/s, 15.4468 internal aborts/s, 0.632518 si_aborts/s, 0 serial_aborts/s, 0 rw_aborts/s, 0 phantom aborts/s.
+10946 commits, 0 query_commits, 483 total_aborts, 483 system_aborts, 0 user_aborts, 464 internal_aborts, 19 si_aborts, 0 serial_aborts, 0 rw_aborts, 0 phantom_aborts

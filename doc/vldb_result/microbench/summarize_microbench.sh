@@ -22,8 +22,8 @@ do
   wr=`echo "$f" | cut -d '-' -f6 | awk -F '.' '{print $1}'`
   wp=`echo "scale=5; $wr / $r * 100" | bc -l`
   th=`echo "$f" | cut -d '-' -f8 | cut -d '.' -f1`
-  co=`tail -3 $f | head -1 | cut -d ' ' -f1`
-  ab=`tail -3 $f | head -1 | cut -d ' ' -f5`
+  co=`tail -2 $f | head -1 | cut -d ' ' -f1`
+  ab=`tail -2 $f | head -1 | cut -d ' ' -f5`
   ## ac=`echo "$ab / $co" | bc -l`
   ## echo -ne "$wr $wp $th $co $ab $ac\n"
   echo -ne "$r $wr $wp $th $co $ab\n"

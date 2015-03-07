@@ -376,7 +376,7 @@ bench_runner::run()
 //       << avg_latency_ms << " "
        << agg_abort_rate << " total_aborts/s, "
        << agg_system_abort_rate << " system_aborts/s, "
-       << agg_user_abort_rate << " user_aborts/s.\n"
+       << agg_user_abort_rate << " user_aborts/s, "
        << agg_int_abort_rate << " internal aborts/s, "
        << agg_si_abort_rate << " si_aborts/s, " 
        << agg_serial_abort_rate << " serial_aborts/s, " 
