@@ -48,101 +48,34 @@ def drawLinesPayload(ax, silo, ermia_si, ermia_ssi, xaxis, xvalues, ymax, showLe
 
     return plots
 
-def drawTPCC(ax, ymax=650, showLegend=True):
-    ## Prepare commits/aborts figure
-    xvalues=[32, 16, 8, 4]
-    plots=[]
-#    plotsLabel=['Commits','Aborts', 'Commits no log','Aborts no log']
-    plotsLabel=['Commits','Aborts']
-
-#    # Read TPS w. logging
-#    Xs, Ys = \
-#        dataTPCC.filterSelect(xcol='sf', ycol='tps', xvalues=xvalues, include={'LOG':1})
-#    NormYs = [Y/1000 for Y in Ys]    
-#    print "Silo tps", Xs, Ys, NormYs
-#    plots.append( ax.plot(xvalues, NormYs, 'b^-')[0] )
-#
-#    # Read Aborts w. logging
-#    Xs, Ys = \
-#        dataTPCC.filterSelect(xcol='sf', ycol='abt/s', xvalues=xvalues, include={'LOG':1})
-#    NormYs = [Y/1000 for Y in Ys]    
-#    print "Silo abt", Xs, Ys, NormYs
-#    plots.append( ax.plot(xvalues, NormYs, 'rd-')[0] )
-
-    # Read TPS w/o logging
-    Xs, Ys = \
-        dataTPCC.filterSelect(xcol='sf', ycol='tps', xvalues=xvalues, include={'LOG':0})
-    NormYs = [Y/1000 for Y in Ys]    
-    print "Silo w/o log tps", Xs, Ys, NormYs
-    plots.append( ax.plot(xvalues, NormYs, 'b^:')[0] )
-
-    # Read Aborts w. logging
-    Xs, Ys = \
-        dataTPCC.filterSelect(xcol='sf', ycol='abt/s', xvalues=xvalues, include={'LOG':0})
-    NormYs = [Y/1000 for Y in Ys]    
-    print "Silo w/o logging abt", Xs, Ys, NormYs
-    plots.append( ax.plot(xvalues, NormYs, 'rd:')[0] )
-
- 
-    #ax.set_xscale('log')
-    ax.set_xlim(32, 4)
-    ax.set_xticks(xvalues, minor=False)
-
-    # If shared axis then get_ylim not avail
-    #ax.set_ylim(0, ax.get_ylim()[1]*1.1) # Add pad above for appearance
-    ax.set_ylim(0, ymax)
-    # Print ratio in the title
-    sTitle = "TPC-C w. 32 clients"
-    ax.set_title(sTitle, fontsize=9)
-    ax.set_xlabel('# Warehouses')
-    for tick in ax.xaxis.get_major_ticks():
-        tick.label.set_fontsize(9)
-    for tick in ax.yaxis.get_major_ticks():
-        tick.label.set_fontsize(9)
-
-    if showLegend:
-        # Legend locations: [upper lower center] [left right center]  or best  or center
-        #algosDisp = [algo.upper() for algo in algos]
-        # , bbox_to_anchor=(1, 0.5))
-        ax.legend(plots, plotsLabel, fontsize=7,loc='center left')
-        leg = ax.get_legend()
-        leg.set_frame_on(False)
-
-    return plots
-
 ## plots not sharing the Y-axis
-fig, (ax_1k, ax_100k, ax_300k) = plt.subplots(1, 3, sharey=False)
-#fig, (ax_100k, ax_300k, axTPCC) = plt.subplots(1, 3, sharey=False)
+fig, (ax_1k, ax_10k, ax_100k ) = plt.subplots(1, 3, sharey=False)
 fig.subplots_adjust(left=0.1, bottom=0.2, right=0.9, top=0.87, wspace=0.7)
 
 # Datafile load
 silo_1k = MyData("../vldb_result/microbench/silo/rand-1k.csv", header_str="Reads", delimiter=' ');
 ermia_si_1k = MyData("../vldb_result/microbench/ermia-si/rand-1k.csv", header_str="Reads", delimiter=' ');
 ermia_ssi_1k = MyData("../vldb_result/microbench/silo/rand-1k.csv", header_str="Reads", delimiter=' ');
+silo_10k = MyData("../vldb_result/microbench/silo/rand-10k.csv", header_str="Reads", delimiter=' ');
+ermia_si_10k = MyData("../vldb_result/microbench/ermia-si/rand-10k.csv", header_str="Reads", delimiter=' ');
+ermia_ssi_10k = MyData("../vldb_result/microbench/silo/rand-10k.csv", header_str="Reads", delimiter=' ');
 silo_100k = MyData("../vldb_result/microbench/silo/rand-100k.csv", header_str="Reads", delimiter=' ');
 ermia_si_100k = MyData("../vldb_result/microbench/ermia-si/rand-100k.csv", header_str="Reads", delimiter=' ');
 ermia_ssi_100k = MyData("../vldb_result/microbench/silo/rand-100k.csv", header_str="Reads", delimiter=' ');
-silo_300k = MyData("../vldb_result/microbench/silo/rand-300k.csv", header_str="Reads", delimiter=' ');
-ermia_si_300k = MyData("../vldb_result/microbench/ermia-si/rand-300k.csv", header_str="Reads", delimiter=' ');
-ermia_ssi_300k = MyData("../vldb_result/microbench/silo/rand-300k.csv", header_str="Reads", delimiter=' ');
-dataTPCC = MyData("../vldb_result/silo-tpcc.csv", header_str="LOG", delimiter=' ');
 
 #Plots
 plots = drawLinesPayload(ax_1k, silo_1k, ermia_si_1k, ermia_ssi_1k, (0.001,0.01,0.1),(1,10,100),100000, showLegend=True)
 ax_1k.set_title("1k reads(24 threads)", fontsize=9)
 ax_1k.set_ylabel('Throughput(tps)', fontsize=9)
 
-plots = drawLinesPayload(ax_100k, silo_100k, ermia_si_100k, ermia_ssi_100k, (0.00001,0.0001,0.001,0.01,0.1),(1,10,100,1000,10000),1000, showLegend=False)
+plots = drawLinesPayload(ax_10k, silo_10k, ermia_si_10k, ermia_ssi_10k, (0.001,0.01,0.1),(10,100,1000),8000, showLegend=False)
+ax_10k.set_title("10k reads(24 threads)", fontsize=9)
+ax_10k.set_xlabel('Ratio of Writes/Reads')
+ax_10k.set_ylabel('Throughput (tps)', fontsize=9)
+
+plots = drawLinesPayload(ax_100k, silo_100k, ermia_si_100k, ermia_ssi_100k, (0.001,0.01,0.1),(100,1000,10000),500, showLegend=False)
 ax_100k.set_title("100k reads(24 threads)", fontsize=9)
-ax_100k.set_xlabel('Ratio of Writes/Reads')
 ax_100k.set_ylabel('Throughput (tps)', fontsize=9)
-
-plots = drawLinesPayload(ax_300k, silo_300k, ermia_si_300k, ermia_ssi_300k, (0.00001,0.0001,0.001,0.01,0.1),(3,30,300,3000,30000),200, showLegend=False)
-ax_300k.set_title("300k reads(24 threads)", fontsize=9)
-ax_300k.set_ylabel('Throughput (tps)', fontsize=9)
-
-#plotsTPCC = drawTPCC(axTPCC, showLegend=True)
-#axTPCC.set_ylabel('Throughput (KTps)', fontsize=9)
 
 #Show
 MyData.MyShow(plt) # show or save plot
