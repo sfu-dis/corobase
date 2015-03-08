@@ -1,0 +1,170 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2b1265808000, 0x2b1c66208000)
+cpu0 owns [0x2b1265a00000, 0x2b1410600000)
+cpu1 owns [0x2b1410600000, 0x2b15bb200000)
+cpu2 owns [0x2b15bb200000, 0x2b1765e00000)
+cpu3 owns [0x2b1765e00000, 0x2b1910a00000)
+cpu4 owns [0x2b1910a00000, 0x2b1abb600000)
+cpu5 owns [0x2b1abb600000, 0x2b1c66200000)
+[logging subsystem]
+  assignments: [[0, 1, 2, 3, 4, 5]]
+  call fsync : 1
+  compression: 0
+  fake_writes: 0
+Database Benchmark:
+  pid: 11543
+settings:
+  par-loading : 0
+  pin-cpus    : 1
+  slow-exit   : 0
+  retry-txns  : 0
+  backoff-txns: 0
+  bench       : tpcc
+  scale       : 6
+  num-cpus    : 48
+  num-threads : 6
+  db-type     : ndb-proto2
+  basedir     : /home/knkim/silo/silo-src
+  txn-flags   : 0
+  runtime     : 40
+  var-encode  : yes
+  allocator   : tcmalloc
+  numa-memory : 42958061568
+  logfiles : [/tmpfs/knkim/silo-log/log]
+  assignments : []
+  disable-gc : 0
+  disable-snapshots : 0
+  stats-server-sockfile: 
+system properties:
+  btree_internal_node_size: 264
+  btree_leaf_node_size    : 312
+  tuple_prefetch          : no
+  btree_node_prefetch     : yes
+tpcc settings:
+  random home warehouse (%)    : 100
+  cross_partition_transactions : 1
+  read_only_snapshots          : 0
+  partition_locks              : 0
+  separate_tree_per_partition  : 0
+  new_order_remote_item_pct    : 1
+  new_order_fast_id_gen        : 0
+  uniform_item_dist            : 0
+  order_status_scan_hack       : 0
+  microbench_static            : 0
+  microbench_random            : 0
+  workload_mix                 : [41, 43, 4, 4, 4, 4, 0, 0, 0]
+PinToWarehouseId(): coreid=6 pinned to whse=1 (partid=0)
+cpu0 starting faulting region (7159676928 bytes / 3414 hugepgs)
+[INFO] finished loading warehouse
+[INFO]   * average warehouse record length: 97 bytes
+PinToWarehouseId(): coreid=num batches: 304 pinned to whse=1
+PinToWarehouseId(): coreid= (partid=0)
+5 pinned to whse=1 (partid=0)
+PinToWarehouseId(): coreid=3 pinned to whse=1 (partid=0)
+[INFO] finished loading item
+[INFO]   * average item record length: 84.1739 bytes
+cpu0 finished faulting region in 4892.72 ms
+PinToWarehouseId(): coreid=4 pinned to whse=2 (partid=1)
+cpu1 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=5 pinned to whse=2 (partid=1)
+PinToWarehouseId(): coreid=3 pinned to whse=2 (partid=1)
+cpu1 finished faulting region in 4802.06 ms
+PinToWarehouseId(): coreid=4 pinned to whse=3 (partid=2)
+cpu2 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=5 pinned to whse=3 (partid=2)
+PinToWarehouseId(): coreid=3 pinned to whse=3 (partid=2)
+cpu2 finished faulting region in 4790.52 ms
+PinToWarehouseId(): coreid=4 pinned to whse=4 (partid=3)
+cpu3 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=5 pinned to whse=4 (partid=3)
+PinToWarehouseId(): coreid=3 pinned to whse=4 (partid=3)
+cpu3 finished faulting region in 4790.47 ms
+PinToWarehouseId(): coreid=4 pinned to whse=5 (partid=4)
+cpu4 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=5 pinned to whse=5 (partid=4)
+PinToWarehouseId(): coreid=3 pinned to whse=5 (partid=4)
+cpu4 finished faulting region in 4766.55 ms
+PinToWarehouseId(): coreid=4 pinned to whse=6 (partid=5)
+cpu5 starting faulting region (7159676928 bytes / 3414 hugepgs)
+PinToWarehouseId(): coreid=6 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=5 pinned to whse=6 (partid=5)
+PinToWarehouseId(): coreid=3 pinned to whse=6 (partid=5)
+cpu5 finished faulting region in 4789.85 ms
+[INFO] finished loading district
+[INFO]   * average district record length: 99 bytes
+[INFO] finished loading order
+[INFO]   * average order_line record length: 11.2511 bytes
+[INFO]   * average oorder record length: 7.88727 bytes
+[INFO]   * average new_order record length: 12 bytes
+[INFO] finished loading customer
+[INFO]   * average customer record length: 656.954 bytes 
+[INFO] finished loading stock
+[INFO]   * average stock record length: 8 bytes
+timed region dataloading took 30439.8 ms
+DB size: 42784.3 MB
+wait_an_epoch(): consistent reads happening in e-1: 0
+waiting for system_sync_epoch_=48 to be < e=50
+[188802, 188802, 2.01503e+07] txns persisted in loading phase
+table customer_0 size 180000
+table customer_name_idx_0 size 180000
+table district_0 size 60
+table history_0 size 180000
+table item_0 size 100000
+table new_order_0 size 54000
+table oorder_0 size 180000
+table oorder_c_id_idx_0 size 180000
+table order_line_0 size 1799644
+table stock_0 size 600000
+table stock_data_0 size 600000
+table warehouse_0 size 6
+starting benchmark...
+waiting for system_sync_epoch_=1062 to be < e=1065
+--- table statistics ---
+table customer_0 size 180000 (+0 records)
+table customer_name_idx_0 size 180000 (+0 records)
+table district_0 size 60 (+0 records)
+table history_0 size 494417 (+314417 records)
+table item_0 size 100000 (+0 records)
+table new_order_0 size 198343 (+144343 records)
+table oorder_0 size 469061 (+289061 records)
+table oorder_c_id_idx_0 size 469061 (+289061 records)
+table order_line_0 size 4677565 (+2877921 records)
+table stock_0 size 600000 (+0 records)
+table stock_data_0 size 600000 (+0 records)
+table warehouse_0 size 6 (+0 records)
+--- benchmark statistics ---
+runtime: 40.0574 sec
+memory delta: 780.238 MB
+memory delta rate: 19.478 MB/sec
+logical memory delta: 41.6824 MB
+logical memory delta rate: 1.04057 MB/sec
+agg_nosync_throughput: 17580.8 ops/sec
+avg_nosync_per_core_throughput: 2930.13 ops/sec/core
+agg_throughput: 17559.3 ops/sec
+avg_per_core_throughput: 2926.55 ops/sec/core
+agg_persist_throughput: 17559.3 ops/sec
+avg_per_core_persist_throughput: 2926.55 ops/sec/core
+avg_latency: 0.181162 ms
+avg_persist_latency: 127.771 ms
+agg_abort_rate: 1052.17 aborts/sec
+avg_per_core_abort_rate: 175.361 aborts/sec/core
+txn breakdown: [[CreditCheck, 29907], [Delivery, 29743], [NewOrder, 305738], [OrderStatus, 29846], [Payment, 320385], [StockLevel, 29907]]
+--- system counters (for benchmark) ---
+--- perf counters (if enabled, for benchmark) ---
+--- allocator stats ---
+[allocator] ncpus=6
+[allocator] cpu=0 fully_faulted?=1 remaining=6750732288 bytes
+[allocator] cpu=1 fully_faulted?=1 remaining=6742343680 bytes
+[allocator] cpu=2 fully_faulted?=1 remaining=6754926592 bytes
+[allocator] cpu=3 fully_faulted?=1 remaining=6757023744 bytes
+[allocator] cpu=4 fully_faulted?=1 remaining=6754926592 bytes
+[allocator] cpu=5 fully_faulted?=1 remaining=6738149376 bytes
+---------------------------------------
+17559.3 commits/s, 1052.17 system_aborts/s, 0 user_aborts/s, 1052.17 total_aborts/s, 
+703379 commits, 0 query_commits, 42147 total_aborts, 42147 system_aborts, 0 user_aborts, 

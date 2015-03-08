@@ -1,0 +1,301 @@
+allocator::Initialize()
+  hugepgsize: 2097152
+  use MADV_WILLNEED: 1
+  mmap() region [0x2b5a95f27000, 0x2b6217927000)
+cpu0 owns [0x2b5a96000000, 0x2b5b00c00000)
+cpu1 owns [0x2b5b00c00000, 0x2b5b6b800000)
+cpu2 owns [0x2b5b6b800000, 0x2b5bd6400000)
+cpu3 owns [0x2b5bd6400000, 0x2b5c41000000)
+cpu4 owns [0x2b5c41000000, 0x2b5cabc00000)
+cpu5 owns [0x2b5cabc00000, 0x2b5d16800000)
+cpu6 owns [0x2b5d16800000, 0x2b5d81400000)
+cpu7 owns [0x2b5d81400000, 0x2b5dec000000)
+cpu8 owns [0x2b5dec000000, 0x2b5e56c00000)
+cpu9 owns [0x2b5e56c00000, 0x2b5ec1800000)
+cpu10 owns [0x2b5ec1800000, 0x2b5f2c400000)
+cpu11 owns [0x2b5f2c400000, 0x2b5f97000000)
+cpu12 owns [0x2b5f97000000, 0x2b6001c00000)
+cpu13 owns [0x2b6001c00000, 0x2b606c800000)
+cpu14 owns [0x2b606c800000, 0x2b60d7400000)
+cpu15 owns [0x2b60d7400000, 0x2b6142000000)
+cpu16 owns [0x2b6142000000, 0x2b61acc00000)
+cpu17 owns [0x2b61acc00000, 0x2b6217800000)
+[logging subsystem]
+  assignments: [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]]
+  call fsync : 1
+  compression: 0
+  fake_writes: 0
+Database Benchmark:
+  pid: 40889
+settings:
+  par-loading : 0
+  pin-cpus    : 1
+  slow-exit   : 0
+  retry-txns  : 0
+  backoff-txns: 0
+  bench       : tpce
+  scale       : 500
+  num-cpus    : 48
+  num-threads : 18
+  db-type     : ndb-proto2
+  basedir     : /home/knkim/silo/silo-src
+  txn-flags   : 0
+  runtime     : 40
+  var-encode  : yes
+  allocator   : tcmalloc
+  numa-memory : 32237420544
+  logfiles : [/tmpfs/knkim/silo-log/log]
+  assignments : []
+  disable-gc : 0
+  disable-snapshots : 0
+  stats-server-sockfile: 
+system properties:
+  btree_internal_node_size: 264
+  btree_leaf_node_size    : 312
+  tuple_prefetch          : no
+  btree_node_prefetch     : yes
+
+
+Using the following settings.
+
+	In Directory:		./benchmarks/egen/flat/egen_flat_in/
+	Start From Customer:	1
+	Customer Count:		5000
+	Total customers:	5000
+	Load Unit:		1000
+	Scale Factor:		500
+	Initial Trade Days:	10
+	Caching Enabled:	true
+
+
+Loading input files:
+
+	Security................loaded.
+	StatusType..............loaded.
+	TradeType...............loaded.
+	Company.................loaded.
+	Exchange................loaded.
+	TaxRatesDivision........loaded.
+	FemaleFirstName.........loaded.
+	Industry................loaded.
+	LastName................loaded.
+	MaleFirstName...........loaded.
+	Sector..................loaded.
+	AreaCode................loaded.
+	Charge..................loaded.
+	CommissionRate..........loaded.
+	CompanyCompetitor.......loaded.
+	CompanySPRate...........loaded.
+	LastName................loaded.
+	StreetName..............loaded.
+	StreetSuffix............loaded.
+	TaxableAccountName......loaded.
+	NonTaxableAccountName...loaded.
+	TaxRatesCountry.........loaded.
+	ZipCode.................loaded.
+
+Loading complete (0.07sec).
+
+tpce settings:
+  workload_mix                 : [4.9, 8, 1, 8, 9, 8, 10.1, 10, 9, 2, 30]
+  scale factor                 : 500
+  working days                 : 10
+  customers                    : 5000
+  long query scan range		: 5%
+
+
+ customers= 5000, loadunit= 1000
+
+timed region dataloading took 52930.6 ms
+DB size: 10755.2 MB
+wait_an_epoch(): consistent reads happening in e-1: 53
+waiting for system_sync_epoch_=1373 to be < e=1375
+ERROR: [25091007, 25129065, 469876]
+[25091007, 25129065, 469876] txns persisted in loading phase
+table account_permission_0 size 25000
+table address_0 size 7504
+table assets_history_0 size 0
+table b_name_index_0 size 50
+table broker_0 size 50
+table c_tax_id_index_0 size 5000
+table ca_id_index_0 size 25000
+table cash_transaction_0 size 2649349
+table charge_0 size 15
+table co_in_id_index_0 size 2500
+table co_name_index_0 size 2500
+table commission_rate_0 size 240
+table company_0 size 2500
+table company_competitor_0 size 7500
+table customer_account_0 size 25000
+table customer_taxrate_0 size 10000
+table customers_0 size 5000
+table daily_market_0 size 4469625
+table exchange_0 size 4
+table financial_0 size 50000
+table holding_0 size 814368
+table holding_history_0 size 3611655
+table holding_summary_0 size 241862
+table in_name_index_0 size 102
+table in_sc_id_index_0 size 102
+table industry_0 size 102
+table last_trade_0 size 3425
+table news_item_0 size 5000
+table news_xref_0 size 5000
+table sector_0 size 12
+table security_0 size 3425
+table security_index_0 size 3425
+table settlement_0 size 2880000
+table status_type_0 size 5
+table t_ca_id_index_0 size 2880000
+table t_s_symb_index_0 size 2880000
+table tax_rate_0 size 320
+table trade_0 size 2880000
+table trade_history_0 size 6911641
+table trade_request_0 size 0
+table trade_type_0 size 5
+table watch_item_0 size 500717
+table watch_list_0 size 5000
+table zip_code_0 size 14741
+starting benchmark...
+tpce: worker id 48 => partitions [1, 28)
+tpce: worker id 49 => partitions [28, 56)
+tpce: worker id 50 => partitions [56, 84)
+tpce: worker id 51 => partitions [84, 112)
+tpce: worker id 52 => partitions [112, 139)
+tpce: worker id 53 => partitions [139, 167)
+tpce: worker id 54 => partitions [167, 195)
+tpce: worker id 55 => partitions [195, 223)
+tpce: worker id 56 => partitions [223, 251)
+tpce: worker id 57 => partitions [251, 278)
+tpce: worker id 58 => partitions [278, 306)
+tpce: worker id 59 => partitions [306, 334)
+tpce: worker id 60 => partitions [334, 362)
+tpce: worker id 61 => partitions [362, 389)
+tpce: worker id 62 => partitions [389, 417)
+tpce: worker id 63 => partitions [417, 445)
+tpce: worker id 64 => partitions [445, 473)
+tpce: worker id 65 => partitions [473, 501)
+cpu12 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu13 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu11 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu15 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu9 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu7 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu16 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu3 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu8 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu1 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu0 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu4 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu10 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu6 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu14 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu17 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu2 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu5 starting faulting region (1790967808 bytes / 854 hugepgs)
+cpu2 finished faulting region in 11717.4 ms
+cpu15 finished faulting region in 11870.1 ms
+cpu11 finished faulting region in 11907.1 ms
+cpu10 finished faulting region in 11887.8 ms
+cpu14 finished faulting region in 11886.2 ms
+cpu6 finished faulting region in 11936 ms
+cpu7 finished faulting region in 11980 ms
+cpu3 finished faulting region in 12024 ms
+cpu0 finished faulting region in 12727.5 ms
+cpu17 finished faulting region in 12789.3 ms
+cpu13 finished faulting region in 12863.9 ms
+cpu16 finished faulting region in 12901 ms
+cpu8 finished faulting region in 12909.8 ms
+cpu9 finished faulting region in 12930.5 ms
+cpu5 finished faulting region in 12912.1 ms
+cpu1 finished faulting region in 13045.6 ms
+cpu12 finished faulting region in 13113.1 ms
+cpu4 finished faulting region in 13209 ms
+waiting for system_sync_epoch_=2746 to be < e=2750
+--- table statistics ---
+table account_permission_0 size 25000 (+0 records)
+table address_0 size 7504 (+0 records)
+table assets_history_0 size 40619 (+40619 records)
+table b_name_index_0 size 50 (+0 records)
+table broker_0 size 50 (+0 records)
+table c_tax_id_index_0 size 5000 (+0 records)
+table ca_id_index_0 size 25000 (+0 records)
+table cash_transaction_0 size 2661340 (+11991 records)
+table charge_0 size 15 (+0 records)
+table co_in_id_index_0 size 2500 (+0 records)
+table co_name_index_0 size 2500 (+0 records)
+table commission_rate_0 size 240 (+0 records)
+table company_0 size 2500 (+0 records)
+table company_competitor_0 size 7500 (+0 records)
+table customer_account_0 size 25000 (+0 records)
+table customer_taxrate_0 size 10000 (+0 records)
+table customers_0 size 5000 (+0 records)
+table daily_market_0 size 4469625 (+0 records)
+table exchange_0 size 4 (+0 records)
+table financial_0 size 50000 (+0 records)
+table holding_0 size 816455 (+2087 records)
+table holding_history_0 size 3628691 (+17036 records)
+table holding_summary_0 size 241854 (-8 records)
+table in_name_index_0 size 102 (+0 records)
+table in_sc_id_index_0 size 102 (+0 records)
+table industry_0 size 102 (+0 records)
+table last_trade_0 size 3425 (+0 records)
+table news_item_0 size 5000 (+0 records)
+table news_xref_0 size 5000 (+0 records)
+table sector_0 size 12 (+0 records)
+table security_0 size 3425 (+0 records)
+table security_index_0 size 3425 (+0 records)
+table settlement_0 size 2893064 (+13064 records)
+table status_type_0 size 5 (+0 records)
+table t_ca_id_index_0 size 2895428 (+15428 records)
+table t_s_symb_index_0 size 2895428 (+15428 records)
+table tax_rate_0 size 320 (+0 records)
+table trade_0 size 2894932 (+14932 records)
+table trade_history_0 size 6944185 (+32544 records)
+table trade_request_0 size 1592 (+1592 records)
+table trade_type_0 size 5 (+0 records)
+table watch_item_0 size 500717 (+0 records)
+table watch_list_0 size 5000 (+0 records)
+table zip_code_0 size 14741 (+0 records)
+--- benchmark statistics ---
+runtime: 40.0704 sec
+memory delta: 33206.8 MB
+memory delta rate: 828.711 MB/sec
+logical memory delta: 0 MB
+logical memory delta rate: 0 MB/sec
+agg_nosync_throughput: 3741.47 ops/sec
+avg_nosync_per_core_throughput: 207.859 ops/sec/core
+agg_throughput: 3736 ops/sec
+avg_per_core_throughput: 207.556 ops/sec/core
+agg_persist_throughput: 3736 ops/sec
+avg_per_core_persist_throughput: 207.556 ops/sec/core
+avg_latency: 3.207 ms
+avg_persist_latency: 151.927 ms
+agg_abort_rate: 1558.91 aborts/sec
+avg_per_core_abort_rate: 86.6059 aborts/sec/core
+txn breakdown: [[BrokerVolume, 10315], [CustomerPosition, 16785], [LongQuery, 63624], [MarketFeed, 2222], [MarketWatch, 16976], [SecurityDetail, 19281], [TradeLookup, 16932], [TradeOrder, 21516], [TradeResult, 21340], [TradeStatus, 19030], [TradeUpdate, 4148]]
+--- system counters (for benchmark) ---
+--- perf counters (if enabled, for benchmark) ---
+--- allocator stats ---
+[allocator] ncpus=18
+[allocator] cpu=0 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=1 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=2 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=3 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=4 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=5 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=6 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=7 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=8 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=9 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=10 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=11 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=12 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=13 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=14 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=15 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=16 fully_faulted?=1 remaining=1493172224 bytes
+[allocator] cpu=17 fully_faulted?=1 remaining=1493172224 bytes
+---------------------------------------
+3736 commits/s, 681.001 system_aborts/s, 877.905 user_aborts/s, 1558.91 total_aborts/s, 
+149703 commits, 40619 query_commits, 62466 total_aborts, 27288 system_aborts, 35178 user_aborts, 
