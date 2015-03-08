@@ -14,7 +14,7 @@
 #endif
 #endif
 
-//#define USE_PARALLEL_SSI
+#define USE_PARALLEL_SSI
 
 #if defined(USE_PARALLEL_SSI) && defined(USE_PARALLEL_SSN)
 #error "can't use SSI and SSN together."
