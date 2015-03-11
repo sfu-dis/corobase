@@ -28,6 +28,8 @@
 
 //#define USE_DYNARRAY_STR_ARENA
 
+//#define ENABLE_GC
+
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
 //#define DIE_ON_ABORT

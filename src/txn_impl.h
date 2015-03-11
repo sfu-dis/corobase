@@ -15,7 +15,9 @@ template <template <typename> class Protocol, typename Traits>
 transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type &sa)
   : transaction_base(flags), xid(TXN::xid_alloc()), xc(xid_get_context(xid)), sa(&sa)
 {
+#ifdef ENABLE_GC
   RA::epoch_enter();
+#endif
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
@@ -55,7 +57,9 @@ transaction<Protocol, Traits>::~transaction()
   xid_free(xid);
   //write_set.clear();
   //read_set.clear();
+#ifdef ENABLE_GC
   RA::epoch_exit();
+#endif
 }
 
 template <template <typename> class Protocol, typename Traits>
@@ -302,6 +306,10 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   // ok, can really commit if we reach here
   log->commit(NULL);
 
+#ifdef ENABLE_GC
+  recycle_oid *updated_oids_head = NULL;
+  recycle_oid *updated_oids_tail = NULL;
+#endif
   // post-commit: stuff access stamps for reads; init new versions
   for (auto &w : write_set) {
     dbtuple *tuple = w.new_tuple;
@@ -314,18 +322,37 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
            (uint64_t)((char *)next_tuple - sizeof(object)));
     if (next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
-      // FIXME: tuple's sstamp should never decrease?
       ASSERT(xc->sstamp and xc->sstamp != ~uint64_t{0});
+      ASSERT(not next_tuple->sstamp.offset());
       volatile_write(next_tuple->sstamp, LSN::make(xc->sstamp, 0).to_log_ptr());
       ASSERT(next_tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
     }
     volatile_write(tuple->xstamp, cstamp);
     volatile_write(tuple->clsn, clsn.to_log_ptr());
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+#ifdef ENABLE_GC
+    if (tuple->next()) {
+      // construct the (sub)list here so that we have only one CAS per tx
+      recycle_oid *r = new recycle_oid((uintptr_t)w.btr, w.oid);
+      if (not updated_oids_head)
+        updated_oids_head = updated_oids_tail = r;
+      else {
+        updated_oids_tail->next = r;
+        updated_oids_tail = r;
+      }
+    }
+#endif
   }
 
   // change state
   volatile_write(xc->state, TXN_CMMTD);
+
+#ifdef ENABLE_GC
+  if (updated_oids_head) {
+    ASSERT(updated_oids_tail);
+    RA::recycle(updated_oids_head, updated_oids_tail);
+  }
+#endif
 
   for (auto &r : read_set) {
     ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -481,6 +508,10 @@ examine_writes:
   // survived!
   log->commit(NULL);
 
+#ifdef ENABLE_GC
+  recycle_oid *updated_oids_head = NULL;
+  recycle_oid *updated_oids_tail = NULL;
+#endif
   // stamp overwritten versions, stuff clsn
   for (auto &w : write_set) {
     dbtuple* tuple = w.new_tuple;
@@ -496,12 +527,31 @@ examine_writes:
     }
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+#ifdef ENABLE_GC
+    if (tuple->next()) {
+      // construct the (sub)list here so that we have only one CAS per tx
+      recycle_oid *r = new recycle_oid((uintptr_t)w.btr, w.oid);
+      if (not updated_oids_head)
+        updated_oids_head = updated_oids_tail = r;
+      else {
+        updated_oids_tail->next = r;
+        updated_oids_tail = r;
+      }
+    }
+#endif
   }
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
   // This is where (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN_CMMTD);
+
+#ifdef ENABLE_GC
+  if (updated_oids_head) {
+    ASSERT(updated_oids_tail);
+    RA::recycle(updated_oids_head, updated_oids_tail);
+  }
+#endif
 
   // update xstamps in read versions
   for (auto &r : read_set) {
@@ -557,6 +607,10 @@ transaction<Protocol, Traits>::si_commit()
   // post-commit cleanup: install clsn to tuples
   // (traverse write-tuple)
   // stuff clsn in tuples in write-set
+#ifdef ENABLE_GC
+  recycle_oid *updated_oids_head = NULL;
+  recycle_oid *updated_oids_tail = NULL;
+#endif
   for (auto &w : write_set) {
     dbtuple* tuple = w.new_tuple;
     if (tuple->is_defunct())
@@ -564,12 +618,31 @@ transaction<Protocol, Traits>::si_commit()
     tuple->do_write(w.writer);
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+#ifdef ENABLE_GC
+    if (tuple->next()) {
+      // construct the (sub)list here so that we have only one CAS per tx
+      recycle_oid *r = new recycle_oid((uintptr_t)w.btr, w.oid);
+      if (not updated_oids_head)
+        updated_oids_head = updated_oids_tail = r;
+      else {
+        updated_oids_tail->next = r;
+        updated_oids_tail = r;
+      }
+    }
+#endif
   }
 
   // NOTE: make sure this happens after populating log block,
   // otherwise readers will see inconsistent data!
   // This is where (committed) tuple data are made visible to readers
   volatile_write(xc->state, TXN_CMMTD);
+
+#ifdef ENABLE_GC
+  if (updated_oids_head) {
+    ASSERT(updated_oids_tail);
+    RA::recycle(updated_oids_head, updated_oids_tail);
+  }
+#endif
 
   return rc_t{RC_TRUE};
 }
