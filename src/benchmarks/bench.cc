@@ -114,7 +114,9 @@ bench_worker::run()
 #endif
 	// XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
 	RCU::rcu_register();
+#ifdef ENABLE_GC
 	RA::ra_register();
+#endif
 	RCU::rcu_start_tls_cache( 32, 100000 );
 	on_run_setup();
 	scoped_db_thread_ctx ctx(db, false);
@@ -161,7 +163,9 @@ retry:
 			d -= workload[i].frequency;
 		}
 	}
+#ifdef ENABLE_GC
 	RA::ra_deregister();
+#endif
 	RCU::rcu_deregister();
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
     deassign_reader_bitmap_entry();

@@ -12,13 +12,24 @@
 #include "sm-defs.h"
 #include "epoch.h"
 #include "../macros.h"
+#include "../object.h"
 
+#ifdef ENABLE_GC
 typedef epoch_mgr::epoch_num epoch_num;
+
+// oids that got updated, ie need to cleanup the overwritten versions
+struct recycle_oid {
+    uintptr_t btr;
+    oid_type oid;
+    recycle_oid *next;
+    recycle_oid(uintptr_t b, oid_type o) : btr(b), oid(o), next(NULL) {}
+};
+#endif
 
 namespace RA {
     void *allocate(uint64_t size);
-    void deallocate(void* p);
 
+#ifdef ENABLE_GC
     struct thread_data {
         bool initialized;
 		uint64_t nbytes;
@@ -40,19 +51,9 @@ namespace RA {
     void epoch_exit(void);
     void epoch_thread_quiesce(void);
     void init();
+    void recycle(uintptr_t table, oid_type oid);
+    void recycle(recycle_oid *list_head, recycle_oid *list_tail);
     extern LSN trim_lsn;
-};
-
-class scoped_ra_region {
-public:
-    scoped_ra_region(void)
-    {
-        RA::epoch_enter();
-    }
-
-    ~scoped_ra_region(void)
-    {
-        RA::epoch_exit();
-    }
+#endif
 };
 

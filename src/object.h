@@ -9,7 +9,6 @@
 #include <numa.h>
 #include <limits>
 #include "dbcore/sm-common.h"
-#include "dbcore/sm-alloc.h"
 #include "core.h"
 
 // each socket requests this many oids a time from global alloc
