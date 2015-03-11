@@ -421,16 +421,18 @@ private:
   bool ignore_key;
 };
 
+// Note: try_catch_cond_abort might call __abort_txn with rc=RC_FALSE
+// so no need to assure rc must be RC_ABORT_*. These aborts are counted
+// torward user aborts. FIXME: also count TPC-E user aborts here?
 #define __abort_txn(r) \
 {   \
-  ASSERT(r._val != RC_ABORT and r._val & RC_ABORT); \
   switch(r._val){\
     case RC_ABORT_SERIAL: inc_ntxn_serial_aborts(); break;\
     case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
     case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
     case RC_ABORT_INTERNAL: inc_ntxn_int_aborts(); break;\
     case RC_ABORT_PHANTOM: inc_ntxn_phantom_aborts(); break;\
-    default: ALWAYS_ASSERT(false);\
+    default: inc_ntxn_user_aborts(); break; \
   }\
   db->abort_txn(txn); \
   return bench_worker::txn_result(false, 0); \
