@@ -134,10 +134,12 @@ retry:
 				const auto ret = workload[i].fn(this);
 				if (likely(ret.first)) {
 					++ntxn_commits;
+                    txn_counts[i].first++;
 					latency_numer_us += t.lap();
 					backoff_shifts >>= 1;
 				} else {
 					++ntxn_aborts;
+                    txn_counts[i].second++;
 					if (retry_aborted_transaction && running) {
 						if (backoff_aborted_transaction) {
 							if (backoff_shifts < 63)
@@ -155,7 +157,6 @@ retry:
 					}
 				}
 				size_delta += ret.second; // should be zero on abort
-				txn_counts[i]++; // txn_counts aren't used to compute throughput (is
 				// just an informative number to print to the console
 				// in verbose mode)
 				break;
@@ -286,16 +287,22 @@ bench_runner::run()
     double(latency_numer_us) / double(n_commits);
   const double avg_latency_ms = avg_latency_us / 1000.0;
 
+  map<string, pair<uint64_t, uint64_t> > agg_txn_counts = workers[0]->get_txn_counts();
+  for (size_t i = 1; i < workers.size(); i++) {
+    std::map<std::string, std::pair<uint64_t, uint64_t> > c = workers[i]->get_txn_counts();
+    for (auto &t : c) {
+      agg_txn_counts[t.first].first += t.second.first;
+      agg_txn_counts[t.first].second += t.second.second;
+    }
+  }
+
   if (verbose) {
     const pair<uint64_t, uint64_t> mem_info_after = get_system_memory_info();
     const int64_t delta = int64_t(mem_info_before.first) - int64_t(mem_info_after.first); // free mem
     const double delta_mb = double(delta)/1048576.0;
-    map<string, size_t> agg_txn_counts = workers[0]->get_txn_counts();
     ssize_t size_delta = workers[0]->get_size_delta();
-    for (size_t i = 1; i < workers.size(); i++) {
-      map_agg(agg_txn_counts, workers[i]->get_txn_counts());
+    for (size_t i = 1; i < workers.size(); i++)
       size_delta += workers[i]->get_size_delta();
-    }
     const double size_delta_mb = double(size_delta)/1048576.0;
     map<string, counter_data> ctrs = event_counter::get_all_counters();
 
@@ -335,7 +342,6 @@ bench_runner::run()
     cerr << "avg_latency: " << avg_latency_ms << " ms" << endl;
     cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << endl;
     cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate << " aborts/sec/core" << endl;
-    cerr << "txn breakdown: " << format_list(agg_txn_counts.begin(), agg_txn_counts.end()) << endl;
     cerr << "--- system counters (for benchmark) ---" << endl;
     for (map<string, counter_data>::iterator it = ctrs.begin();
          it != ctrs.end(); ++it)
@@ -398,6 +404,12 @@ bench_runner::run()
 	   << n_rw_aborts << " rw_aborts, "
        << n_phantom_aborts << " phantom_aborts"
 	   << endl;
+
+  cout << "---------------------------------------\n";
+  for (auto &c : agg_txn_counts) {
+    cout << c.first << "\t" << c.second.first / (double)elapsed_sec << " commits/s\t"
+         << c.second.second / (double)elapsed_sec << " aborts/s\n";
+  }
   cout.flush();
 
   if (!slow_exit)
@@ -441,10 +453,10 @@ bench_worker::measure_txn_counters(void *txn, const char *txn_name)
 }
 #endif
 
-map<string, size_t>
+map<string, pair<uint64_t, uint64_t> >
 bench_worker::get_txn_counts() const
 {
-  map<string, size_t> m;
+  map<string, pair<uint64_t, uint64_t> > m;
   const workload_desc_vec workload = get_workload();
   for (size_t i = 0; i < txn_counts.size(); i++)
     m[workload[i].name] = txn_counts[i];

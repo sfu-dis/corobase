@@ -220,7 +220,7 @@ public:
     return double(latency_numer_us) / double(ntxn_commits);
   }
 
-  std::map<std::string, size_t> get_txn_counts() const;
+  std::map<std::string, std::pair<uint64_t, uint64_t> > get_txn_counts() const;
 
   typedef abstract_db::counter_map counter_map;
   typedef abstract_db::txn_counter_map txn_counter_map;
@@ -273,7 +273,7 @@ protected:
   inline ALWAYS_INLINE void measure_txn_counters(void *txn, const char *txn_name) {}
 #endif
 
-  std::vector<size_t> txn_counts; // breakdown of txns
+  std::vector<std::pair<uint64_t, uint64_t> > txn_counts; // commits and aborts breakdown
   ssize_t size_delta; // how many logical bytes (of values) did the worker add to the DB
 
   std::string txn_obj_buf;
