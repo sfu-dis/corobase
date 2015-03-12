@@ -157,8 +157,6 @@ retry:
 					}
 				}
 				size_delta += ret.second; // should be zero on abort
-				// just an informative number to print to the console
-				// in verbose mode)
 				break;
 			}
 			d -= workload[i].frequency;
