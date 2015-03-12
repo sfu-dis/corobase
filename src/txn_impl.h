@@ -16,7 +16,7 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   : transaction_base(flags), xid(TXN::xid_alloc()), xc(xid_get_context(xid)), sa(&sa)
 {
 #ifdef ENABLE_GC
-  RA::epoch_enter();
+  MM::epoch_enter();
 #endif
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
@@ -58,7 +58,7 @@ transaction<Protocol, Traits>::~transaction()
   //write_set.clear();
   //read_set.clear();
 #ifdef ENABLE_GC
-  RA::epoch_exit();
+  MM::epoch_exit();
 #endif
 }
 
@@ -350,7 +350,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
 #ifdef ENABLE_GC
   if (updated_oids_head) {
     ASSERT(updated_oids_tail);
-    RA::recycle(updated_oids_head, updated_oids_tail);
+    MM::recycle(updated_oids_head, updated_oids_tail);
   }
 #endif
 
@@ -549,7 +549,7 @@ examine_writes:
 #ifdef ENABLE_GC
   if (updated_oids_head) {
     ASSERT(updated_oids_tail);
-    RA::recycle(updated_oids_head, updated_oids_tail);
+    MM::recycle(updated_oids_head, updated_oids_tail);
   }
 #endif
 
@@ -640,7 +640,7 @@ transaction<Protocol, Traits>::si_commit()
 #ifdef ENABLE_GC
   if (updated_oids_head) {
     ASSERT(updated_oids_tail);
-    RA::recycle(updated_oids_head, updated_oids_tail);
+    MM::recycle(updated_oids_head, updated_oids_tail);
   }
 #endif
 

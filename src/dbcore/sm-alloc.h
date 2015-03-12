@@ -26,7 +26,7 @@ struct recycle_oid {
 };
 #endif
 
-namespace RA {
+namespace MM {
     void *allocate(uint64_t size);
 
 #ifdef ENABLE_GC
@@ -44,13 +44,10 @@ namespace RA {
     void* epoch_ended_thread(void *cookie, void *epoch_cookie, void *thread_cookie);
     void epoch_reclaimed(void *cookie, void *epoch_cookie);
 
-	void ra_register();
-	void ra_deregister();
-	bool ra_is_registered();
+    void register_thread();
+    void deregister_thread();
     void epoch_enter(void);
     void epoch_exit(void);
-    void epoch_thread_quiesce(void);
-    void init();
     void recycle(uintptr_t table, oid_type oid);
     void recycle(recycle_oid *list_head, recycle_oid *list_tail);
     extern LSN trim_lsn;

@@ -15,7 +15,7 @@
  * have one GC thread.
  */
 
-namespace RA {
+namespace MM {
 
 void deallocate(object *p)
 {
@@ -94,7 +94,7 @@ void gc_daemon();
 
 // epochs related
 static __thread struct thread_data epoch_tls;
-epoch_mgr ra_epochs {{nullptr, &global_init, &get_tls,
+epoch_mgr mm_epochs {{nullptr, &global_init, &get_tls,
                     &thread_registered, &thread_deregistered,
                     &epoch_ended, &epoch_ended_thread, &epoch_reclaimed}};
 
@@ -106,18 +106,14 @@ get_tls(void*)
     return &s;
 }
 
-void ra_register()
+void register_thread()
 {
-    ra_epochs.thread_init();
+    mm_epochs.thread_init();
 }
 
-void ra_deregister()
+void deregister_thread()
 {
-    ra_epochs.thread_fini();
-}
-
-bool ra_is_registered() {
-    return ra_epochs.thread_initialized();
+    mm_epochs.thread_fini();
 }
 
 void global_init(void*)
@@ -181,22 +177,13 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
 void
 epoch_enter(void)
 {
-    ra_epochs.thread_enter();
+    mm_epochs.thread_enter();
 }
 
 void
 epoch_exit(void)
 {
-    ra_epochs.thread_exit();
-}
-
-void
-epoch_thread_quiesce(void)
-{
-    ra_epochs.thread_quiesce();
-}
-
-void init() {
+    mm_epochs.thread_exit();
 }
 
 void gc_daemon()
@@ -273,7 +260,7 @@ void *allocate(uint64_t size) {
     ASSERT(p);
 #ifdef ENABLE_GC
     if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
-        if (ra_epochs.new_epoch_possible() and ra_epochs.new_epoch())
+        if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
             epoch_tls.nbytes = epoch_tls.counts = 0;
     }
     epoch_tls.nbytes += size;

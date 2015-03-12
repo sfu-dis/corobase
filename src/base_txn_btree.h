@@ -29,7 +29,6 @@ public:
       name(name),
       been_destructed(false)
   {
-	//RA::register_table(&underlying_btree, name);		// Register to GC system 
 #ifdef TRACE_FOOTPRINT
     TRACER::register_table((uintptr_t)underlying_btree.get_tuple_vector(), name);
 #endif
@@ -247,7 +246,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   size_t alloc_sz = sizeof(dbtuple) + sizeof(object) +  align_up(sz);
 
   // Allocate a version
-  object *obj = new (RA::allocate(alloc_sz)) object(alloc_sz);
+  object *obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
 
   // Tuple setup
   dbtuple* tuple = (dbtuple *)obj->payload();

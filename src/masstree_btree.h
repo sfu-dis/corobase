@@ -128,7 +128,7 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-        return RA::allocate(sz);
+        return MM::allocate(sz);
     }
     void deallocate(void* p, size_t sz, memtag) {
     }
@@ -137,7 +137,7 @@ class simple_threadinfo {
 
     void* pool_allocate(size_t sz, memtag) {
 	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-        return RA::allocate(nl * CACHE_LINE_SIZE);
+        return MM::allocate(nl * CACHE_LINE_SIZE);
     }
     void pool_deallocate(void* p, size_t sz, memtag) {
     }
@@ -857,10 +857,3 @@ void mbtree<P>::print() {
 typedef mbtree<masstree_params> concurrent_btree;
 typedef mbtree<masstree_single_threaded_params> single_threaded_btree;
 
-// just for concurrent_btree to avoid cyclic dependency
-/*
-namespace RA {
-	extern std::vector<concurrent_btree*> tables;
-    void register_table(concurrent_btree *t, std::string name);
-};
-*/
