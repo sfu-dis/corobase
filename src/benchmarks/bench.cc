@@ -112,10 +112,11 @@ bench_worker::run()
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
     assign_reader_bitmap_entry();
 #endif
-	// XXX. RCU register/deregister should be the outer most one b/c RA::ra_deregister could call cur_lsn inside
+    // XXX. RCU register/deregister should be the outer most one b/c
+    // MM::deregister_thread could call cur_lsn inside
 	RCU::rcu_register();
 #ifdef ENABLE_GC
-	RA::ra_register();
+    MM::register_thread();
 #endif
 	RCU::rcu_start_tls_cache( 32, 100000 );
 	on_run_setup();
@@ -163,9 +164,9 @@ retry:
 		}
 	}
 #ifdef ENABLE_GC
-	RA::ra_deregister();
+    MM::deregister_thread();
 #endif
-	RCU::rcu_deregister();
+    RCU::rcu_deregister();
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
     deassign_reader_bitmap_entry();
 #endif
