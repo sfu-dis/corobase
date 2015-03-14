@@ -1542,7 +1542,7 @@ bench_worker::txn_result tpce_worker::DoSecurityDetailFrame1(const TSecurityDeta
 
 	}
 	// TODO. order by
-	pOut->day_len = ((size_t)pIn->max_rows_to_return > dm_scanner.output.size()) ? pIn->max_rows_to_return : dm_scanner.output.size(); 
+    pOut->day_len = ((size_t)pIn->max_rows_to_return < dm_scanner.output.size()) ? pIn->max_rows_to_return : dm_scanner.output.size(); 
 
 	const last_trade::key k_lt(string(pIn->symbol));
 	last_trade::value v_lt_temp;
