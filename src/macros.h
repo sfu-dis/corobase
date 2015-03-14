@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 /** options */
-//#define USE_PARALLEL_SSN
+#define USE_PARALLEL_SSN
 #ifdef USE_PARALLEL_SSN
 #define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
 //#define USE_READ_COMMITTED
@@ -14,7 +14,7 @@
 #endif
 #endif
 
-#define USE_PARALLEL_SSI
+//#define USE_PARALLEL_SSI
 
 #if defined(USE_PARALLEL_SSI) && defined(USE_PARALLEL_SSN)
 #error "can't use SSI and SSN together."
@@ -28,7 +28,7 @@
 
 //#define USE_DYNARRAY_STR_ARENA
 
-//#define ENABLE_GC
+#define ENABLE_GC
 
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH

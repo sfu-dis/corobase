@@ -206,26 +206,54 @@ try_recycle:
         concurrent_btree::tuple_vector_type *v = ((concurrent_btree *)r->btr)->get_tuple_vector();
         oid_type oid = r->oid;
 
-        fat_ptr *prev_next = v->begin_ptr(oid);
-        fat_ptr head = volatile_read(*prev_next);
-        fat_ptr cur = head;
+        fat_ptr head = v->begin(oid);
+        if (not head.offset()) {
+            // in case it's a delete... remove the oid as if we trimmed it
+            delete r;
+            if (r_prev) {
+                volatile_write(r_prev->next, r_next);
+                r = r_next;
+            }
+            else {  // recycled the head
+                volatile_write(recycle_oid_head, r_next);
+                r = recycle_oid_head;
+            }
+            continue;
+        }
+
+        // need to start from the first **committed** version, and start
+        // trimming after its next, because the head might be still being
+        // modified (hence its _next field) and might be gone (tx abort).
+        object *cur_obj = (object *)head.offset();
+        dbtuple *head_version = (dbtuple *)cur_obj->payload();
+        auto clsn = volatile_read(head_version->clsn);
+        if (clsn.asi_type() == fat_ptr::ASI_XID)
+            cur_obj = (object *)cur_obj->_next.offset();
+
+        // now cur_obj should be the fisrt committed versions, continue
+        // to the version that can be safely trimmed (the version after
+        // cur_obj).
+        fat_ptr cur = cur_obj->_next;
+        fat_ptr *prev_next = &cur_obj->_next;
+
         bool trimmed = false;
         while (cur.offset()) {
-            object *cur_obj = (object *)cur.offset();
+            cur_obj = (object *)cur.offset();
+            ASSERT(cur_obj);
             dbtuple *version = (dbtuple *)cur_obj->payload();
-            auto clsn = volatile_read(version->clsn);
-            if (clsn.asi_type() == fat_ptr::ASI_LOG and cur != head and LSN::from_ptr(clsn) < tlsn) {
+            clsn = volatile_read(version->clsn);
+            ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+            if (LSN::from_ptr(clsn) < tlsn) {
                 // no need to CAS here if we only have one gc thread
-                //if (__sync_bool_compare_and_swap(&prev_next->_ptr, cur._ptr, 0)) {
                 volatile_write(prev_next->_ptr, 0);
+                __sync_synchronize();
                 trimmed = true;
                 while (cur.offset()) {
-                    object *cur_obj = (object *)cur.offset();
-                    fat_ptr next = cur_obj->_next;
+                    cur_obj = (object *)cur.offset();
+                    cur = cur_obj->_next;
                     reclaimed_nbytes += cur_obj->_size;
                     reclaimed_count++;
                     deallocate(cur_obj);
-                    cur = next;
                 }
                 break;
             }
