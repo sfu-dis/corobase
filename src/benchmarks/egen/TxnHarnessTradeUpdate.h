@@ -76,7 +76,7 @@ public:
             memcpy( Frame1Input.trade_id, pTxnInput->trade_id, sizeof( Frame1Input.trade_id ));
 
             // Execute Frame 1
-            m_db->DoTradeUpdateFrame1( &Frame1Input, &Frame1Output );
+            ret = m_db->DoTradeUpdateFrame1(&Frame1Input, &Frame1Output);
 			if( not ret.first ) return ret;
 
             // Validate Frame 1 Output
@@ -113,7 +113,7 @@ public:
             Frame2Input.end_trade_dts = pTxnInput->end_trade_dts;
 
             // Execute Frame 2
-            m_db->DoTradeUpdateFrame2( &Frame2Input, &Frame2Output );
+            ret = m_db->DoTradeUpdateFrame2(&Frame2Input, &Frame2Output);
 			if( not ret.first ) return ret;
 
             /* valid relationships           */
@@ -164,7 +164,7 @@ public:
             Frame3Input.max_acct_id = pTxnInput->max_acct_id;
 
             // Execute Frame 3
-            m_db->DoTradeUpdateFrame3( &Frame3Input, &Frame3Output );
+            ret = m_db->DoTradeUpdateFrame3(&Frame3Input, &Frame3Output);
 			if( not ret.first ) return ret;
 
             /* valid relationships           */
