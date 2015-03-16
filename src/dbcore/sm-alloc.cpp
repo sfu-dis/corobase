@@ -26,7 +26,6 @@ void deallocate(object *p)
 #ifdef ENABLE_GC
 uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
 uint64_t EPOCH_SIZE_COUNT = 200000;
-int nr_sockets = -1;
 
 static recycle_oid *recycle_oid_head = NULL;
 static recycle_oid *recycle_oid_tail = NULL;
@@ -174,10 +173,10 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
     }
 }
 
-void
+epoch_num
 epoch_enter(void)
 {
-    mm_epochs.thread_enter();
+    return mm_epochs.thread_enter();
 }
 
 void
@@ -278,7 +277,7 @@ try_recycle:
             r = r_next;
         }
     }
-    printf("GC: reclaimed %lu bytes\n", reclaimed_nbytes);
+    printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
     goto try_recycle;
 }
 #endif
@@ -297,5 +296,58 @@ void *allocate(uint64_t size) {
     return p;
 }
 
+#ifdef ENABLE_GC
+object_pool *get_object_pool()
+{
+    static __thread object_pool myop;
+    return &myop;
+}
+#endif
 };  // end of namespace
 
+#ifdef ENABLE_GC
+object *
+object_pool::get(epoch_num e, size_t size)
+{
+    int order = get_order(size);
+    if (order==0 or not head[order] or e < head[order]->epoch+2)
+        return NULL;
+
+    reuse_object *r = head[order];
+    object *p = r->obj;
+    head[order] = r->next;
+    if (not head[order])
+        tail[order] = NULL;
+    delete r;
+    return p;
+}
+
+void
+object_pool::put(epoch_num e, object *p)
+{
+    int order = get_order(p->_size);
+    reuse_object *r = new reuse_object(e, p);
+    if (not tail[order])
+        head[order] = tail[order] = r;
+    else {
+        tail[order]->next = r;
+        tail[order] = r;
+    }
+}
+
+void
+object_pool::scavenge_order0(epoch_num e)
+{
+    while (reuse_object *r = head[0]) {
+        if (r->epoch + 2 <= e) {
+            MM::deallocate(r->obj);
+            head[0] = r->next;
+            delete r;
+            if (not head[0])
+                tail[0] = NULL;
+        }
+        else
+            break;
+    }
+}
+#endif

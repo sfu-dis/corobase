@@ -16,7 +16,8 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
   : transaction_base(flags), xid(TXN::xid_alloc()), xc(xid_get_context(xid)), sa(&sa)
 {
 #ifdef ENABLE_GC
-  MM::epoch_enter();
+  epoch = MM::epoch_enter();
+  op = MM::get_object_pool();
 #endif
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
@@ -57,7 +58,10 @@ transaction<Protocol, Traits>::~transaction()
   xid_free(xid);
   //write_set.clear();
   //read_set.clear();
+
 #ifdef ENABLE_GC
+  // cleanup my order-0 object list if possible
+  op->scavenge_order0(epoch);
   MM::epoch_exit();
 #endif
 }
