@@ -399,6 +399,10 @@ protected:
   read_set_map read_set;
 #endif
   write_set_map write_set;
+#ifdef ENABLE_GC
+  object_pool *op;
+  epoch_num epoch;
+#endif
 };
 
 /*

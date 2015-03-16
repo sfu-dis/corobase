@@ -246,7 +246,12 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   size_t alloc_sz = sizeof(dbtuple) + sizeof(object) +  align_up(sz);
 
   // Allocate a version
-  object *obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
+  object *obj = NULL;
+#ifdef ENABLE_GC
+  obj = t.op->get(t.epoch, alloc_sz);
+  if (not obj)
+#endif
+    obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
 
   // Tuple setup
   dbtuple* tuple = (dbtuple *)obj->payload();
@@ -369,7 +374,9 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {  // in-place update!
       volatile_write(obj->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       prev->mark_defunct();
-      //RA::deallocate(prev_obj);
+#ifdef ENABLE_GC
+      t.op->put(t.epoch, prev_obj);
+#endif
       ASSERT(obj->_next.offset() != (uintptr_t)prev_obj);
     }
     else {  // prev is committed (or precommitted but in post-commit now) head

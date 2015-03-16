@@ -345,7 +345,6 @@ main(int argc, char **argv)
     thread(&stats_server::serve_forever, srvr).detach();
   }
 
-  //RA::init();
   vector<string> bench_toks = split_ws(bench_opts);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];
