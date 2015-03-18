@@ -16,7 +16,7 @@ width = 0.20
 rcParams['figure.figsize'] = 6.9, 2.4
 matplotlib.rcParams.update({'font.size': 9})
 
-def drawBarsPayload(ax, ycol, showLegend=True):
+def drawBarsPayload(ax, ycol, ylim, showLegend=True):
     xvalues=['tpce1', 'tpce5', 'tpce10', 'tpce20', 'tpce40', 'tpce60']
     plots=[]
     plotsLabel=['ERMIA-SI','ERMIA-SSI','Silo']
@@ -36,15 +36,15 @@ def drawBarsPayload(ax, ycol, showLegend=True):
                           include={'threads':24})
     Y3[:] = [ y/40 for y in Y3]
 
-    plots.append( ax.bar( ind + 0.2 , map(truediv, Y1, Y1), width, color='b'))
-    plots.append( ax.bar( ind+width + 0.2, map(truediv,Y2, Y1), width, color='r'))
-    plots.append( ax.bar( ind+width+width + 0.2, map(truediv,Y3,Y1), width, color='y'))
+    plots.append( ax.bar( ind + width + 0.2 , map(truediv, Y1, Y3), width, color='b'))
+    plots.append( ax.bar( ind + width + width + 0.2, map(truediv,Y2, Y3), width, color='r'))
+    plots.append( ax.bar( ind + 0.2, map(truediv,Y3,Y3), width, color='y'))
 
     ax.set_xticks( ind + 0.2+ (width*1.5) )
     ax.set_xticklabels(('1%', '5%', '10%', '20%', '40%', '60%' ), minor=False)
 
     # If shared axis then get_ylim not avail
-    ax.set_ylim(0, 1.5)
+    ax.set_ylim(0, ylim)
 
     # Print ratio in the title
     ax.set_xlabel('Contention degree')
@@ -54,7 +54,7 @@ def drawBarsPayload(ax, ycol, showLegend=True):
         tick.label.set_fontsize(9)
 
     if showLegend:
-        ax.legend(plots, plotsLabel, 'upper right', prop={'size':7})
+        ax.legend(plots, plotsLabel, 'upper left', prop={'size':9})
         leg = ax.get_legend()
         leg.set_frame_on(False)
 
@@ -62,8 +62,8 @@ def drawBarsPayload(ax, ycol, showLegend=True):
 
 f,(ax_1,ax_2) = plt.subplots(1,2,sharey=False)
 f.subplots_adjust(left=0.12, bottom=0.22, right=0.98, top=0.87, wspace=0.4)
-drawBarsPayload(ax_1, 'total_commits',  True )
-drawBarsPayload(ax_2, 'total_query_commits', False)
-ax_1.set_ylabel('Throughput (tps)', fontsize=9)
-ax_2.set_ylabel('Throughput (queries/s)', fontsize=9)
+drawBarsPayload(ax_1, 'total_commits', 2.0,  False )
+drawBarsPayload(ax_2, 'total_query_commits', 20.0, True )
+ax_1.set_ylabel('Normalized throughput (tps)', fontsize=9)
+ax_2.set_ylabel('Normalized throughput (queries/s)', fontsize=9)
 MyData.MyShow(plt) # show or save plot
