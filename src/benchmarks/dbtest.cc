@@ -280,6 +280,17 @@ main(int argc, char **argv)
 #endif
 
   if (verbose) {
+#ifdef USE_PARALLEL_SSI
+    printf("System: SSI\n");
+#elif defined(USE_PARALLEL_SSN)
+#ifdef USE_READ_COMMITTED
+    printf("System: RC+SSN\n");
+#else
+    printf("System: SI+SSN\n");
+#endif
+#else
+    printf("System: SI\n");
+#endif
     const unsigned long ncpus = coreid::num_cpus_online();
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
