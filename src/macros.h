@@ -5,14 +5,14 @@
 #include <stdexcept>
 
 /** options */
-#define USE_PARALLEL_SSN
-#ifdef USE_PARALLEL_SSN
-#define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
+//#define USE_PARALLEL_SSN
+//#ifdef USE_PARALLEL_SSN
+//#define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
 //#define USE_READ_COMMITTED
-#ifdef USE_READ_COMMITTED
+//#ifdef USE_READ_COMMITTED
 //#define READ_COMMITTED_SPIN // spin until the tx is settled when hit an XID
-#endif
-#endif
+//#endif
+//#endif
 
 //#define USE_PARALLEL_SSI
 
@@ -28,7 +28,7 @@
 
 //#define USE_DYNARRAY_STR_ARENA
 
-#define ENABLE_GC
+//#define ENABLE_GC
 
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
