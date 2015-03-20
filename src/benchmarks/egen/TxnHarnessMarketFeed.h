@@ -54,9 +54,8 @@ public:
     {
     };
 
-    bench_worker::txn_result DoTxn( PMarketFeedTxnInput pTxnInput, PMarketFeedTxnOutput pTxnOutput )
+    rc_t DoTxn(PMarketFeedTxnInput pTxnInput, PMarketFeedTxnOutput pTxnOutput)
     {
-		bench_worker::txn_result ret;
         // Initialization
         TMarketFeedFrame1Input    Frame1Input;
         TMarketFeedFrame1Output   Frame1Output;
@@ -76,8 +75,7 @@ public:
         }
 
         // Execute Frame 1
-        ret = m_db->DoMarketFeedFrame1(&Frame1Input, &Frame1Output, m_pSendToMarket);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoMarketFeedFrame1(&Frame1Input, &Frame1Output, m_pSendToMarket));
 
         // Validate Frame 1 Output
         if (Frame1Output.num_updated < pTxnInput->unique_symbols)
@@ -87,7 +85,7 @@ public:
 
         // Copy Frame 1 Output
         pTxnOutput->send_len = Frame1Output.send_len;
-		return bench_worker::txn_result(true, 0);
+        return {RC_TRUE};
     }
 };
 

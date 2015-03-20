@@ -52,9 +52,8 @@ public:
     {
     };
 
-    bench_worker::txn_result DoTxn( PSecurityDetailTxnInput pTxnInput, PSecurityDetailTxnOutput pTxnOutput )
+    rc_t DoTxn( PSecurityDetailTxnInput pTxnInput, PSecurityDetailTxnOutput pTxnOutput )
     {
-		bench_worker::txn_result ret;
         // Initialize
         TSecurityDetailFrame1Output Frame1Output;
         // We purposely do not memset the whole structure to 0
@@ -66,8 +65,7 @@ public:
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         // Execute Frame 1
-        ret = m_db->DoSecurityDetailFrame1(pTxnInput, &Frame1Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoSecurityDetailFrame1(pTxnInput, &Frame1Output));
 
         // Validate Frame 1 Output
         if ((Frame1Output.day_len < min_day_len) || 
@@ -87,7 +85,7 @@ public:
         // Copy Frame 1 Output
         pTxnOutput->last_vol = Frame1Output.last_vol;
         pTxnOutput->news_len = Frame1Output.news_len;
-		return bench_worker::txn_result(true, 0);
+        return {RC_TRUE};
     }
 };
 

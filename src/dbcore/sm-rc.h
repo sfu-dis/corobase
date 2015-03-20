@@ -1,11 +1,12 @@
 #pragma once
 struct rc_t {
-    uint8_t _val;
+    uint16_t _val;
 };
 //typedef uint8_t rc_t;   // txn operation (e.g., r/w) return code
 
 // 8 bits for return code:
 // bit  meaning
+//  8   user requested abort
 //  7   there's phantom, tx should abort
 //  6   abort due to rw conflict with the read optimization
 //  5   SSN/SSI determines tx should abort
@@ -27,6 +28,12 @@ struct rc_t {
 #define RC_ABORT_SERIAL         (RC_ABORT | 0x20)
 #define RC_ABORT_RW_CONFLICT    (RC_ABORT | 0x40)
 #define RC_ABORT_PHANTOM        (RC_ABORT | 0x80)
+#define RC_ABORT_USER           (RC_ABORT | 0x100)
+
+inline bool rc_is_user_abort(rc_t rc)
+{
+    return rc._val == RC_ABORT_USER;
+}
 
 inline bool rc_is_abort(rc_t rc)
 {

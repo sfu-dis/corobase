@@ -52,9 +52,8 @@ public:
     {
     }
 
-    bench_worker::txn_result DoTxn( PTradeStatusTxnInput pTxnInput, PTradeStatusTxnOutput pTxnOutput)
+    rc_t DoTxn( PTradeStatusTxnInput pTxnInput, PTradeStatusTxnOutput pTxnOutput)
     {
-		bench_worker::txn_result ret;
         // Initialization 
         TTradeStatusFrame1Output    Frame1Output;
         memset(&Frame1Output, 0, sizeof( Frame1Output ));
@@ -62,8 +61,7 @@ public:
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         // Execute Frame 1
-        ret = m_db->DoTradeStatusFrame1(pTxnInput, &Frame1Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeStatusFrame1(pTxnInput, &Frame1Output));
 
         // Validate Frame 1 Output
         if (Frame1Output.num_found != max_trade_status_len)
@@ -77,7 +75,7 @@ public:
             strncpy( pTxnOutput->status_name[i], Frame1Output.status_name[i], sizeof( pTxnOutput->status_name[i] ));
             pTxnOutput->trade_id[i] = Frame1Output.trade_id[i];
         }
-		return bench_worker::txn_result(true, 0);
+        return {RC_TRUE};
     }
 };
 

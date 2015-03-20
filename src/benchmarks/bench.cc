@@ -133,7 +133,19 @@ retry:
 				timer t;
 				const unsigned long old_seed = r.get_seed();
 				const auto ret = workload[i].fn(this);
-				if (likely(ret.first)) {
+                switch (ret._val) {
+                    case RC_ABORT_SERIAL: inc_ntxn_serial_aborts(); break;
+                    case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;
+                    case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;
+                    case RC_ABORT_INTERNAL: inc_ntxn_int_aborts(); break;
+                    case RC_ABORT_PHANTOM: inc_ntxn_phantom_aborts(); break;
+                    case RC_ABORT_USER:
+                    case RC_FALSE:
+                        inc_ntxn_user_aborts(); break;
+                    default: break;
+                }
+
+                if (likely(not rc_is_abort(ret))) {
 					++ntxn_commits;
                     txn_counts[i].first++;
 					latency_numer_us += t.lap();
@@ -141,7 +153,7 @@ retry:
 				} else {
 					++ntxn_aborts;
                     txn_counts[i].second++;
-					if (retry_aborted_transaction && running) {
+                    if (retry_aborted_transaction && not rc_is_user_abort(ret) && running) {
 						if (backoff_aborted_transaction) {
 							if (backoff_shifts < 63)
 								backoff_shifts++;
@@ -157,7 +169,6 @@ retry:
 						goto retry;
 					}
 				}
-				size_delta += ret.second; // should be zero on abort
 				break;
 			}
 			d -= workload[i].frequency;
