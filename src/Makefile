@@ -43,6 +43,10 @@ MASSTREE_S=$(strip $(MASSTREE))
 MASSTREE_CONFIG:=--enable-max-key-len=1024
 MASSTREE_LDFLAGS:=
 
+SSI_S=$(strip $(SSI))
+SI_SSN_S=$(strip $(SI_SSN))
+RC_SSN_S=$(strip $(RC_SSN))
+
 ifeq ($(DEBUG_S),1)
 	OSUFFIX_D=.debug
 	MASSTREE_CONFIG+=--enable-assertions
@@ -84,6 +88,15 @@ endif
 
 CXXFLAGS := -Wall -std=c++0x -g
 CXXFLAGS += -MD -Ithird-party/sparsehash/src -DCONFIG_H=\"$(CONFIG_H)\"
+
+ifeq ($(SSI_S),1)
+	CXXFLAGS += -DUSE_PARALLEL_SSI
+else ifeq ($(RC_SSN_S),1)
+	CXXFLAGS += -DUSE_PARALLEL_SSN -DUSE_READ_COMMITTED -DDO_EARLY_SSN_CHECKS
+else ifeq ($(SI_SSN_S),1)
+	CXXFLAGS += -DUSE_PARALLEL_SSN -DDO_EARLY_SSN_CHECKS
+endif
+
 ifeq ($(TRACE_FOOTPRINT_S),1)
 	CXXFLAGS+=-DTRACE_FOOTPRINT
 endif
