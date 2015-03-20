@@ -58,9 +58,8 @@ public:
     {
     };
 
-    bench_worker::txn_result DoTxn( PTradeOrderTxnInput pTxnInput, PTradeOrderTxnOutput pTxnOutput )
+    rc_t DoTxn( PTradeOrderTxnInput pTxnInput, PTradeOrderTxnOutput pTxnOutput )
     {
-		bench_worker::txn_result ret;
         // Initialization
         TTradeOrderFrame1Input  Frame1Input;
         TTradeOrderFrame1Output Frame1Output;
@@ -94,8 +93,7 @@ public:
         Frame1Input.acct_id = pTxnInput->acct_id;
 
         // Execute Frame 1
-        ret = m_db->DoTradeOrderFrame1(&Frame1Input, &Frame1Output );
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeOrderFrame1(&Frame1Input, &Frame1Output));
 
         // Validate Frame 1 Output
         if (Frame1Output.num_found != 1)
@@ -119,8 +117,7 @@ public:
             strncpy(Frame2Input.exec_tax_id, pTxnInput->exec_tax_id, sizeof(Frame2Input.exec_tax_id));
 
             // Execute Frame 2
-            ret = m_db->DoTradeOrderFrame2(&Frame2Input, &Frame2Output);
-			if( not ret.first ) return ret;
+            try_return(m_db->DoTradeOrderFrame2(&Frame2Input, &Frame2Output));
 
             // Validate Frame 2 Output
             if (Frame2Output.ap_acl[0] == '\0')
@@ -128,8 +125,9 @@ public:
                 TXN_HARNESS_PROPAGATE_STATUS(CBaseTxnErr::TOF2_ERROR1);
 
                 // Rollback
-                ret = m_db->DoTradeOrderFrame5();
-                return bench_worker::txn_result(false, 0);
+                auto ret = m_db->DoTradeOrderFrame5();
+                TXN_HARNESS_PROPAGATE_STATUS(CBaseTxnErr::EXPECTED_ROLLBACK);
+                return ret;
             }
         }
 
@@ -154,8 +152,7 @@ public:
         strncpy(Frame3Input.symbol, pTxnInput->symbol, sizeof(Frame3Input.symbol));
 
         // Execute Frame 3
-        ret = m_db->DoTradeOrderFrame3(&Frame3Input, &Frame3Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeOrderFrame3(&Frame3Input, &Frame3Output));
 
         // Validate Frame 3 Output
         if (   Frame3Output.sell_value > Frame3Output.buy_value
@@ -203,8 +200,7 @@ public:
         Frame4Input.type_is_market = Frame3Output.type_is_market;
 
         // Execute Frame 4
-        ret = m_db->DoTradeOrderFrame4(&Frame4Input, &Frame4Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeOrderFrame4(&Frame4Input, &Frame4Output));
 
         // Copy Frame 4 Output
         pTxnOutput->trade_id = Frame4Output.trade_id;
@@ -216,7 +212,7 @@ public:
         if (pTxnInput->roll_it_back)
         {
             // Execute Frame 5
-            ret = m_db->DoTradeOrderFrame5();
+            auto ret = m_db->DoTradeOrderFrame5();
 
             TXN_HARNESS_PROPAGATE_STATUS(CBaseTxnErr::EXPECTED_ROLLBACK);
 			return ret;
@@ -224,8 +220,7 @@ public:
         else
         {
             // Execute Frame 6
-            ret = m_db->DoTradeOrderFrame6();
-			if( not ret.first ) return ret;
+            try_return(m_db->DoTradeOrderFrame6());
 
             //
             // Send to Market Exchange Emulator
@@ -247,7 +242,7 @@ public:
 
             m_pSendToMarket->SendToMarketFromHarness(TradeRequestForMEE); // maybe should check the return code here
         }
-		return bench_worker::txn_result(true, 0);
+        return {RC_TRUE};
     }
 };
 

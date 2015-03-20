@@ -52,14 +52,12 @@ public:
     {
     };
 
-    bench_worker::txn_result DoTxn( PDataMaintenanceTxnInput pTxnInput, PDataMaintenanceTxnOutput pTxnOutput )
+    rc_t DoTxn( PDataMaintenanceTxnInput pTxnInput, PDataMaintenanceTxnOutput pTxnOutput )
     {
-		bench_worker::txn_result ret;
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         // Execute Frame 1
-        ret = m_db->DoDataMaintenanceFrame1(pTxnInput);
-		return ret;
+        try_return(m_db->DoDataMaintenanceFrame1(pTxnInput));
     }
 };
 

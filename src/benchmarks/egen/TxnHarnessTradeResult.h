@@ -56,9 +56,8 @@ public:
     {
     };
 
-    bench_worker::txn_result DoTxn( PTradeResultTxnInput pTxnInput, PTradeResultTxnOutput pTxnOutput )
+    rc_t DoTxn( PTradeResultTxnInput pTxnInput, PTradeResultTxnOutput pTxnOutput )
     {
-		bench_worker::txn_result ret;
         // Initialization
         TTradeResultFrame1Input     Frame1Input;
         TTradeResultFrame1Output    Frame1Output;
@@ -98,8 +97,7 @@ public:
         Frame1Input.trade_id = pTxnInput->trade_id;
 
         // Execute Frame 1
-        ret = m_db->DoTradeResultFrame1(&Frame1Input, &Frame1Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeResultFrame1(&Frame1Input, &Frame1Output));
 
         // Validate Frame 1 Output
         if (Frame1Output.num_found != 1)
@@ -122,8 +120,7 @@ public:
         Frame2Input.type_is_sell = Frame1Output.type_is_sell;
 
         // Execute Frame 2
-        ret = m_db->DoTradeResultFrame2(&Frame2Input, &Frame2Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeResultFrame2(&Frame2Input, &Frame2Output));
 
         //
         // FRAME 3
@@ -140,8 +137,7 @@ public:
             Frame3Input.trade_id = pTxnInput->trade_id;
 
             // Execute Frame 3
-            ret = m_db->DoTradeResultFrame3(&Frame3Input, &Frame3Output);
-			if( not ret.first ) return ret;
+            try_return(m_db->DoTradeResultFrame3(&Frame3Input, &Frame3Output));
 
             // Validate Frame 3 Output
             if (Frame3Output.tax_amount < 0.00)
@@ -161,8 +157,7 @@ public:
         strncpy(Frame4Input.type_id, Frame1Output.type_id, sizeof(Frame4Input.type_id));
 
         // Execute Frame 4
-        ret = m_db->DoTradeResultFrame4(&Frame4Input, &Frame4Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeResultFrame4(&Frame4Input, &Frame4Output));
 
         // Validate Frame 4 Output
         if (Frame4Output.comm_rate <= 0.0000)
@@ -186,8 +181,7 @@ public:
         Frame5Input.trade_price = pTxnInput->trade_price;
 
         // Execute Frame 5
-        ret = m_db->DoTradeResultFrame5(&Frame5Input);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeResultFrame5(&Frame5Input));
 
         //
         // FRAME 6
@@ -228,14 +222,13 @@ public:
         strncpy(Frame6Input.type_name, Frame1Output.type_name, sizeof(Frame6Input.type_name));
 
         // Execute Frame 6
-        ret = m_db->DoTradeResultFrame6(&Frame6Input, &Frame6Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoTradeResultFrame6(&Frame6Input, &Frame6Output));
 
         // Copy Frame 6 Output
         pTxnOutput->acct_id = Frame1Output.acct_id;
         pTxnOutput->acct_bal = Frame6Output.acct_bal;
         pTxnOutput->load_unit = (INT32)((Frame2Output.cust_id - iTIdentShift - 1) / iDefaultLoadUnitSize) + 1;
-		return bench_worker::txn_result(true, 0);
+        return {RC_TRUE};
     }
 };
 

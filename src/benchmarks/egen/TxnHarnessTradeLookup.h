@@ -52,9 +52,8 @@ public:
     {
     };
 
-    bench_worker::txn_result DoTxn( PTradeLookupTxnInput pTxnInput, PTradeLookupTxnOutput pTxnOutput )
+    rc_t DoTxn( PTradeLookupTxnInput pTxnInput, PTradeLookupTxnOutput pTxnOutput )
     {
-		bench_worker::txn_result ret;
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         switch( pTxnInput->frame_to_execute )
@@ -71,8 +70,7 @@ public:
             memcpy( Frame1Input.trade_id, pTxnInput->trade_id, sizeof( Frame1Input.trade_id ));
 
             // Execute Frame 1
-            ret = m_db->DoTradeLookupFrame1( &Frame1Input, &Frame1Output );
-			if( not ret.first ) return ret;
+            try_return(m_db->DoTradeLookupFrame1(&Frame1Input, &Frame1Output));
 
             // Validate Frame 1 Output
             if (Frame1Output.num_found != pTxnInput->max_trades)
@@ -105,8 +103,7 @@ public:
             Frame2Input.end_trade_dts = pTxnInput->end_trade_dts;
 
             // Execute Frame 2
-            ret = m_db->DoTradeLookupFrame2( &Frame2Input, &Frame2Output );
-			if( not ret.first ) return ret;
+            try_return(m_db->DoTradeLookupFrame2(&Frame2Input, &Frame2Output));
 
             // Validate Frame 2 Output
             if (Frame2Output.num_found < 0 || Frame2Output.num_found > Frame2Input.max_trades)
@@ -144,8 +141,7 @@ public:
             Frame3Input.max_acct_id = pTxnInput->max_acct_id;
 
             // Execute Frame 3
-            ret = m_db->DoTradeLookupFrame3( &Frame3Input, &Frame3Output );
-			if( not ret.first ) return ret;
+            try_return(m_db->DoTradeLookupFrame3(&Frame3Input, &Frame3Output));
 
             // Validate Frame 3 Output
             if (Frame3Output.num_found < 0 || Frame3Output.num_found > Frame3Input.max_trades)
@@ -180,8 +176,7 @@ public:
             Frame4Input.trade_dts = pTxnInput->start_trade_dts;
 
             // Execute Frame 4
-            ret = m_db->DoTradeLookupFrame4( &Frame4Input, &Frame4Output );
-			if( not ret.first ) return ret;
+            try_return(m_db->DoTradeLookupFrame4(&Frame4Input, &Frame4Output));
 
             // Validate Frame 4 Output
             // NOTE: The TLF4_ERROR2 check must be in an else clause, or else it could
@@ -211,7 +206,7 @@ public:
             assert( false );
             break;
         }
-		return bench_worker::txn_result(true, 0);
+        return {RC_TRUE};
     }
 };
 

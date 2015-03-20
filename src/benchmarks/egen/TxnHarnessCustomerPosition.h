@@ -56,9 +56,8 @@ public:
     {
     };
 
-    bench_worker::txn_result DoTxn( PCustomerPositionTxnInput pTxnInput, PCustomerPositionTxnOutput pTxnOutput)
+    rc_t DoTxn( PCustomerPositionTxnInput pTxnInput, PCustomerPositionTxnOutput pTxnOutput)
     {
-		bench_worker::txn_result ret;
         // Initialization
         TCustomerPositionFrame1Input    Frame1Input;
         TCustomerPositionFrame1Output   Frame1Output;
@@ -77,8 +76,7 @@ public:
         strncpy(Frame1Input.tax_id, pTxnInput->tax_id, sizeof(Frame1Input.tax_id));
 
         // Execute Frame 1
-        ret = m_db->DoCustomerPositionFrame1(&Frame1Input, &Frame1Output);
-		if( not ret.first ) return ret;
+        try_return(m_db->DoCustomerPositionFrame1(&Frame1Input, &Frame1Output));
 
         // Validate Frame 1 Output
         if ((Frame1Output.acct_len < 1) ||
@@ -126,8 +124,7 @@ public:
             Frame2Input.acct_id = Frame1Output.acct_id[ pTxnInput->acct_id_idx ];
 
             // Execute Frame 2
-            ret = m_db->DoCustomerPositionFrame2(&Frame2Input, &Frame2Output);
-			if( not ret.first ) return ret;
+            try_return(m_db->DoCustomerPositionFrame2(&Frame2Input, &Frame2Output));
 
             // Validate Frame 2 Output
             if ((Frame2Output.hist_len < min_hist_len) || 
@@ -150,13 +147,12 @@ public:
         else
         {
             // Execute Frame 3
-            ret = m_db->DoCustomerPositionFrame3();
-			if( not ret.first ) return ret;
+            try_return(m_db->DoCustomerPositionFrame3());
 
             // Copy Frame 3 Output
             pTxnOutput->hist_len = 0;
         }
-		return bench_worker::txn_result(true, 0);
+        return {RC_TRUE};
     }
 };
 

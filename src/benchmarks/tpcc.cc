@@ -532,98 +532,98 @@ public:
   // XXX(stephentu): tune this
   static const size_t NMaxCustomerIdxScanElems = 512;
 
-  txn_result txn_new_order();
+  rc_t txn_new_order();
 
-  static txn_result
+  static rc_t
   TxnNewOrder(bench_worker *w)
   {
     ANON_REGION("TxnNewOrder:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_new_order();
   }
 
-  txn_result txn_delivery();
+  rc_t txn_delivery();
 
-  static txn_result
+  static rc_t
   TxnDelivery(bench_worker *w)
   {
     ANON_REGION("TxnDelivery:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_delivery();
   }
 
-  txn_result txn_credit_check();
-  static txn_result
+  rc_t txn_credit_check();
+  static rc_t
   TxnCreditCheck(bench_worker *w)
   {
     ANON_REGION("TxnCreditCheck:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_credit_check();
   }
 
-  txn_result txn_payment();
+  rc_t txn_payment();
 
-  static txn_result
+  static rc_t
   TxnPayment(bench_worker *w)
   {
     ANON_REGION("TxnPayment:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_payment();
   }
 
-  txn_result txn_order_status();
+  rc_t txn_order_status();
 
-  static txn_result
+  static rc_t
   TxnOrderStatus(bench_worker *w)
   {
     ANON_REGION("TxnOrderStatus:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_order_status();
   }
 
-  txn_result txn_stock_level();
+  rc_t txn_stock_level();
 
-  static txn_result
+  static rc_t
   TxnStockLevel(bench_worker *w)
   {
     ANON_REGION("TxnStockLevel:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_stock_level();
   }
 
-  txn_result txn_micro_bench_static();
+  rc_t txn_micro_bench_static();
 
-  static txn_result
+  static rc_t
   TxnMicroBenchStatic(bench_worker *w)
   {
     ANON_REGION("TxnMicroBenchStatic:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_micro_bench_static();
   }
 
-  txn_result txn_micro_bench_simple();
+  rc_t txn_micro_bench_simple();
 
-  static txn_result
+  static rc_t
   TxnMicroBenchSimple(bench_worker *w)
   {
     ANON_REGION("TxnMicroBenchSimple:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_micro_bench_simple();
   }
 
-  txn_result txn_micro_bench_order_line();
+  rc_t txn_micro_bench_order_line();
 
-  static txn_result
+  static rc_t
   TxnMicroBenchOrderLine(bench_worker *w)
   {
     ANON_REGION("TxnMicroBenchOrderLine:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_micro_bench_order_line();
   }
 
-  txn_result txn_micro_bench_random();
+  rc_t txn_micro_bench_random();
 
-  static txn_result
+  static rc_t
   TxnMicroBenchRandom(bench_worker *w)
   {
     ANON_REGION("TxnMicroBenchRandom:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_micro_bench_random();
   }
 
-  txn_result txn_micro_bench_ro();
+  rc_t txn_micro_bench_ro();
 
-  static txn_result
+  static rc_t
   TxnMicroBenchRO(bench_worker *w)
   {
     ANON_REGION("TxnMicroBenchRO:", &tpcc_txn_cg);
@@ -1276,7 +1276,7 @@ static event_counter evt_tpcc_cross_partition_new_order_txns("tpcc_cross_partiti
 static event_counter evt_tpcc_cross_partition_payment_txns("tpcc_cross_partition_payment_txns");
 static event_counter evt_tpcc_cross_partition_credit_check_txns("tpcc_cross_partition_credit_check_txns");
 
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_new_order()
 {
   const uint warehouse_id = pick_wh(r);
@@ -1345,7 +1345,6 @@ tpcc_worker::txn_new_order()
     }
     mlock.multilock();
   }
-    ssize_t ret = 0;
     const customer::key k_c(warehouse_id, districtID, customerID);
     customer::value v_c_temp;
     varstr sv_c_temp = str(Size(v_c_temp));
@@ -1374,7 +1373,6 @@ tpcc_worker::txn_new_order()
     const new_order::value v_no;
     const size_t new_order_sz = Size(v_no);
     try_catch(tbl_new_order(warehouse_id)->insert(txn, Encode(str(Size(k_no)), k_no), Encode(str(new_order_sz), v_no)));
-    ret += new_order_sz;
 
     if (!g_new_order_fast_id_gen) {
       district::value v_d_new(*v_d);
@@ -1392,7 +1390,6 @@ tpcc_worker::txn_new_order()
 
     const size_t oorder_sz = Size(v_oo);
     try_catch(tbl_oorder(warehouse_id)->insert(txn, Encode(str(Size(k_oo)), k_oo), Encode(str(oorder_sz), v_oo)));
-    ret += oorder_sz;
 
     const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
     const oorder_c_id_idx::value v_oo_idx(0);
@@ -1438,12 +1435,11 @@ tpcc_worker::txn_new_order()
 
       const size_t order_line_sz = Size(v_ol);
       try_catch(tbl_order_line(warehouse_id)->insert(txn, Encode(str(Size(k_ol)), k_ol), Encode(str(order_line_sz), v_ol)));
-      ret += order_line_sz;
     }
 
     measure_txn_counters(txn, "txn_new_order");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, ret);
+    return {RC_TRUE};
 }
 
 class new_order_scan_callback : public abstract_ordered_index::scan_callback {
@@ -1475,7 +1471,7 @@ private:
 
 STATIC_COUNTER_DECL(scopedperf::tod_ctr, delivery_probe0_tod, delivery_probe0_cg)
 
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_delivery()
 {
   const uint warehouse_id = pick_wh(r);
@@ -1504,7 +1500,6 @@ tpcc_worker::txn_delivery()
   scoped_str_arena s_arena(arena);
   scoped_lock_guard<spinlock> slock(
       g_enable_partition_locks ? &LockForPartition(warehouse_id) : nullptr);
-    ssize_t ret = 0;
     for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
       const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
       const new_order::key k_no_1(warehouse_id, d, numeric_limits<int32_t>::max());
@@ -1555,7 +1550,6 @@ tpcc_worker::txn_delivery()
 
       // delete new order
       try_catch(tbl_new_order(warehouse_id)->remove(txn, Encode(str(Size(*k_no)), *k_no)));
-      ret -= 0 /*new_order_c.get_value_size()*/;
 
       // update oorder
       oorder::value v_oo_new(*v_oo);
@@ -1578,7 +1572,7 @@ tpcc_worker::txn_delivery()
     }
     measure_txn_counters(txn, "txn_delivery");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, ret);
+    return {RC_TRUE};
 }
 
 static event_avg_counter evt_avg_cust_name_idx_scan_size("avg_cust_name_idx_scan_size");
@@ -1609,7 +1603,7 @@ class credit_check_order_line_scan_callback : public abstract_ordered_index::sca
 		std::vector<const varstr *> _v_ol;
 };
 
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_credit_check()
 {
 	/*
@@ -1665,8 +1659,6 @@ tpcc_worker::txn_credit_check()
 	}
 	if (customerWarehouseID != warehouse_id)
 		++evt_tpcc_cross_partition_credit_check_txns;
-
-		ssize_t ret = 0;
 
 		// select * from customer with random C_ID
 		customer::key k_c;
@@ -1733,10 +1725,10 @@ tpcc_worker::txn_credit_check()
 
 		measure_txn_counters(txn, "txn_credit_check");
         try_catch(db->commit_txn(txn));
-		return txn_result(true, ret);
+        return {RC_TRUE};
 }
 
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_payment()
 {
   const uint warehouse_id = pick_wh(r);
@@ -1775,7 +1767,6 @@ tpcc_worker::txn_payment()
   }
   if (customerWarehouseID != warehouse_id)
     ++evt_tpcc_cross_partition_payment_txns;
-    ssize_t ret = 0;
 
     const warehouse::key k_w(warehouse_id);
     warehouse::value v_w_temp;
@@ -1884,13 +1875,11 @@ tpcc_worker::txn_payment()
                      v_d->d_name.c_str());
     v_h.h_data.resize_junk(std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
 
-    const size_t history_sz = Size(v_h);
     try_catch(tbl_history(warehouse_id)->insert(txn, Encode(str(Size(k_h)), k_h), Encode(str(Size(v_h)), v_h)));
-    ret += history_sz;
 
     measure_txn_counters(txn, "txn_payment");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, ret);
+    return {RC_TRUE};
 }
 
 class order_line_nop_callback : public abstract_ordered_index::scan_callback {
@@ -1917,7 +1906,7 @@ public:
 STATIC_COUNTER_DECL(scopedperf::tod_ctr, order_status_probe0_tod, order_status_probe0_cg)
 STATIC_COUNTER_DECL(scopedperf::tod_ctr, credit_check_probe0_tod, credit_check_probe0_cg)
 
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_order_status()
 {
   const uint warehouse_id = pick_wh(r);
@@ -2034,7 +2023,7 @@ tpcc_worker::txn_order_status()
 
     measure_txn_counters(txn, "txn_order_status");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, 0);
+    return {RC_TRUE};
 }
 
 class order_line_scan_callback : public abstract_ordered_index::scan_callback {
@@ -2068,7 +2057,7 @@ STATIC_COUNTER_DECL(scopedperf::tod_ctr, stock_level_probe2_tod, stock_level_pro
 
 static event_avg_counter evt_avg_stock_level_loop_join_lookups("stock_level_loop_join_lookups");
 
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_stock_level()
 {
   const uint warehouse_id = pick_wh(r);
@@ -2141,11 +2130,11 @@ tpcc_worker::txn_stock_level()
     }
     measure_txn_counters(txn, "txn_stock_level");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, 0);
+    return {RC_TRUE};
 }
 
 // Microbenchmark for tpcc, read-only
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_micro_bench_ro()
 {
   void *txn = db->new_txn(txn_flags, arena, txn_buf());
@@ -2185,7 +2174,7 @@ tpcc_worker::txn_micro_bench_ro()
 finish:
     measure_txn_counters(txn, "txn_micro_bench_ro");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, 0);
+    return {RC_TRUE};
 }
 
 bool compfn(unsigned long i, unsigned long j) {
@@ -2193,7 +2182,7 @@ bool compfn(unsigned long i, unsigned long j) {
 }
 
 // simple microbench, just insert, put, then get one row
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_micro_bench_simple()
 {
   void *txn = db->new_txn(txn_flags, arena, txn_buf());
@@ -2223,7 +2212,7 @@ tpcc_worker::txn_micro_bench_simple()
 
     measure_txn_counters(txn, "txn_micro_bench_simple");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, 0);
+    return {RC_TRUE};
 }
 
 // tpcc mcirobenchmark, read-write
@@ -2231,7 +2220,7 @@ tpcc_worker::txn_micro_bench_simple()
 // still the same number of rows tho.
 // Also randomly choose write rows, same as others.
 // For simplicity, we use the stocklevel table.
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_micro_bench_random()
 {
   void *txn = db->new_txn(txn_flags, arena, txn_buf());
@@ -2303,14 +2292,14 @@ tpcc_worker::txn_micro_bench_random()
 
     measure_txn_counters(txn, "txn_micro_bench_random");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, 0);
+    return {RC_TRUE};
 }
 
 // tpcc mcirobenchmark, read-write using stock table
 // do gets first, then random puts in the same range scanned
 // use the same read-set for each run, see micro_bench_random
 // for random read-sets.
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_micro_bench_static()
 {
   void *txn = db->new_txn(txn_flags, arena, txn_buf());
@@ -2382,10 +2371,10 @@ tpcc_worker::txn_micro_bench_static()
 
     measure_txn_counters(txn, "txn_micro_bench_static");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, 0);
+    return {RC_TRUE};
 }
 
-tpcc_worker::txn_result
+rc_t
 tpcc_worker::txn_micro_bench_order_line()
 {
   void *txn = db->new_txn(txn_flags, arena, txn_buf());
@@ -2468,7 +2457,7 @@ do_write:
 
     measure_txn_counters(txn, "txn_micro_bench_order_line");
     try_catch(db->commit_txn(txn));
-    return txn_result(true, 0);
+    return {RC_TRUE};
 }
 
 class tpcc_bench_runner : public bench_runner {

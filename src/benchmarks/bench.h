@@ -175,9 +175,7 @@ public:
 
   virtual ~bench_worker() {}
 
-  // returns [did_commit?, size_increase_bytes]
-  typedef std::pair<bool, ssize_t> txn_result;
-  typedef txn_result (*txn_fn_t)(bench_worker *);
+  typedef rc_t (*txn_fn_t)(bench_worker *);
 
   struct workload_desc {
     workload_desc() {}
@@ -427,20 +425,11 @@ private:
 };
 
 // Note: try_catch_cond_abort might call __abort_txn with rc=RC_FALSE
-// so no need to assure rc must be RC_ABORT_*. These aborts are counted
-// torward user aborts. FIXME: also count TPC-E user aborts here?
+// so no need to assure rc must be RC_ABORT_*.
 #define __abort_txn(r) \
 {   \
-  switch(r._val){\
-    case RC_ABORT_SERIAL: inc_ntxn_serial_aborts(); break;\
-    case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;\
-    case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;\
-    case RC_ABORT_INTERNAL: inc_ntxn_int_aborts(); break;\
-    case RC_ABORT_PHANTOM: inc_ntxn_phantom_aborts(); break;\
-    default: inc_ntxn_user_aborts(); break; \
-  }\
   db->abort_txn(txn); \
-  return bench_worker::txn_result(false, 0); \
+  return r; \
 }
 
 // NOTE: only use these in transaction benchmark (e.g., TPCC) code, not in engine code
@@ -452,6 +441,25 @@ private:
   rc_t r = rc; \
   if (rc_is_abort(r)) \
     __abort_txn(r); \
+}
+
+// same as try_catch but don't do abort, only return rc
+// So far the only user is TPC-E's TxnHarness***.h.
+#define try_return(rc) \
+{ \
+  rc_t r = rc; \
+  if (rc_is_abort(r)) \
+    return r; \
+}
+
+#define try_tpce_output(op) \
+{ \
+  rc_t r = op; \
+  if (rc_is_abort(r)) \
+    return r; \
+  if (output.status == 0) \
+    return {RC_TRUE}; \
+  return {RC_ABORT_USER}; \
 }
 
 // if rc == RC_FALSE then do op
