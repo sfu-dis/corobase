@@ -1,0 +1,294 @@
+% This is "sig-alternate.tex" V1.9 April 2009
+% This file should be compiled with V2.4 of "sig-alternate.cls" April 2009
+%
+% This example file demonstrates the use of the 'sig-alternate.cls'
+% V2.4 LaTeX2e document class file. It is for those submitting
+% articles to ACM Conference Proceedings WHO DO NOT WISH TO
+% STRICTLY ADHERE TO THE SIGS (PUBS-BOARD-ENDORSED) STYLE.
+% The 'sig-alternate.cls' file will produce a similar-looking,
+% albeit, 'tighter' paper resulting in, invariably, fewer pages.
+%
+% ----------------------------------------------------------------------------------------------------------------
+% This .tex file (and associated .cls V2.4) produces:
+%       1) The Permission Statement
+%       2) The Conference (location) Info information
+%       3) The Copyright Line with ACM data
+%       4) NO page numbers
+%
+% as against the acm_proc_article-sp.cls file which
+% DOES NOT produce 1) thru' 3) above.
+%
+% Using 'sig-alternate.cls' you have control, however, from within
+% the source .tex file, over both the CopyrightYear
+% (defaulted to 200X) and the ACM Copyright Data
+% (defaulted to X-XXXXX-XX-X/XX/XX).
+% e.g.
+% \CopyrightYear{2007} will cause 2007 to appear in the copyright line.
+% \crdata{0-12345-67-8/90/12} will cause 0-12345-67-8/90/12 to appear in the copyright line.
+%
+% ---------------------------------------------------------------------------------------------------------------
+% This .tex source is an example which *does* use
+% the .bib file (from which the .bbl file % is produced).
+% REMEMBER HOWEVER: After having produced the .bbl file,
+% and prior to final submission, you *NEED* to 'insert'
+% your .bbl file into your source .tex file so as to provide
+% ONE 'self-contained' source file.
+%
+
+%
+% For tracking purposes - this is V1.9 - April 2009
+
+%%\documentclass{sig-alternate}
+%%\documentclass[letter]{sig-alternate}
+\documentclass{../common/techrpt}
+
+\usepackage{microtype}
+
+\usepackage{ifthen} % \isempty macro..
+\usepackage{graphicx}
+\usepackage[usenames,dvipsnames]{color}
+%\usepackage[numbers,sort]{natbib}
+\usepackage{verbatim}
+%\newcommand{\newblock}{} 
+% allow code listings with line numbering
+\usepackage{listings}
+%define how inlined source code should be displayed
+\lstset {
+language=C,
+basicstyle=\scriptsize,
+keywordstyle=\ttfamily\bfseries\color{blue},
+commentstyle=\color{OliveGreen},
+numbers=none,
+numberstyle=\scriptsize,
+numbersep=5pt,
+tabsize=4,
+gobble=4,
+xleftmargin=20pt,
+escapeinside={(@*}{*@)},
+morekeywords={}
+}
+
+\newcounter{mycounter}
+
+% by default footnotes are indented on the first line, which makes
+% them look pretty ragged. Change them to be flush left with hanging
+% indent (similar to references in the bibliography). NOTE: must
+% include before hyperref package
+\usepackage[hang,splitrule]{footmisc}
+\setlength{\footnotemargin}{1em}
+
+\def\thepapertitle{ERMIA: Fast and robust memory-optimized OLTP}
+\def\thepaperkeywords{Indirection array, Epoch-based, OLTP, Concurrency control}
+  
+% must import before hyperref (and algorithm, which imports it, must come after)
+\usepackage{float} 
+\usepackage[
+  pageanchor=true,
+  plainpages=false,
+  pdfpagelabels,
+  bookmarks,
+  bookmarksnumbered,
+  pdfborder=0 0 0,  %removes outlines around hyper links in online display
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=Blue, % OliveGreen
+  pdfpagelayout=TwoPageRight,
+  pdftitle={\thepapertitle},
+  pdfauthor={Ippokratis Pandis},
+  pdfsubject={},
+  pdfkeywords={\thepaperkeywords},
+]{hyperref}
+
+\floatstyle{ruled}
+\usepackage{algorithm}
+\newfloat{algorithm}{t}{lop}
+
+% make floats waste way less space
+% http://dcwww.camd.dtu.dk/~schiotz/comp/LatexTips/LatexTips.html
+\renewcommand{\topfraction}{0.85}
+\renewcommand{\textfraction}{0.1}
+\renewcommand{\floatpagefraction}{0.80}
+
+\setlength{\fboxsep}{1pt}
+\let\oldcite\cite
+\renewcommand{\cite}[1]{\colorbox{linkbg}{\oldcite{#1}}}
+\definecolor{linkbg}{gray}{0.97}
+\newcommand{\myref}[2]{\colorbox{linkbg}{\hyperref[#2]{%
+      \ifthenelse{\equal{#1}{}}{}{#1 }\ref{#2}}}}
+
+% make a really loud marker for citations I know I don't have yet
+%% usage: \citeme
+\makeatletter
+\newcommand{\citeme}{\@ifstar
+  \citemeStar%
+  \citemeNoStar%
+}
+\makeatother
+
+\newcommand{\citemeStar}{\citemeNoStar{citation needed}}
+\newcommand{\citemeNoStar}[1]{
+  {\color{Magenta}{\bf \fbox{citeme} #1}}
+  % missing comment on line above is intentional
+}
+
+% TikZ ist kein Zeichenprogramm
+\usepackage{tikz}
+\usetikzlibrary{plotmarks}
+\usetikzlibrary{arrows}
+\usetikzlibrary{snakes}
+\usetikzlibrary{shapes}
+\usetikzlibrary{patterns}
+
+% nice table formatting
+\usepackage{booktabs}
+
+% nice fractions, e.g., 1/4 and so forth...
+\usepackage{nicefrac}
+
+% flexible but compact enumerations
+\usepackage{paralist}
+
+\usepackage{subfigure}
+\usepackage[noend]{algorithmic}
+\usepackage{soul}
+\usepackage{multirow}
+
+%
+% please place your own definitions here and don't use \def but
+% \newcommand{}{}
+
+\newcommand{\ippo}[1]{\noindent{\color{Red} {\bf \fbox{IP}} {\hl{\it#1}}}}
+\newcommand{\ryan}[1]{\noindent{{\bf \fbox{Ryan}} {\hl{\it#1}}}}
+\newcommand{\kk}[1]{\noindent{{\bf \fbox{KK}} {\hl{\it#1}}}}
+\newcommand{\tianzheng}[1]{\noindent{{\bf \fbox{Tianzheng}} {\hl{\it#1}}}}
+
+%% 1-column
+% \labeledfigure{filename}[Short caption]{Long caption}
+\newcommand{\labeledfigure}[1]{%
+  \def\thelabeledfigure{#1}%
+  \labeledfigurerelay%
+}
+\newcommand{\labeledfigurerelay}[2][]{%
+  \begin{figure}[t]%
+    \centering%
+    \includegraphics[width=\columnwidth]{\thelabeledfigure}%
+    \ifthenelse{\equal{#1}{}}%
+               {\caption{#2}}% then
+               {\caption[#1]{#2}}% else
+               \label{fig:\thelabeledfigure}%
+  \end{figure}%
+}
+
+%% 2-column
+% \labeledfigure{filename}[Short caption]{Long caption}
+\newcommand{\labeledfigurewide}[1]{%
+  \def\thelabeledfigurewide{#1}%
+  \labeledfigurewiderelay%
+}
+\newcommand{\labeledfigurewiderelay}[2][]{%
+  \begin{figure*}[t]%
+    \centering%
+    \includegraphics{\thelabeledfigurewide}%
+    \ifthenelse{\equal{#1}{}}%
+               {\caption{#2}}% then
+               {\caption[#1]{#2}}% else
+               \label{fig:\thelabeledfigurewide}%
+  \end{figure*}%
+}
+
+% this bad boy defines a pair of macros for handling chapter-aware
+% cross references. If called like this:
+% \makereftype{fig}{Fig.}{figure} it would define a macro \figlabel[1]
+% (for labeling a figure) and \figref[3][\thechlabel][Fig.]  (for
+% referring to it)
+\newcommand{\makereftype}[2]{% command stem | default display
+  \expandafter\newcommand\csname#1label\endcsname [1]{\label{#1:##1}}
+  \expandafter\newcommand\csname#1ref\endcsname [1][]{%
+    \expandafter\csname#1refrelay\endcsname%
+  }%
+  \expandafter\newcommand\csname#1refrelay\endcsname [2][#2]{%
+      \myref{##1}{#1:##2}%
+  }%
+}
+
+\makereftype{fig}{Figure}
+\makereftype{sec}{Section}
+\makereftype{tbl}{Table}
+\makereftype{alg}{Algorithm}
+\makereftype{line}{Line}
+
+\makeatletter
+\g@addto@macro\algorithm%\scriptsize
+\makeatother
+
+\newenvironment{code}{\scriptsize}{}
+
+% latex is terrible with widow/orphan lines. This is really
+% heavy-handed but nothing else makes it pay attention.
+\clubpenalty=10000
+\widowpenalty=10000
+
+% IP: Space saving tricks
+%\usepackage[small,compact]{titlesec}
+%\usepackage[small,it]{caption}
+%\usepackage{times}
+
+%% %% IP - HEADER/FOOTER
+%% \lhead{}
+%% \chead{\MakeUppercase{\bfseries *** please do not distribute ***}}
+%% \rhead{}
+%% \lfoot{}
+%% \cfoot{\large{DRAFT, \today}}
+%% \rfoot{}
+%% %% IP - EOF HEADER/FOOTER
+
+
+\begin{document}
+\title{\thepapertitle}
+
+\numberofauthors{1}
+\author{
+\alignauthor
+Kangnyeon Kim
+~~
+Tianzheng Wang
+~~
+Ryan Johnson
+~~
+Ippokratis Pandis$^\star$
+\bigskip\\
+$
+\begin{array}{cc}
+  \mbox{\affaddr{University of Toronto}} &
+  \mbox{$^\star$\affaddr{Cloudera}}\\
+  \mbox{{\large \sf {knkim,tzwang,ryan.johnson}@cs.utoronto.ca}} &
+  \mbox{{\large \sf ippokratis@cloudera.com}}
+\end{array}
+$
+\\
+}
+
+\maketitle
+
+%% Breaking the file into sections
+
+\input{ermia-abstract}
+\input{ermia-intro}
+\input{ermia-design}
+\input{ermia-eval}
+\input{ermia-related}
+\input{ermia-conclusions}
+
+%%\input{ermia-acks}
+
+%% IP: We should paste the .bbl here for the camera-ready
+\bibliographystyle{abbrv}
+%%\bibliographystyle{acm-custom}
+%\setlength{\bibsep}{4pt}
+{\small %\scriptsize % no need for big print here...
+\bibliography{../common/biblio}
+}
+
+%\balancecolumns % GM June 2007
+% That's all folks!
+\end{document}
