@@ -374,33 +374,6 @@ install:
             // try if we can trim
             ASSERT(version);
             dbtuple *ret_ver = version;
-            // strat from the next's next, in case the head is in-flight
-            // (could be remove if the tx aborted)
-/*
-            cur_obj = (object *)cur_obj->_next.offset();
-            LSN tlsn = volatile_read(RA::trim_lsn);
-            while (cur_obj) {
-                fat_ptr next_ptr = cur_obj->_next;
-                object *next_obj = (object *)next_ptr.offset();
-                if (not next_obj)
-                    break;
-                dbtuple *next_tuple = (dbtuple *)next_obj->payload();
-                fat_ptr next_clsn = volatile_read(next_tuple->clsn);
-                ASSERT(next_clsn.asi_type() == fat_ptr::ASI_LOG);
-                if (LSN::from_ptr(next_clsn) < tlsn) {
-                    ASSERT(next_tuple->readers.size() == 0);
-                    if (__sync_bool_compare_and_swap(&cur_obj->_next._ptr, next_ptr._ptr, 0)) {
-                        do {
-                            next_ptr = next_obj->_next;
-                            RA::deallocate(next_obj);
-                            next_obj = (object *)next_ptr.offset();
-                        } while (next_obj);
-                    }
-                    break;
-                }
-                cur_obj = (object *)cur_obj->_next;
-            }
-*/
 #ifdef TRACE_FOOTPRINT
             int64_t ver_age = -1;
             if (ret_ver->clsn.asi_type() == fat_ptr::ASI_XID) {
