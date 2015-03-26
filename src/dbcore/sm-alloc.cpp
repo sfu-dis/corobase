@@ -179,7 +179,7 @@ epoch_enter(void)
 }
 
 void
-epoch_exit(void)
+epoch_exit(LSN s)
 {
 #ifdef ENABLE_GC
     if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
@@ -191,9 +191,7 @@ epoch_exit(void)
         // actually belongs to the *new* epoch - not safe to trim based on
         // this lsn. The real trim_lsn should be some lsn at the end of the
         // ending epoch, not some lsn after the next epoch.
-        RCU::rcu_enter();
-        safe_lsn = transaction_base::logger->cur_lsn();
-        RCU::rcu_exit();
+        safe_lsn = s;
         if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
             epoch_tls.nbytes = epoch_tls.counts = 0;
     }

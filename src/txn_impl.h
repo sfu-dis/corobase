@@ -55,15 +55,15 @@ transaction<Protocol, Traits>::~transaction()
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   serial_deregister_tx(xid);
 #endif
-  xid_free(xid);
   //write_set.clear();
   //read_set.clear();
 
 #ifdef ENABLE_GC
   // cleanup my order-0 object list if possible
   op->scavenge_order0(epoch);
-  MM::epoch_exit();
+  MM::epoch_exit(xc->end);
 #endif
+  xid_free(xid);    // must do this after epoch_exit, which uses xc.end
 }
 
 template <template <typename> class Protocol, typename Traits>
