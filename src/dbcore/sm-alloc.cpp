@@ -192,10 +192,17 @@ try_recycle:
     uint64_t reclaimed_count = 0;
     uint64_t reclaimed_nbytes = 0;
     gc_trigger.wait(lock);
-    LSN tlsn = volatile_read(trim_lsn);
     recycle_oid *r_prev = NULL;
     recycle_oid *r = volatile_read(recycle_oid_head);
     while (1) {
+        // need to update tlsn each time, to make sure we can make
+        // progress when diving deeper in the list: in general the
+        // deeper we dive in it, the newer versions we will see;
+        // then we might never get out of the loop if the tlsn is
+        // too old, unless we have a threshold of "examined # of
+        // oids" or like here, update it at each iteration.
+        LSN tlsn = volatile_read(trim_lsn);
+
         if (not r or reclaimed_count >= EPOCH_SIZE_COUNT or reclaimed_nbytes >= EPOCH_SIZE_NBYTES)
             break;
         recycle_oid *r_next = volatile_read(r->next);
@@ -229,13 +236,24 @@ try_recycle:
         if (clsn.asi_type() == fat_ptr::ASI_XID)
             cur_obj = (object *)cur_obj->_next.offset();
 
-        // now cur_obj should be the fisrt committed versions, continue
+        // now cur_obj should be the fisrt committed version, continue
         // to the version that can be safely trimmed (the version after
         // cur_obj).
         fat_ptr cur = cur_obj->_next;
         fat_ptr *prev_next = &cur_obj->_next;
 
         bool trimmed = false;
+
+        // the tx only recycle()s updated oids, so each chain we poke at
+        // here *should* have at least 2 *committed* versions. But note
+        // that say, two txs, can update the same OID, and they will
+        // both add the OID to this list - rmb we don't dedup the list,
+        // there might be duplicates; if we trimmed one entry already,
+        // the next time we'll probably see cur.offset() == 0. So just
+        // remove it, as if it were trimmed (again).
+        if (not cur.offset())
+            trimmed = true;
+
         while (cur.offset()) {
             cur_obj = (object *)cur.offset();
             ASSERT(cur_obj);
