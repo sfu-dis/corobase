@@ -85,7 +85,7 @@ namespace MM {
     void register_thread();
     void deregister_thread();
     epoch_num epoch_enter(void);
-    void epoch_exit(void);
+    void epoch_exit(LSN s);
     void recycle(uintptr_t table, oid_type oid);
     void recycle(recycle_oid *list_head, recycle_oid *list_tail);
     extern LSN trim_lsn;
