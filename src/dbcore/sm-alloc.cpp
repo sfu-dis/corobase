@@ -87,6 +87,7 @@ try_append:
 }
 
 LSN trim_lsn;
+LSN safe_lsn;
 std::condition_variable gc_trigger;
 std::mutex gc_lock;
 void gc_daemon();
@@ -150,9 +151,7 @@ epoch_ended(void *cookie, epoch_num e)
     // as when thread exits it will no longer be in the rcu region
     // created by the scoped_rcu_region in the transaction class.
     LSN *lsn = (LSN *)malloc(sizeof(LSN));
-    RCU::rcu_enter();
-    *lsn = transaction_base::logger->cur_lsn();
-    RCU::rcu_exit();
+    *lsn = safe_lsn;
     return lsn;
 }
 
@@ -182,6 +181,23 @@ epoch_enter(void)
 void
 epoch_exit(void)
 {
+#ifdef ENABLE_GC
+    if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
+        // epoch_ended() (which is called by new_epoch() in its critical
+        // section) will pick up this safe lsn if new_epoch() succeeded
+        // (it could also be set by somebody else who's also doing epoch_exit(),
+        // but this is captured before new_epoch succeeds, so we're fine).
+        // If instead, we do this in epoch_ended(), that cur_lsn captured
+        // actually belongs to the *new* epoch - not safe to trim based on
+        // this lsn. The real trim_lsn should be some lsn at the end of the
+        // ending epoch, not some lsn after the next epoch.
+        RCU::rcu_enter();
+        safe_lsn = transaction_base::logger->cur_lsn();
+        RCU::rcu_exit();
+        if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
+            epoch_tls.nbytes = epoch_tls.counts = 0;
+    }
+#endif
     mm_epochs.thread_exit();
 }
 
@@ -304,10 +320,6 @@ void *allocate(uint64_t size) {
     void* p = malloc(size);
     ASSERT(p);
 #ifdef ENABLE_GC
-    if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
-        if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
-            epoch_tls.nbytes = epoch_tls.counts = 0;
-    }
     epoch_tls.nbytes += size;
     epoch_tls.counts += 1;
 #endif
