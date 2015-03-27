@@ -338,9 +338,8 @@ object *
 object_pool::get(epoch_num e, size_t size)
 {
     int order = get_order(size);
-    if (order==0 or not head[order] or e < head[order]->epoch+2)
+    if (order==0 or not head[order] or e <= head[order]->epoch+2)
         return NULL;
-
     reuse_object *r = head[order];
     object *p = r->obj;
     head[order] = r->next;

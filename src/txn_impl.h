@@ -84,6 +84,11 @@ transaction<Protocol, Traits>::abort_impl()
       volatile_write(tuple->next()->sstamp, NULL_PTR);
 #endif
     w.btr->unlink_tuple(w.oid, tuple);
+#ifdef ENABLE_GC
+    //object *obj = (object *)((char *)tuple - sizeof(object));
+    //volatile_write(obj->_next, NULL_PTR);
+    //op->put(epoch, obj);
+#endif
   }
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
