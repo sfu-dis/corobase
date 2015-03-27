@@ -292,7 +292,7 @@ public:
   void heap_prefault()
   {
 #ifndef CHECK_INVARIANTS
-	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*48);		// 45G for 24 warehouses
+	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);		// 45G for 24 warehouses
 	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
 	  ALWAYS_ASSERT(p);
       ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
@@ -429,6 +429,8 @@ private:
 #define __abort_txn(r) \
 {   \
   db->abort_txn(txn); \
+  if (not rc_is_abort(r)) \
+    return {RC_ABORT_USER}; \
   return r; \
 }
 
