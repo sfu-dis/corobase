@@ -59,9 +59,7 @@ transaction<Protocol, Traits>::~transaction()
   //read_set.clear();
 
 #ifdef ENABLE_GC
-  // cleanup my order-0 object list if possible
-  op->scavenge_order0(epoch);
-  MM::epoch_exit(xc->end);
+  MM::epoch_exit(xc->end, epoch);
 #endif
   xid_free(xid);    // must do this after epoch_exit, which uses xc.end
 }
@@ -85,9 +83,8 @@ transaction<Protocol, Traits>::abort_impl()
 #endif
     w.btr->unlink_tuple(w.oid, tuple);
 #ifdef ENABLE_GC
-    //object *obj = (object *)((char *)tuple - sizeof(object));
-    //volatile_write(obj->_next, NULL_PTR);
-    //op->put(epoch, obj);
+    object *obj = (object *)((char *)tuple - sizeof(object));
+    op->put(xc->end.offset(), obj);
 #endif
   }
 
