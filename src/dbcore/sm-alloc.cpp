@@ -86,8 +86,17 @@ try_append:
     __sync_synchronize();   // publish the new tail
 }
 
-LSN trim_lsn;
-LSN safe_lsn;
+// global_trim_lsn is the max lsn of versions that are no longer needed,
+// i.e., the trim_lsn corresponding to two epochs ago of the most recently
+// reclaimed epoch. Note that trim_lsn only records the LSN when the
+// *creator* of the versions are left---not the *visitor* of those versions.
+// So consider the versions created in epoch N, we can have stragglers up to
+// at most epoch N+2; to start a new epoch N+3, N must be reclaimed. This
+// means versions last *visited* (not created!) in epoch N are no longer
+// needed after epoch N+2 is reclaimed.
+LSN global_trim_lsn;
+LSN trim_lsn[3];
+LSN safe_lsn[3];
 std::condition_variable gc_trigger;
 std::mutex gc_lock;
 void gc_daemon();
@@ -144,15 +153,11 @@ thread_deregistered(void *cookie, void *thread_cookie)
 void*
 epoch_ended(void *cookie, epoch_num e)
 {
-    // So we need this rcu_is_active here because
-    // epoch_ended is called not only when an epoch is eneded,
-    // but also when threads exit (see epoch.cpp:274-283 in function
-    // epoch_mgr::thread_init(). So we need to avoid the latter case
-    // as when thread exits it will no longer be in the rcu region
-    // created by the scoped_rcu_region in the transaction class.
-    LSN *lsn = (LSN *)malloc(sizeof(LSN));
-    *lsn = safe_lsn;
-    return lsn;
+    // remember the epoch's LSN and return them together
+    char *lsn_epoch = (char *)malloc(sizeof(LSN) + sizeof(epoch_num));
+    *((LSN *)lsn_epoch) = safe_lsn[e % 3];
+    *((epoch_num *)(lsn_epoch + sizeof(LSN))) = e;
+    return (void *)lsn_epoch;
 }
 
 void*
@@ -165,11 +170,17 @@ void
 epoch_reclaimed(void *cookie, void *epoch_cookie)
 {
     LSN lsn = *(LSN *)epoch_cookie;
+    epoch_num epoch = *((epoch_num *)((char *)epoch_cookie + sizeof(LSN)));
     if (lsn != INVALID_LSN) {
-        volatile_write(trim_lsn._val, lsn._val);
+        volatile_write(trim_lsn[(epoch + 2) % 3]._val, lsn._val);
         free(epoch_cookie);
-        gc_trigger.notify_all();
+        // make epoch N-2 available for recycle after epoch N is reclaimed
+        if (epoch >= 2)
+            global_trim_lsn = trim_lsn[(epoch - 2) % 3];
     }
+
+    if (global_trim_lsn != INVALID_LSN)
+        gc_trigger.notify_all();
 }
 
 epoch_num
@@ -179,7 +190,7 @@ epoch_enter(void)
 }
 
 void
-epoch_exit(LSN s)
+epoch_exit(LSN s, epoch_num e)
 {
 #ifdef ENABLE_GC
     if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
@@ -191,7 +202,7 @@ epoch_exit(LSN s)
         // actually belongs to the *new* epoch - not safe to trim based on
         // this lsn. The real trim_lsn should be some lsn at the end of the
         // ending epoch, not some lsn after the next epoch.
-        safe_lsn = s;
+        safe_lsn[e % 3] = s;
         if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
             epoch_tls.nbytes = epoch_tls.counts = 0;
     }
@@ -215,7 +226,7 @@ try_recycle:
         // then we might never get out of the loop if the tlsn is
         // too old, unless we have a threshold of "examined # of
         // oids" or like here, update it at each iteration.
-        LSN tlsn = volatile_read(trim_lsn);
+        LSN tlsn = volatile_read(global_trim_lsn);
 
         if (not r or reclaimed_count >= EPOCH_SIZE_COUNT or reclaimed_nbytes >= EPOCH_SIZE_NBYTES)
             break;
@@ -274,7 +285,7 @@ try_recycle:
             dbtuple *version = (dbtuple *)cur_obj->payload();
             clsn = volatile_read(version->clsn);
             ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
-            if (LSN::from_ptr(clsn) < tlsn) {
+            if (LSN::from_ptr(clsn) <= tlsn) {
                 // no need to CAS here if we only have one gc thread
                 volatile_write(prev_next->_ptr, 0);
                 __sync_synchronize();
@@ -309,7 +320,8 @@ try_recycle:
             r = r_next;
         }
     }
-    printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
+    if (reclaimed_nbytes or reclaimed_count)
+        printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
     goto try_recycle;
 }
 #endif
@@ -335,25 +347,38 @@ object_pool *get_object_pool()
 
 #ifdef ENABLE_GC
 object *
-object_pool::get(epoch_num e, size_t size)
+object_pool::get(size_t size)
 {
     int order = get_order(size);
-    if (order==0 or not head[order] or e <= head[order]->epoch+2)
-        return NULL;
     reuse_object *r = head[order];
-    object *p = r->obj;
-    head[order] = r->next;
-    if (not head[order])
-        tail[order] = NULL;
-    delete r;
-    return p;
+    reuse_object *r_prev = NULL;
+    uint64_t tlsn = volatile_read(MM::global_trim_lsn).offset();
+
+    while (r and r->cstamp > tlsn) {
+        object *p = r->obj;
+        ASSERT(r->cstamp);
+        if (p->_size >= size) {
+            if (r_prev)
+                r_prev->next = r->next;
+            else {
+                head[order] = r->next;
+                if (not head[order])
+                    tail[order] = NULL;
+            }
+            delete r;
+            return p;
+        }
+        r_prev = r;
+        r = r->next;
+    };
+    return NULL;
 }
 
 void
-object_pool::put(epoch_num e, object *p)
+object_pool::put(uint64_t c, object *p)
 {
     int order = get_order(p->_size);
-    reuse_object *r = new reuse_object(e, p);
+    reuse_object *r = new reuse_object(c, p);
     if (not tail[order])
         head[order] = tail[order] = r;
     else {
@@ -362,19 +387,4 @@ object_pool::put(epoch_num e, object *p)
     }
 }
 
-void
-object_pool::scavenge_order0(epoch_num e)
-{
-    while (reuse_object *r = head[0]) {
-        if (r->epoch + 2 <= e) {
-            MM::deallocate(r->obj);
-            head[0] = r->next;
-            delete r;
-            if (not head[0])
-                tail[0] = NULL;
-        }
-        else
-            break;
-    }
-}
 #endif

@@ -18,18 +18,22 @@
 typedef epoch_mgr::epoch_num epoch_num;
 // A pool of objects deallocated by GC, save some calls to
 // tcmalloc in allocate().
-// only care about min 32, 64, 128, and 256 bytes of objects,
-// too small ones (<32 bytes) will be kept in the 1st list and
-// be free()'ed by tx's dtor. Other sizes will be used by txs
-// through put() and get().
 // Note: object_pool is supoosed to be tx/thread-local.
+//
+// order 0: (0, 32B)
+// order 1: [32, 64)
+// order 2: [64, 128)
+// order 3: [128, +inf)
+//
+// Transactions can reuse these objects via put/get functions.
 enum { MAX_SIZE_ORDER=4, BASE_OBJECT_SIZE=32 };
 class object_pool {
     struct reuse_object {
-        epoch_num epoch;
+        uint64_t cstamp;
+        //epoch_num epoch;    // object created during this epoch
         object *obj;
         reuse_object *next;
-        reuse_object(epoch_num e, object *p) : epoch(e), obj(p), next(NULL) {}
+        reuse_object(uint64_t c, object *p) : cstamp(c), obj(p), next(NULL) {}
     };
 
     // put at tail, get at head
@@ -48,9 +52,8 @@ public:
         memset(head, '\0', sizeof(reuse_object *) * MAX_SIZE_ORDER);
         memset(tail, '\0', sizeof(reuse_object *) * MAX_SIZE_ORDER);
     }
-    object *get(epoch_num e, size_t size);
+    object *get(size_t size);
     void put(epoch_num e, object *p);
-    void scavenge_order0(epoch_num e);
 };
 
 // oids that got updated, ie need to cleanup the overwritten versions
@@ -85,10 +88,9 @@ namespace MM {
     void register_thread();
     void deregister_thread();
     epoch_num epoch_enter(void);
-    void epoch_exit(LSN s);
+    void epoch_exit(LSN s, epoch_num e);
     void recycle(uintptr_t table, oid_type oid);
     void recycle(recycle_oid *list_head, recycle_oid *list_tail);
-    extern LSN trim_lsn;
 #endif
 };
 

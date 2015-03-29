@@ -248,7 +248,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // Allocate a version
   object *obj = NULL;
 #ifdef ENABLE_GC
-  //obj = t.op->get(t.epoch, alloc_sz);
+  obj = t.op->get(alloc_sz);
   if (not obj)
 #endif
     obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
@@ -375,7 +375,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
       volatile_write(obj->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       prev->mark_defunct();
 #ifdef ENABLE_GC
-      //t.op->put(t.epoch, prev_obj);
+      t.op->put(t.epoch, prev_obj);
 #endif
       ASSERT(obj->_next.offset() != (uintptr_t)prev_obj);
     }
