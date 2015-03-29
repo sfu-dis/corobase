@@ -18,6 +18,8 @@ Switches are defined in src/macros.h:
 3. #define USE_READ_COMMITTED -> use RC
 4. undef USE_PARALLEL_SSI and USE_PARALLEL_SSN -> vanilla SI
 
+Giving -D[SCHEME] to $make will also work.
+
 Notes: USE_PARALLEL_SSI and USE_PARALLEL_SSN should be mutually exclusive. Defining both
 is undefined.
 
@@ -91,6 +93,6 @@ Examples:
        -o "--microbench-random --microbench-rows=10000 --microbench-wr-rows=10"
 
 The run.sh script provides simple default parameters for TPC-C++. It accepts three arguments: 
-    run.sh [SF] [# of threads] [duration]
-It also provides proper tcmalloc parameters.
+    run.sh [executable] [benchmark] [# of threads] [duration]
 
+It also provides proper tcmalloc parameters. For TPC-C variants, SF = # of threads.
