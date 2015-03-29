@@ -247,7 +247,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
 
   // Allocate a version
   object *obj = NULL;
-#ifdef ENABLE_GC
+#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
   obj = t.op->get(alloc_sz);
   if (not obj)
 #endif
@@ -374,7 +374,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {  // in-place update!
       volatile_write(obj->_next._ptr, prev_obj->_next._ptr); // prev's prev: previous *committed* version
       prev->mark_defunct();
-#ifdef ENABLE_GC
+#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
       t.op->put(t.epoch, prev_obj);
 #endif
       ASSERT(obj->_next.offset() != (uintptr_t)prev_obj);
