@@ -17,7 +17,9 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 {
 #ifdef ENABLE_GC
   epoch = MM::epoch_enter();
+#ifdef REUSE_OBJECTS
   op = MM::get_object_pool();
+#endif
 #endif
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
@@ -82,7 +84,7 @@ transaction<Protocol, Traits>::abort_impl()
       volatile_write(tuple->next()->sstamp, NULL_PTR);
 #endif
     w.btr->unlink_tuple(w.oid, tuple);
-#ifdef ENABLE_GC
+#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
     object *obj = (object *)((char *)tuple - sizeof(object));
     op->put(xc->end.offset(), obj);
 #endif

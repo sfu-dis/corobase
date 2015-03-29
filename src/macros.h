@@ -29,6 +29,9 @@
 //#define USE_DYNARRAY_STR_ARENA
 
 //#define ENABLE_GC
+#ifdef ENABLE_GC
+//#define REUSE_OBJECTS
+#endif
 
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
