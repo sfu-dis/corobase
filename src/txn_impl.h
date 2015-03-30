@@ -56,9 +56,9 @@ transaction<Protocol, Traits>::~transaction()
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   serial_deregister_tx(xid);
+  xc->read_set.clear();
 #endif
   //write_set.clear();
-  xc->read_set.clear();
 
 #ifdef ENABLE_GC
   MM::epoch_exit(xc->end, epoch);

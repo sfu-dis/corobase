@@ -45,11 +45,6 @@ CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_pr
 CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
 CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
 
-#define EVENT_COUNTER_IMPL_X(x) \
-  event_counter transaction_base::g_ ## x ## _ctr(#x);
-ABORT_REASONS(EVENT_COUNTER_IMPL_X)
-#undef EVENT_COUNTER_IMPL_X
-
 event_counter transaction_base::g_evt_read_logical_deleted_node_search
     ("read_logical_deleted_node_search");
 event_counter transaction_base::g_evt_read_logical_deleted_node_scan
