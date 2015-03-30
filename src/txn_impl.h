@@ -323,7 +323,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     dbtuple *tuple = w.new_tuple;
     if (tuple->is_defunct())
         continue;
-    tuple->do_write(w.writer);
+    tuple->do_write();
     dbtuple *next_tuple = tuple->next();
     ASSERT(not next_tuple or
            ((object *)((char *)tuple - sizeof(object)))->_next.offset() ==
@@ -520,7 +520,7 @@ examine_writes:
     dbtuple* tuple = w.new_tuple;
     if (tuple->is_defunct())
       continue;
-    tuple->do_write(w.writer);
+    tuple->do_write();
     dbtuple *overwritten_tuple = tuple->next();
     if (overwritten_tuple) {    // update
       ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
@@ -618,7 +618,7 @@ transaction<Protocol, Traits>::si_commit()
     dbtuple* tuple = w.new_tuple;
     if (tuple->is_defunct())
       continue;
-    tuple->do_write(w.writer);
+    tuple->do_write();
     tuple->clsn = xc->end.to_log_ptr();
     INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
 #ifdef ENABLE_GC
@@ -676,8 +676,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
     concurrent_btree *btr,
     const varstr *key,
     const varstr *value,
-    object* object,
-    dbtuple::tuple_writer_t writer)
+    object* object)
 {
   INVARIANT(key);
   dbtuple* tuple = (dbtuple *)object->payload();
@@ -773,7 +772,7 @@ transaction<Protocol, Traits>::try_insert_new_tuple(
                   fat_ptr::make((void *)value, size_code),
                   DEFAULT_ALIGNMENT_BITS, NULL);
   // update write_set
-  write_set.emplace_back(tuple, writer, btr, oid);
+  write_set.emplace_back(tuple, btr, oid);
   return true;
 }
 

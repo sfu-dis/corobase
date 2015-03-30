@@ -163,25 +163,6 @@ struct txn_btree_ {
     const varstr *v;
   };
 
-  static size_t
-  tuple_writer(dbtuple::TupleWriterMode mode, const void *v, uint8_t *p, size_t sz)
-  {
-    const varstr * const vx = reinterpret_cast<const varstr *>(v);
-    switch (mode) {
-    case dbtuple::TUPLE_WRITER_NEEDS_OLD_VALUE:
-      return 0;
-    case dbtuple::TUPLE_WRITER_COMPUTE_NEEDED:
-    case dbtuple::TUPLE_WRITER_COMPUTE_DELTA_NEEDED:
-      return vx->size();
-    case dbtuple::TUPLE_WRITER_DO_WRITE:
-    case dbtuple::TUPLE_WRITER_DO_DELTA_WRITE:
-      NDB_MEMCPY(p, vx->data(), vx->size());
-      return 0;
-    }
-    ALWAYS_ASSERT(false);
-    return 0;
-  }
-
   typedef varstr Key;
   typedef key_reader KeyReader;
   typedef key_writer KeyWriter;
@@ -410,27 +391,21 @@ public:
   inline rc_t
   put(Transaction<Traits> &t, const key_type &k, const value_type &v)
   {
-    return this->do_tree_put(
-        t, stablize(t, k), stablize(t, v),
-        txn_btree_::tuple_writer, false);
+    return this->do_tree_put(t, stablize(t, k), stablize(t, v), false);
   }
 
   template <typename Traits>
   inline rc_t
   put(Transaction<Traits> &t, const varkey &k, const value_type &v)
   {
-    return this->do_tree_put(
-        t, stablize(t, k), stablize(t, v),
-        txn_btree_::tuple_writer, false);
+    return this->do_tree_put(t, stablize(t, k), stablize(t, v), false);
   }
 
   template <typename Traits>
   inline rc_t
   insert(Transaction<Traits> &t, const key_type &k, const value_type &v)
   {
-    return this->do_tree_put(
-        t, stablize(t, k), stablize(t, v),
-        txn_btree_::tuple_writer, true);
+    return this->do_tree_put(t, stablize(t, k), stablize(t, v), true);
   }
 
   // insert() methods below are for legacy use
@@ -441,9 +416,7 @@ public:
   {
     INVARIANT(v);
     INVARIANT(sz);
-    return this->do_tree_put(
-        t, stablize(t, k), stablize(t, v, sz),
-        txn_btree_::tuple_writer, true);
+    return this->do_tree_put(t, stablize(t, k), stablize(t, v, sz), true);
   }
 
   template <typename Traits>
@@ -452,9 +425,7 @@ public:
   {
     INVARIANT(v);
     INVARIANT(sz);
-    this->do_tree_put(
-        t, stablize(t, k), stablize(t, v, sz),
-        txn_btree_::tuple_writer, true);
+    this->do_tree_put(t, stablize(t, k), stablize(t, v, sz), true);
   }
 
   // FIXME: tzwang: not in-use?
@@ -478,14 +449,14 @@ public:
   inline rc_t
   remove(Transaction<Traits> &t, const key_type &k)
   {
-    return this->do_tree_put(t, stablize(t, k), nullptr, txn_btree_::tuple_writer, false);
+    return this->do_tree_put(t, stablize(t, k), nullptr, false);
   }
 
   template <typename Traits>
   inline rc_t
   remove(Transaction<Traits> &t, const varkey &k)
   {
-    return this->do_tree_put(t, stablize(t, k), nullptr, txn_btree_::tuple_writer, false);
+    return this->do_tree_put(t, stablize(t, k), nullptr, false);
   }
 
   static void Test();

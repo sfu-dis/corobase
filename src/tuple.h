@@ -213,26 +213,14 @@ public:
   }
 
   // move data from the user's varstr pvalue to this tuple
-  template <typename Writer>
   inline ALWAYS_INLINE void
-  do_write(Writer &writer) const
+  do_write() const
   {
     if (pvalue) {
       ASSERT(pvalue->size() == size);
-      writer(TUPLE_WRITER_DO_WRITE, pvalue, (unsigned uint8_t *)get_value_start(), 0);
+      memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());
     }
   }
-
-  // XXX: kind of hacky, but we do this to avoid virtual
-  // functions / passing multiple function pointers around
-  enum TupleWriterMode {
-    TUPLE_WRITER_NEEDS_OLD_VALUE, // all three args ignored
-    TUPLE_WRITER_COMPUTE_NEEDED,
-    TUPLE_WRITER_COMPUTE_DELTA_NEEDED, // last two args ignored
-    TUPLE_WRITER_DO_WRITE,
-    TUPLE_WRITER_DO_DELTA_WRITE,
-  };
-  typedef size_t (*tuple_writer_t)(TupleWriterMode, const void *, uint8_t *, size_t);
 
   static inline dbtuple *
   init(char*p ,size_type sz)
