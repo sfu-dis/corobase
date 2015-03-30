@@ -69,9 +69,6 @@ public:
 
   typedef Traits traits_type;
   typedef transaction_base::string_type string_type;
-#ifdef USE_PARALLEL_SSN
-  typedef typename super_type::read_set_map read_set_map;
-#endif
 #ifdef PHANTOM_PROT_NODE_SET
   typedef typename super_type::absent_set_map absent_set_map;
 #endif

@@ -295,9 +295,6 @@ protected:
   };
 
   typedef std::vector<write_record_t> write_set_map;
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  typedef std::vector<dbtuple *> read_set_map;
-#endif
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
   typedef std::vector<table_lock_t*> table_lock_set_t;
@@ -395,9 +392,6 @@ protected:
   xid_context *xc;
   sm_tx_log* log;
   string_allocator_type *sa;
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  read_set_map read_set;
-#endif
   write_set_map write_set;
 #ifdef ENABLE_GC
   object_pool *op;

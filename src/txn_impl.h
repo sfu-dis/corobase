@@ -58,7 +58,7 @@ transaction<Protocol, Traits>::~transaction()
   serial_deregister_tx(xid);
 #endif
   //write_set.clear();
-  //read_set.clear();
+  xc->read_set.clear();
 
 #ifdef ENABLE_GC
   MM::epoch_exit(xc->end, epoch);
@@ -91,7 +91,7 @@ transaction<Protocol, Traits>::abort_impl()
   }
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  for (auto &r : read_set) {
+  for (auto &r : xc->read_set) {
     ASSERT(not r->is_defunct());
     ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
     // remove myself from reader list
@@ -261,7 +261,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   }
   ASSERT(xc->pstamp <= cstamp - 1);
 
-  for (auto &r : read_set) {
+  for (auto &r : xc->read_set) {
   try_get_sucessor:
     // so tuple should be the committed version I read
     ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -362,7 +362,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
   }
 #endif
 
-  for (auto &r : read_set) {
+  for (auto &r : xc->read_set) {
     ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
     uint64_t xlsn;
     do {
@@ -407,7 +407,7 @@ transaction<Protocol, Traits>::parallel_ssi_commit()
   uint64_t ct3 = volatile_read(xc->ct3);   // this will be the s2 of versions I clobbered
   if (ct3 == 1) // poor guy clobbered some old version...
     goto examine_writes;
-  for (auto &r : read_set) {
+  for (auto &r : xc->read_set) {
   get_overwriter:
     // need to see if there's any overwriter (if so also its state)
     fat_ptr overwriter_clsn = volatile_read(r->sstamp);
@@ -557,7 +557,7 @@ examine_writes:
 #endif
 
   // update xstamps in read versions
-  for (auto &r : read_set) {
+  for (auto &r : xc->read_set) {
     // no need to look into write set and skip: do_tuple_read will
     // skip inserting to read set if it's already in write set; it's
     // possible to see a tuple in both read and write sets, only if
@@ -789,89 +789,17 @@ transaction<Protocol, Traits>::do_tuple_read(
   bool read_my_own = (tuple->clsn.asi_type() == fat_ptr::ASI_XID);
   ASSERT(not read_my_own or (read_my_own and XID::from_ptr(volatile_read(tuple->clsn)) == xc->owner));
 
+#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+  if (not read_my_own) {
+    rc_t rc = {RC_INVALID};
 #ifdef USE_PARALLEL_SSN
-  // SSN stamps and check
-  if (not read_my_own) {
-    auto tuple_sstamp = volatile_read(tuple->sstamp);
-    if (not tuple->is_old(xc)) {
-      auto v_clsn = tuple->clsn.offset();
-      // \eta - largest predecessor. So if I read this tuple, I should commit
-      // after the tuple's creator (trivial, as this is committed version, so
-      // this tuple's clsn can only be a predecessor of me): so just update
-      // my \eta if needed.
-      if (xc->pstamp < v_clsn)
-          xc->pstamp = v_clsn;
-
-      // Now if this tuple was overwritten by somebody, this means if I read
-      // it, that overwriter will have anti-dependency on me (I must be
-      // serialized before the overwriter), and it already committed (as a
-      // successor of mine), so I need to update my \pi for the SSN check.
-      // This is the easier case of anti-dependency (the other case is T1
-      // already read a (then latest) version, then T2 comes to overwrite it).
-      if (tuple_sstamp == NULL_PTR) {   // no overwrite so far
-        serial_register_reader_tx(tuple, xid);
-        read_set.emplace_back(tuple);
-      }
-      else if (tuple_sstamp.asi_type() == fat_ptr::ASI_LOG) {
-        if (xc->sstamp > tuple_sstamp.offset())
-          xc->sstamp = tuple_sstamp.offset(); // \pi
-      }
-
-#ifdef DO_EARLY_SSN_CHECKS
-      if (not ssn_check_exclusion(xc))
-        return {RC_ABORT_SERIAL};
+    rc = ssn_read(xc, tuple);
+#else
+    rc = ssi_read(xc, tuple);
 #endif
-    }
-    else {
-      if (tuple_sstamp != NULL_PTR and tuple_sstamp.asi_type() == fat_ptr::ASI_LOG) {
-        if (xc->sstamp > tuple_sstamp.offset())
-          xc->sstamp = tuple_sstamp.offset(); // \pi
-      }
-
-      uint64_t bs = 0;
-      do {
-        bs = volatile_read(tuple->bstamp);
-      }
-      while (tuple->bstamp < xc->begin.offset() and
-             not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
-      serial_register_reader_tx(tuple, xid);
-    }
+    if (rc_is_abort(rc))
+      return rc;
   } // otherwise it's my own update/insert, just read it
-
-#endif
-#ifdef USE_PARALLEL_SSI
-  // Consider the dangerous structure that could lead to non-serializable
-  // execution: T1 r:w T2 r:w T3 where T3 committed first. Read() needs
-  // to check if I'm the T1 and do bookeeping if I'm the T2 (pivot).
-  if (not read_my_own) {
-    // See tuple.h for explanation on what s2 means.
-    if (volatile_read(tuple->s2)) {
-      ASSERT(tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);    // sstamp will be valid too if s2 is valid
-      return rc_t{RC_ABORT_SERIAL};
-    }
-
-    fat_ptr tuple_s1 = volatile_read(tuple->sstamp);
-    // see if there was a guy with cstamp=tuple_s1 who overwrote this version
-    if (tuple_s1.asi_type() == fat_ptr::ASI_LOG) { // I'm T2
-      // remember the smallest sstamp so that I can re-check at precommit
-      if (xc->ct3 > tuple_s1.offset())
-        xc->ct3 = tuple_s1.offset();
-    }
-
-    if (not tuple->is_old(xc))
-      read_set.emplace_back(tuple);
-    else {
-      uint64_t bs = 0;
-      do {
-        bs = volatile_read(tuple->bstamp);
-      }
-      while (tuple->bstamp < xc->begin.offset() and
-             not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
-    }
-
-    // survived, register as a reader
-    serial_register_reader_tx(tuple, xid);
-  }
 #endif
 
   // do the actual tuple read

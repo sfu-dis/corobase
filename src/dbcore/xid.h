@@ -2,9 +2,12 @@
 #pragma once
 
 #include <mutex>
+#include <vector>
 #include "sm-common.h"
 #include "../macros.h"
+//#include "../tuple.h"
 
+class dbtuple;
 namespace TXN {
 
 enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD };
@@ -21,6 +24,10 @@ struct xid_context {
     uint64_t ct3;   // smallest commit stamp of T3 in the dangerous structure
 #endif
     txn_state state;
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    typedef std::vector<dbtuple *> read_set_map;
+    read_set_map read_set;
+#endif
 };
 
 /* Request a new XID and an associated context. The former is globally
