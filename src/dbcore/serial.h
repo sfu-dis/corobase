@@ -2,8 +2,9 @@
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 #pragma once
 #include <unordered_map>
-#include "xid.h"
 #include "../tuple.h"
+#include "sm-rc.h"
+#include "xid.h"
 
 namespace TXN {
 
@@ -56,6 +57,13 @@ void serial_deregister_reader_tx(dbtuple *tup);
 void serial_register_tx(XID xid);
 void serial_deregister_tx(XID xid);
 void summarize_serial_aborts();
+
+#ifdef USE_PARALLEL_SSI
+rc_t ssi_read(xid_context *xc, dbtuple *tuple);
+#endif
+#ifdef USE_PARALLEL_SSN
+rc_t ssn_read(xid_context *xc, dbtuple *tuple);
+#endif
 
 readers_list::bitmap_t serial_get_tuple_readers(dbtuple *tup, bool exclude_self = false);
 
