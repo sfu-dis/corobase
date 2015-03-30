@@ -146,7 +146,6 @@ protected:
   rc_t do_tree_put(Transaction<Traits> &t,
                    const varstr *k,
                    const varstr *v,
-                   dbtuple::tuple_writer_t writer,
                    bool expect_new);
 
   concurrent_btree underlying_btree;
@@ -231,7 +230,6 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
     Transaction<Traits> &t,
     const varstr *k,
     const varstr *v,
-    dbtuple::tuple_writer_t writer,
     bool expect_new)
 {
   INVARIANT(k);
@@ -241,8 +239,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   t.ensure_active();
 
   // Calculate Tuple Size
-  const size_t sz =
-    v ? writer(dbtuple::TUPLE_WRITER_COMPUTE_NEEDED, v, nullptr, 0) : 0;
+  const size_t sz = v ? v->size(): 0;
   size_t alloc_sz = sizeof(dbtuple) + sizeof(object) +  align_up(sz);
 
   // Allocate a version
@@ -265,7 +262,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
   // it fails if somebody else acted faster to insert new, we then
   // (fall back to) with the normal update procedure.
   // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-  if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, obj, writer))
+  if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, obj))
     return rc_t{RC_TRUE};
 
   // do regular search
@@ -386,7 +383,7 @@ rc_t base_txn_btree<Transaction, P>::do_tree_put(
 #endif
     }
 
-    t.write_set.emplace_back(tuple, writer, &this->underlying_btree, oid);
+    t.write_set.emplace_back(tuple, &this->underlying_btree, oid);
     ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xc) == tuple);
 
