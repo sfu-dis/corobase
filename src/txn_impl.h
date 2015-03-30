@@ -468,7 +468,6 @@ examine_writes:
         continue;
       // copy everything before doing anything
       auto reader_owner = volatile_read(reader_xc->owner);
-      auto reader_end = volatile_read(reader_xc->end).offset();
       auto reader_begin = volatile_read(reader_xc->begin).offset();
       auto reader_state = volatile_read(reader_xc->state);
       if (reader_owner != rxid)
@@ -482,10 +481,6 @@ examine_writes:
       // for old versions; it's accurate for young versions tho).
       // (might also spin for reader to really commit to reduce false +ves)
 
-      // all good if the reader is serialized before me
-      if (reader_end and reader_end < cstamp)
-        continue;
-      // So now the reader is destined to be serialized after me, have to check.
       if (overwritten_tuple->is_old(xc)) {
         uint64_t tuple_bs = volatile_read(overwritten_tuple->bstamp);
         if (reader_begin > tuple_bs) {  // then this is not our guy
