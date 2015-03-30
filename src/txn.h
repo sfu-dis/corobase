@@ -80,68 +80,12 @@ public:
     // XXX: more flags in the future, things like consistency levels
   };
 
-#define ABORT_REASONS(x) \
-    x(ABORT_REASON_NONE) \
-    x(ABORT_REASON_INTERNAL) \
-    x(ABORT_REASON_USER) \
-    x(ABORT_REASON_UNSTABLE_READ) \
-    x(ABORT_REASON_FUTURE_TID_READ) \
-    x(ABORT_REASON_NODE_SCAN_WRITE_VERSION_CHANGED) \
-    x(ABORT_REASON_NODE_SCAN_READ_VERSION_CHANGED) \
-    x(ABORT_REASON_WRITE_NODE_INTERFERENCE) \
-    x(ABORT_REASON_INSERT_NODE_INTERFERENCE) \
-    x(ABORT_REASON_READ_NODE_INTEREFERENCE) \
-    x(ABORT_REASON_READ_ABSENCE_INTEREFERENCE) \
-    x(ABORT_REASON_VERSION_INTERFERENCE) \
-    x(ABORT_REASON_SSN_EXCLUSION_FAILURE)
-
-  enum abort_reason {
-#define ENUM_X(x) x,
-    ABORT_REASONS(ENUM_X)
-#undef ENUM_X
-  };
-
-  static const char *
-  AbortReasonStr(abort_reason reason)
-  {
-    switch (reason) {
-#define CASE_X(x) case x: return #x;
-    ABORT_REASONS(CASE_X)
-#undef CASE_X
-    default:
-      break;
-    }
-    ALWAYS_ASSERT(false);
-    return 0;
-  }
-
   transaction_base(uint64_t flags)
-    : /*reason(ABORT_REASON_NONE),*/
-      flags(flags) {}
+    : flags(flags) {}
 
   transaction_base(const transaction_base &) = delete;
   transaction_base(transaction_base &&) = delete;
   transaction_base &operator=(const transaction_base &) = delete;
-
-protected:
-#define EVENT_COUNTER_DEF_X(x) \
-  static event_counter g_ ## x ## _ctr;
-  ABORT_REASONS(EVENT_COUNTER_DEF_X)
-#undef EVENT_COUNTER_DEF_X
-
-  static event_counter *
-  AbortReasonCounter(abort_reason reason)
-  {
-    switch (reason) {
-#define EVENT_COUNTER_CASE_X(x) case x: return &g_ ## x ## _ctr;
-    ABORT_REASONS(EVENT_COUNTER_CASE_X)
-#undef EVENT_COUNTER_CASE_X
-    default:
-      break;
-    }
-    ALWAYS_ASSERT(false);
-    return 0;
-  }
 
 public:
 
@@ -168,7 +112,6 @@ protected:
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
   CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
 
-  //abort_reason reason;
   const uint64_t flags;
 };
 
@@ -324,11 +267,6 @@ public:
   bool check_phantom();
 #endif
 
-  // signal the caller that an abort is necessary by throwing an abort
-  // exception. 
-  //void __attribute__((noreturn))
-  //signal_abort(abort_reason r=ABORT_REASON_USER);
-
   // if an abort has been signaled, perform the actual abort and clean
   // up. always succeeds, so caller should rethrow if needed.
   inline void
@@ -338,24 +276,7 @@ public:
   }
 
   void dump_debug_info() const;
-/*
-#ifdef DIE_ON_ABORT
-  void
-  abort_trap(abort_reason reason)
-  {
-    AbortReasonCounter(reason)->inc();
-    this->reason = reason; // for dump_debug_info() to see
-    dump_debug_info();
-    ::abort();
-  }
-#else
-  inline ALWAYS_INLINE void
-  abort_trap(abort_reason reason)
-  {
-    AbortReasonCounter(reason)->inc();
-  }
-#endif
-*/
+
 protected:
   void abort_impl();
 
@@ -398,24 +319,4 @@ protected:
   epoch_num epoch;
 #endif
 };
-
-/*
-class transaction_abort_exception : public std::exception {
-public:
-  transaction_abort_exception(transaction_base::abort_reason r)
-    : r(r) {}
-  inline transaction_base::abort_reason
-  get_reason() const
-  {
-    return r;
-  }
-  virtual const char *
-  what() const throw()
-  {
-    return transaction_base::AbortReasonStr(r);
-  }
-private:
-  transaction_base::abort_reason r;
-};
-*/
 #endif /* _NDB_TXN_H_ */
