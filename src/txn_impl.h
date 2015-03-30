@@ -781,7 +781,7 @@ template <template <typename> class Protocol, typename Traits>
 template <typename ValueReader>
 rc_t
 transaction<Protocol, Traits>::do_tuple_read(
-    concurrent_btree *btr_ptr, oid_type oid, dbtuple *tuple, ValueReader &value_reader)
+    dbtuple *tuple, ValueReader &value_reader)
 {
   INVARIANT(tuple);
   ++evt_local_search_lookups;

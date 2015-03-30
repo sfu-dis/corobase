@@ -374,7 +374,7 @@ protected:
   // within this transaction context
   template <typename ValueReader>
   rc_t
-  do_tuple_read(concurrent_btree *btr_ptr, oid_type oid, dbtuple *tuple, ValueReader &value_reader);
+  do_tuple_read(dbtuple *tuple, ValueReader &value_reader);
 
 #ifdef PHANTOM_PROT_NODE_SET
   rc_t

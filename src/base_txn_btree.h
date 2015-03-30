@@ -180,7 +180,7 @@ base_txn_btree<Transaction, P>::do_search(
   concurrent_btree::versioned_node_t search_info;
   const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xc, &search_info);
   if (found)
-    return t.do_tuple_read(&this->underlying_btree, oid, tuple, value_reader);
+    return t.do_tuple_read(tuple, value_reader);
 #ifdef PHANTOM_PROT_NODE_SET
   else {
     rc_t rc = t.do_node_read(search_info.first, search_info.second);
@@ -460,7 +460,7 @@ base_txn_btree<Transaction, P>
   VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x" << util::hexify(n)
                     << ", version=" << version << ">" << std::endl
                     << "  " << *((dbtuple *) v) << std::endl);
-  caller_callback->return_code = t->do_tuple_read(const_cast<concurrent_btree*>(btr_ptr), o, v, *value_reader);
+  caller_callback->return_code = t->do_tuple_read(v, *value_reader);
   if (caller_callback->return_code._val == RC_TRUE)
     return caller_callback->invoke((*key_reader)(k), value_reader->results());
   else if (rc_is_abort(caller_callback->return_code))
