@@ -72,7 +72,6 @@ main(int argc, char **argv)
   abstract_db *db = NULL;
   void (*test_fn)(abstract_db *, int argc, char **argv) = NULL;
   string bench_type = "ycsb";
-  string db_type = "ndb-proto2";
   char *curdir = get_current_dir_name();
   string basedir = curdir;
   string bench_opts;
@@ -101,7 +100,6 @@ main(int argc, char **argv)
       {"runtime"                    , required_argument , 0                          , 'r'} ,
       {"ops-per-worker"             , required_argument , 0                          , 'n'} ,
       {"bench-opts"                 , required_argument , 0                          , 'o'} ,
-      {"numa-memory"                , required_argument , 0                          , 'm'} , // implies --pin-cpus
       {"log-dir"                    , required_argument , 0                          , 'l'} ,
       {"log-segsize"                , required_argument , 0                          , 'e'} ,
       {"log-bufsize"                , required_argument , 0                          , 'u'} ,
@@ -133,10 +131,6 @@ main(int argc, char **argv)
     case 't':
       nthreads = strtoul(optarg, NULL, 10);
       ALWAYS_ASSERT(nthreads > 0);
-      break;
-
-    case 'd':
-      db_type = optarg;
       break;
 
     case 'B':
@@ -212,29 +206,7 @@ main(int argc, char **argv)
   }
 #endif
 
-  if (db_type == "ndb-proto1") {
-    // XXX: hacky simulation of proto1
-    db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
-    transaction_proto2_static::set_hack_status(true);
-    ALWAYS_ASSERT(transaction_proto2_static::get_hack_status());
-  } else if (db_type == "ndb-proto2") {
-    db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
-    ALWAYS_ASSERT(!transaction_proto2_static::get_hack_status());
-  } 
-  // FIXME: tzwang: don't bother other benches for now...
-  /*
-  else if (db_type == "kvdb") {
-    db = new kvdb_wrapper<true>;
-  } else if (db_type == "kvdb-st") {
-    db = new kvdb_wrapper<false>;
-#if !NO_MYSQL
-  } else if (db_type == "mysql") {
-    string dbdir = basedir + "/mysql-db";
-    db = new mysql_wrapper(dbdir, bench_type);
-#endif
-  } */
-  else
-    ALWAYS_ASSERT(false);
+  db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
 
 #ifdef DEBUG
   cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
@@ -272,7 +244,6 @@ main(int argc, char **argv)
     cerr << "  scale       : " << scale_factor              << endl;
     cerr << "  num-cpus    : " << ncpus                     << endl;
     cerr << "  num-threads : " << nthreads                  << endl;
-    cerr << "  db-type     : " << db_type                   << endl;
     cerr << "  basedir     : " << basedir                   << endl;
     cerr << "  txn-flags   : " << hexify(txn_flags)         << endl;
     if (run_mode == RUNMODE_TIME)
