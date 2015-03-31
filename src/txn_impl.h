@@ -331,7 +331,7 @@ transaction<Protocol, Traits>::parallel_ssn_commit()
     if (next_tuple) {   // update, not insert
       ASSERT(volatile_read(next_tuple->clsn).asi_type());
       ASSERT(xc->sstamp and xc->sstamp != ~uint64_t{0});
-      ASSERT(not next_tuple->sstamp.offset());
+      ASSERT(XID::from_ptr(next_tuple->sstamp) == xid);
       volatile_write(next_tuple->sstamp, LSN::make(xc->sstamp, 0).to_log_ptr());
       ASSERT(next_tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
     }
