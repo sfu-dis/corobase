@@ -13,10 +13,6 @@
 #include "spinbarrier.h"
 #include "record/serializer.h"
 
-// forward decl
-template <typename Traits> class transaction_proto2;
-
-// protocol 2 - no global consistent TIDs
 template <typename Traits>
 class transaction_proto2 : public transaction<transaction_proto2, Traits> {
 
