@@ -124,7 +124,12 @@ void
 serial_deregister_reader_tx(dbtuple *t)
 {
     ASSERT(tls_bitmap_entry);
-    __sync_fetch_and_xor(&t->rl_bitmap, tls_bitmap_entry);
+    // if a tx reads a tuple multiple times (e.g., 3 times),
+    // then during post-commit it will call this function
+    // multiple times, so we need to prevent it flipping the
+    // bit an even number of times - leaving a 1 there.
+    if (volatile_read(t->rl_bitmap) & tls_bitmap_entry)
+        __sync_fetch_and_xor(&t->rl_bitmap, tls_bitmap_entry);
     ASSERT(not (t->rl_bitmap & tls_bitmap_entry));
 }
 
