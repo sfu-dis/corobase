@@ -44,6 +44,14 @@ struct txn_btree_ {
   };
 
   // does not bother to interpret the bytes from a record
+  //
+  // NOTE (tzwang): difference btw single_value_reader and
+  // value_reader - single_value_reader needs a varstr given by
+  // the user (eg, tpcc benchmark) to store the returned value;
+  // value_reader, on the other hand, is usually for scans which
+  // the user will *not* give a buffer and needs to allocate a
+  // *new* one each time do_tuple_read() is invoked so the user
+  // can have a list of returned values.
   class single_value_reader {
   public:
     typedef varstr value_type;
