@@ -148,13 +148,6 @@ ndb_wrapper<Transaction>::ndb_wrapper(const char *logdir,
   transaction_base::logger = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
   RCU::rcu_exit();
   RCU::rcu_deregister();
-
-  if (verbose) {
-    std::cerr << "[logging subsystem]" << std::endl;
-    std::cerr << "  lordir : " << logdir << std::endl;
-    std::cerr << "  segment size : " << segsize << std::endl;
-    std::cerr << "  buffer size : " << bufsize << std::endl;
-  }
 }
 
 template <template <typename> class Transaction>
