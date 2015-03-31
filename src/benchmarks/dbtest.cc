@@ -78,8 +78,6 @@ main(int argc, char **argv)
   string bench_opts;
   free(curdir);
   int saw_run_spec = 0;
-  int disable_gc = 0;
-  int disable_snapshots = 0;
   string *log_dir = NULL;
   size_t log_seg_gig = 1024 * 1024 * 1024;
   size_t log_segsize = log_seg_gig * 8; // log segment size
@@ -107,8 +105,6 @@ main(int argc, char **argv)
       {"log-dir"                    , required_argument , 0                          , 'l'} ,
       {"log-segsize"                , required_argument , 0                          , 'e'} ,
       {"log-bufsize"                , required_argument , 0                          , 'u'} ,
-      {"disable-gc"                 , no_argument       , &disable_gc                , 1}   ,
-      {"disable-snapshots"          , no_argument       , &disable_snapshots         , 1}   ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {0, 0, 0, 0}
@@ -216,34 +212,6 @@ main(int argc, char **argv)
   }
 #endif
 
-#ifdef PROTO2_CAN_DISABLE_GC
-  const set<string> has_gc({"ndb-proto1", "ndb-proto2"});
-  if (disable_gc && !has_gc.count(db_type)) {
-    cerr << "[ERROR] benchmark " << db_type
-         << " does not have gc to disable" << endl;
-    return 1;
-  }
-#else
-  if (disable_gc) {
-    cerr << "[ERROR] macro PROTO2_CAN_DISABLE_GC was not set, cannot disable gc" << endl;
-    return 1;
-  }
-#endif
-
-#ifdef PROTO2_CAN_DISABLE_SNAPSHOTS
-  const set<string> has_snapshots({"ndb-proto2"});
-  if (disable_snapshots && !has_snapshots.count(db_type)) {
-    cerr << "[ERROR] benchmark " << db_type
-         << " does not have snapshots to disable" << endl;
-    return 1;
-  }
-#else
-  if (disable_snapshots) {
-    cerr << "[ERROR] macro PROTO2_CAN_DISABLE_SNAPSHOTS was not set, cannot disable snapshots" << endl;
-    return 1;
-  }
-#endif
-
   if (db_type == "ndb-proto1") {
     // XXX: hacky simulation of proto1
     db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
@@ -329,8 +297,6 @@ main(int argc, char **argv)
     cerr << "  log-dir : " << *log_dir                      << endl;
     cerr << "  log-segsize : " << log_segsize               << endl;
     cerr << "  log-bufsize : " << log_bufsize               << endl;
-    cerr << "  disable-gc : " << disable_gc                 << endl;
-    cerr << "  disable-snapshots : " << disable_snapshots   << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;
