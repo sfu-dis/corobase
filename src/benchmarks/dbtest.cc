@@ -206,7 +206,7 @@ main(int argc, char **argv)
   }
 #endif
 
-  db = new ndb_wrapper<transaction_proto2>(log_dir->c_str(), log_segsize, log_bufsize);
+  db = new ndb_wrapper(log_dir->c_str(), log_segsize, log_bufsize);
 
 #ifdef DEBUG
   cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;

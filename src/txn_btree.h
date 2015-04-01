@@ -1,184 +1,7 @@
-#ifndef _NDB_TXN_BTREE_H_
-#define _NDB_TXN_BTREE_H_
+#pragma once
 
+#include "reader_writer.h"
 #include "base_txn_btree.h"
-
-// XXX: hacky
-extern void txn_btree_test();
-
-struct txn_btree_ {
-  class key_reader {
-  public:
-    inline ALWAYS_INLINE const varstr &
-    operator()(const varstr &s)
-    {
-      return s;
-    }
-#if NDB_MASSTREE
-    inline ALWAYS_INLINE lcdf::Str operator()(lcdf::Str s) {
-      return s;
-    }
-#endif
-  };
-
-  class key_writer {
-  public:
-    constexpr key_writer(const varstr *k)
-      : k(k) {}
-
-    template <typename StringAllocator>
-    inline const varstr *
-    fully_materialize(bool stable_input, StringAllocator &sa)
-    {
-      if (stable_input || !k)
-        return k;
-      varstr * const ret = sa(k->size());
-      ret->copy_from(k->data(), k->size());
-      // copy_from will set size to readsz
-      ASSERT(ret->size() == k->size());
-      return ret;
-    }
-
-  private:
-    const varstr *k;
-  };
-
-  // does not bother to interpret the bytes from a record
-  //
-  // NOTE (tzwang): difference btw single_value_reader and
-  // value_reader - single_value_reader needs a varstr given by
-  // the user (eg, tpcc benchmark) to store the returned value;
-  // value_reader, on the other hand, is usually for scans which
-  // the user will *not* give a buffer and needs to allocate a
-  // *new* one each time do_tuple_read() is invoked so the user
-  // can have a list of returned values.
-  class single_value_reader {
-  public:
-    typedef varstr value_type;
-
-    constexpr single_value_reader(varstr *px, size_t max_bytes_read)
-      : px(px), max_bytes_read(max_bytes_read) {}
-
-    template <typename StringAllocator>
-    inline bool
-    operator()(const uint8_t *data, size_t sz, StringAllocator &sa)
-    {
-      const size_t readsz = std::min(sz, max_bytes_read);
-      px->copy_from(data, readsz);
-      // copy_from will set size to readsz
-      ASSERT(px->size() == readsz);
-      return true;
-    }
-
-    inline varstr &
-    results()
-    {
-      return *px;
-    }
-
-    inline const varstr &
-    results() const
-    {
-      return *px;
-    }
-
-    template <typename StringAllocator>
-    inline void
-    dup(const varstr &vdup, StringAllocator &sa)
-    {
-      *px = vdup;
-    }
-
-  private:
-    varstr *px;
-    size_t max_bytes_read;
-  };
-
-  class value_reader {
-  public:
-    typedef varstr value_type;
-
-    constexpr value_reader(size_t max_bytes_read)
-      : px(nullptr), max_bytes_read(max_bytes_read) {}
-
-    template <typename StringAllocator>
-    inline bool
-    operator()(const uint8_t *data, size_t sz, StringAllocator &sa)
-    {
-      px = sa(sz);
-      const size_t readsz = std::min(sz, max_bytes_read);
-      px->copy_from((const char *) data, readsz);
-      // copy_from will set size to readsz
-      ASSERT(px->size() == readsz);
-      return true;
-    }
-
-    inline varstr &
-    results()
-    {
-      return *px;
-    }
-
-    inline const varstr &
-    results() const
-    {
-      return *px;
-    }
-
-    template <typename StringAllocator>
-    inline void
-    dup(const varstr &vdup, StringAllocator &sa)
-    {
-      px = sa(vdup.size());
-      *px = vdup;
-    }
-
-  private:
-    varstr *px;
-    size_t max_bytes_read;
-  };
-
-  class value_writer {
-  public:
-    constexpr value_writer(const varstr *v) : v(v) {}
-    inline size_t
-    compute_needed(const uint8_t *buf, size_t sz)
-    {
-      return v ? v->size() : 0;
-    }
-    template <typename StringAllocator>
-    inline const varstr *
-    fully_materialize(bool stable_input, StringAllocator &sa)
-    {
-      if (stable_input || !v)
-        return v;
-      varstr * const ret = sa(v->size());
-      ret->copy_from(v->data(), v->size());
-      // copy_from will set size to readsz
-      ASSERT(ret->size() == v->size());
-      return ret;
-    }
-
-    // input [buf, buf+sz) is old value
-    inline void
-    operator()(uint8_t *buf, size_t sz)
-    {
-      if (!v)
-        return;
-      NDB_MEMCPY(buf, v->data(), v->size());
-    }
-  private:
-    const varstr *v;
-  };
-
-  typedef varstr Key;
-  typedef key_reader KeyReader;
-  typedef key_writer KeyWriter;
-  typedef varstr Value;
-  typedef single_value_reader SingleValueReader;
-  typedef value_reader ValueReader;
-  typedef value_writer ValueWriter;
-};
 
 /**
  * This class implements a serializable, multi-version b-tree
@@ -195,75 +18,32 @@ struct txn_btree_ {
  * Note that the txn_btree *manages* the memory of both keys and values internally.
  * See the specific notes on search()/insert() about memory ownership
  */
-template <template <typename> class Transaction>
-class txn_btree : public base_txn_btree<Transaction, txn_btree_> {
-  typedef base_txn_btree<Transaction, txn_btree_> super_type;
+class txn_btree : public base_txn_btree {
 public:
 
-  //template <typename Traits>
-  //struct transaction {
-  //  typedef Transaction<txn_btree_, Traits> type;
-  //};
+  typedef typename base_txn_btree::keystring_type keystring_type;
+  typedef typename dbtuple::size_type size_type;
 
-  //template <typename Traits>
-  //  using transaction = Transaction<txn_btree_, Traits>;
-
-  typedef typename super_type::string_type string_type;
-  typedef typename super_type::keystring_type keystring_type;
-  typedef typename super_type::size_type size_type;
-
-  typedef txn_btree_::Key key_type;
-  typedef txn_btree_::Value value_type;
-  typedef txn_btree_::KeyReader key_reader_type;
-  typedef txn_btree_::KeyWriter key_writer_type;
-  typedef txn_btree_::SingleValueReader single_value_reader_type;
-  typedef txn_btree_::ValueReader value_reader_type;
-  typedef txn_btree_::ValueWriter value_writer_type;
-
-  struct search_range_callback {
-  public:
-    rc_t return_code;
-    search_range_callback() : return_code(rc_t{RC_FALSE}) {}
-    virtual ~search_range_callback() {}
-    virtual bool invoke(const keystring_type &k, const string_type &v) = 0;
-  };
+  typedef varstr key_type;
+  typedef varstr value_type;
 
 private:
-
-  template <typename T>
-  class type_callback_wrapper : public search_range_callback {
-  public:
-    constexpr type_callback_wrapper(T *callback)
-      : callback(callback) {}
-    virtual bool
-    invoke(const keystring_type &k, const string_type &v)
-    {
-      return callback->operator()(k, v);
-    }
-  private:
-    T *const callback;
-  };
-
-  static inline ALWAYS_INLINE string_type
+  static inline ALWAYS_INLINE varstr
   to_string_type(const varkey &k)
   {
-    return string_type((const char *) k.data(), k.size());
+    return varstr((const char *) k.data(), k.size());
   }
 
-  template <typename Traits>
   static inline const varstr *
-  stablize(Transaction<Traits> &t, const varstr &s)
+  stablize(transaction &t, const varstr &s)
   {
-    if (Traits::stable_input_memory)
-      return &s;
     varstr * const px = t.string_allocator()(s.size());
     *px = s;
     return px;
   }
 
-  template <typename Traits>
   static inline const varstr *
-  stablize(Transaction<Traits> &t, const uint8_t *p, size_t sz)
+  stablize(transaction &t, const uint8_t *p, size_t sz)
   {
     if (!sz)
       return nullptr;
@@ -274,9 +54,8 @@ private:
     return px;
   }
 
-  template <typename Traits>
   static inline const varstr *
-  stablize(Transaction<Traits> &t, const varkey &k)
+  stablize(transaction &t, const varkey &k)
   {
     return stablize(t, k.data(), k.size());
   }
@@ -286,61 +65,56 @@ public:
   txn_btree(size_type value_size_hint = 128,
             bool mostly_append = false,
             const std::string &name = "<unknown>")
-    : super_type(value_size_hint, mostly_append, name)
+    : base_txn_btree(value_size_hint, mostly_append, name)
   {}
 
-  template <typename Traits>
   inline rc_t
-  search(Transaction<Traits> &t,
+  search(transaction &t,
          const varkey &k,
          value_type &v,
-         size_t max_bytes_read = string_type::npos)
+         size_type max_bytes_read = ~size_type(0))
   {
     return search(t, to_string_type(k), v, max_bytes_read);
   }
 
   // either returns false or v is set to not-empty with value
   // precondition: max_bytes_read > 0
-  template <typename Traits>
   inline rc_t
-  search(Transaction<Traits> &t,
+  search(transaction &t,
          const key_type &k,
          value_type &v,
-         size_type max_bytes_read = string_type::npos)
+         size_type max_bytes_read = ~size_type(0))
   {
-    single_value_reader_type r(&v, max_bytes_read);
+    value_reader r(&v, max_bytes_read, true);
     return this->do_search(t, k, r);
   }
 
-  template <typename Traits>
   inline void
-  search_range_call(Transaction<Traits> &t,
+  search_range_call(transaction &t,
                     const key_type &lower,
                     const key_type *upper,
                     search_range_callback &callback,
                     size_type max_bytes_read = ~size_type(0))
   {
-    key_reader_type kr;
-    value_reader_type vr(max_bytes_read);
+    key_reader kr;
+    value_reader vr(max_bytes_read, false);
     this->do_search_range_call(t, lower, upper, callback, kr, vr);
   }
 
-  template <typename Traits>
   inline void
-  rsearch_range_call(Transaction<Traits> &t,
+  rsearch_range_call(transaction &t,
                      const key_type &upper,
                      const key_type *lower,
                      search_range_callback &callback,
                      size_type max_bytes_read = ~size_type(0))
   {
-    key_reader_type kr;
-    value_reader_type vr(max_bytes_read);
+    key_reader kr;
+    value_reader vr(max_bytes_read, false);
     this->do_rsearch_range_call(t, upper, lower, callback, kr, vr);
   }
 
-  template <typename Traits>
   inline void
-  search_range_call(Transaction<Traits> &t,
+  search_range_call(transaction &t,
                     const varkey &lower,
                     const varkey *upper,
                     search_range_callback &callback,
@@ -353,116 +127,50 @@ public:
         upper ? &u : nullptr, callback, max_bytes_read);
   }
 
-  template <typename Traits>
-  inline void
-  rsearch_range_call(Transaction<Traits> &t,
-                     const varkey &upper,
-                     const varkey *lower,
-                     search_range_callback &callback,
-                     size_type max_bytes_read = ~size_type(0))
-  {
-    key_type l;
-    if (lower)
-      l = to_string_type(*lower);
-    rsearch_range_call(t, to_string_type(upper),
-        lower ? &l : nullptr, callback, max_bytes_read);
-  }
-
-  template <typename Traits, typename T>
-  inline void
-  search_range(Transaction<Traits> &t,
-               const key_type &lower,
-               const key_type *upper,
-               T &callback,
-               size_type max_bytes_read = ~size_type(0))
-  {
-    type_callback_wrapper<T> w(&callback);
-    search_range_call(t, lower, upper, w, max_bytes_read);
-  }
-
-  template <typename Traits, typename T>
-  inline void
-  search_range(Transaction<Traits> &t,
-               const varkey &lower,
-               const varkey *upper,
-               T &callback,
-               size_type max_bytes_read = ~size_type(0))
-  {
-    key_type u;
-    if (upper)
-      u = to_string_type(*upper);
-    search_range(t, to_string_type(lower),
-        upper ? &u : nullptr, callback, max_bytes_read);
-  }
-
-  template <typename Traits>
   inline rc_t
-  put(Transaction<Traits> &t, const key_type &k, const value_type &v)
+  put(transaction &t, const key_type &k, const value_type &v)
   {
     return this->do_tree_put(t, stablize(t, k), stablize(t, v), false);
   }
 
-  template <typename Traits>
   inline rc_t
-  put(Transaction<Traits> &t, const varkey &k, const value_type &v)
+  put(transaction &t, const varkey &k, const value_type &v)
   {
     return this->do_tree_put(t, stablize(t, k), stablize(t, v), false);
   }
 
-  template <typename Traits>
   inline rc_t
-  insert(Transaction<Traits> &t, const key_type &k, const value_type &v)
+  insert(transaction &t, const key_type &k, const value_type &v)
   {
     return this->do_tree_put(t, stablize(t, k), stablize(t, v), true);
   }
 
   // insert() methods below are for legacy use
 
-  template <typename Traits>
   inline rc_t
-  insert(Transaction<Traits> &t, const key_type &k, const uint8_t *v, size_type sz)
+  insert(transaction &t, const key_type &k, const uint8_t *v, size_type sz)
   {
     INVARIANT(v);
     INVARIANT(sz);
     return this->do_tree_put(t, stablize(t, k), stablize(t, v, sz), true);
   }
 
-  template <typename Traits>
   inline void
-  insert(Transaction<Traits> &t, const varkey &k, const uint8_t *v, size_type sz)
+  insert(transaction &t, const varkey &k, const uint8_t *v, size_type sz)
   {
     INVARIANT(v);
     INVARIANT(sz);
     this->do_tree_put(t, stablize(t, k), stablize(t, v, sz), true);
   }
 
-  // FIXME: tzwang: not in-use?
-#if 0
-  template <typename Traits, typename T>
-  inline void
-  insert_object(Transaction<Traits> &t, const varkey &k, const T &obj)
-  {
-    insert(t, k, (const uint8_t *) &obj, sizeof(obj));
-  }
-
-  template <typename Traits, typename T>
-  inline void
-  insert_object(Transaction<Traits> &t, const key_type &k, const T &obj)
-  {
-    insert(t, k, (const uint8_t *) &obj, sizeof(obj));
-  }
-#endif
-
-  template <typename Traits>
   inline rc_t
-  remove(Transaction<Traits> &t, const key_type &k)
+  remove(transaction &t, const key_type &k)
   {
     return this->do_tree_put(t, stablize(t, k), nullptr, false);
   }
 
-  template <typename Traits>
   inline rc_t
-  remove(Transaction<Traits> &t, const varkey &k)
+  remove(transaction &t, const varkey &k)
   {
     return this->do_tree_put(t, stablize(t, k), nullptr, false);
   }
@@ -470,5 +178,3 @@ public:
   static void Test();
 
 };
-
-#endif /* _NDB_TXN_BTREE_H_ */

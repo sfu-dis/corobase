@@ -24,14 +24,12 @@
 #include "prefetch.h"
 #include "ownership_checker.h"
 
+#include "reader_writer.h"
 #include "object.h"
 #include "dbcore/xid.h"
 #include "dbcore/sm-alloc.h"
 
 using namespace TXN;
-
-template <template <typename> class Protocol, typename Traits>
-  class transaction; // forward decl
 
 // XXX: hack
 extern std::string (*g_proto_version_str)(uint64_t v);
@@ -188,12 +186,11 @@ private:
   static event_counter g_evt_dbtuple_bytes_freed;
 
 public:
-  template <typename Reader, typename StringAllocator>
   inline ALWAYS_INLINE ReadStatus
   // Note: the stable=false option will try to read from pvalue,
   // instead of the real data area; so giving stable=false is only
   // safe for the updating transaction itself to read its own write.
-  do_read(Reader &reader, StringAllocator &sa, bool stable) const
+  do_read(value_reader &reader, str_arena &sa, bool stable) const
   {
     const uint8_t *data = NULL;
     if (stable)

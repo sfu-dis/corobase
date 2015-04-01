@@ -104,7 +104,6 @@ void deassign_reader_bitmap_entry() {
     tls_bitmap_entry = 0;
 }
 
-
 bool
 serial_register_reader_tx(dbtuple *t, XID xid)
 {
@@ -148,95 +147,6 @@ serial_deregister_tx(XID xid)
     volatile_write(rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val, 0);
     ASSERT(not rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val);
 }
-
-#ifdef USE_PARALLEL_SSN
-rc_t
-ssn_read(xid_context *xc, dbtuple *tuple)
-{
-    auto tuple_sstamp = volatile_read(tuple->sstamp);
-    if (not tuple->is_old(xc)) {
-        auto v_clsn = tuple->clsn.offset();
-        // \eta - largest predecessor. So if I read this tuple, I should commit
-        // after the tuple's creator (trivial, as this is committed version, so
-        // this tuple's clsn can only be a predecessor of me): so just update
-        // my \eta if needed.
-        if (xc->pstamp < v_clsn)
-            xc->pstamp = v_clsn;
-
-        // Now if this tuple was overwritten by somebody, this means if I read
-        // it, that overwriter will have anti-dependency on me (I must be
-        // serialized before the overwriter), and it already committed (as a
-        // successor of mine), so I need to update my \pi for the SSN check.
-        // This is the easier case of anti-dependency (the other case is T1
-        // already read a (then latest) version, then T2 comes to overwrite it).
-        if (tuple_sstamp == NULL_PTR) {   // no overwrite so far
-            serial_register_reader_tx(tuple, xc->owner);
-            xc->read_set.emplace_back(tuple);
-        }
-        else if (tuple_sstamp.asi_type() == fat_ptr::ASI_LOG) {
-            if (xc->sstamp > tuple_sstamp.offset())
-                xc->sstamp = tuple_sstamp.offset(); // \pi
-        }
-
-#ifdef DO_EARLY_SSN_CHECKS
-        if (not ssn_check_exclusion(xc))
-            return {RC_ABORT_SERIAL};
-#endif
-    }
-    else {
-        if (tuple_sstamp != NULL_PTR and tuple_sstamp.asi_type() == fat_ptr::ASI_LOG) {
-            if (xc->sstamp > tuple_sstamp.offset())
-                xc->sstamp = tuple_sstamp.offset(); // \pi
-        }
-
-        uint64_t bs = 0;
-        do {
-            bs = volatile_read(tuple->bstamp);
-        }
-        while (tuple->bstamp < xc->begin.offset() and
-               not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
-        serial_register_reader_tx(tuple, xc->owner);
-    }
-    return {RC_TRUE};
-}
-#endif  // SSN
-
-#ifdef USE_PARALLEL_SSI
-rc_t
-ssi_read(xid_context *xc, dbtuple *tuple)
-{
-    // Consider the dangerous structure that could lead to non-serializable
-    // execution: T1 r:w T2 r:w T3 where T3 committed first. Read() needs
-    // to check if I'm the T1 and do bookeeping if I'm the T2 (pivot).
-    // See tuple.h for explanation on what s2 means.
-    if (volatile_read(tuple->s2)) {
-        ASSERT(tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);    // sstamp will be valid too if s2 is valid
-        return rc_t{RC_ABORT_SERIAL};
-    }
-
-    fat_ptr tuple_s1 = volatile_read(tuple->sstamp);
-    // see if there was a guy with cstamp=tuple_s1 who overwrote this version
-    if (tuple_s1.asi_type() == fat_ptr::ASI_LOG) { // I'm T2
-        // remember the smallest sstamp so that I can re-check at precommit
-        if (xc->ct3 > tuple_s1.offset())
-            xc->ct3 = tuple_s1.offset();
-    }
-
-    if (not tuple->is_old(xc))
-        read_set.emplace_back(tuple);
-    else {
-        uint64_t bs = 0;
-        do {
-            bs = volatile_read(tuple->bstamp);
-        } while (tuple->bstamp < xc->begin.offset() and
-                 not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
-    }
-
-    // survived, register as a reader
-    serial_register_reader_tx(tuple, xc->owner);
-    return {RC_TRUE};
-}
-#endif  // SSI
 
 };  // end of namespace
 #endif

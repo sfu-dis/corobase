@@ -151,6 +151,7 @@ ifneq ($(strip $(CUSTOM_LDPATH)), )
 endif
 
 SRCFILES = allocator.cc \
+	base_txn_btree.cc \
 	core.cc \
 	counter.cc \
 	memory.cc \
@@ -160,7 +161,6 @@ SRCFILES = allocator.cc \
 	thread.cc \
 	tuple.cc \
 	txn.cc \
-	txn_proto2_impl.cc \
 	varint.cc
 
 DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
