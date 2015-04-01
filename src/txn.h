@@ -47,24 +47,18 @@ using google::dense_hash_map;
 using namespace TXN;
 
 // forward decl
-template <template <typename> class Transaction, typename P>
-  class base_txn_btree;
-
-//class transaction_unusable_exception {};
-//class transaction_read_only_exception {};
+class base_txn_btree;
 
 // XXX: hacky
 extern std::string (*g_proto_version_str)(uint64_t v);
 
 // base class with very simple definitions- nothing too exciting yet
 class transaction_base {
-  template <template <typename> class T, typename P>
-    friend class base_txn_btree;
+  friend class base_txn_btree;
 public:
   static sm_log *logger;
 
   typedef dbtuple::size_type size_type;
-  typedef dbtuple::string_type string_type;
   typedef TXN::txn_state txn_state;
 
   enum {
@@ -115,23 +109,9 @@ protected:
   const uint64_t flags;
 };
 
-struct default_transaction_traits {
-  static const bool stable_input_memory = false;
-  static const bool hard_expected_sizes = false; // true if the expected sizes are hard maximums
-
-  typedef util::default_string_allocator StringAllocator;
-};
-
-struct default_stable_transaction_traits : public default_transaction_traits {
-  static const bool stable_input_memory = true;
-};
-
-template <template <typename> class Protocol, typename Traits>
 class transaction : public transaction_base {
   // XXX: weaker than necessary
-  template <template <typename> class, typename>
-    friend class base_txn_btree;
-  friend Protocol<Traits>;
+  friend class base_txn_btree;
 
 public:
   // KeyWriter is expected to implement:
@@ -194,24 +174,7 @@ public:
   // results() should remain valid and stable until the next call to
   // operator().
 
-  typedef Traits traits_type;
-  typedef typename Traits::StringAllocator string_allocator_type;
-
 protected:
-  // data structures
-
-  inline ALWAYS_INLINE Protocol<Traits> *
-  cast()
-  {
-    return static_cast<Protocol<Traits> *>(this);
-  }
-
-  inline ALWAYS_INLINE const Protocol<Traits> *
-  cast() const
-  {
-    return static_cast<const Protocol<Traits> *>(this);
-  }
-
   inline txn_state state() const
   {
     return xc->state;
@@ -249,14 +212,16 @@ protected:
 
 public:
 
-  inline transaction(uint64_t flags, string_allocator_type &sa);
-  inline ~transaction();
+  transaction(uint64_t flags, str_arena &sa);
+  ~transaction();
 
   rc_t commit();
 #ifdef USE_PARALLEL_SSN
   rc_t parallel_ssn_commit();
+  rc_t ssn_read(dbtuple *tuple);
 #elif defined USE_PARALLEL_SSI
   rc_t parallel_ssi_commit();
+  rc_t ssi_read(dbtuple *tuple);
 #else
   rc_t si_commit();
 #endif
@@ -287,9 +252,8 @@ protected:
 
   // reads the contents of tuple into v
   // within this transaction context
-  template <typename ValueReader>
   rc_t
-  do_tuple_read(dbtuple *tuple, ValueReader &value_reader);
+  do_tuple_read(dbtuple *tuple, value_reader &value_reader);
 
 #ifdef PHANTOM_PROT_NODE_SET
   rc_t
@@ -299,7 +263,7 @@ protected:
 public:
   // expected public overrides
 
-  inline string_allocator_type &
+  inline str_arena &
   string_allocator()
   {
     return *sa;
@@ -309,8 +273,12 @@ protected:
   XID xid;
   xid_context *xc;
   sm_tx_log* log;
-  string_allocator_type *sa;
+  str_arena *sa;
   write_set_map write_set;
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+  typedef std::vector<dbtuple *> read_set_map;
+  read_set_map read_set;
+#endif
 #ifdef ENABLE_GC
   object_pool *op;
   epoch_num epoch;

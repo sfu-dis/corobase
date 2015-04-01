@@ -1,5 +1,4 @@
-#ifndef _NDB_WRAPPER_H_
-#define _NDB_WRAPPER_H_
+#pragma once
 
 #include "abstract_db.h"
 #include "../txn_btree.h"
@@ -11,18 +10,6 @@ namespace private_ {
     char buf[0];
   } PACKED;
 
-  // XXX: doesn't check to make sure you are passing in an ndbtx
-  // of the right hint
-  template <template <typename> class Transaction, typename Traits>
-  struct cast_base {
-    typedef Transaction<Traits> type;
-    inline ALWAYS_INLINE type *
-    operator()(struct ndbtxn *p) const
-    {
-      return reinterpret_cast<type *>(&p->buf[0]);
-    }
-  };
-
   STATIC_COUNTER_DECL(scopedperf::tsc_ctr, ndb_get_probe0, ndb_get_probe0_cg)
   STATIC_COUNTER_DECL(scopedperf::tsc_ctr, ndb_put_probe0, ndb_put_probe0_cg)
   STATIC_COUNTER_DECL(scopedperf::tsc_ctr, ndb_insert_probe0, ndb_insert_probe0_cg)
@@ -31,12 +18,9 @@ namespace private_ {
   STATIC_COUNTER_DECL(scopedperf::tsc_ctr, ndb_dtor_probe0, ndb_dtor_probe0_cg)
 }
 
-template <template <typename> class Transaction>
 class ndb_wrapper : public abstract_db {
 protected:
   typedef private_::ndbtxn ndbtxn;
-  template <typename Traits>
-    using cast = private_::cast_base<Transaction, Traits>;
 
 public:
 
@@ -66,12 +50,9 @@ public:
 
 };
 
-template <template <typename> class Transaction>
 class ndb_ordered_index : public abstract_ordered_index {
 protected:
   typedef private_::ndbtxn ndbtxn;
-  template <typename Traits>
-    using cast = private_::cast_base<Transaction, Traits>;
 
 public:
   ndb_ordered_index(const std::string &name, size_t value_size_hint, bool mostly_append);
@@ -117,7 +98,5 @@ public:
   virtual std::map<std::string, uint64_t> clear();
 private:
   std::string name;
-  txn_btree<Transaction> btr;
+  txn_btree btr;
 };
-
-#endif /* _NDB_WRAPPER_H_ */

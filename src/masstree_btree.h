@@ -188,6 +188,7 @@ class mbtree {
     const node_opaque_t* node;
     uint64_t old_version;
     uint64_t new_version;
+    insert_info_t() : node(NULL), old_version(0), new_version(0) {}
   };
 
   void invariant_checker() {} // stub for now
