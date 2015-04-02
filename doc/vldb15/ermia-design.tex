@@ -131,9 +131,9 @@ In the rest of this section we describe major optimizations that further improve
 \IF{$T_r~is~active$}
 \STATE T.abort()
 \ENDIF
-\IF{$T_r.cstamp~<~T.cstamp$}
-\STATE continue
-\ENDIF
+%\IF{$T_r.cstamp~<~T.cstamp$}
+%\STATE continue
+%\ENDIF
 \STATE T.rstamp = max(T.rstamp, w.rstamp)
 \IF{$T.rstamp\geq~T.s1$}
 \STATE T.abort()
