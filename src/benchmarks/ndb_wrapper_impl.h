@@ -90,9 +90,9 @@ ndb_wrapper::print_txn_debug(void *txn) const
 }
 
 abstract_ordered_index *
-ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append)
+ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append, FID fid)
 {
-  return new ndb_ordered_index(name, value_size_hint, mostly_append);
+  return new ndb_ordered_index(name, value_size_hint, mostly_append, fid);
 }
 
 void
@@ -102,8 +102,8 @@ ndb_wrapper::close_index(abstract_ordered_index *idx)
 }
 
 ndb_ordered_index::ndb_ordered_index(
-    const std::string &name, size_t value_size_hint, bool mostly_append)
-  : name(name), btr(value_size_hint, mostly_append, name)
+    const std::string &name, size_t value_size_hint, bool mostly_append, FID fid)
+  : name(name), btr(value_size_hint, mostly_append, name, fid)
 {
   // for debugging
   //std::cerr << name << " : btree= "

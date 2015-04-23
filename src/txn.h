@@ -248,7 +248,8 @@ protected:
       concurrent_btree *btr,
       const varstr *key,
       const varstr *value,
-      object* object);
+      object* object,
+      FID fid);
 
   // reads the contents of tuple into v
   // within this transaction context

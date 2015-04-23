@@ -29,14 +29,17 @@ public:
 
   base_txn_btree(size_type value_size_hint = 128,
             bool mostly_append = false,
-            const std::string &name = "<unknown>")
+            const std::string &name = "<unknown>",
+            FID fid = 0)
     : value_size_hint(value_size_hint),
       name(name),
+      fid(fid),
       been_destructed(false)
   {
 #ifdef TRACE_FOOTPRINT
     TRACER::register_table((uintptr_t)underlying_btree.get_tuple_vector(), name);
 #endif
+    ALWAYS_ASSERT(fid);
   }
 
   ~base_txn_btree()
@@ -146,6 +149,7 @@ protected:
   concurrent_btree underlying_btree;
   size_type value_size_hint;
   std::string name;
+  FID fid;
   bool been_destructed;
 };
 

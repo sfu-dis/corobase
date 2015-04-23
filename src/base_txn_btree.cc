@@ -92,7 +92,7 @@ rc_t base_txn_btree::do_tree_put(
     // it fails if somebody else acted faster to insert new, we then
     // (fall back to) with the normal update procedure.
     // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-    if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, obj))
+    if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, obj, this->fid))
         return rc_t{RC_TRUE};
 
     // do regular search
@@ -236,7 +236,7 @@ rc_t base_txn_btree::do_tree_put(
         auto record_size = align_up(sz + v ? sizeof(varstr) : 0);
         auto size_code = encode_size_aligned(record_size);
         ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
-        t.log->log_update(1, oid, fat_ptr::make((void *)v, size_code),
+        t.log->log_update(this->fid, oid, fat_ptr::make((void *)v, size_code),
                           DEFAULT_ALIGNMENT_BITS, NULL);
         return rc_t{RC_TRUE};
     }
