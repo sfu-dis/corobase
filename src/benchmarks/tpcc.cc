@@ -27,18 +27,18 @@ using namespace std;
 using namespace util;
 
 #define TPCC_TABLE_LIST(x) \
-  x(customer) \
-  x(customer_name_idx) \
-  x(district) \
-  x(history) \
-  x(item) \
-  x(new_order) \
-  x(oorder) \
-  x(oorder_c_id_idx) \
-  x(order_line) \
-  x(stock) \
-  x(stock_data) \
-  x(warehouse)
+  x(customer, 1) \
+  x(customer_name_idx, 2) \
+  x(district, 3) \
+  x(history, 4) \
+  x(item, 5) \
+  x(new_order, 6) \
+  x(oorder, 7) \
+  x(oorder_c_id_idx, 8) \
+  x(order_line, 9) \
+  x(stock, 10) \
+  x(stock_data, 11) \
+  x(warehouse, 12)
 
 static inline ALWAYS_INLINE size_t
 NumWarehouses()
@@ -300,7 +300,7 @@ struct _dummy {}; // exists so we can inherit from it, so we can use a macro in
 
 class tpcc_worker_mixin : private _dummy {
 
-#define DEFN_TBL_INIT_X(name) \
+#define DEFN_TBL_INIT_X(name, fid) \
   , tbl_ ## name ## _vec(partitions.at(#name))
 
 public:
@@ -315,7 +315,7 @@ public:
 
 protected:
 
-#define DEFN_TBL_ACCESSOR_X(name) \
+#define DEFN_TBL_ACCESSOR_X(name, fid) \
 private:  \
   vector<abstract_ordered_index *> tbl_ ## name ## _vec; \
 protected: \
@@ -2477,7 +2477,7 @@ private:
   }
 
   static vector<abstract_ordered_index *>
-  OpenTablesForTablespace(abstract_db *db, const char *name, size_t expected_size)
+  OpenTablesForTablespace(abstract_db *db, const char *name, size_t expected_size, FID fid)
   {
     const bool is_read_only = IsTableReadOnly(name);
     const bool is_append_only = IsTableAppendOnly(name);
@@ -2486,7 +2486,7 @@ private:
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= nthreads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
-          ret[i] = db->open_index(s_name + "_" + to_string(i), expected_size, is_append_only);
+          ret[i] = db->open_index(s_name + "_" + to_string(i), expected_size, is_append_only, fid);
       } else {
         const unsigned nwhse_per_partition = NumWarehouses() / nthreads;
         for (size_t partid = 0; partid < nthreads; partid++) {
@@ -2494,13 +2494,13 @@ private:
           const unsigned wend   = (partid + 1 == nthreads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
           abstract_ordered_index *idx =
-            db->open_index(s_name + "_" + to_string(partid), expected_size, is_append_only);
+            db->open_index(s_name + "_" + to_string(partid), expected_size, is_append_only, fid);
           for (size_t i = wstart; i < wend; i++)
             ret[i] = idx;
         }
       }
     } else {
-      abstract_ordered_index *idx = db->open_index(s_name, expected_size, is_append_only);
+      abstract_ordered_index *idx = db->open_index(s_name, expected_size, is_append_only, fid);
       for (size_t i = 0; i < NumWarehouses(); i++)
         ret[i] = idx;
     }
@@ -2512,8 +2512,8 @@ public:
     : bench_runner(db)
   {
 
-#define OPEN_TABLESPACE_X(x) \
-    partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));
+#define OPEN_TABLESPACE_X(x, fid) \
+    partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x), fid);
 
     TPCC_TABLE_LIST(OPEN_TABLESPACE_X);
 

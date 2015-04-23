@@ -665,7 +665,8 @@ transaction::try_insert_new_tuple(
     concurrent_btree *btr,
     const varstr *key,
     const varstr *value,
-    object* object)
+    object* object,
+    FID fid)
 {
     INVARIANT(key);
     dbtuple* tuple = (dbtuple *)object->payload();
@@ -755,7 +756,7 @@ transaction::try_insert_new_tuple(
     auto size_code = encode_size_aligned(record_size);
     ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));
     ASSERT(tuple->size);
-    log->log_insert(1, oid, fat_ptr::make((void *)value, size_code),
+    log->log_insert(fid, oid, fat_ptr::make((void *)value, size_code),
                     DEFAULT_ALIGNMENT_BITS, NULL);
     // update write_set
     write_set.emplace_back(tuple, btr, oid);
