@@ -87,6 +87,7 @@ take_one(thread_data *t)
     auto x = contexts[id].owner = XID::make(t->epoch, id);
 #ifdef USE_PARALLEL_SSN
     contexts[id].sstamp = ~uint64_t{0};
+    contexts[id].pstamp = 0;
 #endif
 #ifdef USE_PARALLEL_SSI
     contexts[id].ct3 = ~uint64_t{0};
