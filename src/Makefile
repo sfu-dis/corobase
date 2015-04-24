@@ -163,7 +163,8 @@ SRCFILES = allocator.cc \
 	txn.cc \
 	varint.cc
 
-DBCORE_SRCFILES = dbcore/sm-alloc.cpp \
+DBCORE_SRCFILES = dbcore/burt-hash.cpp \
+	dbcore/sm-alloc.cpp \
 	dbcore/sm-log.cpp \
 	dbcore/sm-tx-log.cpp \
 	dbcore/sm-log-alloc.cpp \
@@ -200,6 +201,9 @@ OBJFILES := $(patsubst %.cc, $(O)/%.o, $(SRCFILES))
 
 MASSTREE_OBJFILES := $(patsubst masstree/%.cc, $(O)/%.o, $(MASSTREE_SRCFILES))
 DBCORE_OBJFILES := $(patsubst dbcore/%.cpp, $(O)/dbcore/%.o, $(DBCORE_SRCFILES))
+
+dbcore/burt-hash.cpp:
+	@python2 dbcore/burt-hash.py > dbcore/burt-hash.cpp
 
 BENCH_CXXFLAGS := $(CXXFLAGS)
 BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lrt -lcrypt -laio -ldl -lssl -lcrypto
