@@ -4,7 +4,7 @@
 #include "../txn.h"
 
 /* Garbage collection: maintain a lock-free queue for updated tuples.
- * Writers add updated OIDs in the form of <btr, oid> to the queue upon
+ * Writers add updated OIDs in the form of <fid, oid> to the queue upon
  * commit, to the tail of the queue. A GC thread periodically consumes
  * queue nodes from the head of the queue and recycle old versions if
  * their clsn < trim_lsn. This way avoids scanning the whole OID array
@@ -32,7 +32,7 @@ static recycle_oid *recycle_oid_tail = NULL;
 
 #define MSB_MARK (~((~uint64_t{0}) >> 1))
 
-void recycle(uintptr_t table, oid_type oid)
+void recycle(uintptr_t table, OID oid)
 {
     recycle_oid *r = new recycle_oid(table, oid);
 try_append:
@@ -234,10 +234,7 @@ try_recycle:
         if (not r_next)
             break;
 
-        concurrent_btree::tuple_vector_type *v = ((concurrent_btree *)r->btr)->get_tuple_vector();
-        oid_type oid = r->oid;
-
-        fat_ptr head = v->begin(oid);
+        fat_ptr head = oidmgr->oid_get(r->fid, r->oid);
         if (not head.offset()) {
             // in case it's a delete... remove the oid as if we trimmed it
             delete r;

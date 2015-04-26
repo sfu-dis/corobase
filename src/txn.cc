@@ -335,7 +335,7 @@ transaction::parallel_ssn_commit()
 #ifdef ENABLE_GC
         if (tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
-            recycle_oid *r = new recycle_oid((uintptr_t)w.btr, w.oid);
+            recycle_oid *r = new recycle_oid(w.fid, w.oid);
             if (not updated_oids_head)
                 updated_oids_head = updated_oids_tail = r;
             else {
@@ -526,7 +526,7 @@ examine_writes:
 #ifdef ENABLE_GC
         if (tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
-            recycle_oid *r = new recycle_oid((uintptr_t)w.btr, w.oid);
+            recycle_oid *r = new recycle_oid(w.fid, w.oid);
             if (not updated_oids_head)
                 updated_oids_head = updated_oids_tail = r;
             else {
@@ -615,7 +615,7 @@ transaction::si_commit()
 #ifdef ENABLE_GC
         if (tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
-            recycle_oid *r = new recycle_oid((uintptr_t)w.btr, w.oid);
+            recycle_oid *r = new recycle_oid(w.fid, w.oid);
             if (not updated_oids_head)
                 updated_oids_head = updated_oids_tail = r;
             else {
