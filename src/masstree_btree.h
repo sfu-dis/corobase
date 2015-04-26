@@ -231,14 +231,7 @@ public:
     table_.destroy(ti);
   }
 
-  typedef object_vector node_vector_type;
-
-  inline node_vector_type* get_node_vector()
-  {
-	  return table_.get_node_vector();
-  }
-
-  inline node_base_type* fetch_node( oid_type oid ) const
+  inline node_base_type* fetch_node(OID oid) const
   {
 	  return table_.fetch_node( oid );
   }
