@@ -58,10 +58,10 @@ public:
 
 // oids that got updated, ie need to cleanup the overwritten versions
 struct recycle_oid {
-    uintptr_t btr;
-    oid_type oid;
+    FID fid;
+    OID oid;
     recycle_oid *next;
-    recycle_oid(uintptr_t b, oid_type o) : btr(b), oid(o), next(NULL) {}
+    recycle_oid(FID f, OID o) : fid(f), oid(o), next(NULL) {}
 };
 #endif
 
@@ -89,7 +89,7 @@ namespace MM {
     void deregister_thread();
     epoch_num epoch_enter(void);
     void epoch_exit(LSN s, epoch_num e);
-    void recycle(uintptr_t table, oid_type oid);
+    void recycle(uintptr_t table, OID oid);
     void recycle(recycle_oid *list_head, recycle_oid *list_tail);
 #endif
 };
