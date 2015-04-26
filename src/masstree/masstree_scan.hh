@@ -314,6 +314,7 @@ template <typename P> template <typename H, typename F>
 int basic_table<P>::scan(H helper,
                          Str firstkey, bool emit_firstkey,
                          F& scanner,
+                         FID f,
                          xid_context *xc,
                          threadinfo& ti) const
 {
@@ -353,8 +354,8 @@ int basic_table<P>::scan(H helper,
 		{
 	    ++scancount;
 		dbtuple *v;
-                oid_type o = entry.value();
-        v = fetch_version(o, xc);
+        OID o = entry.value();
+        v = oidmgr->oid_get_version(f, o, xc);
 		if (v) {
 			if (!scanner.visit_value(ka, o, v, ti))
 				goto done;
@@ -399,19 +400,21 @@ int basic_table<P>::scan(H helper,
 template <typename P> template <typename F>
 int basic_table<P>::scan(Str firstkey, bool emit_firstkey,
                          F& scanner,
+                         FID f,
                          xid_context *xc,
                          threadinfo& ti) const
 {
-    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, f, xc, ti);
 }
 
 template <typename P> template <typename F>
 int basic_table<P>::rscan(Str firstkey, bool emit_firstkey,
                           F& scanner,
+                          FID f,
                           xid_context *xc,
                           threadinfo& ti) const
 {
-    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, f, xc, ti);
 }
 
 } // namespace Masstree

@@ -83,7 +83,7 @@ transaction::abort_impl()
         if (tuple->next())
             volatile_write(tuple->next()->sstamp, NULL_PTR);
 #endif
-        w.btr->unlink_tuple(w.oid, tuple);
+        oidmgr->oid_unlink(w.fid, w.oid, tuple);
 #if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
         object *obj = (object *)((char *)tuple - sizeof(object));
         op->put(xc->end.offset(), obj);
@@ -656,7 +656,6 @@ transaction::check_phantom()
 }
 #endif
 
-typedef object_vector tuple_vector_type;
 // FIXME: tzwang: note: we only try once in this function. If it
 // failed (returns false) then the caller (supposedly do_tree_put)
 // should fallback to normal update procedure.
@@ -670,7 +669,6 @@ transaction::try_insert_new_tuple(
 {
     INVARIANT(key);
     dbtuple* tuple = (dbtuple *)object->payload();
-    tuple_vector_type* tuple_vector = btr->get_tuple_vector();
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
     // here we return false if some reader is already scanning.
@@ -705,20 +703,21 @@ transaction::try_insert_new_tuple(
            (*l & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_X);
 #endif
 
-    oid_type oid = tuple_vector->alloc();
+    OID oid = oidmgr->alloc_oid(fid);
     fat_ptr new_head = fat_ptr::make(object, INVALID_SIZE_CODE, 0);
-    if (not tuple_vector->put(oid, new_head)) {
+    oidmgr->oid_put_new(fid, oid, new_head);
 #ifdef PHANTOM_PROT_TABLE_LOCK
+    if (not tuple_vector->put(oid, new_head)) {
         if (instant_xlock)
             object_vector::unlock(l);
-#endif
         return false;
     }
+#endif
 
     typename concurrent_btree::insert_info_t ins_info;
-    if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, &ins_info))) {
+    if (unlikely(!btr->insert_if_absent(varkey(key), fid, oid, tuple, &ins_info))) {
         ++transaction_base::g_evt_dbtuple_write_insert_failed;
-        tuple_vector->unlink(oid, tuple);
+        oidmgr->oid_unlink(fid, oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
         if (instant_xlock)
             object_vector::unlock(l);
@@ -738,7 +737,7 @@ transaction::try_insert_new_tuple(
             if (unlikely(it->second.version != ins_info.old_version)) {
                 // important: unlink the version, otherwise we risk leaving a dead
                 // version at chain head -> infinite loop or segfault...
-                btr->unlink_tuple(oid, tuple);
+                oidmgr->oid_unlink(fid, oid, tuple);
                 return false;
             }
             // otherwise, bump the version
@@ -759,7 +758,7 @@ transaction::try_insert_new_tuple(
     log->log_insert(fid, oid, fat_ptr::make((void *)value, size_code),
                     DEFAULT_ALIGNMENT_BITS, NULL);
     // update write_set
-    write_set.emplace_back(tuple, btr, oid);
+    write_set.emplace_back(tuple, fid, oid);
     return true;
 }
 

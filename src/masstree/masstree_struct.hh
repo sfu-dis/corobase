@@ -22,6 +22,8 @@
 #include "timestamp.hh"
 
 #include "../object.h"
+#include "../dbcore/sm-oid.h"
+
 namespace Masstree {
 
 template <typename P>
@@ -549,7 +551,6 @@ template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
 
     masstree_precondition(!root_oid_);
-	tuple_vector = new object_vector(1024*1024*1024);
 	node_vector = new object_vector(1024*1024*1024);
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
 	root_oid_ = root->oid;

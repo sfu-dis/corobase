@@ -20,6 +20,7 @@ ndb_wrapper::ndb_wrapper(const char *logdir,
 {
   ALWAYS_ASSERT(logdir);
   INVARIANT(!transaction_base::logger);
+  INVARIANT(!oidmgr);
 
   // FIXME: tzwang: dummy recovery for now
   auto no_recover = [](void*, sm_log_scan_mgr*, LSN, LSN)->void {
@@ -29,6 +30,7 @@ ndb_wrapper::ndb_wrapper(const char *logdir,
   RCU::rcu_register();
   RCU::rcu_enter();
   transaction_base::logger = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
+  oidmgr = sm_oid_mgr::create(NULL, NULL);
   RCU::rcu_exit();
   RCU::rcu_deregister();
 }
@@ -90,9 +92,9 @@ ndb_wrapper::print_txn_debug(void *txn) const
 }
 
 abstract_ordered_index *
-ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append, FID fid)
+ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append)
 {
-  return new ndb_ordered_index(name, value_size_hint, mostly_append, fid);
+  return new ndb_ordered_index(name, value_size_hint, mostly_append);
 }
 
 void
@@ -102,8 +104,8 @@ ndb_wrapper::close_index(abstract_ordered_index *idx)
 }
 
 ndb_ordered_index::ndb_ordered_index(
-    const std::string &name, size_t value_size_hint, bool mostly_append, FID fid)
-  : name(name), btr(value_size_hint, mostly_append, name, fid)
+    const std::string &name, size_t value_size_hint, bool mostly_append)
+  : name(name), btr(value_size_hint, mostly_append, name)
 {
   // for debugging
   //std::cerr << name << " : btree= "

@@ -5,6 +5,8 @@
 
 #include <map>
 
+sm_oid_mgr *oidmgr = NULL;
+
 namespace {
 #if 0
 } // enter namespace, disable autoindent
@@ -418,7 +420,19 @@ sm_oid_mgr::destroy_file(FID f)
 OID
 sm_oid_mgr::alloc_oid(FID f)
 {
-    return thread_allocate(get_impl(this), f);
+    /* FIXME (tzwang): OID=0's original intent was to denote
+     * NULL, but I'm not sure what it's for currently; probably
+     * it's used by the index (e.g., if we have OID=0 recorded
+     * in some leaf node, that means the tuple was deleted).
+     * So I just skip OID=1 to be allocated here. Need to find
+     * out how the index treats OID=0. Meanwhile, it's totally
+     * OK for the version chain's OID array to use OID=0.
+     */
+alloc:
+    auto o = thread_allocate(get_impl(this), f);
+    if (unlikely(o == 0))
+        goto alloc;
+    return o;
 }
 
 fat_ptr
@@ -444,4 +458,224 @@ sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p)
     auto *ptr = get_impl(this)->oid_access(f, o);
     *ptr = p;
 }
- 
+
+void
+sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p)
+{
+    auto *ptr = get_impl(this)->oid_access(f, o);
+    ALWAYS_ASSERT(*ptr == NULL_PTR);
+    *ptr = p;
+}
+
+dbtuple*
+sm_oid_mgr::oid_put_update(FID f, OID o, object* new_object, xid_context *updater_xc)
+{
+#if CHECK_INVARIANTS
+    int attempts = 0;
+#endif
+    fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
+start_over:
+    auto *ptr = get_impl(this)->oid_access(f, o);
+    fat_ptr head = *ptr;
+    object *old_desc = (object *)head.offset();
+    dbtuple *version = (dbtuple *)old_desc->payload();
+    bool overwrite = false;
+
+    auto clsn = volatile_read(version->clsn);
+    if (clsn.asi_type() == fat_ptr::ASI_XID) {
+        /* Grab the context for this XID. If we're too slow,
+           the context might be recycled for a different XID,
+           perhaps even *while* we are reading the
+           context. Copy everything we care about and then
+           (last) check the context's XID for a mismatch that
+           would indicate an inconsistent read. If this
+           occurs, just start over---the version we cared
+           about is guaranteed to have a LSN now.
+         */
+        auto holder_xid = XID::from_ptr(clsn);
+        xid_context *holder= xid_get_context(holder_xid);
+        if (not holder) {
+#if CHECK_INVARIANTS
+            auto t = volatile_read(version->clsn).asi_type();
+            ASSERT(t == fat_ptr::ASI_LOG or oid_get(f, o) != head);
+#endif
+            goto start_over;
+        }
+        INVARIANT(holder);
+        auto state = volatile_read(holder->state);
+        auto owner = volatile_read(holder->owner);
+        holder = NULL; // use cached values instead!
+
+        // context still valid for this XID?
+        if (unlikely(owner != holder_xid)) {
+#if CHECK_INVARIANTS
+            ASSERT(attempts < 2);
+            attempts++;
+#endif
+            goto start_over;
+        }
+        XID updater_xid = volatile_read(updater_xc->owner);
+        switch (state) {
+            // Allow installing a new version if the tx committed (might
+            // still hasn't finished post-commit). Note that the caller
+            // (ie do_tree_put) should look at the clsn field of the
+            // returned version (prev) to see if this is an overwrite
+            // (ie xids match) or not (xids don't match).
+            case TXN_CMMTD:
+                ASSERT(holder_xid != updater_xid);
+                goto install;
+
+            case TXN_COMMITTING:
+            case TXN_ABRTD:
+                return NULL;
+
+                // dirty data
+            case TXN_EMBRYO:
+            case TXN_ACTIVE:
+                // in-place update case ( multiple updates on the same record  by same transaction)
+                if (holder_xid == updater_xid) {
+                    overwrite = true;
+                    goto install;
+                }
+                else
+                    return NULL;
+
+            default:
+                ALWAYS_ASSERT( false );
+        }
+    }
+    // check dirty writes
+    else {
+        // make sure this is valid committed data, or aborted data that is not reclaimed yet.
+        // aborted, but not yet reclaimed.
+        ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
+        if (LSN::from_ptr(clsn) > updater_xc->begin)
+            return NULL;
+        else
+            goto install;
+    }
+
+install:
+    // remove uncommitted overwritten version
+    // (tx's repetitive updates, keep the latest one only)
+    // Note for this to be correct we shouldn't allow multiple txs
+    // working on the same tuple at the same time.
+    if (overwrite) {
+        volatile_write(new_object->_next, old_desc->_next);
+        // I already claimed it, no need to use cas then
+        volatile_write(ptr->_ptr, new_ptr._ptr);
+        __sync_synchronize();
+        return version;
+    }
+    else {
+        volatile_write(new_object->_next, head);
+        if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_ptr._ptr))
+            return version;
+    }
+    return NULL;
+}
+
+dbtuple*
+sm_oid_mgr::oid_get_latest_version(FID f, OID o)
+{
+    uint64_t head_offset = oid_get(f, o).offset();
+    if (head_offset)
+        return (dbtuple *)((object *)head_offset)->payload();
+    return NULL;
+}
+
+dbtuple*
+sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
+{
+    ASSERT(f);
+#if CHECK_INVARIANTS
+    int attempts = 0;
+#endif
+    object *cur_obj = NULL;
+start_over:
+    for (auto ptr = oid_get(f, o); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
+        cur_obj = (object*)ptr.offset();
+        dbtuple *version = (dbtuple *)cur_obj->payload();
+        auto clsn = volatile_read(version->clsn);
+        ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
+        // xid tracking & status check
+        if (clsn.asi_type() == fat_ptr::ASI_XID) {
+            /* Same as above: grab and verify XID context,
+               starting over if it has been recycled
+             */
+            auto holder_xid = XID::from_ptr(clsn);
+
+            // dirty data made by me is visible!
+            if (holder_xid == visitor_xc->owner) {
+                return version;
+#if CHECK_INVARIANTS
+                // don't do this if it's not my own tuple!
+                if (cur_obj->_next.offset())
+                    ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
+#endif
+            }
+
+            xid_context *holder = xid_get_context(holder_xid);
+            if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
+                goto start_over;
+
+            auto state = volatile_read(holder->state);
+            auto end = volatile_read(holder->end);
+            auto owner = volatile_read(holder->owner);
+
+            // context still valid for this XID?
+            if (unlikely(owner != holder_xid)) {
+#if CHECK_INVARIANTS
+                ASSERT(attempts < 2);
+                attempts++;
+#endif
+                goto start_over;
+            }
+
+            if (state != TXN_CMMTD) {
+#ifdef READ_COMMITTED_SPIN
+                // spin until the tx is settled (either aborted or committed)
+                if (not wait_for_commit_result(holder))
+                    continue;
+#else
+                continue;
+#endif
+            }
+
+            if (end > visitor_xc->begin or  // committed but invisible data,
+                end == INVALID_LSN)         // aborted data
+                continue;
+
+        }
+        else {
+#ifndef USE_READ_COMMITTED
+            if (LSN::from_ptr(clsn) > visitor_xc->begin)    // invisible
+                continue;
+#endif
+        }
+        ASSERT(version);
+        return version;
+    }
+
+    return NULL;    // No Visible records
+}
+
+void
+sm_oid_mgr::oid_unlink(FID f, OID o, void *object_payload)
+{
+    // Now the head is guaranteed to be the only dirty version
+    // because we unlink the overwritten dirty version in put,
+    // essentially this function ditches the head directly.
+    // Otherwise use the commented out old code.
+    auto *ptr = get_impl(this)->oid_access(f, o);
+    object *head_obj = (object *)ptr->offset();
+    ASSERT(head_obj->payload() == object_payload);
+    // using a CAS is overkill: head is guaranteed to be the (only) dirty version
+    volatile_write(ptr->_ptr, head_obj->_next._ptr);
+    __sync_synchronize();
+    // FIXME: tzwang: also need to free the old head during GC
+    // Note that a race exists here: some reader might be using
+    // that old head in fetch_version while we do the above CAS.
+    // So we can't immediate deallocate it here right now.
+}
+

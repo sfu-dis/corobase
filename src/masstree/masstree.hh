@@ -77,9 +77,9 @@ class basic_table {
     bool get(Str key, value_type& value, threadinfo& ti) const;
 
     template <typename F>
-    int scan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
+    int scan(Str firstkey, bool matchfirst, F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
     template <typename F>
-    int rscan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
+    int rscan(Str firstkey, bool matchfirst, F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
 
     template <typename F>
     inline int modify(Str key, F& f, threadinfo& ti);
@@ -88,145 +88,12 @@ class basic_table {
 
     inline void print(FILE* f = 0, int indent = 0) const;
 
-	typedef object_vector tuple_vector_type;
 	typedef object_vector node_vector_type;
 
-	inline tuple_vector_type* get_tuple_vector()
-	{
-		INVARIANT(tuple_vector);
-		return tuple_vector;
-	}
 	inline node_vector_type* get_node_vector()
 	{
 		INVARIANT(node_vector);
 		return node_vector;
-	}
-
-    // return the overwritten version (could be an in-flight version!)
-    dbtuple *update_version(oid_type oid, object* new_desc, xid_context *updater_xc)
-	{
-		INVARIANT( tuple_vector );
-		
-#if CHECK_INVARIANTS
-		int attempts = 0;
-#endif
-		fat_ptr new_ptr = fat_ptr::make( new_desc, INVALID_SIZE_CODE, fat_ptr::ASI_HOT_FLAG );
-	start_over:
-        fat_ptr head = tuple_vector->begin(oid);
-		object* ptr = (object*)head.offset();
-		dbtuple* version;
-        bool overwrite = false;
-
-		version = reinterpret_cast<dbtuple*>(ptr->payload());
-		auto clsn = volatile_read(version->clsn);
-		if( clsn.asi_type() == fat_ptr::ASI_XID )
-		{
-			/* Grab the context for this XID. If we're too slow,
-			   the context might be recycled for a different XID,
-			   perhaps even *while* we are reading the
-			   context. Copy everything we care about and then
-			   (last) check the context's XID for a mismatch that
-			   would indicate an inconsistent read. If this
-			   occurs, just start over---the version we cared
-			   about is guaranteed to have a LSN now.
-			 */
-			//xid tracking
-			auto holder_xid = XID::from_ptr(clsn);
-            xid_context *holder= xid_get_context(holder_xid);
-            if (not holder) {
-#if CHECK_INVARIANTS
-                auto t = volatile_read(version->clsn).asi_type();
-                ASSERT(t == fat_ptr::ASI_LOG or tuple_vector->begin(oid) != head);
-#endif
-                goto start_over;
-            }
-			INVARIANT(holder);
-            auto state = volatile_read(holder->state);
-			auto owner = volatile_read(holder->owner);
-			holder = NULL; // use cached values instead!
-
-			// context still valid for this XID?
-            if ( unlikely(owner != holder_xid) ) {
-#if CHECK_INVARIANTS
-				ASSERT(attempts < 2);
-				attempts++;
-#endif
-				goto start_over;
-			}
-            XID updater_xid = volatile_read(updater_xc->owner);
-			switch (state)
-			{
-                // Allow installing a new version if the tx committed (might
-                // still hasn't finished post-commit). Note that the caller
-                // (ie do_tree_put) should look at the clsn field of the
-                // returned version (prev) to see if this is an overwrite
-                // (ie xids match) or not (xids don't match).
-                case TXN_CMMTD:
-                    ASSERT(holder_xid != updater_xid);
-                    goto install;
-
-				case TXN_COMMITTING:
-				case TXN_ABRTD:
-                    return NULL;
-
-					// dirty data
-				case TXN_EMBRYO:
-				case TXN_ACTIVE:
-                    // in-place update case ( multiple updates on the same record  by same transaction)
-                    if (holder_xid == updater_xid) {
-                        overwrite = true;
-                        goto install;
-                    }
-                    else
-                        return NULL;
-
-				default:
-					ALWAYS_ASSERT( false );
-			}
-		}
-		// check dirty writes 
-		else 
-		{
-			// make sure this is valid committed data, or aborted data that is not reclaimed yet.
-			// aborted, but not yet reclaimed.
-			ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
-            if (LSN::from_ptr(clsn) > updater_xc->begin)
-				return NULL;
-			else
-				goto install;
-		}
-
-install:
-		// install a new version
-        if (tuple_vector->put(oid, head, new_ptr, overwrite)) {
-#ifdef TRACE_FOOTPRINT
-            int64_t old_age = -1;
-            if (clsn.asi_type() == fat_ptr::ASI_XID) {
-                // in-place update, parser should know by seeing xid == old_age (which should = xc->begin)
-                old_age = xid._val;
-            }
-            TRACER::record(xid._val, 'u', (uint64_t)tuple_vector, oid,
-                           (uint64_t)version, (uint64_t)new_ptr.offset(),
-                           version->size, ((dbtuple*)(((object *)new_ptr.offset())->payload()))->size,
-                           old_age, updater_xc->begin._val);
-#endif
-            return version;
-        }
-		return NULL;
-	}
-
-	// Sometimes, we don't care about version. We just need the first one!
-	inline dbtuple *fetch_latest_version( oid_type oid ) const
-	{
-		ALWAYS_ASSERT( tuple_vector );
-		fat_ptr head = tuple_vector->begin(oid);
-		if( head.offset() != 0 )
-		{
-			object* obj = (object*)head.offset();
-			return reinterpret_cast<dbtuple*>( obj->payload() );
-		}
-		else
-			return NULL;
 	}
 
 #if 0
@@ -270,7 +137,7 @@ install:
         return 0;
 	}
 #endif
-
+#if 0
     // return the (latest) committed version (at verify_lsn)
     dbtuple *fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
     {
@@ -291,104 +158,7 @@ install:
         }
         return 0;
     }
-
-    dbtuple *fetch_version(oid_type oid, xid_context *visitor_xc) const
-	{
-		INVARIANT( tuple_vector );
-		ALWAYS_ASSERT( oid );
-
-#if CHECK_INVARIANTS
-		int attempts = 0;
 #endif
-#ifdef TRACE_FOOTPRINT
-        int pos = -1;
-#endif
-		object* cur_obj = NULL;
-	start_over:
-		for( fat_ptr ptr = tuple_vector->begin(oid); ptr.offset(); ptr = volatile_read(cur_obj->_next) ) {
-#ifdef TRACE_FOOTPRINT
-            pos++;
-#endif
-            cur_obj = (object*)ptr.offset();
-			dbtuple* version = reinterpret_cast<dbtuple*>(cur_obj->payload());
-			auto clsn = volatile_read(version->clsn);
-            ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
-			// xid tracking & status check
-			if( clsn.asi_type() == fat_ptr::ASI_XID )
-			{
-				/* Same as above: grab and verify XID context,
-				   starting over if it has been recycled
-				 */
-				auto holder_xid = XID::from_ptr(clsn);
-
-				// dirty data made by me is visible!
-                if (holder_xid == visitor_xc->owner) {
-					goto out;
-#if CHECK_INVARIANTS
-                    // don't do this if it's not my own tuple!
-                    if (cur_obj->_next.offset())
-                        ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
-#endif
-                }
-
-				xid_context *holder = xid_get_context(holder_xid);
-                if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
-                    goto start_over;
-
-				auto state = volatile_read(holder->state);
-				auto end = volatile_read(holder->end);
-				auto owner = volatile_read(holder->owner);
-
-				// context still valid for this XID?
-				if( unlikely(owner != holder_xid) ) {
-#if CHECK_INVARIANTS
-					ASSERT(attempts < 2);
-					attempts++;
-#endif
-					goto start_over;
-				}
-
-                if (state != TXN_CMMTD) {
-#ifdef READ_COMMITTED_SPIN
-                    // spin until the tx is settled (either aborted or committed)
-                    if (not wait_for_commit_result(holder))
-                        continue;
-#else
-					continue;
-#endif
-                }
-
-                if (end > visitor_xc->begin or  // committed but invisible data,
-                    end == INVALID_LSN)         // aborted data
-					continue;
-
-			}
-			else
-			{
-#ifndef USE_READ_COMMITTED
-                if (LSN::from_ptr(clsn) > visitor_xc->begin)    // invisible
-					continue;
-#endif
-			}
-        out:
-            // try if we can trim
-            ASSERT(version);
-            dbtuple *ret_ver = version;
-#ifdef TRACE_FOOTPRINT
-            int64_t ver_age = -1;
-            if (ret_ver->clsn.asi_type() == fat_ptr::ASI_XID) {
-                // read own update, parser should tell this by seeing xid_age == ver_age
-                ver_age = xid._val;
-            }
-            TRACER::record(xid._val, 'r', (uint64_t)tuple_vector, oid, (uint64_t)ret_ver,
-                           ret_ver->size, pos, ver_age, visitor_xc->begin._val);
-#endif
-            return ret_ver;
-		}
-
-		// No Visible records
-		return 0;
-	}
 
 	inline node_type* fetch_node( oid_type oid ) const
 	{
@@ -406,21 +176,13 @@ install:
 		return NULL;
 	}
 
-	inline void unlink_tuple( oid_type oid, dbtuple *item )
-	{
-		INVARIANT( tuple_vector );
-		INVARIANT( oid );
-		return tuple_vector->unlink( oid, item );
-	}
-
   private:
 	oid_type root_oid_;
-	tuple_vector_type* tuple_vector; 
 	node_vector_type* node_vector; 
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,
-         F& scanner, xid_context *xc, threadinfo& ti) const;
+         F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
 
     friend class unlocked_tcursor<P>;
     friend class tcursor<P>;

@@ -43,8 +43,7 @@ public:
   virtual abstract_ordered_index *
   open_index(const std::string &name,
              size_t value_size_hint,
-             bool mostly_append,
-             FID fid);
+             bool mostly_append);
 
   virtual void
   close_index(abstract_ordered_index *idx);
@@ -56,7 +55,7 @@ protected:
   typedef private_::ndbtxn ndbtxn;
 
 public:
-  ndb_ordered_index(const std::string &name, size_t value_size_hint, bool mostly_append, FID fid);
+  ndb_ordered_index(const std::string &name, size_t value_size_hint, bool mostly_append);
   virtual rc_t get(
       void *txn,
       const varstr &key,

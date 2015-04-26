@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include "dbcore/xid.h"
 #include "dbcore/serial.h"
+#include "dbcore/sm-oid.h"
 #include "dbcore/sm-log.h"
 #include "dbcore/sm-trace.h"
 #include "dbcore/sm-rc.h"
@@ -190,12 +191,12 @@ protected:
   }
 
   struct write_record_t {
-    write_record_t(dbtuple *n, concurrent_btree *b, oid_type o) :
-        new_tuple(n), btr(b), oid(o) {}
-    write_record_t() : new_tuple(NULL), btr(NULL), oid(0) {}
+    write_record_t(dbtuple *n, FID f, OID o) :
+        new_tuple(n), fid(f), oid(o) {}
+    write_record_t() : new_tuple(NULL), fid(0), oid(0) {}
     dbtuple *new_tuple;
-    concurrent_btree *btr;
-    oid_type oid;
+    FID fid;
+    OID oid;
   };
 
   typedef std::vector<write_record_t> write_set_map;

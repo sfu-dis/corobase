@@ -25,7 +25,6 @@
 #include "ownership_checker.h"
 
 #include "reader_writer.h"
-#include "object.h"
 #include "dbcore/xid.h"
 #include "dbcore/sm-alloc.h"
 
