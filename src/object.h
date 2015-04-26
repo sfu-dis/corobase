@@ -1,5 +1,18 @@
 #pragma once
 
+#include "dbcore/sm-common.h"
+class object
+{
+	public:
+		object( size_t size ) : _size(size) { _next = fat_ptr::make( (void*)0, INVALID_SIZE_CODE); }
+		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
+
+		fat_ptr _next;
+        uint64_t _size;
+};
+
+// DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS
+#if 0
 #include <cstring>
 #include <atomic>
 #include <cassert>
@@ -17,16 +30,6 @@
 typedef uint32_t oid_type;
 
 struct dynarray;
-
-class object
-{
-	public:
-		object( size_t size ) : _size(size) { _next = fat_ptr::make( (void*)0, INVALID_SIZE_CODE); }
-		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
-
-		fat_ptr _next;
-        uint64_t _size;
-};
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
 #define TABLE_LOCK_TYPE_BITS    16
@@ -118,3 +121,4 @@ private:
     percore<uint64_t, false, false> _core_oid_offset;
     percore<uint64_t, false, false> _core_oid_remaining;
 };
+#endif
