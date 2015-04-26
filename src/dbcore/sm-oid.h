@@ -6,6 +6,8 @@
 #include "sm-heap.h"
 #include "sm-log.h"
 
+#include "../tuple.h"
+
 struct sm_oid_mgr {
     using log_tx_scan = sm_log_scan_mgr::record_scan;
     
@@ -82,6 +84,16 @@ struct sm_oid_mgr {
        reference memory or disk (or be NULL).
      */
     void oid_put(FID f, OID o, fat_ptr p);
+
+    void oid_put_new(FID f, OID o, fat_ptr p);
+
+    /* Return the overwritten version (could be an in-flight version!) */
+    dbtuple *oid_put_update(FID f, OID o, object* new_desc, xid_context *updater_xc);
+
+    dbtuple *oid_get_latest_version(FID f, OID o);
+    dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
+
+    void oid_unlink(FID f, OID o, void *object_payload);
     
     virtual ~sm_oid_mgr() { }
     
@@ -89,3 +101,5 @@ protected:
     // Forbid direct instantiation
     sm_oid_mgr() { }
 };
+
+extern sm_oid_mgr *oidmgr;

@@ -176,7 +176,7 @@ struct _dummy {}; // exists so we can inherit from it, so we can use a macro in
 
 class tpce_worker_mixin : private _dummy {
 
-#define DEFN_TBL_INIT_X(name, fid) \
+#define DEFN_TBL_INIT_X(name) \
 	, tbl_ ## name ## _vec(partitions.at(#name))
 
 	public:
@@ -190,7 +190,7 @@ class tpce_worker_mixin : private _dummy {
 
 	protected:
 
-#define DEFN_TBL_ACCESSOR_X(name, fid) \
+#define DEFN_TBL_ACCESSOR_X(name) \
 	private:  \
 			  vector<abstract_ordered_index *> tbl_ ## name ## _vec; \
 	protected: \
@@ -4988,11 +4988,11 @@ class tpce_bench_runner : public bench_runner {
 			}
 
 		static vector<abstract_ordered_index *>
-			OpenTablesForTablespace(abstract_db *db, const char *name, size_t expected_size, FID fid)
+			OpenTablesForTablespace(abstract_db *db, const char *name, size_t expected_size)
 			{
 				const string s_name(name);
 				vector<abstract_ordered_index *> ret(NumPartitions());
-                abstract_ordered_index *idx = db->open_index(s_name, expected_size, false, fid);
+                abstract_ordered_index *idx = db->open_index(s_name, expected_size, false);
 				for (size_t i = 0; i < NumPartitions(); i++)
 					ret[i] = idx;
 				return ret;
@@ -5003,8 +5003,8 @@ class tpce_bench_runner : public bench_runner {
 			: bench_runner(db)
 		{
 
-#define OPEN_TABLESPACE_X(x, fid) \
-			partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x), fid);
+#define OPEN_TABLESPACE_X(x) \
+			partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));
 
 			TPCE_TABLE_LIST(OPEN_TABLESPACE_X);
 

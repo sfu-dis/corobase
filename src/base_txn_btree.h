@@ -29,11 +29,10 @@ public:
 
   base_txn_btree(size_type value_size_hint = 128,
             bool mostly_append = false,
-            const std::string &name = "<unknown>",
-            FID fid = 0)
+            const std::string &name = "<unknown>")
     : value_size_hint(value_size_hint),
       name(name),
-      fid(fid),
+      fid(oidmgr->create_file(true)),
       been_destructed(false)
   {
 #ifdef TRACE_FOOTPRINT
@@ -107,7 +106,7 @@ protected:
 
     virtual void on_resp_node(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
     virtual bool invoke(const concurrent_btree *btr_ptr,
-                        const typename concurrent_btree::string_type &k, oid_type o, dbtuple* v,
+                        const typename concurrent_btree::string_type &k, OID o, dbtuple* v,
                         const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 
   private:

@@ -38,6 +38,7 @@
 #include "object.h"
 #include "tuple.h"
 
+#include "dbcore/sm-oid.h"
 #include "dbcore/sm-alloc.h"
 
 class simple_threadinfo {
@@ -152,7 +153,7 @@ class simple_threadinfo {
 };
 
 struct masstree_params : public Masstree::nodeparams<> {
-  typedef oid_type value_type;
+  typedef OID value_type;
   typedef Masstree::value_print<value_type> value_print_type;
   typedef simple_threadinfo threadinfo_type;
   enum { RcuRespCaller = true }; // FIXME: tzwang: OK, silo's original code also set it to true
@@ -230,44 +231,11 @@ public:
     table_.destroy(ti);
   }
 
-  typedef object_vector tuple_vector_type;
   typedef object_vector node_vector_type;
 
   inline node_vector_type* get_node_vector()
   {
 	  return table_.get_node_vector();
-  }
-  inline tuple_vector_type* get_tuple_vector()
-  {
-	  return table_.get_tuple_vector();
-  }
-  dbtuple *update_version(oid_type oid, object* obj, xid_context *updater_xc)
-  {
-      return table_.update_version(oid, obj, updater_xc);
-  }
-  dbtuple* fetch_overwriter(oid_type oid, LSN rlsn) const
-  {
-	  return table_.fetch_overwriter(oid, rlsn);
-  }
-  dbtuple* fetch_committed_version_at(oid_type oid, XID xid, LSN at_clsn) const
-  {
-	  return table_.fetch_committed_version_at(oid, xid, at_clsn);
-  }
-  dbtuple* fetch_version(oid_type oid, xid_context *visitor_xc) const
-  {
-      return table_.fetch_version(oid, visitor_xc);
-  }
-  inline bool update_tuple( oid_type oid, value_type val )
-  {
-	  return table_.update_tuple( oid, val );
-  }
-  inline dbtuple * fetch_latest_version( oid_type oid ) const
-  {
-	  return table_.fetch_latest_version( oid );
-  }
-  inline void unlink_tuple( oid_type oid, dbtuple* item )
-  {
-	  table_.unlink_tuple( oid, item );
   }
 
   inline node_base_type* fetch_node( oid_type oid ) const
@@ -291,7 +259,7 @@ public:
           /** NOTE: the public interface assumes that the caller has taken care
            * of setting up RCU */
 
-  inline bool search(const key_type &k, oid_type &o, dbtuple* &v, xid_context *xc,
+  inline bool search(const key_type &k, FID f, OID &o, dbtuple* &v, xid_context *xc,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -316,7 +284,7 @@ public:
     /**
      * This key/value pair was read from node n @ version
      */
-    virtual bool  invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, oid_type o, dbtuple *v,
+    virtual bool  invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, OID o, dbtuple *v,
                         const node_opaque_t *n, uint64_t version) = 0;
   };
 
@@ -367,6 +335,7 @@ public:
   search_range_call(const key_type &lower,
                     const key_type *upper,
                     low_level_search_range_callback &callback,
+                    FID f,
                     xid_context *xc) const;
 
   // (lower, upper]
@@ -374,6 +343,7 @@ public:
   rsearch_range_call(const key_type &upper,
                      const key_type *lower,
                      low_level_search_range_callback &callback,
+                     FID f,
                      xid_context *xc) const;
 
   class search_range_callback : public low_level_search_range_callback {
@@ -404,6 +374,7 @@ public:
   search_range(const key_type &lower,
                const key_type *upper,
                F& callback,
+               FID f,
                xid_context *xc) const;
 
   /**
@@ -417,6 +388,7 @@ public:
   rsearch_range(const key_type &upper,
                 const key_type *lower,
                 F& callback,
+                FID f,
                 xid_context *xc) const;
 
   /**
@@ -436,7 +408,7 @@ public:
    * if k inserted, false otherwise (k exists already)
    */
   inline bool
-  insert_if_absent(const key_type &k, oid_type o, dbtuple * v,
+  insert_if_absent(const key_type &k, FID f, OID o, dbtuple * v,
                    insert_info_t *insert_info = NULL);
 
   /**
@@ -446,7 +418,7 @@ public:
    * is written into old_v
    */
   inline bool
-  remove(const key_type &k, dbtuple* *old_v = NULL);
+  remove(const key_type &k, FID f, dbtuple* *old_v = NULL);
 
   /**
    * The tree walk API is a bit strange, due to the optimistic nature of the
@@ -614,7 +586,7 @@ inline size_t mbtree<P>::size() const
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, oid_type &o, dbtuple* &v, xid_context *xc,
+inline bool mbtree<P>::search(const key_type &k, FID f, OID &o, dbtuple* &v, xid_context *xc,
                               versioned_node_t *search_info) const
 {
   threadinfo ti;
@@ -623,7 +595,7 @@ inline bool mbtree<P>::search(const key_type &k, oid_type &o, dbtuple* &v, xid_c
   if (found)
   {
 	  o = lp.value();
-      v = fetch_version(o, xc);
+      v = oidmgr->oid_get_version(f, o, xc);
 	  if( !v )
 		  found = false;
   }
@@ -655,7 +627,7 @@ inline bool mbtree<P>::insert(const key_type &k, dbtuple * v,
 }
 
 template <typename P>
-inline bool mbtree<P>::insert_if_absent(const key_type &k, oid_type o, dbtuple * v,
+inline bool mbtree<P>::insert_if_absent(const key_type &k, FID f, OID o, dbtuple * v,
                                         insert_info_t *insert_info)
 {
   threadinfo ti;
@@ -675,8 +647,8 @@ insert_new:
   else
   {
 	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data in this chain. If it's the first case, version chain is considered empty, then we retry insert.
-	  oid_type oid = lp.value();
-	  if( fetch_latest_version( oid ) )
+	  OID oid = lp.value();
+	  if (oidmgr->oid_get_latest_version(f, oid))
 		  found = true;
 	  else
 		  goto insert_new;
@@ -692,13 +664,13 @@ insert_new:
  * is written into old_v
  */
 template <typename P>
-inline bool mbtree<P>::remove(const key_type &k, dbtuple * *old_v)
+inline bool mbtree<P>::remove(const key_type &k, FID f, dbtuple * *old_v)
 {
   threadinfo ti;
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
   if (found && old_v)
-	  *old_v = fetch_latest_version(lp.value() );
+	  *old_v = oidmgr->oid_get_latest_version(f, lp.value());
 	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
   lp.finish(found ? -1 : 0, ti);
   return found;
@@ -750,7 +722,7 @@ class mbtree<P>::low_level_search_range_scanner
       this->check(iter, key);
   }
   bool visit_value(const Masstree::key<uint64_t>& key,
-                   oid_type oid, dbtuple * value, threadinfo&) {
+                   OID oid, dbtuple * value, threadinfo&) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
@@ -776,7 +748,7 @@ public:
   void on_resp_node(const node_opaque_t *n, uint64_t version) OVERRIDE {}
 
   bool
-  invoke(const string_type &k, oid_type o, dbtuple * v,
+  invoke(const string_type &k, OID o, dbtuple * v,
          const node_opaque_t *n, uint64_t version) OVERRIDE
   {
     return callback_(k, o, v);
@@ -790,42 +762,46 @@ template <typename P>
 inline void mbtree<P>::search_range_call(const key_type &lower,
                                          const key_type *upper,
                                          low_level_search_range_callback &callback,
+                                         FID f,
                                          xid_context *xc) const {
   low_level_search_range_scanner<false> scanner(this, upper, callback);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xc, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, f, xc, ti);
 }
 
 template <typename P>
 inline void mbtree<P>::rsearch_range_call(const key_type &upper,
                                           const key_type *lower,
                                           low_level_search_range_callback &callback,
+                                          FID f,
                                           xid_context *xc) const {
   low_level_search_range_scanner<true> scanner(this, lower, callback);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xc, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, f, xc, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::search_range(const key_type &lower,
                                     const key_type *upper,
                                     F& callback,
+                                    FID f,
                                     xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(this, upper, wrapper);
   threadinfo ti;
-  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xc, ti);
+  table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, f, xc, ti);
 }
 
 template <typename P> template <typename F>
 inline void mbtree<P>::rsearch_range(const key_type &upper,
                                      const key_type *lower,
                                      F& callback,
+                                     FID f,
                                      xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti;
-  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xc, ti);
+  table_.rscan(lcdf::Str(upper.data(), upper.length()), true, f, scanner, xc, ti);
 }
 
 template <typename P>

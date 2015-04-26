@@ -11,9 +11,9 @@ base_txn_btree::do_search(transaction &t, const varstr &k, value_reader &vr)
 
     // search the underlying btree to map k=>(btree_node|tuple)
     dbtuple * tuple{};
-    oid_type oid;
+    OID oid;
     concurrent_btree::versioned_node_t sinfo;
-    const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xc, &sinfo);
+    const bool found = this->underlying_btree.search(varkey(key_str), this->fid, oid, tuple, t.xc, &sinfo);
     if (found)
         return t.do_tuple_read(tuple, vr);
 #ifdef PHANTOM_PROT_NODE_SET
@@ -97,8 +97,8 @@ rc_t base_txn_btree::do_tree_put(
 
     // do regular search
     dbtuple * bv = 0;
-    oid_type oid = 0;
-    if (!this->underlying_btree.search(varkey(k), oid, bv, t.xc))
+    OID oid = 0;
+    if (!this->underlying_btree.search(varkey(k), this->fid, oid, bv, t.xc))
         return rc_t{RC_ABORT_INTERNAL};
 #ifdef PHANTOM_PROT_TABLE_LOCK
     // for delete
@@ -135,7 +135,7 @@ rc_t base_txn_btree::do_tree_put(
     // Here we just call the provided update_tulpe function which returns the
     // result (either succeeded or failed, i.e., need to abort).
 
-    dbtuple *prev = this->underlying_btree.update_version(oid, obj, t.xc);
+    dbtuple *prev = oidmgr->oid_put_update(fid, oid, obj, t.xc);
 
     if (prev) { // succeeded
         ASSERT(t.xc);
@@ -154,7 +154,7 @@ rc_t base_txn_btree::do_tree_put(
         if (not has_read_opt() and t.xc->ct3 and serial_get_tuple_readers(prev, true)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set), same as in SSN impl.
-            this->underlying_btree.unlink_tuple(oid, tuple);
+            oidmgr->oid_unlink(this->fid, oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
             if (instant_lock)
                 object_vector::unlock(l);
@@ -178,7 +178,7 @@ rc_t base_txn_btree::do_tree_put(
         if (not ssn_check_exclusion(t.xc)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set)
-            this->underlying_btree.unlink_tuple(oid, tuple);
+            oidmgr->oid_unlink(this->fid, oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
             if (instant_lock)
                 object_vector::unlock(l);
@@ -212,9 +212,9 @@ rc_t base_txn_btree::do_tree_put(
 #endif
         }
 
-        t.write_set.emplace_back(tuple, &this->underlying_btree, oid);
+        t.write_set.emplace_back(tuple, fid, oid);
         ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
-        ASSERT((dbtuple *)this->underlying_btree.fetch_version(oid, t.xc) == tuple);
+        ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
         if (instant_lock)
@@ -270,7 +270,7 @@ base_txn_btree
   ::txn_search_range_callback
   ::invoke(
     const concurrent_btree *btr_ptr,
-    const typename concurrent_btree::string_type &k, oid_type o, dbtuple *v,
+    const typename concurrent_btree::string_type &k, OID o, dbtuple *v,
     const typename concurrent_btree::node_opaque_t *n, uint64_t version)
 {
     t->ensure_active();
@@ -342,7 +342,7 @@ base_txn_btree::do_search_range_call(
         uppervk = varkey(upper_str);
     this->underlying_btree.search_range_call(
         varkey(lower_str), upper_str ? &uppervk : nullptr,
-        c, t.xc);
+        c, this->fid, t.xc);
 }
 
 void
@@ -390,6 +390,6 @@ base_txn_btree::do_rsearch_range_call(
         lowervk = varkey(lower_str);
     this->underlying_btree.rsearch_range_call(
         varkey(upper_str), lower_str ? &lowervk : nullptr,
-        c,t.xc);
+        c, this->fid, t.xc);
 }
 

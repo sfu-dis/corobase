@@ -492,48 +492,48 @@ DO_STRUCT( zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS )
 
 
 #define TPCE_TABLE_LIST(x)\
-	x(charge, 1) \
-	x(commission_rate, 2) \
-	x(exchange, 3) \
-	x(industry, 4) \
-	x(in_name_index, 5) \
-	x(in_sc_id_index, 6) \
-	x(sector, 7) \
-	x(status_type, 8) \
-	x(tax_rate, 9) \
-	x(trade_type, 10) \
-	x(zip_code, 11) \
-	x(address, 12) \
-	x(customers, 13) \
-	x(c_tax_id_index, 14) \
-	x(assets_history, 15) \
-	x(customer_account, 16) \
-	x(ca_id_index, 17) \
-	x(account_permission, 18) \
-	x(customer_taxrate, 19) \
-	x(watch_list, 20) \
-	x(watch_item, 21) \
-	x(company, 22) \
-	x(co_in_id_index, 23) \
-	x(co_name_index, 24) \
-	x(company_competitor, 25) \
-	x(daily_market, 26) \
-	x(financial, 27) \
-	x(last_trade, 28) \
-	x(news_item, 29) \
-	x(news_xref, 30) \
-	x(security, 31) \
-	x(security_index, 32) \
-	x(trade, 33) \
-	x(t_ca_id_index, 34) \
-	x(t_s_symb_index, 35) \
-	x(trade_request, 36) \
-	x(trade_history, 37) \
-	x(settlement, 38) \
-	x(cash_transaction, 39) \
-	x(broker, 40) \
-	x(b_name_index, 41) \
-	x(holding_history, 42) \
-	x(holding_summary, 43) \
-	x(holding, 44)
+	x(charge) \
+	x(commission_rate) \
+	x(exchange) \
+	x(industry) \
+	x(in_name_index) \
+	x(in_sc_id_index) \
+	x(sector) \
+	x(status_type) \
+	x(tax_rate) \
+	x(trade_type) \
+	x(zip_code) \
+	x(address) \
+	x(customers) \
+	x(c_tax_id_index) \
+	x(assets_history) \
+	x(customer_account) \
+	x(ca_id_index) \
+	x(account_permission) \
+	x(customer_taxrate) \
+	x(watch_list) \
+	x(watch_item) \
+	x(company) \
+	x(co_in_id_index) \
+	x(co_name_index) \
+	x(company_competitor) \
+	x(daily_market) \
+	x(financial) \
+	x(last_trade) \
+	x(news_item) \
+	x(news_xref) \
+	x(security) \
+	x(security_index) \
+	x(trade) \
+	x(t_ca_id_index) \
+	x(t_s_symb_index) \
+	x(trade_request) \
+	x(trade_history) \
+	x(settlement) \
+	x(cash_transaction) \
+	x(broker) \
+	x(b_name_index) \
+	x(holding_history) \
+	x(holding_summary) \
+	x(holding)
 #endif

@@ -109,8 +109,7 @@ public:
   virtual abstract_ordered_index *
   open_index(const std::string &name,
              size_t value_size_hint,
-             bool mostly_append = false,
-             FID fid = 0) = 0;
+             bool mostly_append = false) = 0;
 
   virtual void
   close_index(abstract_ordered_index *idx) = 0;
