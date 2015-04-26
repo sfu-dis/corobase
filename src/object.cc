@@ -1,3 +1,5 @@
+// DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS
+#if 0
 #include "object.h"
 
 object_vector::object_vector(unsigned long long nelems)
@@ -154,4 +156,4 @@ object_vector::upgrade_lock(table_lock_t *lock)
 }
 
 #endif
-
+#endif // end of [#if 0]
