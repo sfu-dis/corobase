@@ -19,7 +19,7 @@
 #include "str.hh"
 #include "ksearch.hh"
 
-#include "../object.h"
+#include "../dbcore/sm-oid.h"
 #include "../tuple.h"
 #include "../dbcore/xid.h"
 #include "../macros.h"
@@ -88,13 +88,7 @@ class basic_table {
 
     inline void print(FILE* f = 0, int indent = 0) const;
 
-	typedef object_vector node_vector_type;
-
-	inline node_vector_type* get_node_vector()
-	{
-		INVARIANT(node_vector);
-		return node_vector;
-	}
+    inline FID get_fid() { return fid_; }
 
 #if 0
     // return the sucessor of the version with rlsn (could be dirty)
@@ -160,13 +154,13 @@ class basic_table {
     }
 #endif
 
-	inline node_type* fetch_node( oid_type oid ) const
+    inline node_type* fetch_node(OID oid) const
 	{
-		ALWAYS_ASSERT( node_vector );
+        ALWAYS_ASSERT(fid_);
 		// NOTE: oid 0 indicates absence of the node
 		if( oid )
 		{
-			fat_ptr head = node_vector->begin(oid);
+            fat_ptr head = oidmgr->oid_get(fid_, oid);
 			if( head.offset() != 0 )
 			{
 				object* obj = (object*)head.offset();
@@ -177,8 +171,19 @@ class basic_table {
 	}
 
   private:
-	oid_type root_oid_;
-	node_vector_type* node_vector; 
+    OID root_oid_;
+    // FID of this tree, **not** of the table it indexes
+    // (note that the tree also uses indirection array)
+    // The table's FID is stored in base_txn_btree for that
+    // table. So don't break the separation of base_txn_btree
+    // and basic_table.
+    //
+    // tzwang: actually, we might want to use the same FID
+    // for the table and its index(es), so that after checkpointed
+    // this FID's OID array, we have both the index and version
+    // chain => simpler recovery as we don't need to rebuild the
+    // index(es) again.
+    FID fid_;
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,

@@ -57,9 +57,9 @@ class node_base : public make_nodeversion<P>::type {
 
 	typedef basic_table<P> basic_table_type;
 	basic_table_type* table_;
-	oid_type oid;
+    OID oid;
 
-	inline base_type* fetch_node( oid_type oid ) const
+    inline base_type* fetch_node(OID oid) const
 	{
 		return table_->fetch_node( oid );
 	}
@@ -156,9 +156,8 @@ class internode : public node_base<P> {
     kvtimestamp_t created_at_[P::debug_level > 0];
 
 	typedef basic_table<P> basic_table_type;
-	typedef object_vector node_vector_type;
-	oid_type child_oid_[width + 1];
-	oid_type parent_oid_; 
+    OID child_oid_[width + 1];
+    OID parent_oid_; 
     internode()
 	: node_base<P>(false), nkeys_(0), parent_oid_() {
     }
@@ -177,17 +176,17 @@ class internode : public node_base<P> {
 		n = new(n) internode<P>;
 
 		// get oid
-		node_vector_type* node_vector = table->get_node_vector();
-		oid_type oid = node_vector->alloc();
+        FID fid = table->get_fid();
+        OID oid = oidmgr->alloc_oid(fid);
 
 		// Node init
 		n->table_ = table;
 		n->oid = oid;
-        memset(n->child_oid_, 0, sizeof(oid_type)*(width+1));
+        memset(n->child_oid_, 0, sizeof(OID)*(width+1));
 
 		// drop to oid array
 		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
-		while(not node_vector->put( oid, new_head ));
+        oidmgr->oid_put_new(fid, oid, new_head);
 		return n;
 	}
 
@@ -234,12 +233,12 @@ class internode : public node_base<P> {
 
     void shift_up(int p, int xp, int n) {
 	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
-	for (oid_type* a = child_oid_ + p + n, *b = child_oid_ + xp + n; n; --a, --b, --n)
+    for (OID* a = child_oid_ + p + n, *b = child_oid_ + xp + n; n; --a, --b, --n)
 	    *a = *b;
     }
     void shift_down(int p, int xp, int n) {
 	memmove(ikey0_ + p, ikey0_ + xp, sizeof(ikey0_[0]) * n);
-	for (oid_type* a = child_oid_ + p + 1, * b = child_oid_ + xp+ 1; n; ++a, ++b, --n)
+    for (OID* a = child_oid_ + p + 1, * b = child_oid_ + xp+ 1; n; ++a, ++b, --n)
 	    *a = *b;
     }
 
@@ -283,7 +282,7 @@ class leafvalue {
 	return u_.v;
     }
 
-    oid_type layer() const {
+    OID layer() const {
 	return u_.o;
     }
 
@@ -296,7 +295,7 @@ class leafvalue {
 
   private:
     union {
-	oid_type o;					// Node objects
+    OID o;  // Node objects
 	value_type v;				// Record objects
 	uintptr_t x;
     } u_;
@@ -313,7 +312,6 @@ class leaf : public node_base<P> {
     typedef typename P::ikey_type ikey_type;
     typedef typename key_bound<width, P::bound_method>::type bound_type;
     typedef typename P::threadinfo_type threadinfo;
-	typedef object_vector node_vector_type;
 
     int8_t extrasize64_;
     int8_t nremoved_;
@@ -323,10 +321,10 @@ class leaf : public node_base<P> {
     leafvalue_type lv_[width];
     stringbag<uint32_t>* ksuf_;	// a real rockstar would save this space
 				// when it is unsed
-	oid_type parent_oid_; 
-	oid_type next_oid_;
+    OID parent_oid_; 
+    OID next_oid_;
 	bool next_lock_;
-	oid_type prev_oid_;
+    OID prev_oid_;
     kvtimestamp_t node_ts_;
     kvtimestamp_t created_at_[P::debug_level > 0];
     stringbag<uint16_t> iksuf_[0];
@@ -352,8 +350,8 @@ class leaf : public node_base<P> {
 		n = new(n) leaf<P>(sz, node_ts);
 
 		// get oid 
-		node_vector_type* node_vector = table->get_node_vector();
-		oid_type oid = node_vector->alloc();
+        FID fid = table->get_fid();
+        OID oid = oidmgr->alloc_oid(fid);
 
 		// node init
 		n->table_ = table;
@@ -362,8 +360,7 @@ class leaf : public node_base<P> {
 
 		// drop to oid array 
 		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
-        // FIXME: tzwang: so this actually won't fail at alL??
-		while(not node_vector->put( oid, new_head ));
+        oidmgr->oid_put_new(fid, oid, new_head);
 
 		return n;
 	}
@@ -551,7 +548,7 @@ template <typename P>
 void basic_table<P>::initialize(threadinfo& ti) {
 
     masstree_precondition(!root_oid_);
-	node_vector = new object_vector(1024*1024*1024);
+    fid_ = oidmgr->create_file(true);
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
 	root_oid_ = root->oid;
 }
