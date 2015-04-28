@@ -518,8 +518,10 @@ examine_writes:
         if (overwritten_tuple) {    // update
             ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
             volatile_write(overwritten_tuple->sstamp, LSN::make(cstamp, 0).to_log_ptr());
-            if (ct3 > overwritten_tuple->s2)
+            if (ct3) {
+                ASSERT(not overwritten_tuple->s2);
                 volatile_write(overwritten_tuple->s2, ct3);
+            }
         }
         tuple->clsn = xc->end.to_log_ptr();
         INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
