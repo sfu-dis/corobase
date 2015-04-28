@@ -122,19 +122,7 @@ rc_t base_txn_btree::do_tree_put(
     }
 #endif
 
-    // After read the latest committed, and holding the version:
-    // if the latest tuple in the chained is dirty then abort
-    // else
-    //   if the latest tuple in the chain is clean but latter than my ts then abort
-    // else
-    //   if CAS my tuple to the head failed (means sb. else acted faster) then abort
-    // else
-    //   succeeded!
-    //
-    // The above is hidden in the APIs provided by abstract tree and object.h.
-    // Here we just call the provided update_tulpe function which returns the
-    // result (either succeeded or failed, i.e., need to abort).
-
+    // first *committer* wins
     dbtuple *prev = oidmgr->oid_put_update(fid, oid, obj, t.xc);
 
     if (prev) { // succeeded
