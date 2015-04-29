@@ -328,10 +328,11 @@ class tpce_worker :
 				<< endl;
 		}
 
-		const unsigned base = coreid::num_cpus_online();
-		mee = mees[worker_id - base ];
-		MarketFeedInputBuffer = MarketFeedInputBuffers[worker_id - base ];
-		TradeResultInputBuffer = TradeResultInputBuffers[worker_id - base ];
+        auto i = worker_id % coreid::num_cpus_online();
+        mee = mees[i];
+        ALWAYS_ASSERT(i >= 0 and i < mees.size());
+        MarketFeedInputBuffer = MarketFeedInputBuffers[i];
+        TradeResultInputBuffer = TradeResultInputBuffers[i];
 		ALWAYS_ASSERT( TradeResultInputBuffer and MarketFeedInputBuffer and mee );
 	}
 
