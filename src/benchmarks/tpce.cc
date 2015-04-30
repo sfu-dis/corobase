@@ -1026,9 +1026,9 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
     inline_str_fixed<cTT_ID_len> req_trade_type;
 
 	TStatusAndTradeType type = pIn->StatusAndTradeType;
+    txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 	for( int i = 0; i < max_feed_len; i++ )
 	{
-		txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 		TTickerEntry ticker = pIn->Entries[i];
 
 		last_trade::key k_lt(ticker.symbol);
@@ -1144,8 +1144,6 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 			TradeRequestBuffer.emplace_back( request );
 		}
 
-		try_catch(db->commit_txn(txn));
-
 		pOut->send_len += request_list_cursor.size();
 		for( size_t i = 0; i < request_list_cursor.size(); i++ )
 		{
@@ -1153,6 +1151,8 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 		}
 		TradeRequestBuffer.clear();
 	}
+
+    try_catch(db->commit_txn(txn));
     return {RC_TRUE};
 }
 
