@@ -87,9 +87,7 @@ private:
       , rl_bitmap(rl_bitmap_t(0))
       , sstamp(NULL_PTR)
       , xstamp(0)
-#ifdef USE_PARALLEL_SSN
       , bstamp(0)
-#endif
 #endif
 #ifdef USE_PARALLEL_SSI
       , s2(0)
