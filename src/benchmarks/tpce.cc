@@ -1026,6 +1026,16 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
     inline_str_fixed<cTT_ID_len> req_trade_type;
 
 	TStatusAndTradeType type = pIn->StatusAndTradeType;
+    // FIXME (tzwang): Spec (v1.3) says to use a new tx in the loop below,
+    // so essentially this is a super-tx with many sub-txs.
+    // But it didn't specify what to do if some sub txs committed while
+    // others aborted. This complicates our stats too because the stats
+    // procedure only cares about the return value of the caller of this
+    // frame. So we move the new_txn out side the loop, making it a large
+    // transaction.
+    //
+    // Seems hstore (osdl dbt5) does this too:
+    // https://github.com/apavlo/h-store/blob/master/src/benchmarks/edu/brown/benchmark/tpce/procedures/MarketFeed.java
     txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 	for( int i = 0; i < max_feed_len; i++ )
 	{
