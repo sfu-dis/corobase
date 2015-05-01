@@ -256,8 +256,12 @@ xid_get_context(XID x) {
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 bool __attribute__((noinline))
 wait_for_commit_result(xid_context *xc) {
-    while (volatile_read(xc->state) == TXN_COMMITTING) { /* spin */ }
-    return volatile_read(xc->state) == TXN_CMMTD;
+    txn_state state;
+    do {
+        state = volatile_read(xc->state);
+    }
+    while (state != TXN_CMMTD and state != TXN_ABRTD);
+    return state == TXN_CMMTD;
 }
 #endif
 
