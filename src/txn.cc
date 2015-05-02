@@ -825,50 +825,48 @@ transaction::do_node_read(
 rc_t
 transaction::ssn_read(dbtuple *tuple)
 {
-    auto tuple_sstamp = volatile_read(tuple->sstamp);
-    if (not tuple->is_old(xc)) {
-        auto v_clsn = tuple->clsn.offset();
-        // \eta - largest predecessor. So if I read this tuple, I should commit
-        // after the tuple's creator (trivial, as this is committed version, so
-        // this tuple's clsn can only be a predecessor of me): so just update
-        // my \eta if needed.
-        if (xc->pstamp < v_clsn)
-            xc->pstamp = v_clsn;
+    auto v_clsn = tuple->clsn.offset();
+    // \eta - largest predecessor. So if I read this tuple, I should commit
+    // after the tuple's creator (trivial, as this is committed version, so
+    // this tuple's clsn can only be a predecessor of me): so just update
+    // my \eta if needed.
+    if (xc->pstamp < v_clsn)
+        xc->pstamp = v_clsn;
 
-        // Now if this tuple was overwritten by somebody, this means if I read
-        // it, that overwriter will have anti-dependency on me (I must be
-        // serialized before the overwriter), and it already committed (as a
-        // successor of mine), so I need to update my \pi for the SSN check.
-        // This is the easier case of anti-dependency (the other case is T1
-        // already read a (then latest) version, then T2 comes to overwrite it).
-        if (tuple_sstamp == NULL_PTR) {   // no overwrite so far
-            serial_register_reader_tx(tuple, xc->owner);
+    auto tuple_sstamp = volatile_read(tuple->sstamp);
+    // If there's no (committed) overwrite so far, we need to track this read,
+    // unless it's an old version.
+    if (tuple_sstamp == NULL_PTR or tuple_sstamp.asi_type() == fat_ptr::ASI_XID) {
+        // need to register as reader no matter it's an old version or not
+        serial_register_reader_tx(tuple, xc->owner);
+        if (tuple->is_old(xc)) {
+            uint64_t bs = 0;
+            do {
+                bs = volatile_read(tuple->bstamp);
+            }
+            while (tuple->bstamp < xc->begin.offset() and
+                   not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
+        }
+        else {
+            // Now if this tuple was overwritten by somebody, this means if I read
+            // it, that overwriter will have anti-dependency on me (I must be
+            // serialized before the overwriter), and it already committed (as a
+            // successor of mine), so I need to update my \pi for the SSN check.
+            // This is the easier case of anti-dependency (the other case is T1
+            // already read a (then latest) version, then T2 comes to overwrite it).
             read_set.emplace_back(tuple);
         }
-        else if (tuple_sstamp.asi_type() == fat_ptr::ASI_LOG) {
-            if (xc->sstamp > tuple_sstamp.offset())
-                xc->sstamp = tuple_sstamp.offset(); // \pi
-        }
+    }
+    else {  // have committed overwrite
+        ASSERT(tuple_sstamp.asi_type() == fat_ptr::ASI_LOG);
+        if (xc->sstamp > tuple_sstamp.offset())
+            xc->sstamp = tuple_sstamp.offset(); // \pi
+    }
 
 #ifdef DO_EARLY_SSN_CHECKS
-        if (not ssn_check_exclusion(xc))
-            return {RC_ABORT_SERIAL};
+    if (not ssn_check_exclusion(xc))
+        return {RC_ABORT_SERIAL};
 #endif
-    }
-    else {
-        if (tuple_sstamp != NULL_PTR and tuple_sstamp.asi_type() == fat_ptr::ASI_LOG) {
-            if (xc->sstamp > tuple_sstamp.offset())
-                xc->sstamp = tuple_sstamp.offset(); // \pi
-        }
-
-        uint64_t bs = 0;
-        do {
-            bs = volatile_read(tuple->bstamp);
-        }
-        while (tuple->bstamp < xc->begin.offset() and
-               not __sync_bool_compare_and_swap(&tuple->bstamp, bs, xc->begin.offset()));
-        serial_register_reader_tx(tuple, xc->owner);
-    }
     return {RC_TRUE};
 }
 #endif
