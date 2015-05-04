@@ -758,6 +758,12 @@ transaction::try_insert_new_tuple(
     ASSERT(tuple->size);
     log->log_insert(fid, oid, fat_ptr::make((void *)value->data(), size_code),
                     DEFAULT_ALIGNMENT_BITS, NULL);
+
+    record_size = align_up(key->size());
+    size_code = encode_size_aligned(record_size);
+    log->log_insert_index(fid, oid, fat_ptr::make((void *)key->data(), size_code),
+                          DEFAULT_ALIGNMENT_BITS, NULL);
+
     // update write_set
     write_set.emplace_back(tuple, fid, oid);
     return true;

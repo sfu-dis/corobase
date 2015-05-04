@@ -113,31 +113,32 @@ enum log_record_type : uint8_t {
      */
     LOG_INSERT = LOG_FLAG_HAS_PAYLOAD | 0x1,
     LOG_INSERT_EXT = LOG_FLAG_IS_EXT | LOG_INSERT,
+    LOG_INSERT_INDEX = LOG_FLAG_HAS_PAYLOAD | 0x2,
 
     /* Update a record. Version may be embedded or external. */
-    LOG_UPDATE = LOG_FLAG_HAS_PAYLOAD | 0x2,
+    LOG_UPDATE = LOG_FLAG_HAS_PAYLOAD | 0x3,
     LOG_UPDATE_EXT = LOG_FLAG_IS_EXT | LOG_UPDATE,
 
     /* Delete a record. No payload */
-    LOG_DELETE = 0x3,
+    LOG_DELETE = 0x4,
 
     /* Record the relocation of a record's contents to somewhere other
        than the log. The data must be persistent before logging the
        change (no further checks or delays will be made). Used by
        system threads to move cold records to heap storage.
      */
-    LOG_RELOCATE = LOG_FLAG_HAS_PAYLOAD | LOG_FLAG_IS_EXT | 0x4,
+    LOG_RELOCATE = LOG_FLAG_HAS_PAYLOAD | LOG_FLAG_IS_EXT | 0x5,
 
     /* Identify an earlier log block in this transaction's block
        chain, which must be processed before this one. Optional, but
        always the first record in a log block if present.
      */
-    LOG_OVERFLOW = LOG_FLAG_HAS_LSN | 0x5,
+    LOG_OVERFLOW = LOG_FLAG_HAS_LSN | 0x6,
     
     /* Skip to the next log block. Always (and only) used by the last
        record in a log block. 
     */
-    LOG_SKIP = LOG_FLAG_HAS_LSN | 0x6,
+    LOG_SKIP = LOG_FLAG_HAS_LSN | 0x7,
 
     /* Sometimes we need to store a chunk of data in the log that is
        not a normal log block. To avoid confusing log scanners,

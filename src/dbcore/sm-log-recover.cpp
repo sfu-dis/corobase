@@ -274,6 +274,8 @@ get_type(log_record_type tp)
     case LOG_INSERT:
     case LOG_INSERT_EXT:
         return sm_log_scan_mgr::LOG_INSERT;
+    case LOG_INSERT_INDEX:
+        return sm_log_scan_mgr::LOG_INSERT_INDEX;
         
     case LOG_UPDATE:
     case LOG_UPDATE_EXT:

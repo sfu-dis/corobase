@@ -40,6 +40,10 @@ struct sm_tx_log {
        because it has been assigned a location.
     */
     void log_insert(FID f, OID o, fat_ptr p, int abits, fat_ptr *pdest);
+
+    /* Record an insert to the index. p stores a pointer to the key value
+     */
+    void log_insert_index(FID f, OID o, fat_ptr p, int abits, fat_ptr *pdest);
     
     /* Record an update. Like an insertion, except that the OID is
        assumed to already have been allocated.
@@ -120,7 +124,7 @@ protected:
 struct sm_log_scan_mgr {
     static size_t const NO_PAYLOAD = -1;
     
-    enum record_type { LOG_INSERT, LOG_UPDATE, LOG_RELOCATE, LOG_DELETE };
+    enum record_type { LOG_INSERT, LOG_INSERT_INDEX, LOG_UPDATE, LOG_RELOCATE, LOG_DELETE, LOG_CHKPT };
 
     /* A cursor for iterating over log records, whether those of a single
        transaction or all which follow some arbitrary starting point.
