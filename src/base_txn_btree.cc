@@ -210,21 +210,14 @@ rc_t base_txn_btree::do_tree_put(
 #endif
 
         INVARIANT(t.log);
-        // FIXME: tzwang: so we insert log here, assuming the logmgr only assigning
-        // pointers, instead of doing memcpy here (looks like this is the case unless
-        // the record is tooooo large).
-        // for simplicity and alignment, we write the whole varstr
-        // (because varstr's data must be the last field, which has a size
-        // field (size_t) before it; putting data before size will make it hard to
-        // get the data field 16-byte alignment, although varstr* itself is aligned
-        // by posix_memalign).
-        //
-        // FIXME: combine the size field in dbtuple and varstr.
+        // the logmgr only assignspointers, instead of doing memcpy here,
+        // unless the record is tooooo large.
+        const size_t sz = v ? v->size(): 0;
         ASSERT((not sz and not v) or (sz and v and sz == v->size()));
-        auto record_size = align_up(sz + v ? sizeof(varstr) : 0);
+        auto record_size = align_up(sz);
         auto size_code = encode_size_aligned(record_size);
         ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
-        t.log->log_update(this->fid, oid, fat_ptr::make((void *)v, size_code),
+        t.log->log_update(this->fid, oid, fat_ptr::make(v ? (void *)v->data() : NULL, size_code),
                           DEFAULT_ALIGNMENT_BITS, NULL);
         return rc_t{RC_TRUE};
     }

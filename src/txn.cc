@@ -750,14 +750,13 @@ transaction::try_insert_new_tuple(
 #endif
 
     // insert to log
-    // FIXME: tzwang: leave pdest as null and FID is always 1 now.
     INVARIANT(log);
     ASSERT(tuple->size == value->size());
-    auto record_size = align_up((size_t)tuple->size + sizeof(varstr));
+    auto record_size = align_up((size_t)tuple->size);
     auto size_code = encode_size_aligned(record_size);
     ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));
     ASSERT(tuple->size);
-    log->log_insert(fid, oid, fat_ptr::make((void *)value, size_code),
+    log->log_insert(fid, oid, fat_ptr::make((void *)value->data(), size_code),
                     DEFAULT_ALIGNMENT_BITS, NULL);
     // update write_set
     write_set.emplace_back(tuple, fid, oid);
