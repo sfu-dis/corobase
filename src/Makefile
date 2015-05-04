@@ -155,6 +155,7 @@ SRCFILES = allocator.cc \
 	core.cc \
 	counter.cc \
 	memory.cc \
+	object.cc \
 	rcu-wrapper.cc \
 	stats_server.cc \
 	thread.cc \

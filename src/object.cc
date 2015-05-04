@@ -1,6 +1,34 @@
+#include "object.h"
+#include "tuple.h"
+
+object*
+object::create_tuple_object(const varstr *tuple_value, bool do_write)
+{
+    // Calculate Tuple Size
+    const size_t sz = tuple_value ? tuple_value->size(): 0;
+    size_t alloc_sz = sizeof(dbtuple) + sizeof(object) + align_up(sz);
+
+    // Allocate a version
+    object *obj = NULL;
+#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+    obj = t.op->get(alloc_sz);
+    if (not obj)
+#endif
+        obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
+
+    // Tuple setup
+    dbtuple* tuple = (dbtuple *)obj->payload();
+    tuple = dbtuple::init((char*)tuple, sz);
+    tuple->pvalue = (varstr *)tuple_value;
+    if (do_write)
+        tuple->do_write();
+    else
+        tuple->pvalue = (varstr *)tuple_value;
+    return obj;
+}
+
 // DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS
 #if 0
-#include "object.h"
 
 object_vector::object_vector(unsigned long long nelems)
 #ifdef PHANTOM_PROT_TABLE_LOCK

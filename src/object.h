@@ -1,6 +1,9 @@
 #pragma once
-
+#include "varstr.h"
 #include "dbcore/sm-common.h"
+#include "dbcore/sm-alloc.h"
+
+class dbtuple;
 class object
 {
 	public:
@@ -9,6 +12,8 @@ class object
 
 		fat_ptr _next;
         uint64_t _size;
+        dbtuple *tuple() { return (dbtuple *)payload(); }
+        static object *create_tuple_object(const varstr *tuple_value, bool do_write);
 };
 
 // DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS

@@ -68,22 +68,8 @@ rc_t base_txn_btree::do_tree_put(
                                  // for now [since this would indicate a suboptimality]
     t.ensure_active();
 
-    // Calculate Tuple Size
-    const size_t sz = v ? v->size(): 0;
-    size_t alloc_sz = sizeof(dbtuple) + sizeof(object) +  align_up(sz);
-
-    // Allocate a version
-    object *obj = NULL;
-#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
-    obj = t.op->get(alloc_sz);
-    if (not obj)
-#endif
-        obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
-
-    // Tuple setup
-    dbtuple* tuple = (dbtuple *)obj->payload();
-    tuple = dbtuple::init((char*)tuple, sz);
-    tuple->pvalue = (varstr *)v;
+    object *obj = object::create_tuple_object(v, false);
+    dbtuple *tuple = obj->tuple();
 
     // initialize the version
     tuple->clsn = t.xid.to_ptr();		// XID state is set
