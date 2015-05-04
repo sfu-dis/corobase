@@ -15,7 +15,6 @@
 #include "../stats_server.h"
 #include "bench.h"
 #include "ndb_wrapper.h"
-#include "ndb_wrapper_impl.h"
 //#include "kvdb_wrapper.h"
 //#include "kvdb_wrapper_impl.h"
 #if !NO_MYSQL
