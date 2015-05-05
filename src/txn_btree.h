@@ -38,7 +38,7 @@ private:
   stablize(transaction &t, const varstr &s)
   {
     varstr * const px = t.string_allocator()(s.size());
-    *px = s;
+    px->copy_from(s.data(), s.size());
     return px;
   }
 
