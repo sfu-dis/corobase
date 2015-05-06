@@ -1,3 +1,4 @@
+#include <string>
 #include "sm-log-impl.h"
 
 using namespace RCU;
@@ -28,6 +29,10 @@ namespace {
 }
 
 void
+sm_tx_log::log_chkpt() {
+}
+
+void
 
 sm_tx_log::log_insert_index(FID f, OID o, fat_ptr ptr, int abits, fat_ptr *pdest) {
     get_log_impl(this)->add_payload_request(LOG_INSERT_INDEX, f, o, ptr, abits, pdest);
@@ -41,6 +46,21 @@ sm_tx_log::log_insert(FID f, OID o, fat_ptr ptr, int abits, fat_ptr *pdest) {
 void
 sm_tx_log::log_update(FID f, OID o, fat_ptr ptr, int abits, fat_ptr *pdest) {
     get_log_impl(this)->add_payload_request(LOG_UPDATE, f, o, ptr, abits, pdest);
+}
+
+void
+sm_tx_log::log_fid(FID f, const std::string &name)
+{
+    auto size = align_up(name.length()) + 1;
+    auto size_code = encode_size_aligned(size);
+    char *buf = (char *)malloc(size);
+    memset(buf, '\0', size);
+    memcpy(buf, (char *)name.c_str(), size-1);
+    ASSERT(buf[size-1] == '\0');
+    // only use the logrec's fid field, payload is name
+    get_log_impl(this)->add_payload_request(LOG_FID, f, 0,
+                            fat_ptr::make(buf, size_code),
+                            DEFAULT_ALIGNMENT_BITS, NULL);
 }
 
 static

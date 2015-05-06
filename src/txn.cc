@@ -33,8 +33,8 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     absent_set.set_empty_key(NULL);    // google dense map
 #endif
     RCU::rcu_enter();
-    log = logger->new_tx_log();
-    xc->begin = logger->cur_lsn();
+    log = logmgr->new_tx_log();
+    xc->begin = logmgr->cur_lsn();
     xc->end = INVALID_LSN;
     xc->state = TXN_EMBRYO;
 }
@@ -752,16 +752,23 @@ transaction::try_insert_new_tuple(
     // insert to log
     INVARIANT(log);
     ASSERT(tuple->size == value->size());
-    auto record_size = align_up((size_t)tuple->size);
+    auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
     auto size_code = encode_size_aligned(record_size);
     ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));
     ASSERT(tuple->size);
-    log->log_insert(fid, oid, fat_ptr::make((void *)value->data(), size_code),
+    // log the whole varstr so that recovery can figure out the real size
+    // of the tuple, instead of using the decoded (larger-than-real) size.
+    log->log_insert(fid, oid, fat_ptr::make((void *)value, size_code),
                     DEFAULT_ALIGNMENT_BITS, NULL);
 
-    record_size = align_up(key->size());
+    // Note: here we log the whole key varstr so that recovery
+    // can figure out the real key length with key->size(), otherwise
+    // it'll have to use the decoded (inaccurate) size (and so will
+    // build a different index...).
+    record_size = align_up(sizeof(varstr) + key->size());
+    ASSERT((char *)key->data() == (char *)key + sizeof(varstr));
     size_code = encode_size_aligned(record_size);
-    log->log_insert_index(fid, oid, fat_ptr::make((void *)key->data(), size_code),
+    log->log_insert_index(fid, oid, fat_ptr::make((void *)key, size_code),
                           DEFAULT_ALIGNMENT_BITS, NULL);
 
     // update write_set

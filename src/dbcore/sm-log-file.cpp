@@ -405,8 +405,11 @@ sm_log_file_mgr::sm_log_file_mgr(char const *dname, size_t ssize)
         THROW_IF(chkpt_found or durable_found or nxt_seg_found, log_file_error,
                  "Found checkpoint, durable marker and/or new segment file, but no log segments");
         _make_new_log();
+        sm_log::need_recovery = false;
         return;
     }
+
+    sm_log::need_recovery = true;
     
     THROW_IF(tmp.size() > NUM_LOG_SEGMENTS, log_file_error,
              "Log directory contains too many segment files: %zd",

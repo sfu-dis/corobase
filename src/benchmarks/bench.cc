@@ -17,6 +17,7 @@
 #include "../allocator.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-trace.h"
+#include "../dbcore/sm-log.h"
 
 #ifdef USE_JEMALLOC
 //cannot include this header b/c conflicts with malloc.h
@@ -186,8 +187,8 @@ bench_runner::run()
 {
 	heap_prefault();
   // load data
-  const vector<bench_loader *> loaders = make_loaders();
-  {
+  if (not sm_log::need_recovery) {
+    const vector<bench_loader *> loaders = make_loaders();
     spin_barrier b(loaders.size());
     const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
     {
@@ -206,6 +207,8 @@ bench_runner::run()
     const double delta_mb = double(delta)/1048576.0;
     if (verbose)
       cerr << "DB size: " << delta_mb << " MB" << endl;
+
+    delete_pointers(loaders);
   }
 
   if (!no_reset_counters) {
@@ -437,7 +440,6 @@ bench_runner::run()
   }
   open_tables.clear();
 
-  delete_pointers(loaders);
   delete_pointers(workers);
 }
 

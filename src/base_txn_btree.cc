@@ -196,15 +196,21 @@ rc_t base_txn_btree::do_tree_put(
 #endif
 
         INVARIANT(t.log);
-        // the logmgr only assignspointers, instead of doing memcpy here,
-        // unless the record is tooooo large.
-        const size_t sz = v ? v->size(): 0;
-        ASSERT((not sz and not v) or (sz and v and sz == v->size()));
-        auto record_size = align_up(sz);
-        auto size_code = encode_size_aligned(record_size);
-        ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
-        t.log->log_update(this->fid, oid, fat_ptr::make(v ? (void *)v->data() : NULL, size_code),
-                          DEFAULT_ALIGNMENT_BITS, NULL);
+        if (not v)
+            t.log->log_delete(this->fid, oid);
+        else {
+            // the logmgr only assignspointers, instead of doing memcpy here,
+            // unless the record is tooooo large.
+            const size_t sz = v ? v->size(): 0;
+            ASSERT((not sz and not v) or (sz and v and sz == v->size()));
+            auto record_size = align_up(sz) + sizeof(varstr);
+            auto size_code = encode_size_aligned(record_size);
+            ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
+            // log the whole varstr so that recovery can figure out the real size
+            // of the tuple, instead of using the decoded (larger-than-real) size.
+            t.log->log_update(this->fid, oid, fat_ptr::make(v ? (void *)v : NULL, size_code),
+                              DEFAULT_ALIGNMENT_BITS, NULL);
+        }
         return rc_t{RC_TRUE};
     }
     else {  // somebody else acted faster than we did

@@ -6,6 +6,8 @@
 #include <map>
 
 sm_oid_mgr *oidmgr = NULL;
+// maps table name to its fid
+std::unordered_map<std::string, FID> fid_map;
 
 namespace {
 #if 0
@@ -290,6 +292,7 @@ sm_oid_mgr_impl::create_file(bool needs_alloc)
        hand, we create the corresponding OID array and allocator.
      */
     auto f = thread_allocate(this, OBJARRAY_FID);
+    ASSERT(not file_exists(f));
     auto ptr = oid_array::make();
     oid_put(OBJARRAY_FID, f, ptr);
     if (needs_alloc) {
@@ -302,6 +305,54 @@ sm_oid_mgr_impl::create_file(bool needs_alloc)
         oa->ensure_size(cap);
     }
     return f;
+}
+
+/* Create a file with given FID f.
+ * WARNING: this is for recovery use only; there's no CC for it.
+ * Caller has full responsibility.
+ */
+void
+sm_oid_mgr_impl::recreate_file(FID f)
+{
+    ASSERT(not file_exists(f));
+    auto ptr = oid_array::make();
+    oid_put(OBJARRAY_FID, f, ptr);
+    ASSERT(file_exists(f));
+    // Allocator doesn't exist for now, need to call
+    // recreate_allocator(f) later after we figured
+    // out the high watermark by scanning the log.
+}
+
+/* Create the allocator for a given FID f.
+ * This also bootstraps the OID array that contains FIDs.
+ * WARNING: for recovery only; no CC for it.
+ * Caller has full responsibility.
+ */
+void
+sm_oid_mgr_impl::recreate_allocator(FID f, OID m)
+{
+    printf("[Recovery] recreate allocator %d, himark=%d\n", f, m);
+    auto *alloc = sm_allocator::make();
+    auto p = fat_ptr::make(alloc, 1);
+#ifndef NDEBUG
+    // Special case: internal files are already initialized
+    if (f != ALLOCATOR_FID and f != OBJARRAY_FID and f != METADATA_FID)
+        ASSERT(oid_get(ALLOCATOR_FID, f) == NULL_PTR);
+#endif
+    oid_put(ALLOCATOR_FID, f, p);
+
+    // if m == 0, then the table hasn't been inserted, no need to mess with it
+    if (not m)
+        return;
+
+    // Set capacity_mark = hiwater_mark = m, the cache machinery
+    // will do the rest (note the +64 to avoid duplicates)
+    alloc->head.capacity_mark = alloc->head.hiwater_mark = (m + 64);
+    ASSERT(file_exists(f));
+    fat_ptr ptr = oid_get(OBJARRAY_FID, f);
+    oid_array *oa = ptr;
+    ASSERT(oa);
+    oa->ensure_size(alloc->head.capacity_mark);
 }
 
 void
@@ -379,6 +430,13 @@ sm_oid_mgr_impl::get_array(FID f)
     return oa;
 }
 
+bool
+sm_oid_mgr_impl::file_exists(FID f)
+{
+    sm_oid_mgr_impl::oid_array *oa = *files->get(f);
+    return oa != NULL;
+}
+
 void
 sm_oid_mgr_impl::lock_file(FID f)
 {
@@ -402,6 +460,7 @@ void
 sm_oid_mgr::log_chkpt(sm_heap_mgr *hm, sm_tx_log *tx)
 {
 #warning TODO: take checkpoint
+    tx->log_chkpt();
 }
 
 FID
@@ -410,6 +469,23 @@ sm_oid_mgr::create_file(bool needs_alloc)
     return get_impl(this)->create_file(needs_alloc);
 }
 
+void
+sm_oid_mgr::recreate_file(FID f)
+{
+    return get_impl(this)->recreate_file(f);
+}
+
+void
+sm_oid_mgr::recreate_allocator(FID f, OID m)
+{
+    return get_impl(this)->recreate_allocator(f, m);
+}
+
+bool
+sm_oid_mgr::file_exists(FID f)
+{
+    return get_impl(this)->file_exists(f);
+}
 
 void
 sm_oid_mgr::destroy_file(FID f)
@@ -432,6 +508,8 @@ alloc:
     auto o = thread_allocate(get_impl(this), f);
     if (unlikely(o == 0))
         goto alloc;
+
+    ASSERT(oid_get(f, o) == NULL_PTR);
     return o;
 }
 

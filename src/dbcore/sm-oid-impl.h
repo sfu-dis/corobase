@@ -100,7 +100,11 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
     void unlock_file(FID f);
 
     fat_ptr *oid_access(FID f, OID o);
-    
+
+    bool file_exists(FID f);
+    void recreate_file(FID f);    // for recovery only
+    void recreate_allocator(FID f, OID m);  // for recovery only
+
     /* And here they all are! */
     oid_array *files;
 

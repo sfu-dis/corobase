@@ -1,4 +1,5 @@
 #pragma once
+#include <unordered_map>
 
 #include "abstract_db.h"
 #include "../txn_btree.h"
@@ -25,6 +26,7 @@ protected:
 public:
 
   ndb_wrapper(const char *logdir, size_t segsize, size_t bufsize);
+  ~ndb_wrapper() { RCU::rcu_deregister(); }
 
   virtual ssize_t txn_max_batch_size() const OVERRIDE { return 100; }
 
@@ -51,11 +53,12 @@ public:
 };
 
 class ndb_ordered_index : public abstract_ordered_index {
+    friend class sm_log;    // for recover_index()
 protected:
   typedef private_::ndbtxn ndbtxn;
 
 public:
-  ndb_ordered_index(const std::string &name, size_t value_size_hint, bool mostly_append);
+  ndb_ordered_index(const std::string &name, FID fid, size_t value_size_hint, bool mostly_append);
   virtual rc_t get(
       void *txn,
       const varstr &key,
