@@ -146,6 +146,13 @@ enum log_record_type : uint8_t {
      */
     LOG_FAT_SKIP = LOG_SKIP | LOG_FLAG_HAS_PAYLOAD, 
 
+    /* A chkpt record
+     */
+    LOG_CHKPT = LOG_FLAG_HAS_PAYLOAD | 0x8,
+
+    /* Records the creation of an FID with a given table name
+     */
+    LOG_FID = LOG_FLAG_HAS_PAYLOAD | 0x9,
 };
 
 // log records are 16B sans payload

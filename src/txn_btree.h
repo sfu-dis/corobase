@@ -64,8 +64,9 @@ public:
 
   txn_btree(size_type value_size_hint = 128,
             bool mostly_append = false,
-            const std::string &name = "<unknown>")
-    : base_txn_btree(value_size_hint, mostly_append, name)
+            const std::string &name = "<unknown>",
+            FID fid = 0)
+    : base_txn_btree(value_size_hint, mostly_append, name, fid)
   {}
 
   inline rc_t

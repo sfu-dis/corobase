@@ -2,6 +2,8 @@
 #ifndef __SM_LOG_IMPL_H
 #define __SM_LOG_IMPL_H
 
+#include "../varstr.h"
+
 #include "sm-log-defs.h"
 #include "sm-log-alloc.h"
 

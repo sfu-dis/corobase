@@ -230,9 +230,10 @@ sm_allocator::drain_cache(thread_cache *tc, uint32_t target)
         
     // drain to L1 (all, unless L1 and L2 were both full)
     auto l1_target = min(target, L1_CAPACITY - head.l1_size);
+#ifndef NDEBUG
     for (size_t i=0; i < tc->nentries; i++)
         ASSERT(tc->entries[i] < head.hiwater_mark);
-    
+#endif
     tc->nentries -= l1_target;
     objcopy(&l1[head.l1_size], &tc->entries[tc->nentries], l1_target);
     head.l1_size += l1_target;

@@ -14,6 +14,7 @@
 using namespace TXN;
 
 class base_txn_btree {
+    friend class sm_log;    // for recover_index()
 public:
 
   typedef dbtuple::size_type size_type;
@@ -29,16 +30,17 @@ public:
 
   base_txn_btree(size_type value_size_hint = 128,
             bool mostly_append = false,
-            const std::string &name = "<unknown>")
+            const std::string &name = "<unknown>",
+            FID fid = 0)
     : value_size_hint(value_size_hint),
       name(name),
-      fid(oidmgr->create_file(true)),
+      fid(fid),
       been_destructed(false)
   {
 #ifdef TRACE_FOOTPRINT
     TRACER::register_table((uintptr_t)underlying_btree.get_tuple_vector(), name);
 #endif
-    ALWAYS_ASSERT(fid);
+    ALWAYS_ASSERT(fid and this->fid);
   }
 
   ~base_txn_btree()

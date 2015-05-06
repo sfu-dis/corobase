@@ -12,27 +12,20 @@
 #include "../txn.h"
 #include "../tuple.h"
 
-sm_log* transaction_base::logger = NULL;
-
 ndb_wrapper::ndb_wrapper(const char *logdir,
     size_t segsize,
     size_t bufsize)
 {
   ALWAYS_ASSERT(logdir);
-  INVARIANT(!transaction_base::logger);
+  INVARIANT(!logmgr);
   INVARIANT(!oidmgr);
-
-  // FIXME: tzwang: dummy recovery for now
-  auto no_recover = [](void*, sm_log_scan_mgr*, LSN, LSN)->void {
-      SPAM("Log recovery is a no-op here\n");
-  };
 
   RCU::rcu_register();
   RCU::rcu_enter();
-  transaction_base::logger = sm_log::new_log(logdir, segsize, no_recover, NULL, bufsize);
-  oidmgr = sm_oid_mgr::create(NULL, NULL);
+  logmgr = sm_log::new_log(logdir, segsize, sm_log::recover, NULL, bufsize);
+  ASSERT(oidmgr);
   RCU::rcu_exit();
-  RCU::rcu_deregister();
+  // rcu_deregister in dtor
 }
 
 size_t
@@ -94,7 +87,33 @@ ndb_wrapper::print_txn_debug(void *txn) const
 abstract_ordered_index *
 ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append)
 {
-  return new ndb_ordered_index(name, value_size_hint, mostly_append);
+  FID fid = 0;
+
+  // See if we already have an FID for this table (recovery did it)
+  std::unordered_map<std::string, FID>::const_iterator it = fid_map.find(name);
+  if (it != fid_map.end())
+      fid = it->second;
+  else {
+      fid = oidmgr->create_file(true);
+      // log [table name, FID]
+      RCU::rcu_enter();
+      ASSERT(logmgr);
+      sm_tx_log *log = logmgr->new_tx_log();
+      log->log_fid(fid, name);
+      log->commit(NULL);
+      RCU::rcu_exit();
+  }
+  ASSERT(fid);
+  fid_map.emplace(name, fid);
+  auto *index = new ndb_ordered_index(name, fid, value_size_hint, mostly_append);
+  // also replay the index here
+  // FIXME: parallelize callers of open_index so replay can be parallel
+  if (it != fid_map.end()) {
+      RCU::rcu_enter();
+      logmgr->recover_index(fid, index);
+      RCU::rcu_exit();
+  }
+  return index;
 }
 
 void
@@ -104,8 +123,8 @@ ndb_wrapper::close_index(abstract_ordered_index *idx)
 }
 
 ndb_ordered_index::ndb_ordered_index(
-    const std::string &name, size_t value_size_hint, bool mostly_append)
-  : name(name), btr(value_size_hint, mostly_append, name)
+    const std::string &name, FID fid, size_t value_size_hint, bool mostly_append)
+  : name(name), btr(value_size_hint, mostly_append, name, fid)
 {
   // for debugging
   //std::cerr << name << " : btree= "

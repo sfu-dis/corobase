@@ -1,8 +1,14 @@
 #include "sm-log-impl.h"
-
+#include "sm-oid.h"
+#include "sm-oid-impl.h"
+#include "../benchmarks/ndb_wrapper.h"
+#include "../txn_btree.h"
 #include <cstring>
 
 using namespace RCU;
+
+sm_log *logmgr = NULL;
+bool sm_log::need_recovery = false;
 
 void
 sm_log::load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits)
@@ -22,6 +28,7 @@ sm_log::new_log(char const *dname, size_t segsz,
                 sm_log_recover_function *rfn, void *rarg,
                 size_t bufsz)
 {
+    need_recovery = false;
     return new sm_log_impl(dname, segsz, rfn, rarg, bufsz);
 }
 
@@ -93,4 +100,217 @@ sm_log::wait_for_durable_lsn(LSN dlsn)
 {
     auto *self = get_impl(this);
     self->_lm.wait_for_durable(dlsn.offset());
+}
+
+/* The main recovery function.
+ *
+ * Without checkpointing, recovery starts with an empty, new oidmgr, and then
+ * scans the log to insert/update **versions**.
+ *
+ * FIDs/OIDs met during the above scan are blindly inserted to corresponding
+ * object arrays, without touching the allocator (thru ensure_size and
+ * oid_getput interfaces).
+ *
+ * The above scan also figures out the <FID, table name> pairs for all tables to
+ * rebuild their indexes. The max OID is also gathered for each FID, including
+ * the internal files (OBJARRAY_FID etc.) to recover allocator status.
+ *
+ * After the above scan, an allocator is made for each FID with its hiwater_mark
+ * and capacity_mark updated to the FID's max OID+64. This allows the oidmgr to
+ * allocate new OIDs > max OID.
+ *
+ * Note that alloc_oid hasn't been used so far, and the caching structures
+ * should all be empty.
+ *
+ * A second scan then starts (again from the beginning of the log) to rebuild
+ * indexes. Note that the previous step on recreate allocators must be done
+ * before index rebuild, because each index's tree data structure will use
+ * create_file and alloc_oid to store their nodes. So we need to make the OID
+ * allocators (esp. the internal files) ready to avoid allocating already-
+ * allocated OIDs.
+ */
+void
+sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end)
+{
+    // The hard case: no chkpt, have to do it the hard way
+    oidmgr = sm_oid_mgr::create(NULL, NULL);
+
+    if (not sm_log::need_recovery)
+        return;
+
+    // One hiwater_mark/capacity_mark per FID
+    std::unordered_map<FID, OID> himarks;
+
+    uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
+    auto *scan = scanner->new_log_scan(chkpt_begin);
+    DEFER(delete scan);
+    for (; scan->valid(); scan->next()) {
+        size += scan->payload_size();
+        auto f = scan->fid();
+        auto o = scan->oid();
+        if (himarks[f] < o)
+            himarks[f] = o;
+
+        switch (scan->type()) {
+        case sm_log_scan_mgr::LOG_UPDATE:
+        case sm_log_scan_mgr::LOG_RELOCATE:
+            ucount++;
+            recover_update(scan);
+            break;
+        case sm_log_scan_mgr::LOG_DELETE:
+            dcount++;
+            recover_update(scan, true);
+            break;
+        case sm_log_scan_mgr::LOG_INSERT_INDEX:
+            iicount++;
+            // ignore for now, we redo this in open_index
+            break;
+        case sm_log_scan_mgr::LOG_INSERT:
+            icount++;
+            recover_insert(scan);
+            break;
+        case sm_log_scan_mgr::LOG_CHKPT:
+            break;
+        case sm_log_scan_mgr::LOG_FID:
+            recover_fid(scan);
+            break;
+        default:
+            DIE("unreachable");
+        }
+    }
+    ASSERT(icount == iicount);
+    printf("[Recovery] inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n", icount, ucount, dcount, size);
+
+    // Now recover allocator status
+    // Note: must do this before opening indexes, because each index itself
+    // uses an OID array (for the tree itself), which is allocated thru
+    // alloc_oid. So we need to fix the watermarks here to make sure trees
+    // don't get some already allocated FID.
+    FID max_fid = 0;
+    for (auto &m : himarks) {
+        oidmgr->recreate_allocator(m.first, m.second);
+        if (m.first > max_fid)
+            max_fid = m.first;
+    }
+
+    // Fix internal files' marks too
+    oidmgr->recreate_allocator(sm_oid_mgr_impl::OBJARRAY_FID, max_fid);
+    oidmgr->recreate_allocator(sm_oid_mgr_impl::ALLOCATOR_FID, max_fid);
+    //oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
+
+    // So by now we will have a fully working database, once index is rebuilt.
+    // WARNING: DO NOT TAKE CHKPT UNTIL WE REPLAYED ALL INDEXES!
+    // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
+}
+
+fat_ptr
+sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec, object *next)
+{
+    // Note: payload_size() includes the whole varstr
+    // See do_tree_put's log_update call.
+    const size_t sz = logrec->payload_size();
+    size_t alloc_sz = sizeof(dbtuple) + sizeof(object) + align_up(sz);
+
+    object *obj = NULL;
+#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+    obj = t.op->get(alloc_sz);
+    if (not obj)
+#endif
+        obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
+
+    // Load tuple varstr from logrec
+    dbtuple* tuple = (dbtuple *)obj->payload();
+    tuple = dbtuple::init((char*)tuple, sz);
+    logrec->load_object((char *)tuple->get_value_start(), sz);
+
+    // Strip out the varstr stuff
+    tuple->size = ((varstr *)tuple->get_value_start())->size();
+    memmove(tuple->get_value_start(),
+            (char *)tuple->get_value_start() + sizeof(varstr),
+            tuple->size);
+
+    obj->_next = fat_ptr::make(next, INVALID_SIZE_CODE);
+    obj->tuple()->clsn = logrec->payload_lsn().to_log_ptr();
+    ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
+    return fat_ptr::make(obj, INVALID_SIZE_CODE);
+}
+
+void
+sm_log::recover_insert(sm_log_scan_mgr::record_scan *logrec)
+{
+    // FIXME: load on-demand
+    FID f = logrec->fid();
+    OID o = logrec->oid();
+    fat_ptr ptr = recover_prepare_version(logrec, NULL);
+    ASSERT(oidmgr->file_exists(f));
+    sm_oid_mgr_impl::oid_array *oa = get_impl(oidmgr)->get_array(f);
+    oa->ensure_size(oa->alloc_size(o));
+    oidmgr->oid_put_new(f, o, ptr);
+    ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
+    //printf("[Recovery] insert: FID=%d OID=%d\n", f, o);
+}
+
+void
+sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
+{
+    FID f = logrec->fid();
+    OID o = logrec->oid();
+    ASSERT(oidmgr->file_exists(f));
+    auto head_ptr = oidmgr->oid_get(f, o);
+    if (is_delete)
+        oidmgr->oid_put(f, o, NULL_PTR);
+    else {
+        fat_ptr ptr = recover_prepare_version(logrec, (object *)head_ptr.offset());
+        oidmgr->oid_put(f, o, ptr);
+        ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
+        ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
+    }
+    //printf("[Recovery] update: FID=%d OID=%d\n", f, o);
+}
+
+void
+sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
+{
+    FID f = logrec->fid();
+    auto sz = logrec->payload_size();
+    char *buf = (char *)malloc(sz);
+    logrec->load_object(buf, sz);
+    std::string name(buf);
+    printf("[Recovery] FID(%s) = %d\n", buf, f);
+    fid_map.emplace(name, f);
+    ASSERT(not oidmgr->file_exists(f));
+    oidmgr->recreate_file(f);
+    free(buf);
+}
+
+void
+sm_log::recover_index(FID fid, ndb_ordered_index *index)
+{
+    ASSERT(fid_map[index->name] == fid);
+    uint64_t count = 0;
+    LSN chkpt_begin = get_impl(logmgr)->_lm._lm.get_chkpt_start();
+    auto *scan = logmgr->get_scan_mgr()->new_log_scan(chkpt_begin);
+    DEFER(delete scan);
+    for (; scan->valid(); scan->next()) {
+        if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
+            continue;
+        // Below ASSERT has to go as the object might be already deleted
+        //ASSERT(oidmgr->oid_get(fid, scan->oid()).offset());
+        auto sz = scan->payload_size();
+        char *buf = (char *)malloc(sz);
+        scan->load_object(buf, sz);
+
+        // Extract the real key length (don't use varstr.data()!)
+        size_t len = ((varstr *)buf)->size();
+        ASSERT(align_up(len + sizeof(varstr)) == sz);
+
+        // Construct the varkey (skip the varstr struct then it's data)
+        varkey key((uint8_t *)((char *)buf + sizeof(varstr)), len);
+
+        //printf("key %s %s\n", (char *)key.data(), buf);
+        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, fid, scan->oid(), NULL));
+        count++;
+        free((void *)buf);
+    }
+    printf("[Recovery] %s index inserts: %lu\n", index->name.c_str(), count);
 }

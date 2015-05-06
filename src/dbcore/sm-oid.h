@@ -94,7 +94,11 @@ struct sm_oid_mgr {
     dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
 
     void oid_unlink(FID f, OID o, void *object_payload);
-    
+
+    bool file_exists(FID f);
+    void recreate_file(FID f);    // for recovery only
+    void recreate_allocator(FID f, OID m);  // for recovery only
+
     virtual ~sm_oid_mgr() { }
     
 protected:
@@ -103,3 +107,4 @@ protected:
 };
 
 extern sm_oid_mgr *oidmgr;
+extern std::unordered_map<std::string, FID> fid_map;

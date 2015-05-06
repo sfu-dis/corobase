@@ -286,7 +286,13 @@ get_type(log_record_type tp)
 
     case LOG_RELOCATE:
         return sm_log_scan_mgr::LOG_RELOCATE;
-        
+
+    case LOG_CHKPT:
+        return sm_log_scan_mgr::LOG_CHKPT;
+
+    case LOG_FID:
+        return sm_log_scan_mgr::LOG_FID;
+
     case LOG_NOP:
     case LOG_COMMENT:
     case LOG_OVERFLOW:
@@ -364,6 +370,12 @@ sm_log_scan_mgr::record_scan::payload_size()
     return get_payload_size(impl->scan);
 }
 
+LSN
+sm_log_scan_mgr::record_scan::payload_lsn()
+{
+    auto *impl = get_impl(this);
+    return impl->scan.payload_lsn();
+}
 
 static
 std::pair<fat_ptr, bool>

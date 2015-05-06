@@ -57,8 +57,6 @@ extern std::string (*g_proto_version_str)(uint64_t v);
 class transaction_base {
   friend class base_txn_btree;
 public:
-  static sm_log *logger;
-
   typedef dbtuple::size_type size_type;
   typedef TXN::txn_state txn_state;
 

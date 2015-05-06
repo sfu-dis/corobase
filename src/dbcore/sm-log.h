@@ -15,6 +15,8 @@
 
  */
 #include "sm-common.h"
+class ndb_ordered_index;
+class object;
 
 struct sm_tx_log {
     /* Record an insertion. The payload of the version will be
@@ -61,6 +63,14 @@ struct sm_tx_log {
        the OID deallocated.
     */
     void log_delete(FID f, OID o);
+
+    /* Record a chkpt.
+     */
+    void log_chkpt();
+
+    /* Record the creation of a table with FID and name
+     */
+    void log_fid(FID f, const std::string &name);
 
     /* Return this transaction's commit LSN, or INVALID_LSN if the
        transaction has not entered pre-commit yet.
@@ -124,7 +134,8 @@ protected:
 struct sm_log_scan_mgr {
     static size_t const NO_PAYLOAD = -1;
     
-    enum record_type { LOG_INSERT, LOG_INSERT_INDEX, LOG_UPDATE, LOG_RELOCATE, LOG_DELETE, LOG_CHKPT };
+    enum record_type { LOG_INSERT, LOG_INSERT_INDEX, LOG_UPDATE,
+                       LOG_RELOCATE, LOG_DELETE, LOG_CHKPT, LOG_FID };
 
     /* A cursor for iterating over log records, whether those of a single
        transaction or all which follow some arbitrary starting point.
@@ -160,6 +171,8 @@ struct sm_log_scan_mgr {
            "payload" is technically a pointer to the actual object.
         */
         fat_ptr payload_ptr();
+
+        LSN payload_lsn();
 
         /* Copy the current record's payload into [buf]. Throw
            illegal_argument if the record has no payload, or the payload
@@ -293,6 +306,7 @@ typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
                                      LSN chkpt_begin, LSN chkpt_end);
 
 struct sm_log {
+    static bool need_recovery;
 
     /* Allocate and return a new sm_log object. If [dname] exists, it
        will be mounted and used. Otherwise, a new (empty) log
@@ -348,11 +362,28 @@ struct sm_log {
      */
     fat_ptr load_ext_pointer(fat_ptr ptr);
 
+    /* Scan from a start LSN and apply log records.
+     * Implements the sm_log_recover_function signature.
+     */
+    static void recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
+
     virtual ~sm_log() { }
-    
+
+private:
+    static void recover_insert(sm_log_scan_mgr::record_scan *logrec);
+    static void recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete = false);
+    static fat_ptr recover_prepare_version(
+                                sm_log_scan_mgr::record_scan *logrec,
+                                object *next);
+    static void recover_fid(sm_log_scan_mgr::record_scan *logrec);
+
+public:
+    static void recover_index(FID fid, ndb_ordered_index *index);
+
 protected:
     // Forbid direct instantiation
     sm_log() { }
 };
 
+extern sm_log *logmgr;
 #endif
