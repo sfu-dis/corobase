@@ -433,6 +433,9 @@ transaction::parallel_ssi_commit()
 
         if (tuple_s1 and (not ct3 or ct3 > tuple_s1))
             ct3 = tuple_s1;
+
+        if (volatile_read(r->s2))
+            return {RC_ABORT_SERIAL};
         // will release read lock (readers bitmap) in post-commit
     }
 
