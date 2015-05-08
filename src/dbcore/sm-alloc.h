@@ -67,6 +67,7 @@ struct recycle_oid {
 
 namespace MM {
     void *allocate(uint64_t size);
+    void deallocate(void *p);
 
 #ifdef ENABLE_GC
     object_pool *get_object_pool();

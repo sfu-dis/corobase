@@ -14,6 +14,7 @@ class object
         uint64_t _size;
         dbtuple *tuple() { return (dbtuple *)payload(); }
         static object *create_tuple_object(const varstr *tuple_value, bool do_write);
+        static fat_ptr create_tuple_object(fat_ptr ptr);
 };
 
 // DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS

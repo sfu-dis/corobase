@@ -1,5 +1,6 @@
 #include "object.h"
 #include "tuple.h"
+#include "dbcore/sm-log.h"
 
 object*
 object::create_tuple_object(const varstr *tuple_value, bool do_write)
@@ -17,7 +18,7 @@ object::create_tuple_object(const varstr *tuple_value, bool do_write)
         obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
 
     // Tuple setup
-    dbtuple* tuple = (dbtuple *)obj->payload();
+    dbtuple* tuple = obj->tuple();
     tuple = dbtuple::init((char*)tuple, sz);
     tuple->pvalue = (varstr *)tuple_value;
     if (do_write)
@@ -25,6 +26,41 @@ object::create_tuple_object(const varstr *tuple_value, bool do_write)
     else
         tuple->pvalue = (varstr *)tuple_value;
     return obj;
+}
+
+// Dig out a tuple from the durable log
+// ptr should point to some position in the log
+// Returns a fat_ptr to the object created
+fat_ptr
+object::create_tuple_object(fat_ptr ptr)
+{
+    ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+    auto sz = decode_size_aligned(ptr.size_code()) + sizeof(object) + sizeof(dbtuple);
+
+    object *obj = NULL;
+#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+    obj = t.op->get(sz);
+    if (not obj)
+#endif
+        obj = new (MM::allocate(sz)) object(sz);
+
+    // Load tuple varstr from the log
+    dbtuple* tuple = obj->tuple();
+    tuple = dbtuple::init((char*)tuple, sz);
+    ASSERT(logmgr);
+    logmgr->load_object((char *)tuple->get_value_start(), sz, ptr);
+
+    // Strip out the varstr stuff
+    tuple->size = ((varstr *)tuple->get_value_start())->size();
+    ASSERT(tuple->size < sz);
+    memmove(tuple->get_value_start(),
+            (char *)tuple->get_value_start() + sizeof(varstr),
+            tuple->size);
+
+    ASSERT(not obj->_next.offset());
+    obj->tuple()->clsn = ptr;
+    ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
+    return fat_ptr::make(obj, INVALID_SIZE_CODE);   // asi_type=0 (memory)
 }
 
 // DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS
