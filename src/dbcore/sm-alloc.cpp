@@ -17,7 +17,7 @@
 
 namespace MM {
 
-void deallocate(object *p)
+void deallocate(void *p)
 {
     ASSERT(p);
     free(p);

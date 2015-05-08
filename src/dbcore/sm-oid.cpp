@@ -1,5 +1,5 @@
 #include "sm-oid-impl.h"
-
+#include "sm-alloc.h"
 #include "sc-hash.h"
 #include "burt-hash.h"
 
@@ -530,6 +530,12 @@ sm_oid_mgr::oid_get(FID f, OID o)
     return *get_impl(this)->oid_access(f, o);
 }
 
+fat_ptr*
+sm_oid_mgr::oid_get_ptr(FID f, OID o)
+{
+    return get_impl(this)->oid_access(f, o);
+}
+
 void
 sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p)
 {
@@ -551,6 +557,7 @@ sm_oid_mgr::oid_put_update(FID f, OID o, object* new_object, xid_context *update
 #if CHECK_INVARIANTS
     int attempts = 0;
 #endif
+    ensure_tuple(f, o);
     fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
 start_over:
     auto *ptr = get_impl(this)->oid_access(f, o);
@@ -662,6 +669,30 @@ sm_oid_mgr::oid_get_latest_version(FID f, OID o)
     return NULL;
 }
 
+// Load the version from log if not present in memory
+// TODO: anti-caching
+void
+sm_oid_mgr::ensure_tuple(FID f, OID o)
+{
+    fat_ptr ptr = oidmgr->oid_get(f, o);
+    if (ptr.asi_type() == fat_ptr::ASI_LOG) {   // in the durable log
+        fat_ptr new_ptr = object::create_tuple_object(ptr);
+        if (not __sync_bool_compare_and_swap(&oidmgr->oid_get_ptr(f, o)->_ptr, 
+                                             ptr._ptr, new_ptr._ptr)) {
+#ifdef REUSE_OBJECTS
+            MM::get_object_pool()->put(0, (object *)new_ptr.offset());
+#elif defined(ENABLE_GC)
+            MM::deallocate((object *)new_ptr.offset());
+#endif
+            // somebody might acted faster, no need to retry
+        }
+    }
+    else {  // should be in main memory
+        // FIXME: handle ASI_HEAP and ASI_EXT too
+        ASSERT(ptr.asi_type() == 0);
+    }
+}
+
 dbtuple*
 sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 {
@@ -669,6 +700,16 @@ sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 #if CHECK_INVARIANTS
     int attempts = 0;
 #endif
+
+    // Dig it up from the log if necessary
+    ensure_tuple(f, o);
+    ASSERT(oidmgr->oid_get(f, o).asi_type() == 0);
+
+    // If we needed to load versions from the log, that means we're
+    // working on a recovered database, and all tx's begin ts should
+    // be larger than the curlsn when the DB was shutdown, so everyone
+    // should be able to see the latest version, i.e., no need to dig
+    // out the whole version chain from the log.
     object *cur_obj = NULL;
 start_over:
     for (auto ptr = oid_get(f, o); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {

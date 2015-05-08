@@ -203,12 +203,24 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
     // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
 }
 
+// "next" is ignored when load==false
+// The version-loading mechanism will only dig out the latest
+// version as a result.
 fat_ptr
-sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec, object *next)
+sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
+                                object *next,
+                                bool load)
 {
+    // The tx will need to call sm_log::load_object() to load the object
+    // when accessing the version. The caller should write this return
+    // value to the corresponding OID array slot.
+    if (not load)
+        return logrec->payload_ptr();
+
     // Note: payload_size() includes the whole varstr
     // See do_tree_put's log_update call.
     const size_t sz = logrec->payload_size();
+    ASSERT(sz == decode_size_aligned(logrec->payload_ptr().size_code()));
     size_t alloc_sz = sizeof(dbtuple) + sizeof(object) + align_up(sz);
 
     object *obj = NULL;
@@ -231,6 +243,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec, object *ne
 
     obj->_next = fat_ptr::make(next, INVALID_SIZE_CODE);
     obj->tuple()->clsn = logrec->payload_lsn().to_log_ptr();
+    ASSERT(logrec->payload_lsn().offset() == logrec->payload_ptr().offset());
     ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
     return fat_ptr::make(obj, INVALID_SIZE_CODE);
 }
@@ -238,7 +251,6 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec, object *ne
 void
 sm_log::recover_insert(sm_log_scan_mgr::record_scan *logrec)
 {
-    // FIXME: load on-demand
     FID f = logrec->fid();
     OID o = logrec->oid();
     fat_ptr ptr = recover_prepare_version(logrec, NULL);
@@ -263,7 +275,8 @@ sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
         fat_ptr ptr = recover_prepare_version(logrec, (object *)head_ptr.offset());
         oidmgr->oid_put(f, o, ptr);
         ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
-        ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
+        // this has to go if on-demand loading is enabled
+        //ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
     }
     //printf("[Recovery] update: FID=%d OID=%d\n", f, o);
 }
