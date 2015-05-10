@@ -108,7 +108,7 @@ rc_t base_txn_btree::do_tree_put(
     }
 #endif
 
-    // first *committer* wins
+    // first *updater* wins
     dbtuple *prev = oidmgr->oid_put_update(fid, oid, obj, t.xc);
 
     if (prev) { // succeeded

@@ -631,8 +631,9 @@ start_over:
     }
     // check dirty writes
     else {
-        // make sure this is valid committed data, or aborted data that is not reclaimed yet.
-        // aborted, but not yet reclaimed.
+        // First updater wins: if some concurrent tx committed first,
+        // I have to abort. Same as in Oracle. Otherwise it's an isolation
+        // failure: I can modify concurrent transaction's writes.
         ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
         if (LSN::from_ptr(clsn) > updater_xc->begin)
             return NULL;
