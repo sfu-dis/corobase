@@ -254,14 +254,16 @@ xid_get_context(XID x) {
 }
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-bool __attribute__((noinline))
-wait_for_commit_result(xid_context *xc) {
+txn_state __attribute__((noinline))
+wait_for_commit_result(XID xid, xid_context *xc) {
     txn_state state;
     do {
         state = volatile_read(xc->state);
     }
-    while (state != TXN_CMMTD and state != TXN_ABRTD);
-    return state == TXN_CMMTD;
+    while (volatile_read(xc->owner) == xid and
+           state != TXN_CMMTD and
+           state != TXN_ABRTD);
+    return state;
 }
 #endif
 
