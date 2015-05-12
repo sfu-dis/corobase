@@ -231,15 +231,20 @@ transaction::parallel_ssn_commit()
             if (not reader_xc)
                 continue;
             // copy everything before doing anything
-            auto reader_owner = volatile_read(reader_xc->owner);
             auto reader_end = volatile_read(reader_xc->end).offset();
             auto reader_begin = volatile_read(reader_xc->begin).offset();
+            auto reader_owner = volatile_read(reader_xc->owner);
             if (reader_owner != rxid)
                 goto get_reader;
             if (not overwritten_tuple->is_old(xc)) {
-                if (reader_end and reader_end < cstamp and wait_for_commit_result(reader_xc)) {
-                    if (xc->pstamp < reader_end)
-                        xc->pstamp = reader_end;
+                if (reader_end and reader_end < cstamp) {
+                    auto cr = wait_for_commit_result(rxid, reader_xc);
+                    if (cr != TXN_CMMTD and cr != TXN_ABRTD)    // context change, retry
+                        goto get_reader;
+                    else if (cr == TXN_CMMTD) {
+                        if (xc->pstamp < reader_end)
+                            xc->pstamp = reader_end;
+                    }
                 }
             }
             else {  // old version
@@ -272,20 +277,25 @@ transaction::parallel_ssn_commit()
             xid_context *sucessor_xc = xid_get_context(successor_xid);
             if (not sucessor_xc)
                 goto try_get_sucessor;
-                auto successor_owner = volatile_read(sucessor_xc->owner);
-                if (successor_owner == xc->owner)  // myself
-                    continue;
+            auto successor_owner = volatile_read(sucessor_xc->owner);
+            if (successor_owner == xc->owner)  // myself
+                continue;
 
             // read everything before doing anything
             auto sucessor_end = volatile_read(sucessor_xc->end).offset();
             if (successor_owner != successor_xid)
                 goto try_get_sucessor;
 
-            // overwriter might haven't committed, be serialized after me, or before me
-            // we only care if the successor is serialized *before* me.
-            if (sucessor_end and sucessor_end < cstamp and wait_for_commit_result(sucessor_xc)) {
-                if (sucessor_end < xc->sstamp)
-                    xc->sstamp = sucessor_end;
+            // overwriter might haven't committed, be commited after me, or before me
+            // we only care if the successor is committed *before* me.
+            if (sucessor_end and sucessor_end < cstamp) {
+                auto cr = wait_for_commit_result(successor_xid, sucessor_xc);
+                if (cr != TXN_CMMTD and cr != TXN_ABRTD)    // context change, retry
+                    goto try_get_sucessor;
+                else if (cr == TXN_CMMTD) {
+                    if (sucessor_end < xc->sstamp)
+                        xc->sstamp = sucessor_end;
+                }
             }
         }
         else {
@@ -420,11 +430,16 @@ transaction::parallel_ssi_commit()
             uint64_t overwriter_end = volatile_read(overwriter_xc->end).offset();
             if (volatile_read(overwriter_xc->owner) != ox)
                 goto get_overwriter;
-            // if the overwriter is serialized **before** me, I need to spin to find
+            // if the overwriter is committed **before** me, I need to spin to find
             // out its final commit result
             // don't bother if it's serialized after me or not even in precommit
-            if (overwriter_end and overwriter_end < cstamp and wait_for_commit_result(overwriter_xc))
-                tuple_s1 = overwriter_end;
+            if (overwriter_end and overwriter_end < cstamp) {
+                auto cr = wait_for_commit_result(ox, overwriter_xc);
+                if (cr != TXN_CMMTD and cr != TXN_ABRTD)    // context change, retry
+                    goto get_overwriter;
+                else if (cr == TXN_CMMTD)
+                    tuple_s1 = overwriter_end;
+            }
         }
         else {    // already committed, read tuple's sstamp
             ASSERT(overwriter_clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -463,9 +478,9 @@ examine_writes:
             if (not reader_xc)
                 continue;
             // copy everything before doing anything
-            auto reader_owner = volatile_read(reader_xc->owner);
             auto reader_begin = volatile_read(reader_xc->begin).offset();
             auto reader_state = volatile_read(reader_xc->state);
+            auto reader_owner = volatile_read(reader_xc->owner);
             if (reader_owner != rxid)
                 goto get_reader;
             // If I clobbered an old version, I have to assume a committed T3
@@ -487,10 +502,11 @@ examine_writes:
             }
             else {    // young tuple, do usual SSI
                 // if the reader is still alive, I'm doomed (standard SSI)
-                if (reader_state == TXN_ACTIVE)
+                if (reader_state != TXN_CMMTD and reader_state != TXN_ABRTD)
                     return rc_t{RC_ABORT_SERIAL};
                 // find the latest reader (ie, largest xstamp of tuples I clobber)
                 auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
+                // xstamp might still b 0 - if the reader aborted
                 if (max_xstamp < tuple_xstamp)
                     max_xstamp = tuple_xstamp;
                 if (ct3 and max_xstamp >= ct3)
