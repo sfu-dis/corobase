@@ -289,23 +289,8 @@ public:
     : db(db), barrier_a(nthreads), barrier_b(1) {}
   virtual ~bench_runner() {}
   void run();
-  void heap_prefault()
-  {
-#ifndef CHECK_INVARIANTS
-	  uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);		// 45G for 24 warehouses
-	  uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
-	  ALWAYS_ASSERT(p);
-      ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
-	  mallopt (M_TRIM_THRESHOLD, -1);
-	  mallopt (M_MMAP_MAX, 0);
+  void heap_prefault();
 
-	  struct rusage usage;
-	  getrusage(RUSAGE_SELF, &usage);
-	  std::cout<<"Major fault: " <<  usage.ru_majflt<< "Minor fault: " << usage.ru_minflt<< std::endl;
-
-	  free(p);
-#endif
-  }
 protected:
   // only called once
   virtual std::vector<bench_loader*> make_loaders() = 0;
