@@ -217,6 +217,10 @@ transaction::parallel_ssn_commit()
 
         ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
 
+        auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
+        if (xc->pstamp < tuple_xstamp)
+            xc->pstamp = tuple_xstamp;
+
         // need access stamp , i.e., who read this version that I'm trying to overwrite?
         readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple);
         while (readers) {
