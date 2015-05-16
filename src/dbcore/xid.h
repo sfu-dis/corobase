@@ -10,7 +10,7 @@
 class dbtuple;
 namespace TXN {
 
-enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD };
+enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD, TXN_INVALID };
 
 struct xid_context {
     XID owner;

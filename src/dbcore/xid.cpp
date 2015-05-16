@@ -1,5 +1,5 @@
 #include "xid.h"
-
+#include "sm-log.h"
 #include "epoch.h"
 
 #include <unistd.h>
@@ -92,6 +92,9 @@ take_one(thread_data *t)
 #ifdef USE_PARALLEL_SSI
     contexts[id].ct3 = ~uint64_t{0};
 #endif
+    contexts[id].begin = logmgr->cur_lsn();
+    contexts[id].end = INVALID_LSN;
+    contexts[id].state = TXN_EMBRYO;
     return x;
 }
 
@@ -259,10 +262,10 @@ wait_for_commit_result(XID xid, xid_context *xc) {
     txn_state state;
     do {
         state = volatile_read(xc->state);
+        if (volatile_read(xc->owner) != xid)
+            return TXN_INVALID;
     }
-    while (volatile_read(xc->owner) == xid and
-           state != TXN_CMMTD and
-           state != TXN_ABRTD);
+    while (state != TXN_CMMTD and state != TXN_ABRTD);
     return state;
 }
 #endif
