@@ -146,23 +146,6 @@ transaction::dump_debug_info() const
 rc_t
 transaction::commit()
 {
-#ifdef USE_PARALLEL_SSN
-    return parallel_ssn_commit();
-#elif defined USE_PARALLEL_SSI
-    return parallel_ssi_commit();
-#else
-    return si_commit();
-#endif
-}
-
-#ifdef USE_PARALLEL_SSN
-rc_t
-transaction::parallel_ssn_commit()
-{
-    PERF_DECL(static std::string probe0_name(
-              std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-    ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
-
     switch (state()) {
         case TXN_EMBRYO:
         case TXN_ACTIVE:
@@ -178,10 +161,23 @@ transaction::parallel_ssn_commit()
     INVARIANT(log);
     // get clsn, abort if failed
     xc->end = log->pre_commit();
-    LSN clsn = xc->end;
-    auto cstamp = clsn.offset();
     if (xc->end == INVALID_LSN)
         return rc_t{RC_ABORT_INTERNAL};
+
+#ifdef USE_PARALLEL_SSN
+    return parallel_ssn_commit();
+#elif defined USE_PARALLEL_SSI
+    return parallel_ssi_commit();
+#else
+    return si_commit();
+#endif
+}
+
+#ifdef USE_PARALLEL_SSN
+rc_t
+transaction::parallel_ssn_commit()
+{
+    auto cstamp = xc->end.offset();
 
     // note that sstamp comes from reads, but the read optimization might
     // ignore looking at tuple's sstamp at all, so if tx sstamp is still
@@ -375,7 +371,7 @@ transaction::parallel_ssn_commit()
             ASSERT(next_tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
         }
         volatile_write(tuple->xstamp, cstamp);
-        volatile_write(tuple->clsn, clsn.to_log_ptr());
+        volatile_write(tuple->clsn, xc->end.to_log_ptr());
         ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
 #ifdef ENABLE_GC
         if (tuple->next()) {
@@ -420,27 +416,6 @@ transaction::parallel_ssn_commit()
 rc_t
 transaction::parallel_ssi_commit()
 {
-    PERF_DECL(static std::string probe0_name(
-            std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-    ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
-
-    switch (state()) {
-        case TXN_EMBRYO:
-        case TXN_ACTIVE:
-            volatile_write(xc->state, TXN_COMMITTING);
-            break;
-        case TXN_CMMTD:
-        case TXN_COMMITTING:
-        case TXN_ABRTD:
-        case TXN_INVALID:
-            ALWAYS_ASSERT(false);
-    }
-
-    INVARIANT(log);
-    // get clsn, abort if failed
-    xc->end = log->pre_commit();
-    if (xc->end == INVALID_LSN)
-        return rc_t{RC_ABORT_INTERNAL};
     auto cstamp = xc->end.offset();
 
     // get the smallest s1 in each tuple we have read (ie, the smallest cstamp
@@ -659,27 +634,6 @@ examine_writes:
 rc_t
 transaction::si_commit()
 {
-    PERF_DECL(static std::string probe0_name(
-            std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-    ANON_REGION(probe0_name.c_str(), &transaction_base::g_txn_commit_probe0_cg);
-
-    switch (state()) {
-        case TXN_EMBRYO:
-        case TXN_ACTIVE:
-            volatile_write(xc->state, TXN_COMMITTING);
-            break;
-        case TXN_CMMTD:
-        case TXN_COMMITTING:
-        case TXN_ABRTD:
-            ALWAYS_ASSERT(false);
-    }
-
-    INVARIANT(log);
-    // get clsn, abort if failed
-    xc->end = log->pre_commit();
-    if (xc->end == INVALID_LSN)
-        return rc_t{RC_ABORT_INTERNAL};
-
 #ifdef PHANTOM_PROT_NODE_SET
     if (not check_phantom())
         return rc_t{RC_ABORT_PHANTOM};
