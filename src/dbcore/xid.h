@@ -45,5 +45,7 @@ xid_context *xid_get_context(XID x);
 
 #if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
 txn_state wait_for_commit_result(XID xid, xid_context *xc);
+txn_state spin_for_cstamp(XID xid, xid_context *xc);
+bool spin_for_xstamp(XID xid, xid_context *xc);
 #endif
 };  // end of namespace

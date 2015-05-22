@@ -114,14 +114,11 @@ rc_t base_txn_btree::do_tree_put(
     if (prev) { // succeeded
         ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
-        // if I clobberred an old tuple, then as the T2 I have to assume
-        // a committed T3 exists for me; so set it to its minimum.
-        if (prev->is_old(t.xc))
-            volatile_write(t.xc->ct3, 1);
         // check if there's any in-flight readers of the overwritten tuple
         // (will form an inbound r:w edge to me) ie, am I the T2 (pivot)
         // with T1 in-flight and T3 committed first (ie, before T1, ie,
-        // prev's creator) in the dangerous structure?
+        // prev's creator) in the dangerous structure? (abort the pivot,
+        // betting the reader is likely to succeed)
         ASSERT(prev->sstamp == NULL_PTR);
         // the read-opt makes the readers list inaccurate, so we only do
         // the check here if read-opt is not enabled
