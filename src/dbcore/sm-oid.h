@@ -93,7 +93,7 @@ struct sm_oid_mgr {
 
     dbtuple *oid_get_latest_version(FID f, OID o);
     dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
-    void ensure_tuple(FID f, OID o);
+    fat_ptr *ensure_tuple(FID f, OID o);
     void oid_unlink(FID f, OID o, void *object_payload);
 
     bool file_exists(FID f);
