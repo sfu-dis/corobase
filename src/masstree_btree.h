@@ -714,8 +714,7 @@ class mbtree<P>::low_level_search_range_scanner
     if (this->boundary_)
       this->check(iter, key);
   }
-  bool visit_value(const Masstree::key<uint64_t>& key,
-                   dbtuple * value, threadinfo&) {
+  bool visit_value(const Masstree::key<uint64_t>& key, dbtuple * value) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
