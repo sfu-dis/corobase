@@ -186,6 +186,7 @@ dynarray::_adjust_mapping(size_t begin, size_t end,
     int prot = make_readable? (PROT_READ|PROT_WRITE) : PROT_NONE;
     if (begin != end) {
         int err = mprotect(_data+begin, end-begin, prot);
+        mlock(_data+begin, end-begin);  // prefault the space
         THROW_IF(err, os_error, errno, "Unable to resize dynarray");
         _size = new_size >> page_bits();
     }
