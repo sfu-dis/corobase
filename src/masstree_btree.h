@@ -277,7 +277,7 @@ public:
     /**
      * This key/value pair was read from node n @ version
      */
-    virtual bool  invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, OID o, dbtuple *v,
+    virtual bool  invoke(const mbtree<masstree_params> *btr_ptr, const string_type &k, dbtuple *v,
                         const node_opaque_t *n, uint64_t version) = 0;
   };
 
@@ -715,14 +715,14 @@ class mbtree<P>::low_level_search_range_scanner
       this->check(iter, key);
   }
   bool visit_value(const Masstree::key<uint64_t>& key,
-                   OID oid, dbtuple * value, threadinfo&) {
+                   dbtuple * value, threadinfo&) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
           ( Reverse && bs >= key.full_string()))
         return false;
     }
-    return callback_.invoke(this->btr_ptr_, key.full_string(), oid, value, this->n_, this->v_);
+    return callback_.invoke(this->btr_ptr_, key.full_string(), value, this->n_, this->v_);
   }
  private:
   Masstree::leaf<P>* n_;

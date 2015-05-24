@@ -108,7 +108,7 @@ protected:
 
     virtual void on_resp_node(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
     virtual bool invoke(const concurrent_btree *btr_ptr,
-                        const typename concurrent_btree::string_type &k, OID o, dbtuple* v,
+                        const typename concurrent_btree::string_type &k, dbtuple* v,
                         const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 
   private:
