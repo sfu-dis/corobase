@@ -357,7 +357,7 @@ int basic_table<P>::scan(H helper,
         OID o = entry.value();
         v = oidmgr->oid_get_version(f, o, xc);
 		if (v) {
-			if (!scanner.visit_value(ka, v, ti))
+			if (!scanner.visit_value(ka, v))
 				goto done;
 		}
 	    stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
