@@ -84,7 +84,7 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
 
     static
     dynarray make_oid_dynarray() {
-        return dynarray(oid_array::alloc_size(), 1);
+        return dynarray(oid_array::alloc_size(), 1024*1024*128);
     }
 
     sm_oid_mgr_impl();
