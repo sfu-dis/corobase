@@ -186,7 +186,7 @@ class internode : public node_base<P> {
 
 		// drop to oid array
 		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
-        oidmgr->oid_put_new(fid, oid, new_head);
+        oidmgr->oid_put_new(table->node_vec, oid, new_head);
 		return n;
 	}
 
@@ -360,7 +360,7 @@ class leaf : public node_base<P> {
 
 		// drop to oid array 
 		fat_ptr new_head = fat_ptr::make( obj, INVALID_SIZE_CODE );
-        oidmgr->oid_put_new(fid, oid, new_head);
+        oidmgr->oid_put_new(table->node_vec, oid, new_head);
 
 		return n;
 	}
@@ -549,6 +549,8 @@ void basic_table<P>::initialize(threadinfo& ti) {
 
     masstree_precondition(!root_oid_);
     fid_ = oidmgr->create_file(true);
+    node_vec = oidmgr->get_array(fid_);
+    ALWAYS_ASSERT(node_vec);
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
 	root_oid_ = root->oid;
 }

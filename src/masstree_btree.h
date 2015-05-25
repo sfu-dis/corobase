@@ -231,6 +231,11 @@ public:
     table_.destroy(ti);
   }
 
+  inline oid_array *tuple_vec()
+  {
+      return table_.tuple_vec;
+  }
+
   inline node_base_type* fetch_node(OID oid) const
   {
 	  return table_.fetch_node( oid );
@@ -479,6 +484,12 @@ public:
   template <bool Reverse> class search_range_scanner_base;
   template <bool Reverse> class low_level_search_range_scanner;
   template <typename F> class low_level_search_range_callback_wrapper;
+
+ public:
+  void set_tuple_vec(oid_array *oa)
+  {
+    table_.tuple_vec = oa;
+  }
 };
 
 template <typename P>
@@ -588,7 +599,7 @@ inline bool mbtree<P>::search(const key_type &k, FID f, OID &o, dbtuple* &v, xid
   if (found)
   {
 	  o = lp.value();
-      v = oidmgr->oid_get_version(f, o, xc);
+      v = oidmgr->oid_get_version(table_.tuple_vec, o, xc);
 	  if( !v )
 		  found = false;
   }
@@ -641,7 +652,7 @@ insert_new:
   {
 	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data in this chain. If it's the first case, version chain is considered empty, then we retry insert.
 	  OID oid = lp.value();
-	  if (oidmgr->oid_get_latest_version(f, oid))
+	  if (oidmgr->oid_get_latest_version(table_.tuple_vec, oid))
 		  found = true;
 	  else
 		  goto insert_new;
@@ -663,7 +674,7 @@ inline bool mbtree<P>::remove(const key_type &k, FID f, dbtuple * *old_v)
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
   if (found && old_v)
-	  *old_v = oidmgr->oid_get_latest_version(f, lp.value());
+	  *old_v = oidmgr->oid_get_latest_version(table_.tuple_vec, lp.value());
 	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
   lp.finish(found ? -1 : 0, ti);
   return found;

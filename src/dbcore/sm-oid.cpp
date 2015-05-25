@@ -161,7 +161,7 @@ thread_allocate(sm_oid_mgr_impl *om, FID f)
         auto *alloc = om->get_allocator(f);
         if (not alloc->fill_cache(&*it)) {
             auto cbump = alloc->propose_capacity(1);
-            sm_oid_mgr_impl::oid_array *oa = om->get_array(f);
+            oid_array *oa = om->get_array(f);
             oa->ensure_size(cbump);
             alloc->head.capacity_mark = cbump;
             alloc->fill_cache(&*it);
@@ -194,7 +194,7 @@ thread_free(sm_oid_mgr_impl *om, FID f, OID o)
 
 
 fat_ptr
-sm_oid_mgr_impl::oid_array::make() {
+oid_array::make() {
     /* Ask for a dynarray with size 1 byte, which gets rounded up to
        one page.
      */
@@ -205,18 +205,18 @@ sm_oid_mgr_impl::oid_array::make() {
 }
 
 void
-sm_oid_mgr_impl::oid_array::destroy(oid_array *oa) {
+oid_array::destroy(oid_array *oa) {
     oa->~oid_array();
 }
 
-sm_oid_mgr_impl::oid_array::oid_array(dynarray &&self)
+oid_array::oid_array(dynarray &&self)
     : _backing_store(std::move(self))
 {
     ASSERT(this == (void*) _backing_store.data());
 }
 
 void
-sm_oid_mgr_impl::oid_array::ensure_size(size_t n) {
+oid_array::ensure_size(size_t n) {
     _backing_store.ensure_size(OFFSETOF(oid_array, _entries[n]));
 }
                                         
@@ -420,11 +420,11 @@ sm_oid_mgr_impl::get_allocator(FID f)
     return alloc;
 }
 
-sm_oid_mgr_impl::oid_array*
+oid_array*
 sm_oid_mgr_impl::get_array(FID f)
 {
 #warning TODO: allow allocators to be paged out
-    sm_oid_mgr_impl::oid_array *oa = *files->get(f);
+    oid_array *oa = *files->get(f);
     THROW_IF(not oa, illegal_argument,
              "No such file: %d", f);
     return oa;
@@ -433,7 +433,7 @@ sm_oid_mgr_impl::get_array(FID f)
 bool
 sm_oid_mgr_impl::file_exists(FID f)
 {
-    sm_oid_mgr_impl::oid_array *oa = *files->get(f);
+    oid_array *oa = *files->get(f);
     return oa != NULL;
 }
 
@@ -448,6 +448,11 @@ sm_oid_mgr_impl::unlock_file(FID f)
     mutexen[f % MUTEX_COUNT].unlock();
 }
 
+oid_array*
+sm_oid_mgr::get_array(FID f)
+{
+    return get_impl(this)->get_array(f);
+}
 
 sm_oid_mgr *
 sm_oid_mgr::create(sm_heap_mgr *hm, log_tx_scan *chkpt_scan)
@@ -530,16 +535,35 @@ sm_oid_mgr::oid_get(FID f, OID o)
     return *get_impl(this)->oid_access(f, o);
 }
 
+fat_ptr
+sm_oid_mgr::oid_get(oid_array *oa, OID o)
+{
+    return *oa->get(o);
+}
+
 fat_ptr*
 sm_oid_mgr::oid_get_ptr(FID f, OID o)
 {
     return get_impl(this)->oid_access(f, o);
 }
 
+fat_ptr*
+sm_oid_mgr::oid_get_ptr(oid_array *oa, OID o)
+{
+    return oa->get(o);
+}
+
 void
 sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p)
 {
     auto *ptr = get_impl(this)->oid_access(f, o);
+    *ptr = p;
+}
+
+void
+sm_oid_mgr::oid_put(oid_array *oa, OID o, fat_ptr p)
+{
+    auto *ptr = oa->get(o);
     *ptr = p;
 }
 
@@ -551,15 +575,32 @@ sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p)
     *ptr = p;
 }
 
+void
+sm_oid_mgr::oid_put_new(oid_array *oa, OID o, fat_ptr p)
+{
+    auto *ptr = oa->get(o);
+    ALWAYS_ASSERT(*ptr == NULL_PTR);
+    *ptr = p;
+}
+
 dbtuple*
 sm_oid_mgr::oid_put_update(FID f, OID o, object* new_object, xid_context *updater_xc)
+{
+    return oid_put_update(get_impl(this)->get_array(f), o, new_object, updater_xc);
+}
+
+dbtuple*
+sm_oid_mgr::oid_put_update(oid_array *oa,
+                           OID o,
+                           object *new_object,
+                           xid_context *updater_xc)
 {
 #if CHECK_INVARIANTS
     int attempts = 0;
 #endif
     fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
 start_over:
-    auto *ptr = ensure_tuple(f, o);
+    auto *ptr = ensure_tuple(oa, o);
     fat_ptr head = *ptr;
     object *old_desc = (object *)head.offset();
     dbtuple *version = (dbtuple *)old_desc->payload();
@@ -663,7 +704,13 @@ install:
 dbtuple*
 sm_oid_mgr::oid_get_latest_version(FID f, OID o)
 {
-    uint64_t head_offset = oid_get(f, o).offset();
+    return oid_get_latest_version(get_impl(this)->get_array(f), o);
+}
+
+dbtuple*
+sm_oid_mgr::oid_get_latest_version(oid_array *oa, OID o)
+{
+    auto head_offset = oa->get(o)->offset();
     if (head_offset)
         return (dbtuple *)((object *)head_offset)->payload();
     return NULL;
@@ -674,10 +721,16 @@ sm_oid_mgr::oid_get_latest_version(FID f, OID o)
 fat_ptr*
 sm_oid_mgr::ensure_tuple(FID f, OID o)
 {
-    fat_ptr *ptr = oidmgr->oid_get_ptr(f, o);
+    return ensure_tuple(get_impl(this)->get_array(f), o);
+}
+
+fat_ptr*
+sm_oid_mgr::ensure_tuple(oid_array *oa, OID o)
+{
+    fat_ptr *ptr = oa->get(o);
     if (ptr->asi_type() == fat_ptr::ASI_LOG) {   // in the durable log
         fat_ptr new_ptr = object::create_tuple_object(*ptr);
-        if (not __sync_bool_compare_and_swap(&oidmgr->oid_get_ptr(f, o)->_ptr, 
+        if (not __sync_bool_compare_and_swap(&oidmgr->oid_get_ptr(oa, o)->_ptr, 
                                              ptr->_ptr, new_ptr._ptr)) {
 #ifdef REUSE_OBJECTS
             MM::get_object_pool()->put(0, (object *)new_ptr.offset());
@@ -697,6 +750,12 @@ sm_oid_mgr::ensure_tuple(FID f, OID o)
 dbtuple*
 sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 {
+    return oid_get_version(get_impl(this)->get_array(f), o, visitor_xc);
+}
+
+dbtuple*
+sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
+{
     ASSERT(f);
 #if CHECK_INVARIANTS
     int attempts = 0;
@@ -709,7 +768,7 @@ sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
     // out the whole version chain from the log.
     object *cur_obj = NULL;
 start_over:
-    for (auto ptr = *ensure_tuple(f, o); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
+    for (auto ptr = *ensure_tuple(oa, o); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
         cur_obj = (object*)ptr.offset();
         dbtuple *version = (dbtuple *)cur_obj->payload();
         auto clsn = volatile_read(version->clsn);
@@ -779,11 +838,17 @@ start_over:
 void
 sm_oid_mgr::oid_unlink(FID f, OID o, void *object_payload)
 {
+    return oid_unlink(get_impl(this)->get_array(f), o, object_payload);
+}
+
+void
+sm_oid_mgr::oid_unlink(oid_array *oa, OID o, void *object_payload)
+{
     // Now the head is guaranteed to be the only dirty version
     // because we unlink the overwritten dirty version in put,
     // essentially this function ditches the head directly.
     // Otherwise use the commented out old code.
-    auto *ptr = get_impl(this)->oid_access(f, o);
+    auto *ptr = oa->get(o);
     object *head_obj = (object *)ptr->offset();
     ASSERT(head_obj->payload() == object_payload);
     // using a CAS is overkill: head is guaranteed to be the (only) dirty version

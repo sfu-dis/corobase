@@ -255,7 +255,7 @@ sm_log::recover_insert(sm_log_scan_mgr::record_scan *logrec)
     OID o = logrec->oid();
     fat_ptr ptr = recover_prepare_version(logrec, NULL);
     ASSERT(oidmgr->file_exists(f));
-    sm_oid_mgr_impl::oid_array *oa = get_impl(oidmgr)->get_array(f);
+    oid_array *oa = get_impl(oidmgr)->get_array(f);
     oa->ensure_size(oa->alloc_size(o));
     oidmgr->oid_put_new(f, o, ptr);
     ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());

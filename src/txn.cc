@@ -840,7 +840,7 @@ transaction::try_insert_new_tuple(
 
     OID oid = oidmgr->alloc_oid(fid);
     fat_ptr new_head = fat_ptr::make(object, INVALID_SIZE_CODE, 0);
-    oidmgr->oid_put_new(fid, oid, new_head);
+    oidmgr->oid_put_new(btr->tuple_vec(), oid, new_head);
 #ifdef PHANTOM_PROT_TABLE_LOCK
     if (not tuple_vector->put(oid, new_head)) {
         if (instant_xlock)

@@ -5,71 +5,7 @@
 #include "sm-oid-alloc-impl.h"
 
 #include "stub-impl.h"
-
 struct sm_oid_mgr_impl : sm_oid_mgr {
-
-    /* OID arrays and allocators alike always occupy an integer number
-       of dynarray pages, to ensure that we don't hit precision issues
-       when saving dynarray contents to (and restoring from)
-       disk. It's also more than big enough for the objects to reach
-       full size
-     */
-    static size_t const SZCODE_ALIGN_BITS = dynarray::page_bits();
-    
-    /* An OID is essentially an array of fat_ptr. The only bit of
-       magic is that it embeds the dynarray that manages the storage
-       it occupies.
-     */
-    struct oid_array {
-        static size_t const MAX_SIZE = sizeof(fat_ptr) << 32;
-        static OID const MAX_ENTRIES = (size_t(1) << 32) - sizeof(dynarray)/sizeof(fat_ptr);
-        static size_t const ENTRIES_PER_PAGE = sizeof(fat_ptr) << SZCODE_ALIGN_BITS;
-        
-        /* How much space is required for an array with [n] entries?
-         */
-        static constexpr
-        size_t
-        alloc_size(size_t n=MAX_ENTRIES)
-        {
-            return OFFSETOF(oid_array, _entries[n]);
-        }
-        
-        static
-        fat_ptr make();
-
-        static
-        void destroy(oid_array *oa);
-        
-        oid_array(dynarray &&owner);
-
-        // unsafe!
-        oid_array()=delete;
-        oid_array(oid_array const&)=delete;
-        void operator=(oid_array)=delete;
-
-        /* Return the number of entries this OID array currently holds.
-         */
-        size_t nentries();
-
-        /* Make sure the backing store holds at least [n] entries.
-         */
-        void ensure_size(size_t n);
-
-        /* Return a pointer to the given OID's slot.
-
-           WARNING: The caller is responsible for handling races in
-           case multiple threads try to update the slot concurrently.
-
-           WARNING: this function does not perform bounds
-           checking. The caller is responsible to use nentries() and
-           ensure_size() as needed.
-         */
-        fat_ptr *get(OID o) { return &_entries[o]; }
-
-        dynarray _backing_store;
-        fat_ptr _entries[];
-    };
-
     /* The object array for each file resides in the OID array for
        file 0; allocators go in file 1 (including the file allocator,
        which predictably resides at OID 0). We don't attempt to store
@@ -81,11 +17,6 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
     static FID const FIRST_FREE_FID = 3;
 
     static size_t const MUTEX_COUNT = 256;
-
-    static
-    dynarray make_oid_dynarray() {
-        return dynarray(oid_array::alloc_size(), 1024*1024*128);
-    }
 
     sm_oid_mgr_impl();
     ~sm_oid_mgr_impl();
@@ -116,18 +47,18 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
 };
 
 /* Make sure things are consistent */
-static_assert(sm_oid_mgr_impl::oid_array::alloc_size()
-              == sm_oid_mgr_impl::oid_array::MAX_SIZE,
-              "Go fix sm_oid_mgr_impl::oid_array::MAX_ENTRIES");
-static_assert(sm_oid_mgr_impl::oid_array::MAX_ENTRIES
+static_assert(oid_array::alloc_size()
+              == oid_array::MAX_SIZE,
+              "Go fix oid_array::MAX_ENTRIES");
+static_assert(oid_array::MAX_ENTRIES
               == sm_allocator::MAX_CAPACITY_MARK,
               "Go fix sm_allocator::MAX_CAPACITY_MARK");
 
 static_assert(sm_allocator::max_alloc_size()
-              <= (MAX_ENCODABLE_SIZE << sm_oid_mgr_impl::SZCODE_ALIGN_BITS),
+              <= (MAX_ENCODABLE_SIZE << SZCODE_ALIGN_BITS),
               "Need a bigger alignment");
-static_assert(sm_oid_mgr_impl::oid_array::alloc_size()
-              <= (MAX_ENCODABLE_SIZE << sm_oid_mgr_impl::SZCODE_ALIGN_BITS),
+static_assert(oid_array::alloc_size()
+              <= (MAX_ENCODABLE_SIZE << SZCODE_ALIGN_BITS),
                   "Need a bigger alignment");
 
 static_assert(sm_oid_mgr::METADATA_FID == sm_oid_mgr_impl::METADATA_FID,

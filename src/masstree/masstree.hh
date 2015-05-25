@@ -160,7 +160,7 @@ class basic_table {
 		// NOTE: oid 0 indicates absence of the node
 		if( oid )
 		{
-            fat_ptr head = oidmgr->oid_get(fid_, oid);
+            fat_ptr head = oidmgr->oid_get(node_vec, oid);
 			if( head.offset() != 0 )
 			{
 				object* obj = (object*)head.offset();
@@ -191,6 +191,11 @@ class basic_table {
 
     friend class unlocked_tcursor<P>;
     friend class tcursor<P>;
+
+  public:
+    // For convenience...no need to take another lookup for the table
+    oid_array *tuple_vec;
+    oid_array *node_vec;
 };
 
 } // namespace Masstree
