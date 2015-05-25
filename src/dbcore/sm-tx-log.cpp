@@ -149,7 +149,8 @@ sm_tx_log::commit(LSN *pdest) {
 void
 sm_tx_log::discard() {
     auto *impl = get_log_impl(this);
-    impl->_log->_lm.discard(impl->_commit_block);
+    if (impl->_commit_block)
+        impl->_log->_lm.discard(impl->_commit_block);
     tls_log_space_used = false;
 }
 
