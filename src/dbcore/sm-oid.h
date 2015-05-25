@@ -6,7 +6,76 @@
 #include "sm-heap.h"
 #include "sm-log.h"
 
+#include "dynarray.h"
+
 #include "../tuple.h"
+
+/* OID arrays and allocators alike always occupy an integer number
+   of dynarray pages, to ensure that we don't hit precision issues
+   when saving dynarray contents to (and restoring from)
+   disk. It's also more than big enough for the objects to reach
+   full size
+ */
+static size_t const SZCODE_ALIGN_BITS = dynarray::page_bits();
+
+/* An OID is essentially an array of fat_ptr. The only bit of
+   magic is that it embeds the dynarray that manages the storage
+   it occupies.
+ */
+struct oid_array {
+    static size_t const MAX_SIZE = sizeof(fat_ptr) << 32;
+    static OID const MAX_ENTRIES = (size_t(1) << 32) - sizeof(dynarray)/sizeof(fat_ptr);
+    static size_t const ENTRIES_PER_PAGE = sizeof(fat_ptr) << SZCODE_ALIGN_BITS;
+    
+    /* How much space is required for an array with [n] entries?
+     */
+    static constexpr
+    size_t
+    alloc_size(size_t n=MAX_ENTRIES)
+    {
+        return OFFSETOF(oid_array, _entries[n]);
+    }
+    
+    static
+    fat_ptr make();
+
+    static
+    dynarray make_oid_dynarray() {
+        return dynarray(oid_array::alloc_size(), 1024*1024*128);
+    }
+
+    static
+    void destroy(oid_array *oa);
+    
+    oid_array(dynarray &&owner);
+
+    // unsafe!
+    oid_array()=delete;
+    oid_array(oid_array const&)=delete;
+    void operator=(oid_array)=delete;
+
+    /* Return the number of entries this OID array currently holds.
+     */
+    size_t nentries();
+
+    /* Make sure the backing store holds at least [n] entries.
+     */
+    void ensure_size(size_t n);
+
+    /* Return a pointer to the given OID's slot.
+
+       WARNING: The caller is responsible for handling races in
+       case multiple threads try to update the slot concurrently.
+
+       WARNING: this function does not perform bounds
+       checking. The caller is responsible to use nentries() and
+       ensure_size() as needed.
+     */
+    fat_ptr *get(OID o) { return &_entries[o]; }
+
+    dynarray _backing_store;
+    fat_ptr _entries[];
+};
 
 struct sm_oid_mgr {
     using log_tx_scan = sm_log_scan_mgr::record_scan;
@@ -81,24 +150,39 @@ struct sm_oid_mgr {
     fat_ptr oid_get(FID f, OID o);
     fat_ptr *oid_get_ptr(FID f, OID o);
 
+    fat_ptr oid_get(oid_array *oa, OID o);
+    fat_ptr *oid_get_ptr(oid_array *oa, OID o);
+
     /* Update the contents of the specified OID. The fat_ptr may
        reference memory or disk (or be NULL).
      */
     void oid_put(FID f, OID o, fat_ptr p);
+    void oid_put(oid_array *oa, OID o, fat_ptr p);
 
     void oid_put_new(FID f, OID o, fat_ptr p);
+    void oid_put_new(oid_array *oa, OID o, fat_ptr p);
 
     /* Return the overwritten version (could be an in-flight version!) */
     dbtuple *oid_put_update(FID f, OID o, object* new_desc, xid_context *updater_xc);
+    dbtuple *oid_put_update(oid_array *oa, OID o,
+                            object* new_desc, xid_context *updater_xc);
 
     dbtuple *oid_get_latest_version(FID f, OID o);
+    dbtuple *oid_get_latest_version(oid_array *oa, OID o);
+
     dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
+    dbtuple *oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc);
+
     fat_ptr *ensure_tuple(FID f, OID o);
+    fat_ptr *ensure_tuple(oid_array *oa, OID o);
+
     void oid_unlink(FID f, OID o, void *object_payload);
+    void oid_unlink(oid_array *oa, OID o, void *object_payload);
 
     bool file_exists(FID f);
     void recreate_file(FID f);    // for recovery only
     void recreate_allocator(FID f, OID m);  // for recovery only
+    oid_array *get_array(FID f);
 
     virtual ~sm_oid_mgr() { }
     

@@ -40,6 +40,7 @@ public:
 #ifdef TRACE_FOOTPRINT
     TRACER::register_table((uintptr_t)underlying_btree.get_tuple_vector(), name);
 #endif
+    underlying_btree.set_tuple_vec(oidmgr->get_array(fid));
     ALWAYS_ASSERT(fid and this->fid);
   }
 

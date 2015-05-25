@@ -109,7 +109,7 @@ rc_t base_txn_btree::do_tree_put(
 #endif
 
     // first *updater* wins
-    dbtuple *prev = oidmgr->oid_put_update(fid, oid, obj, t.xc);
+    dbtuple *prev = oidmgr->oid_put_update(this->underlying_btree.tuple_vec(), oid, obj, t.xc);
 
     if (prev) { // succeeded
         ASSERT(t.xc);
