@@ -156,7 +156,7 @@ class basic_table {
 
     inline node_type* fetch_node(OID oid) const
 	{
-        ALWAYS_ASSERT(fid_);
+        ASSERT(fid_);
 		// NOTE: oid 0 indicates absence of the node
 		if( oid )
 		{

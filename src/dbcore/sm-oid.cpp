@@ -571,7 +571,7 @@ void
 sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p)
 {
     auto *ptr = get_impl(this)->oid_access(f, o);
-    ALWAYS_ASSERT(*ptr == NULL_PTR);
+    ASSERT(*ptr == NULL_PTR);
     *ptr = p;
 }
 
@@ -579,7 +579,7 @@ void
 sm_oid_mgr::oid_put_new(oid_array *oa, OID o, fat_ptr p)
 {
     auto *ptr = oa->get(o);
-    ALWAYS_ASSERT(*ptr == NULL_PTR);
+    ASSERT(*ptr == NULL_PTR);
     *ptr = p;
 }
 
