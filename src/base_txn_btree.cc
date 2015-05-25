@@ -114,15 +114,19 @@ rc_t base_txn_btree::do_tree_put(
     if (prev) { // succeeded
         ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
-        // check if there's any in-flight readers of the overwritten tuple
-        // (will form an inbound r:w edge to me) ie, am I the T2 (pivot)
-        // with T1 in-flight and T3 committed first (ie, before T1, ie,
-        // prev's creator) in the dangerous structure? (abort the pivot,
-        // betting the reader is likely to succeed)
         ASSERT(prev->sstamp == NULL_PTR);
-        // the read-opt makes the readers list inaccurate, so we only do
-        // the check here if read-opt is not enabled
-        if (not has_read_opt() and t.xc->ct3 and serial_get_tuple_readers(prev, true)) {
+        // Therotically if there's a committed T3 and concurrent readers,
+        // as the updater (T2) I can abort early here to avoid closing a cycle,
+        // as it's easier to restart the T2. In practice, when retry-aborted-tx
+        // is turned on, and if we don't do pre_commit if the tx is aborted
+        // before entering precommit (ie, do log->discard directly), this causes
+        // extremely slow performance with more than 20% cycles spent on
+        // register/deregister_reader_tx. Actually if we don't abort here and
+        // still do log->precommit at abort, we also get higher performance.
+        // So we defer this possible abort to commit time (meanwhile the reader
+        // might not really commit after all...)
+        /*
+        if (t.xc->ct3 and serial_get_tuple_readers(prev, true)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set), same as in SSN impl.
             oidmgr->oid_unlink(this->fid, oid, tuple);
@@ -132,6 +136,7 @@ rc_t base_txn_btree::do_tree_put(
 #endif
             return rc_t{RC_ABORT_SERIAL};
         }
+        */
 #endif
         object *prev_obj = (object *)((char *)prev - sizeof(object));
 #ifdef USE_PARALLEL_SSN
