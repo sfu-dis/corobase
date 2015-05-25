@@ -167,7 +167,7 @@ class internode : public node_base<P> {
 
 		// Allocate object
         object* obj = reinterpret_cast<object*>(MM::allocate(sizeof(object) + sizeof(internode<P>)));
-		ALWAYS_ASSERT(obj);
+		ASSERT(obj);
 		internode<P>* n = (internode<P>*)((char*)obj + sizeof(object));
 
 
@@ -342,7 +342,7 @@ class leaf : public node_base<P> {
 		// Allocate object
 		size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
         object* obj = reinterpret_cast<object*>(MM::allocate(sizeof(object) + sz ));
-		ALWAYS_ASSERT(obj);
+		ASSERT(obj);
 		leaf<P>* n = (leaf<P>*)((char*)obj + sizeof(object));
 
 		// Init object container and node
@@ -550,7 +550,7 @@ void basic_table<P>::initialize(threadinfo& ti) {
     masstree_precondition(!root_oid_);
     fid_ = oidmgr->create_file(true);
     node_vec = oidmgr->get_array(fid_);
-    ALWAYS_ASSERT(node_vec);
+    ASSERT(node_vec);
     node_type* root = node_type::leaf_type::make_root(0, 0, ti, this);
 	root_oid_ = root->oid;
 }

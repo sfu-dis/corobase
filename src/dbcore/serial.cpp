@@ -94,12 +94,12 @@ void assign_reader_bitmap_entry() {
 
     tls_bitmap_entry = new_bitmap ^ old_bitmap;
     rl_bitmap_t forbidden_bits = -(rl_bitmap_t(1) << readers_list::XIDS_PER_READER_KEY);
-    ALWAYS_ASSERT(not (tls_bitmap_entry & forbidden_bits));
+    ASSERT(not (tls_bitmap_entry & forbidden_bits));
 }
 
 void deassign_reader_bitmap_entry() {
-    ALWAYS_ASSERT(tls_bitmap_entry);
-    ALWAYS_ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
+    ASSERT(tls_bitmap_entry);
+    ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
     __sync_fetch_and_xor(&claimed_bitmap_entries, tls_bitmap_entry);
     tls_bitmap_entry = 0;
 }
