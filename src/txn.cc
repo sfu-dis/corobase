@@ -67,6 +67,21 @@ transaction::~transaction()
 void
 transaction::abort_impl()
 {
+    // Mark the dirty tuple as invalid, for oid_get_version to
+    // move on more quickly.
+    volatile_write(xc->state, TXN_ABRTD);
+
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    // Go over the read set first, to deregister from the tuple
+    // asap so the updater won't wait for too long.
+    for (auto &r : read_set) {
+        ASSERT(not r->is_defunct());
+        ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
+        // remove myself from reader list
+        serial_deregister_reader_tx(r);
+    }
+#endif
+
     for (auto &w : write_set) {
         dbtuple *tuple = w.new_tuple;
         ASSERT(tuple);
@@ -84,15 +99,6 @@ transaction::abort_impl()
 #endif
     }
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    for (auto &r : read_set) {
-        ASSERT(not r->is_defunct());
-        ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
-        // remove myself from reader list
-        serial_deregister_reader_tx(r);
-    }
-#endif
-
 #ifdef USE_PARALLEL_SSI
     // PLEASE REALLY DO FIXME (tzwang): Theoretically skipping the pre_commit()
     // here should give better performance because it saves a CAS in the log,
@@ -107,7 +113,6 @@ transaction::abort_impl()
         log->pre_commit();
 #endif
     log->discard();
-    volatile_write(xc->state, TXN_ABRTD);
 }
 
 namespace {
