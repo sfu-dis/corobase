@@ -599,8 +599,10 @@ sm_oid_mgr::oid_put_update(oid_array *oa,
     int attempts = 0;
 #endif
     fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
-start_over:
     auto *ptr = ensure_tuple(oa, o);
+    // No need to call ensure_tuple() below start_over - it returns a ptr,
+    // a dereference is enough to capture the content.
+start_over:
     fat_ptr head = *ptr;
     object *old_desc = (object *)head.offset();
     dbtuple *version = (dbtuple *)old_desc->payload();
@@ -618,6 +620,14 @@ start_over:
            about is guaranteed to have a LSN now.
          */
         auto holder_xid = XID::from_ptr(clsn);
+        XID updater_xid = volatile_read(updater_xc->owner);
+
+        // in-place update case (multiple updates on the same record  by same transaction)
+        if (holder_xid == updater_xid) {
+            overwrite = true;
+            goto install;
+        }
+
         xid_context *holder= xid_get_context(holder_xid);
         if (not holder) {
 #if CHECK_INVARIANTS
@@ -639,35 +649,17 @@ start_over:
 #endif
             goto start_over;
         }
-        XID updater_xid = volatile_read(updater_xc->owner);
-        switch (state) {
+        ASSERT(holder_xid != updater_xid);
+        if (state == TXN_CMMTD) {
             // Allow installing a new version if the tx committed (might
             // still hasn't finished post-commit). Note that the caller
             // (ie do_tree_put) should look at the clsn field of the
             // returned version (prev) to see if this is an overwrite
             // (ie xids match) or not (xids don't match).
-            case TXN_CMMTD:
-                ASSERT(holder_xid != updater_xid);
-                goto install;
-
-            case TXN_COMMITTING:
-            case TXN_ABRTD:
-                return NULL;
-
-                // dirty data
-            case TXN_EMBRYO:
-            case TXN_ACTIVE:
-                // in-place update case ( multiple updates on the same record  by same transaction)
-                if (holder_xid == updater_xid) {
-                    overwrite = true;
-                    goto install;
-                }
-                else
-                    return NULL;
-
-            default:
-                ALWAYS_ASSERT( false );
+            ASSERT(holder_xid != updater_xid);
+            goto install;
         }
+        return NULL;
     }
     // check dirty writes
     else {
@@ -677,8 +669,7 @@ start_over:
         ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
         if (LSN::from_ptr(clsn) > updater_xc->begin)
             return NULL;
-        else
-            goto install;
+        goto install;
     }
 
 install:
@@ -750,27 +741,28 @@ sm_oid_mgr::ensure_tuple(oid_array *oa, OID o)
 dbtuple*
 sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 {
+    ASSERT(f);
     return oid_get_version(get_impl(this)->get_array(f), o, visitor_xc);
 }
 
 dbtuple*
 sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 {
-    ASSERT(f);
-#if CHECK_INVARIANTS
-    int attempts = 0;
-#endif
-
     // If we needed to load versions from the log, that means we're
     // working on a recovered database, and all tx's begin ts should
     // be larger than the curlsn when the DB was shutdown, so everyone
     // should be able to see the latest version, i.e., no need to dig
     // out the whole version chain from the log.
     object *cur_obj = NULL;
+    fat_ptr *head_ptr = ensure_tuple(oa, o);
+    // No need to call ensure_tuple() below start_over - it returns a ptr,
+    // a dereference is enough to capture the content.
+#ifdef USE_READ_COMMITTED
 start_over:
-    for (auto ptr = *ensure_tuple(oa, o); ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
+#endif
+    for (auto ptr = *head_ptr; ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
         cur_obj = (object*)ptr.offset();
-        dbtuple *version = (dbtuple *)cur_obj->payload();
+        dbtuple *version = cur_obj->tuple();
         auto clsn = volatile_read(version->clsn);
         ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
         // xid tracking & status check
@@ -782,54 +774,39 @@ start_over:
 
             // dirty data made by me is visible!
             if (holder_xid == visitor_xc->owner) {
-                return version;
-#if CHECK_INVARIANTS
-                // don't do this if it's not my own tuple!
-                if (cur_obj->_next.offset())
-                    ASSERT(((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
-#endif
+                ASSERT(not cur_obj->_next.offset() or ((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
+                return cur_obj->tuple();
             }
-
+#ifdef USE_READ_COMMITTED
             xid_context *holder = xid_get_context(holder_xid);
             if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
-                goto start_over;
+                continue;
 
             auto state = volatile_read(holder->state);
             auto end = volatile_read(holder->end);
             auto owner = volatile_read(holder->owner);
 
             // context still valid for this XID?
-            if (unlikely(owner != holder_xid)) {
-#if CHECK_INVARIANTS
-                ASSERT(attempts < 2);
-                attempts++;
-#endif
+            if (unlikely(owner != holder_xid))
                 goto start_over;
-            }
 
-            if (state != TXN_CMMTD) {
+            if (state == TXN_CMMTD) {
+                if (end <= visitor_xc->begin and end != INVALID_LSN)
+                    return cur_obj->tuple();
+            }
 #ifdef READ_COMMITTED_SPIN
+            else {
                 // spin until the tx is settled (either aborted or committed)
-                if (not wait_for_commit_result(holder))
-                    continue;
-#else
-                continue;
-#endif
+                if (wait_for_commit_result(holder))
+                    return cur_obj->tuple();
             }
-
-            if (end > visitor_xc->begin or  // committed but invisible data,
-                end == INVALID_LSN)         // aborted data
-                continue;
-
-        }
-        else {
-#ifndef USE_READ_COMMITTED
-            if (LSN::from_ptr(clsn) > visitor_xc->begin)    // invisible
-                continue;
+#endif
 #endif
         }
-        ASSERT(version);
-        return version;
+#ifndef USE_READ_COMMITTED
+        else if (LSN::from_ptr(clsn) <= visitor_xc->begin)
+            return cur_obj->tuple();
+#endif
     }
 
     return NULL;    // No Visible records
