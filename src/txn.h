@@ -50,12 +50,10 @@ using namespace TXN;
 // forward decl
 class base_txn_btree;
 
-// XXX: hacky
-extern std::string (*g_proto_version_str)(uint64_t v);
-
-// base class with very simple definitions- nothing too exciting yet
-class transaction_base {
+class transaction {
+  // XXX: weaker than necessary
   friend class base_txn_btree;
+
 public:
   typedef dbtuple::size_type size_type;
   typedef TXN::txn_state txn_state;
@@ -73,46 +71,6 @@ public:
     // XXX: more flags in the future, things like consistency levels
   };
 
-  transaction_base(uint64_t flags)
-    : flags(flags) {}
-
-  transaction_base(const transaction_base &) = delete;
-  transaction_base(transaction_base &&) = delete;
-  transaction_base &operator=(const transaction_base &) = delete;
-
-public:
-
-  inline uint64_t
-  get_flags() const
-  {
-    return flags;
-  }
-
-protected:
-  static event_counter g_evt_read_logical_deleted_node_search;
-  static event_counter g_evt_read_logical_deleted_node_scan;
-  static event_counter g_evt_dbtuple_write_search_failed;
-  static event_counter g_evt_dbtuple_write_insert_failed;
-
-  static event_counter evt_local_search_lookups;
-  static event_counter evt_dbtuple_latest_replacement;
-
-  CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe0, g_txn_commit_probe0_cg);
-  CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe1, g_txn_commit_probe1_cg);
-  CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe2, g_txn_commit_probe2_cg);
-  CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe3, g_txn_commit_probe3_cg);
-  CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe4, g_txn_commit_probe4_cg);
-  CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
-  CLASS_STATIC_COUNTER_DECL(scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
-
-  const uint64_t flags;
-};
-
-class transaction : public transaction_base {
-  // XXX: weaker than necessary
-  friend class base_txn_btree;
-
-public:
   // KeyWriter is expected to implement:
   // [1-arg constructor]
   //   KeyWriter(const Key *)
@@ -268,7 +226,14 @@ public:
     return *sa;
   }
 
+  inline uint64_t
+  get_flags() const
+  {
+    return flags;
+  }
+
 protected:
+  const uint64_t flags;
   XID xid;
   xid_context *xc;
   sm_tx_log* log;
