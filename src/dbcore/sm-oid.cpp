@@ -584,21 +584,25 @@ sm_oid_mgr::oid_put_new(oid_array *oa, OID o, fat_ptr p)
 }
 
 dbtuple*
-sm_oid_mgr::oid_put_update(FID f, OID o, object* new_object, xid_context *updater_xc)
+sm_oid_mgr::oid_put_update(FID f,
+                           OID o,
+                           const varstr *value,
+                           xid_context *updater_xc,
+                           dbtuple *&new_tuple)
 {
-    return oid_put_update(get_impl(this)->get_array(f), o, new_object, updater_xc);
+    return oid_put_update(get_impl(this)->get_array(f), o, value, updater_xc, new_tuple);
 }
 
 dbtuple*
 sm_oid_mgr::oid_put_update(oid_array *oa,
                            OID o,
-                           object *new_object,
-                           xid_context *updater_xc)
+                           const varstr *value,
+                           xid_context *updater_xc,
+                           dbtuple *&new_tuple)
 {
 #if CHECK_INVARIANTS
     int attempts = 0;
 #endif
-    fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
     auto *ptr = ensure_tuple(oa, o);
     // No need to call ensure_tuple() below start_over - it returns a ptr,
     // a dereference is enough to capture the content.
@@ -677,17 +681,26 @@ install:
     // (tx's repetitive updates, keep the latest one only)
     // Note for this to be correct we shouldn't allow multiple txs
     // working on the same tuple at the same time.
+
+    object *new_object = object::create_tuple_object(value, false);
+    new_object->tuple()->clsn = updater_xc->owner.to_ptr();
+    fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
+
     if (overwrite) {
         volatile_write(new_object->_next, old_desc->_next);
         // I already claimed it, no need to use cas then
         volatile_write(ptr->_ptr, new_ptr._ptr);
+        version->mark_defunct();
         __sync_synchronize();
+        new_tuple = new_object->tuple();
         return version;
     }
     else {
         volatile_write(new_object->_next, head);
-        if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_ptr._ptr))
+        if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_ptr._ptr)) {
+            new_tuple = new_object->tuple();
             return version;
+        }
     }
     return NULL;
 }

@@ -799,11 +799,12 @@ transaction::try_insert_new_tuple(
     concurrent_btree *btr,
     const varstr *key,
     const varstr *value,
-    object* object,
     FID fid)
 {
     INVARIANT(key);
-    dbtuple* tuple = (dbtuple *)object->payload();
+    object *object = object::create_tuple_object(value, false);
+    dbtuple *tuple = object->tuple();
+    tuple->clsn = xid.to_ptr();
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
     // here we return false if some reader is already scanning.
