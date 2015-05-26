@@ -85,7 +85,7 @@ rc_t base_txn_btree::do_tree_put(
     bool instant_lock = false;
     table_lock_t *l = NULL;
     if (not v) {
-        l = this->underlying_btree.get_tuple_vector()->lock_ptr();
+        l = this->underlying_btree.tuple_vec()->lock_ptr();
         transaction::table_lock_set_t::iterator it =
             std::find(t.table_locks.begin(), t.table_locks.end(), l);
         if (it == t.table_locks.end()) {
@@ -149,7 +149,7 @@ rc_t base_txn_btree::do_tree_put(
         if (not ssn_check_exclusion(t.xc)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set)
-            oidmgr->oid_unlink(this->fid, oid, tuple);
+            oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
             if (instant_lock)
                 object_vector::unlock(l);
@@ -181,7 +181,7 @@ rc_t base_txn_btree::do_tree_put(
 #endif
         }
 
-        t.write_set.emplace_back(tuple, fid, oid);
+        t.write_set.emplace_back(tuple, this->underlying_btree.tuple_vec(), oid);
         ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
 
@@ -288,7 +288,7 @@ base_txn_btree::do_search_range_call(
         return;
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
-    table_lock_t *l = this->underlying_btree.get_tuple_vector()->lock_ptr();
+    table_lock_t *l = this->underlying_btree.tuple_vec()->lock_ptr();
     if (std::find(t.table_locks.begin(), t.table_locks.end(), l) == t.table_locks.end()) {
         if (object_vector::lock(l, TABLE_LOCK_S))
             t.table_locks.push_back(l);
@@ -336,7 +336,7 @@ base_txn_btree::do_rsearch_range_call(
         return;
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
-    table_lock_t *l = this->underlying_btree.get_tuple_vector()->lock_ptr();
+    table_lock_t *l = this->underlying_btree.tuple_vec()->lock_ptr();
     if (std::find(t.table_locks.begin(), t.table_locks.end(), l) == t.table_locks.end()) {
         if (object_vector::lock(l, TABLE_LOCK_S))
             t.table_locks.push_back(l);

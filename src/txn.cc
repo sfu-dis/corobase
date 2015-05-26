@@ -92,7 +92,7 @@ transaction::abort_impl()
         if (tuple->next())
             volatile_write(tuple->next()->sstamp, NULL_PTR);
 #endif
-        oidmgr->oid_unlink(w.fid, w.oid, tuple);
+        oidmgr->oid_unlink(w.oa, w.oid, tuple);
 #if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
         object *obj = (object *)((char *)tuple - sizeof(object));
         op->put(xc->end.offset(), obj);
@@ -853,7 +853,7 @@ transaction::try_insert_new_tuple(
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(varkey(key), fid, oid, tuple, &ins_info))) {
         ++transaction_base::g_evt_dbtuple_write_insert_failed;
-        oidmgr->oid_unlink(fid, oid, tuple);
+        oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
         if (instant_xlock)
             object_vector::unlock(l);
@@ -873,7 +873,7 @@ transaction::try_insert_new_tuple(
             if (unlikely(it->second.version != ins_info.old_version)) {
                 // important: unlink the version, otherwise we risk leaving a dead
                 // version at chain head -> infinite loop or segfault...
-                oidmgr->oid_unlink(fid, oid, tuple);
+                oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
                 return false;
             }
             // otherwise, bump the version
@@ -906,7 +906,7 @@ transaction::try_insert_new_tuple(
                           DEFAULT_ALIGNMENT_BITS, NULL);
 
     // update write_set
-    write_set.emplace_back(tuple, fid, oid);
+    write_set.emplace_back(tuple, btr->tuple_vec(), oid);
     return true;
 }
 
