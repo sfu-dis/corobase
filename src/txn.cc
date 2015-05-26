@@ -15,7 +15,7 @@ using namespace util;
 using namespace TXN;
 
 transaction::transaction(uint64_t flags, str_arena &sa)
-  : flags(flags), xid(TXN::xid_alloc()), xc(xid_get_context(xid)), sa(&sa)
+  : flags(flags), sa(&sa)
 {
 #ifdef ENABLE_GC
     epoch = MM::epoch_enter();
@@ -32,8 +32,12 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #ifdef PHANTOM_PROT_NODE_SET
     absent_set.set_empty_key(NULL);    // google dense map
 #endif
+    // Do this before touching the log!
     RCU::rcu_enter();
     log = logmgr->new_tx_log();
+    xid = TXN::xid_alloc();
+    xc = xid_get_context(xid);
+    xc->begin = logmgr->cur_lsn();
 }
 
 transaction::~transaction()
