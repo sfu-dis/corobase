@@ -189,11 +189,11 @@ protected:
   }
 
   struct write_record_t {
-    write_record_t(dbtuple *n, FID f, OID o) :
-        new_tuple(n), fid(f), oid(o) {}
-    write_record_t() : new_tuple(NULL), fid(0), oid(0) {}
+    write_record_t(dbtuple *n, oid_array *a, OID o) :
+        new_tuple(n), oa(a), oid(o) {}
+    write_record_t() : new_tuple(NULL), oa(NULL), oid(0) {}
     dbtuple *new_tuple;
-    FID fid;
+    oid_array *oa;
     OID oid;
   };
 
