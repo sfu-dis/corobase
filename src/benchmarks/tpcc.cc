@@ -1920,7 +1920,7 @@ tpcc_worker::txn_order_status()
   //   max_write_set_size : 0
   //   num_txn_contexts : 4
   const uint64_t read_only_mask =
-    g_disable_read_only_scans ? 0 : transaction_base::TXN_FLAG_READ_ONLY;
+    g_disable_read_only_scans ? 0 : transaction::TXN_FLAG_READ_ONLY;
   const abstract_db::TxnProfileHint hint =
     g_disable_read_only_scans ?
       abstract_db::HINT_TPCC_ORDER_STATUS :
@@ -2074,7 +2074,7 @@ tpcc_worker::txn_stock_level()
   //   n_read_set_large_instances : 2
   //   num_txn_contexts : 3
   const uint64_t read_only_mask =
-    g_disable_read_only_scans ? 0 : transaction_base::TXN_FLAG_READ_ONLY;
+    g_disable_read_only_scans ? 0 : transaction::TXN_FLAG_READ_ONLY;
   const abstract_db::TxnProfileHint hint =
     g_disable_read_only_scans ?
       abstract_db::HINT_TPCC_STOCK_LEVEL :

@@ -30,9 +30,6 @@
 
 using namespace TXN;
 
-// XXX: hack
-extern std::string (*g_proto_version_str)(uint64_t v);
-
 // differentiate with delete case (pvalue = null)
 #define DEFUNCT_TUPLE_MARK ((varstr *)0x1)
 

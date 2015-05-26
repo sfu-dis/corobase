@@ -15,7 +15,7 @@ using namespace util;
 using namespace TXN;
 
 transaction::transaction(uint64_t flags, str_arena &sa)
-  : transaction_base(flags), xid(TXN::xid_alloc()), xc(xid_get_context(xid)), sa(&sa)
+  : flags(flags), xid(TXN::xid_alloc()), xc(xid_get_context(xid)), sa(&sa)
 {
 #ifdef ENABLE_GC
     epoch = MM::epoch_enter();
@@ -136,11 +136,11 @@ transaction_flags_to_str(uint64_t flags)
 {
     bool first = true;
     std::ostringstream oss;
-    if (flags & transaction_base::TXN_FLAG_LOW_LEVEL_SCAN) {
+    if (flags & transaction::TXN_FLAG_LOW_LEVEL_SCAN) {
         oss << "TXN_FLAG_LOW_LEVEL_SCAN";
         first = false;
     }
-    if (flags & transaction_base::TXN_FLAG_READ_ONLY) {
+    if (flags & transaction::TXN_FLAG_READ_ONLY) {
         if (first)
             oss << "TXN_FLAG_READ_ONLY";
         else
@@ -852,7 +852,6 @@ transaction::try_insert_new_tuple(
 
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(varkey(key), fid, oid, tuple, &ins_info))) {
-        ++transaction_base::g_evt_dbtuple_write_insert_failed;
         oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
         if (instant_xlock)
@@ -914,7 +913,6 @@ rc_t
 transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
 {
     INVARIANT(tuple);
-    ++evt_local_search_lookups;
     ASSERT(xc);
     bool read_my_own = (tuple->clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT(not read_my_own or (read_my_own and XID::from_ptr(volatile_read(tuple->clsn)) == xc->owner));
@@ -945,7 +943,6 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     }
     INVARIANT(stat == dbtuple::READ_EMPTY || stat == dbtuple::READ_RECORD);
     if (stat == dbtuple::READ_EMPTY) {
-        ++transaction_base::g_evt_read_logical_deleted_node_search;
         return rc_t{RC_FALSE};
     }
 
@@ -1055,23 +1052,4 @@ transaction::ssi_read(dbtuple *tuple)
     return {RC_TRUE};
 }
 #endif
-
-CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe0, g_txn_commit_probe0_cg);
-CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe1, g_txn_commit_probe1_cg);
-CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe2, g_txn_commit_probe2_cg);
-CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe3, g_txn_commit_probe3_cg);
-CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe4, g_txn_commit_probe4_cg);
-CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe5, g_txn_commit_probe5_cg);
-CLASS_STATIC_COUNTER_IMPL(transaction_base, scopedperf::tsc_ctr, g_txn_commit_probe6, g_txn_commit_probe6_cg);
-
-event_counter transaction_base::g_evt_read_logical_deleted_node_search
-    ("read_logical_deleted_node_search");
-event_counter transaction_base::g_evt_read_logical_deleted_node_scan
-    ("read_logical_deleted_node_scan");
-event_counter transaction_base::g_evt_dbtuple_write_search_failed
-    ("dbtuple_write_search_failed");
-event_counter transaction_base::g_evt_dbtuple_write_insert_failed
-    ("dbtuple_write_insert_failed");
-
-event_counter transaction_base::evt_local_search_lookups("local_search_lookups");
 
