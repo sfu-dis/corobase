@@ -91,10 +91,11 @@ void assign_reader_bitmap_entry() {
         old_bitmap = cur_bitmap;
         goto retry;
     }
-
     tls_bitmap_entry = new_bitmap ^ old_bitmap;
+#if CHECK_INVARIANTS
     rl_bitmap_t forbidden_bits = -(rl_bitmap_t(1) << readers_list::XIDS_PER_READER_KEY);
     ASSERT(not (tls_bitmap_entry & forbidden_bits));
+#endif
 }
 
 void deassign_reader_bitmap_entry() {
