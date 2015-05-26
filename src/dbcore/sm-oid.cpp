@@ -719,10 +719,10 @@ fat_ptr*
 sm_oid_mgr::ensure_tuple(oid_array *oa, OID o)
 {
     fat_ptr *ptr = oa->get(o);
-    if (ptr->asi_type() == fat_ptr::ASI_LOG) {   // in the durable log
-        fat_ptr new_ptr = object::create_tuple_object(*ptr);
-        if (not __sync_bool_compare_and_swap(&oidmgr->oid_get_ptr(oa, o)->_ptr, 
-                                             ptr->_ptr, new_ptr._ptr)) {
+    fat_ptr p = *ptr;
+    if (p.asi_type() == fat_ptr::ASI_LOG) {   // in the durable log
+        fat_ptr new_ptr = object::create_tuple_object(p);
+        if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
 #ifdef REUSE_OBJECTS
             MM::get_object_pool()->put(0, (object *)new_ptr.offset());
 #elif defined(ENABLE_GC)
@@ -731,10 +731,9 @@ sm_oid_mgr::ensure_tuple(oid_array *oa, OID o)
             // somebody might acted faster, no need to retry
         }
     }
-    else {  // should be in main memory
-        // FIXME: handle ASI_HEAP and ASI_EXT too
-        ASSERT(ptr->asi_type() == 0);
-    }
+    // should be in main memory
+    // FIXME: handle ASI_HEAP and ASI_EXT too
+    ASSERT(ptr->asi_type() == 0);
     return ptr;
 }
 
