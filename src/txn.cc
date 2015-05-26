@@ -54,10 +54,7 @@ transaction::~transaction()
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
     serial_deregister_tx(xid);
-    read_set.clear();
 #endif
-    //write_set.clear();
-
 #ifdef ENABLE_GC
     MM::epoch_exit(xc->end, epoch);
 #endif
