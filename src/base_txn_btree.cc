@@ -68,17 +68,11 @@ rc_t base_txn_btree::do_tree_put(
                                  // for now [since this would indicate a suboptimality]
     t.ensure_active();
 
-    object *obj = object::create_tuple_object(v, false);
-    dbtuple *tuple = obj->tuple();
-
-    // initialize the version
-    tuple->clsn = t.xid.to_ptr();		// XID state is set
-
     // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
     // it fails if somebody else acted faster to insert new, we then
     // (fall back to) with the normal update procedure.
     // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-    if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, obj, this->fid))
+    if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, this->fid))
         return rc_t{RC_TRUE};
 
     // do regular search
@@ -108,10 +102,12 @@ rc_t base_txn_btree::do_tree_put(
     }
 #endif
 
+    dbtuple *tuple;
     // first *updater* wins
-    dbtuple *prev = oidmgr->oid_put_update(this->underlying_btree.tuple_vec(), oid, obj, t.xc);
+    dbtuple *prev = oidmgr->oid_put_update(this->underlying_btree.tuple_vec(), oid, v, t.xc, tuple);
 
     if (prev) { // succeeded
+        ASSERT(tuple);
         ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
         ASSERT(prev->sstamp == NULL_PTR);
@@ -138,7 +134,6 @@ rc_t base_txn_btree::do_tree_put(
         }
         */
 #endif
-        object *prev_obj = (object *)((char *)prev - sizeof(object));
 #ifdef USE_PARALLEL_SSN
         // update hi watermark
         // Overwriting a version could trigger outbound anti-dep,
@@ -174,15 +169,13 @@ rc_t base_txn_btree::do_tree_put(
         if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {
             // updating my own updates!
             // prev's prev: previous *committed* version
-            volatile_write(obj->_next._ptr, prev_obj->_next._ptr);
-            prev->mark_defunct();
+            ASSERT(prev->is_defunct()); // oid_put_update did this
 #if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
             t.op->put(t.epoch, prev_obj);
 #endif
             ASSERT(obj->_next.offset() != (uintptr_t)prev_obj);
         }
         else {  // prev is committed (or precommitted but in post-commit now) head
-            volatile_write(obj->_next, fat_ptr::make(prev_obj, 0));
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif

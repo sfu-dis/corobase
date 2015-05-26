@@ -163,9 +163,9 @@ struct sm_oid_mgr {
     void oid_put_new(oid_array *oa, OID o, fat_ptr p);
 
     /* Return the overwritten version (could be an in-flight version!) */
-    dbtuple *oid_put_update(FID f, OID o, object* new_desc, xid_context *updater_xc);
+    dbtuple *oid_put_update(FID f, OID o, const varstr* value, xid_context *updater_xc, dbtuple *&new_tuple);
     dbtuple *oid_put_update(oid_array *oa, OID o,
-                            object* new_desc, xid_context *updater_xc);
+                            const varstr *value, xid_context *updater_xc, dbtuple *&new_tuple);
 
     dbtuple *oid_get_latest_version(FID f, OID o);
     dbtuple *oid_get_latest_version(oid_array *oa, OID o);
