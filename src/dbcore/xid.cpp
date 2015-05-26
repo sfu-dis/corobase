@@ -92,7 +92,7 @@ take_one(thread_data *t)
 #ifdef USE_PARALLEL_SSI
     contexts[id].ct3 = ~uint64_t{0};
 #endif
-    contexts[id].begin = logmgr->cur_lsn();
+    // Note: transaction needs to initialize xc->begin in ctor
     contexts[id].end = INVALID_LSN;
     contexts[id].state = TXN_EMBRYO;
     return x;
