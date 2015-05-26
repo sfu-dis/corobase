@@ -551,8 +551,8 @@ transaction::parallel_ssi_commit()
                 int i = __builtin_ctz(readers);
                 ASSERT(i >= 0 and i < 24);
                 readers &= (readers-1);
-                ASSERT(rxid != xc->owner);
                 XID rxid = volatile_read(rlist.xids[i]);
+                ASSERT(rxid != xc->owner);
                 if (not rxid._val)
                     continue; // ignore invalid entries and ignore my own reads
                 xid_context *reader_xc = xid_get_context(rxid);
