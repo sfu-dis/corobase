@@ -636,7 +636,7 @@ start_over:
         if (not holder) {
 #if CHECK_INVARIANTS
             auto t = volatile_read(version->clsn).asi_type();
-            ASSERT(t == fat_ptr::ASI_LOG or oid_get(f, o) != head);
+            ASSERT(t == fat_ptr::ASI_LOG or oid_get(oa, o) != head);
 #endif
             goto start_over;
         }

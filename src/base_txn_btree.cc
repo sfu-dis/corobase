@@ -173,7 +173,6 @@ rc_t base_txn_btree::do_tree_put(
 #if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
             t.op->put(t.epoch, prev_obj);
 #endif
-            ASSERT(obj->_next.offset() != (uintptr_t)prev_obj);
         }
         else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
