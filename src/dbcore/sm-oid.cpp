@@ -667,12 +667,14 @@ start_over:
     }
     // check dirty writes
     else {
+#ifndef USE_READ_COMMITTED
         // First updater wins: if some concurrent tx committed first,
         // I have to abort. Same as in Oracle. Otherwise it's an isolation
         // failure: I can modify concurrent transaction's writes.
         ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
         if (LSN::from_ptr(clsn) > updater_xc->begin)
             return NULL;
+#endif
         goto install;
     }
 
@@ -774,8 +776,7 @@ start_over:
 #endif
     for (auto ptr = *head_ptr; ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
         cur_obj = (object*)ptr.offset();
-        dbtuple *version = cur_obj->tuple();
-        auto clsn = volatile_read(version->clsn);
+        auto clsn = volatile_read(cur_obj->tuple()->clsn);
         ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
         // xid tracking & status check
         if (clsn.asi_type() == fat_ptr::ASI_XID) {
@@ -792,10 +793,9 @@ start_over:
 #ifdef USE_READ_COMMITTED
             xid_context *holder = xid_get_context(holder_xid);
             if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
-                continue;
+                goto start_over;
 
             auto state = volatile_read(holder->state);
-            auto end = volatile_read(holder->end);
             auto owner = volatile_read(holder->owner);
 
             // context still valid for this XID?
@@ -803,8 +803,9 @@ start_over:
                 goto start_over;
 
             if (state == TXN_CMMTD) {
-                if (end <= visitor_xc->begin and end != INVALID_LSN)
-                    return cur_obj->tuple();
+                ASSERT(volatile_read(holder->end).offset());
+                ASSERT(owner == holder_xid);
+                return cur_obj->tuple();
             }
 #ifdef READ_COMMITTED_SPIN
             else {
@@ -815,10 +816,17 @@ start_over:
 #endif
 #endif
         }
-#ifndef USE_READ_COMMITTED
-        else if (LSN::from_ptr(clsn) <= visitor_xc->begin)
+        else if (clsn.asi_type() == fat_ptr::ASI_LOG) {
+#ifdef USE_READ_COMMITTED
             return cur_obj->tuple();
+#else
+            if (LSN::from_ptr(clsn) <= visitor_xc->begin)
+                return cur_obj->tuple();
 #endif
+        }
+        else {
+            ALWAYS_ASSERT(false);
+        }
     }
 
     return NULL;    // No Visible records
