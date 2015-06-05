@@ -258,7 +258,7 @@ xid_get_context(XID x) {
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 txn_state __attribute__((noinline))
-wait_for_commit_result(XID xid, xid_context *xc) {
+spin_for_cstamp(XID xid, xid_context *xc) {
     txn_state state;
     do {
         state = volatile_read(xc->state);
@@ -267,33 +267,6 @@ wait_for_commit_result(XID xid, xid_context *xc) {
     }
     while (state != TXN_CMMTD and state != TXN_ABRTD);
     return state;
-}
-
-txn_state __attribute__((noinline))
-spin_for_cstamp(XID xid, xid_context *xc) {
-    return wait_for_commit_result(xid, xc);
-}
-
-// Spin for the xstamp of some version to finalize
-// which is marked by the PRE_CMMTD state.
-//
-// The caller should be an updater in pre-commit trying to wait for
-// a reader's xstamp to become stable (ie the reader should have
-// cstamp < the caller's, so to the caller, the reader might leave
-// the readers bitmap anytime).
-bool __attribute__((noinline))
-spin_for_xstamp(XID xid, xid_context *xc) {
-    txn_state state;
-    do {
-        state = volatile_read(xc->state);
-        // If there's context change, then xid must have aborted,
-        // otherwise it should be spinning on some updater (might
-        // be the caller of this function).
-        if (volatile_read(xc->owner) != xid)
-            return false;
-    }
-    while (state != TXN_CMMTD and state != TXN_ABRTD);
-    return state == TXN_CMMTD;
 }
 #endif
 } // end of namespace
