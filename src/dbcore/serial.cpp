@@ -112,7 +112,7 @@ serial_register_reader_tx(dbtuple *t, XID xid)
     if (old_bitmap & tls_bitmap_entry)
         return false;
 #if CHECK_INVARIANTS
-    int xid_pos = __builtin_ctz(tls_bitmap_entry);
+    int xid_pos = __builtin_ctzl(tls_bitmap_entry);
     ASSERT(xid_pos >= 0 and xid_pos < readers_list::XIDS_PER_READER_KEY);
 #endif
     __sync_fetch_and_or(&t->rl_bitmap, tls_bitmap_entry);
@@ -137,16 +137,16 @@ serial_deregister_reader_tx(dbtuple *t)
 void
 serial_register_tx(XID xid)
 {
-    ASSERT(not rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val);
-    volatile_write(rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val, xid._val);
+    ASSERT(not rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val);
+    volatile_write(rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val, xid._val);
 }
 
 // deregister tx in the global rlist (called at tx end)
 void
 serial_deregister_tx(XID xid)
 {
-    volatile_write(rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val, 0);
-    ASSERT(not rlist.xids[__builtin_ctz(tls_bitmap_entry)]._val);
+    volatile_write(rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val, 0);
+    ASSERT(not rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val);
 }
 
 };  // end of namespace
