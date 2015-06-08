@@ -247,7 +247,7 @@ transaction::parallel_ssn_commit()
             xid_context *reader_xc = NULL;
             uint64_t reader_end = 0, reader_begin = 0;
             XID reader_owner = INVALID_XID;
-            if (not rxid._val) {
+            if (rxid._val) {
                 reader_xc = xid_get_context(rxid);
                 if (reader_xc) {
                     // Copy everything before doing anything:
