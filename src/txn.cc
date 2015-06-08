@@ -300,20 +300,6 @@ transaction::parallel_ssn_commit()
                     }   // else it's aborted, as if nothing happened
                 }
             }
-            else if (reader_end == cstamp) {
-                // Hit a duplicate RDTSCP stamp, spin on the older guy, and if
-                // we were born at the same time again (so lucky), abort.
-                if (reader_begin == xc->begin.offset())
-                    return {RC_ABORT_SERIAL};
-                if (reader_begin < xc->begin.offset()) {
-                    auto cr = spin_for_cstamp(rxid, reader_xc);
-                    // XXX: maybe can do better than aborting if we hit
-                    // TXN_INVLIAD (context chagne)?
-                    if (cr != TXN_ABRTD)    // CMMTD or INVALID
-                        return {RC_ABORT_SERIAL};
-                    // else the old guy aborted, as if nothing happened
-                }
-            }
             else {
                 ASSERT(reader_end > cstamp);
                 // Will commit after me, don't care, either.
@@ -666,16 +652,6 @@ transaction::parallel_ssi_commit()
                                 return {RC_ABORT_SERIAL};
                         }
                     }   // otherwise it's worth the spin - won't use it anyway
-                }
-                else if (reader_end == cstamp) {
-                    // Duplicate cstamp by rdtscp - same reasoning as in SSN
-                    if (reader_begin == xc->begin.offset())
-                        return {RC_ABORT_SERIAL};
-                    if (reader_begin < xc->begin.offset()) {
-                        auto cr = spin_for_cstamp(rxid, reader_xc);
-                        if (cr != TXN_ABRTD)    // CMMTD or INVALID
-                            return {RC_ABORT_SERIAL};
-                    }
                 }
                 else {
                     // Reader will commit after me, ie its cstamp will be > ct3
