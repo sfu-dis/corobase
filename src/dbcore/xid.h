@@ -19,6 +19,7 @@ struct xid_context {
 #ifdef USE_PARALLEL_SSN
     uint64_t pstamp; // youngest predecessor (\eta)
     uint64_t sstamp; // oldest successor (\pi)
+    bool should_abort;
 #endif
 #ifdef USE_PARALLEL_SSI
     uint64_t ct3;   // smallest commit stamp of T3 in the dangerous structure

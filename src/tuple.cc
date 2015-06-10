@@ -54,4 +54,43 @@ dbtuple::is_old(xid_context *xc)
 {
   return age(xc) >= OLD_VERSION_THRESHOLD;
 }
+
+bool
+dbtuple::set_persistent_reader()
+{
+    uint64_t pr = 0;
+    do {
+        pr = volatile_read(preader);
+        if (pr >> 7)   // some updater already locked it
+            return false;
+    }
+    while (volatile_read(preader) != PERSISTENT_READER_MARK and
+           not __sync_bool_compare_and_swap(&preader, pr, PERSISTENT_READER_MARK));
+    return true;
+}
+
+bool
+dbtuple::has_persistent_reader()
+{
+    return volatile_read(preader) & PERSISTENT_READER_MARK;
+}
+
+// XXX: for the writer who's updating this tuple only
+void
+dbtuple::lockout_readers()
+{
+    if (not (volatile_read(preader) >> 7))
+        __sync_fetch_and_xor(&preader, uint8_t{1} << 7);
+    ASSERT(volatile_read(preader) >> 7);
+}
+
+// XXX: for the writer who's updating this tuple only
+void
+dbtuple::welcome_readers()
+{
+    if (volatile_read(preader) >> 7)
+        __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
+    ASSERT(not (volatile_read(preader) >> 7));
+}
+
 #endif
