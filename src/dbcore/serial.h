@@ -46,12 +46,17 @@ public:
     // to consider how to handle overflows (one way is to consolidate all
     // txs to one bit and let late comers to compare with this).
     XID xids[XIDS_PER_READER_KEY];
+    LSN last_commit_lsns[XIDS_PER_READER_KEY];
 
     readers_list() {
         memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
+        memset(last_commit_lsns, '\0', sizeof(LSN) * XIDS_PER_READER_KEY);
     }
 };
 
+bool serial_request_abort(xid_context *xc);
+uint64_t serial_get_last_cstamp(int xid_idx);
+void serial_stamp_last_committed_lsn(LSN lsn);
 bool serial_register_reader_tx(dbtuple *tup, XID xid);
 void serial_deregister_reader_tx(dbtuple *tup);
 void serial_register_tx(XID xid);

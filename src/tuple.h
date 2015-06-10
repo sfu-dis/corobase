@@ -33,6 +33,9 @@ using namespace TXN;
 // differentiate with delete case (pvalue = null)
 #define DEFUNCT_TUPLE_MARK ((varstr *)0x1)
 
+// Indicate somebody has read this tuple and thought it was an old one
+#define PERSISTENT_READER_MARK 0x1
+
 /**
  * A dbtuple is the type of value which we stick
  * into underlying (non-transactional) data structures- it
@@ -50,7 +53,7 @@ public:
   fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
                            // normal write to indicate its existence; become writer cstamp at commit
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
-  uint64_t bstamp;         // for SSN's (possibly SSI's too) read optimization
+  uint8_t preader;         // did I have some reader thinking I'm old?
 #endif
 #ifdef USE_PARALLEL_SSI
   uint64_t s2;  // smallest successor stamp of all reads performed by the tx
@@ -84,7 +87,7 @@ private:
       , rl_bitmap(rl_bitmap_t(0))
       , sstamp(NULL_PTR)
       , xstamp(0)
-      , bstamp(0)
+      , preader(0)
 #endif
 #ifdef USE_PARALLEL_SSI
       , s2(0)
@@ -113,7 +116,11 @@ public:
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   int64_t age(xid_context *visitor);
-  bool is_old(xid_context *visitor);
+  bool is_old(xid_context *visitor);    // FOR READERS ONLY!
+  bool set_persistent_reader();
+  bool has_persistent_reader();
+  void lockout_readers();
+  void welcome_readers();
 #endif
 
   inline void
