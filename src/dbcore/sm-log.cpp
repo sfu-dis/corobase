@@ -10,6 +10,7 @@ using namespace RCU;
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 int sm_log::fetch_at_recovery = 0;
+uint sm_log::nredo_parts = 6;
 
 void
 sm_log::load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits)
@@ -139,15 +140,51 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
     if (not sm_log::need_recovery)
         return;
 
+    std::future<himark_map_t> futures[nredo_parts];
+    for (uint i = 0; i < nredo_parts; i++)
+        futures[i] = std::async(std::launch::async, redo, scanner, chkpt_begin, i);
+
+    // Now recover allocator status
+    // Note: must do this before opening indexes, because each index itself
+    // uses an OID array (for the tree itself), which is allocated thru
+    // alloc_oid. So we need to fix the watermarks here to make sure trees
+    // don't get some already allocated FID.
+    FID max_fid = 0;
+    for (auto & f : futures) {
+        auto h = f.get();
+        for (auto &m : h) {
+            oidmgr->recreate_allocator(m.first, m.second);
+            if (m.first > max_fid)
+                max_fid = m.first;
+        }
+    }
+
+    // Fix internal files' marks too
+    oidmgr->recreate_allocator(sm_oid_mgr_impl::OBJARRAY_FID, max_fid);
+    oidmgr->recreate_allocator(sm_oid_mgr_impl::ALLOCATOR_FID, max_fid);
+    //oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
+
+    // So by now we will have a fully working database, once index is rebuilt.
+    // WARNING: DO NOT TAKE CHKPT UNTIL WE REPLAYED ALL INDEXES!
+    // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
+}
+
+sm_log::himark_map_t
+sm_log::redo(sm_log_scan_mgr *scanner, LSN chkpt_begin, uint mod_part)
+{
+	RCU::rcu_register();
+    RCU::rcu_enter();
+
     // One hiwater_mark/capacity_mark per FID
-    std::unordered_map<FID, OID> himarks;
+    himark_map_t himarks;
 
     uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
     auto *scan = scanner->new_log_scan(chkpt_begin);
-    DEFER(delete scan);
     for (; scan->valid(); scan->next()) {
         size += scan->payload_size();
         auto f = scan->fid();
+        if (f % nredo_parts != mod_part)
+            continue;
         auto o = scan->oid();
         if (himarks[f] < o)
             himarks[f] = o;
@@ -180,28 +217,13 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
         }
     }
     ASSERT(icount == iicount);
-    printf("[Recovery] inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n", icount, ucount, dcount, size);
+    printf("[Recovery t%d] inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n",
+           mod_part, icount, ucount, dcount, size);
 
-    // Now recover allocator status
-    // Note: must do this before opening indexes, because each index itself
-    // uses an OID array (for the tree itself), which is allocated thru
-    // alloc_oid. So we need to fix the watermarks here to make sure trees
-    // don't get some already allocated FID.
-    FID max_fid = 0;
-    for (auto &m : himarks) {
-        oidmgr->recreate_allocator(m.first, m.second);
-        if (m.first > max_fid)
-            max_fid = m.first;
-    }
-
-    // Fix internal files' marks too
-    oidmgr->recreate_allocator(sm_oid_mgr_impl::OBJARRAY_FID, max_fid);
-    oidmgr->recreate_allocator(sm_oid_mgr_impl::ALLOCATOR_FID, max_fid);
-    //oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
-
-    // So by now we will have a fully working database, once index is rebuilt.
-    // WARNING: DO NOT TAKE CHKPT UNTIL WE REPLAYED ALL INDEXES!
-    // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
+    delete scan;
+    RCU::rcu_exit();
+    RCU::rcu_deregister();
+    return himarks;
 }
 
 // The version-loading mechanism will only dig out the latest
