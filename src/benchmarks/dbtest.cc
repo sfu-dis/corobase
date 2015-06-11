@@ -65,6 +65,20 @@ parse_memory_spec(const string &s)
 }
 */
 
+void
+heap_prefault()
+{
+#ifndef CHECK_INVARIANTS
+    uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);
+    uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
+    ALWAYS_ASSERT(p);
+    ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
+    mallopt (M_TRIM_THRESHOLD, -1);
+    mallopt (M_MMAP_MAX, 0);
+    free(p);
+#endif
+}
+
 int
 main(int argc, char **argv)
 {
@@ -292,6 +306,7 @@ main(int argc, char **argv)
     thread(&stats_server::serve_forever, srvr).detach();
   }
 
+  heap_prefault();
   vector<string> bench_toks = split_ws(bench_opts);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];
