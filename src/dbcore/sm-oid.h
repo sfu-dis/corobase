@@ -167,6 +167,8 @@ struct sm_oid_mgr {
     dbtuple *oid_put_update(oid_array *oa, OID o,
                             const varstr *value, xid_context *updater_xc, dbtuple *&new_tuple);
 
+    void oid_put_header(FID f, OID o, fat_ptr p);
+
     dbtuple *oid_get_latest_version(FID f, OID o);
     dbtuple *oid_get_latest_version(oid_array *oa, OID o);
 
@@ -175,6 +177,7 @@ struct sm_oid_mgr {
 
     fat_ptr *ensure_tuple(FID f, OID o);
     fat_ptr *ensure_tuple(oid_array *oa, OID o);
+    fat_ptr ensure_tuple(fat_ptr *ptr);
 
     void oid_unlink(FID f, OID o, void *object_payload);
     void oid_unlink(oid_array *oa, OID o, void *object_payload);

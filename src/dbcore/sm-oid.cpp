@@ -583,6 +583,16 @@ sm_oid_mgr::oid_put_new(oid_array *oa, OID o, fat_ptr p)
     *ptr = p;
 }
 
+void
+sm_oid_mgr::oid_put_header(FID f, OID o, fat_ptr p)
+{
+    auto *ptr = get_impl(this)->oid_access(f, o);
+    auto pp = *ptr;
+    auto *oh = new (MM::allocate(sizeof(object_header))) object_header(p, pp);
+    *ptr = fat_ptr::make(oh, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
+    ASSERT(oh->ptr.offset() and oh->ptr == p and oh->next == pp);
+}
+
 dbtuple*
 sm_oid_mgr::oid_put_update(FID f,
                            OID o,
@@ -735,21 +745,39 @@ sm_oid_mgr::ensure_tuple(oid_array *oa, OID o)
 {
     fat_ptr *ptr = oa->get(o);
     fat_ptr p = *ptr;
-    if (p.asi_type() == fat_ptr::ASI_LOG) {   // in the durable log
-        fat_ptr new_ptr = object::create_tuple_object(p);
-        if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
-#ifdef REUSE_OBJECTS
-            MM::get_object_pool()->put(0, (object *)new_ptr.offset());
-#elif defined(ENABLE_GC)
-            MM::deallocate((object *)new_ptr.offset());
-#endif
-            // somebody might acted faster, no need to retry
-        }
-    }
-    // should be in main memory
-    // FIXME: handle ASI_HEAP and ASI_EXT too
-    ASSERT(ptr->asi_type() == 0);
+    if (p.asi_type() == fat_ptr::ASI_LOG)
+        ensure_tuple(ptr);
     return ptr;
+}
+
+// @ptr: address of an object_header
+// Returns address of an object
+fat_ptr
+sm_oid_mgr::ensure_tuple(fat_ptr *ptr)
+{
+    fat_ptr p = *ptr;
+    if (p.asi_type() != fat_ptr::ASI_LOG) {
+        ASSERT(p.asi_type() == 0);
+        return p;
+    }
+
+    // ptr->_ptr should point to an object_header
+    auto *oh = (object_header *)p.offset();
+
+    // oh->ptr should point to some location in the log
+    fat_ptr new_ptr = object::create_tuple_object(oh->ptr, oh->next);
+
+    // Now new_ptr should point to some location in memory
+    if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
+#ifdef REUSE_OBJECTS
+        MM::get_object_pool()->put(0, (object *)new_ptr.offset());
+#else
+        MM::deallocate((object *)new_ptr.offset());
+#endif
+        // somebody might acted faster, no need to retry
+    }
+    // FIXME: handle ASI_HEAP and ASI_EXT too
+    return new_ptr;
 }
 
 dbtuple*
@@ -762,20 +790,15 @@ sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 dbtuple*
 sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 {
-    // If we needed to load versions from the log, that means we're
-    // working on a recovered database, and all tx's begin ts should
-    // be larger than the curlsn when the DB was shutdown, so everyone
-    // should be able to see the latest version, i.e., no need to dig
-    // out the whole version chain from the log.
-    object *cur_obj = NULL;
-    fat_ptr *head_ptr = ensure_tuple(oa, o);
-    // No need to call ensure_tuple() below start_over - it returns a ptr,
-    // a dereference is enough to capture the content.
+    fat_ptr *pp = oa->get(o);
 #ifdef USE_READ_COMMITTED
 start_over:
 #endif
-    for (auto ptr = *head_ptr; ptr.offset(); ptr = volatile_read(cur_obj->_next)) {
-        cur_obj = (object*)ptr.offset();
+    while (pp->offset()) {
+        auto ptr = ensure_tuple(pp);
+        auto *cur_obj = (object*)ptr.offset();
+        pp = &cur_obj->_next;
+
         auto clsn = volatile_read(cur_obj->tuple()->clsn);
         ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
         // xid tracking & status check

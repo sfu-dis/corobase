@@ -256,8 +256,13 @@ sm_log::recover_insert(sm_log_scan_mgr::record_scan *logrec)
     ASSERT(oidmgr->file_exists(f));
     oid_array *oa = get_impl(oidmgr)->get_array(f);
     oa->ensure_size(oa->alloc_size(o));
-    oidmgr->oid_put_new(f, o, ptr);
-    ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
+    if (fetch_at_recovery) {
+        oidmgr->oid_put_new(f, o, ptr);
+        ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
+    }
+    else {
+        oidmgr->oid_put_header(f, o, ptr);
+    }
     //printf("[Recovery] insert: FID=%d OID=%d\n", f, o);
 }
 
@@ -272,10 +277,15 @@ sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
         oidmgr->oid_put(f, o, NULL_PTR);
     else {
         fat_ptr ptr = recover_prepare_version(logrec, (object *)head_ptr.offset());
-        oidmgr->oid_put(f, o, ptr);
-        ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
-        // this has to go if on-demand loading is enabled
-        //ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
+        if (fetch_at_recovery) {
+            oidmgr->oid_put(f, o, ptr);
+            ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
+            // this has to go if on-demand loading is enabled
+            //ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
+        }
+        else {
+            oidmgr->oid_put_header(f, o, ptr);
+        }
     }
     //printf("[Recovery] update: FID=%d OID=%d\n", f, o);
 }
