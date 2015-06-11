@@ -777,7 +777,7 @@ sm_oid_mgr::ensure_tuple(fat_ptr *ptr)
         // somebody might acted faster, no need to retry
     }
     // FIXME: handle ASI_HEAP and ASI_EXT too
-    return new_ptr;
+    return *ptr;
 }
 
 dbtuple*
@@ -794,8 +794,11 @@ sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 #ifdef USE_READ_COMMITTED
 start_over:
 #endif
-    while (pp->offset()) {
+    while (1) {
         auto ptr = ensure_tuple(pp);
+        if (not ptr.offset())
+            break;
+
         auto *cur_obj = (object*)ptr.offset();
         pp = &cur_obj->_next;
 
