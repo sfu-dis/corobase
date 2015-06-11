@@ -289,7 +289,6 @@ public:
     : db(db), barrier_a(nthreads), barrier_b(1) {}
   virtual ~bench_runner() {}
   void run();
-  void heap_prefault();
 
 protected:
   // only called once

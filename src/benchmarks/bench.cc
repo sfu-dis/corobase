@@ -183,28 +183,8 @@ retry:
 }
 
 void
-bench_runner::heap_prefault()
-{
-#ifndef CHECK_INVARIANTS
-    uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);		// 45G for 24 warehouses
-    uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
-    ALWAYS_ASSERT(p);
-    ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
-    mallopt (M_TRIM_THRESHOLD, -1);
-    mallopt (M_MMAP_MAX, 0);
-
-    struct rusage usage;
-    getrusage(RUSAGE_SELF, &usage);
-    std::cout<<"Major fault: " <<  usage.ru_majflt<< "Minor fault: " << usage.ru_minflt<< std::endl;
-
-    free(p);
-#endif
-}
-
-void
 bench_runner::run()
 {
-	heap_prefault();
   // load data
   if (not sm_log::need_recovery) {
     const vector<bench_loader *> loaders = make_loaders();
