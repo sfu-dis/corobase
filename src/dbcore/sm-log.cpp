@@ -9,6 +9,7 @@ using namespace RCU;
 
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
+int sm_log::fetch_at_recovery = 0;
 
 void
 sm_log::load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits)
@@ -203,18 +204,16 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
     // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
 }
 
-// "next" is ignored when load==false
 // The version-loading mechanism will only dig out the latest
 // version as a result.
 fat_ptr
 sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
-                                object *next,
-                                bool load)
+                                object *next)
 {
     // The tx will need to call sm_log::load_object() to load the object
     // when accessing the version. The caller should write this return
     // value to the corresponding OID array slot.
-    if (not load)
+    if (not sm_log::fetch_at_recovery)
         return logrec->payload_ptr();
 
     // Note: payload_size() includes the whole varstr

@@ -307,6 +307,7 @@ typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
 
 struct sm_log {
     static bool need_recovery;
+    static int fetch_at_recovery;    // Load physical versions during recovery?
 
     /* Allocate and return a new sm_log object. If [dname] exists, it
        will be mounted and used. Otherwise, a new (empty) log
@@ -374,8 +375,7 @@ private:
     static void recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete = false);
     static fat_ptr recover_prepare_version(
                                 sm_log_scan_mgr::record_scan *logrec,
-                                object *next,
-                                bool load = false);//true);
+                                object *next);
     static void recover_fid(sm_log_scan_mgr::record_scan *logrec);
 
 public:
