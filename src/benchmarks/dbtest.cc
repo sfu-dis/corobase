@@ -116,6 +116,7 @@ main(int argc, char **argv)
       {"log-dir"                    , required_argument , 0                          , 'l'} ,
       {"log-segsize"                , required_argument , 0                          , 'e'} ,
       {"log-bufsize"                , required_argument , 0                          , 'u'} ,
+      {"log-prefetch"               , no_argument       , &sm_log::fetch_at_recovery , 1} ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {0, 0, 0, 0}
@@ -219,8 +220,6 @@ main(int argc, char **argv)
   }
 #endif
 
-  db = new ndb_wrapper(log_dir->c_str(), log_segsize, log_bufsize);
-
 #ifdef DEBUG
   cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
 #endif
@@ -281,6 +280,7 @@ main(int argc, char **argv)
     cerr << "  log-dir : " << *log_dir                      << endl;
     cerr << "  log-segsize : " << log_segsize               << endl;
     cerr << "  log-bufsize : " << log_bufsize               << endl;
+    cerr << "  log-prefetch: " << sm_log::fetch_at_recovery << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;
@@ -313,6 +313,7 @@ main(int argc, char **argv)
   new_argv[0] = (char *) bench_type.c_str();
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
+  db = new ndb_wrapper(log_dir->c_str(), log_segsize, log_bufsize);
   test_fn(db, argc, new_argv);
   delete db;
   return 0;
