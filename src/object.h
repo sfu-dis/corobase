@@ -7,14 +7,35 @@ class dbtuple;
 class object
 {
 	public:
-		object( size_t size ) : _size(size) { _next = fat_ptr::make( (void*)0, INVALID_SIZE_CODE); }
-		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
+        object(size_t size, fat_ptr next) : _size(size), _next(next) {}
+        object(size_t size) : _size(size), _next(NULL_PTR) {}
 
-		fat_ptr _next;
         uint64_t _size;
+		fat_ptr _next;
+		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
         dbtuple *tuple() { return (dbtuple *)payload(); }
         static object *create_tuple_object(const varstr *tuple_value, bool do_write);
-        static fat_ptr create_tuple_object(fat_ptr ptr);
+        static fat_ptr create_tuple_object(fat_ptr ptr, fat_ptr nxt);
+};
+
+// A place holder for an object that's not stored in memory
+// The OID slot could point to an object (in memory) or an
+// object_header which means the reader of this version will
+// need to call ensure_tuple() to load it from the log.
+//
+// object_header's next field can point to either an object
+// or another object_header. During recovery, it'll point
+// to an object_header if fetch_at_recovery==0 (obviously).
+// After received some log segment shipped from another
+// machine, the receiver will scan the log and install only
+// these object_headers. The versions will only be loaded
+// if they're needed by the future readers.
+struct object_header
+{
+    object_header(fat_ptr p) : ptr(p), next(NULL_PTR) {}
+    object_header(fat_ptr p, fat_ptr n) : ptr(p), next(n) {}
+    fat_ptr ptr;    // the object's location in the log
+    fat_ptr next;   // next object
 };
 
 // DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS

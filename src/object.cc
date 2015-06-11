@@ -32,7 +32,7 @@ object::create_tuple_object(const varstr *tuple_value, bool do_write)
 // ptr should point to some position in the log
 // Returns a fat_ptr to the object created
 fat_ptr
-object::create_tuple_object(fat_ptr ptr)
+object::create_tuple_object(fat_ptr ptr, fat_ptr nxt)
 {
     ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
     auto sz = decode_size_aligned(ptr.size_code()) + sizeof(object) + sizeof(dbtuple);
@@ -42,7 +42,7 @@ object::create_tuple_object(fat_ptr ptr)
     obj = t.op->get(sz);
     if (not obj)
 #endif
-        obj = new (MM::allocate(sz)) object(sz);
+        obj = new (MM::allocate(sz)) object(sz, nxt);
 
     // Load tuple varstr from the log
     dbtuple* tuple = obj->tuple();
@@ -57,7 +57,6 @@ object::create_tuple_object(fat_ptr ptr)
             (char *)tuple->get_value_start() + sizeof(varstr),
             tuple->size);
 
-    ASSERT(not obj->_next.offset());
     obj->tuple()->clsn = ptr;
     ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
     return fat_ptr::make(obj, INVALID_SIZE_CODE);   // asi_type=0 (memory)
