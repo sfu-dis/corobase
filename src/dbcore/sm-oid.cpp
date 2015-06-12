@@ -7,7 +7,7 @@
 
 sm_oid_mgr *oidmgr = NULL;
 // maps table name to its fid
-std::unordered_map<std::string, FID> fid_map;
+std::unordered_map<std::string, std::pair<FID, ndb_ordered_index *> > fid_map;
 
 namespace {
 #if 0

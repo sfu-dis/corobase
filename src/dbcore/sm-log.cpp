@@ -321,20 +321,20 @@ sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
     logrec->load_object(buf, sz);
     std::string name(buf);
     printf("[Recovery] FID(%s) = %d\n", buf, f);
-    fid_map.emplace(name, f);
+    fid_map.emplace(name, std::make_pair(f, (ndb_ordered_index *)NULL));
     ASSERT(not oidmgr->file_exists(f));
     oidmgr->recreate_file(f);
     free(buf);
 }
 
-void
-sm_log::recover_index(FID fid, ndb_ordered_index *index)
+std::pair<std::string, uint64_t>
+sm_log::rebuild_index(FID fid, ndb_ordered_index *index)
 {
-    ASSERT(fid_map[index->name] == fid);
     uint64_t count = 0;
+    RCU::rcu_register();
+    RCU::rcu_enter();
     LSN chkpt_begin = get_impl(logmgr)->_lm._lm.get_chkpt_start();
     auto *scan = logmgr->get_scan_mgr()->new_log_scan(chkpt_begin);
-    DEFER(delete scan);
     for (; scan->valid(); scan->next()) {
         if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
             continue;
@@ -356,5 +356,24 @@ sm_log::recover_index(FID fid, ndb_ordered_index *index)
         count++;
         free((void *)buf);
     }
-    printf("[Recovery] %s index inserts: %lu\n", index->name.c_str(), count);
+    delete scan;
+    RCU::rcu_exit();
+    RCU::rcu_deregister();
+    return make_pair(index->name, count);
+}
+
+void
+sm_log::recover_index()
+{
+    std::vector<std::future<std::pair<std::string, uint64_t> > > futures;
+    for (auto &e : fid_map) {
+        ndb_ordered_index *index = e.second.second;
+        FID fid = e.second.first;
+        futures.emplace_back(std::async(std::launch::async, rebuild_index, fid, index));
+    }
+
+    for (auto &f : futures) {
+        std::pair<std::string, uint64_t> r = f.get();
+        printf("[Recovery] %s index inserts: %lu\n", r.first.c_str(), r.second);
+    }
 }
