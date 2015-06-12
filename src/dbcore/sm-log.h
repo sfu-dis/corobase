@@ -384,7 +384,8 @@ private:
     static void recover_fid(sm_log_scan_mgr::record_scan *logrec);
 
 public:
-    static void recover_index(FID fid, ndb_ordered_index *index);
+    static std::pair<std::string, uint64_t> rebuild_index(FID fid, ndb_ordered_index *index);
+    static void recover_index();
 
 protected:
     // Forbid direct instantiation

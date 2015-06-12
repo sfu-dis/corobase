@@ -90,9 +90,9 @@ ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mo
   FID fid = 0;
 
   // See if we already have an FID for this table (recovery did it)
-  std::unordered_map<std::string, FID>::const_iterator it = fid_map.find(name);
+  std::unordered_map<std::string, std::pair<FID, ndb_ordered_index *> >::const_iterator it = fid_map.find(name);
   if (it != fid_map.end())
-      fid = it->second;
+      fid = it->second.first;
   else {
       fid = oidmgr->create_file(true);
       // log [table name, FID]
@@ -104,14 +104,12 @@ ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mo
       RCU::rcu_exit();
   }
   ASSERT(fid);
-  fid_map.emplace(name, fid);
   auto *index = new ndb_ordered_index(name, fid, value_size_hint, mostly_append);
-  // also replay the index here
-  // FIXME: parallelize callers of open_index so replay can be parallel
+  fid_map.emplace(name, std::make_pair(fid, index));
+  // Prepare the index pointer for rebuild
   if (it != fid_map.end()) {
-      RCU::rcu_enter();
-      logmgr->recover_index(fid, index);
-      RCU::rcu_exit();
+      ASSERT(it->second.second == NULL);
+      fid_map[name].second = index;
   }
   return index;
 }
