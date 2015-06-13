@@ -55,7 +55,7 @@ struct sm_log_header_scan_impl : sm_log_scan_mgr::header_scan {
    is in sm-log-recover.cpp, not sm-log.cpp.
  */
 struct sm_log_record_scan_impl : sm_log_scan_mgr::record_scan {
-    sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx);
+    sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx, bool fetch_payloads);
 
     sm_log_recover_mgr::log_scanner scan;
     sm_log_recover_mgr *lm;
