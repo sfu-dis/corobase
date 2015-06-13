@@ -471,8 +471,8 @@ sm_log_header_scan_impl::sm_log_header_scan_impl(sm_log_recover_mgr *lm, LSN sta
     , lm(lm)
 {
 }
-sm_log_record_scan_impl::sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx)
-    : scan(lm, start, true)
+sm_log_record_scan_impl::sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx, bool fetch_payloads)
+    : scan(lm, start, fetch_payloads)
     , lm(lm)
     , start_lsn(start)
     , just_one(just_one_tx)
@@ -488,17 +488,17 @@ sm_log_scan_mgr::new_header_scan(LSN start)
 
 
 sm_log_scan_mgr::record_scan *
-sm_log_scan_mgr::new_log_scan(LSN start)
+sm_log_scan_mgr::new_log_scan(LSN start, bool fetch_payloads)
 {
     auto *self = get_impl(this);
-    return (sm_log_record_scan_impl*) make_new(self->lm, start, false);
+    return (sm_log_record_scan_impl*) make_new(self->lm, start, false, fetch_payloads);
 }
 
 sm_log_scan_mgr::record_scan *
 sm_log_scan_mgr::new_tx_scan(LSN start)
 {
     auto *self = get_impl(this);
-    return (sm_log_record_scan_impl*) make_new(self->lm, start, true);
+    return (sm_log_record_scan_impl*) make_new(self->lm, start, true, true);
 }
 
 void

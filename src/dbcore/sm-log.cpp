@@ -179,7 +179,7 @@ sm_log::redo(sm_log_scan_mgr *scanner, LSN chkpt_begin, uint mod_part)
     himark_map_t himarks;
 
     uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
-    auto *scan = scanner->new_log_scan(chkpt_begin);
+    auto *scan = scanner->new_log_scan(chkpt_begin, fetch_at_recovery);
     for (; scan->valid(); scan->next()) {
         size += scan->payload_size();
         auto f = scan->fid();
@@ -334,7 +334,7 @@ sm_log::rebuild_index(FID fid, ndb_ordered_index *index)
     RCU::rcu_register();
     RCU::rcu_enter();
     LSN chkpt_begin = get_impl(logmgr)->_lm._lm.get_chkpt_start();
-    auto *scan = logmgr->get_scan_mgr()->new_log_scan(chkpt_begin);
+    auto *scan = logmgr->get_scan_mgr()->new_log_scan(chkpt_begin, true);
     for (; scan->valid(); scan->next()) {
         if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
             continue;

@@ -271,7 +271,7 @@ struct sm_log_scan_mgr {
     /* Start scanning the log from [start], stopping only when
        end-of-log is encountered. Record payloads are available.
      */
-    record_scan *new_log_scan(LSN start);
+    record_scan *new_log_scan(LSN start, bool fetch_payloads);
 
     /* Start scanning log entries for the transaction whose commit
        record resides at [start]. Stop when all records for the
