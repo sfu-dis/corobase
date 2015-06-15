@@ -15,7 +15,7 @@ object::create_tuple_object(const varstr *tuple_value, bool do_write)
     obj = t.op->get(alloc_sz);
     if (not obj)
 #endif
-        obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
+        obj = new (MM::allocate(alloc_sz)) object();
 
     // Tuple setup
     dbtuple* tuple = obj->tuple();
@@ -42,7 +42,7 @@ object::create_tuple_object(fat_ptr ptr, fat_ptr nxt)
     obj = t.op->get(sz);
     if (not obj)
 #endif
-        obj = new (MM::allocate(sz)) object(sz, nxt);
+        obj = new (MM::allocate(sz)) object(NULL_PTR, nxt);
 
     // Load tuple varstr from the log
     dbtuple* tuple = obj->tuple();

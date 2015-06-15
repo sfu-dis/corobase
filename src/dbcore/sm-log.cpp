@@ -230,26 +230,25 @@ sm_log::redo(sm_log_scan_mgr *scanner, LSN chkpt_begin, uint mod_part)
 // version as a result.
 fat_ptr
 sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
-                                object *next)
+                                fat_ptr next)
 {
-    // The tx will need to call sm_log::load_object() to load the object
-    // when accessing the version. The caller should write this return
-    // value to the corresponding OID array slot.
-    if (not sm_log::fetch_at_recovery)
-        return logrec->payload_ptr();
-
     // Note: payload_size() includes the whole varstr
     // See do_tree_put's log_update call.
-    const size_t sz = logrec->payload_size();
-    ASSERT(sz == decode_size_aligned(logrec->payload_ptr().size_code()));
-    size_t alloc_sz = sizeof(dbtuple) + sizeof(object) + align_up(sz);
+    size_t sz = sizeof(object);
+    if (sm_log::fetch_at_recovery) {
+        sz += (sizeof(dbtuple) + logrec->payload_size());
+        sz = align_up(sz);
+    }
 
     object *obj = NULL;
 #if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
-    obj = t.op->get(alloc_sz);
+    obj = t.op->get(sz);
     if (not obj)
 #endif
-        obj = new (MM::allocate(alloc_sz)) object(alloc_sz);
+        obj = new (MM::allocate(sz)) object(logrec->payload_ptr(), next);
+
+    if (not sm_log::fetch_at_recovery)
+        return fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
 
     // Load tuple varstr from logrec
     dbtuple* tuple = (dbtuple *)obj->payload();
@@ -262,7 +261,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
             (char *)tuple->get_value_start() + sizeof(varstr),
             tuple->size);
 
-    obj->_next = fat_ptr::make(next, INVALID_SIZE_CODE);
+    ASSERT(obj->_next == next);
     obj->tuple()->clsn = logrec->payload_lsn().to_log_ptr();
     ASSERT(logrec->payload_lsn().offset() == logrec->payload_ptr().offset());
     ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -274,17 +273,12 @@ sm_log::recover_insert(sm_log_scan_mgr::record_scan *logrec)
 {
     FID f = logrec->fid();
     OID o = logrec->oid();
-    fat_ptr ptr = recover_prepare_version(logrec, NULL);
+    fat_ptr ptr = recover_prepare_version(logrec, NULL_PTR);
     ASSERT(oidmgr->file_exists(f));
     oid_array *oa = get_impl(oidmgr)->get_array(f);
     oa->ensure_size(oa->alloc_size(o));
-    if (fetch_at_recovery) {
-        oidmgr->oid_put_new(f, o, ptr);
-        ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
-    }
-    else {
-        oidmgr->oid_put_header(f, o, ptr);
-    }
+    oidmgr->oid_put_new(f, o, ptr);
+    ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
     //printf("[Recovery] insert: FID=%d OID=%d\n", f, o);
 }
 
@@ -295,20 +289,13 @@ sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
     OID o = logrec->oid();
     ASSERT(oidmgr->file_exists(f));
     auto head_ptr = oidmgr->oid_get(f, o);
-    if (is_delete)
-        oidmgr->oid_put(f, o, NULL_PTR);
-    else {
-        fat_ptr ptr = recover_prepare_version(logrec, (object *)head_ptr.offset());
-        if (fetch_at_recovery) {
-            oidmgr->oid_put(f, o, ptr);
-            ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
-            // this has to go if on-demand loading is enabled
-            //ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
-        }
-        else {
-            oidmgr->oid_put_header(f, o, ptr);
-        }
-    }
+    fat_ptr ptr = NULL_PTR;
+    if (not is_delete)
+        ptr = recover_prepare_version(logrec, head_ptr);
+    oidmgr->oid_put(f, o, ptr);
+    ASSERT(oidmgr->oid_get(f, o).offset() == ptr.offset());
+    // this has to go if on-demand loading is enabled
+    //ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
     //printf("[Recovery] update: FID=%d OID=%d\n", f, o);
 }
 

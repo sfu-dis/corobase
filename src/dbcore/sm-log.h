@@ -380,7 +380,7 @@ private:
     static void recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete = false);
     static fat_ptr recover_prepare_version(
                                 sm_log_scan_mgr::record_scan *logrec,
-                                object *next);
+                                fat_ptr next);
     static void recover_fid(sm_log_scan_mgr::record_scan *logrec);
 
 public:
