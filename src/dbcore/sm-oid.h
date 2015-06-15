@@ -167,8 +167,6 @@ struct sm_oid_mgr {
     dbtuple *oid_put_update(oid_array *oa, OID o,
                             const varstr *value, xid_context *updater_xc, dbtuple *&new_tuple);
 
-    void oid_put_header(FID f, OID o, fat_ptr p);
-
     dbtuple *oid_get_latest_version(FID f, OID o);
     dbtuple *oid_get_latest_version(oid_array *oa, OID o);
 

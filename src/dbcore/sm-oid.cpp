@@ -583,16 +583,6 @@ sm_oid_mgr::oid_put_new(oid_array *oa, OID o, fat_ptr p)
     *ptr = p;
 }
 
-void
-sm_oid_mgr::oid_put_header(FID f, OID o, fat_ptr p)
-{
-    auto *ptr = get_impl(this)->oid_access(f, o);
-    auto pp = *ptr;
-    auto *oh = new (MM::allocate(sizeof(object_header))) object_header(p, pp);
-    *ptr = fat_ptr::make(oh, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
-    ASSERT(oh->ptr.offset() and oh->ptr == p and oh->next == pp);
-}
-
 dbtuple*
 sm_oid_mgr::oid_put_update(FID f,
                            OID o,
@@ -761,11 +751,11 @@ sm_oid_mgr::ensure_tuple(fat_ptr *ptr)
         return p;
     }
 
-    // ptr->_ptr should point to an object_header
-    auto *oh = (object_header *)p.offset();
+    auto *obj = (object *)p.offset();
 
-    // oh->ptr should point to some location in the log
-    fat_ptr new_ptr = object::create_tuple_object(oh->ptr, oh->next);
+    // obj->_pdest should point to some location in the log
+    ASSERT(obj->_pdest != NULL_PTR);
+    fat_ptr new_ptr = object::create_tuple_object(obj->_pdest, obj->_next);
 
     // Now new_ptr should point to some location in memory
     if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
