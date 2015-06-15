@@ -1018,7 +1018,7 @@ transaction::try_insert_new_tuple(
     // log the whole varstr so that recovery can figure out the real size
     // of the tuple, instead of using the decoded (larger-than-real) size.
     log->log_insert(fid, oid, fat_ptr::make((void *)value, size_code),
-                    DEFAULT_ALIGNMENT_BITS, NULL);
+                    DEFAULT_ALIGNMENT_BITS, &tuple->get_object()->_pdest);
 
     // Note: here we log the whole key varstr so that recovery
     // can figure out the real key length with key->size(), otherwise

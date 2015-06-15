@@ -204,7 +204,7 @@ rc_t base_txn_btree::do_tree_put(
             // log the whole varstr so that recovery can figure out the real size
             // of the tuple, instead of using the decoded (larger-than-real) size.
             t.log->log_update(this->fid, oid, fat_ptr::make((void *)v, size_code),
-                              DEFAULT_ALIGNMENT_BITS, NULL);
+                              DEFAULT_ALIGNMENT_BITS, &tuple->get_object()->_pdest);
         }
         return rc_t{RC_TRUE};
     }
