@@ -143,10 +143,16 @@ public:
     return &value_start[0];
   }
 
+  inline ALWAYS_INLINE object*
+  get_object()
+  {
+    return (object *)((char *)this - sizeof(object));
+  }
+
   inline ALWAYS_INLINE dbtuple*
   next()
   {
-    object *myobj = (object *)((char *)this - sizeof(object));
+    object *myobj = get_object();
     ASSERT(myobj->payload() == (char *)this);
     if (myobj->_next.offset())
       return (dbtuple *)((object *)myobj->_next.offset())->payload();
