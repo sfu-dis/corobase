@@ -310,8 +310,6 @@ struct sm_log {
     typedef std::unordered_map<FID, OID> himark_map_t;
     static bool need_recovery;
     static int fetch_at_recovery;    // Load physical versions during recovery?
-    // # of concurrent redo threads, each cares about FID % nparts = thread id
-    static uint nredo_parts;
 
     /* Allocate and return a new sm_log object. If [dname] exists, it
        will be mounted and used. Otherwise, a new (empty) log
@@ -371,7 +369,7 @@ struct sm_log {
      * Implements the sm_log_recover_function signature.
      */
     static void recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
-    static himark_map_t redo(sm_log_scan_mgr *scanner, LSN chkpt_begin, uint mod_part);
+    static std::pair<FID, OID> redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid);
 
     virtual ~sm_log() { }
 

@@ -10,7 +10,6 @@ using namespace RCU;
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 int sm_log::fetch_at_recovery = 0;
-uint sm_log::nredo_parts = 6;
 
 void
 sm_log::load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits)
@@ -140,23 +139,35 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
     if (not sm_log::need_recovery)
         return;
 
-    std::future<himark_map_t> futures[nredo_parts];
-    for (uint i = 0; i < nredo_parts; i++)
-        futures[i] = std::async(std::launch::async, redo, scanner, chkpt_begin, i);
+    RCU::rcu_register();
+    RCU::rcu_enter();
+
+    // One hiwater_mark/capacity_mark per FID
+    himark_map_t himarks;
+    std::vector<std::future<std::pair<FID, OID> > > futures;
+    auto *scan = scanner->new_log_scan(chkpt_begin, fetch_at_recovery);
+
+    FID max_fid = 0;
+    // Look for table creations and spawn one redo thread per table
+    for (; scan->valid(); scan->next()) {
+        if (scan->type() != sm_log_scan_mgr::LOG_FID)
+            continue;
+        recover_fid(scan);
+        FID fid = scan->fid();
+        if (max_fid < fid)
+            max_fid = fid;
+        futures.emplace_back(std::async(std::launch::async, redo_file,
+                                         scanner, chkpt_begin, fid));
+    }
 
     // Now recover allocator status
     // Note: must do this before opening indexes, because each index itself
     // uses an OID array (for the tree itself), which is allocated thru
     // alloc_oid. So we need to fix the watermarks here to make sure trees
     // don't get some already allocated FID.
-    FID max_fid = 0;
     for (auto & f : futures) {
         auto h = f.get();
-        for (auto &m : h) {
-            oidmgr->recreate_allocator(m.first, m.second);
-            if (m.first > max_fid)
-                max_fid = m.first;
-        }
+        oidmgr->recreate_allocator(h.first, h.second);
     }
 
     // Fix internal files' marks too
@@ -169,25 +180,23 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
     // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
 }
 
-sm_log::himark_map_t
-sm_log::redo(sm_log_scan_mgr *scanner, LSN chkpt_begin, uint mod_part)
+std::pair<FID, OID>
+sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
 {
+    ASSERT(oidmgr->file_exists(fid));
 	RCU::rcu_register();
     RCU::rcu_enter();
-
-    // One hiwater_mark/capacity_mark per FID
-    himark_map_t himarks;
-
+    OID himark = 0;
     uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
     auto *scan = scanner->new_log_scan(chkpt_begin, fetch_at_recovery);
     for (; scan->valid(); scan->next()) {
         size += scan->payload_size();
         auto f = scan->fid();
-        if (f % nredo_parts != mod_part)
+        if (f != fid)
             continue;
         auto o = scan->oid();
-        if (himarks[f] < o)
-            himarks[f] = o;
+        if (himark < o)
+            himark = o;
 
         switch (scan->type()) {
         case sm_log_scan_mgr::LOG_UPDATE:
@@ -210,20 +219,21 @@ sm_log::redo(sm_log_scan_mgr *scanner, LSN chkpt_begin, uint mod_part)
         case sm_log_scan_mgr::LOG_CHKPT:
             break;
         case sm_log_scan_mgr::LOG_FID:
-            recover_fid(scan);
+            // The main recover function should already did this
+            ASSERT(oidmgr->file_exists(fid));
             break;
         default:
             DIE("unreachable");
         }
     }
     ASSERT(icount == iicount);
-    printf("[Recovery t%d] inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n",
-           mod_part, icount, ucount, dcount, size);
+    printf("[Recovery] FID %d - inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n",
+           fid, icount, ucount, dcount, size);
 
     delete scan;
     RCU::rcu_exit();
     RCU::rcu_deregister();
-    return himarks;
+    return std::make_pair(fid, himark);
 }
 
 // The version-loading mechanism will only dig out the latest
