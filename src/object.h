@@ -9,7 +9,7 @@ class dbtuple;
 // and the older version it supersedes. If the version is not in memory,
 // the object will have no payload and the corresponding OID entry in the
 // OID array will indicate this by having an ASI_LOG flag. The reader of
-// this tuple then needs to look at _pdest and dit the version out from
+// this tuple then needs to look at _pdest and dig the version out from
 // the log, ensure_tuple() does this.
 class object
 {
