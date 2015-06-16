@@ -50,8 +50,8 @@ os_openat(int dfd, char const *fname, int flags)
 
 void
 os_write(int fd, void const *buf, size_t bufsz) {
-    int err = write(fd, buf, bufsz);
-    THROW_IF(err, os_error, errno, "Error writing %zd bytes to file", bufsz);
+    size_t err = write(fd, buf, bufsz);
+    THROW_IF(err != bufsz, os_error, errno, "Error writing %zd bytes to file", bufsz);
 }
 
 size_t
