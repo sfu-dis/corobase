@@ -165,6 +165,7 @@ SRCFILES = allocator.cc \
 
 DBCORE_SRCFILES = dbcore/burt-hash.cpp \
 	dbcore/sm-alloc.cpp \
+	dbcore/sm-chkpt.cpp \
 	dbcore/sm-log.cpp \
 	dbcore/sm-tx-log.cpp \
 	dbcore/sm-log-alloc.cpp \

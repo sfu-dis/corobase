@@ -29,6 +29,11 @@ struct sm_log_alloc_mgr {
     
     ~sm_log_alloc_mgr();
 
+    /* Kick the log writer daemon and wait for it to finish flushing
+     * the log buffer
+     */
+    LSN flush();
+
     /* Retrieve the current end of log
      */
     uint64_t cur_lsn_offset();

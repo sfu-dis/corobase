@@ -392,6 +392,10 @@ sm_log_file_mgr::sm_log_file_mgr(char const *dname, size_t ssize)
             }
             break;
         }
+        case 'o' : {
+            // OID array chkpt file
+            continue;
+        }
         default:
             break;
         }

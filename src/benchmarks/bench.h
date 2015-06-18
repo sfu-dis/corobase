@@ -54,6 +54,7 @@ extern int slow_exit;
 extern int retry_aborted_transaction;
 extern int no_reset_counters;
 extern int backoff_aborted_transaction;
+extern int enable_chkpt;
 
 template <typename T> static std::vector<T>
 unique_filter(const std::vector<T> &v)

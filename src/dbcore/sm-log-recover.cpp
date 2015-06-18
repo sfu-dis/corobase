@@ -28,7 +28,7 @@ sm_log_recover_mgr::sm_log_recover_mgr(char const *dname, size_t segment_size,
     
     auto *sid = get_segment(dlsn.segment());
     truncate_after(sid->segnum, dlsn.offset());
-    (*rfn)(rfn_arg, scanner, get_chkpt_start(), get_chkpt_end());
+    (*rfn)(rfn_arg, scanner, get_chkpt_start(), get_chkpt_end(), dname);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr()

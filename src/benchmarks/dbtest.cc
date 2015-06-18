@@ -117,6 +117,7 @@ main(int argc, char **argv)
       {"log-segsize"                , required_argument , 0                          , 'e'} ,
       {"log-bufsize"                , required_argument , 0                          , 'u'} ,
       {"log-prefetch"               , no_argument       , &sm_log::fetch_at_recovery , 1} ,
+      {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {0, 0, 0, 0}
@@ -281,6 +282,7 @@ main(int argc, char **argv)
     cerr << "  log-segsize : " << log_segsize               << endl;
     cerr << "  log-bufsize : " << log_bufsize               << endl;
     cerr << "  log-prefetch: " << sm_log::fetch_at_recovery << endl;
+    cerr << "  enable-chkpt: " << enable_chkpt              << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;

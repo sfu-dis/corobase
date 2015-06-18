@@ -29,10 +29,6 @@ namespace {
 }
 
 void
-sm_tx_log::log_chkpt() {
-}
-
-void
 
 sm_tx_log::log_insert_index(FID f, OID o, fat_ptr ptr, int abits, fat_ptr *pdest) {
     get_log_impl(this)->add_payload_request(LOG_INSERT_INDEX, f, o, ptr, abits, pdest);

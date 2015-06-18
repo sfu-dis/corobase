@@ -1,9 +1,11 @@
 #include "sm-oid-impl.h"
 #include "sm-alloc.h"
+#include "sm-chkpt.h"
 #include "sc-hash.h"
 #include "burt-hash.h"
-
 #include <map>
+#include <fcntl.h>
+#include <unistd.h>
 
 sm_oid_mgr *oidmgr = NULL;
 // maps table name to its fid
@@ -331,18 +333,39 @@ sm_oid_mgr_impl::recreate_file(FID f)
 void
 sm_oid_mgr_impl::recreate_allocator(FID f, OID m)
 {
-    printf("[Recovery] recreate allocator %d, himark=%d\n", f, m);
-    auto *alloc = sm_allocator::make();
-    auto p = fat_ptr::make(alloc, 1);
+    // Callers might be
+    // 1. oidmgr when recovering from a chkpt
+    // 2. logmgr when recovering from the log
+    // Whomever calls later will need to avoid allocating new allocators
+    sm_allocator *alloc = (sm_allocator *)oid_get(ALLOCATOR_FID, f).offset();
+    if (not alloc) {
+        alloc = sm_allocator::make();
+        auto p = fat_ptr::make(alloc, 1);
 #ifndef NDEBUG
-    // Special case: internal files are already initialized
-    if (f != ALLOCATOR_FID and f != OBJARRAY_FID and f != METADATA_FID)
-        ASSERT(oid_get(ALLOCATOR_FID, f) == NULL_PTR);
+        // Special case: internal files are already initialized
+        if (f != ALLOCATOR_FID and f != OBJARRAY_FID and f != METADATA_FID)
+            ASSERT(oid_get(ALLOCATOR_FID, f) == NULL_PTR);
 #endif
-    oid_put(ALLOCATOR_FID, f, p);
+        oid_put(ALLOCATOR_FID, f, p);
+    }
+    else {
+        // else the oidmgr should already recreated this allocator for f
+        // when recovering from a chkpt file, then if we're entering here
+        // that means we got some newer himark by scanning the log.
+        // But note this new himark might be larger than the one we got
+        // from the chkpt: this is the one that really got allocated, while
+        // the one we got from chkpt was the real *himark* at runtime -
+        // not all of the OIDs below it were allocated,  so chances are we
+        // will still find the existing mark is high enough already, unless
+        // after the chkpt the OID cache was depleted and we allocated after
+        // refilling it.
+    }
 
     // if m == 0, then the table hasn't been inserted, no need to mess with it
     if (not m)
+        return;
+
+    if (m < alloc->head.capacity_mark and m < alloc->head.hiwater_mark)
         return;
 
     // Set capacity_mark = hiwater_mark = m, the cache machinery
@@ -353,6 +376,7 @@ sm_oid_mgr_impl::recreate_allocator(FID f, OID m)
     oid_array *oa = ptr;
     ASSERT(oa);
     oa->ensure_size(alloc->head.capacity_mark);
+    printf("[Recovery] recreate allocator %d, himark=%d\n", f, m);
 }
 
 void
@@ -454,18 +478,144 @@ sm_oid_mgr::get_array(FID f)
     return get_impl(this)->get_array(f);
 }
 
-sm_oid_mgr *
-sm_oid_mgr::create(sm_heap_mgr *hm, log_tx_scan *chkpt_scan)
+void
+sm_oid_mgr::create(LSN chkpt_start, char const *dname)
 {
-#warning TODO: use the scan to recover
-    return new sm_oid_mgr_impl{};
+    // Create an empty oidmgr, with initial internal files
+    oidmgr = new sm_oid_mgr_impl{};
+    oidmgr->dfd = dirent_iterator(dname).dup();
+    chkptmgr = new sm_chkpt_mgr(chkpt_start);
+
+    if (not sm_log::need_recovery)
+        return;
+
+    // Find the chkpt file and recover from there
+    char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
+    size_t n = os_snprintf(buf, sizeof(buf),
+                           CHKPT_DATA_FILE_NAME_FMT, chkpt_start._val);
+    printf("[Recovery.chkpt] %s\n", buf);
+    ASSERT(n < sizeof(buf));
+    int fd = os_openat(oidmgr->dfd, buf, O_RDONLY);
+
+    while (1) {
+        // Read himark
+        OID himark = 0;
+        n = read(fd, &himark, sizeof(OID));
+        if (not n)  // EOF
+            break;
+
+        ASSERT(n == sizeof(OID));
+
+        // Read the table's name
+        size_t len = 0;
+        n = read(fd, &len, sizeof(size_t));
+        THROW_IF(n != sizeof(size_t), illegal_argument,
+                 "Error reading tabel name length");
+        char name_buf[256];
+        n = read(fd, name_buf, len);
+        std::string name(name_buf, len);
+
+        // FID
+        FID f = 0;
+        n = read(fd, &f, sizeof(FID));
+
+        // Recover fid_map and recreate the empty file
+        fid_map.emplace(name, std::make_pair(f, (ndb_ordered_index *)NULL));
+        ASSERT(not oidmgr->file_exists(f));
+        oidmgr->recreate_file(f);
+        printf("[Recovery.chkpt] FID=%d %s\n", f, name.c_str());
+
+        // Recover allocator status
+        oid_array *oa = oidmgr->get_array(f);
+        oa->ensure_size(oa->alloc_size(himark));
+        oidmgr->recreate_allocator(f, himark);
+
+        // Populate the OID array
+        while (1) {
+            OID o = 0;
+            n = read(fd, &o, sizeof(OID));
+            if (o == himark)
+                break;
+
+            fat_ptr ptr = NULL_PTR;
+            n = read(fd, &ptr, sizeof(fat_ptr));
+            object *obj = new (MM::allocate(sizeof(object))) object(ptr, NULL_PTR);
+            ptr = fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
+            oidmgr->oid_put_new(f, o, ptr);
+            ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
+            ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+        }
+    }
 }
 
 void
-sm_oid_mgr::log_chkpt(sm_heap_mgr *hm, sm_tx_log *tx)
+sm_oid_mgr::take_chkpt(LSN cstart)
 {
-#warning TODO: take checkpoint
-    tx->log_chkpt();
+    // Now the real work. The format of a chkpt file is:
+    // [table 1 himark]
+    // [table 1 name length, table 1 name, table 1 FID]
+    // [OID1, ptr for table 1]
+    // [OID2, ptr for table 1]
+    // [table 1 himark]
+    // ...
+    // [table 2 himark]
+    // [table 2 name length, table 2 name, table 2 FID]
+    // [OID1, ptr for table 2]
+    // [OID2, ptr for table 2]
+    // [table 2 himark]
+    // ...
+    //
+    // The table's himark denotes its start and end
+
+    for (auto &fm : fid_map) {
+        FID fid = fm.second.first;
+        // Find the high watermark of this file and dump its
+        // backing store up to the size of the high watermark
+        auto *alloc = get_impl(this)->get_allocator(fid);
+        OID himark = alloc->head.hiwater_mark;
+
+        // Write the himark to denote a table start
+        chkptmgr->write_buffer(&himark, sizeof(OID));
+
+        // [Name length, name, FID]
+        size_t len = fm.first.length();
+        chkptmgr->write_buffer(&len, sizeof(size_t));
+        chkptmgr->write_buffer((void *)fm.first.c_str(), len);
+        chkptmgr->write_buffer(&fm.second.first, sizeof(FID));
+
+        // Now write the [OID, ptr] pairs
+        for (OID oid = 0; oid < himark; oid++) {
+            auto ptr = oid_get(fid, oid);
+        find_pdest:
+            if (not ptr.offset())
+                continue;
+            object *obj = (object *)ptr.offset();
+            auto pdest = volatile_read(obj->_pdest);
+            // Three cases:
+            // 1. Tuple is in memory, not in storage (or doesn't have a valid
+            //    pdest yet). Skip and continue to look at an older version
+            //    which should be committed or nothing
+            // 2. Tuple is in memory and in storage (has a valid pdest)
+            // 3. Tuple is not in memory but in storage
+            //    For both 2 and 3, use the object's _pdest directly
+            if (pdest.asi_type() != fat_ptr::ASI_LOG or LSN::from_ptr(pdest) >= cstart) {
+                ptr = volatile_read(obj->_next);
+                goto find_pdest;
+            }
+
+            ASSERT(pdest.offset() and pdest.asi_type() == fat_ptr::ASI_LOG);
+            // Now write this out
+            // XXX (tzwang): perhaps we'll also need obj._next later?
+            chkptmgr->write_buffer(&oid, sizeof(OID));
+            chkptmgr->write_buffer(&pdest, sizeof(fat_ptr));
+        }
+        // Write himark as end of fid
+        chkptmgr->write_buffer(&himark, sizeof(OID));
+        std::cout << "[Checkpoint] FID(" << fm.first << ") = "
+                  << fid << ", himark = " << himark << std::endl;
+    }
+
+    chkptmgr->sync_buffer();
 }
 
 FID
@@ -756,6 +906,7 @@ sm_oid_mgr::ensure_tuple(fat_ptr *ptr)
     // obj->_pdest should point to some location in the log
     ASSERT(obj->_pdest != NULL_PTR);
     fat_ptr new_ptr = object::create_tuple_object(obj->_pdest, obj->_next);
+    ASSERT(new_ptr.offset());
 
     // Now new_ptr should point to some location in memory
     if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
