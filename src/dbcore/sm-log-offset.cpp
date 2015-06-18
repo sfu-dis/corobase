@@ -7,9 +7,11 @@
 fat_ptr
 sm_log_offset_mgr::lsn2ptr(LSN lsn, bool is_ext)
 {
+#if CHECK_INVARIANTS
     auto *sid = get_segment(lsn.segment());
-    uint64_t offset = lsn.offset();
     ASSERT(sid->contains(lsn));
+#endif
+    uint64_t offset = lsn.offset();
 
     int flags = is_ext? fat_ptr::ASI_EXT_FLAG : fat_ptr::ASI_LOG_FLAG;
     flags |= lsn.flags();
@@ -35,7 +37,7 @@ sm_log_offset_mgr::ptr2lsn(fat_ptr ptr)
              "This fat_ptr does not reference the log");
 
     auto *sid = get_segment(segnum);
-    uintptr_t offset = sid->start_offset + ptr.offset();
+    uintptr_t offset = sid->start_offset;
     return LSN::make(offset, segnum, ptr.size_code());
 }
 
