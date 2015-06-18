@@ -193,8 +193,8 @@ sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr, int align_
 
     auto *sid = get_segment(segnum);
     ASSERT(sid);
-    
-    size_t m = os_pread(sid->fd, buf, nbytes, ptr.offset());
+    ASSERT(ptr.offset() >= sid->start_offset);
+    size_t m = os_pread(sid->fd, buf, nbytes, ptr.offset() - sid->start_offset);
     THROW_IF(m != nbytes, log_file_error,
              "Unable to read full object (%zd bytes needed, %zd read)",
              nbytes, m);
