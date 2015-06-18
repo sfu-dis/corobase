@@ -118,6 +118,23 @@ sm_log_alloc_mgr::update_durable_mark(uint64_t lsn_offset)
     }
 }
 
+/* Flush the log buffer, wait for the daemon to finish, and return
+ * a durable lsn.
+ *
+ * tzwang: the caller so far is only the chkpt thread.
+ */
+LSN
+sm_log_alloc_mgr::flush()
+{
+    _write_daemon_mutex.lock();
+    DEFER(_write_daemon_mutex.unlock());
+    _waiting_for_dmark = true;
+    __sync_fetch_and_or(&_write_daemon_state, DAEMON_HAS_WORK);
+    _kick_log_write_daemon();
+    _dmark_updated_cond.wait(_write_daemon_mutex);
+    return _lm.get_durable_mark();
+}
+
 /* Allocating a log block is a multi-step process.
 
    1. Ensure there is sufficient space in the log file for the new

@@ -146,7 +146,9 @@ public:
   inline ALWAYS_INLINE object*
   get_object()
   {
-    return (object *)((char *)this - sizeof(object));
+    object *obj = (object *)((char *)this - sizeof(object));
+    ASSERT(obj->payload() == (char *)this);
+    return obj;
   }
 
   inline ALWAYS_INLINE dbtuple*

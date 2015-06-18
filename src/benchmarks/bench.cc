@@ -18,6 +18,7 @@
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-trace.h"
 #include "../dbcore/sm-log.h"
+#include "../dbcore/sm-chkpt.h"
 
 #ifdef USE_JEMALLOC
 //cannot include this header b/c conflicts with malloc.h
@@ -46,6 +47,7 @@ int slow_exit = 0;
 int retry_aborted_transaction = 0;
 int no_reset_counters = 0;
 int backoff_aborted_transaction = 0;
+int enable_chkpt = 0;
 
 template <typename T>
 static void
@@ -219,6 +221,12 @@ bench_runner::run()
 
   const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
 
+  // Start checkpointer after database is ready
+  if (enable_chkpt) {
+    ASSERT(chkptmgr);
+    chkptmgr->start_chkpt_thread();
+  }
+
   const vector<bench_worker *> workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (vector<bench_worker *>::const_iterator it = workers.begin();
@@ -305,6 +313,9 @@ bench_runner::run()
       agg_txn_counts[t.first].second += t.second.second;
     }
   }
+
+  if (enable_chkpt)
+      delete chkptmgr;
 
   if (verbose) {
     const pair<uint64_t, uint64_t> mem_info_after = get_system_memory_info();

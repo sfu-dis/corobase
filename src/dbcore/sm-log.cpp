@@ -11,6 +11,18 @@ sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 int sm_log::fetch_at_recovery = 0;
 
+LSN
+sm_log::flush()
+{
+    return get_impl(this)->_lm.flush();
+}
+
+void
+sm_log::update_chkpt_mark(LSN cstart, LSN cend)
+{
+    get_impl(this)->_lm._lm.update_chkpt_mark(cstart, cend);
+}
+
 void
 sm_log::load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits)
 {
@@ -131,10 +143,12 @@ sm_log::wait_for_durable_lsn(LSN dlsn)
  * allocated OIDs.
  */
 void
-sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end)
+sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
+                LSN chkpt_begin, LSN chkpt_end, char const *dname)
 {
     // The hard case: no chkpt, have to do it the hard way
-    oidmgr = sm_oid_mgr::create(NULL, NULL);
+    sm_oid_mgr::create(chkpt_begin, dname);
+    ASSERT(oidmgr);
 
     if (not sm_log::need_recovery)
         return;
@@ -148,7 +162,18 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
     auto *scan = scanner->new_log_scan(chkpt_begin, fetch_at_recovery);
 
     FID max_fid = 0;
-    // Look for table creations and spawn one redo thread per table
+    for (auto &fm : fid_map) {
+        FID fid = fm.second.first;
+        if (fid > max_fid)
+            max_fid = fid;
+
+        // Scan the rest of the log
+        futures.emplace_back(std::async(std::launch::async, redo_file,
+                                        scanner, chkpt_begin, fid));
+    }
+
+    // Look for new table creations after the chkpt
+    // Spawn one redo thread per new table found
     for (; scan->valid(); scan->next()) {
         if (scan->type() != sm_log_scan_mgr::LOG_FID)
             continue;
@@ -157,7 +182,7 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
         if (max_fid < fid)
             max_fid = fid;
         futures.emplace_back(std::async(std::launch::async, redo_file,
-                                         scanner, chkpt_begin, fid));
+                                        scanner, chkpt_begin, fid));
     }
 
     // Now recover allocator status
@@ -167,7 +192,8 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_
     // don't get some already allocated FID.
     for (auto & f : futures) {
         auto h = f.get();
-        oidmgr->recreate_allocator(h.first, h.second);
+        if (h.second)
+            oidmgr->recreate_allocator(h.first, h.second);
     }
 
     // Fix internal files' marks too
@@ -190,7 +216,6 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
     uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
     auto *scan = scanner->new_log_scan(chkpt_begin, fetch_at_recovery);
     for (; scan->valid(); scan->next()) {
-        size += scan->payload_size();
         auto f = scan->fid();
         if (f != fid)
             continue;
@@ -203,6 +228,7 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
         case sm_log_scan_mgr::LOG_RELOCATE:
             ucount++;
             recover_update(scan);
+            size += scan->payload_size();
             break;
         case sm_log_scan_mgr::LOG_DELETE:
             dcount++;
@@ -215,6 +241,7 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
         case sm_log_scan_mgr::LOG_INSERT:
             icount++;
             recover_insert(scan);
+            size += scan->payload_size();
             break;
         case sm_log_scan_mgr::LOG_CHKPT:
             break;
@@ -317,10 +344,10 @@ sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
     char *buf = (char *)malloc(sz);
     logrec->load_object(buf, sz);
     std::string name(buf);
-    printf("[Recovery] FID(%s) = %d\n", buf, f);
     fid_map.emplace(name, std::make_pair(f, (ndb_ordered_index *)NULL));
     ASSERT(not oidmgr->file_exists(f));
     oidmgr->recreate_file(f);
+    printf("[Recovery: log] FID(%s) = %d\n", buf, f);
     free(buf);
 }
 
@@ -330,8 +357,11 @@ sm_log::rebuild_index(FID fid, ndb_ordered_index *index)
     uint64_t count = 0;
     RCU::rcu_register();
     RCU::rcu_enter();
-    LSN chkpt_begin = get_impl(logmgr)->_lm._lm.get_chkpt_start();
-    auto *scan = logmgr->get_scan_mgr()->new_log_scan(chkpt_begin, true);
+    //LSN chkpt_begin = get_impl(logmgr)->_lm._lm.get_chkpt_start();
+    //auto *scan = logmgr->get_scan_mgr()->new_log_scan(chkpt_begin, true);
+    // This has to start from the beginning of the log for now, because we
+    // don't checkpoint the key-oid pair.
+    auto *scan = logmgr->get_scan_mgr()->new_log_scan(LSN{0x1ff}, true);
     for (; scan->valid(); scan->next()) {
         if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
             continue;

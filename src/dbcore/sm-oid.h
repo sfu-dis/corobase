@@ -93,16 +93,30 @@ struct sm_oid_mgr {
        be if the checkpoint is empty). When this function returns, the
        scan will be positioned at whatever follows the OID checkpoint
        (or invalid, if there are no more records).
+
+       tzwang: above is the orignal interface design. The implementation
+       here is to checkpoint the OID arrays to an individual file, whose
+       name is in the format of "chd-[chkpt-start-LSN]"; after successfully
+       written this file, we use the [chkpt start LSN, chkpt end LSN] pair
+       as an empty file's filename to denote this chkpt was successful.
+       sm_oid_mgr::create() then accepts the chkpt start LSN to know which
+       chkpt file to look for, and recovers from the chkpt file, followed by
+       a log scan (if needed). The chkpt files are stored in the log dir.
+
+       The separation of the chkpt from the log reduces interference to
+       normal transaction processing during checkpointing; storing the
+       chkpt file in a separate file, instead of in the log, reduces the
+       amount of data to ship for replication (no need to ship chkpts,
+       the backup can have its own chkpts).
      */
-    static
-    sm_oid_mgr *create(sm_heap_mgr *hm, log_tx_scan *chkpt_tx_scan);
+    static void create(LSN chkpt_start, char const *dname);
 
     /* Record a snapshot of the OID manager's state as part of a
        checkpoint. The data will be durable by the time this function
        returns, but will only be reachable if the checkpoint
        transaction commits and its location is properly recorded.
      */
-    void log_chkpt(sm_heap_mgr *hm, sm_tx_log *tx);
+    void take_chkpt(LSN cstart);
 
     /* Create a new file and return its FID. If [needs_alloc]=true,
        the new file will be managed by an allocator and its FID can be
@@ -184,6 +198,8 @@ struct sm_oid_mgr {
     void recreate_file(FID f);    // for recovery only
     void recreate_allocator(FID f, OID m);  // for recovery only
     oid_array *get_array(FID f);
+
+    int dfd;    // dir for storing OID chkpt data file
 
     virtual ~sm_oid_mgr() { }
     

@@ -65,10 +65,6 @@ struct sm_tx_log {
     */
     void log_delete(FID f, OID o);
 
-    /* Record a chkpt.
-     */
-    void log_chkpt();
-
     /* Record the creation of a table with FID and name
      */
     void log_fid(FID f, const std::string &name);
@@ -304,12 +300,15 @@ protected:
    before forward processing begins.
 */
 typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
-                                     LSN chkpt_begin, LSN chkpt_end);
+                                     LSN chkpt_begin, LSN chkpt_end, char const *dname);
 
 struct sm_log {
     typedef std::unordered_map<FID, OID> himark_map_t;
     static bool need_recovery;
     static int fetch_at_recovery;    // Load physical versions during recovery?
+
+    void update_chkpt_mark(LSN cstart, LSN cend);
+    LSN flush();
 
     /* Allocate and return a new sm_log object. If [dname] exists, it
        will be mounted and used. Otherwise, a new (empty) log
@@ -368,7 +367,8 @@ struct sm_log {
     /* Scan from a start LSN and apply log records.
      * Implements the sm_log_recover_function signature.
      */
-    static void recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
+    static void recover(void *arg, sm_log_scan_mgr *scanner,
+                        LSN chkpt_begin, LSN chkpt_end, char const *dname);
     static std::pair<FID, OID> redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid);
 
     virtual ~sm_log() { }

@@ -42,7 +42,7 @@ object::create_tuple_object(fat_ptr ptr, fat_ptr nxt)
     obj = t.op->get(sz);
     if (not obj)
 #endif
-        obj = new (MM::allocate(sz)) object(NULL_PTR, nxt);
+        obj = new (MM::allocate(sz)) object(ptr, nxt);
 
     // Load tuple varstr from the log
     dbtuple* tuple = obj->tuple();
@@ -57,7 +57,7 @@ object::create_tuple_object(fat_ptr ptr, fat_ptr nxt)
             (char *)tuple->get_value_start() + sizeof(varstr),
             tuple->size);
 
-    obj->tuple()->clsn = ptr;
+    obj->tuple()->clsn = ptr;   // XXX (tzwang): use the tx's cstamp!
     ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
     return fat_ptr::make(obj, INVALID_SIZE_CODE);   // asi_type=0 (memory)
 }

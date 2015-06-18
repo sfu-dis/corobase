@@ -885,6 +885,12 @@ transaction::si_commit()
             }
         }
 #endif
+#if CHECK_INVARIANT
+        object *obj = tuple->get_object();
+        fat_ptr pdest = volatile_read(obj->_pdest);
+        ASSERT((pdest == NULL_PTR and not tuple->size) or
+               (pdest.asi_type() == fat_ptr::ASI_LOG));
+#endif
     }
 
     // NOTE: make sure this happens after populating log block,
