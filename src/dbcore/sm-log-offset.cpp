@@ -13,7 +13,7 @@ sm_log_offset_mgr::lsn2ptr(LSN lsn, bool is_ext)
 
     int flags = is_ext? fat_ptr::ASI_EXT_FLAG : fat_ptr::ASI_LOG_FLAG;
     flags |= lsn.flags();
-    fat_ptr rval = fat_ptr::make(offset - sid->start_offset, lsn.size_code(), flags);
+    fat_ptr rval = fat_ptr::make(offset, lsn.size_code(), flags);
     ASSERT(rval.asi_type() == (is_ext? fat_ptr::ASI_EXT : fat_ptr::ASI_LOG));
     return rval;
 }
