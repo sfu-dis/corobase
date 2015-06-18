@@ -503,11 +503,12 @@ sm_log_alloc_mgr::_log_write_daemon()
             if (should_update) {
                 last_dmark = now;
                 update_dmark();
-                if (_waiting_for_dmark) {
-                    _waiting_for_dmark = false;
-                    _write_complete_cond.broadcast();
-                }
             }
+        }
+
+        if (_waiting_for_dmark) {
+            _waiting_for_dmark = false;
+            _dmark_updated_cond.broadcast();
         }
 
         // time to quit? (only if everything in the log reached disk)
