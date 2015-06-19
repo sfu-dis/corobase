@@ -254,7 +254,7 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
         }
     }
     ASSERT(icount == iicount);
-    printf("[Recovery] FID %d - inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n",
+    printf("[Recovery.log] FID %d - inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n",
            fid, icount, ucount, dcount, size);
 
     delete scan;

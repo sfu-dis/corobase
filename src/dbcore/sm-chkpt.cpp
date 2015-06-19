@@ -102,6 +102,7 @@ sm_chkpt_mgr::prepare_file(LSN cstart)
     ASSERT(n < sizeof(buf));
     ASSERT(oidmgr and oidmgr->dfd);
     _fd = os_openat(oidmgr->dfd, buf, O_CREAT|O_WRONLY);
+    _buf_pos = _dur_pos = 0;
 }
 
 void
