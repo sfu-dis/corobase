@@ -26,6 +26,7 @@ typedef epoch_mgr::epoch_num epoch_num;
 // order 3: [128, +inf)
 //
 // Transactions can reuse these objects via put/get functions.
+#ifdef REUSE_OBJECTS
 enum { MAX_SIZE_ORDER=4, BASE_OBJECT_SIZE=32 };
 class object_pool {
     struct reuse_object {
@@ -55,13 +56,15 @@ public:
     object *get(size_t size);
     void put(epoch_num e, object *p);
 };
+#endif
 
 // oids that got updated, ie need to cleanup the overwritten versions
+struct oid_array;
 struct recycle_oid {
-    FID fid;
+    oid_array *oa;
     OID oid;
     recycle_oid *next;
-    recycle_oid(FID f, OID o) : fid(f), oid(o), next(NULL) {}
+    recycle_oid(oid_array *a, OID o) : oa(a), oid(o), next(NULL) {}
 };
 #endif
 
@@ -70,7 +73,9 @@ namespace MM {
     void deallocate(void *p);
 
 #ifdef ENABLE_GC
+#ifdef REUSE_OBJECTS
     object_pool *get_object_pool();
+#endif
 
     struct thread_data {
         bool initialized;
@@ -90,7 +95,7 @@ namespace MM {
     void deregister_thread();
     epoch_num epoch_enter(void);
     void epoch_exit(LSN s, epoch_num e);
-    void recycle(uintptr_t table, OID oid);
+    void recycle(oid_array *oa, OID oid);
     void recycle(recycle_oid *list_head, recycle_oid *list_tail);
 #endif
 };

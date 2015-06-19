@@ -32,9 +32,9 @@ static recycle_oid *recycle_oid_tail = NULL;
 
 #define MSB_MARK (~((~uint64_t{0}) >> 1))
 
-void recycle(uintptr_t table, OID oid)
+void recycle(oid_array *oa, OID oid)
 {
-    recycle_oid *r = new recycle_oid(table, oid);
+    recycle_oid *r = new recycle_oid(oa, oid);
 try_append:
     recycle_oid *tail = volatile_read(recycle_oid_tail);
     if ((uintptr_t)tail & MSB_MARK)
@@ -234,7 +234,7 @@ try_recycle:
         if (not r_next)
             break;
 
-        fat_ptr head = oidmgr->oid_get(r->fid, r->oid);
+        fat_ptr head = oidmgr->oid_get(r->oa, r->oid);
         if (not head.offset()) {
             // in case it's a delete... remove the oid as if we trimmed it
             delete r;
@@ -290,7 +290,7 @@ try_recycle:
                 while (cur.offset()) {
                     cur_obj = (object *)cur.offset();
                     cur = cur_obj->_next;
-                    reclaimed_nbytes += cur_obj->_size;
+                    reclaimed_nbytes += cur_obj->tuple()->size;
                     reclaimed_count++;
                     deallocate(cur_obj);
                 }
@@ -334,15 +334,18 @@ void *allocate(uint64_t size) {
 }
 
 #ifdef ENABLE_GC
+#ifdef REUSE_OBJECTS
 object_pool *get_object_pool()
 {
     static __thread object_pool myop;
     return &myop;
 }
 #endif
+#endif
 };  // end of namespace
 
 #ifdef ENABLE_GC
+#ifdef REUSE_OBJECTS
 object *
 object_pool::get(size_t size)
 {
@@ -383,5 +386,5 @@ object_pool::put(uint64_t c, object *p)
         tail[order] = r;
     }
 }
-
+#endif
 #endif
