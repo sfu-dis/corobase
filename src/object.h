@@ -1,7 +1,6 @@
 #pragma once
 #include "varstr.h"
 #include "dbcore/sm-common.h"
-#include "dbcore/sm-alloc.h"
 
 class dbtuple;
 

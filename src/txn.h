@@ -244,7 +244,9 @@ protected:
   read_set_map read_set;
 #endif
 #ifdef ENABLE_GC
+#ifdef REUSE_OBJECTS
   object_pool *op;
+#endif
   epoch_num epoch;
 #endif
 };
