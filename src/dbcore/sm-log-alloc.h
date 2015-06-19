@@ -88,7 +88,7 @@ struct sm_log_alloc_mgr {
 
     int _write_daemon_state;
     
-    uint64_t _waiting_for_durable;
+    bool _waiting_for_durable;
     bool _waiting_for_dmark;
     
     bool _write_daemon_should_wake;

@@ -37,7 +37,7 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
     , _logbuf(bufsz, get_starting_byte_offset(&_lm))
     , _durable_lsn_offset(_lm.get_durable_mark().offset())
     , _write_daemon_state(0)
-    , _waiting_for_durable(0)
+    , _waiting_for_durable(false)
     , _waiting_for_dmark(false)
     , _write_daemon_should_wake(false)
     , _write_daemon_should_stop(false)
@@ -99,7 +99,7 @@ sm_log_alloc_mgr::wait_for_durable(uint64_t dlsn_offset)
                soon become) awake to process them, so the daemon will
                only stay asleep if there is no work for it to do.
              */
-            _waiting_for_durable = dlsn_offset - dur_lsn_offset();
+            _waiting_for_durable = true;
             _write_complete_cond.wait(_write_daemon_mutex);
         }
     }
@@ -301,12 +301,9 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
            between buffer offsets and LSN offsets means we may guess
            high, but that's harmless.
          */
-        uint64_t needed = lsn.offset() - _logbuf.window_size();//buf_offset(lsn)?
         _write_daemon_mutex.lock();
         DEFER(_write_daemon_mutex.unlock());
-
-        if(_waiting_for_durable < needed)
-            _waiting_for_durable = needed;
+        _waiting_for_durable = true;
         
         _kick_log_write_daemon();
         _write_complete_cond.wait(_write_daemon_mutex);
@@ -505,7 +502,7 @@ sm_log_alloc_mgr::_log_write_daemon()
 
         // wake up any waiters if the old value was smaller than the waited-for one
         if (_waiting_for_durable) {
-            _waiting_for_durable = 0;
+            _waiting_for_durable = false;
             _write_complete_cond.broadcast();
         }
 
