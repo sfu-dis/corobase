@@ -170,6 +170,7 @@ main(int argc, char **argv)
       ops_per_worker = strtoul(optarg, NULL, 10);
       ALWAYS_ASSERT(ops_per_worker > 0);
       run_mode = RUNMODE_OPS;
+      break;
 
     case 'o':
       bench_opts = optarg;
@@ -182,10 +183,12 @@ main(int argc, char **argv)
     case 'e':
       log_segsize = strtoul(optarg, NULL, 10);
       ALWAYS_ASSERT(log_segsize > 0);
+      break;
 
     case 'u':
       log_bufsize = strtoul(optarg, NULL, 10);
       ALWAYS_ASSERT(log_bufsize > 0);
+      break;
 
     case 'x':
       stats_server_sockfile = optarg;
