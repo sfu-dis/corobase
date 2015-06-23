@@ -267,7 +267,7 @@ bench_runner::run()
         sec_aborts -= last_aborts;
         last_commits += sec_commits;
         last_aborts += sec_aborts;
-        printf("%lu\t%lu\t%lu\n", slept, sec_commits, sec_aborts);
+        printf("%lu\t%lu\t%lu\n", slept+1, sec_commits, sec_aborts);
         slept++;
       };
     }
