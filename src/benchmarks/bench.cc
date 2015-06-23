@@ -249,8 +249,31 @@ bench_runner::run()
 #endif
   timer t, t_nosync;
   barrier_b.count_down(); // bombs away!
+
+  // Print some results every second
   if (run_mode == RUNMODE_TIME) {
-    sleep(runtime);
+    if (verbose) {
+      uint64_t slept = 0;
+      uint64_t last_commits = 0, last_aborts = 0;
+      printf("Sec\tCommits\tAborts\n");
+      while (slept < runtime) {
+        sleep(1);
+        uint64_t sec_commits = 0, sec_aborts = 0;
+        for (size_t i = 0; i < nthreads; i++) {
+          sec_commits += workers[i]->get_ntxn_commits();
+          sec_aborts += workers[i]->get_ntxn_aborts();
+        }
+        sec_commits -= last_commits;
+        sec_aborts -= last_aborts;
+        last_commits += sec_commits;
+        last_aborts += sec_aborts;
+        printf("%lu\t%lu\t%lu\n", slept, sec_commits, sec_aborts);
+        slept++;
+      };
+    }
+    else {
+      sleep(runtime);
+    }
     running = false;
   }
   __sync_synchronize();
