@@ -3,6 +3,7 @@
 #include "dbcore/sm-common.h"
 
 class dbtuple;
+struct sm_log_recover_mgr;
 
 // An object wraps a tuple with its physical location in storage (the log)
 // and the older version it supersedes. If the version is not in memory,
@@ -21,7 +22,7 @@ class object
 		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
         dbtuple *tuple() { return (dbtuple *)payload(); }
         static object *create_tuple_object(const varstr *tuple_value, bool do_write);
-        static fat_ptr create_tuple_object(fat_ptr ptr, fat_ptr nxt);
+        static fat_ptr create_tuple_object(fat_ptr ptr, fat_ptr nxt, sm_log_recover_mgr *lm = NULL);
 };
 
 // DISABLE THE OLD TUPLE VECTOR AND TABLE LOCK IMPLEMENTATIONS

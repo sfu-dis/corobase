@@ -1,3 +1,4 @@
+#include "../util.h"
 #include "sm-oid-impl.h"
 #include "sm-alloc.h"
 #include "sm-chkpt.h"
@@ -479,7 +480,7 @@ sm_oid_mgr::get_array(FID f)
 }
 
 void
-sm_oid_mgr::create(LSN chkpt_start, char const *dname)
+sm_oid_mgr::create(LSN chkpt_start, char const *dname, sm_log_recover_mgr *lm)
 {
     // Create an empty oidmgr, with initial internal files
     oidmgr = new sm_oid_mgr_impl{};
@@ -539,11 +540,16 @@ sm_oid_mgr::create(LSN chkpt_start, char const *dname)
 
             fat_ptr ptr = NULL_PTR;
             n = read(fd, &ptr, sizeof(fat_ptr));
-            object *obj = new (MM::allocate(sizeof(object))) object(ptr, NULL_PTR);
-            ptr = fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
+            if (sm_log::warm_up == sm_log::WU_EAGER) {
+                ptr = object::create_tuple_object(ptr, NULL_PTR, lm);
+                ASSERT(ptr.asi_type() == 0);
+            }
+            else {
+                object *obj = new (MM::allocate(sizeof(object))) object(ptr, NULL_PTR);
+                ptr = fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
+                ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+            }
             oidmgr->oid_put_new(f, o, ptr);
-            ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
-            ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
         }
     }
 }
@@ -616,6 +622,38 @@ sm_oid_mgr::take_chkpt(LSN cstart)
     }
 
     chkptmgr->sync_buffer();
+}
+
+sm_allocator*
+sm_oid_mgr::get_allocator(FID f)
+{
+    return get_impl(this)->get_allocator(f);
+}
+
+void
+sm_oid_mgr::start_warm_up()
+{
+    std::thread t(sm_oid_mgr::warm_up);
+    t.detach();
+}
+
+void
+sm_oid_mgr::warm_up()
+{
+    ASSERT(oidmgr);
+    std::cout << "[Warm-up] Started\n";
+    {
+        util::scoped_timer t("data warm-up");
+        // Go over each OID entry and ensure_tuple there
+        for (auto &fm : fid_map) {
+            auto fid = fm.second.first;
+            auto *alloc = oidmgr->get_allocator(fid);
+            OID himark = alloc->head.hiwater_mark;
+            oid_array *oa = oidmgr->get_array(fid);
+            for (OID oid = 0; oid < himark; oid++)
+                oidmgr->ensure_tuple(oa, oid);
+        }
+    }
 }
 
 FID

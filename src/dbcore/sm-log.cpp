@@ -9,7 +9,7 @@ using namespace RCU;
 
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
-int sm_log::fetch_at_recovery = 0;
+int sm_log::warm_up = sm_log::WU_NONE;
 
 LSN
 sm_log::flush()
@@ -146,20 +146,13 @@ void
 sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
                 LSN chkpt_begin, LSN chkpt_end, char const *dname)
 {
-    // The hard case: no chkpt, have to do it the hard way
-    sm_oid_mgr::create(chkpt_begin, dname);
-    ASSERT(oidmgr);
-
-    if (not sm_log::need_recovery)
-        return;
-
     RCU::rcu_register();
     RCU::rcu_enter();
 
     // One hiwater_mark/capacity_mark per FID
     himark_map_t himarks;
     std::vector<std::future<std::pair<FID, OID> > > futures;
-    auto *scan = scanner->new_log_scan(chkpt_begin, fetch_at_recovery);
+    auto *scan = scanner->new_log_scan(chkpt_begin, warm_up == WU_EAGER);
 
     FID max_fid = 0;
     for (auto &fm : fid_map) {
@@ -204,6 +197,10 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
     // So by now we will have a fully working database, once index is rebuilt.
     // WARNING: DO NOT TAKE CHKPT UNTIL WE REPLAYED ALL INDEXES!
     // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
+    //
+    // For easier measurement (like "how long does it take to bring the
+    // system back to fully memory-resident after recovery), we spawn the
+    // warm-up thread after rebuilding indexes as well.
 }
 
 std::pair<FID, OID>
@@ -214,7 +211,7 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
     RCU::rcu_enter();
     OID himark = 0;
     uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
-    auto *scan = scanner->new_log_scan(chkpt_begin, fetch_at_recovery);
+    auto *scan = scanner->new_log_scan(chkpt_begin, warm_up == WU_EAGER);
     for (; scan->valid(); scan->next()) {
         auto f = scan->fid();
         if (f != fid)
@@ -272,7 +269,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
     // Note: payload_size() includes the whole varstr
     // See do_tree_put's log_update call.
     size_t sz = sizeof(object);
-    if (sm_log::fetch_at_recovery) {
+    if (warm_up == WU_EAGER) {
         sz += (sizeof(dbtuple) + logrec->payload_size());
         sz = align_up(sz);
     }
@@ -284,7 +281,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
 #endif
         obj = new (MM::allocate(sz)) object(logrec->payload_ptr(), next);
 
-    if (not sm_log::fetch_at_recovery)
+    if (warm_up != WU_EAGER)
         return fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
 
     // Load tuple varstr from logrec
@@ -403,4 +400,10 @@ sm_log::recover_index()
         std::pair<std::string, uint64_t> r = f.get();
         printf("[Recovery] %s index inserts: %lu\n", r.first.c_str(), r.second);
     }
+
+    // XXX (tzwang): this doesn't belong here, but recover_index is invoked
+    // by the benchmark code after opened indexes. Putting this in the
+    // benchmark code looks even uglier...
+    if (warm_up == WU_LAZY)
+        oidmgr->start_warm_up();
 }
