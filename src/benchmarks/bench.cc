@@ -255,7 +255,7 @@ bench_runner::run()
     if (verbose) {
       uint64_t slept = 0;
       uint64_t last_commits = 0, last_aborts = 0;
-      printf("Sec\tCommits\tAborts\n");
+      printf("[Throughput] Sec,Commits,Aborts\n");
       while (slept < runtime) {
         sleep(1);
         uint64_t sec_commits = 0, sec_aborts = 0;
@@ -267,7 +267,7 @@ bench_runner::run()
         sec_aborts -= last_aborts;
         last_commits += sec_commits;
         last_aborts += sec_aborts;
-        printf("%lu\t%lu\t%lu\n", slept+1, sec_commits, sec_aborts);
+        printf("[Throughput] %lu,%lu,%lu\n", slept+1, sec_commits, sec_aborts);
         slept++;
       };
     }
