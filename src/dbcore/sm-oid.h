@@ -2,7 +2,7 @@
 #pragma once
 
 #include "sm-common.h"
-
+#include "sm-oid-alloc-impl.h"
 #include "sm-heap.h"
 #include "sm-log.h"
 
@@ -109,7 +109,7 @@ struct sm_oid_mgr {
        amount of data to ship for replication (no need to ship chkpts,
        the backup can have its own chkpts).
      */
-    static void create(LSN chkpt_start, char const *dname);
+    static void create(LSN chkpt_start, char const *dname, sm_log_recover_mgr *lm);
 
     /* Record a snapshot of the OID manager's state as part of a
        checkpoint. The data will be durable by the time this function
@@ -198,6 +198,10 @@ struct sm_oid_mgr {
     void recreate_file(FID f);    // for recovery only
     void recreate_allocator(FID f, OID m);  // for recovery only
     oid_array *get_array(FID f);
+    sm_allocator *get_allocator(FID f);
+
+    static void warm_up();
+    void start_warm_up();
 
     int dfd;    // dir for storing OID chkpt data file
 

@@ -116,7 +116,7 @@ main(int argc, char **argv)
       {"log-dir"                    , required_argument , 0                          , 'l'} ,
       {"log-segsize"                , required_argument , 0                          , 'e'} ,
       {"log-bufsize"                , required_argument , 0                          , 'u'} ,
-      {"log-prefetch"               , no_argument       , &sm_log::fetch_at_recovery , 1} ,
+      {"warm-up"                    , required_argument , 0                          , 'w'} ,
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
@@ -127,6 +127,7 @@ main(int argc, char **argv)
     if (c == -1)
       break;
 
+    string *warm_up_policy = NULL;
     switch (c) {
     case 0:
       if (long_options[option_index].flag != 0)
@@ -162,6 +163,16 @@ main(int argc, char **argv)
       runtime = strtoul(optarg, NULL, 10);
       ALWAYS_ASSERT(runtime > 0);
       run_mode = RUNMODE_TIME;
+      break;
+
+    case 'w':
+      warm_up_policy = new string(optarg);
+      if (*warm_up_policy == "eager")
+        sm_log::warm_up = sm_log::WU_EAGER;
+      else if (*warm_up_policy == "lazy")
+        sm_log::warm_up = sm_log::WU_LAZY;
+      else
+        sm_log::warm_up = sm_log::WU_NONE;
       break;
 
     case 'n':
@@ -284,7 +295,16 @@ main(int argc, char **argv)
     cerr << "  log-dir : " << *log_dir                      << endl;
     cerr << "  log-segsize : " << log_segsize               << endl;
     cerr << "  log-bufsize : " << log_bufsize               << endl;
-    cerr << "  log-prefetch: " << sm_log::fetch_at_recovery << endl;
+    cerr << "  warm-up     : ";
+    if (sm_log::warm_up == sm_log::WU_NONE)
+      cerr << "0";
+    else if (sm_log::warm_up == sm_log::WU_LAZY)
+      cerr << "lazy";
+    else {
+      ALWAYS_ASSERT(sm_log::warm_up == sm_log::WU_EAGER);
+      cerr << "eager";
+    }
+    cerr << endl;
     cerr << "  enable-chkpt: " << enable_chkpt              << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 

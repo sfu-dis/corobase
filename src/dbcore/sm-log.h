@@ -305,7 +305,27 @@ typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
 struct sm_log {
     typedef std::unordered_map<FID, OID> himark_map_t;
     static bool need_recovery;
-    static int fetch_at_recovery;    // Load physical versions during recovery?
+
+    // Warm-up policy when recovering from a chkpt or the log.
+    // Set by --warm-up=[lazy/eager/whatever].
+    //
+    // --warm-up = lazy:  spawn a thread to access every OID entry after
+    //                    recovery; log/chkpt recovery will only oid_put
+    //                    objects that contain the records' log location.
+    //                    Tx's might encounter some storage-resident
+    //                    versions, if the tx tried to access them before
+    //                    the warm-up thread fetched those versions.
+    //
+    // --warm-up = eager: dig out versions from the log when scanning
+    //                    the chkpt and log; all OID entries will point
+    //                    to some memory location after recovery finishes.
+    //                    Txs will only see memory-residents, no need to
+    //                    dig them out during execution.
+    //
+    // --warm-up ommitted or = anything else: don't do warm-up at all; it
+    //      is the tx's burden to dig out versions when accessing them.
+    enum WU_POLICY { WU_NONE, WU_LAZY, WU_EAGER };
+    static int warm_up; // no/lazy/eager warm-up at recovery
 
     void update_chkpt_mark(LSN cstart, LSN cend);
     LSN flush();
