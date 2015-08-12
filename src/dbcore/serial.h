@@ -38,7 +38,7 @@ inline bool ssn_check_exclusion(xid_context *xc) {
 struct readers_list {
 public:
     typedef dbtuple::rl_bitmap_t bitmap_t;
-    enum { XIDS_PER_READER_KEY=64 };
+    enum { XIDS_PER_READER_KEY=sizeof(bitmap_t)*8 };
 
     // FIXME: on crossfire we basically won't have more than 24 concurrent
     // transactions running (not to mention all as readers of a single

@@ -249,7 +249,7 @@ transaction::parallel_ssn_commit()
         readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple, true);
 
         while (readers) {
-            int i = __builtin_ctzl(readers);
+            int i = __builtin_ctzll(readers);
             ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
             readers &= (readers-1);
             XID rxid = volatile_read(rlist.xids[i]);
@@ -662,7 +662,7 @@ transaction::parallel_ssi_commit()
             // from the bitmap, xstamp is ready to be read by the updater.
             readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple, true);
             while (readers) {
-                int i = __builtin_ctzl(readers);
+                int i = __builtin_ctzll(readers);
                 ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
                 readers &= (readers-1);
                 XID rxid = volatile_read(rlist.xids[i]);

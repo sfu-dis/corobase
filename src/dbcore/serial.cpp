@@ -201,7 +201,7 @@ serial_register_reader_tx(dbtuple *t, XID xid)
     rl_bitmap_t old_bitmap = volatile_read(t->rl_bitmap);
     if (not (old_bitmap & tls_bitmap_entry)) {
 #if CHECK_INVARIANTS
-        int xid_pos = __builtin_ctzl(tls_bitmap_entry);
+        int xid_pos = __builtin_ctzll(tls_bitmap_entry);
         ASSERT(xid_pos >= 0 and xid_pos < readers_list::XIDS_PER_READER_KEY);
 #endif
         __sync_fetch_and_or(&t->rl_bitmap, tls_bitmap_entry);
@@ -227,22 +227,22 @@ serial_deregister_reader_tx(dbtuple *t)
 void
 serial_register_tx(XID xid)
 {
-    ASSERT(not rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val);
-    volatile_write(rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val, xid._val);
+    ASSERT(not rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val);
+    volatile_write(rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val, xid._val);
 }
 
 // deregister tx in the global rlist (called at tx end)
 void
 serial_deregister_tx(XID xid)
 {
-    volatile_write(rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val, 0);
-    ASSERT(not rlist.xids[__builtin_ctzl(tls_bitmap_entry)]._val);
+    volatile_write(rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val, 0);
+    ASSERT(not rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val);
 }
 
 void
 serial_stamp_last_committed_lsn(LSN lsn)
 {
-    volatile_write(rlist.last_commit_lsns[__builtin_ctzl(tls_bitmap_entry)]._val, lsn._val);
+    volatile_write(rlist.last_commit_lsns[__builtin_ctzll(tls_bitmap_entry)]._val, lsn._val);
 }
 
 // Request @xc to abort, returns true if succeeded
