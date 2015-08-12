@@ -48,7 +48,7 @@ public:
 
   fat_ptr clsn;     // version creation stamp
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  typedef unsigned long rl_bitmap_t;  // use _builtin_ctzl for this
+  typedef unsigned long long rl_bitmap_t;  // use _builtin_ctzll for this
   rl_bitmap_t rl_bitmap;   // bitmap of in-flight readers
   fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
                            // normal write to indicate its existence; become writer cstamp at commit
