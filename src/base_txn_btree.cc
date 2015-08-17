@@ -165,7 +165,7 @@ rc_t base_txn_btree::do_tree_put(
 
         // read prev's clsn first, in case it's a committing XID, the clsn's state
         // might change to ASI_LOG anytime
-        fat_ptr prev_clsn = volatile_read(prev->clsn);
+        fat_ptr prev_clsn = volatile_read(prev->get_object()->_clsn);
         if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {
             // updating my own updates!
             // prev's prev: previous *committed* version
@@ -180,8 +180,8 @@ rc_t base_txn_btree::do_tree_put(
 #endif
         }
 
-        t.write_set.emplace_back(tuple, this->underlying_btree.tuple_vec(), oid);
-        ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_XID);
+        t.write_set.emplace_back(tuple->get_object(), this->underlying_btree.tuple_vec(), oid);
+        ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
 
 #ifdef PHANTOM_PROT_TABLE_LOCK

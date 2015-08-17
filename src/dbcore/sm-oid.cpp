@@ -800,7 +800,7 @@ start_over:
     dbtuple *version = (dbtuple *)old_desc->payload();
     bool overwrite = false;
 
-    auto clsn = volatile_read(version->clsn);
+    auto clsn = volatile_read(old_desc->_clsn);
     if (clsn.asi_type() == fat_ptr::ASI_XID) {
         /* Grab the context for this XID. If we're too slow,
            the context might be recycled for a different XID,
@@ -823,7 +823,7 @@ start_over:
         xid_context *holder= xid_get_context(holder_xid);
         if (not holder) {
 #if CHECK_INVARIANTS
-            auto t = volatile_read(version->clsn).asi_type();
+            auto t = volatile_read(old_desc->_clsn).asi_type();
             ASSERT(t == fat_ptr::ASI_LOG or oid_get(oa, o) != head);
 #endif
             goto start_over;
@@ -873,7 +873,7 @@ install:
     // working on the same tuple at the same time.
 
     object *new_object = object::create_tuple_object(value, false);
-    new_object->tuple()->clsn = updater_xc->owner.to_ptr();
+    new_object->_clsn = updater_xc->owner.to_ptr();
     fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
 
     if (overwrite) {
@@ -981,7 +981,7 @@ start_over:
         auto *cur_obj = (object*)ptr.offset();
         pp = &cur_obj->_next;
 
-        auto clsn = volatile_read(cur_obj->tuple()->clsn);
+        auto clsn = volatile_read(cur_obj->_clsn);
         ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
         // xid tracking & status check
         if (clsn.asi_type() == fat_ptr::ASI_XID) {
@@ -992,7 +992,7 @@ start_over:
 
             // dirty data made by me is visible!
             if (holder_xid == visitor_xc->owner) {
-                ASSERT(not cur_obj->_next.offset() or ((dbtuple*)(((object *)cur_obj->_next.offset())->payload()))->clsn.asi_type() == fat_ptr::ASI_LOG);
+                ASSERT(not cur_obj->_next.offset() or ((object *)cur_obj->_next.offset())->_clsn.asi_type() == fat_ptr::ASI_LOG);
                 return cur_obj->tuple();
             }
 #ifdef USE_READ_COMMITTED
