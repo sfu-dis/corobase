@@ -147,10 +147,9 @@ protected:
   }
 
   struct write_record_t {
-    write_record_t(dbtuple *n, oid_array *a, OID o) :
-        new_tuple(n), oa(a), oid(o) {}
-    write_record_t() : new_tuple(NULL), oa(NULL), oid(0) {}
-    dbtuple *new_tuple;
+    write_record_t(object *obj, oid_array *a, OID o) :
+        new_object(obj), oa(a), oid(o) {}
+    object *new_object;
     oid_array *oa;
     OID oid;
   };
