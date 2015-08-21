@@ -77,9 +77,9 @@ class basic_table {
     bool get(Str key, value_type& value, threadinfo& ti) const;
 
     template <typename F>
-    int scan(Str firstkey, bool matchfirst, F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
+    int scan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
     template <typename F>
-    int rscan(Str firstkey, bool matchfirst, F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
+    int rscan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
 
     template <typename F>
     inline int modify(Str key, F& f, threadinfo& ti);
@@ -123,7 +123,7 @@ class basic_table {
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,
-         F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
+         F& scanner, xid_context *xc, threadinfo& ti) const;
 
     friend class unlocked_tcursor<P>;
     friend class tcursor<P>;

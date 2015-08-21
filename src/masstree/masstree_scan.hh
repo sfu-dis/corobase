@@ -314,7 +314,6 @@ template <typename P> template <typename H, typename F>
 int basic_table<P>::scan(H helper,
                          Str firstkey, bool emit_firstkey,
                          F& scanner,
-                         FID f,
                          xid_context *xc,
                          threadinfo& ti) const
 {
@@ -400,21 +399,19 @@ int basic_table<P>::scan(H helper,
 template <typename P> template <typename F>
 int basic_table<P>::scan(Str firstkey, bool emit_firstkey,
                          F& scanner,
-                         FID f,
                          xid_context *xc,
                          threadinfo& ti) const
 {
-    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, f, xc, ti);
+    return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P> template <typename F>
 int basic_table<P>::rscan(Str firstkey, bool emit_firstkey,
                           F& scanner,
-                          FID f,
                           xid_context *xc,
                           threadinfo& ti) const
 {
-    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, f, xc, ti);
+    return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 } // namespace Masstree
