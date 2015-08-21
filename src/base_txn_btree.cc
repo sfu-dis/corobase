@@ -13,7 +13,7 @@ base_txn_btree::do_search(transaction &t, const varstr &k, value_reader &vr)
     dbtuple * tuple{};
     OID oid;
     concurrent_btree::versioned_node_t sinfo;
-    const bool found = this->underlying_btree.search(varkey(key_str), this->fid, oid, tuple, t.xc, &sinfo);
+    const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xc, &sinfo);
     if (found)
         return t.do_tuple_read(tuple, vr);
 #ifdef PHANTOM_PROT_NODE_SET
@@ -78,7 +78,7 @@ rc_t base_txn_btree::do_tree_put(
     // do regular search
     dbtuple * bv = 0;
     OID oid = 0;
-    if (!this->underlying_btree.search(varkey(k), this->fid, oid, bv, t.xc))
+    if (!this->underlying_btree.search(varkey(k), oid, bv, t.xc))
         return rc_t{RC_ABORT_INTERNAL};
 #ifdef PHANTOM_PROT_TABLE_LOCK
     // for delete
@@ -310,7 +310,7 @@ base_txn_btree::do_search_range_call(
         uppervk = varkey(upper_str);
     this->underlying_btree.search_range_call(
         varkey(lower_str), upper_str ? &uppervk : nullptr,
-        c, this->fid, t.xc);
+        c, t.xc);
 }
 
 void
@@ -358,6 +358,6 @@ base_txn_btree::do_rsearch_range_call(
         lowervk = varkey(lower_str);
     this->underlying_btree.rsearch_range_call(
         varkey(upper_str), lower_str ? &lowervk : nullptr,
-        c, this->fid, t.xc);
+        c, t.xc);
 }
 

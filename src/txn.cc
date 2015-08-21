@@ -983,7 +983,7 @@ transaction::try_insert_new_tuple(
 #endif
 
     typename concurrent_btree::insert_info_t ins_info;
-    if (unlikely(!btr->insert_if_absent(varkey(key), fid, oid, tuple, &ins_info))) {
+    if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, &ins_info))) {
         oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
         if (instant_xlock)

@@ -376,7 +376,7 @@ sm_log::rebuild_index(FID fid, ndb_ordered_index *index)
         varkey key((uint8_t *)((char *)buf + sizeof(varstr)), len);
 
         //printf("key %s %s\n", (char *)key.data(), buf);
-        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, fid, scan->oid(), NULL));
+        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, scan->oid(), NULL));
         count++;
         free((void *)buf);
     }
