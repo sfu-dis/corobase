@@ -14,7 +14,7 @@ struct sm_log_recover_mgr;
 class object
 {
 	public:
-        object(fat_ptr pdest, fat_ptr next) : _pdest(pdest), _next(next) {}
+        object(fat_ptr pdest, fat_ptr next) : _pdest(pdest), _next(next), _clsn(NULL_PTR) {}
         object() : _pdest(NULL_PTR), _next(NULL_PTR), _clsn(NULL_PTR) {}
 
         fat_ptr _pdest; // permanent location in storage
