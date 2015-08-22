@@ -236,11 +236,6 @@ public:
       return table_.tuple_vec;
   }
 
-  inline node_base_type* fetch_node(OID oid) const
-  {
-	  return table_.fetch_node( oid );
-  }
-
   /**
    * NOT THREAD SAFE
    */
@@ -498,7 +493,7 @@ mbtree<P>::leftmost_descend_layer(node_base_type *n)
       return static_cast<leaf_type*>(cur);
     internode_type *in = static_cast<internode_type*>(cur);
     nodeversion_type version = cur->stable();
-    node_base_type *child = in->fetch_node(in->child_oid_[0]);
+    node_base_type *child = in->child_[0];
     if (unlikely(in->has_changed(version)))
       continue;
     cur = child;
@@ -521,8 +516,8 @@ void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
       auto version = leaf->stable();
       auto perm = leaf->permutation();
       for (int i = 0; i != perm.size(); ++i)
-        if (leaf->value_is_layer(perm[i]))
-          layers.push_back(leaf->fetch_node(leaf->lv_[perm[i]].layer()));
+        if (leaf->is_layer(perm[i]))
+          layers.push_back(leaf->lv_[perm[i]].layer());
       leaf_type *next = leaf->safe_next();
       callback.on_node_begin(leaf);
       if (unlikely(leaf->has_changed(version))) {
@@ -560,7 +555,7 @@ mbtree<P>::size_walk_callback::on_node_begin(const node_opaque_t *n)
   auto perm = n->permutation();
   node_size_ = 0;
   for (int i = 0; i != perm.size(); ++i)
-    if (!n->value_is_layer(perm[i]))
+    if (!n->is_layer(perm[i]))
       ++node_size_;
 }
 

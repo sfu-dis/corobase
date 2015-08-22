@@ -175,7 +175,7 @@ result_t query<R>::run_put(T& table, Str key,
 template <typename R>
 inline bool query<R>::apply_put(R*& value, bool found, const Json* firstreq,
                                 const Json* lastreq, threadinfo& ti) {
-    if (loginfo* log = ti.ti_log) {
+    if (loginfo* log = ti.logger()) {
 	log->acquire();
 	qtimes_.epoch = global_log_epoch;
     }
@@ -216,7 +216,7 @@ result_t query<R>::run_replace(T& table, Str key, Str value, threadinfo& ti) {
 template <typename R>
 inline bool query<R>::apply_replace(R*& value, bool found, Str new_value,
                                     threadinfo& ti) {
-    if (loginfo* log = ti.ti_log) {
+    if (loginfo* log = ti.logger()) {
 	log->acquire();
 	qtimes_.epoch = global_log_epoch;
     }
@@ -246,7 +246,7 @@ bool query<R>::run_remove(T& table, Str key, threadinfo& ti) {
 template <typename R>
 inline void query<R>::apply_remove(R*& value, kvtimestamp_t& node_ts,
                                    threadinfo& ti) {
-    if (loginfo* log = ti.ti_log) {
+    if (loginfo* log = ti.logger()) {
 	log->acquire();
 	qtimes_.epoch = global_log_epoch;
     }
@@ -264,8 +264,12 @@ class query_json_scanner {
   public:
     query_json_scanner(query<R> &q, lcdf::Json& request)
 	: q_(q), nleft_(request[3].as_i()), request_(request) {
+        std::swap(request[2].value().as_s(), firstkey_);
         request_.resize(2);
         q_.scankeypos_ = 0;
+    }
+    const lcdf::String& firstkey() const {
+        return firstkey_;
     }
     template <typename SS, typename K>
     void visit_leaf(const SS&, const K&, threadinfo&) {
@@ -280,7 +284,7 @@ class query_json_scanner {
         }
         memcpy(const_cast<char*>(q_.scankey_.data() + q_.scankeypos_),
                key.data(), key.length());
-        request_.push_back(q_.scankey_.substring(q_.scankeypos_, key.length()));
+        request_.push_back(q_.scankey_.substr(q_.scankeypos_, key.length()));
         q_.scankeypos_ += key.length();
         request_.push_back(lcdf::Json());
         q_.emit_fields1(value, request_.back(), ti);
@@ -291,28 +295,27 @@ class query_json_scanner {
     query<R> &q_;
     int nleft_;
     lcdf::Json& request_;
+    lcdf::String firstkey_;
 };
 
 template <typename R> template <typename T>
 void query<R>::run_scan(T& table, Json& request, threadinfo& ti) {
     assert(request[3].as_i() > 0);
-    lcdf::Str key = request[2].as_s();
     f_.clear();
     for (int i = 4; i != request.size(); ++i)
         f_.push_back(request[i].as_i());
     query_json_scanner<R> scanf(*this, request);
-    table.scan(key, true, scanf, ti);
+    table.scan(scanf.firstkey(), true, scanf, ti);
 }
 
 template <typename R> template <typename T>
 void query<R>::run_rscan(T& table, Json& request, threadinfo& ti) {
     assert(request[3].as_i() > 0);
-    lcdf::Str key = request[2].as_s();
     f_.clear();
     for (int i = 4; i != request.size(); ++i)
         f_.push_back(request[i].as_i());
     query_json_scanner<R> scanf(*this, request);
-    table.rscan(key, true, scanf, ti);
+    table.rscan(scanf.firstkey(), true, scanf, ti);
 }
 
 #endif
