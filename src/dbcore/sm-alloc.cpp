@@ -17,15 +17,161 @@
 
 namespace MM {
 
+void global_init(void*)
+{
+#ifdef ENABLE_GC
+    std::thread t(gc_daemon);
+    t.detach();
+#endif
+}
+
+// epochs related
+static __thread struct thread_data epoch_tls;
+epoch_mgr mm_epochs {{nullptr, &global_init, &get_tls,
+                    &thread_registered, &thread_deregistered,
+                    &epoch_ended, &epoch_ended_thread, &epoch_reclaimed}};
+
+void *allocate(uint64_t size) {
+    void* p = malloc(size);
+    ASSERT(p);
+    epoch_tls.nbytes += size;
+    epoch_tls.counts += 1;
+    return p;
+}
+
 void deallocate(void *p)
 {
     ASSERT(p);
     free(p);
 }
 
-#ifdef ENABLE_GC
 uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
 uint64_t EPOCH_SIZE_COUNT = 200000;
+
+// global_trim_lsn is the max lsn of versions that are no longer needed,
+// i.e., the trim_lsn corresponding to two epochs ago of the most recently
+// reclaimed epoch. Note that trim_lsn only records the LSN when the
+// *creator* of the versions are left---not the *visitor* of those versions.
+// So consider the versions created in epoch N, we can have stragglers up to
+// at most epoch N+2; to start a new epoch N+3, N must be reclaimed. This
+// means versions last *visited* (not created!) in epoch N are no longer
+// needed after epoch N+2 is reclaimed.
+#ifdef ENABLE_GC
+LSN global_trim_lsn;
+LSN trim_lsn[3];
+#endif
+LSN epoch_end_lsn[3];
+LSN safesnap_lsn = INVALID_LSN;
+
+// epoch mgr callbacks
+epoch_mgr::tls_storage *
+get_tls(void*)
+{
+    static __thread epoch_mgr::tls_storage s;
+    return &s;
+}
+
+void register_thread()
+{
+    mm_epochs.thread_init();
+}
+
+void deregister_thread()
+{
+    mm_epochs.thread_fini();
+}
+
+void*
+thread_registered(void*)
+{
+    epoch_tls.initialized = true;
+    epoch_tls.nbytes = 0;
+    epoch_tls.counts = 0;
+    return &epoch_tls;
+}
+
+void
+thread_deregistered(void *cookie, void *thread_cookie)
+{
+    auto *t = (thread_data*) thread_cookie;
+    ASSERT(t == &epoch_tls);
+    t->initialized = false;
+    t->nbytes = 0;
+    t->counts = 0;
+}
+
+void*
+epoch_ended(void *cookie, epoch_num e)
+{
+    // remember the epoch's LSN and return them together
+    char *lsn_epoch = (char *)malloc(sizeof(LSN) + sizeof(epoch_num));
+    *((LSN *)lsn_epoch) = epoch_end_lsn[e % 3];
+    *((epoch_num *)(lsn_epoch + sizeof(LSN))) = e;
+    return (void *)lsn_epoch;
+}
+
+void*
+epoch_ended_thread(void *cookie, void *epoch_cookie, void *thread_cookie)
+{
+    return epoch_cookie;
+}
+
+void
+epoch_reclaimed(void *cookie, void *epoch_cookie)
+{
+    LSN lsn = *(LSN *)epoch_cookie;
+    if (lsn != INVALID_LSN) {
+        // make epoch N available for transactions using safe snapshot.
+        // All transactions that created something in this epoch has gone,
+        // so it's impossible for a reader using that epoch's end lsn as
+        // both begin and commit timestamp to have conflicts with these
+        // transactions. But future transactions needs to start with a
+        // pstamp of safesnap_lsn.
+        volatile_write(safesnap_lsn._val, lsn._val);
+#ifdef ENABLE_GC
+        epoch_num epoch = *((epoch_num *)((char *)epoch_cookie + sizeof(LSN)));
+        volatile_write(trim_lsn[(epoch + 2) % 3]._val, lsn._val);
+        // make epoch N-2 available for recycle after epoch N is reclaimed
+        if (epoch >= 2)
+            global_trim_lsn = trim_lsn[(epoch - 2) % 3];
+#endif
+        free(epoch_cookie);
+    }
+#ifdef ENABLE_GC
+    if (global_trim_lsn != INVALID_LSN)
+        gc_trigger.notify_all();
+#endif
+}
+
+epoch_num
+epoch_enter(void)
+{
+    return mm_epochs.thread_enter();
+}
+
+void
+epoch_exit(LSN s, epoch_num e)
+{
+    if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
+        // epoch_ended() (which is called by new_epoch() in its critical
+        // section) will pick up this safe lsn if new_epoch() succeeded
+        // (it could also be set by somebody else who's also doing epoch_exit(),
+        // but this is captured before new_epoch succeeds, so we're fine).
+        // If instead, we do this in epoch_ended(), that cur_lsn captured
+        // actually belongs to the *new* epoch - not safe to trim based on
+        // this lsn. The real trim_lsn should be some lsn at the end of the
+        // ending epoch, not some lsn after the next epoch.
+        epoch_end_lsn[e % 3] = s;
+        if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
+            epoch_tls.nbytes = epoch_tls.counts = 0;
+    }
+    mm_epochs.thread_exit();
+}
+
+#ifdef ENABLE_GC
+std::condition_variable gc_trigger;
+std::mutex gc_lock;
+void gc_daemon();
 
 static recycle_oid *recycle_oid_head = NULL;
 static recycle_oid *recycle_oid_tail = NULL;
@@ -84,130 +230,6 @@ try_append:
     __sync_synchronize();
     volatile_write(recycle_oid_tail, list_tail);
     __sync_synchronize();   // publish the new tail
-}
-
-// global_trim_lsn is the max lsn of versions that are no longer needed,
-// i.e., the trim_lsn corresponding to two epochs ago of the most recently
-// reclaimed epoch. Note that trim_lsn only records the LSN when the
-// *creator* of the versions are left---not the *visitor* of those versions.
-// So consider the versions created in epoch N, we can have stragglers up to
-// at most epoch N+2; to start a new epoch N+3, N must be reclaimed. This
-// means versions last *visited* (not created!) in epoch N are no longer
-// needed after epoch N+2 is reclaimed.
-LSN global_trim_lsn;
-LSN trim_lsn[3];
-LSN safe_lsn[3];
-std::condition_variable gc_trigger;
-std::mutex gc_lock;
-void gc_daemon();
-
-// epochs related
-static __thread struct thread_data epoch_tls;
-epoch_mgr mm_epochs {{nullptr, &global_init, &get_tls,
-                    &thread_registered, &thread_deregistered,
-                    &epoch_ended, &epoch_ended_thread, &epoch_reclaimed}};
-
-// epoch mgr callbacks
-epoch_mgr::tls_storage *
-get_tls(void*)
-{
-    static __thread epoch_mgr::tls_storage s;
-    return &s;
-}
-
-void register_thread()
-{
-    mm_epochs.thread_init();
-}
-
-void deregister_thread()
-{
-    mm_epochs.thread_fini();
-}
-
-void global_init(void*)
-{
-    std::thread t(gc_daemon);
-    t.detach();
-}
-
-void*
-thread_registered(void*)
-{
-    epoch_tls.initialized = true;
-    epoch_tls.nbytes = 0;
-    epoch_tls.counts = 0;
-    return &epoch_tls;
-}
-
-void
-thread_deregistered(void *cookie, void *thread_cookie)
-{
-    auto *t = (thread_data*) thread_cookie;
-    ASSERT(t == &epoch_tls);
-    t->initialized = false;
-    t->nbytes = 0;
-    t->counts = 0;
-}
-
-void*
-epoch_ended(void *cookie, epoch_num e)
-{
-    // remember the epoch's LSN and return them together
-    char *lsn_epoch = (char *)malloc(sizeof(LSN) + sizeof(epoch_num));
-    *((LSN *)lsn_epoch) = safe_lsn[e % 3];
-    *((epoch_num *)(lsn_epoch + sizeof(LSN))) = e;
-    return (void *)lsn_epoch;
-}
-
-void*
-epoch_ended_thread(void *cookie, void *epoch_cookie, void *thread_cookie)
-{
-    return epoch_cookie;
-}
-
-void
-epoch_reclaimed(void *cookie, void *epoch_cookie)
-{
-    LSN lsn = *(LSN *)epoch_cookie;
-    epoch_num epoch = *((epoch_num *)((char *)epoch_cookie + sizeof(LSN)));
-    if (lsn != INVALID_LSN) {
-        volatile_write(trim_lsn[(epoch + 2) % 3]._val, lsn._val);
-        free(epoch_cookie);
-        // make epoch N-2 available for recycle after epoch N is reclaimed
-        if (epoch >= 2)
-            global_trim_lsn = trim_lsn[(epoch - 2) % 3];
-    }
-
-    if (global_trim_lsn != INVALID_LSN)
-        gc_trigger.notify_all();
-}
-
-epoch_num
-epoch_enter(void)
-{
-    return mm_epochs.thread_enter();
-}
-
-void
-epoch_exit(LSN s, epoch_num e)
-{
-#ifdef ENABLE_GC
-    if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
-        // epoch_ended() (which is called by new_epoch() in its critical
-        // section) will pick up this safe lsn if new_epoch() succeeded
-        // (it could also be set by somebody else who's also doing epoch_exit(),
-        // but this is captured before new_epoch succeeds, so we're fine).
-        // If instead, we do this in epoch_ended(), that cur_lsn captured
-        // actually belongs to the *new* epoch - not safe to trim based on
-        // this lsn. The real trim_lsn should be some lsn at the end of the
-        // ending epoch, not some lsn after the next epoch.
-        safe_lsn[e % 3] = s;
-        if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
-            epoch_tls.nbytes = epoch_tls.counts = 0;
-    }
-#endif
-    mm_epochs.thread_exit();
 }
 
 void gc_daemon()
@@ -321,31 +343,14 @@ try_recycle:
         printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
     goto try_recycle;
 }
-#endif
 
-void *allocate(uint64_t size) {
-    void* p = malloc(size);
-    ASSERT(p);
-#ifdef ENABLE_GC
-    epoch_tls.nbytes += size;
-    epoch_tls.counts += 1;
-#endif
-    return p;
-}
-
-#ifdef ENABLE_GC
 #ifdef REUSE_OBJECTS
 object_pool *get_object_pool()
 {
     static __thread object_pool myop;
     return &myop;
 }
-#endif
-#endif
-};  // end of namespace
 
-#ifdef ENABLE_GC
-#ifdef REUSE_OBJECTS
 object *
 object_pool::get(size_t size)
 {
@@ -388,3 +393,5 @@ object_pool::put(uint64_t c, object *p)
 }
 #endif
 #endif
+
+};  // end of namespace

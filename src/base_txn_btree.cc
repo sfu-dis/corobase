@@ -227,6 +227,10 @@ base_txn_btree
                << ", version=" << version << ">" << std::endl);
     VERBOSE(std::cerr << "  " << concurrent_btree::NodeStringify(n) << std::endl);
 #ifdef PHANTOM_PROT_NODE_SET
+#ifdef USE_PARALLEL_SSN
+    if (t->flags & transaction::TXN_FLAG_READ_ONLY)
+        return;
+#endif
     rc_t rc = t->do_node_read(n, version);
     if (rc_is_abort(rc))
         caller_callback->return_code = rc;
