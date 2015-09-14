@@ -1,7 +1,7 @@
 #include "xid.h"
 #include "sm-log.h"
 #include "epoch.h"
-
+#include "serial.h"
 #include <unistd.h>
 
 namespace TXN {

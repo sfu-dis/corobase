@@ -17,27 +17,43 @@ using namespace TXN;
 transaction::transaction(uint64_t flags, str_arena &sa)
   : flags(flags), sa(&sa)
 {
-#ifdef ENABLE_GC
     epoch = MM::epoch_enter();
 #ifdef REUSE_OBJECTS
     op = MM::get_object_pool();
-#endif
 #endif
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::NodeLockRegionBegin();
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    serial_register_tx(xid);
+#ifdef USE_PARALLEL_SSN
+    if (not (flags & TXN_FLAG_READ_ONLY))
+#endif
+        serial_register_tx(xid);
 #endif
 #ifdef PHANTOM_PROT_NODE_SET
     absent_set.set_empty_key(NULL);    // google dense map
 #endif
-    // Do this before touching the log!
-    RCU::rcu_enter();
-    log = logmgr->new_tx_log();
     xid = TXN::xid_alloc();
     xc = xid_get_context(xid);
+#ifdef USE_PARALLEL_SSN
+    // If there's a safesnap, then SSN treats the snapshot as a transaction
+    // that has read all the versions, which means every update transaction
+    // should have a initial pstamp of the safesnap.
+
+    // Take a safe snapshot if read-only.
+    if (flags & TXN_FLAG_READ_ONLY)
+        xc->begin = volatile_read(MM::safesnap_lsn);
+    else {
+        RCU::rcu_enter();
+        log = logmgr->new_tx_log();
+        xc->pstamp = volatile_read(MM::safesnap_lsn).offset();
+        xc->begin = logmgr->cur_lsn();
+    }
+#else
+    RCU::rcu_enter();
+    log = logmgr->new_tx_log();
     xc->begin = logmgr->cur_lsn();
+#endif
 }
 
 transaction::~transaction()
@@ -51,17 +67,19 @@ transaction::~transaction()
     // transaction shouldn't fall out of scope w/o resolution
     // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
     INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
-
+#ifdef USE_PARALLEL_SSN
+    if (not (flags & TXN_FLAG_READ_ONLY))
+        RCU::rcu_exit();
+#else
     RCU::rcu_exit();
+#endif
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::AssertAllNodeLocksReleased();
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
     serial_deregister_tx(xid);
 #endif
-#ifdef ENABLE_GC
     MM::epoch_exit(xc->end, epoch);
-#endif
     xid_free(xid);    // must do this after epoch_exit, which uses xc.end
 }
 
@@ -178,10 +196,6 @@ transaction::commit()
     }
 
     INVARIANT(log);
-    // get clsn, abort if failed
-    xc->end = log->pre_commit();
-    if (xc->end == INVALID_LSN)
-        return rc_t{RC_ABORT_INTERNAL};
 
 #ifdef USE_PARALLEL_SSN
     return parallel_ssn_commit();
@@ -207,6 +221,20 @@ transaction::commit()
 rc_t
 transaction::parallel_ssn_commit()
 {
+    // Safe snapshot optimization for read-only transactions:
+    // Use the begin ts as cstamp if it's a read-only transaction
+    if (flags & TXN_FLAG_READ_ONLY) {
+        ALWAYS_ASSERT(write_set.size() == 0);
+        xc->end = xc->begin;
+        volatile_write(xc->state, TXN_CMMTD);
+        return {RC_TRUE};
+    }
+    else {
+        xc->end = log->pre_commit();
+        if (xc->end == INVALID_LSN)
+            return rc_t{RC_ABORT_INTERNAL};
+    }
+
     auto cstamp = xc->end.offset();
 
     // note that sstamp comes from reads, but the read optimization might
@@ -537,6 +565,11 @@ transaction::parallel_ssn_commit()
 rc_t
 transaction::parallel_ssi_commit()
 {
+    // get clsn, abort if failed
+    xc->end = log->pre_commit();
+    if (xc->end == INVALID_LSN)
+        return rc_t{RC_ABORT_INTERNAL};
+
     // tzwang: The race between the updater (if any) and me (as the reader) -
     // A reader publishes its existence by calling serial_register_reader().
     // The updater might not notice this if it already checked this tuple
@@ -851,6 +884,11 @@ transaction::parallel_ssi_commit()
 rc_t
 transaction::si_commit()
 {
+    // get clsn, abort if failed
+    xc->end = log->pre_commit();
+    if (xc->end == INVALID_LSN)
+        return rc_t{RC_ABORT_INTERNAL};
+
 #ifdef PHANTOM_PROT_NODE_SET
     if (not check_phantom())
         return rc_t{RC_ABORT_PHANTOM};
@@ -1053,7 +1091,10 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     if (not read_my_own) {
         rc_t rc = {RC_INVALID};
 #ifdef USE_PARALLEL_SSN
-        rc = ssn_read(tuple);
+        if (flags & TXN_FLAG_READ_ONLY)
+            rc = {RC_TRUE};
+        else
+            rc = ssn_read(tuple);
 #else
         rc = ssi_read(tuple);
 #endif

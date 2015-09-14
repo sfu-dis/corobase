@@ -64,8 +64,8 @@ public:
     TXN_FLAG_LOW_LEVEL_SCAN = 0x1,
 
     // true to mark a read-only transaction- if a txn marked read-only
-    // does a write, a transaction_read_only_exception is thrown and the
-    // txn is aborted
+    // does a write, it is aborted. SSN uses it to implement to safesnap.
+    // No bookeeping is done with SSN if this is enable for a tx.
     TXN_FLAG_READ_ONLY = 0x2,
 
     // XXX: more flags in the future, things like consistency levels
@@ -247,7 +247,7 @@ protected:
 #ifdef REUSE_OBJECTS
   object_pool *op;
 #endif
-  epoch_num epoch;
 #endif
+  epoch_num epoch;
 };
 #endif /* _NDB_TXN_H_ */
