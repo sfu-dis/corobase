@@ -62,8 +62,8 @@ object::create_tuple_object(fat_ptr ptr, fat_ptr nxt, sm_log_recover_mgr *lm)
             (char *)tuple->get_value_start() + sizeof(varstr),
             tuple->size);
 
-    obj->tuple()->clsn = ptr;   // XXX (tzwang): use the tx's cstamp!
-    ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
+    obj->_clsn = ptr;   // XXX (tzwang): use the tx's cstamp!
+    ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
     return fat_ptr::make(obj, INVALID_SIZE_CODE);   // asi_type=0 (memory)
 }
 

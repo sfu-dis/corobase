@@ -1,7 +1,7 @@
 /* Masstree
  * Eddie Kohler, Yandong Mao, Robert Morris
- * Copyright (c) 2012-2013 President and Fellows of Harvard College
- * Copyright (c) 2012-2013 Massachusetts Institute of Technology
+ * Copyright (c) 2012-2014 President and Fellows of Harvard College
+ * Copyright (c) 2012-2014 Massachusetts Institute of Technology
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -77,9 +77,9 @@ class basic_table {
     bool get(Str key, value_type& value, threadinfo& ti) const;
 
     template <typename F>
-    int scan(Str firstkey, bool matchfirst, F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
+    int scan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
     template <typename F>
-    int rscan(Str firstkey, bool matchfirst, F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
+    int rscan(Str firstkey, bool matchfirst, F& scanner, xid_context *xc, threadinfo& ti) const;
 
     template <typename F>
     inline int modify(Str key, F& f, threadinfo& ti);
@@ -88,42 +88,12 @@ class basic_table {
 
     inline void print(FILE* f = 0, int indent = 0) const;
 
-    inline FID get_fid() { return fid_; }
-
-    inline node_type* fetch_node(OID oid) const
-	{
-        ASSERT(fid_);
-		// NOTE: oid 0 indicates absence of the node
-		if( oid )
-		{
-            fat_ptr head = oidmgr->oid_get(node_vec, oid);
-			if( head.offset() != 0 )
-			{
-				object* obj = (object*)head.offset();
-				return (node_type*)(obj->payload());
-			}
-		}
-		return NULL;
-	}
-
   private:
-    OID root_oid_;
-    // FID of this tree, **not** of the table it indexes
-    // (note that the tree also uses indirection array)
-    // The table's FID is stored in base_txn_btree for that
-    // table. So don't break the separation of base_txn_btree
-    // and basic_table.
-    //
-    // tzwang: actually, we might want to use the same FID
-    // for the table and its index(es), so that after checkpointed
-    // this FID's OID array, we have both the index and version
-    // chain => simpler recovery as we don't need to rebuild the
-    // index(es) again.
-    FID fid_;
+    node_type* root_;
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,
-         F& scanner, FID f, xid_context *xc, threadinfo& ti) const;
+             F& scanner, xid_context *xc, threadinfo& ti) const;
 
     friend class unlocked_tcursor<P>;
     friend class tcursor<P>;

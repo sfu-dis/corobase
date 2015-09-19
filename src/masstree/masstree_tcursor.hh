@@ -1,7 +1,7 @@
 /* Masstree
  * Eddie Kohler, Yandong Mao, Robert Morris
- * Copyright (c) 2012-2013 President and Fellows of Harvard College
- * Copyright (c) 2012-2013 Massachusetts Institute of Technology
+ * Copyright (c) 2012-2014 President and Fellows of Harvard College
+ * Copyright (c) 2012-2014 Massachusetts Institute of Technology
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -15,6 +15,7 @@
  */
 #ifndef MASSTREE_TCURSOR_HH
 #define MASSTREE_TCURSOR_HH 1
+#include "local_vector.hh"
 #include "masstree_key.hh"
 #include "masstree_struct.hh"
 namespace Masstree {
@@ -28,6 +29,7 @@ class unlocked_tcursor {
     typedef typename P::threadinfo_type threadinfo;
     typedef typename leaf<P>::nodeversion_type nodeversion_type;
     typedef typename nodeversion_type::value_type nodeversion_value_type;
+    typedef typename leaf<P>::permuter_type permuter_type;
 
     inline unlocked_tcursor(const basic_table<P>& table, Str str)
         : ka_(str), lv_(leafvalue<P>::make_empty()),
@@ -66,6 +68,12 @@ class unlocked_tcursor {
     inline leaf<P>* node() const {
         return n_;
     }
+    inline permuter_type permutation() const {
+        return perm_;
+    }
+    inline int compare_key(const key_type& a, int bp) const {
+        return n_->compare_key(a, bp);
+    }
     inline nodeversion_value_type full_version_value() const {
         static_assert(int(nodeversion_type::traits_type::top_stable_bits) >= int(leaf<P>::permuter_type::size_bits), "not enough bits to add size to version");
         return (v_.version_value() << leaf<P>::permuter_type::size_bits) + perm_.size();
@@ -75,12 +83,9 @@ class unlocked_tcursor {
     leaf<P>* n_;
     key_type ka_;
     typename leaf<P>::nodeversion_type v_;
-    typename leaf<P>::permuter_type perm_;
+    permuter_type perm_;
     leafvalue<P> lv_;
     const node_base<P>* root_;
-
-    inline int lower_bound_binary() const;
-    inline int lower_bound_linear() const;
 };
 
 template <typename P>
@@ -97,42 +102,60 @@ class tcursor {
     typedef typename leaf<P>::nodeversion_type nodeversion_type;
     typedef typename nodeversion_type::value_type nodeversion_value_type;
     typedef typename P::threadinfo_type threadinfo;
+    static constexpr int new_nodes_size = 1; // unless we make a new trie newnodes will have at most 1 item
+    typedef local_vector<std::pair<leaf_type*, nodeversion_value_type>, new_nodes_size> new_nodes_type;
 
     tcursor(basic_table<P>& table, Str str)
-	: ka_(str), root_(table.fix_root()) {
+        : ka_(str), root_(table.fix_root()) {
     }
     tcursor(basic_table<P>& table, const char* s, int len)
-	: ka_(s, len), root_(table.fix_root()) {
+        : ka_(s, len), root_(table.fix_root()) {
     }
     tcursor(basic_table<P>& table, const unsigned char* s, int len)
-	: ka_(reinterpret_cast<const char*>(s), len), root_(table.fix_root()) {
+        : ka_(reinterpret_cast<const char*>(s), len), root_(table.fix_root()) {
     }
     tcursor(node_base<P>* root, const char* s, int len)
-	: ka_(s, len), root_(root) {
+        : ka_(s, len), root_(root) {
     }
     tcursor(node_base<P>* root, const unsigned char* s, int len)
-	: ka_(reinterpret_cast<const char*>(s), len), root_(root) {
+        : ka_(reinterpret_cast<const char*>(s), len), root_(root) {
     }
 
     inline bool has_value() const {
-	return kp_ >= 0;
+        return kx_.p >= 0;
     }
     inline value_type &value() const {
-	return n_->lv_[kp_].value();
+        return n_->lv_[kx_.p].value();
     }
 
     inline bool is_first_layer() const {
-	return !ka_.is_shifted();
+        return !ka_.is_shifted();
     }
 
     inline leaf<P>* node() const {
         return n_;
     }
     inline kvtimestamp_t node_timestamp() const {
-	return n_->node_ts_;
+        return n_->node_ts_;
     }
     inline kvtimestamp_t &node_timestamp() {
-	return n_->node_ts_;
+        return n_->node_ts_;
+    }
+
+    inline leaf_type *original_node() const {
+        return original_n_;
+    }
+
+    inline nodeversion_value_type original_version_value() const {
+        return original_v_;
+    }
+
+    inline nodeversion_value_type updated_version_value() const {
+        return updated_v_;
+    }
+
+    inline const new_nodes_type &new_nodes() const {
+        return new_nodes_;
     }
 
     inline bool find_locked(threadinfo& ti);
@@ -146,27 +169,22 @@ class tcursor {
   private:
     leaf_type *n_;
     key_type ka_;
-    int ki_;
-    int kp_;
+    key_indexed_position kx_;
     node_base<P>* root_;
     int state_;
 
+    leaf_type *original_n_;
+    nodeversion_value_type original_v_;
+    nodeversion_value_type updated_v_;
+    new_nodes_type new_nodes_;
+
     inline node_type* reset_retry() {
-	ka_.unshift_all();
-	return root_;
+        ka_.unshift_all();
+        return root_;
     }
 
-    inline node_type* get_leaf_locked(node_type* root, nodeversion_type& v, threadinfo& ti);
-    inline node_type* check_leaf_locked(node_type* root, nodeversion_type v, threadinfo& ti);
-    inline node_type* check_leaf_insert(node_type* root, nodeversion_type v, threadinfo& ti);
-    static inline node_type* insert_marker() {
-	return reinterpret_cast<node_type*>(uintptr_t(1));
-    }
-    static inline node_type* found_marker() {
-	return reinterpret_cast<node_type*>(uintptr_t(0));
-    }
-
-    node_type* finish_split(threadinfo& ti);
+    bool make_new_layer(threadinfo& ti);
+    bool make_split(threadinfo& ti);
     inline void finish_insert();
     inline bool finish_remove(threadinfo& ti);
 
