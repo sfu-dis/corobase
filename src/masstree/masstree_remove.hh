@@ -1,7 +1,7 @@
 /* Masstree
  * Eddie Kohler, Yandong Mao, Robert Morris
- * Copyright (c) 2012-2013 President and Fellows of Harvard College
- * Copyright (c) 2012-2013 Massachusetts Institute of Technology
+ * Copyright (c) 2012-2014 President and Fellows of Harvard College
+ * Copyright (c) 2012-2014 Massachusetts Institute of Technology
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -18,7 +18,6 @@
 #include "masstree_get.hh"
 #include "btree_leaflink.hh"
 #include "circular_int.hh"
-#include <queue>
 namespace Masstree {
 
 template <typename P>
@@ -31,73 +30,70 @@ bool tcursor<P>::gc_layer(threadinfo& ti)
     // succeeded at removing multiple tree layers. So check that the whole
     // key has been consumed
     if (ka_.has_suffix())
-	return false;
+        return false;
 
     // find the slot for the child tree
     // ka_ is a multiple of ikey_size bytes long. We are looking for the entry
     // for the next tree layer, which has keylenx_ corresponding to ikey_size+1.
     // So if has_value(), then we found an entry for the same ikey, but with
     // length ikey_size; we need to adjust ki_.
-    ki_ += has_value();
-    if (ki_ >= n_->size())
-	return false;
+    kx_.i += has_value();
+    if (kx_.i >= n_->size())
+        return false;
     permuter_type perm(n_->permutation_);
-    kp_ = perm[ki_];
-    if (n_->ikey0_[kp_] != ka_.ikey() || !n_->value_is_stable_layer(kp_))
-	return false;
+    kx_.p = perm[kx_.i];
+    if (n_->ikey0_[kx_.p] != ka_.ikey() || !n_->is_layer(kx_.p))
+        return false;
 
     // remove redundant internode layers
     node_type *layer;
     while (1) {
-	layer = n_->fetch_node(n_->lv_[kp_].layer());
-	if (layer->has_split())
-	{
-		layer = layer->unsplit_ancestor();
-	    n_->lv_[kp_] = layer->oid;
-	}
-	if (layer->isleaf())
-	    break;
+        layer = n_->lv_[kx_.p].layer();
+        if (layer->has_split())
+            n_->lv_[kx_.p] = layer = layer->unsplit_ancestor();
+        if (layer->isleaf())
+            break;
 
-	internode_type *in = static_cast<internode_type *>(layer);
-	if (in->size() > 0 && !in->has_split())
-	    return false;
-	in->lock(*in, ti.lock_fence(tc_internode_lock));
-	if (in->has_split() && !in->has_parent())
-	    in->mark_root();
-	if (in->size() > 0 || in->has_split()) {
-	    in->unlock();
-	    return false;
-	}
+        internode_type *in = static_cast<internode_type *>(layer);
+        if (in->size() > 0 && !in->has_split())
+            return false;
+        in->lock(*in, ti.lock_fence(tc_internode_lock));
+        if (in->has_split() && !in->has_parent())
+            in->mark_root();
+        if (in->size() > 0 || in->has_split()) {
+            in->unlock();
+            return false;
+        }
 
-	node_type *child = in->fetch_node(in->child_oid_[0]);
-	child->set_parent(0);
-	n_->lv_[kp_] = child ? child->oid : 0;
-	in->mark_split();
-	in->set_parent(child);	// ensure concurrent reader finds true root
-				// NB: now p->parent() might weirdly be a LEAF!
-	in->unlock();
-	in->deallocate_rcu(ti);
+        node_type *child = in->child_[0];
+        child->set_parent(node_type::parent_for_layer_root(n_));
+        n_->lv_[kx_.p] = child;
+        in->mark_split();
+        in->set_parent(child);  // ensure concurrent reader finds true root
+                                // NB: now p->parent() might weirdly be a LEAF!
+        in->unlock();
+        in->deallocate_rcu(ti);
     }
 
     // we are left with a leaf child
     leaf_type *lf = static_cast<leaf_type *>(layer);
     if (lf->size() > 0 && !lf->has_split())
-	return false;
+        return false;
     lf->lock(*lf, ti.lock_fence(tc_leaf_lock));
     if (lf->has_split() && !lf->has_parent())
-	lf->mark_root();
+        lf->mark_root();
     if (lf->size() > 0 || lf->has_split()) {
-	lf->unlock();
-	return false;
+        lf->unlock();
+        return false;
     }
 
     // child is an empty leaf: kill it
-    masstree_invariant(!lf->prev_oid_ && !lf->next_oid_);
+    masstree_invariant(!lf->prev_ && !lf->next_.ptr);
     masstree_invariant(!lf->deleted());
     masstree_invariant(!lf->deleted_layer());
     if (circular_int<kvtimestamp_t>::less(n_->node_ts_, lf->node_ts_))
-	n_->node_ts_ = lf->node_ts_;
-    lf->mark_deleted_layer();	// NB DO NOT mark as deleted (see above)
+        n_->node_ts_ = lf->node_ts_;
+    lf->mark_deleted_layer();   // NB DO NOT mark as deleted (see above)
     lf->unlock();
     lf->deallocate_rcu(ti);
     return true;
@@ -115,7 +111,7 @@ struct gc_layer_rcu_callback : public P::threadinfo_type::rcu_callback {
     }
     void operator()(threadinfo& ti);
     size_t size() const {
-	return len_ + sizeof(*this);
+        return len_ + sizeof(*this);
     }
     static void make(node_base<P>* root, Str prefix, threadinfo& ti);
 };
@@ -147,24 +143,28 @@ void gc_layer_rcu_callback<P>::make(node_base<P>* root, Str prefix,
 template <typename P>
 bool tcursor<P>::finish_remove(threadinfo& ti)
 {
+    if (n_->modstate_ == leaf<P>::modstate_insert) {
+        n_->mark_insert();
+        n_->modstate_ = leaf<P>::modstate_remove;
+    }
+
     permuter_type perm(n_->permutation_);
-    perm.remove(ki_);
+    perm.remove(kx_.i);
     n_->permutation_ = perm.value();
-    ++n_->nremoved_;
     if (perm.size())
-	return false;
+        return false;
     else
-	return remove_leaf(n_, root_, ka_.prefix_string(), ti);
+        return remove_leaf(n_, root_, ka_.prefix_string(), ti);
 }
 
 template <typename P>
 bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
                              Str prefix, threadinfo& ti)
 {
-    if (!leaf->prev_oid_) {
-	if (!leaf->next_oid_ && !prefix.empty())
-	    gc_layer_rcu_callback<P>::make(root, prefix, ti);
-	return false;
+    if (!leaf->prev_) {
+        if (!leaf->next_.ptr && !prefix.empty())
+            gc_layer_rcu_callback<P>::make(root, prefix, ti);
+        return false;
     }
 
     // mark leaf deleted, RCU-free
@@ -174,15 +174,14 @@ bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
     // Ensure node that becomes responsible for our keys has its node_ts_ kept
     // up to date
     while (1) {
-	leaf_type *prev;
-	prev = leaf? reinterpret_cast<leaf_type*>(leaf->fetch_node( leaf->prev_oid_ )) : NULL;
-	kvtimestamp_t prev_ts = prev->node_ts_;
-	while (circular_int<kvtimestamp_t>::less(prev_ts, leaf->node_ts_)
-	       && !bool_cmpxchg(&prev->node_ts_, prev_ts, leaf->node_ts_))
-	    prev_ts = prev->node_ts_;
-	fence();
-	if (prev == reinterpret_cast<leaf_type*>(leaf->fetch_node( leaf->prev_oid_)))
-	    break;
+        leaf_type *prev = leaf->prev_;
+        kvtimestamp_t prev_ts = prev->node_ts_;
+        while (circular_int<kvtimestamp_t>::less(prev_ts, leaf->node_ts_)
+               && !bool_cmpxchg(&prev->node_ts_, prev_ts, leaf->node_ts_))
+            prev_ts = prev->node_ts_;
+        fence();
+        if (prev == leaf->prev_)
+            break;
     }
 
     // Unlink leaf from doubly-linked leaf list
@@ -196,41 +195,41 @@ bool tcursor<P>::remove_leaf(leaf_type* leaf, node_type* root,
     bool reshaping = false;
 
     while (1) {
-	internode_type *p = n->locked_parent(ti);
-	masstree_invariant(p);
-	n->unlock();
+        internode_type *p = n->locked_parent(ti);
+        masstree_invariant(p);
+        n->unlock();
 
-	int kp = internode_type::bound_type::upper(ikey, *p);
-	masstree_invariant(kp == 0 || key_compare(ikey, *p, kp - 1) == 0);
+        int kp = internode_type::bound_type::upper(ikey, *p);
+        masstree_invariant(kp == 0 || p->compare_key(ikey, kp - 1) == 0);
 
-	if (kp > 0) {
-	    p->mark_insert();
-	    if (!reshaping) {
-		p->shift_down(kp - 1, kp, p->nkeys_ - kp);
-		--p->nkeys_;
-	    } else
-		p->ikey0_[kp - 1] = reshape_ikey;
-	    if (kp > 1 || p->child_oid_[0]) {
-		if (p->size() == 0)
-		    collapse(p, ikey, root, prefix, ti);
-		else
-		    p->unlock();
-		break;
-	    }
-	}
+        if (kp > 0) {
+            p->mark_insert();
+            if (!reshaping) {
+                p->shift_down(kp - 1, kp, p->nkeys_ - kp);
+                --p->nkeys_;
+            } else
+                p->ikey0_[kp - 1] = reshape_ikey;
+            if (kp > 1 || p->child_[0]) {
+                if (p->size() == 0)
+                    collapse(p, ikey, root, prefix, ti);
+                else
+                    p->unlock();
+                break;
+            }
+        }
 
-	if (!reshaping) {
-	    if (p->size() == 0) {
-		p->mark_deleted();
-		p->deallocate_rcu(ti);
-	    } else {
-		reshaping = true;
-		reshape_ikey = p->ikey0_[0];
-		p->child_oid_[0] = 0;
-	    }
-	}
+        if (!reshaping) {
+            if (p->size() == 0) {
+                p->mark_deleted();
+                p->deallocate_rcu(ti);
+            } else {
+                reshaping = true;
+                reshape_ikey = p->ikey0_[0];
+                p->child_[0] = 0;
+            }
+        }
 
-	n = p;
+        n = p;
     }
 
     return true;
@@ -243,28 +242,28 @@ void tcursor<P>::collapse(internode_type* p, ikey_type ikey,
     masstree_precondition(p && p->locked());
 
     while (1) {
-	internode_type *gp = p->locked_parent(ti);
-	if (!internode_type::parent_exists(gp)) {
-	    if (!prefix.empty())
-		gc_layer_rcu_callback<P>::make(root, prefix, ti);
-	    p->unlock();
-	    break;
-	}
+        internode_type *gp = p->locked_parent(ti);
+        if (!internode_type::parent_exists(gp)) {
+            if (!prefix.empty())
+                gc_layer_rcu_callback<P>::make(root, prefix, ti);
+            p->unlock();
+            break;
+        }
 
-	int kp = key_upper_bound(ikey, *gp);
-	masstree_invariant(gp->fetch_node(gp->child_oid_[kp]) == p);
-	gp->child_oid_[kp] = p->child_oid_[0];
-	p->fetch_node(p->child_oid_[0])->set_parent(gp);
+        int kp = key_upper_bound(ikey, *gp);
+        masstree_invariant(gp->child_[kp] == p);
+        gp->child_[kp] = p->child_[0];
+        p->child_[0]->set_parent(gp);
 
-	p->mark_deleted();
-	p->unlock();
-	p->deallocate_rcu(ti);
+        p->mark_deleted();
+        p->unlock();
+        p->deallocate_rcu(ti);
 
-	p = gp;
-	if (p->size() != 0) {
-	    p->unlock();
-	    break;
-	}
+        p = gp;
+        if (p->size() != 0) {
+            p->unlock();
+            break;
+        }
     }
 }
 
@@ -286,6 +285,21 @@ struct destroy_rcu_callback : public P::threadinfo_type::rcu_callback {
 };
 
 template <typename P>
+inline node_base<P>** destroy_rcu_callback<P>::link_ptr(node_base<P>* n) {
+    if (n->isleaf())
+        return &static_cast<leaf_type*>(n)->parent_;
+    else
+        return &static_cast<internode_type*>(n)->parent_;
+}
+
+template <typename P>
+inline void destroy_rcu_callback<P>::enqueue(node_base<P>* n,
+                                             node_base<P>**& tailp) {
+    *tailp = n;
+    tailp = link_ptr(n);
+}
+
+template <typename P>
 void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
     if (++count_ == 1) {
         root_ = root_->unsplit_ancestor();
@@ -296,38 +310,46 @@ void destroy_rcu_callback<P>::operator()(threadinfo& ti) {
         return;
     }
 
-	std::queue<node_base<P>*> workq;
-	workq.push( root_ );
-    while ( !workq.empty()) {
-		node_base<P>* n = workq.front();
+    node_base<P>* workq;
+    node_base<P>** tailp = &workq;
+    enqueue(root_, tailp);
+
+    while (node_base<P>* n = workq) {
+        node_base<P>** linkp = link_ptr(n);
+        if (linkp != tailp)
+            workq = *linkp;
+        else {
+            workq = 0;
+            tailp = &workq;
+        }
+
         if (n->isleaf()) {
             leaf_type* l = static_cast<leaf_type*>(n);
             typename leaf_type::permuter_type perm = l->permutation();
             for (int i = 0; i != l->size(); ++i) {
                 int p = perm[i];
-                if (l->value_is_layer(p))
-                    workq.push(l->fetch_node(l->lv_[p].layer()));
+                if (l->is_layer(p))
+                    enqueue(l->lv_[p].layer(), tailp);
             }
             l->deallocate(ti);
         } else {
             internode_type* in = static_cast<internode_type*>(n);
             for (int i = 0; i != in->size() + 1; ++i)
-                if (in->child_oid_[i])
-                    workq.push(in->fetch_node( in->child_oid_[i]));
+                if (in->child_[i])
+                    enqueue(in->child_[i], tailp);
             in->deallocate(ti);
         }
-		workq.pop();
     }
     ti.deallocate(this, sizeof(this), memtag_masstree_gc);
 }
 
 template <typename P>
 void basic_table<P>::destroy(threadinfo& ti) {
-    if (root_oid_) {
+    if (root_) {
         void* data = ti.allocate(sizeof(destroy_rcu_callback<P>), memtag_masstree_gc);
-        destroy_rcu_callback<P>* cb = new(data) destroy_rcu_callback<P>(fetch_node(root_oid_));
+        destroy_rcu_callback<P>* cb = new(data) destroy_rcu_callback<P>(root_);
         ti.rcu_register(cb);
-        root_oid_ = 0;
+        root_ = 0;
     }
 }
 

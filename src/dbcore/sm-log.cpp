@@ -296,9 +296,9 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
             tuple->size);
 
     ASSERT(obj->_next == next);
-    obj->tuple()->clsn = get_impl(logrec)->start_lsn.to_log_ptr();
+    obj->_clsn = get_impl(logrec)->start_lsn.to_log_ptr();
     ASSERT(logrec->payload_lsn().offset() == logrec->payload_ptr().offset());
-    ASSERT(obj->tuple()->clsn.asi_type() == fat_ptr::ASI_LOG);
+    ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
     return fat_ptr::make(obj, INVALID_SIZE_CODE);
 }
 
@@ -376,7 +376,7 @@ sm_log::rebuild_index(FID fid, ndb_ordered_index *index)
         varkey key((uint8_t *)((char *)buf + sizeof(varstr)), len);
 
         //printf("key %s %s\n", (char *)key.data(), buf);
-        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, fid, scan->oid(), NULL));
+        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, scan->oid(), NULL));
         count++;
         free((void *)buf);
     }

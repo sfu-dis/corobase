@@ -30,7 +30,7 @@ dbtuple::age(xid_context *visitor)
   XID owner = volatile_read(visitor->owner);
 
 retry:
-  fat_ptr cstamp = volatile_read(clsn);
+  fat_ptr cstamp = volatile_read(get_object()->_clsn);
 
   if (cstamp.asi_type() == fat_ptr::ASI_XID) {
     XID xid = XID::from_ptr(cstamp);

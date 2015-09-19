@@ -95,16 +95,16 @@ transaction::abort_impl()
     // asap so the updater won't wait for too long.
     for (auto &r : read_set) {
         ASSERT(not r->is_defunct());
-        ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         // remove myself from reader list
         serial_deregister_reader_tx(r);
     }
 #endif
 
     for (auto &w : write_set) {
-        dbtuple *tuple = w.new_tuple;
+        dbtuple *tuple = w.new_object->tuple();
         ASSERT(tuple);
-        ASSERT(XID::from_ptr(tuple->clsn) == xid);
+        ASSERT(XID::from_ptr(tuple->get_object()->_clsn) == xid);
         if (tuple->is_defunct())   // for repeated overwrites
             continue;
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
@@ -251,7 +251,7 @@ transaction::parallel_ssn_commit()
     // for writes, see if sb. has read the tuples - look at access lsn
 
     for (auto &w : write_set) {
-        dbtuple *tuple = w.new_tuple;
+        dbtuple *tuple = w.new_object->tuple();
         if (tuple->is_defunct())    // repeated overwrites
             continue;
 
@@ -394,7 +394,7 @@ transaction::parallel_ssn_commit()
     for (auto &r : read_set) {
     try_get_sucessor:
         // so tuple should be the committed version I read
-        ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
 
         // read tuple->slsn to a local variable before doing anything relying on it,
         // it might be changed any time...
@@ -469,7 +469,7 @@ transaction::parallel_ssn_commit()
     // post-commit: stuff access stamps for reads; init new versions
     auto clsn = xc->end;
     for (auto &w : write_set) {
-        dbtuple *tuple = w.new_tuple;
+        dbtuple *tuple = w.new_object->tuple();
         if (tuple->is_defunct())
             continue;
         tuple->do_write();
@@ -478,7 +478,7 @@ transaction::parallel_ssn_commit()
                ((object *)((char *)tuple - sizeof(object)))->_next.offset() ==
                (uint64_t)((char *)next_tuple - sizeof(object)));
         if (next_tuple) {   // update, not insert
-            ASSERT(volatile_read(next_tuple->clsn).asi_type());
+            ASSERT(volatile_read(next_tuple->get_object()->_clsn).asi_type());
             ASSERT(xc->sstamp and xc->sstamp != ~uint64_t{0});
             ASSERT(XID::from_ptr(next_tuple->sstamp) == xid);
             volatile_write(next_tuple->sstamp, LSN::make(xc->sstamp, 0).to_log_ptr());
@@ -486,8 +486,8 @@ transaction::parallel_ssn_commit()
             next_tuple->welcome_readers();
         }
         volatile_write(tuple->xstamp, cstamp);
-        volatile_write(tuple->clsn, clsn.to_log_ptr());
-        ASSERT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+        volatile_write(tuple->get_object()->_clsn, clsn.to_log_ptr());
+        ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
 #ifdef ENABLE_GC
         if (tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
@@ -519,7 +519,7 @@ transaction::parallel_ssn_commit()
     // Without 1, the updater might see a larger-than-it-should
     // xstamp and use it as its pstamp -> more unnecessary aborts
     for (auto &r : read_set) {
-        ASSERT(r->clsn.asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
 
         // Spin to hold this position until the older successor is gone,
         // so the updater can get a resonable xstamp (not too high)
@@ -683,9 +683,9 @@ transaction::parallel_ssi_commit()
     if (ct3) {
         // now see if I'm the unlucky T2
         for (auto &w : write_set) {
-            if (w.new_tuple->is_defunct())
+            if (w.new_object->tuple()->is_defunct())
                 continue;
-            dbtuple *overwritten_tuple = w.new_tuple->next();
+            dbtuple *overwritten_tuple = w.new_object->tuple()->next();
             if (not overwritten_tuple)
                 continue;
             // Note: the bits representing readers that will commit **after**
@@ -789,7 +789,7 @@ transaction::parallel_ssi_commit()
     // stamp overwritten versions, stuff clsn
     auto clsn = xc->end;
     for (auto &w : write_set) {
-        dbtuple* tuple = w.new_tuple;
+        dbtuple* tuple = w.new_object->tuple();
         if (tuple->is_defunct())
             continue;
         tuple->do_write();
@@ -803,8 +803,8 @@ transaction::parallel_ssi_commit()
             }
         }
         volatile_write(tuple->xstamp, cstamp);
-        volatile_write(tuple->clsn, clsn.to_log_ptr());
-        INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+        volatile_write(tuple->get_object()->_clsn, clsn.to_log_ptr());
+        INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
 #ifdef ENABLE_GC
         if (tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
@@ -905,12 +905,12 @@ transaction::si_commit()
 #endif
     auto clsn = xc->end;
     for (auto &w : write_set) {
-        dbtuple* tuple = w.new_tuple;
+        dbtuple* tuple = w.new_object->tuple();
         if (tuple->is_defunct())
             continue;
         tuple->do_write();
-        tuple->clsn = clsn.to_log_ptr();
-        INVARIANT(tuple->clsn.asi_type() == fat_ptr::ASI_LOG);
+        tuple->get_object()->_clsn = clsn.to_log_ptr();
+        INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
 #ifdef ENABLE_GC
         if (tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
@@ -974,7 +974,7 @@ transaction::try_insert_new_tuple(
     INVARIANT(key);
     object *object = object::create_tuple_object(value, false);
     dbtuple *tuple = object->tuple();
-    tuple->clsn = xid.to_ptr();
+    tuple->get_object()->_clsn = xid.to_ptr();
 
 #ifdef PHANTOM_PROT_TABLE_LOCK
     // here we return false if some reader is already scanning.
@@ -1021,7 +1021,7 @@ transaction::try_insert_new_tuple(
 #endif
 
     typename concurrent_btree::insert_info_t ins_info;
-    if (unlikely(!btr->insert_if_absent(varkey(key), fid, oid, tuple, &ins_info))) {
+    if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, &ins_info))) {
         oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
 #ifdef PHANTOM_PROT_TABLE_LOCK
         if (instant_xlock)
@@ -1075,7 +1075,7 @@ transaction::try_insert_new_tuple(
                           DEFAULT_ALIGNMENT_BITS, NULL);
 
     // update write_set
-    write_set.emplace_back(tuple, btr->tuple_vec(), oid);
+    write_set.emplace_back(tuple->get_object(), btr->tuple_vec(), oid);
     return true;
 }
 
@@ -1084,8 +1084,8 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
 {
     INVARIANT(tuple);
     ASSERT(xc);
-    bool read_my_own = (tuple->clsn.asi_type() == fat_ptr::ASI_XID);
-    ASSERT(not read_my_own or (read_my_own and XID::from_ptr(volatile_read(tuple->clsn)) == xc->owner));
+    bool read_my_own = (tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
+    ASSERT(not read_my_own or (read_my_own and XID::from_ptr(volatile_read(tuple->get_object()->_clsn)) == xc->owner));
 
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
     if (not read_my_own) {
@@ -1141,7 +1141,7 @@ transaction::do_node_read(
 rc_t
 transaction::ssn_read(dbtuple *tuple)
 {
-    auto v_clsn = tuple->clsn.offset();
+    auto v_clsn = tuple->get_object()->_clsn.offset();
     // \eta - largest predecessor. So if I read this tuple, I should commit
     // after the tuple's creator (trivial, as this is committed version, so
     // this tuple's clsn can only be a predecessor of me): so just update

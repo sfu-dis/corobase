@@ -14,11 +14,13 @@ struct sm_log_recover_mgr;
 class object
 {
 	public:
-        object(fat_ptr pdest, fat_ptr next) : _pdest(pdest), _next(next) {}
-        object() : _pdest(NULL_PTR), _next(NULL_PTR) {}
+        object(fat_ptr pdest, fat_ptr next) : _pdest(pdest), _next(next), _clsn(NULL_PTR) {}
+        object() : _pdest(NULL_PTR), _next(NULL_PTR), _clsn(NULL_PTR) {}
 
         fat_ptr _pdest; // permanent location in storage
 		fat_ptr _next;
+        fat_ptr _clsn;
+
 		inline char* payload() { return (char*)((char*)this + sizeof(object)); }
         dbtuple *tuple() { return (dbtuple *)payload(); }
         static object *create_tuple_object(const varstr *tuple_value, bool do_write);

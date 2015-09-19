@@ -46,7 +46,6 @@ public:
   typedef uint32_t size_type;
   typedef varstr string_type;
 
-  fat_ptr clsn;     // version creation stamp
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   typedef unsigned long long rl_bitmap_t;  // use _builtin_ctzll for this
   rl_bitmap_t rl_bitmap;   // bitmap of in-flight readers
@@ -82,18 +81,17 @@ private:
 
   dbtuple(size_type size)
     :
-      clsn(NULL_PTR)
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-      , rl_bitmap(rl_bitmap_t(0))
-      , sstamp(NULL_PTR)
-      , xstamp(0)
-      , preader(0)
+      rl_bitmap(rl_bitmap_t(0)),
+      sstamp(NULL_PTR),
+      xstamp(0),
+      preader(0),
 #endif
 #ifdef USE_PARALLEL_SSI
-      , s2(0)
+      s2(0).
 #endif
-      , size(CheckBounds(size))
-      , pvalue(NULL)
+      size(CheckBounds(size)),
+      pvalue(NULL)
   {
 #ifdef USE_PARALLEL_SSN
     // FIXME: seems this assumes some 8-byte alignment, which isn't the
