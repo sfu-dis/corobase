@@ -14,7 +14,8 @@
 
 ndb_wrapper::ndb_wrapper(const char *logdir,
     size_t segsize,
-    size_t bufsize)
+    size_t bufsize,
+    bool null_log_device)
 {
   ALWAYS_ASSERT(logdir);
   INVARIANT(!logmgr);
@@ -22,7 +23,8 @@ ndb_wrapper::ndb_wrapper(const char *logdir,
 
   RCU::rcu_register();
   RCU::rcu_enter();
-  logmgr = sm_log::new_log(logdir, segsize, sm_log::recover, NULL, bufsize);
+  logmgr = sm_log::new_log(
+    logdir, segsize, sm_log::recover, NULL, bufsize, null_log_device);
   ASSERT(oidmgr);
   RCU::rcu_exit();
   // rcu_deregister in dtor

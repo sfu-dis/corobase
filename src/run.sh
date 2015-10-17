@@ -12,7 +12,7 @@ if [[ $# -lt 4 ]]; then
     exit
 fi
 
-LOGDIR=/tmpfs/$USER/silo-log
+LOGDIR=/tmpfs/$USER/ermia-log
 mkdir -p $LOGDIR
 trap "rm -f $LOGDIR/*" EXIT
 

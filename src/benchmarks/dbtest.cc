@@ -39,32 +39,6 @@ split_ws(const string &s)
   return r;
 }
 
-/*
-static size_t
-parse_memory_spec(const string &s)
-{
-  std::string x(s);
-  size_t mult = 1;
-  if (x.back() == 'G') {
-    mult = static_cast<size_t>(1) << 30;
-    // IP: pop_back is supported from gcc4.7 onwards (and it is a c++11).
-    //     Since it is pretty much the same with substr, I changed it to
-    //     compile on my dev env.
-    //x.pop_back();
-    x = x.substr(0,x.size()-1);
-  } else if (x.back() == 'M') {
-    mult = static_cast<size_t>(1) << 20;
-    //x.pop_back();
-    x = x.substr(0,x.size()-1);    
-  } else if (x.back() == 'K') {
-    mult = static_cast<size_t>(1) << 10;
-    //x.pop_back();
-    x = x.substr(0,x.size()-1);
-  }
-  return strtoul(x.c_str(), nullptr, 10) * mult;
-}
-*/
-
 void
 heap_prefault()
 {
@@ -95,6 +69,7 @@ main(int argc, char **argv)
   size_t log_segsize = log_seg_gig * 8; // log segment size
   size_t log_bufsize = 512 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
+  int null_log_device = 0;
   while (1) {
     static struct option long_options[] =
     {
@@ -120,6 +95,7 @@ main(int argc, char **argv)
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
+      {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
       {0, 0, 0, 0}
     };
     int option_index = 0;
@@ -338,7 +314,7 @@ main(int argc, char **argv)
   new_argv[0] = (char *) bench_type.c_str();
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
-  db = new ndb_wrapper(log_dir->c_str(), log_segsize, log_bufsize);
+  db = new ndb_wrapper(log_dir->c_str(), log_segsize, log_bufsize, null_log_device);
   test_fn(db, argc, new_argv);
   delete db;
   return 0;
