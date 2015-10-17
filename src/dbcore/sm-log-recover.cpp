@@ -32,7 +32,7 @@ sm_log_recover_mgr::sm_log_recover_mgr(char const *dname, size_t segment_size,
     sm_oid_mgr::create(get_chkpt_start(), dname, this);
     ASSERT(oidmgr);
 
-    if (sm_log::need_recovery)
+    if (rfn and sm_log::need_recovery)
         (*rfn)(rfn_arg, scanner, get_chkpt_start(), get_chkpt_end(), dname);
 }
 

@@ -11,8 +11,8 @@ struct sm_log_impl : sm_log {
 
     sm_log_impl(char const *dname, size_t segsz,
                     sm_log_recover_function *rfn, void *rarg,
-                    size_t bufsz)
-        : _lm(dname, segsz, rfn, rarg, bufsz)
+                    size_t bufsz, bool null_log_device)
+        : _lm(dname, segsz, rfn, rarg, bufsz, null_log_device)
     {
     }
     

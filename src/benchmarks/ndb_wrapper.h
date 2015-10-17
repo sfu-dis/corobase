@@ -25,7 +25,7 @@ protected:
 
 public:
 
-  ndb_wrapper(const char *logdir, size_t segsize, size_t bufsize);
+  ndb_wrapper(const char *logdir, size_t segsize, size_t bufsize, bool null_log_device);
   ~ndb_wrapper() { RCU::rcu_deregister(); }
 
   virtual ssize_t txn_max_batch_size() const OVERRIDE { return 100; }

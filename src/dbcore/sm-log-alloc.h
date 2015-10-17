@@ -25,7 +25,7 @@ struct sm_log_alloc_mgr {
     
     sm_log_alloc_mgr(char const *dname, size_t segment_size,
                       sm_log_recover_function *rfn, void *rfn_arg,
-                      size_t bufsz);
+                      size_t bufsz, bool null_log_device);
     
     ~sm_log_alloc_mgr();
 
@@ -93,6 +93,8 @@ struct sm_log_alloc_mgr {
     
     bool _write_daemon_should_wake;
     bool _write_daemon_should_stop;
+
+    bool _null_log_device;
 
 };
 

@@ -32,8 +32,8 @@ namespace {
  */
 sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
                                    sm_log_recover_function *rfn, void *rfn_arg,
-                                   size_t bufsz)
-    : _lm(dname, segment_size, rfn, rfn_arg)
+                                   size_t bufsz, bool null_log_device)
+    : _lm(dname, segment_size, null_log_device ? NULL : rfn, rfn_arg)
     , _logbuf(bufsz, get_starting_byte_offset(&_lm))
     , _durable_lsn_offset(_lm.get_durable_mark().offset())
     , _write_daemon_state(0)
@@ -41,6 +41,7 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
     , _waiting_for_dmark(false)
     , _write_daemon_should_wake(false)
     , _write_daemon_should_stop(false)
+    , _null_log_device(null_log_device)
 {
 
     // prime the block list
@@ -468,8 +469,10 @@ sm_log_alloc_mgr::_log_write_daemon()
             uint64_t nbytes = new_byte - durable_byte;
             auto *buf = _logbuf.read_buf(durable_byte, nbytes);
             auto file_offset = durable_sid->offset(_durable_lsn_offset);
-            uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
-            THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
+            if (!_null_log_device) {
+              uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
+              THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
+            }
             _logbuf.advance_reader(new_byte);
 
             // segment change?
