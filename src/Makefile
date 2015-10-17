@@ -209,7 +209,7 @@ dbcore/burt-hash.cpp:
 	@python2 dbcore/burt-hash.py > dbcore/burt-hash.cpp
 
 BENCH_CXXFLAGS := $(CXXFLAGS)
-BENCH_LDFLAGS := $(LDFLAGS) -ldb_cxx -lrt -lcrypt -laio -ldl -lssl -lcrypto
+BENCH_LDFLAGS := $(LDFLAGS) -lrt -ldl
 
 BENCH_SRCFILES = \
 	benchmarks/ndb_wrapper.cc \
