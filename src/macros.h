@@ -61,7 +61,7 @@
 
 // global maximum on the number of unique threads allowed
 // in the system
-#define NMAXCOREBITS 9
+#define NMAXCOREBITS 10
 #define NMAXCORES    (1 << NMAXCOREBITS)
 
 // some helpers for cacheline alignment
