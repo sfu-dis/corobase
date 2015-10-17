@@ -268,7 +268,7 @@ main(int argc, char **argv)
 #else
     cerr << "  allocator   : libc"                          << endl;
 #endif
-    cerr << "  log-dir : " << *log_dir                      << endl;
+    cerr << "  log-dir     : " << *log_dir                  << endl;
     cerr << "  log-segsize : " << log_segsize               << endl;
     cerr << "  log-bufsize : " << log_bufsize               << endl;
     cerr << "  warm-up     : ";
@@ -282,6 +282,7 @@ main(int argc, char **argv)
     }
     cerr << endl;
     cerr << "  enable-chkpt: " << enable_chkpt              << endl;
+    cerr << "  null-log-device: " << null_log_device        << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;
