@@ -253,7 +253,9 @@ serial_request_abort(xid_context *xc)
     // state again - if state changed, the tx might not know
     // this request - caller needs to backoff
     auto s = volatile_read(xc->state);
+#ifdef USE_PARALLEL_SSN
     volatile_write(xc->should_abort, true);
+#endif
     // Verify it knows, backoff if the reader missed it
     auto ss = volatile_read(xc->state);
     return ss == s or ss == TXN_ABRTD;
