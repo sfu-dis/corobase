@@ -199,6 +199,13 @@ bench_runner::run()
           it != loaders.end(); ++it)
         (*it)->join();
     }
+    RCU::rcu_register();
+    RCU::rcu_enter();
+    volatile_write(MM::safesnap_lsn._val, logmgr->cur_lsn()._val);
+    ALWAYS_ASSERT(MM::safesnap_lsn.offset());
+    RCU::rcu_exit();
+    RCU::rcu_deregister();
+
     const pair<uint64_t, uint64_t> mem_info_after = get_system_memory_info();
     const int64_t delta = int64_t(mem_info_before.first) - int64_t(mem_info_after.first); // free mem
     const double delta_mb = double(delta)/1048576.0;

@@ -41,8 +41,10 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     // should have a initial pstamp of the safesnap.
 
     // Take a safe snapshot if read-only.
-    if (flags & TXN_FLAG_READ_ONLY)
+    if (flags & TXN_FLAG_READ_ONLY) {
+        ASSERT(MM::safesnap_lsn.offset());
         xc->begin = volatile_read(MM::safesnap_lsn);
+    }
     else {
         RCU::rcu_enter();
         log = logmgr->new_tx_log();
@@ -77,7 +79,10 @@ transaction::~transaction()
     concurrent_btree::AssertAllNodeLocksReleased();
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    serial_deregister_tx(xid);
+#ifdef USE_PARALLEL_SSN
+    if (not (flags & TXN_FLAG_READ_ONLY))
+#endif
+        serial_deregister_tx(xid);
 #endif
     MM::epoch_exit(xc->end, epoch);
     xid_free(xid);    // must do this after epoch_exit, which uses xc.end

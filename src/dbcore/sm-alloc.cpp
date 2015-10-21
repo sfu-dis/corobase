@@ -127,7 +127,11 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
         // both begin and commit timestamp to have conflicts with these
         // transactions. But future transactions needs to start with a
         // pstamp of safesnap_lsn.
-        volatile_write(safesnap_lsn._val, lsn._val);
+        // Take max here because after the loading phase we directly set safesnap_lsn
+        // to log.cur_lsn, which might be actually larger than safesnap_lsn generated
+        // during the loading phase, which is too conservertive that some tx might
+        // not be able to see the tuples because they were not loaded at that time...
+        volatile_write(safesnap_lsn._val, std::max(safesnap_lsn._val, lsn._val));
 #ifdef ENABLE_GC
         epoch_num epoch = *((epoch_num *)((char *)epoch_cookie + sizeof(LSN)));
         volatile_write(trim_lsn[(epoch + 2) % 3]._val, lsn._val);
