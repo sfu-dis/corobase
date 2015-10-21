@@ -88,7 +88,7 @@ private:
       preader(0),
 #endif
 #ifdef USE_PARALLEL_SSI
-      s2(0).
+      s2(0),
 #endif
       size(CheckBounds(size)),
       pvalue(NULL)
