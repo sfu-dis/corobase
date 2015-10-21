@@ -970,9 +970,7 @@ dbtuple*
 sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 {
     fat_ptr *pp = oa->get(o);
-#ifdef USE_READ_COMMITTED
 start_over:
-#endif
     while (1) {
         auto ptr = ensure_tuple(pp);
         if (not ptr.offset())
@@ -995,7 +993,6 @@ start_over:
                 ASSERT(not cur_obj->_next.offset() or ((object *)cur_obj->_next.offset())->_clsn.asi_type() == fat_ptr::ASI_LOG);
                 return cur_obj->tuple();
             }
-#ifdef USE_READ_COMMITTED
             xid_context *holder = xid_get_context(holder_xid);
             if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
                 goto start_over;
@@ -1010,7 +1007,12 @@ start_over:
             if (state == TXN_CMMTD) {
                 ASSERT(volatile_read(holder->end).offset());
                 ASSERT(owner == holder_xid);
+#ifdef USE_READ_COMMITTED
                 return cur_obj->tuple();
+#else
+                if (holder->end < visitor_xc->begin)
+                    return cur_obj->tuple();
+#endif
             }
 #ifdef READ_COMMITTED_SPIN
             else {
@@ -1018,7 +1020,6 @@ start_over:
                 if (wait_for_commit_result(holder))
                     return cur_obj->tuple();
             }
-#endif
 #endif
         }
         else if (clsn.asi_type() == fat_ptr::ASI_LOG) {
