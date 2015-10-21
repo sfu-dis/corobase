@@ -8,7 +8,7 @@
 //#define USE_PARALLEL_SSN
 #ifdef USE_PARALLEL_SSN
 #define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
-#define USE_READ_COMMITTED
+//#define USE_READ_COMMITTED
 //#ifdef USE_READ_COMMITTED
 //#define READ_COMMITTED_SPIN // spin until the tx is settled when hit an XID
 //#endif
