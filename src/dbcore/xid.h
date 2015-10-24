@@ -28,8 +28,10 @@ struct xid_context {
 
 #ifdef USE_PARALLEL_SSN
 inline void set_sstamp(uint64_t s) {
-    if (s < ~uint64_t{0})
-        volatile_write(sstamp, std::min(s, sstamp));
+    volatile_write(sstamp, std::min(s, sstamp));
+}
+inline void set_pstamp(uint64_t p) {
+    volatile_write(pstamp, std::max(pstamp, p));
 }
 #endif
 };
