@@ -25,6 +25,13 @@ struct xid_context {
     uint64_t ct3;   // smallest commit stamp of T3 in the dangerous structure
 #endif
     txn_state state;
+
+#ifdef USE_PARALLEL_SSN
+inline void set_sstamp(uint64_t s) {
+    if (s < ~uint64_t{0})
+        volatile_write(sstamp, std::min(s, sstamp));
+}
+#endif
 };
 
 /* Request a new XID and an associated context. The former is globally
