@@ -431,17 +431,14 @@ transaction::parallel_ssn_commit()
                 if (cr == TXN_INVALID)
                     goto try_get_sucessor;
                 else if (cr == TXN_CMMTD) {
-                    if (sucessor_end < xc->sstamp)
-                        xc->sstamp = sucessor_end;
+                    xc->set_sstamp(volatile_read(sucessor_xc->sstamp));
                 }
             }
         }
         else {
             // overwriter already fully committed/aborted or no overwriter at all
             ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
-            uint64_t tuple_sstamp = sucessor_clsn.offset();
-            if (tuple_sstamp and tuple_sstamp < xc->sstamp)
-                xc->sstamp = tuple_sstamp;
+            xc->set_sstamp(sucessor_clsn.offset());
         }
     }
 
