@@ -321,8 +321,7 @@ transaction::parallel_ssn_commit()
                     // doesn't match rxid
                     if (reader_xc and not serial_request_abort(reader_xc))
                         return {RC_ABORT_RW_CONFLICT};
-                    if (xc->pstamp < last_cstamp)
-                        xc->pstamp = last_cstamp;
+                    xc->set_pstamp(last_cstamp);
                 }
                 else {
                     // Context change - the guy I saw was already gone. Now I need
@@ -333,8 +332,7 @@ transaction::parallel_ssn_commit()
                     // me, so I'll still be reading the xstamp that really belongs
                     // to the older reader - reduces false +ves.)
                     auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
-                    if (xc->pstamp < tuple_xstamp)
-                        xc->pstamp = tuple_xstamp;
+                    xc->set_pstamp(tuple_xstamp);
                 }
             }
             else if (not reader_end or reader_end > cstamp) {
@@ -350,8 +348,7 @@ transaction::parallel_ssn_commit()
                     // but still have to account to possible previous readers.
                     // So set pstamp to last_cstamp (better than using
                     // reader_end - 1)
-                    if (xc->pstamp < last_cstamp)
-                        xc->pstamp = last_cstamp;
+                    xc->set_pstamp(last_cstamp);
                 }
             }
             else {
@@ -367,8 +364,7 @@ transaction::parallel_ssn_commit()
                     // reader committed; or we just need to use the previous one
                     // if it didn't commit or saw a context change.
                     last_cstamp = serial_get_last_cstamp(i);
-                    if (xc->pstamp < last_cstamp)
-                        xc->pstamp = last_cstamp;
+                    xc->set_pstamp(last_cstamp);
                 }
                 else {
                     // (Pre-) committed before me, need to wait for its cstamp for
@@ -387,9 +383,7 @@ transaction::parallel_ssn_commit()
                         // setting xstamp, and a context change means the
                         // reader must've concluded - either aborted or
                         // committed - and so deregistered from the bitmap)
-                        auto x = volatile_read(overwritten_tuple->xstamp);
-                        if (xc->pstamp < x)
-                            xc->pstamp = x;
+                        xc->set_pstamp(volatile_read(overwritten_tuple->xstamp));
                     }   // else it's aborted, as if nothing happened
                 }
             }
