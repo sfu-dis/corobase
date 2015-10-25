@@ -16,6 +16,14 @@
  */
 
 namespace MM {
+#ifdef ENABLE_GC
+std::condition_variable gc_trigger;
+std::mutex gc_lock;
+void gc_daemon();
+
+static recycle_oid *recycle_oid_head = NULL;
+static recycle_oid *recycle_oid_tail = NULL;
+#endif
 
 void global_init(void*)
 {
@@ -173,13 +181,6 @@ epoch_exit(LSN s, epoch_num e)
 }
 
 #ifdef ENABLE_GC
-std::condition_variable gc_trigger;
-std::mutex gc_lock;
-void gc_daemon();
-
-static recycle_oid *recycle_oid_head = NULL;
-static recycle_oid *recycle_oid_tail = NULL;
-
 #define MSB_MARK (~((~uint64_t{0}) >> 1))
 
 void recycle(oid_array *oa, OID oid)
@@ -279,8 +280,7 @@ try_recycle:
         // trimming after its next, because the head might be still being
         // modified (hence its _next field) and might be gone (tx abort).
         object *cur_obj = (object *)head.offset();
-        dbtuple *head_version = (dbtuple *)cur_obj->payload();
-        auto clsn = volatile_read(head_version->clsn);
+        auto clsn = volatile_read(cur_obj->_clsn);
         if (clsn.asi_type() == fat_ptr::ASI_XID)
             cur_obj = (object *)cur_obj->_next.offset();
 
@@ -305,8 +305,7 @@ try_recycle:
         while (cur.offset()) {
             cur_obj = (object *)cur.offset();
             ASSERT(cur_obj);
-            dbtuple *version = (dbtuple *)cur_obj->payload();
-            clsn = volatile_read(version->clsn);
+            clsn = volatile_read(cur_obj->_clsn);
             ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
             if (LSN::from_ptr(clsn) <= tlsn) {
                 // no need to CAS here if we only have one gc thread
@@ -343,8 +342,8 @@ try_recycle:
             r = r_next;
         }
     }
-    if (reclaimed_nbytes or reclaimed_count)
-        printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
+    //if (reclaimed_nbytes or reclaimed_count)
+    //    printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
     goto try_recycle;
 }
 
