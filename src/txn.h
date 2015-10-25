@@ -21,7 +21,6 @@
 #include "dbcore/serial.h"
 #include "dbcore/sm-oid.h"
 #include "dbcore/sm-log.h"
-#include "dbcore/sm-trace.h"
 #include "dbcore/sm-rc.h"
 #include "amd64.h"
 #include "btree_choice.h"

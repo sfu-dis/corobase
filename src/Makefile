@@ -33,7 +33,6 @@ MASSTREE ?= 1
 
 ###############
 
-TRACE_FOOTPRINT_S=$(strip $(TRACE_FOOTPRINT))
 DEBUG_S=$(strip $(DEBUG))
 CHECK_INVARIANTS_S=$(strip $(CHECK_INVARIANTS))
 EVENT_COUNTERS_S=$(strip $(EVENT_COUNTERS))
@@ -97,9 +96,6 @@ else ifeq ($(SI_SSN_S),1)
 	CXXFLAGS += -DUSE_PARALLEL_SSN -DDO_EARLY_SSN_CHECKS
 endif
 
-ifeq ($(TRACE_FOOTPRINT_S),1)
-	CXXFLAGS+=-DTRACE_FOOTPRINT
-endif
 ifeq ($(DEBUG_S),1)
         CXXFLAGS +=  -g -gdwarf-2 -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
 else
@@ -126,17 +122,13 @@ LDFLAGS := -lpthread -lnuma -lrt
 #LDFLAGS += -lasan
 #endif
 
-GPERFTOOLS :=
-
 ifeq ($(USE_MALLOC_MODE_S),1)
         CXXFLAGS+=-DUSE_JEMALLOC
         LDFLAGS+=-ljemalloc
 	MASSTREE_CONFIG+=--with-malloc=jemalloc
 else ifeq ($(USE_MALLOC_MODE_S),2)
-	GPERFTOOLS+=/home/ipandis/GITPROJECTS/Impala/thirdparty/gperftools-2.0
-        CXXFLAGS+=-DUSE_TCMALLOC -I$(GPERFTOOLS)/src/
-        LDFLAGS+="-L$(GPERFTOOLS) -ltcmalloc"
-	MASSTREE_LDFLAGS="-L$(GPERFTOOLS)/.libs/ "
+        CXXFLAGS+=-DUSE_TCMALLOC
+        LDFLAGS+=-ltcmalloc
 	MASSTREE_CONFIG+=--with-malloc=tcmalloc
 else ifeq ($(USE_MALLOC_MODE_S),3)
         CXXFLAGS+=-DUSE_FLOW
@@ -187,10 +179,6 @@ DBCORE_SRCFILES = dbcore/burt-hash.cpp \
 	dbcore/serial.cpp	\
 	dbcore/dynarray.cpp	\
 	dbcore/mcs_lock.cpp	
-
-ifeq ($(TRACE_FOOTPRINT_S),1)
-DBCORE_SRCFILES += dbcore/sm-trace.cpp
-endif
 
 ifeq ($(MASSTREE_S),1)
 MASSTREE_SRCFILES = masstree/compiler.cc \
