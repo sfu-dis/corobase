@@ -340,7 +340,7 @@ public:
     {
         // The mod converts a scaled security index into a base security index
         char *pExchange = m_list[(int)(index % m_list.size())].S_EX_ID;
-        eExchangeID eExchangeIndex;
+        eExchangeID eExchangeIndex = eNYSE;  // XXX(tzwang): just give it NYSE to silence a GCC warning
 
         if (!strcmp(pExchange, "NYSE"))
         {
