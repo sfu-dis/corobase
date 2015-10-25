@@ -9,6 +9,12 @@
 namespace TXN {
 
 extern int64_t OLD_VERSION_THRESHOLD;
+// XXX(tzwang): enabling safesnap for tpcc basically halves the performance.
+// perf says 30%+ of cycles are on oid_get_version, which makes me suspect
+// it's because enabling safesnap makes the reader has to go deeper in the
+// version chains to find the desired version. So perhaps don't enable this
+// for update-intensive workloads, like tpcc. TPC-E to test and verify.
+extern int enable_safesnap;
 
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    

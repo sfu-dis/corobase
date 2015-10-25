@@ -26,7 +26,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 #ifdef USE_PARALLEL_SSN
-    if (not (flags & TXN_FLAG_READ_ONLY))
+    if (not enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
 #endif
         serial_register_tx(xid);
 #endif
@@ -41,7 +41,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     // should have a initial pstamp of the safesnap.
 
     // Take a safe snapshot if read-only.
-    if (flags & TXN_FLAG_READ_ONLY) {
+    if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
         ASSERT(MM::safesnap_lsn.offset());
         xc->begin = volatile_read(MM::safesnap_lsn);
     }
@@ -70,7 +70,7 @@ transaction::~transaction()
     // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
     INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
 #ifdef USE_PARALLEL_SSN
-    if (not (flags & TXN_FLAG_READ_ONLY))
+    if (not enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         RCU::rcu_exit();
 #else
     RCU::rcu_exit();
@@ -80,7 +80,7 @@ transaction::~transaction()
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 #ifdef USE_PARALLEL_SSN
-    if (not (flags & TXN_FLAG_READ_ONLY))
+    if (not enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
 #endif
         serial_deregister_tx(xid);
 #endif
@@ -228,7 +228,7 @@ transaction::parallel_ssn_commit()
 {
     // Safe snapshot optimization for read-only transactions:
     // Use the begin ts as cstamp if it's a read-only transaction
-    if (flags & TXN_FLAG_READ_ONLY) {
+    if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
         ALWAYS_ASSERT(write_set.size() == 0);
         xc->end = xc->begin;
         volatile_write(xc->state, TXN_CMMTD);
@@ -1087,7 +1087,7 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     if (not read_my_own) {
         rc_t rc = {RC_INVALID};
 #ifdef USE_PARALLEL_SSN
-        if (flags & TXN_FLAG_READ_ONLY)
+        if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY))
             rc = {RC_TRUE};
         else
             rc = ssn_read(tuple);

@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <sys/sysinfo.h>
 
+#include "../dbcore/sm-alloc.h"
 #include "../allocator.h"
 #include "../stats_server.h"
 #include "bench.h"
@@ -43,7 +44,7 @@ void
 heap_prefault()
 {
 #ifndef CHECK_INVARIANTS
-    uint64_t FAULT_SIZE = (((uint64_t)1<<30)*45);
+    uint64_t FAULT_SIZE = (((uint64_t)1<<30)*60);
     uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
     ALWAYS_ASSERT(p);
     ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
@@ -96,6 +97,9 @@ main(int argc, char **argv)
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
+#ifdef USE_PARALLEL_SSN
+      {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
+#endif
       {0, 0, 0, 0}
     };
     int option_index = 0;
@@ -300,7 +304,9 @@ main(int argc, char **argv)
 #else
     cerr << "  btree_node_prefetch     : no" << endl;
 #endif
-
+#ifdef USE_PARALLEL_SSN
+    cerr << "  SSN safe sanashot       : " << TXN::enable_safesnap << endl;
+#endif
   }
 
   if (!stats_server_sockfile.empty()) {
