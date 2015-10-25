@@ -1,11 +1,20 @@
 #include "../macros.h"
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 #pragma once
 #include <unordered_map>
 #include "../tuple.h"
 #include "sm-rc.h"
 #include "xid.h"
 
+namespace TXN {
+// XXX(tzwang): enabling safesnap for tpcc basically halves the performance.
+// perf says 30%+ of cycles are on oid_get_version, which makes me suspect
+// it's because enabling safesnap makes the reader has to go deeper in the
+// version chains to find the desired version. So perhaps don't enable this
+// for update-intensive workloads, like tpcc. TPC-E to test and verify.
+extern int enable_safesnap;
+};
+
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 namespace TXN {
 
 extern int64_t OLD_VERSION_THRESHOLD;

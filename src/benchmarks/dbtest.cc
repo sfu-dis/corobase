@@ -97,9 +97,7 @@ main(int argc, char **argv)
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
-#ifdef USE_PARALLEL_SSN
       {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
-#endif
       {0, 0, 0, 0}
     };
     int option_index = 0;
