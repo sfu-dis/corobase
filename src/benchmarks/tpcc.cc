@@ -141,7 +141,6 @@ private:
 
 // configuration flags
 static int g_disable_xpartition_txn = 0;
-static int g_disable_read_only_scans = 0;
 static int g_enable_partition_locks = 0;
 static int g_enable_separate_tree_per_partition = 0;
 static int g_new_order_remote_item_pct = 1;
@@ -1920,11 +1919,11 @@ tpcc_worker::txn_order_status()
   //   max_write_set_size : 0
   //   num_txn_contexts : 4
   const uint64_t read_only_mask =
-    g_disable_read_only_scans ? 0 : transaction::TXN_FLAG_READ_ONLY;
+    TXN::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   const abstract_db::TxnProfileHint hint =
-    g_disable_read_only_scans ?
-      abstract_db::HINT_TPCC_ORDER_STATUS :
-      abstract_db::HINT_TPCC_ORDER_STATUS_READ_ONLY;
+    TXN::enable_safesnap ?
+      abstract_db::HINT_TPCC_ORDER_STATUS_READ_ONLY :
+      abstract_db::HINT_TPCC_ORDER_STATUS;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
   scoped_str_arena s_arena(arena);
   // NB: since txn_order_status() is a RO txn, we assume that
@@ -2074,11 +2073,11 @@ tpcc_worker::txn_stock_level()
   //   n_read_set_large_instances : 2
   //   num_txn_contexts : 3
   const uint64_t read_only_mask =
-    g_disable_read_only_scans ? 0 : transaction::TXN_FLAG_READ_ONLY;
+    TXN::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   const abstract_db::TxnProfileHint hint =
-    g_disable_read_only_scans ?
-      abstract_db::HINT_TPCC_STOCK_LEVEL :
-      abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY;
+    TXN::enable_safesnap ?
+      abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY :
+      abstract_db::HINT_TPCC_STOCK_LEVEL;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
   scoped_str_arena s_arena(arena);
   // NB: since txn_stock_level() is a RO txn, we assume that
@@ -2627,7 +2626,6 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
     static struct option long_options[] =
     {
       {"disable-cross-partition-transactions" , no_argument       , &g_disable_xpartition_txn             , 1}   ,
-      {"disable-read-only-snapshots"          , no_argument       , &g_disable_read_only_scans            , 1}   ,
       {"enable-partition-locks"               , no_argument       , &g_enable_partition_locks             , 1}   ,
       {"enable-separate-tree-per-partition"   , no_argument       , &g_enable_separate_tree_per_partition , 1}   ,
       {"new-order-remote-item-pct"            , required_argument , 0                                     , 'r'} ,
@@ -2756,7 +2754,6 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
     else
       cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << endl;
     cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn << endl;
-    cerr << "  read_only_snapshots          : " << !g_disable_read_only_scans << endl;
     cerr << "  partition_locks              : " << g_enable_partition_locks << endl;
     cerr << "  separate_tree_per_partition  : " << g_enable_separate_tree_per_partition << endl;
     cerr << "  new_order_remote_item_pct    : " << g_new_order_remote_item_pct << endl;
