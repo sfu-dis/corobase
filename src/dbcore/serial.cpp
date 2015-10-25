@@ -1,4 +1,8 @@
 #include "serial.h"
+namespace TXN {
+int enable_safesnap = 0;
+};
+
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 namespace TXN {
 
@@ -154,7 +158,6 @@ namespace TXN {
 //int64_t OLD_VERSION_THRESHOLD = 0x100ll;
 //int64_t OLD_VERSION_THRESHOLD = INT64_MAX;
 int64_t OLD_VERSION_THRESHOLD = 0;
-int enable_safesnap = 0;
 
 readers_list rlist;
 
