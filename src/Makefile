@@ -22,9 +22,6 @@ MYSQL_SHARE_DIR ?= /x/stephentu/mysql-5.5.29/build/sql/share
 # Available modes
 #   * perf
 #   * backoff
-#   * factor-gc
-#   * factor-gc-nowriteinplace
-#   * factor-fake-compression
 #   * sandbox
 MODE ?= perf
 
@@ -69,15 +66,6 @@ ifeq ($(MODE_S),perf)
 else ifeq ($(MODE_S),backoff)
 	O := out-backoff$(OSUFFIX)
 	CONFIG_H = config/config-backoff.h
-else ifeq ($(MODE_S),factor-gc)
-	O := out-factor-gc$(OSUFFIX)
-	CONFIG_H = config/config-factor-gc.h
-else ifeq ($(MODE_S),factor-gc-nowriteinplace)
-	O := out-factor-gc-nowriteinplace$(OSUFFIX)
-	CONFIG_H = config/config-factor-gc-nowriteinplace.h
-else ifeq ($(MODE_S),factor-fake-compression)
-	O := out-factor-fake-compression$(OSUFFIX)
-	CONFIG_H = config/config-factor-fake-compression.h
 else ifeq ($(MODE_S),sandbox)
 	O := out-sandbox$(OSUFFIX)
 	CONFIG_H = config/config-sandbox.h
