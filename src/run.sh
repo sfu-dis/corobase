@@ -16,15 +16,15 @@ LOGDIR=/tmpfs/$USER/ermia-log
 mkdir -p $LOGDIR
 trap "rm -f $LOGDIR/*" EXIT
 
-TCMALLOC=`whereis libtcmalloc.so | cut -d ':' -f2`
-if [ "$TCMALLOC" == "" ]; then
-    echo "Couldn't find tcmalloc."
-    exit
-else
-    echo "Found tcmalloc at:""$TCMALLOC"
-fi
-
-export LD_PRELOAD="$TCMALLOC"
+# Use this (not recommended) if you don't want to -ltcmalloc.
+#TCMALLOC=`whereis libtcmalloc.so | cut -d ':' -f2`
+#if [ "$TCMALLOC" == "" ]; then
+#    echo "Couldn't find tcmalloc."
+#    exit
+#else
+#    echo "Found tcmalloc at:""$TCMALLOC"
+#fi
+#export LD_PRELOAD="$TCMALLOC"
 export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
 
 if [ "$2" == "tpcc_org" ]; then
