@@ -1,3 +1,0 @@
-#pragma once
-
-#define LOGGER_UNSAFE_FAKE_COMPRESSION
