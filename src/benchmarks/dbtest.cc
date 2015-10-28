@@ -83,7 +83,6 @@ main(int argc, char **argv)
       {"bench"                      , required_argument , 0                          , 'b'} ,
       {"scale-factor"               , required_argument , 0                          , 's'} ,
       {"num-threads"                , required_argument , 0                          , 't'} ,
-      {"db-type"                    , required_argument , 0                          , 'd'} ,
       {"basedir"                    , required_argument , 0                          , 'B'} ,
       {"txn-flags"                  , required_argument , 0                          , 'f'} ,
       {"runtime"                    , required_argument , 0                          , 'r'} ,
@@ -101,7 +100,7 @@ main(int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:d:B:f:r:n:o:m:l:a:x:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:a:x:", long_options, &option_index);
     if (c == -1)
       break;
 
