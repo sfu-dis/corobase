@@ -49,15 +49,6 @@ ndb_wrapper::new_txn(
   return p;
 }
 
-template <typename T>
-static inline ALWAYS_INLINE void
-Destroy(T *t)
-{
-  PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-  ANON_REGION(probe1_name.c_str(), &private_::ndb_dtor_probe0_cg);
-  t->~T();
-}
-
 rc_t
 ndb_wrapper::commit_txn(void *txn)
 {

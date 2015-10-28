@@ -89,7 +89,7 @@ transaction::~transaction()
 }
 
 void
-transaction::abort_impl()
+transaction::abort()
 {
     // Mark the dirty tuple as invalid, for oid_get_version to
     // move on more quickly.

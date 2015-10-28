@@ -185,19 +185,11 @@ public:
   bool check_phantom();
 #endif
 
-  // if an abort has been signaled, perform the actual abort and clean
-  // up. always succeeds, so caller should rethrow if needed.
-  inline void
-  abort()
-  {
-    abort_impl();
-  }
+  void abort();
 
   void dump_debug_info() const;
 
 protected:
-  void abort_impl();
-
   bool
   try_insert_new_tuple(
       concurrent_btree *btr,
