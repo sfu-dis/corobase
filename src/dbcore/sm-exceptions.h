@@ -39,8 +39,10 @@
 
 #define THROW_IF(cond, eclass, ...)             \
     do {                                        \
-        if (cond)                               \
+        if (cond) {                             \
+            printf("Exception thrown at %s:%d\n", __FILE__, __LINE__); \
             throw eclass{__VA_ARGS__};          \
+        } \
     } while (0)
 
 #define THROW_UNLESS(cond, eclass, ...)         \
