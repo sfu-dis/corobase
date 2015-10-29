@@ -1,6 +1,7 @@
 // -*- mode:c++ -*-
 #ifndef __SM_EXCEPTIONS_H
 #define __SM_EXCEPTIONS_H
+#include <stdio.h>
 
 /** The exception hierarchy used in the SM.
 
