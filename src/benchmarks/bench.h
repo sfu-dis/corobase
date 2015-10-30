@@ -13,6 +13,7 @@
 #include "../thread.h"
 #include "../util.h"
 #include "../spinbarrier.h"
+#include "../dbcore/sm-config.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/serial.h"
@@ -39,7 +40,6 @@ enum {
 };
 
 // benchmark global variables
-extern size_t nthreads;
 extern volatile bool running;
 extern int verbose;
 extern uint64_t txn_flags;
@@ -282,7 +282,7 @@ public:
   bench_runner &operator=(const bench_runner &) = delete;
 
   bench_runner(abstract_db *db)
-    : db(db), barrier_a(nthreads), barrier_b(1) {}
+    : db(db), barrier_a(sysconf::worker_threads), barrier_b(1) {}
   virtual ~bench_runner() {}
   void run();
 
