@@ -1,5 +1,7 @@
 #include "sm-log-alloc.h"
 #include "stopwatch.h"
+#include "../macros.h"
+#include "sm-config.h"
 
 using namespace RCU;
 
@@ -25,6 +27,23 @@ namespace {
 
 } // end anonymous namespace
 
+void
+sm_log_alloc_mgr::setup_tls_lsn_offset(uint32_t threads)
+{
+    // one extra for the flusher
+    if (threads < sysconf::MAX_THREADS)
+        threads++;
+
+    sysconf::threads = threads;
+    sysconf::_active_threads = 0;
+    if (_tls_lsn_offset)
+        _tls_lsn_offset = (uint64_t *)realloc(_tls_lsn_offset, sizeof(uint64_t) * threads);
+    else
+        _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * threads);
+    for (uint32_t i = 0; i < threads; i++)
+        _tls_lsn_offset[i] = _lm.get_durable_mark().offset();
+}
+
 /* We have to find the end of the log files on disk before
    constructing the log buffer in memory. It's also a convenient time
    to do the rest of recovery, because it prevents any attempt at
@@ -42,15 +61,9 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
     , _write_daemon_should_wake(false)
     , _write_daemon_should_stop(false)
     , _null_log_device(null_log_device)
+    , _lsn_offset(_lm.get_durable_mark().offset())
 {
-
-    // prime the block list
-    log_allocation *x = rcu_alloc();
-    x->lsn_offset = x->next_lsn_offset = _lm.get_durable_mark().offset();
-    bool success = _block_list.push(x);
-    ASSERT(success);
-    _block_list.remove_fast(x);
-
+    setup_tls_lsn_offset(sysconf::MAX_THREADS);
     // fire up the log writing daemon
     _write_daemon_mutex.lock();
     DEFER(_write_daemon_mutex.unlock());
@@ -78,7 +91,7 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr()
 uint64_t
 sm_log_alloc_mgr::cur_lsn_offset()
 {
-    return _block_list.peek_raw(0)->next_lsn_offset;
+    return volatile_read(_lsn_offset);
 }
 
 uint64_t
@@ -220,26 +233,16 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
        segment we're trying to reclaim.
      */
 
-    
     ASSERT (is_aligned(payload_bytes));
-    typedef std::pair<size_t&, rcu_block_list&> cb_arg;
-    auto cb = [](cb_arg *arg, log_allocation *n, log_allocation *)->void {
-        log_allocation *prev = arg->second.peek_raw(0);
-        uint64_t offset = n->lsn_offset = prev->next_lsn_offset;
-        n->next_lsn_offset = offset + arg->first;
-    };
-    
     /* Step #1: join the log list to obtain an LSN offset.
 
        All we need here is the LSN offset for the new block; we don't
        yet know what segment (if any) actually contains that offset.
      */
  start_over:
-    log_allocation *x = rcu_alloc();
     size_t nbytes = log_block::size(nrec, payload_bytes);
-    cb_arg arg{nbytes, _block_list};
-    bool inserted = _block_list.push_callback(x, cb, &arg);
-    DIE_IF(not inserted, "Attempted log insert after shutdown");
+    auto lsn_offset = __sync_fetch_and_add(&_lsn_offset, nbytes);
+    auto next_lsn_offset = lsn_offset + nbytes;
 
     /* We are now the proud owners of an LSN offset range, most likely
        backed by space on disk. If the rest of the insert protocol
@@ -253,25 +256,15 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
        point. An abnormal return means we *can't* write the log record
        to disk for whatever reason, so we DIE instead to be safe.
     */
-    DEFER_UNLESS(node_used, _block_list.remove_fast(x));
-    DEFER_UNLESS(normal_return,
-                 DIE("Log allocation did not complete normally. "
-                     "Terminating execution to avoid losing committed work."));
-
     /* Step #2: assign the range to a segment 
      */
-    auto rval = _lm.assign_segment(x->lsn_offset, x->next_lsn_offset);
+    auto rval = _lm.assign_segment(lsn_offset, next_lsn_offset);
     auto *sid = rval.sid;
     if (not sid) {
-        /* Invalid offset (not inside any segment) must be discarded
-           because it has no physical location on disk where we could
-           write a log entry. DEFER releases the node.
-         */
-        normal_return = true;
         goto start_over;
     }
     
-    LSN lsn = sid->make_lsn(x->lsn_offset);
+    LSN lsn = sid->make_lsn(lsn_offset);
     
     /* Step #3: claim buffer space (wait if it's not yet available).
 
@@ -285,7 +278,7 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
         /* Block didn't fit in the available space. Adjust the request
            parameters so we create an empty log block.
          */
-        uint64_t newsz = sid->end_offset - x->lsn_offset;
+        uint64_t newsz = sid->end_offset - lsn_offset;
         ASSERT(newsz < nbytes);
         tmp_nbytes = newsz;
         tmp_nrec = 0;
@@ -311,18 +304,18 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
         goto grab_buffer;
     }
 
-    log_block *b = x->block = (log_block*) buf;
+    log_block *b = (log_block*) buf;
     b->lsn = lsn;
     b->nrec = tmp_nrec;
     fill_skip_record(&b->records[tmp_nrec], rval.next_lsn, tmp_payload_bytes, false);
-    node_used = true;
-    normal_return = true;
 
     if (not rval.full_size) {
-        /* Discard the undersized block */
-        discard(x);
         goto start_over;
     }
+
+    log_allocation *x = rcu_alloc();
+    x->lsn_offset = lsn_offset;
+    x->block = b;
 
     // success!
     return x;
@@ -331,8 +324,9 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
 void
 sm_log_alloc_mgr::release(log_allocation *x)
 {
-    /* Short and sweet for the common case */
-    _block_list.remove_fast(x);
+    ALWAYS_ASSERT(sysconf::my_thread_id() < sysconf::threads);
+    volatile_write(_tls_lsn_offset[sysconf::my_thread_id()], x->lsn_offset);
+    rcu_free(x);
     bool should_kick = cur_lsn_offset() - dur_lsn_offset() >= _logbuf.window_size() / 2;
 
     /* Hopefully the log daemon is already awake, but be ready to give
@@ -381,12 +375,6 @@ sm_log_alloc_mgr::_log_write_daemon()
     rcu_register();
     rcu_enter();
     DEFER(rcu_exit());
-    
-    typedef std::pair<size_t&, rcu_block_list&> cb_arg;
-    auto cb = [](cb_arg *arg, log_allocation *n, log_allocation *)->void {
-        log_allocation *prev = arg->second.peek_raw(0);
-        arg->first = n->next_lsn_offset = n->lsn_offset = prev->next_lsn_offset;
-    };
 
     LSN dlsn = _lm.get_durable_mark();
     auto *durable_sid = _lm.get_segment(dlsn.segment());
@@ -426,8 +414,10 @@ sm_log_alloc_mgr::_log_write_daemon()
            possible. Do not span segments.
         */
         uint64_t oldest_offset = cur_offset;
-        for (auto &x : _block_list)
-            oldest_offset = x.lsn_offset;
+        for (uint32_t i = 0; i < sysconf::threads; i++) {
+            if (_tls_lsn_offset[i] > _durable_lsn_offset)
+                oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
+        }
 
         while (_durable_lsn_offset < oldest_offset) {
             sm_log_recover_mgr::segment_id *new_sid;
@@ -530,23 +520,8 @@ sm_log_alloc_mgr::_log_write_daemon()
 
         // time to quit? (only if everything in the log reached disk)
         if (_write_daemon_should_stop and cur_offset == _durable_lsn_offset) {
-            log_allocation *x = rcu_alloc();
-            cb_arg arg{cur_offset, _block_list};
-            bool inserted = _block_list.push_callback(x, cb, &arg);
-            ASSERT(inserted);
-            DEFER_UNLESS(node_removed, _block_list.remove_fast(x));
-                
-            if (oldest_offset == cur_offset) {
-                node_removed = true;
-                if (_block_list.remove_and_kill(x)) {
-                    DIE_IF(_waiting_for_durable,
-                           "Thread(s) waiting for durable LSN at log shutdown");
-                    DIE_IF(_waiting_for_dmark,
-                           "Thread(s) waiting for durable mark at log shutdown");
-
-                    return;
-                }
-            }
+            if (oldest_offset == cur_offset)
+                return;
         }
 
         // time to sleep?

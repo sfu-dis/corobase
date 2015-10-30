@@ -338,15 +338,9 @@ struct LOG_ALIGN log_block {
 };
 
 struct log_allocation {
-    // remove self to signal the log writer that it can proceed
-    _rcu_slist::node _node;
-
     // the offset of this allocation
     uintptr_t lsn_offset;
     
-    // the LSN the next block after this one will receive
-    uint64_t next_lsn_offset;
-
     /* points to "live" buffer space.
 
        WARNING: this field is private to the owner of the

@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <sys/sysinfo.h>
 
+#include "../dbcore/sm-config.h"
 #include "../dbcore/sm-alloc.h"
 #include "../allocator.h"
 #include "../stats_server.h"
@@ -71,6 +72,9 @@ main(int argc, char **argv)
   size_t log_bufsize = 512 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
   int null_log_device = 0;
+  // Do whatever we can to gather configs independent of cmdargs
+  sysconf::init();
+
   while (1) {
     static struct option long_options[] =
     {
@@ -83,7 +87,6 @@ main(int argc, char **argv)
       {"bench"                      , required_argument , 0                          , 'b'} ,
       {"scale-factor"               , required_argument , 0                          , 's'} ,
       {"num-threads"                , required_argument , 0                          , 't'} ,
-      {"db-type"                    , required_argument , 0                          , 'd'} ,
       {"basedir"                    , required_argument , 0                          , 'B'} ,
       {"txn-flags"                  , required_argument , 0                          , 'f'} ,
       {"runtime"                    , required_argument , 0                          , 'r'} ,
@@ -101,7 +104,7 @@ main(int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:d:B:f:r:n:o:m:l:a:x:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:a:x:", long_options, &option_index);
     if (c == -1)
       break;
 
@@ -123,8 +126,8 @@ main(int argc, char **argv)
       break;
 
     case 't':
-      nthreads = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(nthreads > 0);
+      sysconf::worker_threads = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(sysconf::worker_threads > 0);
       break;
 
     case 'B':
@@ -248,7 +251,8 @@ main(int argc, char **argv)
     cerr << "  bench       : " << bench_type                << endl;
     cerr << "  scale       : " << scale_factor              << endl;
     cerr << "  num-cpus    : " << ncpus                     << endl;
-    cerr << "  num-threads : " << nthreads                  << endl;
+    cerr << "  num-threads : " << sysconf::worker_threads   << endl;
+    cerr << "  numa-nodes  : " << sysconf::numa_nodes       << endl;
     cerr << "  basedir     : " << basedir                   << endl;
     cerr << "  txn-flags   : " << hexify(txn_flags)         << endl;
     if (run_mode == RUNMODE_TIME)
@@ -319,6 +323,9 @@ main(int argc, char **argv)
   new_argv[0] = (char *) bench_type.c_str();
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
+
+  // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)
+  sysconf::sanity_check();
   db = new ndb_wrapper(log_dir->c_str(), log_segsize, log_bufsize, null_log_device);
   test_fn(db, argc, new_argv);
   delete db;
