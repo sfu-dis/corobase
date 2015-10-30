@@ -16,6 +16,7 @@
 #include "../scopedperf.hh"
 #include "../allocator.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-config.h"
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-chkpt.h"
 
@@ -32,7 +33,6 @@ extern "C" int mallctl(const char *name, void *oldp, size_t *oldlenp, void *newp
 using namespace std;
 using namespace util;
 
-size_t nthreads = 1;
 volatile bool running = true;
 int verbose = 0;
 uint64_t txn_flags = 0;
@@ -229,6 +229,9 @@ bench_runner::run()
     chkptmgr->start_chkpt_thread();
   }
 
+  // Use the real worker_threads to initialize the tls_lsn_offset array.
+  logmgr->setup_tls_lsn_offset(sysconf::worker_threads);
+
   const vector<bench_worker *> workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (vector<bench_worker *>::const_iterator it = workers.begin();
@@ -257,7 +260,7 @@ bench_runner::run()
       while (slept < runtime) {
         sleep(1);
         uint64_t sec_commits = 0, sec_aborts = 0;
-        for (size_t i = 0; i < nthreads; i++) {
+        for (size_t i = 0; i < sysconf::worker_threads; i++) {
           sec_commits += workers[i]->get_ntxn_commits();
           sec_aborts += workers[i]->get_ntxn_aborts();
         }
@@ -275,7 +278,7 @@ bench_runner::run()
     running = false;
   }
   __sync_synchronize();
-  for (size_t i = 0; i < nthreads; i++)
+  for (size_t i = 0; i < sysconf::worker_threads; i++)
     workers[i]->join();
   const unsigned long elapsed_nosync = t_nosync.lap();
   size_t n_commits = 0;
@@ -288,7 +291,7 @@ bench_runner::run()
   size_t n_phantom_aborts = 0;
   size_t n_query_commits= 0;
   uint64_t latency_numer_us = 0;
-  for (size_t i = 0; i < nthreads; i++) {
+  for (size_t i = 0; i < sysconf::worker_threads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
     n_int_aborts += workers[i]->get_ntxn_int_aborts();
