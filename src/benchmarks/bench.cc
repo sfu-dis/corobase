@@ -27,7 +27,7 @@ extern "C" void malloc_stats_print(void (*write_cb)(void *, const char *), void 
 extern "C" int mallctl(const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen);
 #endif
 #ifdef USE_TCMALLOC
-#include <google/heap-profiler.h>
+#include <gperftools/heap-profiler.h>
 #endif
 
 using namespace std;
