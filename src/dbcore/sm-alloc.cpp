@@ -3,16 +3,20 @@
 #include "sm-common.h"
 #include "../txn.h"
 
-/* Garbage collection: maintain a lock-free queue for updated tuples.
+/*
+ * tzwang (2015-10-31): continued with the CAS bottleneck found in log LSN
+ * offset acquisition, this is a problem too with GC when a tx tries to
+ * append its updated set of OIDs to the centralized GC list.
+ * So we make it an atomic-swap (XCHG) to append to the centralized list.
+ * Let's see when this will become a problem later.
+ *
+ * Garbage collection: maintain a centralized queue for updated tuples.
  * Writers add updated OIDs in the form of <fid, oid> to the queue upon
  * commit, to the tail of the queue. A GC thread periodically consumes
  * queue nodes from the head of the queue and recycle old versions if
  * their clsn < trim_lsn. This way avoids scanning the whole OID array
  * which might be increasing quite fast. Amount of scanning is only
  * related to update footprint.
- *
- * The queue is for now multi-producer-single-consumer, because we only
- * have one GC thread.
  */
 
 namespace MM {
@@ -21,8 +25,10 @@ std::condition_variable gc_trigger;
 std::mutex gc_lock;
 void gc_daemon();
 
-static recycle_oid *recycle_oid_head = NULL;
-static recycle_oid *recycle_oid_tail = NULL;
+// This is the list head; a committing tx atomically swaps the head of
+// its queue of updated OIDs with recycle_oid_list, and links its tail
+// to the old head which it got as the return value of the XCHG.
+std::atomic<recycle_oid*> recycle_oid_list(NULL);
 #endif
 
 void global_init(void*)
@@ -182,59 +188,13 @@ epoch_exit(LSN s, epoch_num e)
 
 #ifdef ENABLE_GC
 #define MSB_MARK (~((~uint64_t{0}) >> 1))
-
-void recycle(oid_array *oa, OID oid)
-{
-    recycle_oid *r = new recycle_oid(oa, oid);
-try_append:
-    recycle_oid *tail = volatile_read(recycle_oid_tail);
-    if ((uintptr_t)tail & MSB_MARK)
-        goto try_append;
-    recycle_oid *claimed_tail = (recycle_oid *)((uintptr_t)tail | MSB_MARK);
-    ASSERT(not ((uintptr_t)tail & MSB_MARK));
-    ASSERT(((uintptr_t)claimed_tail & (~MSB_MARK)) == (uintptr_t)tail);
-
-    // cliam the field so nobody else can change the tail and its next field
-    if (not __sync_bool_compare_and_swap(&recycle_oid_tail, tail, claimed_tail))
-        goto try_append;
-
-    if (tail)
-        volatile_write(tail->next, r);
-    else {
-        ASSERT(not volatile_read(recycle_oid_head));
-        volatile_write(recycle_oid_head, r);
-    }
-
-    __sync_synchronize();
-    volatile_write(recycle_oid_tail, r);
-    __sync_synchronize();   // publish the new tail
-}
-
 // fast version, add a chain of updates each time
 void recycle(recycle_oid *list_head, recycle_oid *list_tail)
 {
-try_append:
-    recycle_oid *tail = volatile_read(recycle_oid_tail);
-    if ((uintptr_t)tail & MSB_MARK)
-        goto try_append;
-    recycle_oid *claimed_tail = (recycle_oid *)((uintptr_t)tail | MSB_MARK);
-    ASSERT(not ((uintptr_t)tail & MSB_MARK));
-    ASSERT(((uintptr_t)claimed_tail & (~MSB_MARK)) == (uintptr_t)tail);
-
-    // cliam the field so nobody else can change the tail and its next field
-    if (not __sync_bool_compare_and_swap(&recycle_oid_tail, tail, claimed_tail))
-        goto try_append;
-
-    if (tail)
-        volatile_write(tail->next, list_head);
-    else {
-        ASSERT(not volatile_read(recycle_oid_head));
-        volatile_write(recycle_oid_head, list_head);
-    }
-
-    __sync_synchronize();
-    volatile_write(recycle_oid_tail, list_tail);
-    __sync_synchronize();   // publish the new tail
+    recycle_oid *succ_head = recycle_oid_list.exchange(list_head, std::memory_order_seq_cst);
+    ASSERT(not list_tail->next);
+    list_tail->next = succ_head;
+    std::atomic_thread_fence(std::memory_order_release);    // Let the GC thread know
 }
 
 void gc_daemon()
@@ -244,8 +204,16 @@ try_recycle:
     uint64_t reclaimed_count = 0;
     uint64_t reclaimed_nbytes = 0;
     gc_trigger.wait(lock);
-    recycle_oid *r_prev = NULL;
-    recycle_oid *r = volatile_read(recycle_oid_head);
+    recycle_oid *r = recycle_oid_list.load();
+
+    // FIXME(tzwang): for now always start after the head, so we don't have to
+    // worry about resetting the head list pointer...
+    if (not r or not r->next)
+        goto try_recycle;
+    auto *r_prev = r;
+    r = r->next;
+    ASSERT(r);
+
     while (1) {
         // need to update tlsn each time, to make sure we can make
         // progress when diving deeper in the list: in general the
@@ -257,29 +225,24 @@ try_recycle:
 
         if (not r or reclaimed_count >= EPOCH_SIZE_COUNT or reclaimed_nbytes >= EPOCH_SIZE_NBYTES)
             break;
-        recycle_oid *r_next = volatile_read(r->next);
-        if (not r_next)
-            break;
 
+        ASSERT(r->oa);
         fat_ptr head = oidmgr->oid_get(r->oa, r->oid);
-        if (not head.offset()) {
+        auto* r_next = r->next;
+        ASSERT(r_next != r);
+        object *cur_obj = (object *)head.offset();
+        if (not cur_obj) {
             // in case it's a delete... remove the oid as if we trimmed it
             delete r;
-            if (r_prev) {
-                volatile_write(r_prev->next, r_next);
-                r = r_next;
-            }
-            else {  // recycled the head
-                volatile_write(recycle_oid_head, r_next);
-                r = recycle_oid_head;
-            }
+            ASSERT(r_prev);
+            volatile_write(r_prev->next, r_next);
+            r = r_next;
             continue;
         }
 
         // need to start from the first **committed** version, and start
         // trimming after its next, because the head might be still being
         // modified (hence its _next field) and might be gone (tx abort).
-        object *cur_obj = (object *)head.offset();
         auto clsn = volatile_read(cur_obj->_clsn);
         if (clsn.asi_type() == fat_ptr::ASI_XID)
             cur_obj = (object *)cur_obj->_next.offset();
@@ -310,7 +273,7 @@ try_recycle:
             if (LSN::from_ptr(clsn) <= tlsn) {
                 // no need to CAS here if we only have one gc thread
                 volatile_write(prev_next->_ptr, 0);
-                __sync_synchronize();
+                std::atomic_thread_fence(std::memory_order_release);
                 trimmed = true;
                 while (cur.offset()) {
                     cur_obj = (object *)cur.offset();
@@ -322,28 +285,24 @@ try_recycle:
                 break;
             }
             prev_next = &cur_obj->_next;
-            cur = volatile_read( *prev_next );
+            cur = volatile_read(*prev_next);
         }
 
         if (trimmed) {
-            // really recycled something, detach the node
+            // really recycled something, detach the node, but don't update r_prev
+            ASSERT(r_prev);
             delete r;
-            if (r_prev) {
-                volatile_write(r_prev->next, r_next);
-                r = r_next;
-            }
-            else {  // recycled the head
-                volatile_write(recycle_oid_head, r_next);
-                r = recycle_oid_head;
-            }
+            volatile_write(r_prev->next, r_next);
         }
         else {
             r_prev = r;
-            r = r_next;
         }
+        r = r_next;
     }
-    //if (reclaimed_nbytes or reclaimed_count)
-    //    printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
+#if CHECK_INVARIANTS
+    if (reclaimed_nbytes or reclaimed_count)
+        printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
+#endif
     goto try_recycle;
 }
 
