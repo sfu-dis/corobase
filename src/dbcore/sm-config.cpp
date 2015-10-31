@@ -6,6 +6,7 @@ uint32_t sysconf::_active_threads = 0;
 uint32_t sysconf::worker_threads = 0;
 int sysconf::numa_nodes = 0;
 uint32_t sysconf::threads;
+uint64_t sysconf::prefault_gig = 64;
 
 void
 sysconf::init() {

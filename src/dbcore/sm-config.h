@@ -6,6 +6,7 @@ public:
     static uint32_t threads;
     static int numa_nodes;
     static const uint32_t MAX_THREADS = 1024;
+    static uint64_t prefault_gig;
 
     static void sanity_check();
 

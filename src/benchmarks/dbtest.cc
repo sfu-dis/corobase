@@ -44,15 +44,15 @@ split_ws(const string &s)
 void
 heap_prefault()
 {
-#ifndef CHECK_INVARIANTS
-    uint64_t FAULT_SIZE = (((uint64_t)1<<30)*60);
-    uint8_t* p = (uint8_t*)malloc( FAULT_SIZE );
+    uint64_t size = (((uint64_t)1<<30)* sysconf::prefault_gig);
+    if (not size)
+        return;
+    uint8_t* p = (uint8_t*)malloc(size);
     ALWAYS_ASSERT(p);
-    ALWAYS_ASSERT(not mlock(p, FAULT_SIZE));
+    ALWAYS_ASSERT(not mlock(p, size));
     mallopt (M_TRIM_THRESHOLD, -1);
     mallopt (M_MMAP_MAX, 0);
     free(p);
-#endif
 }
 
 int
@@ -101,6 +101,7 @@ main(int argc, char **argv)
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
       {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
+      {"prefault-gig"               , required_argument , 0                          , 'p'},
       {0, 0, 0, 0}
     };
     int option_index = 0;
@@ -115,6 +116,9 @@ main(int argc, char **argv)
         break;
       abort();
       break;
+
+    case 'p':
+      sysconf::prefault_gig = strtoul(optarg, NULL, 10);
 
     case 'b':
       bench_type = optarg;
@@ -243,6 +247,7 @@ main(int argc, char **argv)
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
     cerr << "settings:"                                     << endl;
+    cerr << "  prefault-gig: " << sysconf::prefault_gig     << endl;
     cerr << "  par-loading : " << enable_parallel_loading   << endl;
     cerr << "  pin-cpus    : " << pin_cpus                  << endl;
     cerr << "  slow-exit   : " << slow_exit                 << endl;
