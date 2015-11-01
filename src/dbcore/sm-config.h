@@ -1,4 +1,5 @@
 #pragma once
+#include "sm-defs.h"
 class sysconf {
 public:
     static uint32_t _active_threads;
@@ -15,6 +16,7 @@ public:
         if (__id == 0) {
             __id = __sync_fetch_and_add(&_active_threads, 1);
         }
+        ASSERT(__id < threads);
         return __id;
     }
     
