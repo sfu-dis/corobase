@@ -44,6 +44,12 @@ sm_log_alloc_mgr::setup_tls_lsn_offset(uint32_t threads)
         _tls_lsn_offset[i] = _lm.get_durable_mark().offset();
 }
 
+void
+sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset)
+{
+    volatile_write(_tls_lsn_offset[sysconf::my_thread_id()], offset);
+}
+
 /* We have to find the end of the log files on disk before
    constructing the log buffer in memory. It's also a convenient time
    to do the rest of recovery, because it prevents any attempt at
@@ -324,8 +330,7 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
 void
 sm_log_alloc_mgr::release(log_allocation *x)
 {
-    ALWAYS_ASSERT(sysconf::my_thread_id() < sysconf::threads);
-    volatile_write(_tls_lsn_offset[sysconf::my_thread_id()], x->lsn_offset);
+    set_tls_lsn_offset(x->lsn_offset);
     rcu_free(x);
     bool should_kick = cur_lsn_offset() - dur_lsn_offset() >= _logbuf.window_size() / 2;
 
@@ -415,6 +420,8 @@ sm_log_alloc_mgr::_log_write_daemon()
         */
         uint64_t oldest_offset = cur_offset;
         for (uint32_t i = 0; i < sysconf::threads; i++) {
+            // Skip too small/stale LSNs (maybe due to running read-only
+            // transactions using SSN's safesnap) so that we can make progress.
             if (_tls_lsn_offset[i] > _durable_lsn_offset)
                 oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
         }
