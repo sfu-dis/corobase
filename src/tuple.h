@@ -113,7 +113,7 @@ public:
   };
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-  int64_t age(xid_context *visitor);
+  uint64_t age(xid_context *visitor);
   bool is_old(xid_context *visitor);    // FOR READERS ONLY!
   bool set_persistent_reader();
   bool has_persistent_reader();
