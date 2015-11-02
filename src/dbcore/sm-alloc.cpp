@@ -29,7 +29,36 @@ void gc_daemon();
 // its queue of updated OIDs with recycle_oid_list, and links its tail
 // to the old head which it got as the return value of the XCHG.
 std::atomic<recycle_oid*> recycle_oid_list(NULL);
+
+// tzwang (2015-11-01):
+// trim_lsn is the LSN of the no-longer-needed versions, which is the end LSN
+// of the epoch that most recently reclaimed (i.e., all **readers** are gone).
+// It corresponds to two epochs ago of the most recently reclaimed epoch (in
+// which all the **creators** are gone). Note that trim_lsn only records the
+// LSN when the *creator* of the versions left---not the *visitor* of those
+// versions. So consider the versions created in epoch N, we can have stragglers
+// up to at most epoch N+2; to start a new epoch N+3, N must be reclaimed. This
+// means versions last *visited* (not created!) in epoch N+2 are no longer
+// needed after epoch N+4 is reclaimed.
+//
+// Note: when really recycling versions, we also need to make sure we leave
+// one committed versions that is older than the begin LSN of any transaction.
+// This "begin LSN of any tx" translates to the current log LSN for normal
+// transactions, and the safesnap LSN for read-only transactions using a safe
+// snapshot. For simplicity, the daemon simply leave one version with LSN < the
+// trim_lsn available (so no need to figure out which safesnap lsn is the
+// appropriate one to rely on - it changes as the daemon does its work).
+LSN trim_lsn = INVALID_LSN;
 #endif
+
+uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
+uint64_t EPOCH_SIZE_COUNT = 200000;
+
+// epoch_excl_begin_lsn belongs to the previous **ending** epoch, and we're
+// using it as the **begin** lsn of the new epoch.
+LSN epoch_excl_begin_lsn[3] = {INVALID_LSN, INVALID_LSN, INVALID_LSN};
+LSN epoch_reclaim_lsn[3] = {INVALID_LSN, INVALID_LSN, INVALID_LSN};
+LSN safesnap_lsn = INVALID_LSN;
 
 void global_init(void*)
 {
@@ -58,24 +87,6 @@ void deallocate(void *p)
     ASSERT(p);
     free(p);
 }
-
-uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
-uint64_t EPOCH_SIZE_COUNT = 200000;
-
-// global_trim_lsn is the max lsn of versions that are no longer needed,
-// i.e., the trim_lsn corresponding to two epochs ago of the most recently
-// reclaimed epoch. Note that trim_lsn only records the LSN when the
-// *creator* of the versions are left---not the *visitor* of those versions.
-// So consider the versions created in epoch N, we can have stragglers up to
-// at most epoch N+2; to start a new epoch N+3, N must be reclaimed. This
-// means versions last *visited* (not created!) in epoch N are no longer
-// needed after epoch N+2 is reclaimed.
-#ifdef ENABLE_GC
-LSN global_trim_lsn;
-LSN trim_lsn[3];
-#endif
-LSN epoch_end_lsn[3];
-LSN safesnap_lsn = INVALID_LSN;
 
 // epoch mgr callbacks
 epoch_mgr::tls_storage *
@@ -117,11 +128,10 @@ thread_deregistered(void *cookie, void *thread_cookie)
 void*
 epoch_ended(void *cookie, epoch_num e)
 {
-    // remember the epoch's LSN and return them together
-    char *lsn_epoch = (char *)malloc(sizeof(LSN) + sizeof(epoch_num));
-    *((LSN *)lsn_epoch) = epoch_end_lsn[e % 3];
-    *((epoch_num *)(lsn_epoch + sizeof(LSN))) = e;
-    return (void *)lsn_epoch;
+    // remember the epoch number so we can find it out when it's reclaimed later
+    epoch_num *epoch = (epoch_num *)malloc(sizeof(epoch_num));
+    *epoch = e;
+    return (void *)epoch;
 }
 
 void*
@@ -133,30 +143,37 @@ epoch_ended_thread(void *cookie, void *epoch_cookie, void *thread_cookie)
 void
 epoch_reclaimed(void *cookie, void *epoch_cookie)
 {
-    LSN lsn = *(LSN *)epoch_cookie;
-    if (lsn != INVALID_LSN) {
-        // make epoch N available for transactions using safe snapshot.
-        // All transactions that created something in this epoch has gone,
-        // so it's impossible for a reader using that epoch's end lsn as
-        // both begin and commit timestamp to have conflicts with these
-        // transactions. But future transactions needs to start with a
-        // pstamp of safesnap_lsn.
-        // Take max here because after the loading phase we directly set safesnap_lsn
-        // to log.cur_lsn, which might be actually larger than safesnap_lsn generated
-        // during the loading phase, which is too conservertive that some tx might
-        // not be able to see the tuples because they were not loaded at that time...
-        volatile_write(safesnap_lsn._val, std::max(safesnap_lsn._val, lsn._val));
+    epoch_num e = *(epoch_num *)epoch_cookie;
+    LSN my_begin_lsn = epoch_excl_begin_lsn[e % 3];
+    if (my_begin_lsn != INVALID_LSN) {
 #ifdef ENABLE_GC
-        epoch_num epoch = *((epoch_num *)((char *)epoch_cookie + sizeof(LSN)));
-        volatile_write(trim_lsn[(epoch + 2) % 3]._val, lsn._val);
-        // make epoch N-2 available for recycle after epoch N is reclaimed
-        if (epoch >= 2)
-            global_trim_lsn = trim_lsn[(epoch - 2) % 3];
+        ASSERT(epoch_reclaim_lsn[e % 3] == INVALID_LSN);
+        epoch_reclaim_lsn[e % 3] = my_begin_lsn;
+        if (enable_safesnap) {
+            // Make versions created during epoch N available for transactions
+            // using safesnap. All transactions that created something in this
+            // epoch has gone, so it's impossible for a reader using that
+            // epoch's end lsn as both begin and commit timestamp to have
+            // conflicts with these writer transactions. But future transactions
+            // need to start with a pstamp of safesnap_lsn.
+            // Take max here because after the loading phase we directly set
+            // safesnap_lsn to log.cur_lsn, which might be actually larger than
+            // safesnap_lsn generated during the loading phase, which is too
+            // conservertive that some tx might not be able to see the tuples
+            // because they were not loaded at that time...
+            // Also use epoch e+1's begin LSN = epoch e's end LSN
+            auto new_safesnap_lsn = epoch_excl_begin_lsn[(e + 1) % 3];
+            volatile_write(safesnap_lsn._val, std::max(safesnap_lsn._val, new_safesnap_lsn._val));
+        }
+        if (e >= 2) {
+            trim_lsn = epoch_reclaim_lsn[(e - 2) % 3];
+            epoch_reclaim_lsn[(e - 2) % 3] = INVALID_LSN;
+        }
 #endif
-        free(epoch_cookie);
     }
+    free(epoch_cookie);
 #ifdef ENABLE_GC
-    if (global_trim_lsn != INVALID_LSN)
+    if (trim_lsn != INVALID_LSN)
         gc_trigger.notify_all();
 #endif
 }
@@ -170,7 +187,10 @@ epoch_enter(void)
 void
 epoch_exit(LSN s, epoch_num e)
 {
-    if (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or epoch_tls.counts >= EPOCH_SIZE_COUNT) {
+    // Transactions under a safesnap will pass s = INVALID_LSN
+    if (s != INVALID_LSN and
+        (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or
+         epoch_tls.counts >= EPOCH_SIZE_COUNT)) {
         // epoch_ended() (which is called by new_epoch() in its critical
         // section) will pick up this safe lsn if new_epoch() succeeded
         // (it could also be set by somebody else who's also doing epoch_exit(),
@@ -179,7 +199,7 @@ epoch_exit(LSN s, epoch_num e)
         // actually belongs to the *new* epoch - not safe to trim based on
         // this lsn. The real trim_lsn should be some lsn at the end of the
         // ending epoch, not some lsn after the next epoch.
-        epoch_end_lsn[e % 3] = s;
+        epoch_excl_begin_lsn[(e + 1) % 3] = s;
         if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
             epoch_tls.nbytes = epoch_tls.counts = 0;
     }
@@ -187,8 +207,6 @@ epoch_exit(LSN s, epoch_num e)
 }
 
 #ifdef ENABLE_GC
-#define MSB_MARK (~((~uint64_t{0}) >> 1))
-// fast version, add a chain of updates each time
 void recycle(recycle_oid *list_head, recycle_oid *list_tail)
 {
     recycle_oid *succ_head = recycle_oid_list.exchange(list_head, std::memory_order_seq_cst);
@@ -221,7 +239,9 @@ try_recycle:
         // then we might never get out of the loop if the tlsn is
         // too old, unless we have a threshold of "examined # of
         // oids" or like here, update it at each iteration.
-        LSN tlsn = volatile_read(global_trim_lsn);
+        LSN tlsn = volatile_read(trim_lsn);
+        if (tlsn == INVALID_LSN)
+            break;
 
         if (not r or reclaimed_count >= EPOCH_SIZE_COUNT or reclaimed_nbytes >= EPOCH_SIZE_NBYTES)
             break;
@@ -264,6 +284,22 @@ try_recycle:
         // remove it, as if it were trimmed (again).
         if (not cur.offset())
             trimmed = true;
+
+        // Fast forward to the **second** version < trim_lsn. Consider that we
+        // set safesnap lsn to 1.8, and trim_lsn to 1.6. Assume we have two
+        // versions with LSNs 2 and 1.5. We need to keep the one with LSN=1.5
+        // although its < trim_lsn; otherwise the tx using safesnap won't be
+        // able to find any version available.
+        while (cur.offset()) {
+            cur_obj = (object *)cur.offset();
+            ASSERT(cur_obj);
+            clsn = volatile_read(cur_obj->_clsn);
+            ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+            prev_next = &cur_obj->_next;
+            cur = volatile_read(*prev_next);
+            if (LSN::from_ptr(clsn) <= tlsn)
+                break;
+        }
 
         while (cur.offset()) {
             cur_obj = (object *)cur.offset();
@@ -319,7 +355,7 @@ object_pool::get(size_t size)
     int order = get_order(size);
     reuse_object *r = head[order];
     reuse_object *r_prev = NULL;
-    uint64_t tlsn = volatile_read(MM::global_trim_lsn).offset();
+    uint64_t tlsn = volatile_read(MM::trim_lsn).offset();
 
     while (r and r->cstamp > tlsn) {
         object *p = r->obj;

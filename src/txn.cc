@@ -44,6 +44,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
         ASSERT(MM::safesnap_lsn.offset());
         xc->begin = volatile_read(MM::safesnap_lsn);
+        log = NULL;
     }
     else {
         RCU::rcu_enter();
@@ -84,7 +85,10 @@ transaction::~transaction()
 #endif
         serial_deregister_tx(xid);
 #endif
-    MM::epoch_exit(xc->end, epoch);
+    if (enable_safesnap and flags & TXN_FLAG_READ_ONLY)
+        MM::epoch_exit(INVALID_LSN, epoch);
+    else
+        MM::epoch_exit(xc->end, epoch);
     xid_free(xid);    // must do this after epoch_exit, which uses xc.end
 }
 
@@ -199,9 +203,6 @@ transaction::commit()
         case TXN_INVALID:
             ALWAYS_ASSERT(false);
     }
-
-    INVARIANT(log);
-
 #ifdef USE_PARALLEL_SSN
     return parallel_ssn_commit();
 #elif defined USE_PARALLEL_SSI
@@ -229,12 +230,14 @@ transaction::parallel_ssn_commit()
     // Safe snapshot optimization for read-only transactions:
     // Use the begin ts as cstamp if it's a read-only transaction
     if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
-        ALWAYS_ASSERT(write_set.size() == 0);
+        ASSERT(not log);
+        ASSERT(write_set.size() == 0);
         xc->end = xc->begin;
         volatile_write(xc->state, TXN_CMMTD);
         return {RC_TRUE};
     }
     else {
+        ASSERT(log);
         xc->end = log->pre_commit();
         if (xc->end == INVALID_LSN)
             return rc_t{RC_ABORT_INTERNAL};
@@ -561,6 +564,7 @@ transaction::parallel_ssn_commit()
 rc_t
 transaction::parallel_ssi_commit()
 {
+    ASSERT(log);
     // get clsn, abort if failed
     xc->end = log->pre_commit();
     if (xc->end == INVALID_LSN)
@@ -880,6 +884,7 @@ transaction::parallel_ssi_commit()
 rc_t
 transaction::si_commit()
 {
+    ASSERT(log);
     // get clsn, abort if failed
     xc->end = log->pre_commit();
     if (xc->end == INVALID_LSN)
