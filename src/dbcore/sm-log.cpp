@@ -288,7 +288,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
     }
 
     object *obj = NULL;
-#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+#if defined(REUSE_OBJECTS)
     obj = t.op->get(sz);
     if (not obj)
 #endif

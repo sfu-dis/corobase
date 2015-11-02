@@ -12,7 +12,7 @@ object::create_tuple_object(const varstr *tuple_value, bool do_write)
 
     // Allocate a version
     object *obj = NULL;
-#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+#if defined(REUSE_OBJECTS)
     obj = t.op->get(alloc_sz);
     if (not obj)
 #endif
@@ -39,7 +39,7 @@ object::create_tuple_object(fat_ptr ptr, fat_ptr nxt, sm_log_recover_mgr *lm)
     auto sz = decode_size_aligned(ptr.size_code()) + sizeof(object) + sizeof(dbtuple);
 
     object *obj = NULL;
-#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+#if defined(REUSE_OBJECTS)
     obj = t.op->get(sz);
     if (not obj)
 #endif

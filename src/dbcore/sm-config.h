@@ -8,6 +8,7 @@ public:
     static int numa_nodes;
     static const uint32_t MAX_THREADS = 1024;
     static uint64_t prefault_gig;
+    static int enable_gc;
 
     static void sanity_check();
 

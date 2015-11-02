@@ -170,7 +170,7 @@ rc_t base_txn_btree::do_tree_put(
             // updating my own updates!
             // prev's prev: previous *committed* version
             ASSERT(prev->is_defunct()); // oid_put_update did this
-#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+#if defined(REUSE_OBJECTS)
             t.op->put(t.epoch, prev_obj);
 #endif
         }

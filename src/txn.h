@@ -19,6 +19,7 @@
 #include <unordered_map>
 #include "dbcore/xid.h"
 #include "dbcore/serial.h"
+#include "dbcore/sm-config.h"
 #include "dbcore/sm-oid.h"
 #include "dbcore/sm-log.h"
 #include "dbcore/sm-rc.h"
@@ -233,10 +234,8 @@ protected:
   typedef std::vector<dbtuple *> read_set_map;
   read_set_map read_set;
 #endif
-#ifdef ENABLE_GC
 #ifdef REUSE_OBJECTS
   object_pool *op;
-#endif
 #endif
   epoch_num epoch;
 };

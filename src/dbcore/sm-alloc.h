@@ -15,7 +15,6 @@
 #include "../object.h"
 
 typedef epoch_mgr::epoch_num epoch_num;
-#ifdef ENABLE_GC
 // A pool of objects deallocated by GC, save some calls to
 // tcmalloc in allocate().
 // Note: object_pool is supoosed to be tx/thread-local.
@@ -66,7 +65,6 @@ struct recycle_oid {
     recycle_oid *next;
     recycle_oid(oid_array *a, OID o) : oa(a), oid(o), next(NULL) {}
 };
-#endif
 
 namespace MM {
     void *allocate(uint64_t size);
@@ -93,12 +91,10 @@ namespace MM {
     epoch_num epoch_enter(void);
     void epoch_exit(LSN s, epoch_num e);
 
-#ifdef ENABLE_GC
 #ifdef REUSE_OBJECTS
     object_pool *get_object_pool();
 #endif
     void recycle(oid_array *oa, OID oid);
     void recycle(recycle_oid *list_head, recycle_oid *list_tail);
-#endif
 };
 
