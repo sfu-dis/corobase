@@ -299,7 +299,6 @@ transaction::parallel_ssn_commit()
                 if (reader_xc) {
                     // Copy everything before doing anything:
                     // reader_end for getting pstamp;
-                    // reader_begin for handlling duplicate CSNs;
                     // reader_owner for further detection of context chagne
                     // Note: must get reader_owner after getting end and begin.
                     reader_end = volatile_read(reader_xc->end).offset();
@@ -317,9 +316,9 @@ transaction::parallel_ssn_commit()
                     // cstamp that was set by the (reader) transaction on this bit
                     // position. Note that we can't just set pstamp to cstamp-1
                     // because the updater here has no clue what the previous owner
-                    // of this bit position did and whether it will/alread has a
+                    // of this bit position did and whether it will/already has a
                     // cstamp < or > my cstamp - could have committed before or
-                    // after me, or idn't even read this verions (somebody even
+                    // after me, or didn't even read this verions (somebody even
                     // earlier did); or could be still in progress if reader_owner
                     // doesn't match rxid
                     if (reader_xc and not serial_request_abort(reader_xc))
@@ -327,6 +326,7 @@ transaction::parallel_ssn_commit()
                     xc->set_pstamp(last_cstamp);
                 }
                 else {
+                    // Not marked as an old version - follow normal SSN protocol.
                     // Context change - the guy I saw was already gone. Now I need
                     // to read the xstamp (i.e., the reader should make sure it has
                     // set the xstamp for the tuple once it deregisters from the
@@ -356,12 +356,12 @@ transaction::parallel_ssn_commit()
             }
             else {
                 ASSERT(reader_end and reader_end < cstamp);
-                // Some reader who thinks this is old version existed, two
-                // options here: (1) spin on it and use reader_end-1 if it
-                // aborted, use reader_end if committed and use last_cstamp
-                // otherwise; (2) just use reader_end for simplicity
-                // (betting it'll successfully commit).
                 if (overwritten_tuple->has_persistent_reader()) {
+                    // Some reader who thinks this is old version existed, two
+                    // options here: (1) spin on it and use reader_end-1 if it
+                    // aborted, use reader_end if committed and use last_cstamp
+                    // otherwise; (2) just use reader_end for simplicity
+                    // (betting it'll successfully commit).
                     spin_for_cstamp(rxid, reader_xc);
                     // Refresh last_cstamp here, it'll be reader_end if the
                     // reader committed; or we just need to use the previous one
