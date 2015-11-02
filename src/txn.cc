@@ -123,7 +123,7 @@ transaction::abort()
         }
 #endif
         oidmgr->oid_unlink(w.oa, w.oid, tuple);
-#if defined(ENABLE_GC) && defined(REUSE_OBJECTS)
+#if defined(REUSE_OBJECTS)
         object *obj = (object *)((char *)tuple - sizeof(object));
         op->put(xc->end.offset(), obj);
 #endif
@@ -461,10 +461,9 @@ transaction::parallel_ssn_commit()
     // old versions.
     serial_stamp_last_committed_lsn(xc->end);
 
-#ifdef ENABLE_GC
     recycle_oid *updated_oids_head = NULL;
     recycle_oid *updated_oids_tail = NULL;
-#endif
+
     // post-commit: stuff access stamps for reads; init new versions
     auto clsn = xc->end;
     for (auto &w : write_set) {
@@ -487,8 +486,7 @@ transaction::parallel_ssn_commit()
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn.to_log_ptr());
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-#ifdef ENABLE_GC
-        if (tuple->next()) {
+        if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
             recycle_oid *r = new recycle_oid(w.oa, w.oid);
             if (not updated_oids_head)
@@ -498,7 +496,6 @@ transaction::parallel_ssn_commit()
                 updated_oids_tail = r;
             }
         }
-#endif
     }
 
     // This state change means:
@@ -551,12 +548,11 @@ transaction::parallel_ssn_commit()
         serial_deregister_reader_tx(r);
     }
 
-#ifdef ENABLE_GC
     if (updated_oids_head) {
+        ASSERT(sysconf::enable_gc);
         ASSERT(updated_oids_tail);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
-#endif
 
     return rc_t{RC_TRUE};
 }
@@ -782,10 +778,9 @@ transaction::parallel_ssi_commit()
     // survived!
     log->commit(NULL);
 
-#ifdef ENABLE_GC
     recycle_oid *updated_oids_head = NULL;
     recycle_oid *updated_oids_tail = NULL;
-#endif
+
     // stamp overwritten versions, stuff clsn
     auto clsn = xc->end;
     for (auto &w : write_set) {
@@ -805,8 +800,7 @@ transaction::parallel_ssi_commit()
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn.to_log_ptr());
         INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-#ifdef ENABLE_GC
-        if (tuple->next()) {
+        if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
             recycle_oid *r = new recycle_oid(w.oa, w.oid);
             if (not updated_oids_head)
@@ -816,7 +810,6 @@ transaction::parallel_ssi_commit()
                 updated_oids_tail = r;
             }
         }
-#endif
     }
 
     // NOTE: make sure this happens after populating log block,
@@ -871,12 +864,11 @@ transaction::parallel_ssi_commit()
     }
 
     // GC stuff, do it out of precommit
-#ifdef ENABLE_GC
     if (updated_oids_head) {
+        ASSERT(sysconf::enable_gc);
         ASSERT(updated_oids_tail);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
-#endif
 
     return rc_t{RC_TRUE};
 }
@@ -900,10 +892,8 @@ transaction::si_commit()
     // post-commit cleanup: install clsn to tuples
     // (traverse write-tuple)
     // stuff clsn in tuples in write-set
-#ifdef ENABLE_GC
     recycle_oid *updated_oids_head = NULL;
     recycle_oid *updated_oids_tail = NULL;
-#endif
     auto clsn = xc->end;
     for (auto &w : write_set) {
         dbtuple* tuple = w.new_object->tuple();
@@ -913,8 +903,7 @@ transaction::si_commit()
         tuple->do_write();
         tuple->get_object()->_clsn = clsn.to_log_ptr();
         INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-#ifdef ENABLE_GC
-        if (tuple->next()) {
+        if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
             recycle_oid *r = new recycle_oid(w.oa, w.oid);
             if (not updated_oids_head)
@@ -924,7 +913,6 @@ transaction::si_commit()
                 updated_oids_tail = r;
             }
         }
-#endif
 #if CHECK_INVARIANT
         object *obj = tuple->get_object();
         fat_ptr pdest = volatile_read(obj->_pdest);
@@ -938,12 +926,11 @@ transaction::si_commit()
     // This is where (committed) tuple data are made visible to readers
     volatile_write(xc->state, TXN_CMMTD);
 
-#ifdef ENABLE_GC
     if (updated_oids_head) {
+        ASSERT(sysconf::enable_gc);
         ASSERT(updated_oids_tail);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
-#endif
 
     return rc_t{RC_TRUE};
 }

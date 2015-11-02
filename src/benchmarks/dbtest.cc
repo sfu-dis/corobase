@@ -102,6 +102,7 @@ main(int argc, char **argv)
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
       {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
       {"prefault-gig"               , required_argument , 0                          , 'p'},
+      {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {0, 0, 0, 0}
     };
     int option_index = 0;
@@ -293,6 +294,7 @@ main(int argc, char **argv)
     }
     cerr << endl;
     cerr << "  enable-chkpt: " << enable_chkpt              << endl;
+    cerr << "  enable-gc:    " << sysconf::enable_gc        << endl;
     cerr << "  null-log-device: " << null_log_device        << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 

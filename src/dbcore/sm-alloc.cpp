@@ -20,7 +20,6 @@
  */
 
 namespace MM {
-#ifdef ENABLE_GC
 std::condition_variable gc_trigger;
 std::mutex gc_lock;
 void gc_daemon();
@@ -49,7 +48,6 @@ std::atomic<recycle_oid*> recycle_oid_list(NULL);
 // trim_lsn available (so no need to figure out which safesnap lsn is the
 // appropriate one to rely on - it changes as the daemon does its work).
 LSN trim_lsn = INVALID_LSN;
-#endif
 
 uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
 uint64_t EPOCH_SIZE_COUNT = 200000;
@@ -62,10 +60,10 @@ LSN safesnap_lsn = INVALID_LSN;
 
 void global_init(void*)
 {
-#ifdef ENABLE_GC
-    std::thread t(gc_daemon);
-    t.detach();
-#endif
+    if (sysconf::enable_gc) {
+        std::thread t(gc_daemon);
+        t.detach();
+    }
 }
 
 // epochs related
@@ -144,38 +142,34 @@ void
 epoch_reclaimed(void *cookie, void *epoch_cookie)
 {
     epoch_num e = *(epoch_num *)epoch_cookie;
-    LSN my_begin_lsn = epoch_excl_begin_lsn[e % 3];
-    if (my_begin_lsn != INVALID_LSN) {
-#ifdef ENABLE_GC
-        ASSERT(epoch_reclaim_lsn[e % 3] == INVALID_LSN);
-        epoch_reclaim_lsn[e % 3] = my_begin_lsn;
-        if (enable_safesnap) {
-            // Make versions created during epoch N available for transactions
-            // using safesnap. All transactions that created something in this
-            // epoch has gone, so it's impossible for a reader using that
-            // epoch's end lsn as both begin and commit timestamp to have
-            // conflicts with these writer transactions. But future transactions
-            // need to start with a pstamp of safesnap_lsn.
-            // Take max here because after the loading phase we directly set
-            // safesnap_lsn to log.cur_lsn, which might be actually larger than
-            // safesnap_lsn generated during the loading phase, which is too
-            // conservertive that some tx might not be able to see the tuples
-            // because they were not loaded at that time...
-            // Also use epoch e+1's begin LSN = epoch e's end LSN
-            auto new_safesnap_lsn = epoch_excl_begin_lsn[(e + 1) % 3];
-            volatile_write(safesnap_lsn._val, std::max(safesnap_lsn._val, new_safesnap_lsn._val));
-        }
-        if (e >= 2) {
-            trim_lsn = epoch_reclaim_lsn[(e - 2) % 3];
-            epoch_reclaim_lsn[(e - 2) % 3] = INVALID_LSN;
-        }
-#endif
-    }
     free(epoch_cookie);
-#ifdef ENABLE_GC
-    if (trim_lsn != INVALID_LSN)
+    LSN my_begin_lsn = epoch_excl_begin_lsn[e % 3];
+    if (not sysconf::enable_gc or my_begin_lsn == INVALID_LSN)
+        return;
+
+    ASSERT(epoch_reclaim_lsn[e % 3] == INVALID_LSN);
+    epoch_reclaim_lsn[e % 3] = my_begin_lsn;
+    if (enable_safesnap) {
+        // Make versions created during epoch N available for transactions
+        // using safesnap. All transactions that created something in this
+        // epoch has gone, so it's impossible for a reader using that
+        // epoch's end lsn as both begin and commit timestamp to have
+        // conflicts with these writer transactions. But future transactions
+        // need to start with a pstamp of safesnap_lsn.
+        // Take max here because after the loading phase we directly set
+        // safesnap_lsn to log.cur_lsn, which might be actually larger than
+        // safesnap_lsn generated during the loading phase, which is too
+        // conservertive that some tx might not be able to see the tuples
+        // because they were not loaded at that time...
+        // Also use epoch e+1's begin LSN = epoch e's end LSN
+        auto new_safesnap_lsn = epoch_excl_begin_lsn[(e + 1) % 3];
+        volatile_write(safesnap_lsn._val, std::max(safesnap_lsn._val, new_safesnap_lsn._val));
+    }
+    if (e >= 2) {
+        trim_lsn = epoch_reclaim_lsn[(e - 2) % 3];
+        epoch_reclaim_lsn[(e - 2) % 3] = INVALID_LSN;
         gc_trigger.notify_all();
-#endif
+    }
 }
 
 epoch_num
@@ -206,7 +200,6 @@ epoch_exit(LSN s, epoch_num e)
     mm_epochs.thread_exit();
 }
 
-#ifdef ENABLE_GC
 void recycle(recycle_oid *list_head, recycle_oid *list_tail)
 {
     recycle_oid *succ_head = recycle_oid_list.exchange(list_head, std::memory_order_seq_cst);
@@ -389,7 +382,6 @@ object_pool::put(uint64_t c, object *p)
         tail[order] = r;
     }
 }
-#endif
 #endif
 
 };  // end of namespace
