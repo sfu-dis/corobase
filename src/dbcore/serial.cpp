@@ -150,14 +150,7 @@ namespace TXN {
        the most recent cstamp indicated by that thread as its pstamp.
 */
 
-//int64_t OLD_VERSION_THRESHOLD = 0xa0000000ll;
-//int64_t OLD_VERSION_THRESHOLD = 0xff000000ll;
-//int64_t OLD_VERSION_THRESHOLD = 0x10000000ll;
-//int64_t OLD_VERSION_THRESHOLD = 0x50000000ll;
-//int64_t OLD_VERSION_THRESHOLD = 0x1000000ll;
-//int64_t OLD_VERSION_THRESHOLD = 0x100ll;
-//int64_t OLD_VERSION_THRESHOLD = INT64_MAX;
-int64_t OLD_VERSION_THRESHOLD = 0;
+uint64_t OLD_VERSION_THRESHOLD = 0;
 
 readers_list rlist;
 

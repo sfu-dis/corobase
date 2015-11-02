@@ -23,7 +23,7 @@ dbtuple::~dbtuple()
  * and we need to check the type of clsn because a "committed" tx might
  * change the clsn to ASI_LOG type after changing state.
  */
-int64_t
+uint64_t
 dbtuple::age(xid_context *visitor)
 {
   uint64_t end = 0;

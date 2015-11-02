@@ -17,7 +17,7 @@ extern int enable_safesnap;
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 namespace TXN {
 
-extern int64_t OLD_VERSION_THRESHOLD;
+extern uint64_t OLD_VERSION_THRESHOLD;
 // XXX(tzwang): enabling safesnap for tpcc basically halves the performance.
 // perf says 30%+ of cycles are on oid_get_version, which makes me suspect
 // it's because enabling safesnap makes the reader has to go deeper in the
@@ -27,11 +27,6 @@ extern int enable_safesnap;
 
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
-
-inline bool has_read_opt()
-{
-    return OLD_VERSION_THRESHOLD < INT64_MAX;
-}
 
 #ifdef USE_PARALLEL_SSN
 // returns true if serializable, false means exclusion window violation

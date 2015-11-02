@@ -101,7 +101,7 @@ main(int argc, char **argv)
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
       {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
-      {"ssn-read-opt-threshold"     , no_argument       , 0                          , 'h'},
+      {"ssn-read-opt-threshold"     , required_argument , 0                          , 'h'},
       {"prefault-gig"               , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {0, 0, 0, 0}
@@ -137,7 +137,7 @@ main(int argc, char **argv)
       break;
 
     case 'h':
-      TXN::OLD_VERSION_THRESHOLD = strtol(optarg, NULL, 16);
+      TXN::OLD_VERSION_THRESHOLD = strtoul(optarg, NULL, 16);
 
     case 'B':
       basedir = optarg;
@@ -319,6 +319,7 @@ main(int argc, char **argv)
 #endif
 #ifdef USE_PARALLEL_SSN
     cerr << "  SSN safe sanashot       : " << TXN::enable_safesnap << endl;
+    cerr << "  SSN read optimization threshold: 0x" << hex << TXN::OLD_VERSION_THRESHOLD << dec << endl;
 #endif
   }
 
