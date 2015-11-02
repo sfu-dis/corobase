@@ -101,6 +101,7 @@ main(int argc, char **argv)
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
       {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
+      {"ssn-read-opt-threshold"     , no_argument       , 0                          , 'h'},
       {"prefault-gig"               , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {0, 0, 0, 0}
@@ -134,6 +135,9 @@ main(int argc, char **argv)
       sysconf::worker_threads = strtoul(optarg, NULL, 10);
       ALWAYS_ASSERT(sysconf::worker_threads > 0);
       break;
+
+    case 'h':
+      TXN::OLD_VERSION_THRESHOLD = strtol(optarg, NULL, 16);
 
     case 'B':
       basedir = optarg;
