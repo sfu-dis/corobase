@@ -100,10 +100,12 @@ main(int argc, char **argv)
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
-      {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
-      {"ssn-read-opt-threshold"     , required_argument , 0                          , 'h'},
       {"prefault-gig"               , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
+#ifdef USE_PARALLEL_SSN
+      {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
+      {"ssn-read-opt-threshold"     , required_argument , 0                          , 'h'},
+#endif
       {0, 0, 0, 0}
     };
     int option_index = 0;
@@ -136,8 +138,10 @@ main(int argc, char **argv)
       ALWAYS_ASSERT(sysconf::worker_threads > 0);
       break;
 
+#ifdef USE_PARALLEL_SSN
     case 'h':
       TXN::OLD_VERSION_THRESHOLD = strtoul(optarg, NULL, 16);
+#endif
 
     case 'B':
       basedir = optarg;
