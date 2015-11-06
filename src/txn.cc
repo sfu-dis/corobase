@@ -750,16 +750,6 @@ transaction::parallel_ssi_commit()
                         }
                     }   // otherwise it's worth the spin - won't use it anyway
                 }
-                else if (reader_end == cstamp) {
-                    // Duplicate cstamp by rdtscp - same reasoning as in SSN
-                    if (reader_begin == xc->begin.offset())
-                        return {RC_ABORT_SERIAL};
-                    if (reader_begin < xc->begin.offset()) {
-                        auto cr = spin_for_cstamp(rxid, reader_xc);
-                        if (cr != TXN_ABRTD)    // CMMTD or INVALID
-                            return {RC_ABORT_SERIAL};
-                    }
-                }
                 else {
                     // Reader will commit after me, ie its cstamp will be > ct3
                     // (b/c ct3 is the first committed in the dangerous structure)
