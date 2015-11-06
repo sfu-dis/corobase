@@ -791,7 +791,7 @@ transaction::parallel_ssi_commit()
         volatile_write(tuple->get_object()->_clsn, clsn.to_log_ptr());
         INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         if (sysconf::enable_gc and tuple->next()) {
-            // construct the (sub)list here so that we have only one CAS per tx
+            // construct the (sub)list here so that we have only one XCHG per tx
             recycle_oid *r = new recycle_oid(w.oa, w.oid);
             if (not updated_oids_head)
                 updated_oids_head = updated_oids_tail = r;
@@ -894,7 +894,7 @@ transaction::si_commit()
         tuple->get_object()->_clsn = clsn.to_log_ptr();
         INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         if (sysconf::enable_gc and tuple->next()) {
-            // construct the (sub)list here so that we have only one CAS per tx
+            // construct the (sub)list here so that we have only one XCHG per tx
             recycle_oid *r = new recycle_oid(w.oa, w.oid);
             if (not updated_oids_head)
                 updated_oids_head = updated_oids_tail = r;
