@@ -719,7 +719,7 @@ transaction::parallel_ssi_commit()
                     // its position in the bitmap.
                     auto tuple_xstamp = volatile_read(overwritten_tuple->xstamp);
                     // xstamp might still be 0 - if the reader aborted
-                    if (ct3 and tuple_xstamp >= ct3)
+                    if (tuple_xstamp >= ct3)
                         return {RC_ABORT_SERIAL};
                 }
                 else if (not reader_end) {
