@@ -110,29 +110,53 @@ rc_t base_txn_btree::do_tree_put(
         ASSERT(tuple);
         ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
-        ASSERT(prev->sstamp == NULL_PTR);
-        // Therotically if there's a committed T3 and concurrent readers,
-        // as the updater (T2) I can abort early here to avoid closing a cycle,
-        // as it's easier to restart the T2. In practice, when retry-aborted-tx
-        // is turned on, and if we don't do pre_commit if the tx is aborted
-        // before entering precommit (ie, do log->discard directly), this causes
-        // extremely slow performance with more than 20% cycles spent on
-        // register/deregister_reader_tx. Actually if we don't abort here and
-        // still do log->precommit at abort, we also get higher performance.
-        // So we defer this possible abort to commit time (meanwhile the reader
-        // might not really commit after all...)
         /*
-        if (t.xc->ct3 and serial_get_tuple_readers(prev, true)) {
-            // unlink the version here (note abort_impl won't be able to catch
-            // it because it's not yet in the write set), same as in SSN impl.
-            oidmgr->oid_unlink(this->fid, oid, tuple);
-#ifdef PHANTOM_PROT_TABLE_LOCK
-            if (instant_lock)
-                object_vector::unlock(l);
-#endif
-            return rc_t{RC_ABORT_SERIAL};
+         * TPC-C profile:
+         * 1. Abort when xstamp > ct3 with concurrent readers: favors new order;
+         * 2. Abort when xstamp > ct3 with concurrent readers begin ts > ct3: favors payment
+         * But either way kills a lot of writers, favors readers in general.
+         * 1 is simple, settle with that for now.
+         */
+        ASSERT(prev->sstamp == NULL_PTR);
+        if (t.xc->ct3 and (volatile_read(prev->xstamp) > t.xc->ct3 or serial_get_tuple_readers(prev, true))) {
+            oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
+            return {RC_ABORT_SERIAL};
         }
-        */
+
+        /*
+        if (t.xc->ct3) {
+            readers_list::bitmap_t readers = serial_get_tuple_readers(prev, true);
+            while (readers) {
+                int i = __builtin_ctzll(readers);
+                ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
+                readers &= (readers-1);
+                XID rxid = volatile_read(rlist.xids[i]);
+                ASSERT(rxid != xc->owner);
+                if (!rxid._val)    // reader is gone, check xstamp in the end
+                    continue;
+                XID reader_owner = INVALID_XID;
+                uint64_t reader_begin = 0;
+                xid_context *reader_xc = NULL;
+                reader_xc = xid_get_context(rxid);
+                if (not reader_xc)  // context change, consult xstamp later
+                    continue;
+
+                // copy everything before doing anything
+                reader_begin = volatile_read(reader_xc->begin).offset();
+                reader_owner = volatile_read(reader_xc->owner);
+                if (reader_owner != rxid)  // consult xstamp later
+                    continue;
+
+                if (reader_begin > t.xc->ct3) {
+                    oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
+                    return {RC_ABORT_SERIAL};
+                }
+            }
+            if (volatile_read(prev->xstamp) > t.xc->ct3) {
+                oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
+                return {RC_ABORT_SERIAL};
+            }
+        }*/
 #endif
 #ifdef USE_PARALLEL_SSN
         // update hi watermark
