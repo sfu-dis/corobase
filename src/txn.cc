@@ -697,14 +697,13 @@ transaction::parallel_ssi_commit()
                 XID rxid = volatile_read(rlist.xids[i]);
                 ASSERT(rxid != xc->owner);
                 XID reader_owner = INVALID_XID;
-                uint64_t reader_begin = 0, reader_end = 0;
+                uint64_t reader_end = 0;
                 xid_context *reader_xc = NULL;
                 if (rxid._val) {
                     reader_xc = xid_get_context(rxid);
                     if (reader_xc) {
                         // copy everything before doing anything
                         reader_end = volatile_read(reader_xc->end).offset();
-                        reader_begin = volatile_read(reader_xc->begin).offset();
                         reader_owner = volatile_read(reader_xc->owner);
                     }
                 }
