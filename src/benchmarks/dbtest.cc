@@ -102,6 +102,7 @@ main(int argc, char **argv)
       {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
       {"prefault-gig"               , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
+      {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
 #ifdef USE_PARALLEL_SSN
       {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
       {"ssn-read-opt-threshold"     , required_argument , 0                          , 'h'},
@@ -183,6 +184,10 @@ main(int argc, char **argv)
 
     case 'l':
       log_dir = new string(optarg);
+      break;
+
+    case 'm':
+      sysconf::tmpfs_dir = string(optarg);
       break;
 
     case 'e':
@@ -288,6 +293,7 @@ main(int argc, char **argv)
 #else
     cerr << "  allocator   : libc"                          << endl;
 #endif
+    cerr << "  tmpfs-dir   : " << sysconf::tmpfs_dir        << endl;
     cerr << "  log-dir     : " << *log_dir                  << endl;
     cerr << "  log-segsize : " << log_segsize               << endl;
     cerr << "  log-bufsize : " << log_bufsize               << endl;

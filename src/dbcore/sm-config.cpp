@@ -8,6 +8,7 @@ int sysconf::numa_nodes = 0;
 uint32_t sysconf::threads;
 uint64_t sysconf::prefault_gig = 64;
 int sysconf::enable_gc = 0;
+std::string sysconf::tmpfs_dir("/tmpfs");
 
 void
 sysconf::init() {
