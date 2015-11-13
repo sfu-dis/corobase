@@ -25,9 +25,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     concurrent_btree::NodeLockRegionBegin();
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-#ifdef USE_PARALLEL_SSN
-    if (not enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
-#endif
+    if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         serial_register_tx(xid);
 #endif
 #ifdef PHANTOM_PROT_NODE_SET
@@ -35,13 +33,21 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #endif
     xid = TXN::xid_alloc();
     xc = xid_get_context(xid);
-#ifdef USE_PARALLEL_SSN
+#ifdef USE_PARALLEL_SSI
+    xc->xct = this;
+#endif
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
     // If there's a safesnap, then SSN treats the snapshot as a transaction
     // that has read all the versions, which means every update transaction
     // should have a initial pstamp of the safesnap.
+    //
+    // Readers under SSI using safesnap are free from SSI checks, but writers
+    // will have to see whether they have a ct3 that's before the safesnap lsn
+    // (ie the safesnap is T1, updater is T2). So for SSI updaters also needs
+    // to take a look at the safesnap lsn.
 
     // Take a safe snapshot if read-only.
-    if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
+    if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
         ASSERT(MM::safesnap_lsn.offset());
         xc->begin = volatile_read(MM::safesnap_lsn);
         log = NULL;
@@ -49,8 +55,12 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     else {
         RCU::rcu_enter();
         log = logmgr->new_tx_log();
-        xc->pstamp = volatile_read(MM::safesnap_lsn).offset();
         xc->begin = logmgr->cur_lsn();
+#ifdef USE_PARALLEL_SSN
+        xc->pstamp = volatile_read(MM::safesnap_lsn).offset();
+#elif defined(USE_PARALLEL_SSI)
+        xc->last_safesnap = volatile_read(MM::safesnap_lsn).offset();
+#endif
     }
 #else
     RCU::rcu_enter();
@@ -70,8 +80,8 @@ transaction::~transaction()
     // transaction shouldn't fall out of scope w/o resolution
     // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
     INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
-#ifdef USE_PARALLEL_SSN
-    if (not enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         RCU::rcu_exit();
 #else
     RCU::rcu_exit();
@@ -80,12 +90,10 @@ transaction::~transaction()
     concurrent_btree::AssertAllNodeLocksReleased();
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-#ifdef USE_PARALLEL_SSN
-    if (not enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
-#endif
+    if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         serial_deregister_tx(xid);
 #endif
-    if (enable_safesnap and flags & TXN_FLAG_READ_ONLY)
+    if (sysconf::enable_safesnap and flags & TXN_FLAG_READ_ONLY)
         MM::epoch_exit(INVALID_LSN, epoch);
     else
         MM::epoch_exit(xc->end, epoch);
@@ -157,7 +165,6 @@ transaction_state_to_cstr(txn_state state)
         case TXN_COMMITTING: return "TXN_COMMITTING";
         case TXN_INVALID: return "TXN_INVALID";
     }
-    ALWAYS_ASSERT(false);
     return 0;
 }
 
@@ -203,10 +210,29 @@ transaction::commit()
         case TXN_INVALID:
             ALWAYS_ASSERT(false);
     }
+
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    // Safe snapshot optimization for read-only transactions:
+    // Use the begin ts as cstamp if it's a read-only transaction
+    // This is the same for both SSN and SSI.
+    if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
+        ASSERT(not log);
+        ASSERT(write_set.size() == 0);
+        xc->end = xc->begin;
+        volatile_write(xc->state, TXN_CMMTD);
+        return {RC_TRUE};
+    }
+    else {
+        ASSERT(log);
+        xc->end = log->pre_commit();
+        if (xc->end == INVALID_LSN)
+            return rc_t{RC_ABORT_INTERNAL};
 #ifdef USE_PARALLEL_SSN
-    return parallel_ssn_commit();
+        return parallel_ssn_commit();
 #elif defined USE_PARALLEL_SSI
-    return parallel_ssi_commit();
+        return parallel_ssi_commit();
+#endif
+    }
 #else
     return si_commit();
 #endif
@@ -227,22 +253,6 @@ transaction::commit()
 rc_t
 transaction::parallel_ssn_commit()
 {
-    // Safe snapshot optimization for read-only transactions:
-    // Use the begin ts as cstamp if it's a read-only transaction
-    if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
-        ASSERT(not log);
-        ASSERT(write_set.size() == 0);
-        xc->end = xc->begin;
-        volatile_write(xc->state, TXN_CMMTD);
-        return {RC_TRUE};
-    }
-    else {
-        ASSERT(log);
-        xc->end = log->pre_commit();
-        if (xc->end == INVALID_LSN)
-            return rc_t{RC_ABORT_INTERNAL};
-    }
-
     auto cstamp = xc->end.offset();
 
     // note that sstamp comes from reads, but the read optimization might
@@ -560,12 +570,6 @@ transaction::parallel_ssn_commit()
 rc_t
 transaction::parallel_ssi_commit()
 {
-    ASSERT(log);
-    // get clsn, abort if failed
-    xc->end = log->pre_commit();
-    if (xc->end == INVALID_LSN)
-        return rc_t{RC_ABORT_INTERNAL};
-
     // tzwang: The race between the updater (if any) and me (as the reader) -
     // A reader publishes its existence by calling serial_register_reader().
     // The updater might not notice this if it already checked this tuple
@@ -1064,18 +1068,20 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     ASSERT(xc);
     bool read_my_own = (tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT(not read_my_own or (read_my_own and XID::from_ptr(volatile_read(tuple->get_object()->_clsn)) == xc->owner));
+    ASSERT(not read_my_own or not(flags & TXN_FLAG_READ_ONLY));
 
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
     if (not read_my_own) {
         rc_t rc = {RC_INVALID};
-#ifdef USE_PARALLEL_SSN
-        if (enable_safesnap and (flags & TXN_FLAG_READ_ONLY))
+        if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY))
             rc = {RC_TRUE};
-        else
+        else {
+#ifdef USE_PARALLEL_SSN
             rc = ssn_read(tuple);
 #else
-        rc = ssi_read(tuple);
+            rc = ssi_read(tuple);
 #endif
+        }
         if (rc_is_abort(rc))
             return rc;
     } // otherwise it's my own update/insert, just read it
@@ -1175,8 +1181,14 @@ transaction::ssi_read(dbtuple *tuple)
     // to check if I'm the T1 and do bookeeping if I'm the T2 (pivot).
     // See tuple.h for explanation on what s2 means.
     if (volatile_read(tuple->s2)) {
-        ASSERT(tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);    // sstamp will be valid too if s2 is valid
-        return rc_t{RC_ABORT_SERIAL};
+        // Read-only optimization: s2 is not a problem if we're read-only and
+        // my begin ts is earlier than s2.
+        if (not ((sysconf::enable_ssi_read_only_opt and write_set.size() == 0) and
+                 xc->begin.offset() < tuple->s2)) {
+            // sstamp will be valid too if s2 is valid
+            ASSERT(tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
+            return rc_t{RC_ABORT_SERIAL};
+        }
     }
 
     fat_ptr tuple_s1 = volatile_read(tuple->sstamp);

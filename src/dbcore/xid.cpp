@@ -92,6 +92,8 @@ take_one(thread_data *t)
 #endif
 #ifdef USE_PARALLEL_SSI
     contexts[id].ct3 = ~uint64_t{0};
+    contexts[id].last_safesnap = 0;
+    contexts[id].xct = NULL;
 #endif
     // Note: transaction needs to initialize xc->begin in ctor
     contexts[id].end = INVALID_LSN;

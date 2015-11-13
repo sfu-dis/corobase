@@ -110,53 +110,53 @@ rc_t base_txn_btree::do_tree_put(
         ASSERT(tuple);
         ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
-        /*
-         * TPC-C profile:
-         * 1. Abort when xstamp > ct3 with concurrent readers: favors new order;
-         * 2. Abort when xstamp > ct3 with concurrent readers begin ts > ct3: favors payment
-         * But either way kills a lot of writers, favors readers in general.
-         * 1 is simple, settle with that for now.
-         */
         ASSERT(prev->sstamp == NULL_PTR);
-        if (t.xc->ct3 and (volatile_read(prev->xstamp) > t.xc->ct3 or serial_get_tuple_readers(prev, true))) {
-            oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
-            return {RC_ABORT_SERIAL};
-        }
-
-        /*
         if (t.xc->ct3) {
-            readers_list::bitmap_t readers = serial_get_tuple_readers(prev, true);
-            while (readers) {
-                int i = __builtin_ctzll(readers);
-                ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
-                readers &= (readers-1);
-                XID rxid = volatile_read(rlist.xids[i]);
-                ASSERT(rxid != xc->owner);
-                if (!rxid._val)    // reader is gone, check xstamp in the end
-                    continue;
-                XID reader_owner = INVALID_XID;
-                uint64_t reader_begin = 0;
-                xid_context *reader_xc = NULL;
-                reader_xc = xid_get_context(rxid);
-                if (not reader_xc)  // context change, consult xstamp later
-                    continue;
+            // Check if we are the T2 with a committed T3 earlier than a safesnap (being T1)
+            if (t.xc->ct3 <= t.xc->last_safesnap)
+                return {RC_ABORT_SERIAL};
 
-                // copy everything before doing anything
-                reader_begin = volatile_read(reader_xc->begin).offset();
-                reader_owner = volatile_read(reader_xc->owner);
-                if (reader_owner != rxid)  // consult xstamp later
-                    continue;
+            if (volatile_read(prev->xstamp) >= t.xc->ct3 or serial_get_tuple_readers(prev, true)) {
+                // Read-only optimization: safe if T1 is read-only (so far) and T1's begin ts
+                // is before ct3.
+                if (sysconf::enable_ssi_read_only_opt) {
+                    readers_list::bitmap_t readers = serial_get_tuple_readers(prev, true);
+                    while (readers) {
+                        int i = __builtin_ctzll(readers);
+                        ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
+                        readers &= (readers-1);
+                        XID rxid = volatile_read(rlist.xids[i]);
+                        ASSERT(rxid != t.xc->owner);
+                        if (!rxid._val)    // reader is gone, check xstamp in the end
+                            continue;
+                        XID reader_owner = INVALID_XID;
+                        uint64_t reader_begin = 0;
+                        xid_context *reader_xc = NULL;
+                        reader_xc = xid_get_context(rxid);
+                        if (not reader_xc)  // context change, consult xstamp later
+                            continue;
 
-                if (reader_begin > t.xc->ct3) {
+                        // copy everything before doing anything
+                        reader_begin = volatile_read(reader_xc->begin).offset();
+                        reader_owner = volatile_read(reader_xc->owner);
+                        if (reader_owner != rxid)  // consult xstamp later
+                            continue;
+
+                        // we're safe if the reader is read-only (so far) and started after ct3
+                        if (sysconf::enable_ssi_read_only_opt and
+                            reader_xc->xct->write_set.size() == 0 and
+                            reader_begin >= t.xc->ct3) {
+                            oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
+                            return {RC_ABORT_SERIAL};
+                        }
+                    }
+                }
+                else {
                     oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
                     return {RC_ABORT_SERIAL};
                 }
             }
-            if (volatile_read(prev->xstamp) > t.xc->ct3) {
-                oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
-                return {RC_ABORT_SERIAL};
-            }
-        }*/
+        }
 #endif
 #ifdef USE_PARALLEL_SSN
         // update hi watermark

@@ -103,9 +103,14 @@ main(int argc, char **argv)
       {"prefault-gig"               , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
+#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+      {"safesnap"                   , no_argument       , &sysconf::enable_safesnap  , 1},
+#ifdef USE_PARALLEL_SSI
+      {"ssi-read-only-opt"          , no_argument       , &sysconf::enable_ssi_read_only_opt, 1},
+#endif
 #ifdef USE_PARALLEL_SSN
-      {"ssn-safesnap"               , no_argument       , &TXN::enable_safesnap      , 1},
       {"ssn-read-opt-threshold"     , required_argument , 0                          , 'h'},
+#endif
 #endif
       {0, 0, 0, 0}
     };
@@ -327,8 +332,13 @@ main(int argc, char **argv)
 #else
     cerr << "  btree_node_prefetch     : no" << endl;
 #endif
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    cerr << "  SSN/SSI safe sanashot   : " << sysconf::enable_safesnap << endl;
+#endif
+#ifdef USE_PARALLEL_SSI
+    cerr << "  SSI read-only optimization: " << sysconf::enable_ssi_read_only_opt << endl;
+#endif
 #ifdef USE_PARALLEL_SSN
-    cerr << "  SSN safe sanashot       : " << TXN::enable_safesnap << endl;
     cerr << "  SSN read optimization threshold: 0x" << hex << TXN::OLD_VERSION_THRESHOLD << dec << endl;
 #endif
   }

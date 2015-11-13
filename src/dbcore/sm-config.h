@@ -10,8 +10,15 @@ public:
     static const uint32_t MAX_THREADS = 1024;
     static uint64_t prefault_gig;
     static int enable_gc;
-
+    static int enable_ssi_read_only_opt;
     static std::string tmpfs_dir;
+
+    // XXX(tzwang): enabling safesnap for tpcc basically halves the performance.
+    // perf says 30%+ of cycles are on oid_get_version, which makes me suspect
+    // it's because enabling safesnap makes the reader has to go deeper in the
+    // version chains to find the desired version. So perhaps don't enable this
+    // for update-intensive workloads, like tpcc. TPC-E to test and verify.
+    static int enable_safesnap;
 
     static void sanity_check();
 
