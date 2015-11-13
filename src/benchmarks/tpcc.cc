@@ -173,9 +173,7 @@ static double g_wh_spread = 0;
 // 6: Microbenchmark - others will be set to 0 if g_microbench is set
 // 7: Microbenchmark-simple - just do one insert, get, and put
 // 8: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
-static unsigned g_txn_workload_mix[] = { 41, 43, 4, 4, 4, 4, 0, 0, 0 }; // default TPC-C workload mix
-//static unsigned g_txn_workload_mix[] = { 45, 43, 4, 4, 4, 0, 0, 0 }; // default TPC-C workload mix
-//static unsigned g_txn_workload_mix[] = { 0, 100, 0, 0, 0, 0, 0, 0 }; // default TPC-C workload mix
+static unsigned g_txn_workload_mix[] = {45, 43, 0, 4, 4, 4, 0, 0, 0}; // default TPC-C workload mix
 
 static aligned_padded_elem<spinlock> *g_partition_locks = nullptr;
 static aligned_padded_elem<atomic<uint64_t>> *g_district_ids = nullptr;
