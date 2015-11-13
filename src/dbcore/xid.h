@@ -8,6 +8,7 @@
 //#include "../tuple.h"
 
 class dbtuple;
+class transaction;
 namespace TXN {
 
 enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD, TXN_INVALID };
@@ -23,6 +24,8 @@ struct xid_context {
 #endif
 #ifdef USE_PARALLEL_SSI
     uint64_t ct3;   // smallest commit stamp of T3 in the dangerous structure
+    uint64_t last_safesnap;
+    transaction *xct;
 #endif
     txn_state state;
 
