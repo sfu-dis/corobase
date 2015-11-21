@@ -149,7 +149,7 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
 
     ASSERT(epoch_reclaim_lsn[e % 3] == INVALID_LSN);
     epoch_reclaim_lsn[e % 3] = my_begin_lsn;
-    if (enable_safesnap) {
+    if (sysconf::enable_safesnap) {
         // Make versions created during epoch N available for transactions
         // using safesnap. All transactions that created something in this
         // epoch has gone, so it's impossible for a reader using that

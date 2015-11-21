@@ -333,7 +333,7 @@ main(int argc, char **argv)
     cerr << "  btree_node_prefetch     : no" << endl;
 #endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    cerr << "  SSN/SSI safe sanashot   : " << sysconf::enable_safesnap << endl;
+    cerr << "  SSN/SSI safe snapshot   : " << sysconf::enable_safesnap << endl;
 #endif
 #ifdef USE_PARALLEL_SSI
     cerr << "  SSI read-only optimization: " << sysconf::enable_ssi_read_only_opt << endl;
