@@ -1,8 +1,4 @@
 #include "serial.h"
-namespace TXN {
-int enable_safesnap = 0;
-};
-
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 namespace TXN {
 

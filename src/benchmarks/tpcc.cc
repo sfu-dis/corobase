@@ -1917,9 +1917,9 @@ tpcc_worker::txn_order_status()
   //   max_write_set_size : 0
   //   num_txn_contexts : 4
   const uint64_t read_only_mask =
-    TXN::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+    sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   const abstract_db::TxnProfileHint hint =
-    TXN::enable_safesnap ?
+    sysconf::enable_safesnap ?
       abstract_db::HINT_TPCC_ORDER_STATUS_READ_ONLY :
       abstract_db::HINT_TPCC_ORDER_STATUS;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
@@ -2071,9 +2071,9 @@ tpcc_worker::txn_stock_level()
   //   n_read_set_large_instances : 2
   //   num_txn_contexts : 3
   const uint64_t read_only_mask =
-    TXN::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+    sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   const abstract_db::TxnProfileHint hint =
-    TXN::enable_safesnap ?
+    sysconf::enable_safesnap ?
       abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY :
       abstract_db::HINT_TPCC_STOCK_LEVEL;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
