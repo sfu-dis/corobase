@@ -137,20 +137,9 @@ transaction::abort()
 #endif
     }
 
-#ifdef USE_PARALLEL_SSI
-    // PLEASE REALLY DO FIXME (tzwang): Theoretically skipping the pre_commit()
-    // here should give better performance because it saves a CAS in the log,
-    // but for SSI doing the pre_commit() gives better performance, no matter
-    // with or without --retry-aborted-transactions, because SSI tends to abort
-    // the unlucky T2 (updater), putting tremendous pressure on
-    // register/deregister_reader_tx. See also the comment in do_tree_put().
-    //
-    // For SSN and SI, the above doesn't apply; avoiding pre_commit() slightly
-    // improvers performance.
-    if (likely(state() != TXN_COMMITTING))
-        log->pre_commit();
-#endif
-    log->discard();
+    // Read-only tx on a safesnap won't have log
+    if (log)
+        log->discard();
 }
 
 namespace {
