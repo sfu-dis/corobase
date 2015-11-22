@@ -129,6 +129,7 @@ main(int argc, char **argv)
 
     case 'p':
       sysconf::prefault_gig = strtoul(optarg, NULL, 10);
+      break;
 
     case 'b':
       bench_type = optarg;
