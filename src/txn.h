@@ -53,6 +53,7 @@ class base_txn_btree;
 class transaction {
   // XXX: weaker than necessary
   friend class base_txn_btree;
+  friend class sm_oid_mgr;
 
 public:
   typedef dbtuple::size_type size_type;

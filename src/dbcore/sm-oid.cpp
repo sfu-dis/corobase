@@ -2,8 +2,10 @@
 #include "sm-oid-impl.h"
 #include "sm-alloc.h"
 #include "sm-chkpt.h"
+#include "sm-config.h"
 #include "sc-hash.h"
 #include "burt-hash.h"
+#include "../txn.h"
 #include <map>
 #include <fcntl.h>
 #include <unistd.h>
@@ -1008,7 +1010,17 @@ start_over:
                 ASSERT(volatile_read(holder->end).offset());
                 ASSERT(owner == holder_xid);
 #ifdef USE_READ_COMMITTED
+#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+                if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
+                    if (holder->end < visitor_xc->begin)
+                        return cur_obj->tuple();
+                }
+                else {
+                    return cur_obj->tuple();
+                }
+#else
                 return cur_obj->tuple();
+#endif
 #else
                 if (holder->end < visitor_xc->begin)
                     return cur_obj->tuple();
@@ -1024,7 +1036,16 @@ start_over:
         }
         else if (clsn.asi_type() == fat_ptr::ASI_LOG) {
 #ifdef USE_READ_COMMITTED
+#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+            if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
+                if (LSN::from_ptr(clsn) <= visitor_xc->begin)
+                    return cur_obj->tuple();
+            }
+            else
+                return cur_obj->tuple();
+#else
             return cur_obj->tuple();
+#endif
 #else
             if (LSN::from_ptr(clsn) <= visitor_xc->begin)
                 return cur_obj->tuple();
