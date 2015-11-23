@@ -89,6 +89,7 @@ take_one(thread_data *t)
     contexts[id].sstamp = ~uint64_t{0};
     contexts[id].pstamp = 0;
     contexts[id].should_abort = false;
+    contexts[id].xct = NULL;
 #endif
 #ifdef USE_PARALLEL_SSI
     contexts[id].ct3 = ~uint64_t{0};

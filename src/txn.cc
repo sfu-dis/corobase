@@ -33,10 +33,8 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #endif
     xid = TXN::xid_alloc();
     xc = xid_get_context(xid);
-#ifdef USE_PARALLEL_SSI
-    xc->xct = this;
-#endif
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    xc->xct = this;
     // If there's a safesnap, then SSN treats the snapshot as a transaction
     // that has read all the versions, which means every update transaction
     // should have a initial pstamp of the safesnap.
