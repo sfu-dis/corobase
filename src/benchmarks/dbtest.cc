@@ -148,6 +148,7 @@ main(int argc, char **argv)
 #ifdef USE_PARALLEL_SSN
     case 'h':
       TXN::OLD_VERSION_THRESHOLD = strtoul(optarg, NULL, 16);
+      break;
 #endif
 
     case 'B':
