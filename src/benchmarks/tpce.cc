@@ -730,9 +730,8 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	commit transaction
 */
 
-
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	std::vector<std::pair<varstr *, const varstr *>> brokers;
 	for( auto i = 0; i < max_broker_list_len and pIn->broker_list[i] ; i++ )
@@ -831,8 +830,8 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut)
 {
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	// Get c_id;
 	const c_tax_id_index::key k_c_0( pIn->tax_id, MIN_VAL(k_c_0.c_id) );
@@ -937,7 +936,6 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
 
 rc_t tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *pIn, TCustomerPositionFrame2Output *pOut)
 {
-
 	// XXX. If, CP frame 1 doesn't give output, then, we don't have valid input at here. so just return
 	if( not pIn->acct_id )
 	{
@@ -1168,8 +1166,8 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 
 rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut)
 {
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	std::vector<inline_str_fixed<cSYMBOL_len>> stock_list_cursor;
 
@@ -1308,8 +1306,8 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 
 rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut)
 {
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	int64_t co_id;
 
@@ -1520,10 +1518,10 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
 rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTradeLookupFrame1Output *pOut)
 {
-
 	int i;
 
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	pOut->num_found = 0;
 	for( i = 0; i < pIn->max_trades; i++ )
@@ -1594,8 +1592,8 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTradeLookupFrame2Output *pOut)
 {
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_ca_id_index::key k_t_1( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id) );
@@ -1673,8 +1671,8 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTradeLookupFrame3Output *pOut)
 {
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 	
 	const t_s_symb_index::key k_t_0( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_s_symb_index::key k_t_1( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id) );
@@ -1757,8 +1755,8 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTradeLookupFrame4Output *pOut)
 {
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_ca_id_index::key k_t_1( pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id) );
@@ -2790,8 +2788,8 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTradeStatusFrame1Output *pOut)
 {
-
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, MIN_VAL(k_t_0.t_dts), MIN_VAL(k_t_0.t_id) );
 	const t_ca_id_index::key k_t_1( pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id) );
