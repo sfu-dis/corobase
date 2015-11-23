@@ -24,10 +24,6 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::NodeLockRegionBegin();
 #endif
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
-        serial_register_tx(xid);
-#endif
 #ifdef PHANTOM_PROT_NODE_SET
     absent_set.set_empty_key(NULL);    // google dense map
 #endif
@@ -51,6 +47,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
         log = NULL;
     }
     else {
+        serial_register_tx(xid);
         RCU::rcu_enter();
         log = logmgr->new_tx_log();
         xc->begin = logmgr->cur_lsn();
