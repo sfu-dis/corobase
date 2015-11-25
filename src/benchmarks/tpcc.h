@@ -159,4 +159,30 @@ DO_STRUCT(stock_data, STOCK_DATA_KEY_FIELDS, STOCK_DATA_VALUE_FIELDS)
   y(inline_str_fixed<9>,w_zip)
 DO_STRUCT(warehouse, WAREHOUSE_KEY_FIELDS, WAREHOUSE_VALUE_FIELDS)
 
+#define NATION_KEY_FIELDS(x, y) \
+  x(int32_t,n_nationkey)
+#define NATION_VALUE_FIELDS(x, y) \
+  x(inline_str_fixed<25>,n_name)\
+  y(int32_t,n_regionkey) \
+  y(inline_str_fixed<152>,n_comment)
+DO_STRUCT(nation, NATION_KEY_FIELDS, NATION_VALUE_FIELDS)
+
+#define REGION_KEY_FIELDS(x, y) \
+  x(int32_t,r_regionkey)
+#define REGION_VALUE_FIELDS(x, y) \
+  x(inline_str_fixed<25>,r_name)\
+  y(inline_str_fixed<152>,r_comment)
+DO_STRUCT(region, REGION_KEY_FIELDS, REGION_VALUE_FIELDS)
+
+#define SUPPLIER_KEY_FIELDS(x, y) \
+  x(int32_t,su_suppkey)
+#define SUPPLIER_VALUE_FIELDS(x, y) \
+  x(inline_str_fixed<25>,su_name)\
+  y(inline_str_fixed<40>,su_address)	\
+  y(int32_t,su_nationkey)	\
+  y(inline_str_fixed<15>,su_phone)	\
+  y(int32_t,su_acctbal)	\
+  y(inline_str_fixed<40>,su_comment)
+DO_STRUCT(supplier, SUPPLIER_KEY_FIELDS, SUPPLIER_VALUE_FIELDS)
+
 #endif
