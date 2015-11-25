@@ -26,6 +26,17 @@
 using namespace std;
 using namespace util;
 
+typedef std::vector< std::vector<std::pair< int32_t, int32_t>>> SuppStockMap;
+SuppStockMap supp_stock_map(10000);		// value ranges 0 ~ 9999 ( modulo by 10k )
+
+struct eqstr
+{
+	bool operator()(const char* s1, const char* s2) const
+	{
+		return (s1 == s2) || (s1 && s2 && strcmp(s1, s2) == 0);
+	}
+};
+
 #define TPCC_TABLE_LIST(x) \
   x(customer) \
   x(customer_name_idx) \
@@ -38,7 +49,60 @@ using namespace util;
   x(order_line) \
   x(stock) \
   x(stock_data) \
+  x(nation) \
+  x(region) \
+  x(supplier) \
   x(warehouse)
+
+struct Nation{
+	int id;
+	std::string name;
+	int rId;
+};
+
+const Nation nations[]={
+	{48, "ALGERIA", 0},{49, "ARGENTINA", 1},{50, "BRAZIL", 1},	{51, "CANADA", 1},
+	{52, "EGYPT", 4},{53, "ETHIOPIA", 0},{54, "FRANCE", 3},{55, "GERMANY", 3},
+	{56, "INDIA", 2},{57, "INDONESIA", 2},
+
+	{65, "IRAN", 4},{66, "IRAQ", 4},{67, "JAPAN", 2},{68, "JORDAN", 4},
+	{69, "KENYA", 0},{70, "MOROCCO", 0},{71, "MOZAMBIQUE", 0},{72, "PERU", 1},
+	{73, "CHINA", 2},{74, "ROMANIA", 3},{75, "SAUDI ARABIA", 4},{76, "VIETNAM", 2},
+	{77, "RUSSIA", 3},{78, "UNITED KINGDOM", 3},{79, "UNITED STATES", 1},
+	{80, "CHINA", 2},{81, "PAKISTAN", 2},{82, "BANGLADESH", 2},{83, "MEXICO", 1},
+	{84, "PHILIPPINES", 2},{85, "THAILAND", 2},{86, "ITALY", 3},{87, "SOUTH AFRICA", 0},
+	{88, "SOUTH KOREA", 2},{89, "COLOMBIA", 1},{90, "SPAIN", 3},
+
+	{97, "UKRAINE", 3},{98, "POLAND", 3},{99, "SUDAN", 0},{100, "UZBEKISTAN", 2},
+	{101, "MALAYSIA", 2},{102, "VENEZUELA", 1},{103, "NEPAL", 2},{104, "AFGHANISTAN", 2},
+	{105, "NORTH KOREA", 2},{106, "TAIWAN", 2},{107, "GHANA", 0},{108, "IVORY COAST", 0},
+	{109, "SYRIA", 4},{110, "MADAGASCAR", 0},{111, "CAMEROON", 0},{112, "SRI LANKA", 2},
+	{113, "ROMANIA", 3},{114, "NETHERLANDS", 3},{115, "CAMBODIA", 2},{116, "BELGIUM", 3},
+	{117, "GREECE", 3},{118, "PORTUGAL", 3},{119, "ISRAEL", 4},{120, "FINLAND", 3},
+	{121, "SINGAPORE", 2},{122, "NORWAY", 3}
+};
+
+const char* regions[]={"AFRICA","AMERICA","ASIA","EUROPE", "MIDDLE EAST"};
+
+class table_scanner: public abstract_ordered_index::scan_callback {
+	public:
+		table_scanner( str_arena* arena) : _arena(arena) {}
+		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
+		{
+			varstr * const k = _arena->next(keylen);
+			INVARIANT(k);
+			k->copy_from(keyp, keylen);
+			output.emplace_back(k, &value);
+			return true;
+		}
+
+		void clear()
+		{
+			output.clear();
+		}
+		std::vector<std::pair<varstr *, const varstr *>> output;
+		str_arena* _arena;
+};
 
 static inline ALWAYS_INLINE size_t
 NumWarehouses()
@@ -147,15 +211,11 @@ static int g_new_order_remote_item_pct = 1;
 static int g_new_order_fast_id_gen = 0;
 static int g_uniform_item_dist = 0;
 static int g_order_status_scan_hack = 0;
-static int g_microbench_static = 0;
-static int g_microbench_simple = 0;
-static int g_microbench_random = 0;
 static int g_wh_temperature = 0;
 static uint g_microbench_rows = 100000;  // this many rows
-
 // can't have both ratio and rows at the same time
-static double g_microbench_wr_ratio = 0; // this % of writes
-static uint g_microbench_wr_rows = 0; // this number of rows to write
+static int g_microbench_wr_rows = 0; // this number of rows to write
+static int g_nr_suppliers = 10000;
 
 // how much % of time a worker should use a random home wh
 // 0 - always use home wh
@@ -170,10 +230,9 @@ static double g_wh_spread = 0;
 // 3: Delivery
 // 4: OrderStatus
 // 5: StockLevel
-// 6: Microbenchmark - others will be set to 0 if g_microbench is set
-// 7: Microbenchmark-simple - just do one insert, get, and put
-// 8: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
-static unsigned g_txn_workload_mix[] = {45, 43, 0, 4, 4, 4, 0, 0, 0}; // default TPC-C workload mix
+// 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table update
+// 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
+static unsigned g_txn_workload_mix[] = { 45, 43, 0, 4, 4, 4, 0, 0 }; // default TPC-C workload mix
 
 static aligned_padded_elem<spinlock> *g_partition_locks = nullptr;
 static aligned_padded_elem<atomic<uint64_t>> *g_district_ids = nullptr;
@@ -582,51 +641,23 @@ public:
     return static_cast<tpcc_worker *>(w)->txn_stock_level();
   }
 
-  rc_t txn_micro_bench_static();
-
-  static rc_t
-  TxnMicroBenchStatic(bench_worker *w)
-  {
-    ANON_REGION("TxnMicroBenchStatic:", &tpcc_txn_cg);
-    return static_cast<tpcc_worker *>(w)->txn_micro_bench_static();
-  }
-
-  rc_t txn_micro_bench_simple();
-
-  static rc_t
-  TxnMicroBenchSimple(bench_worker *w)
-  {
-    ANON_REGION("TxnMicroBenchSimple:", &tpcc_txn_cg);
-    return static_cast<tpcc_worker *>(w)->txn_micro_bench_simple();
-  }
-
-  rc_t txn_micro_bench_order_line();
-
-  static rc_t
-  TxnMicroBenchOrderLine(bench_worker *w)
-  {
-    ANON_REGION("TxnMicroBenchOrderLine:", &tpcc_txn_cg);
-    return static_cast<tpcc_worker *>(w)->txn_micro_bench_order_line();
-  }
-
-  rc_t txn_micro_bench_random();
+  rc_t txn_microbench_random();
 
   static rc_t
   TxnMicroBenchRandom(bench_worker *w)
   {
     ANON_REGION("TxnMicroBenchRandom:", &tpcc_txn_cg);
-    return static_cast<tpcc_worker *>(w)->txn_micro_bench_random();
+    return static_cast<tpcc_worker *>(w)->txn_microbench_random();
   }
 
-  rc_t txn_micro_bench_ro();
+  rc_t txn_query2();
 
   static rc_t
-  TxnMicroBenchRO(bench_worker *w)
+  TxnQuery2(bench_worker *w)
   {
-    ANON_REGION("TxnMicroBenchRO:", &tpcc_txn_cg);
-    return static_cast<tpcc_worker *>(w)->txn_micro_bench_ro();
+    ANON_REGION("TxnQuery2:", &tpcc_txn_cg);
+    return static_cast<tpcc_worker *>(w)->txn_query2();
   }
-
   virtual workload_desc_vec
   get_workload() const
   {
@@ -654,11 +685,9 @@ public:
     if (g_txn_workload_mix[5])
       w.push_back(workload_desc("StockLevel", double(g_txn_workload_mix[5])/100.0, TxnStockLevel));
     if (g_txn_workload_mix[6])
-        w.push_back(workload_desc("MicroBench", double(g_txn_workload_mix[6])/100.0, TxnMicroBenchStatic));
+        w.push_back(workload_desc("Query2", double(g_txn_workload_mix[6])/100.0, TxnQuery2));
     if (g_txn_workload_mix[7])
-        w.push_back(workload_desc("MicroBenchSimple", double(g_txn_workload_mix[7])/100.0, TxnMicroBenchSimple));
-    if (g_txn_workload_mix[8])
-        w.push_back(workload_desc("MicroBenchRandom", double(g_txn_workload_mix[8])/100.0, TxnMicroBenchRandom));
+        w.push_back(workload_desc("MicroBenchRandom", double(g_txn_workload_mix[7])/100.0, TxnMicroBenchRandom));
     return w;
   }
 
@@ -716,6 +745,106 @@ private:
 
 vector<uint> tpcc_worker::hot_whs;
 vector<uint> tpcc_worker::cold_whs;
+
+class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
+public:
+  tpcc_nation_loader(unsigned long seed,
+                        abstract_db *db,
+                        const map<string, abstract_ordered_index *> &open_tables,
+                        const map<string, vector<abstract_ordered_index *>> &partitions)
+    : bench_loader(seed, db, open_tables),
+      tpcc_worker_mixin(partitions)
+  {}
+
+protected:
+  virtual void
+  load()
+  {
+	  string obj_buf;
+	  void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	  uint i;
+	  for (i = 0; i < 62; i++) {
+		  const nation::key k(nations[i].id);
+		  nation::value v;
+
+		  const string n_comment = RandomStr(r, RandomNumber(r, 10, 20));
+		  v.n_name = string( nations[i].name );
+		  v.n_regionkey = nations[i].rId;
+		  v.n_comment.assign( n_comment );
+		  try_verify_strict(tbl_nation(1)->insert(txn, Encode(str(Size(k)), k), Encode(str(Size(v)), v)));
+
+	  }
+	  try_verify_strict(db->commit_txn(txn));
+  }
+};
+
+class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
+public:
+  tpcc_region_loader(unsigned long seed,
+                        abstract_db *db,
+                        const map<string, abstract_ordered_index *> &open_tables,
+                        const map<string, vector<abstract_ordered_index *>> &partitions)
+    : bench_loader(seed, db, open_tables),
+      tpcc_worker_mixin(partitions)
+  {}
+
+protected:
+  virtual void
+  load()
+  {
+	  string obj_buf;
+	  void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	  for (uint i = 0; i < 5; i++) {
+		  const region::key k(i);
+		  region::value v;
+
+		  v.r_name = string(regions[i]);
+		  const string r_comment = RandomStr(r, RandomNumber(r, 10, 20));
+		  v.r_comment.assign( r_comment );
+		  try_verify_strict(tbl_region(1)->insert(txn, Encode(str(Size(k)), k), Encode(str(Size(v)), v)));
+
+	  }
+	  try_verify_strict(db->commit_txn(txn));
+  }
+};
+
+class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
+public:
+  tpcc_supplier_loader(unsigned long seed,
+                        abstract_db *db,
+                        const map<string, abstract_ordered_index *> &open_tables,
+                        const map<string, vector<abstract_ordered_index *>> &partitions)
+    : bench_loader(seed, db, open_tables),
+      tpcc_worker_mixin(partitions)
+  {}
+
+protected:
+  virtual void
+  load()
+  {
+	  string obj_buf;
+	  for (uint i = 0; i < 10000; i++) {
+		  void *txn = db->new_txn(txn_flags, arena, txn_buf());
+		  const supplier::key k(i);
+		  supplier::value v;
+
+		  v.su_name = string("Supplier#") + string("000000000") + to_string(i);
+		  v.su_address = RandomStr(r, RandomNumber(r, 10, 40));
+
+		  auto rand = 0;
+		  while(rand==0 || (rand>'9'&&rand<'A') || (rand>'Z'&&rand<'a'))
+			  rand = RandomNumber(r, '0', 'z');
+		  v.su_nationkey = rand;
+//		  v.su_phone = string("911");			// XXX. nobody wants this field
+//		  v.su_acctbal = 0;
+//		  v.su_comment = RandomStr(r, RandomNumber(r,10,39));		// XXX. Q16 uses this. fix this if needed.
+
+		  try_verify_strict(tbl_supplier(1)->insert(txn, Encode(str(Size(k)), k), Encode(str(Size(v)), v)));
+
+	  try_verify_strict(db->commit_txn(txn));
+	  }
+  }
+};
 
 class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 public:
@@ -777,6 +906,12 @@ protected:
         checker::SanityCheckWarehouse(&k, v);
       }
       try_verify_strict(db->commit_txn(txn));
+
+	  // pre-build supp-stock mapping table to boost tpc-ch queries
+    for (uint w = 1; w <= NumWarehouses(); w++)
+      for (uint i = 1; i <= NumItems(); i++)
+			  supp_stock_map[ w*i % 10000 ].push_back( std::make_pair(w,i) );
+
     if (verbose) {
       cerr << "[INFO] finished loading warehouse" << endl;
       cerr << "[INFO]   * average warehouse record length: "
@@ -1148,8 +1283,6 @@ protected:
   size_t
   NumOrderLinesPerCustomer()
   {
-    if (g_microbench_static || g_microbench_simple)
-      return 15;
     return RandomNumber(r, 5, 15);
   }
 
@@ -1192,8 +1325,6 @@ protected:
             else
               v_oo.o_carrier_id = 0;
             v_oo.o_ol_cnt = NumOrderLinesPerCustomer();
-            if (g_microbench_simple)
-              v_oo.o_ol_cnt--;  // make room for the insert
             v_oo.o_all_local = 1;
             v_oo.o_entry_d = GetCurrentTimeMillis();
 
@@ -2130,331 +2261,207 @@ tpcc_worker::txn_stock_level()
     return {RC_TRUE};
 }
 
-// Microbenchmark for tpcc, read-only
 rc_t
-tpcc_worker::txn_micro_bench_ro()
+tpcc_worker::txn_query2()
 {
-  void *txn = db->new_txn(txn_flags, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+	void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	scoped_str_arena s_arena(arena);
 
-    uint cnt = 0;
+	static __thread table_scanner r_scanner(&arena);
+	r_scanner.clear();
+	const region::key k_r_0( 0 );
+	const region::key k_r_1( 5 );
+	try_catch(tbl_region(1)->scan(txn, Encode(str(sizeof(k_r_0)), k_r_0), &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner, s_arena.get()));
+	ALWAYS_ASSERT( r_scanner.output.size() == 5);
 
-    // micro-bench's read/write here
-    // Use the order_line table, for each warehouse, district, customer,
-    // order, order-line (see tpcc schema).
-    order_line::value v;
-    varstr sv = str(Size(v));
-    for (uint w = 1; w < NumWarehouses() + 1; w++) {
-      scoped_lock_guard<spinlock> slock(
-          g_enable_partition_locks ? &LockForPartition(w) : nullptr);
-      for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
-        for (uint c = 1; c <= NumCustomersPerDistrict(); c++) {
-          // We have exactly 15 order-lines per customer if g_microbench is set
-          for (uint l = 1; l <= 15; l++) {
-            const order_line::key k_ol(w, d, c, l);
-            // tzwang: so I guess we should use get(), instead of scan() here
-            try_catch(tbl_order_line(w)->get(txn, Encode(str(Size(k_ol)), k_ol), sv));
-            //FIXME: add writes
-            if (++cnt == g_microbench_rows)
-              goto finish;
-          }
-        }
-      }
-    }
+	static __thread table_scanner n_scanner(&arena);
+	n_scanner.clear();
+	const nation::key k_n_0( 0 );
+	const nation::key k_n_1( numeric_limits<int32_t>::max() );
+	try_catch(tbl_nation(1)->scan(txn, Encode(str(sizeof(k_n_0)), k_n_0), &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner, s_arena.get()));
+	ALWAYS_ASSERT( n_scanner.output.size() == 62);
 
-    if (cnt != g_microbench_rows) {
-      cerr << "g_microbench_rows too small? Did " << cnt
-           << " rows, should do " << g_microbench_rows << "rows" << endl;
-      abort();
-    }
+	// Pick a target region
+	auto target_region = RandomNumber(r, 0, 4);
+//	auto target_region = 3;
+	ALWAYS_ASSERT( 0 <= target_region and target_region <= 4 );
 
-finish:
-    measure_txn_counters(txn, "txn_micro_bench_ro");
+	// Scan region
+	for( auto &r_r : r_scanner.output )
+	{
+		region::key k_r_temp;
+		region::value v_r_temp;
+		const region::key* k_r = Decode( *r_r.first, k_r_temp );
+		const region::value* v_r = Decode(*r_r.second, v_r_temp );
+
+		// filtering region
+		if( v_r->r_name != string(regions[target_region]) )
+			continue;
+
+		// Scan nation
+		for( auto &r_n : n_scanner.output )
+		{
+			nation::key k_n_temp;
+			nation::value v_n_temp;
+			const nation::key* k_n = Decode( *r_n.first, k_n_temp );
+			const nation::value* v_n = Decode(*r_n.second, v_n_temp );
+
+			// filtering nation
+			if( k_r->r_regionkey != v_n->n_regionkey )
+				continue;
+
+			// Scan suppliers
+			for( auto i = 0; i < g_nr_suppliers; i++ )
+			{
+				const supplier::key k_su(i);
+				supplier::value v_su_tmp;
+				varstr buf_su = str(Size(v_su_tmp));
+				try_verify_relax(tbl_supplier(1)->get(txn, Encode(str(Size(k_su)), k_su), buf_su));
+				const supplier::value *v_su = Decode(buf_su,v_su_tmp);
+
+				// Filtering suppliers
+				if( k_n->n_nationkey!= v_su->su_nationkey)
+					continue;
+
+				// aggregate - finding a stock tuple having min. stock level
+				stock::key min_k_s;
+				stock::value min_v_s;
+
+				int16_t min_qty = std::numeric_limits<int16_t>::max();
+				for( auto &it : supp_stock_map[k_su.su_suppkey] )		// already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
+				{
+					const stock::key k_s(it.first, it.second);
+					stock::value v_s_tmp;
+					varstr sv = str(Size(v_s_tmp));
+					try_verify_relax(tbl_stock(it.first)->get(txn, Encode(str(Size(k_s)), k_s), sv));
+          const stock::value *v_s = Decode(sv, v_s_tmp);
+
+					INVARIANT( k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey );
+					if( min_qty > v_s->s_quantity )
+					{
+						min_k_s.s_w_id = k_s.s_w_id;
+						min_k_s.s_i_id = k_s.s_i_id;
+						min_v_s.s_quantity = v_s->s_quantity;
+						min_v_s.s_ytd = v_s->s_ytd;
+						min_v_s.s_order_cnt= v_s->s_order_cnt;
+						min_v_s.s_remote_cnt = v_s->s_remote_cnt;
+					}
+				}
+
+				// fetch the (lowest stock level) item info
+				const item::key k_i(min_k_s.s_i_id);
+				item::value v_i_temp;
+				varstr sv_i_temp = str(Size(v_i_temp));
+				try_verify_relax(tbl_item(1)->get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
+				const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+				checker::SanityCheckItem(&k_i, v_i);
+
+				//  filtering item (i_data like '%b')
+				auto found = v_i->i_data.str().find('b');
+				if( found != std::string::npos )
+					continue;
+
+
+				// XXX. read-mostly txn: update stock or item here
+
+				if( min_v_s.s_quantity < 15 )
+				{
+					stock::value new_v_s;
+					new_v_s.s_quantity = min_v_s.s_quantity + 50;
+					new_v_s.s_ytd = min_v_s.s_ytd;
+					new_v_s.s_order_cnt = min_v_s.s_order_cnt;
+					new_v_s.s_remote_cnt = min_v_s.s_remote_cnt;
+					checker::SanityCheckStock(&min_k_s, &new_v_s);
+					try_catch(tbl_stock(min_k_s.s_w_id)->put(txn, Encode(str(Size(min_k_s)), min_k_s), Encode(str(Size(new_v_s)), new_v_s)));
+				}
+
+				// TODO. sorting by n_name, su_name, i_id
+
+				/*
+				cout << k_su.su_suppkey        << ","
+					<< v_su->su_name                << ","
+					<< v_n->n_name                  << ","
+					<< k_i.i_id                     << ","
+					<< v_i->i_name                  << endl;
+					*/
+			}
+		}
+	}
+
+    measure_txn_counters(txn, "txn_query2");
     try_catch(db->commit_txn(txn));
     return {RC_TRUE};
 }
 
-bool compfn(unsigned long i, unsigned long j) {
-  return i < j;
-}
-
-// simple microbench, just insert, put, then get one row
 rc_t
-tpcc_worker::txn_micro_bench_simple()
+tpcc_worker::txn_microbench_random()
 {
-  void *txn = db->new_txn(txn_flags, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+	void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	scoped_str_arena s_arena(arena);
+	uint start_w = 0, start_s = 0;
+	INVARIANT(NumWarehouses() * NumItems() >= g_microbench_rows);
 
-    scoped_lock_guard<spinlock> slock(
-    g_enable_partition_locks ? &LockForPartition(1) : nullptr);
+	// pick start row, if it's not enough, later wrap to the first row
+	uint w = start_w = RandomNumber(r, 1, NumWarehouses() + 1);
+	uint s = start_s = RandomNumber(r, 1, NumItems() + 1);
 
-    // get a key
-    const order_line::key k_ol(1, 1, 1, 15);
+	// read rows
+	stock::value v;
+	varstr sv = str(Size(v));
+	for (uint i = 0; i < g_microbench_rows; i++) {
+		const stock::key k_s(w, s);
+		INVARIANT(cout << "rd " << w << " " << s << endl);
+		scoped_lock_guard<spinlock> slock(
+				g_enable_partition_locks ? &LockForPartition(w) : nullptr);
+		try_catch(tbl_stock(w)->get(txn, Encode(str(Size(k_s)), k_s), sv));
 
-    // generate value
-    order_line::value v_ol;
-    v_ol.ol_i_id = 1000;
-    v_ol.ol_delivery_d = 1;
-    v_ol.ol_amount = 123.456;
-    v_ol.ol_supply_w_id = k_ol.ol_w_id;
-    v_ol.ol_quantity = 5;
+		if (++s > NumItems()) {
+			s = 1;
+			if (++w > NumWarehouses())
+				w = 1;
+		}
+	}
 
-    checker::SanityCheckOrderLine(&k_ol, &v_ol);
+	// now write, in the same read-set
+	uint n_write_rows = g_microbench_wr_rows;
+	for (uint i = 0; i < n_write_rows; i++) {
+		// generate key
+		uint row_nr = RandomNumber(r, 1, n_write_rows + 1);			// XXX. do we need overlap checking?
 
-    order_line::value v;
-    varstr sv = str(Size(v));
-    try_catch(tbl_order_line(1)->insert(txn, Encode(str(Size(k_ol)), k_ol), Encode(str(Size(v_ol)), v_ol)));
-    try_catch(tbl_order_line(1)->get(txn, Encode(str(Size(k_ol)), k_ol), sv));
-    try_catch(tbl_order_line(1)->put(txn, Encode(str(Size(k_ol)), k_ol), Encode(str(Size(v_ol)), v_ol)));
+		// index starting with 1 is a pain with %, starting with 0 instead:
+		// convert row number to (w, s) tuple
+		const uint idx = (start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems();
+		const uint ww = idx / NumItems() + 1;
+		const uint ss = idx % NumItems() + 1;
 
-    measure_txn_counters(txn, "txn_micro_bench_simple");
-    try_catch(db->commit_txn(txn));
-    return {RC_TRUE};
-}
+		INVARIANT(cout << (ww - 1) * NumItems() + ss - 1 << endl);
+		INVARIANT(cout << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) % (NumItems() * (NumWarehouses())) << endl);
+		INVARIANT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
+		INVARIANT((ww - 1) * NumItems() + ss - 1 ==
+				((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) % (NumItems() * (NumWarehouses())));
 
-// tpcc mcirobenchmark, read-write
-// covers random ranges of the whole order_line table,
-// still the same number of rows tho.
-// Also randomly choose write rows, same as others.
-// For simplicity, we use the stocklevel table.
-rc_t
-tpcc_worker::txn_micro_bench_random()
-{
-  void *txn = db->new_txn(txn_flags, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
-  uint start_w = 0, start_s = 0;
-  INVARIANT(NumWarehouses() * NumItems() >= g_microbench_rows);
+		// TODO. more plausible update needed
+		const stock::key k_s(ww, ss);
+		INVARIANT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << endl);
 
-    // pick start row, if it's not enough, later wrap to the first row
-    uint w = start_w = RandomNumber(r, 1, NumWarehouses() + 1);
-    uint s = start_s = RandomNumber(r, 1, NumItems() + 1);
+		stock::value v;
+		v.s_quantity = RandomNumber(r, 10, 100);
+		v.s_ytd = 0;
+		v.s_order_cnt = 0;
+		v.s_remote_cnt = 0;
 
-    // read rows
-    stock::value v;
-    varstr sv = str(Size(v));
-    for (uint i = 0; i < g_microbench_rows; i++) {
-      const stock::key k_s(w, s);
-      INVARIANT(cout << "rd " << w << " " << s << endl);
-      scoped_lock_guard<spinlock> slock(
-          g_enable_partition_locks ? &LockForPartition(w) : nullptr);
-      try_catch(tbl_stock(w)->get(txn, Encode(str(Size(k_s)), k_s), sv));
+		checker::SanityCheckStock(&k_s, &v);
+		try_catch(tbl_stock(ww)->put(txn, Encode(str(Size(k_s)), k_s), Encode(str(Size(v)), v)));
+	}
 
-      if (++s > NumItems()) {
-        s = 1;
-        if (++w > NumWarehouses())
-          w = 1;
-      }
-    }
-
-    // now write, in the same read-set
-    uint n_write_rows = 0;
-    if (g_microbench_wr_ratio)
-      n_write_rows = g_microbench_rows * g_microbench_wr_ratio;
-    else
-      n_write_rows = g_microbench_wr_rows;
-
-    for (uint i = 0; i < n_write_rows; i++) {
-      // generate key
-      uint row_nr = RandomNumber(r, 1, n_write_rows + 1);
-
-      // index starting with 1 is a pain with %, starting with 0 instead:
-      // convert row number to (w, s) tuple
-      const uint idx = (start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems();
-      const uint ww = idx / NumItems() + 1;
-      const uint ss = idx % NumItems() + 1;
-
-      INVARIANT(cout << (ww - 1) * NumItems() + ss - 1 << endl);
-      INVARIANT(cout << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) % (NumItems() * (NumWarehouses())) << endl);
-      INVARIANT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
-      INVARIANT((ww - 1) * NumItems() + ss - 1 ==
-                ((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) % (NumItems() * (NumWarehouses())));
-
-      const stock::key k_s(ww, ss);
-      INVARIANT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << endl);
-
-      stock::value v;
-      v.s_quantity = RandomNumber(r, 10, 100);
-      v.s_ytd = 0;
-      v.s_order_cnt = 0;
-      v.s_remote_cnt = 0;
-
-      checker::SanityCheckStock(&k_s, &v);
-      try_catch(tbl_stock(w)->put(txn, Encode(str(Size(k_s)), k_s), Encode(str(Size(v)), v)));
-    }
-
-    INVARIANT(cout << "micro-random finished" << endl);
+	INVARIANT(cout << "micro-random finished" << endl);
 #ifdef CHECK_INVARIANTS
     abort();
 #endif
 
-    measure_txn_counters(txn, "txn_micro_bench_random");
-    try_catch(db->commit_txn(txn));
-    return {RC_TRUE};
-}
-
-// tpcc mcirobenchmark, read-write using stock table
-// do gets first, then random puts in the same range scanned
-// use the same read-set for each run, see micro_bench_random
-// for random read-sets.
-rc_t
-tpcc_worker::txn_micro_bench_static()
-{
-  void *txn = db->new_txn(txn_flags, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
-  uint start_w = 0, start_s = 0;
-  INVARIANT(NumWarehouses() * NumItems() >= g_microbench_rows);
-
-    // pick start row, if it's not enough, later wrap to the first row
-    uint w = start_w = 1;
-    uint s = start_s = 1;
-
-    // read rows
-    stock::value v;
-    varstr sv = str(Size(v));
-    for (uint i = 0; i < g_microbench_rows; i++) {
-      const stock::key k_s(w, s);
-      INVARIANT(cout << "rd " << w << " " << s << endl);
-      scoped_lock_guard<spinlock> slock(
-          g_enable_partition_locks ? &LockForPartition(w) : nullptr);
-      try_catch(tbl_stock(w)->get(txn, Encode(str(Size(k_s)), k_s), sv));
-
-      if (++s > NumItems()) {
-        s = 1;
-        if (++w > NumWarehouses())
-          w = 1;
-      }
-    }
-
-    // now write, in the same read-set
-    uint n_write_rows = 0;
-    if (g_microbench_wr_ratio)
-      n_write_rows = g_microbench_rows * g_microbench_wr_ratio;
-    else
-      n_write_rows = g_microbench_wr_rows;
-
-    for (uint i = 0; i < n_write_rows; i++) {
-      // generate key
-      uint row_nr = RandomNumber(r, 1, n_write_rows + 1);
-
-      // index starting with 1 is a pain with %, starting with 0 instead:
-      // convert row number to (w, s) tuple
-      const uint idx = (start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems();
-      const uint ww = idx / NumItems() + 1;
-      const uint ss = idx % NumItems() + 1;
-
-      INVARIANT(cout << (ww - 1) * NumItems() + ss - 1 << endl);
-      INVARIANT(cout << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) % (NumItems() * (NumWarehouses())) << endl);
-      INVARIANT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
-      INVARIANT((ww - 1) * NumItems() + ss - 1 ==
-                ((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) % (NumItems() * (NumWarehouses())));
-
-      const stock::key k_s(ww, ss);
-      INVARIANT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << endl);
-
-      stock::value v;
-      v.s_quantity = RandomNumber(r, 10, 100);
-      v.s_ytd = 0;
-      v.s_order_cnt = 0;
-      v.s_remote_cnt = 0;
-
-      checker::SanityCheckStock(&k_s, &v);
-      try_catch(tbl_stock(w)->put(txn, Encode(str(Size(k_s)), k_s), Encode(str(Size(v)), v)));
-    }
-
-    INVARIANT(cout << "micro-static finished" << endl);
-#ifdef CHECK_INVARIANTS
-    abort();
-#endif
-
-    measure_txn_counters(txn, "txn_micro_bench_static");
-    try_catch(db->commit_txn(txn));
-    return {RC_TRUE};
-}
-
-rc_t
-tpcc_worker::txn_micro_bench_order_line()
-{
-  void *txn = db->new_txn(txn_flags, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
-
-    uint cnt = 0;
-    uint w, d, c;
-    // micro-bench's read/write here
-    // Use the order_line table, for each warehouse, district, customer,
-    // order, order-line (see tpcc schema).
-    for (w = 1; w <= NumWarehouses(); w++) {
-      scoped_lock_guard<spinlock> slock(
-          g_enable_partition_locks ? &LockForPartition(w) : nullptr);
-      for (d = 1; d <= NumDistrictsPerWarehouse(); d++) {
-        for (c = 1; c <= NumCustomersPerDistrict(); c++) {
-          /*
-           * tzwang: so this scan is ~10x slower than gets by our exp,
-           * and the eurosys '12 masstree paper.
-          static_limit_callback<15> cb(s_arena.get(), false);
-          const order_line::key k_ol(w, d, c, 1);
-          const order_line::key k_ol_1(w, d, c, 15);
-          tbl_order_line(w)->scan(txn, Encode(k_ol),
-                                  &Encode(obj_key1, k_ol_1),
-                                  cb, s_arena.get());
-          cnt += 15;
-          if (cnt >= g_microbench_rows)
-            goto do_write;
-          */
-          // We have exactly 15 order-lines per customer if g_microbench is set
-          order_line::value v;
-          varstr sv = str(Size(v));
-          for (uint l = 1; l <= 15; l++) {
-            const order_line::key k_ol(w, d, c, l);
-            try_catch(tbl_order_line(w)->get(txn, Encode(str(Size(k_ol)), k_ol), sv));
-            if (++cnt >= g_microbench_rows)
-              goto do_write;
-          }
-        }
-      }
-    }
-
-do_write:
-    if (cnt != g_microbench_rows) {
-      cerr << "g_microbench_rows too small? Did " << cnt
-           << " rows, should do " << g_microbench_rows << "rows"
-           << " " << NumWarehouses() << " wh, "
-           << NumDistrictsPerWarehouse() << "di, "
-           << NumCustomersPerDistrict() << "cu, "
-           << endl;
-      abort();
-    }
-
-    uint n_write_rows = g_microbench_rows * g_microbench_wr_ratio;
-    for (uint i = 0; i < n_write_rows; i++) {
-      // generate key
-      const uint ww = RandomNumber(r, 1, w + 1);
-      const uint dd = RandomNumber(r, 1, d + 1);
-      const uint cc = RandomNumber(r, 1, c + 1);
-      const uint ll = RandomNumber(r, 1, 16);
-      const order_line::key k_ol(ww, dd, cc, ll);
-
-      // generate value
-      order_line::value v_ol;
-      v_ol.ol_i_id = RandomNumber(r, 1, 100000);
-      if (k_ol.ol_o_id < 2101) {
-        v_ol.ol_delivery_d = d;
-        v_ol.ol_amount = 0;
-      }
-      else {
-        v_ol.ol_delivery_d = 0;
-        // random within [0.01 .. 9,999.99]
-        v_ol.ol_amount = (float) (RandomNumber(r, 1, 999999) / 100.0);
-      }
-      v_ol.ol_supply_w_id = k_ol.ol_w_id;
-      v_ol.ol_quantity = 5;
-
-      checker::SanityCheckOrderLine(&k_ol, &v_ol);
-      try_catch(tbl_order_line(w)->put(txn, Encode(str(Size(k_ol)), k_ol), Encode(str(Size(v_ol)), v_ol)));
-    }
-
-    measure_txn_counters(txn, "txn_micro_bench_order_line");
-    try_catch(db->commit_txn(txn));
-    return {RC_TRUE};
+	measure_txn_counters(txn, "txn_microbench_random");
+	try_catch(db->commit_txn(txn));
+	return {RC_TRUE};
 }
 
 class tpcc_bench_runner : public bench_runner {
@@ -2555,6 +2562,9 @@ protected:
   {
     vector<bench_loader *> ret;
     ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
+    ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
+    ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
+    ret.push_back(new tpcc_supplier_loader(51271928, db, open_tables, partitions));
     ret.push_back(new tpcc_item_loader(235443, db, open_tables, partitions));
     if (enable_parallel_loading) {
       fast_random r(89785943);
@@ -2604,7 +2614,7 @@ protected:
           new tpcc_worker(
             blockstart + i,
             r.next(), db, open_tables, partitions,
-            &barrier_a, &barrier_b, i));
+            &barrier_a, &barrier_b, i + 1));
       }
     }
     return ret;
@@ -2633,12 +2643,10 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
       {"workload-mix"                         , required_argument , 0                                     , 'w'} ,
       {"warehouse-spread"                     , required_argument , 0                                     , 's'} ,
       {"80-20-dist"                           , no_argument       , &g_wh_temperature                     , 't'} ,
-      {"microbench-static"                    , no_argument       , &g_microbench_static                  , 1}   ,
-      {"microbench-simple"                    , no_argument       , &g_microbench_simple                  , 1}   ,
-      {"microbench-random"                    , no_argument       , &g_microbench_random                  , 1}   ,
       {"microbench-rows"                      , required_argument , 0                                     , 'n'} ,
       {"microbench-wr-ratio"                  , required_argument , 0                                     , 'p'} ,
       {"microbench-wr-rows"                   , required_argument , 0                                     , 'q'} ,
+      {"suppliers"                            , required_argument , 0                                     , 'z'} ,
       {0, 0, 0, 0}
     };
     int option_index = 0;
@@ -2661,14 +2669,8 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
       ALWAYS_ASSERT(g_microbench_rows > 0);
       break;
 
-    case 'p':
-      g_microbench_wr_ratio = strtoul(optarg, NULL, 10) / 100.00;
-      ALWAYS_ASSERT(g_microbench_wr_ratio <= 1 && g_microbench_wr_rows == 0);
-      break;
-
     case 'q':
       g_microbench_wr_rows = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(g_microbench_wr_rows > 0 && g_microbench_wr_ratio == 0);
       break;
 
     case 'r':
@@ -2691,6 +2693,10 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
         ALWAYS_ASSERT(s == 100);
       }
       break;
+	case 'z':
+      g_nr_suppliers = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(g_nr_suppliers > 0);
+	  break;
 
     case '?':
       /* getopt_long already printed an error message. */
@@ -2699,20 +2705,6 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
     default:
       abort();
     }
-  }
-
-  if (g_microbench_static || g_microbench_simple || g_microbench_random) {
-    cerr << "Will do microbenchmark, set workload_mix to microbench only" << endl;
-    for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
-      g_txn_workload_mix[i] = 0;
-    if (g_microbench_static)
-      g_txn_workload_mix[ARRAY_NELEMS(g_txn_workload_mix) - 3] = 100;
-    else if (g_microbench_simple)
-      g_txn_workload_mix[ARRAY_NELEMS(g_txn_workload_mix) - 2] = 100;
-    else if (g_microbench_random)
-      g_txn_workload_mix[ARRAY_NELEMS(g_txn_workload_mix) - 1] = 100;
-    else
-      abort();
   }
 
   if (did_spec_remote_pct && g_disable_xpartition_txn) {
@@ -2758,13 +2750,10 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
     cerr << "  new_order_fast_id_gen        : " << g_new_order_fast_id_gen << endl;
     cerr << "  uniform_item_dist            : " << g_uniform_item_dist << endl;
     cerr << "  order_status_scan_hack       : " << g_order_status_scan_hack << endl;
-    cerr << "  microbench_static            : " << g_microbench_static << endl;
-    cerr << "  microbench_random            : " << g_microbench_random << endl;
-    if (g_microbench_static || g_microbench_random) {
-      cerr << "  microbench rows            : " << g_microbench_rows << endl;
-      cerr << "  microbench wr ratio (%)    : " << g_microbench_wr_ratio * 100 << endl;
-      cerr << "  microbench wr rows         : " << g_microbench_wr_rows << endl;
-    }
+	cerr << "  microbench rows            : " << g_microbench_rows << endl;
+	cerr << "  microbench wr ratio (%)    : " << g_microbench_wr_rows / g_microbench_rows << endl;
+	cerr << "  microbench wr rows         : " << g_microbench_wr_rows << endl;
+	cerr << "  number of suppliers : " << g_nr_suppliers << endl;
     cerr << "  workload_mix                 : " <<
       format_list(g_txn_workload_mix,
                   g_txn_workload_mix + ARRAY_NELEMS(g_txn_workload_mix)) << endl;
