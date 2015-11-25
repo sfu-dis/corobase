@@ -237,6 +237,10 @@ transaction::commit()
 rc_t
 transaction::parallel_ssn_commit()
 {
+    // Take turns to abort reader or writer.
+    // FIXME(tzwang): document this and make it a knob..
+    static int __thread abort_me = 0;
+    static const int kAbortThreshold = 1;
     auto cstamp = xc->end.offset();
 
     // note that sstamp comes from reads, but the read optimization might
@@ -314,7 +318,8 @@ transaction::parallel_ssn_commit()
                     // cstamp < or > my cstamp - could have committed before or
                     // after me, or didn't even read this verions (somebody even
                     // earlier did); or could be still in progress if reader_owner
-                    // doesn't match rxid
+                    // doesn't match rxid. Prepare for the worst, tell it to abort;
+                    // abort myself if failed.
                     if (reader_xc and not serial_request_abort(reader_xc))
                         return {RC_ABORT_RW_CONFLICT};
                     xc->set_pstamp(last_cstamp);
@@ -339,12 +344,19 @@ transaction::parallel_ssn_commit()
                 // reader. Still there's a chance to tell it to abort if the
                 // reader thinks this version is an old one
                 if (overwritten_tuple->has_persistent_reader()) {
-                    if (not serial_request_abort(reader_xc))
+                    if (abort_me < kAbortThreshold) {
+                        abort_me++;
                         return {RC_ABORT_RW_CONFLICT};
-                    // else the reader will abort, as if nothing happened;
-                    // but still have to account to possible previous readers.
-                    // So set pstamp to last_cstamp (better than using
-                    // reader_end - 1)
+                    }
+                    else {
+                        if (not serial_request_abort(reader_xc)) {
+                            return {RC_ABORT_RW_CONFLICT};
+                        }
+                        // else the reader will abort, as if nothing happened;
+                        // but still have to account to possible previous readers.
+                        // So set pstamp to last_cstamp (better than using
+                        // reader_end - 1)
+                    }
                     xc->set_pstamp(last_cstamp);
                 }
             }
@@ -445,6 +457,10 @@ transaction::parallel_ssn_commit()
         return rc_t{RC_ABORT_PHANTOM};
 #endif
 
+    if (abort_me >= kAbortThreshold)
+        abort_me = 0;
+    else
+        abort_me++;
     // ok, can really commit if we reach here
     log->commit(NULL);
 
