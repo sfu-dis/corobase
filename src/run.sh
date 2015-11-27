@@ -27,92 +27,47 @@ trap "rm -f $LOGDIR/*" EXIT
 #export LD_PRELOAD="$TCMALLOC"
 export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES="2147483648"
 
-if [ "$2" == "tpcc_org" ]; then
-#TPCC
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="45,43,0,4,4,4,0,0" $6"
+exe=$1
+workload=$2
+bench=${workload:0:4}
+threads=$3
+sf="0"
+runtime=$4
 
-elif [ "$2" == "tpcc_contention" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="45,43,0,4,4,4,0,0" --warehouse-spread=100 $6"
-
-elif [ "$2" == "tpcch_1" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=100"
-
-elif [ "$2" == "tpcch_5" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=500"
-
-elif [ "$2" == "tpcch_10" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=1000"
-
-elif [ "$2" == "tpcch_20" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=2000"
-
-elif [ "$2" == "tpcch_40" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=4000"
-
-elif [ "$2" == "tpcch_60" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=6000"
-
-elif [ "$2" == "tpcch_80" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=8000"
-
-elif [ "$2" == "tpcch_100" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=10000"
-
-elif [ "$2" == "microbench_1k_1" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=1000 --microbench-wr-rows=1"
-
-elif [ "$2" == "microbench_1k_10" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=1000 --microbench-wr-rows=10"
-
-elif [ "$2" == "microbench_1k_100" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=1000 --microbench-wr-rows=100"
-
-elif [ "$2" == "microbench_10k_10" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=10000 --microbench-wr-rows=10"
-
-elif [ "$2" == "microbench_10k_100" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=10000 --microbench-wr-rows=100"
-
-elif [ "$2" == "microbench_10k_1000" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=10000 --microbench-wr-rows=1000"
-
-elif [ "$2" == "microbench_100k_100" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=100000 --microbench-wr-rows=100"
-
-elif [ "$2" == "microbench_100k_1000" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=100000 --microbench-wr-rows=1000"
-
-elif [ "$2" == "microbench_100k_10000" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="0,0,0,0,0,0,0,100" --microbench-rows=100000 --microbench-wr-rows=10000"
-
-elif [ "$2" == "tpcc++" ]; then
-#TPCC++ ( /w credit check )
-numactl --interleave=all	$1 --verbose $5 --bench tpcc --scale-factor $3  --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--workload-mix="41,43,4,4,4,4,0,0" --warehouse-spread=100 $6"
-
-elif [ "$2" == "tpce_org" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --workload-mix="4.9,13,1,18,14,8,10.1,10,19,2,0" $6"
-
-elif [ "$2" == "tpce1" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 1 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
-
-elif [ "$2" == "tpce5" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 5 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
-
-elif [ "$2" == "tpce10" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 10 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
-
-elif [ "$2" == "tpce20" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 20 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
-
-elif [ "$2" == "tpce40" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 40 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
-
-elif [ "$2" == "tpce60" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 60 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
-
-elif [ "$2" == "tpce80" ]; then
-numactl --interleave=all	$1 --verbose $5 --bench tpce --scale-factor 500 --num-threads $3 --runtime $4 --log-dir $LOGDIR --pin-cpu -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customers 5000 --working-days 10 --query-range 80 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
-
+if [ "$bench" == "tpcc" ]; then
+  sf=$threads
+elif [ "$bench" == "tpce" ]; then
+  sf="500"
 else
-	echo "wrong bench type, check run.sh"
+  echo "Unsupported benchmark $bench."
+fi
+
+options="$1 --verbose $5 --bench $bench --scale-factor $sf --num-threads $threads --scale-factor $sf --runtime $runtime --log-dir $LOGDIR --pin-cpu"
+
+if [ "$bench" == "tpcc" ]; then
+  btype=${workload:4:1}
+  wh_spread=0
+  if [ "$btype" == "h" ]; then
+    suppliers_x=${workload:6}
+    echo $suppliers_x
+    suppliers=`expr $suppliers_x * 100`
+    echo $suppliers
+    numactl --interleave=all $options -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=$suppliers --warehouse-spread=$wh_spread $6"
+  elif [ "$btype" == "+" ]; then
+    numactl --interleave=all $options -o "--workload-mix="41,43,4,4,4,4,0,0" --suppliers=$suppliers --warehouse-spread=$wh_spread $6"
+  else
+    if [ "$workload" == "tpcc_contention" ]; then
+      wh_spread="100"
+    fi
+    numactl --interleave=all $options -o "--workload-mix="45,43,0,4,4,4,0,0" --warehouse-spread=$wh_spread $6"
+  fi
+elif [ "$bench" == "tpce" ]; then
+  if [ "$workload" == "tpce_org" ]; then
+    numactl --interleave=all $options -o "--egen-dir ./benchmarks/egen/flat/egen_flat_in --customer 5000 --working-days 10 --workload-mix="4.9,13,1,18,14,8,10.1,10,19,2,0" $6"
+  else
+    query_rng=${workload:4}
+    numactl --interleave=all $options -o "--query-range $query_rng --egen-dir ./benchmarks/egen/flat/egen_flat_in --customer 5000 --working-days 10 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
+  fi
+else
+  echo "Unspported benchmark $bench."
 fi
