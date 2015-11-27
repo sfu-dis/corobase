@@ -4,6 +4,7 @@
 #include <mutex>
 #include <vector>
 #include "sm-common.h"
+#include "sm-config.h"
 #include "../macros.h"
 //#include "../tuple.h"
 
@@ -20,7 +21,6 @@ struct xid_context {
 #ifdef USE_PARALLEL_SSN
     uint64_t pstamp; // youngest predecessor (\eta)
     uint64_t sstamp; // oldest successor (\pi)
-    bool should_abort;
     transaction *xct;
 #endif
 #ifdef USE_PARALLEL_SSI
@@ -32,7 +32,16 @@ struct xid_context {
 
 #ifdef USE_PARALLEL_SSN
 inline void set_sstamp(uint64_t s) {
-    volatile_write(sstamp, std::min(s, sstamp));
+    if (sysconf::ssn_read_opt_threshold < sysconf::SSN_READ_OPT_DISABLED) {
+        // This has to be a CAS because with read-optimization, the updater might need
+        // to update the reader's sstamp.
+        uint64_t ss = 0;
+        do {
+          ss = volatile_read(sstamp);
+        } while(ss > s && !__sync_bool_compare_and_swap(&sstamp, ss, s));
+    } else {
+        volatile_write(sstamp, std::min(s, sstamp));
+    }
 }
 inline void set_pstamp(uint64_t p) {
     volatile_write(pstamp, std::max(pstamp, p));

@@ -147,7 +147,7 @@ main(int argc, char **argv)
 
 #ifdef USE_PARALLEL_SSN
     case 'h':
-      TXN::OLD_VERSION_THRESHOLD = strtoul(optarg, NULL, 16);
+      sysconf::ssn_read_opt_threshold = strtoul(optarg, NULL, 16);
       break;
 #endif
 
@@ -341,7 +341,7 @@ main(int argc, char **argv)
     cerr << "  SSI read-only optimization: " << sysconf::enable_ssi_read_only_opt << endl;
 #endif
 #ifdef USE_PARALLEL_SSN
-    cerr << "  SSN read optimization threshold: 0x" << hex << TXN::OLD_VERSION_THRESHOLD << dec << endl;
+    cerr << "  SSN read optimization threshold: 0x" << hex << sysconf::ssn_read_opt_threshold << dec << endl;
 #endif
   }
 

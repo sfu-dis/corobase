@@ -88,7 +88,6 @@ take_one(thread_data *t)
 #ifdef USE_PARALLEL_SSN
     contexts[id].sstamp = ~uint64_t{0};
     contexts[id].pstamp = 0;
-    contexts[id].should_abort = false;
     contexts[id].xct = NULL;
 #endif
 #ifdef USE_PARALLEL_SSI

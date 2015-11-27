@@ -11,6 +11,7 @@ int sysconf::enable_gc = 0;
 std::string sysconf::tmpfs_dir("/tmpfs");
 int sysconf::enable_safesnap = 0;
 int sysconf::enable_ssi_read_only_opt = 0;
+uint64_t sysconf::ssn_read_opt_threshold = sysconf::SSN_READ_OPT_DISABLED;
 
 void
 sysconf::init() {

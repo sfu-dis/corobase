@@ -237,10 +237,6 @@ transaction::commit()
 rc_t
 transaction::parallel_ssn_commit()
 {
-    // Take turns to abort reader or writer.
-    // FIXME(tzwang): document this and make it a knob..
-    static int __thread abort_me = 0;
-    static const int kAbortThreshold = 1;
     auto cstamp = xc->end.offset();
 
     // note that sstamp comes from reads, but the read optimization might
@@ -255,6 +251,53 @@ transaction::parallel_ssn_commit()
     // find out my largest predecessor (\eta) and smallest sucessor (\pi)
     // for reads, see if sb. has written the tuples - look at sucessor lsn
     // for writes, see if sb. has read the tuples - look at access lsn
+
+    // Process reads first for a stable sstamp to be used for the read-optimization
+    for (auto &r : read_set) {
+    try_get_sucessor:
+        // so tuple should be the committed version I read
+        ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
+
+        // read tuple->slsn to a local variable before doing anything relying on it,
+        // it might be changed any time...
+        fat_ptr sucessor_clsn = volatile_read(r->sstamp);
+        if (sucessor_clsn == NULL_PTR)
+            continue;
+
+        // overwriter in progress?
+        if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
+            XID successor_xid = XID::from_ptr(sucessor_clsn);
+            xid_context *sucessor_xc = xid_get_context(successor_xid);
+            if (not sucessor_xc)
+                goto try_get_sucessor;
+            auto successor_owner = volatile_read(sucessor_xc->owner);
+            if (successor_owner == xc->owner)  // myself
+                continue;
+
+            // read everything before doing anything
+            auto sucessor_end = volatile_read(sucessor_xc->end).offset();
+            if (successor_owner != successor_xid)
+                goto try_get_sucessor;
+
+            // overwriter might haven't committed, be commited after me, or before me
+            // we only care if the successor is committed *before* me.
+            if (sucessor_end and sucessor_end < cstamp) {
+                auto cr = spin_for_cstamp(successor_xid, sucessor_xc);
+                // context change, previous overwriter must be gone,
+                // re-read sstamp (should see ASI_LOG this time).
+                if (cr == TXN_INVALID)
+                    goto try_get_sucessor;
+                else if (cr == TXN_CMMTD) {
+                    xc->set_sstamp(volatile_read(sucessor_xc->sstamp));
+                }
+            }
+        }
+        else {
+            // overwriter already fully committed/aborted or no overwriter at all
+            ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
+            xc->set_sstamp(sucessor_clsn.offset());
+        }
+    }
 
     for (auto &w : write_set) {
         dbtuple *tuple = w.new_object->tuple();
@@ -305,7 +348,7 @@ transaction::parallel_ssn_commit()
             }
 
             // Do this after copying everything we needed
-            auto last_cstamp = serial_get_last_cstamp(i);
+            auto last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(i);
 
             if (not rxid._val or not reader_xc or reader_owner != rxid) {
                 if (overwritten_tuple->has_persistent_reader()) {
@@ -318,11 +361,8 @@ transaction::parallel_ssn_commit()
                     // cstamp < or > my cstamp - could have committed before or
                     // after me, or didn't even read this verions (somebody even
                     // earlier did); or could be still in progress if reader_owner
-                    // doesn't match rxid. Prepare for the worst, tell it to abort;
-                    // abort myself if failed.
-                    if (reader_xc and not serial_request_abort(reader_xc))
-                        return {RC_ABORT_RW_CONFLICT};
-                    xc->set_pstamp(last_cstamp);
+                    // doesn't match rxid. Prepare for the worst, abort.
+                    return {RC_ABORT_RW_CONFLICT};
                 }
                 else {
                     // Not marked as an old version - follow normal SSN protocol.
@@ -341,23 +381,16 @@ transaction::parallel_ssn_commit()
                 ASSERT(rxid == reader_owner);
                 // Not in pre-commit yet or will (attempt to) commit after me,
                 // don't care... unless it's considered an old version by some
-                // reader. Still there's a chance to tell it to abort if the
-                // reader thinks this version is an old one
+                // reader. Still there's a chance to set its sstamp so that the
+                // reader will (implicitly) know my existence.
                 if (overwritten_tuple->has_persistent_reader()) {
-                    if (abort_me < kAbortThreshold) {
-                        abort_me++;
+                    // Only read-mostly transactions will mark the persistent_reader bit;
+                    // if reader_xc isn't read-mostly, then it's definitely not him,
+                    // consult last_read_mostly_cstamp.
+                    if (reader_xc->xct->is_read_mostly() && !ssn_ropt_set_reader_sstamp(reader_xc, xc->sstamp)) {
                         return {RC_ABORT_RW_CONFLICT};
                     }
-                    else {
-                        if (not serial_request_abort(reader_xc)) {
-                            return {RC_ABORT_RW_CONFLICT};
-                        }
-                        // else the reader will abort, as if nothing happened;
-                        // but still have to account to possible previous readers.
-                        // So set pstamp to last_cstamp (better than using
-                        // reader_end - 1)
-                    }
-                    xc->set_pstamp(last_cstamp);
+                    xc->set_pstamp(last_read_mostly_cstamp);
                 }
             }
             else {
@@ -365,15 +398,15 @@ transaction::parallel_ssn_commit()
                 if (overwritten_tuple->has_persistent_reader()) {
                     // Some reader who thinks this is old version existed, two
                     // options here: (1) spin on it and use reader_end-1 if it
-                    // aborted, use reader_end if committed and use last_cstamp
+                    // aborted, use reader_end if committed and use last_read_mostly_cstamp
                     // otherwise; (2) just use reader_end for simplicity
                     // (betting it'll successfully commit).
                     spin_for_cstamp(rxid, reader_xc);
-                    // Refresh last_cstamp here, it'll be reader_end if the
+                    // Refresh last_read_mostly_cstamp here, it'll be reader_end if the
                     // reader committed; or we just need to use the previous one
                     // if it didn't commit or saw a context change.
-                    last_cstamp = serial_get_last_cstamp(i);
-                    xc->set_pstamp(last_cstamp);
+                    last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(i);
+                    xc->set_pstamp(last_read_mostly_cstamp);
                 }
                 else {
                     // (Pre-) committed before me, need to wait for its cstamp for
@@ -399,56 +432,6 @@ transaction::parallel_ssn_commit()
         }
     }
 
-    for (auto &r : read_set) {
-    try_get_sucessor:
-        // so tuple should be the committed version I read
-        ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-
-        // read tuple->slsn to a local variable before doing anything relying on it,
-        // it might be changed any time...
-        fat_ptr sucessor_clsn = volatile_read(r->sstamp);
-        if (sucessor_clsn == NULL_PTR)
-            continue;
-
-        // overwriter in progress?
-        if (sucessor_clsn.asi_type() == fat_ptr::ASI_XID) {
-            XID successor_xid = XID::from_ptr(sucessor_clsn);
-            xid_context *sucessor_xc = xid_get_context(successor_xid);
-            if (not sucessor_xc)
-                goto try_get_sucessor;
-            auto successor_owner = volatile_read(sucessor_xc->owner);
-            if (successor_owner == xc->owner)  // myself
-                continue;
-
-            // read everything before doing anything
-            auto sucessor_end = volatile_read(sucessor_xc->end).offset();
-            if (successor_owner != successor_xid)
-                goto try_get_sucessor;
-
-            // overwriter might haven't committed, be commited after me, or before me
-            // we only care if the successor is committed *before* me.
-            if (sucessor_end and sucessor_end < cstamp) {
-                auto cr = spin_for_cstamp(successor_xid, sucessor_xc);
-                // context change, previous overwriter must be gone,
-                // re-read sstamp (should see ASI_LOG this time).
-                if (cr == TXN_INVALID)
-                    goto try_get_sucessor;
-                else if (cr == TXN_CMMTD) {
-                    xc->set_sstamp(volatile_read(sucessor_xc->sstamp));
-                }
-            }
-        }
-        else {
-            // overwriter already fully committed/aborted or no overwriter at all
-            ASSERT(sucessor_clsn.asi_type() == fat_ptr::ASI_LOG);
-            xc->set_sstamp(sucessor_clsn.offset());
-        }
-    }
-
-    // Too bad still have to abort after gone through all this...
-    if (volatile_read(xc->should_abort))
-        return {RC_ABORT_RW_CONFLICT};
-
     if (not ssn_check_exclusion(xc))
         return rc_t{RC_ABORT_SERIAL};
 
@@ -457,10 +440,6 @@ transaction::parallel_ssn_commit()
         return rc_t{RC_ABORT_PHANTOM};
 #endif
 
-    if (abort_me >= kAbortThreshold)
-        abort_me = 0;
-    else
-        abort_me++;
     // ok, can really commit if we reach here
     log->commit(NULL);
 
@@ -469,7 +448,8 @@ transaction::parallel_ssn_commit()
     // my real state (CMMTD or ABRTD)
     // XXX: one optimization might be setting this only when read some
     // old versions.
-    serial_stamp_last_committed_lsn(xc->end);
+    if (is_read_mostly())
+        serial_stamp_last_committed_lsn(xc->end);
 
     recycle_oid *updated_oids_head = NULL;
     recycle_oid *updated_oids_tail = NULL;
@@ -1150,6 +1130,7 @@ transaction::ssn_read(dbtuple *tuple)
         ASSERT(tuple_sstamp == NULL_PTR or XID::from_ptr(tuple_sstamp) != xc->owner);
         serial_register_reader_tx(tuple, xc->owner);
         if (tuple->is_old(xc)) {
+            ASSERT(is_read_mostly());
             if (not tuple->set_persistent_reader())
                 return {RC_ABORT_RW_CONFLICT};
         }

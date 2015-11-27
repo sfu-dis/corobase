@@ -69,8 +69,13 @@ public:
     // No bookeeping is done with SSN if this is enable for a tx.
     TXN_FLAG_READ_ONLY = 0x2,
 
+    TXN_FLAG_READ_MOSTLY = 0x3,
+
     // XXX: more flags in the future, things like consistency levels
   };
+
+  inline bool is_read_mostly() { return flags & TXN_FLAG_READ_MOSTLY; }
+  inline bool is_read_only() { return flags & TXN_FLAG_READ_ONLY; }
 
   // KeyWriter is expected to implement:
   // [1-arg constructor]

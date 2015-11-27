@@ -7,9 +7,6 @@
 
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
 namespace TXN {
-
-extern uint64_t OLD_VERSION_THRESHOLD;
-
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
 
@@ -35,22 +32,17 @@ public:
     typedef dbtuple::rl_bitmap_t bitmap_t;
     enum { XIDS_PER_READER_KEY=sizeof(bitmap_t)*8 };
 
-    // FIXME: on crossfire we basically won't have more than 24 concurrent
-    // transactions running (not to mention all as readers of a single
-    // version). If this doesn't hold (on some other machine e.g.), we need
-    // to consider how to handle overflows (one way is to consolidate all
-    // txs to one bit and let late comers to compare with this).
     XID xids[XIDS_PER_READER_KEY];
-    LSN last_commit_lsns[XIDS_PER_READER_KEY];
+    LSN last_read_mostly_clsns[XIDS_PER_READER_KEY];
 
     readers_list() {
         memset(xids, '\0', sizeof(XID) * XIDS_PER_READER_KEY);
-        memset(last_commit_lsns, '\0', sizeof(LSN) * XIDS_PER_READER_KEY);
+        memset(last_read_mostly_clsns, '\0', sizeof(LSN) * XIDS_PER_READER_KEY);
     }
 };
 
-bool serial_request_abort(xid_context *xc);
-uint64_t serial_get_last_cstamp(int xid_idx);
+bool ssn_ropt_set_reader_sstamp(xid_context *xc, uint64_t sstamp);
+uint64_t serial_get_last_read_mostly_cstamp(int xid_idx);
 void serial_stamp_last_committed_lsn(LSN lsn);
 bool serial_register_reader_tx(dbtuple *tup, XID xid);
 void serial_deregister_reader_tx(dbtuple *tup);
