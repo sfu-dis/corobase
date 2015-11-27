@@ -12,6 +12,8 @@ public:
     static int enable_gc;
     static int enable_ssi_read_only_opt;
     static std::string tmpfs_dir;
+    static uint64_t ssn_read_opt_threshold;
+    static const uint64_t SSN_READ_OPT_DISABLED = 0xffffffffffffffff;
 
     // XXX(tzwang): enabling safesnap for tpcc basically halves the performance.
     // perf says 30%+ of cycles are on oid_get_version, which makes me suspect

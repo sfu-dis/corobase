@@ -123,30 +123,43 @@ namespace TXN {
 
       * If this reader is not in pre-commit or has a cstamp > updater's cstamp:
         Basically this means the reader will (attempt to) commit after the
-        updater, forming an read/write dependency (updater->reader). We can
-        either spin on it to see the result, or tell it to abort. For now we
-        settle on the latter, as the former will tend to give potentially higher
-        pstamp (=more false+ves, but haven't measured). The updater will try to
-        notify the reader "hey yo, you need to abort!", betting that the reader
-        will later use the updater's cstamp as its sstamp which will be low.
-        It does this by setting a boolean in the reader's context
-        (xc.should_abort) to true. The reader will examine this flag before
-        post-commit (if it survived), and abort accordingly. The updater should
-        read the reader's state (e.g., ACTIVE) before setting the flag, then
-        re-read it after setting it. If the reader's state didn't change, it
-        means the reader will know it should abort later; otherwise the updater
-        considers it missed this precious opportunity. Then the updater will
-        have two choice: spin on the reader or abort. The former might cause
-        deadlock - an reader might be spinning on the updater already hoping
-        to use its cstamp as sstamp. So here we let the updater abort.
+        updater, forming an read/write dependency (updater->reader).
+        - If we don't allow any back-edges, we can either spin on it to see the
+          result, or tell it to abort. We settled on the latter before, as the
+          former will tend to give potentially higher pstamp (=more false+ves,
+          but haven't measured). The updater will try to notify the reader
+          "hey yo, you need to abort!", betting that the reader will later use
+          the updater's cstamp as its sstamp which will be low. But this makes
+          it very tricky to choose the threshold and can abort lots of read-mostly
+          transactions.
+
+          (The implementation is like: use a boolean (set by the updater) in the
+          reader's context (xc.should_abort) to indicate whether it needs to abort.
+          The reader will examine this flag before post-commit (if it survived),
+          and abort accordingly. The updater should read the reader's state
+          (e.g., ACTIVE) before setting the flag, then re-read it after setting it.
+          If the reader's state didn't change, it means the reader will know it
+          should abort later; otherwise the updater considers it missed this precious
+          opportunity. Then the updater will have two choice: spin on the reader or
+          abort. The former might cause deadlock - an reader might be spinning on
+          the updater already hoping to use its cstamp as sstamp. So here we let
+          the updater abort.)
+
+        - But actually we can allow back-edges - simply let the updater to set
+          the reader's sstamp to the updater's sstamp. This implies that we need
+          to go over the read first for the updater to have a stable sstamp; we
+          also need to use a CAS to set sstamp because now xc.sstamp is now not
+          only updated by the owner any more. We follow a similar optimistic
+          read-set-validate paradigm to make sure that the reader will get this
+          (like what we did in the above "should_abort" implementation).
+          This appears to be working well; it preserves most of the read-mostly
+          transactions and does not abort too many updaters, either.
 
     For 2 above:
        This basically can be considered as the cstamp < updater's cstamp case,
        because the reader might have already gone. So the updater should use
        the most recent cstamp indicated by that thread as its pstamp.
 */
-
-uint64_t OLD_VERSION_THRESHOLD = 0;
 
 readers_list rlist;
 
@@ -235,19 +248,19 @@ serial_deregister_tx(XID xid)
 void
 serial_stamp_last_committed_lsn(LSN lsn)
 {
-    volatile_write(rlist.last_commit_lsns[__builtin_ctzll(tls_bitmap_entry)]._val, lsn._val);
+    volatile_write(rlist.last_read_mostly_clsns[__builtin_ctzll(tls_bitmap_entry)]._val, lsn._val);
 }
 
 // Request @xc to abort, returns true if succeeded
 bool
-serial_request_abort(xid_context *xc)
+ssn_ropt_set_reader_sstamp(xid_context *xc, uint64_t sstamp)
 {
-    // Record the state first, then set should_abort, verify
+    // Record the state first, then set sstamp, verify
     // state again - if state changed, the tx might not know
     // this request - caller needs to backoff
     auto s = volatile_read(xc->state);
 #ifdef USE_PARALLEL_SSN
-    volatile_write(xc->should_abort, true);
+    xc->set_sstamp(sstamp);
 #endif
     // Verify it knows, backoff if the reader missed it
     auto ss = volatile_read(xc->state);
@@ -255,9 +268,9 @@ serial_request_abort(xid_context *xc)
 }
 
 uint64_t
-serial_get_last_cstamp(int xid_idx)
+serial_get_last_read_mostly_cstamp(int xid_idx)
 {
-    return volatile_read(rlist.last_commit_lsns[xid_idx]).offset();
+    return volatile_read(rlist.last_read_mostly_clsns[xid_idx]).offset();
 }
 
 };  // end of namespace

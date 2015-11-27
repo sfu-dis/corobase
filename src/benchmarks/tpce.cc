@@ -3200,7 +3200,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
 
 rc_t tpce_worker::DoLongQueryFrame1()
 {
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	txn = db->new_txn(txn_flags | transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf(), abstract_db::HINT_DEFAULT);
 
 	auto total_range = max_ca_id - min_ca_id;
 	auto scan_range_size = (max_ca_id - min_ca_id) / 100 * long_query_scan_range;

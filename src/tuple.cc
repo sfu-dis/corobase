@@ -52,7 +52,7 @@ retry:
 bool
 dbtuple::is_old(xid_context *xc)
 {
-  return age(xc) >= OLD_VERSION_THRESHOLD;
+  return xc->xct->is_read_mostly() && age(xc) >= sysconf::ssn_read_opt_threshold;
 }
 
 bool
