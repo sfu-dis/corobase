@@ -2264,7 +2264,7 @@ tpcc_worker::txn_stock_level()
 rc_t
 tpcc_worker::txn_query2()
 {
-	void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	void *txn = db->new_txn(txn_flags | transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 
 	static __thread table_scanner r_scanner(&arena);
