@@ -259,6 +259,9 @@ ssn_ropt_set_reader_sstamp(xid_context *xc, uint64_t sstamp)
     // state again - if state changed, the tx might not know
     // this request - caller needs to backoff
     auto s = volatile_read(xc->state);
+    if (s == TXN_CMMTD) {
+        return false;
+    }
 #ifdef USE_PARALLEL_SSN
     xc->set_sstamp(sstamp);
 #endif
