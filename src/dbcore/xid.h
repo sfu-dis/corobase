@@ -1,6 +1,6 @@
 // -*- mode:c++ -*-
 #pragma once
-
+#include <atomic>
 #include <mutex>
 #include <vector>
 #include "sm-common.h"
@@ -20,8 +20,9 @@ struct xid_context {
     LSN end;
 #ifdef USE_PARALLEL_SSN
     uint64_t pstamp; // youngest predecessor (\eta)
-    uint64_t sstamp; // oldest successor (\pi)
+    std::atomic<uint64_t> sstamp; // oldest successor (\pi)
     transaction *xct;
+    bool set_sstamp(uint64_t s);
 #endif
 #ifdef USE_PARALLEL_SSI
     uint64_t ct3;   // smallest commit stamp of T3 in the dangerous structure
@@ -31,17 +32,9 @@ struct xid_context {
     txn_state state;
 
 #ifdef USE_PARALLEL_SSN
-inline void set_sstamp(uint64_t s) {
-    if (sysconf::ssn_read_opt_threshold < sysconf::SSN_READ_OPT_DISABLED) {
-        // This has to be a CAS because with read-optimization, the updater might need
-        // to update the reader's sstamp.
-        uint64_t ss = 0;
-        do {
-          ss = volatile_read(sstamp);
-        } while(ss > s && !__sync_bool_compare_and_swap(&sstamp, ss, s));
-    } else {
-        volatile_write(sstamp, std::min(s, sstamp));
-    }
+const uint64_t sstamp_final_mark = 1UL << 63;
+inline void finalize_sstamp() {
+    std::atomic_fetch_or(&sstamp, sstamp_final_mark);
 }
 inline void set_pstamp(uint64_t p) {
     volatile_write(pstamp, std::max(pstamp, p));

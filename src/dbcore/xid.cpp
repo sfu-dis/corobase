@@ -2,6 +2,8 @@
 #include "sm-log.h"
 #include "epoch.h"
 #include "serial.h"
+#include "../txn.h"
+#include <atomic>
 #include <unistd.h>
 
 namespace TXN {
@@ -270,6 +272,25 @@ spin_for_cstamp(XID xid, xid_context *xc) {
     }
     while (state != TXN_CMMTD and state != TXN_ABRTD);
     return state;
+}
+#endif
+#ifdef USE_PARALLEL_SSN
+bool
+xid_context::set_sstamp(uint64_t s) {
+    // If I'm not read-mostly, nobody else would call this
+    if (xct->is_read_mostly() && sysconf::ssn_read_opt_enabled()) {
+        // This has to be a CAS because with read-optimization, the updater might need
+        // to update the reader's sstamp.
+        uint64_t ss = 0;
+        do {
+            ss = sstamp.load(std::memory_order_acquire);
+            if (ss & sstamp_final_mark)
+                return false;
+        } while(ss > s && !std::atomic_compare_exchange_weak(&sstamp, &ss, s));
+    } else {
+        sstamp.store(s, std::memory_order_relaxed);
+    }
+    return true;
 }
 #endif
 } // end of namespace
