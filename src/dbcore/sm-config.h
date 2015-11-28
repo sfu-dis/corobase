@@ -34,4 +34,8 @@ public:
     }
     
     static void init();
+
+    static inline bool ssn_read_opt_enabled() {
+        return ssn_read_opt_threshold < SSN_READ_OPT_DISABLED;
+    }
 };

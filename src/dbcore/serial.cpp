@@ -251,25 +251,6 @@ serial_stamp_last_committed_lsn(LSN lsn)
     volatile_write(rlist.last_read_mostly_clsns[__builtin_ctzll(tls_bitmap_entry)]._val, lsn._val);
 }
 
-// Request @xc to abort, returns true if succeeded
-bool
-ssn_ropt_set_reader_sstamp(xid_context *xc, uint64_t sstamp)
-{
-    // Record the state first, then set sstamp, verify
-    // state again - if state changed, the tx might not know
-    // this request - caller needs to backoff
-    auto s = volatile_read(xc->state);
-    if (s == TXN_CMMTD) {
-        return false;
-    }
-#ifdef USE_PARALLEL_SSN
-    xc->set_sstamp(sstamp);
-#endif
-    // Verify it knows, backoff if the reader missed it
-    auto ss = volatile_read(xc->state);
-    return ss == s or ss == TXN_ABRTD;
-}
-
 uint64_t
 serial_get_last_read_mostly_cstamp(int xid_idx)
 {

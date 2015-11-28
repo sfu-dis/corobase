@@ -4,6 +4,7 @@
 #include "lockguard.h"
 #include "scopedperf.hh"
 
+#include <atomic>
 #include <algorithm>
 #include <iostream>
 #include <sstream>
@@ -245,8 +246,13 @@ transaction::parallel_ssn_commit()
     // that later we can fill tuple's sstamp as cstamp in case sstamp still
     // remained as the initial value.) Consider the extreme case where
     // old_version_threshold = 0: means no read set at all...
-    if (xc->sstamp > cstamp)
-        xc->sstamp = cstamp;
+    if (is_read_mostly() && sysconf::ssn_read_opt_enabled()) {
+        if (xc->sstamp.load(std::memory_order_acquire) > cstamp)
+            xc->sstamp = cstamp;
+    } else {
+        if (xc->sstamp.load(std::memory_order_relaxed) > cstamp)
+            xc->sstamp = cstamp;
+    }
 
     // find out my largest predecessor (\eta) and smallest sucessor (\pi)
     // for reads, see if sb. has written the tuples - look at sucessor lsn
@@ -288,7 +294,8 @@ transaction::parallel_ssn_commit()
                 if (cr == TXN_INVALID)
                     goto try_get_sucessor;
                 else if (cr == TXN_CMMTD) {
-                    xc->set_sstamp(volatile_read(sucessor_xc->sstamp));
+                    // Use relaxed for non-read-mostly tx? But maybe not worth the branch miss.
+                    xc->set_sstamp(sucessor_xc->sstamp.load(std::memory_order_acquire));
                 }
             }
         }
@@ -387,7 +394,8 @@ transaction::parallel_ssn_commit()
                     // Only read-mostly transactions will mark the persistent_reader bit;
                     // if reader_xc isn't read-mostly, then it's definitely not him,
                     // consult last_read_mostly_cstamp.
-                    if (reader_xc->xct->is_read_mostly() && !ssn_ropt_set_reader_sstamp(reader_xc, xc->sstamp)) {
+                    if (reader_xc->xct->is_read_mostly() &&
+                        !reader_xc->set_sstamp(xc->sstamp.load(std::memory_order_acquire))) {
                         return {RC_ABORT_RW_CONFLICT};
                     }
                     xc->set_pstamp(last_read_mostly_cstamp);
@@ -432,6 +440,10 @@ transaction::parallel_ssn_commit()
         }
     }
 
+    if (is_read_mostly()) {
+        xc->finalize_sstamp();
+    }
+
     if (not ssn_check_exclusion(xc))
         return rc_t{RC_ABORT_SERIAL};
 
@@ -454,6 +466,14 @@ transaction::parallel_ssn_commit()
     recycle_oid *updated_oids_head = NULL;
     recycle_oid *updated_oids_tail = NULL;
 
+    uint64_t my_sstamp = 0;
+    if (is_read_mostly()) {
+        my_sstamp = xc->sstamp.load(std::memory_order_acquire);
+    } else {
+        my_sstamp = xc->sstamp.load(std::memory_order_relaxed);
+    }
+    ASSERT(my_sstamp and my_sstamp != ~uint64_t{0});
+
     // post-commit: stuff access stamps for reads; init new versions
     auto clsn = xc->end;
     for (auto &w : write_set) {
@@ -467,9 +487,8 @@ transaction::parallel_ssn_commit()
                (uint64_t)((char *)next_tuple - sizeof(object)));
         if (next_tuple) {   // update, not insert
             ASSERT(volatile_read(next_tuple->get_object()->_clsn).asi_type());
-            ASSERT(xc->sstamp and xc->sstamp != ~uint64_t{0});
             ASSERT(XID::from_ptr(next_tuple->sstamp) == xid);
-            volatile_write(next_tuple->sstamp, LSN::make(xc->sstamp, 0).to_log_ptr());
+            volatile_write(next_tuple->sstamp, LSN::make(my_sstamp, 0).to_log_ptr());
             ASSERT(next_tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
             next_tuple->welcome_readers();
         }
