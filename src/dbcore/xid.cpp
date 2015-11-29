@@ -281,10 +281,9 @@ xid_context::set_sstamp(uint64_t s) {
     if (xct->is_read_mostly() && sysconf::ssn_read_opt_enabled()) {
         // This has to be a CAS because with read-optimization, the updater might need
         // to update the reader's sstamp.
-        uint64_t ss = 0;
+        uint64_t ss = sstamp.load(std::memory_order_acquire);
         do {
-            ss = sstamp.load(std::memory_order_acquire);
-            if (ss & sstamp_final_mark)
+            if (ss & sstamp_final_mark)  // std::atomic_cas will update ss
                 return false;
         } while(ss > s && !std::atomic_compare_exchange_weak(&sstamp, &ss, s));
     } else {
