@@ -140,6 +140,9 @@ protected:
   str_arena arena;
 };
 
+typedef std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tx_stat;
+typedef std::map<std::string, tx_stat> tx_stat_map;
+
 class bench_worker : public ndb_thread {
 public:
 
@@ -215,7 +218,7 @@ public:
     return double(latency_numer_us) / double(ntxn_commits);
   }
 
-  std::map<std::string, std::pair<uint64_t, uint64_t> > get_txn_counts() const;
+  const tx_stat_map get_txn_counts() const;
 
   typedef abstract_db::counter_map counter_map;
   typedef abstract_db::txn_counter_map txn_counter_map;
@@ -268,7 +271,7 @@ protected:
   inline ALWAYS_INLINE void measure_txn_counters(void *txn, const char *txn_name) {}
 #endif
 
-  std::vector<std::pair<uint64_t, uint64_t> > txn_counts; // commits and aborts breakdown
+  std::vector<tx_stat> txn_counts; // commits and aborts breakdown
   ssize_t size_delta; // how many logical bytes (of values) did the worker add to the DB
 
   std::string txn_obj_buf;
