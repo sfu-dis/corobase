@@ -5,7 +5,7 @@ Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 #### Environment configurations
 
 * Software dependencies: `libnuma` and `tcmalloc` (part of google perftools). Install from your favorite package manager.
-* `mlock` limitation. Add the following to `/etc/security/limits.conf` (replace "[user]" with your login):
+* `mlock` limits. Add the following to `/etc/security/limits.conf` (replace "[user]" with your login):
 ```
 [user] soft memlock unlimited
 [user] hard memlock unlimited
@@ -52,10 +52,20 @@ $run.sh \
 
 `--enable-gc`: turn on garbage collection. Currently there is only one GC thread.
 
+`--enable-chkpt`: enable checkpointing.
+
+`--warm-up`: strategy to load versions upon recovery. Candidates are:
+- `eager`: load all latest versions during recovery, so the database is fully in-memory when it starts to process new transactions;
+- `lazy`: start a thread to load versions in the background after recovery, so the database is partially in-memory when it starts to process new transactions.
+- `none`: load versions on-demand upon access (anti-caching).
+
 *SSI and SSN specific:*
 
 `--safesnap`: enable safe snapshot for read-only transactions.
 
 *SSN-specific:*
 
-`--ssn-read-opt-threshold`: versions that are read by a read-mostly transaction and older than this value are considered "old" and will not be tracked; setting it to 0 will skip all read tracking for read-mostly transactions (TXN_FLAG_READ_MOSTLY).
+`--ssn-read-opt-threshold`: versions that are read by a read-mostly transaction and older than this value are considered "old" and will not be tracked; setting it to 0 will skip all read tracking for read-mostly transactions (`TXN_FLAG_READ_MOSTLY`).
+
+*SSI-specific:*
+`--ssi-read-only-opt`: enable P&G style read-only optimization for SSI.
