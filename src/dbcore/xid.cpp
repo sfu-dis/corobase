@@ -277,6 +277,7 @@ spin_for_cstamp(XID xid, xid_context *xc) {
 #ifdef USE_PARALLEL_SSN
 bool
 xid_context::set_sstamp(uint64_t s) {
+    ALWAYS_ASSERT(!(s & xid_context::sstamp_final_mark));
     // If I'm not read-mostly, nobody else would call this
     if (xct->is_read_mostly() && sysconf::ssn_read_opt_enabled()) {
         // This has to be a CAS because with read-optimization, the updater might need

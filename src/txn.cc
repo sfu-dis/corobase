@@ -396,7 +396,22 @@ transaction::parallel_ssn_commit()
                     // consult last_read_mostly_cstamp.
                     if (reader_xc->xct->is_read_mostly() &&
                         !reader_xc->set_sstamp(xc->sstamp.load(std::memory_order_acquire))) {
-                        return {RC_ABORT_RW_CONFLICT};
+                        if (reader_end) {
+                            // So reader_end will be the new pstamp
+                            last_read_mostly_cstamp = reader_end;
+                        } else {
+                            // Now we know reader_xc->set_sstamp failed, which implies that the
+                            // reader has concluded. Try to find out its clsn here as my pstamp.
+                            auto rend = volatile_read(reader_xc->end).offset();
+                            auto rowner = volatile_read(reader_xc->owner);
+                            if (rxid == rowner) {
+                                // It's this guy, we can rely on rend
+                                last_read_mostly_cstamp = reader_end = rend;
+                            } else {
+                                // Another transaction is using this context, refresh last_cstamp
+                                last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(i);
+                            }
+                        }
                     }
                     xc->set_pstamp(last_read_mostly_cstamp);
                 }
