@@ -248,10 +248,10 @@ transaction::parallel_ssn_commit()
     // old_version_threshold = 0: means no read set at all...
     if (is_read_mostly() && sysconf::ssn_read_opt_enabled()) {
         if (xc->sstamp.load(std::memory_order_acquire) > cstamp)
-            xc->sstamp = cstamp;
+            xc->sstamp.store(cstamp, std::memory_order_release);
     } else {
         if (xc->sstamp.load(std::memory_order_relaxed) > cstamp)
-            xc->sstamp = cstamp;
+            xc->sstamp.store(cstamp, std::memory_order_relaxed);
     }
 
     // find out my largest predecessor (\eta) and smallest sucessor (\pi)
