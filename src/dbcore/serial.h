@@ -13,17 +13,17 @@ void deassign_reader_bitmap_entry();
 #ifdef USE_PARALLEL_SSN
 // returns true if serializable, false means exclusion window violation
 inline bool ssn_check_exclusion(xid_context *xc) {
+    auto ss = xc->sstamp.load(std::memory_order_acquire) & (~xid_context::sstamp_final_mark);
 #if CHECK_INVARIANTS
-    if (xc->pstamp >= xc->sstamp) printf("ssn exclusion failure\n");
+    if (xc->pstamp >= ss) printf("ssn exclusion failure\n");
 #endif
     // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
     // note xc->sstamp is initialized to ~0, xc->pstamp's init value is 0,
     // so don't return xc->pstamp < xc->sstamp...
-    if (xc->pstamp >= xc->sstamp) {
+    if (xc->pstamp >= ss) {
         return false;
     }
     return true;
-    //return not (xc->pstamp >= xc->sstamp); // \eta - predecessor, \pi - sucessor
 }
 #endif
 
