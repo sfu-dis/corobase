@@ -32,7 +32,7 @@ struct xid_context {
     txn_state state;
 
 #ifdef USE_PARALLEL_SSN
-const uint64_t sstamp_final_mark = 1UL << 63;
+const static uint64_t sstamp_final_mark = 1UL << 63;
 inline void finalize_sstamp() {
     std::atomic_fetch_or(&sstamp, sstamp_final_mark);
 }
