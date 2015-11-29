@@ -136,12 +136,17 @@ retry:
 
                 if (likely(not rc_is_abort(ret))) {
 					++ntxn_commits;
-                    txn_counts[i].first++;
+                    std::get<0>(txn_counts[i])++;
 					latency_numer_us += t.lap();
 					backoff_shifts >>= 1;
 				} else {
 					++ntxn_aborts;
-                    txn_counts[i].second++;
+                    std::get<1>(txn_counts[i])++;
+                    if (ret._val == RC_ABORT_USER) {
+                        std::get<3>(txn_counts[i])++;
+                    } else {
+                        std::get<2>(txn_counts[i])++;
+                    }
                     switch (ret._val) {
                         case RC_ABORT_SERIAL: inc_ntxn_serial_aborts(); break;
                         case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;
@@ -329,12 +334,14 @@ bench_runner::run()
     double(latency_numer_us) / double(n_commits);
   const double avg_latency_ms = avg_latency_us / 1000.0;
 
-  map<string, pair<uint64_t, uint64_t> > agg_txn_counts = workers[0]->get_txn_counts();
+  tx_stat_map agg_txn_counts = workers[0]->get_txn_counts();
   for (size_t i = 1; i < workers.size(); i++) {
-    std::map<std::string, std::pair<uint64_t, uint64_t> > c = workers[i]->get_txn_counts();
+    auto &c = workers[i]->get_txn_counts();
     for (auto &t : c) {
-      agg_txn_counts[t.first].first += t.second.first;
-      agg_txn_counts[t.first].second += t.second.second;
+      std::get<0>(agg_txn_counts[t.first]) += std::get<0>(t.second);
+      std::get<1>(agg_txn_counts[t.first]) += std::get<1>(t.second);
+      std::get<2>(agg_txn_counts[t.first]) += std::get<2>(t.second);
+      std::get<3>(agg_txn_counts[t.first]) += std::get<3>(t.second);
     }
   }
 
@@ -453,8 +460,11 @@ bench_runner::run()
 
   cout << "---------------------------------------\n";
   for (auto &c : agg_txn_counts) {
-    cout << c.first << "\t" << c.second.first / (double)elapsed_sec << " commits/s\t"
-         << c.second.second / (double)elapsed_sec << " aborts/s\n";
+    cout << c.first << "\t"
+         << std::get<0>(c.second) / (double)elapsed_sec << " commits/s\t"
+         << std::get<1>(c.second) / (double)elapsed_sec << " aborts/s\t"
+         << std::get<2>(c.second) / (double)elapsed_sec << " system aborts/s\t"
+         << std::get<3>(c.second) / (double)elapsed_sec << " user aborts/s\n";
   }
   cout.flush();
 
@@ -498,10 +508,10 @@ bench_worker::measure_txn_counters(void *txn, const char *txn_name)
 }
 #endif
 
-map<string, pair<uint64_t, uint64_t> >
+const tx_stat_map
 bench_worker::get_txn_counts() const
 {
-  map<string, pair<uint64_t, uint64_t> > m;
+  tx_stat_map m;
   const workload_desc_vec workload = get_workload();
   for (size_t i = 0; i < txn_counts.size(); i++)
     m[workload[i].name] = txn_counts[i];
