@@ -42,7 +42,7 @@ else
   echo "Unsupported benchmark $bench."
 fi
 
-options="$1 --verbose $5 --bench $bench --scale-factor $sf --num-threads $threads --scale-factor $sf --runtime $runtime --log-dir $LOGDIR --pin-cpu"
+options="$1 --verbose $5 --bench $bench --num-threads $threads --scale-factor $sf --runtime $runtime --log-dir $LOGDIR --pin-cpu"
 
 if [ "$bench" == "tpcc" ]; then
   btype=${workload:4:1}
