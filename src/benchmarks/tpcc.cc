@@ -2324,14 +2324,14 @@ tpcc_worker::txn_query2()
 					continue;
 
 				// aggregate - finding a stock tuple having min. stock level
-				stock::key min_k_s;
-				stock::value min_v_s;
+                stock::key min_k_s(0, 0);
+                stock::value min_v_s(0, 0, 0, 0);
 
 				int16_t min_qty = std::numeric_limits<int16_t>::max();
 				for( auto &it : supp_stock_map[k_su.su_suppkey] )		// already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
 				{
 					const stock::key k_s(it.first, it.second);
-					stock::value v_s_tmp;
+                    stock::value v_s_tmp(0, 0, 0, 0);
 					varstr sv = str(Size(v_s_tmp));
 					try_verify_relax(tbl_stock(it.first)->get(txn, Encode(str(Size(k_s)), k_s), sv));
           const stock::value *v_s = Decode(sv, v_s_tmp);
