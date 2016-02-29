@@ -3,6 +3,7 @@
 #include "txn.h"
 #include "lockguard.h"
 #include "scopedperf.hh"
+#include "dbcore/serial.h"
 
 #include <atomic>
 #include <algorithm>
@@ -110,7 +111,7 @@ transaction::abort()
         ASSERT(not r->is_defunct());
         ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         // remove myself from reader list
-        serial_deregister_reader_tx(r);
+        serial_deregister_reader_tx(&r->readers_bitmap);
     }
 #endif
 
@@ -330,14 +331,17 @@ transaction::parallel_ssn_commit()
         // readers (those who think it's an old version) as we lockout_readers()
         // first. Readers who think this is a young version can still come at any
         // time - they will be handled by the orignal SSN machinery.
-        readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple, true);
+        readers_bitmap_iterator readers_iter(&overwritten_tuple->readers_bitmap);
+        while (true) {
+            int32_t xid_idx = readers_iter.next(true);
+            if (xid_idx == -1)
+                break;
 
-        while (readers) {
-            int i = __builtin_ctzll(readers);
-            ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
-            readers &= (readers-1);
-            XID rxid = volatile_read(rlist.xids[i]);
+            XID rxid = volatile_read(rlist.xids[xid_idx]);
             ASSERT(rxid != xc->owner);
+            if (rxid == INVALID_XID)
+                continue;
+
             xid_context *reader_xc = NULL;
             uint64_t reader_end = 0;
             XID reader_owner = INVALID_XID;
@@ -355,7 +359,7 @@ transaction::parallel_ssn_commit()
             }
 
             // Do this after copying everything we needed
-            auto last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(i);
+            auto last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(xid_idx);
 
             if (not rxid._val or not reader_xc or reader_owner != rxid) {
                 if (overwritten_tuple->has_persistent_reader()) {
@@ -409,7 +413,7 @@ transaction::parallel_ssn_commit()
                                 last_read_mostly_cstamp = reader_end = rend;
                             } else {
                                 // Another transaction is using this context, refresh last_cstamp
-                                last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(i);
+                                last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(xid_idx);
                             }
                         }
                     }
@@ -428,7 +432,7 @@ transaction::parallel_ssn_commit()
                     // Refresh last_read_mostly_cstamp here, it'll be reader_end if the
                     // reader committed; or we just need to use the previous one
                     // if it didn't commit or saw a context change.
-                    last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(i);
+                    last_read_mostly_cstamp = serial_get_last_read_mostly_cstamp(xid_idx);
                     xc->set_pstamp(last_read_mostly_cstamp);
                 }
                 else {
@@ -569,7 +573,7 @@ transaction::parallel_ssn_commit()
         // the updater will be able to see the correct xstamp after noticed
         // a context change; otherwise it might miss it and read a too-old
         // xstamp that was set by some earlier reader.
-        serial_deregister_reader_tx(r);
+        serial_deregister_reader_tx(&r->readers_bitmap);
     }
 
     if (updated_oids_head) {
@@ -707,13 +711,18 @@ transaction::parallel_ssi_commit()
             // could go away any time. But I can look at the version's xstamp
             // in that case. So the reader should make sure when it goes away
             // from the bitmap, xstamp is ready to be read by the updater.
-            readers_list::bitmap_t readers = serial_get_tuple_readers(overwritten_tuple, true);
-            while (readers) {
-                int i = __builtin_ctzll(readers);
-                ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
-                readers &= (readers-1);
-                XID rxid = volatile_read(rlist.xids[i]);
+
+            readers_bitmap_iterator readers_iter(&overwritten_tuple->readers_bitmap);
+            while (true) {
+                int32_t xid_idx = readers_iter.next(true);
+                if (xid_idx == -1)
+                    break;
+
+                XID rxid = volatile_read(rlist.xids[xid_idx]);
                 ASSERT(rxid != xc->owner);
+                if (rxid == INVALID_XID)
+                    continue;
+
                 XID reader_owner = INVALID_XID;
                 uint64_t reader_end = 0;
                 xid_context *reader_xc = NULL;
@@ -867,7 +876,7 @@ transaction::parallel_ssi_commit()
         // now it's safe to release my seat!
         // Need to do this after setting xstamp, so that the updater can
         // see the xstamp if it didn't find the bit in the bitmap is set.
-        serial_deregister_reader_tx(r);
+        serial_deregister_reader_tx(&r->readers_bitmap);
     }
 
     // GC stuff, do it out of precommit
@@ -1162,7 +1171,7 @@ transaction::ssn_read(dbtuple *tuple)
         // If there's no (committed) overwrite so far, we need to track this read,
         // unless it's an old version.
         ASSERT(tuple_sstamp == NULL_PTR or XID::from_ptr(tuple_sstamp) != xc->owner);
-        serial_register_reader_tx(tuple, xc->owner);
+        serial_register_reader_tx(xc->owner, &tuple->readers_bitmap);
         if (tuple->is_old(xc)) {
             ASSERT(is_read_mostly());
             if (not tuple->set_persistent_reader())
@@ -1225,7 +1234,7 @@ transaction::ssi_read(dbtuple *tuple)
     else {
         // survived, register as a reader
         // After this point, I'll be visible to the updater (if any)
-        serial_register_reader_tx(tuple, xc->owner);
+        serial_register_reader_tx(xc->owner, &tuple->readers_bitmap);
         read_set.emplace_back(tuple);
     }
     return {RC_TRUE};
