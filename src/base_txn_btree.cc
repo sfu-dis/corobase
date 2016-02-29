@@ -116,19 +116,21 @@ rc_t base_txn_btree::do_tree_put(
             if (t.xc->ct3 <= t.xc->last_safesnap)
                 return {RC_ABORT_SERIAL};
 
-            if (volatile_read(prev->xstamp) >= t.xc->ct3 or serial_get_tuple_readers(prev, true)) {
+            if (volatile_read(prev->xstamp) >= t.xc->ct3 or not prev->readers_bitmap.is_empty(true)) {
                 // Read-only optimization: safe if T1 is read-only (so far) and T1's begin ts
                 // is before ct3.
                 if (sysconf::enable_ssi_read_only_opt) {
-                    readers_list::bitmap_t readers = serial_get_tuple_readers(prev, true);
-                    while (readers) {
-                        int i = __builtin_ctzll(readers);
-                        ASSERT(i >= 0 and i < readers_list::XIDS_PER_READER_KEY);
-                        readers &= (readers-1);
-                        XID rxid = volatile_read(rlist.xids[i]);
-                        ASSERT(rxid != t.xc->owner);
-                        if (!rxid._val)    // reader is gone, check xstamp in the end
+                    readers_bitmap_iterator readers_iter(&prev->readers_bitmap);
+                    while (true) {
+                        int32_t xid_idx = readers_iter.next(true);
+                        if (xid_idx == -1)
+                            break;
+
+                        XID rxid = volatile_read(rlist.xids[xid_idx]);
+                        ASSERT(rxid != xc->owner);
+                        if (rxid == INVALID_XID)    // reader is gone, check xstamp in the end
                             continue;
+
                         XID reader_owner = INVALID_XID;
                         uint64_t reader_begin = 0;
                         xid_context *reader_xc = NULL;

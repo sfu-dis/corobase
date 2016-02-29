@@ -162,99 +162,114 @@ namespace TXN {
 */
 
 readers_list rlist;
-
-typedef dbtuple::rl_bitmap_t rl_bitmap_t;
-static __thread rl_bitmap_t tls_bitmap_entry = 0;
-static rl_bitmap_t claimed_bitmap_entries = 0;
-
-/* Return a bitmap with 1's representing active readers.
- */
-readers_list::bitmap_t serial_get_tuple_readers(dbtuple *tup, bool exclude_self)
-{
-    if (exclude_self)
-        return volatile_read(tup->rl_bitmap) & ~tls_bitmap_entry;
-    return volatile_read(tup->rl_bitmap);
-}
+static __thread readers_list::tls_bitmap_info tls_bitmap_info;
 
 void assign_reader_bitmap_entry() {
-    if (tls_bitmap_entry)
+    if (tls_bitmap_info.entry)
         return;
 
-    rl_bitmap_t old_bitmap = volatile_read(claimed_bitmap_entries);
- retry:
-    rl_bitmap_t new_bitmap = old_bitmap | (old_bitmap+1);
-    rl_bitmap_t cur_bitmap = __sync_val_compare_and_swap(&claimed_bitmap_entries, old_bitmap, new_bitmap);
-    if (old_bitmap != cur_bitmap) {
-        old_bitmap = cur_bitmap;
-        goto retry;
+    for (uint32_t i = 0; i < readers_list::bitmap_t::ARRAY_SIZE; ++i) {
+    retry:
+        auto bits = volatile_read(rlist.bitmap.array[i]);
+        if (bits != ~uint64_t{0}) {
+            auto my_entry = bits + 1;
+            auto new_bits = bits | my_entry;
+            auto cur_bits = __sync_val_compare_and_swap(&rlist.bitmap.array[i], bits, new_bits);
+            if (cur_bits == bits) {
+                ASSERT(tls_bitmap_info.entry == 0);
+                tls_bitmap_info.entry = my_entry;
+                tls_bitmap_info.index = i;
+                return;
+            }
+            goto retry;
+        }
     }
-    tls_bitmap_entry = new_bitmap ^ old_bitmap;
-    // FIXME: GCC warns if XIDS_PER_READER_KEY == 64
-    //rl_bitmap_t forbidden_bits = -(rl_bitmap_t(1) << readers_list::XIDS_PER_READER_KEY);
-    //ASSERT(not (tls_bitmap_entry & forbidden_bits));
+
+    ALWAYS_ASSERT(false);
 }
 
 void deassign_reader_bitmap_entry() {
-    ASSERT(tls_bitmap_entry);
-    ASSERT(claimed_bitmap_entries & tls_bitmap_entry);
-    __sync_fetch_and_xor(&claimed_bitmap_entries, tls_bitmap_entry);
-    tls_bitmap_entry = 0;
-}
-
-bool
-serial_register_reader_tx(dbtuple *t, XID xid)
-{
-    rl_bitmap_t old_bitmap = volatile_read(t->rl_bitmap);
-    if (not (old_bitmap & tls_bitmap_entry)) {
-#if CHECK_INVARIANTS
-        int xid_pos = __builtin_ctzll(tls_bitmap_entry);
-        ASSERT(xid_pos >= 0 and xid_pos < readers_list::XIDS_PER_READER_KEY);
-#endif
-        __sync_fetch_and_or(&t->rl_bitmap, tls_bitmap_entry);
-        ASSERT(t->rl_bitmap & tls_bitmap_entry);
-    }
-    return true;
-}
-
-void
-serial_deregister_reader_tx(dbtuple *t)
-{
-    ASSERT(tls_bitmap_entry);
-    // if a tx reads a tuple multiple times (e.g., 3 times),
-    // then during post-commit it will call this function
-    // multiple times, so we need to prevent it flipping the
-    // bit an even number of times - leaving a 1 there.
-    if (volatile_read(t->rl_bitmap) & tls_bitmap_entry)
-        __sync_fetch_and_xor(&t->rl_bitmap, tls_bitmap_entry);
-    ASSERT(not (t->rl_bitmap & tls_bitmap_entry));
+    ASSERT(tls_bitmap_info.entry);
+    ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
+    __sync_fetch_and_xor(&rlist.bitmap.array[tls_bitmap_info.index], tls_bitmap_info.entry);
+    tls_bitmap_info.entry = tls_bitmap_info.index = 0;
 }
 
 // register tx in the global rlist (called at tx start)
 void
 serial_register_tx(XID xid)
 {
-    ASSERT(not rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val);
-    volatile_write(rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val, xid._val);
+    ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
+    volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, xid._val);
 }
 
 // deregister tx in the global rlist (called at tx end)
 void
 serial_deregister_tx(XID xid)
 {
-    volatile_write(rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val, 0);
-    ASSERT(not rlist.xids[__builtin_ctzll(tls_bitmap_entry)]._val);
+    ASSERT(rlist.xids[tls_bitmap_info.xid_index()]._val == xid._val);
+    volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, 0);
+    ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
+}
+
+
+void serial_register_reader_tx(XID xid, readers_list::bitmap_t* tuple_readers_bitmap) {
+    ASSERT(tls_bitmap_info.entry);
+    ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
+    __sync_fetch_and_or(&tuple_readers_bitmap->array[tls_bitmap_info.index], tls_bitmap_info.entry);
+}
+
+void serial_deregister_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap) {
+    ASSERT(tls_bitmap_info.entry);
+    // if a tx reads a tuple multiple times (e.g., 3 times),
+    // then during post-commit it will call this function
+    // multiple times, so we use atomic and, instead of xor.
+    __sync_fetch_and_and(&tuple_readers_bitmap->array[tls_bitmap_info.index], ~tls_bitmap_info.entry);
+    ASSERT(not (tuple_readers_bitmap->array[tls_bitmap_info.index] & tls_bitmap_info.entry));
 }
 
 void
 serial_stamp_last_committed_lsn(LSN lsn)
 {
-    volatile_write(rlist.last_read_mostly_clsns[__builtin_ctzll(tls_bitmap_entry)]._val, lsn._val);
+    volatile_write(rlist.last_read_mostly_clsns[tls_bitmap_info.xid_index()]._val, lsn._val);
 }
 
 uint64_t
 serial_get_last_read_mostly_cstamp(int xid_idx)
 {
     return volatile_read(rlist.last_read_mostly_clsns[xid_idx]).offset();
+}
+
+bool
+readers_list::bitmap_t::is_empty(bool exclude_self) {
+    for (uint32_t i = 0; i < ARRAY_SIZE; ++i) {
+        auto bits = volatile_read(array[i]);
+        if (bits) {
+            if (exclude_self and i == TXN::tls_bitmap_info.index and bits == TXN::tls_bitmap_info.entry)
+                continue;
+            return false;
+        }
+    }
+    return true;
+}
+
+int32_t
+readers_bitmap_iterator::next(bool skip_self) {
+    while (true) {
+        if (cur_entry) {
+            auto pos = __builtin_ctzll(cur_entry);
+            cur_entry &= (cur_entry - 1);
+            if (skip_self and
+                cur_entry_index == tls_bitmap_info.index and
+                pos == __builtin_ctzll(tls_bitmap_info.entry)) {
+                continue;
+            }
+            return cur_entry_index * 64 + pos;
+        }
+        if ((cur_entry_index + 1) * 64 >= sysconf::worker_threads)
+            return -1;
+        cur_entry = volatile_read(array[++cur_entry_index]);
+    }
 }
 
 };  // end of namespace

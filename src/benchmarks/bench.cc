@@ -112,7 +112,7 @@ void
 bench_worker::run()
 {
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    assign_reader_bitmap_entry();
+    TXN::assign_reader_bitmap_entry();
 #endif
     // XXX. RCU register/deregister should be the outer most one b/c
     // MM::deregister_thread could call cur_lsn inside
@@ -180,7 +180,7 @@ retry:
     MM::deregister_thread();
     RCU::rcu_deregister();
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    deassign_reader_bitmap_entry();
+    TXN::deassign_reader_bitmap_entry();
 #endif
 }
 

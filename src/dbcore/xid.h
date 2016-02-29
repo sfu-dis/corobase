@@ -6,9 +6,7 @@
 #include "sm-common.h"
 #include "sm-config.h"
 #include "../macros.h"
-//#include "../tuple.h"
 
-class dbtuple;
 class transaction;
 namespace TXN {
 

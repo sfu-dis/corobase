@@ -18,7 +18,6 @@
 
 #include <unordered_map>
 #include "dbcore/xid.h"
-#include "dbcore/serial.h"
 #include "dbcore/sm-config.h"
 #include "dbcore/sm-oid.h"
 #include "dbcore/sm-log.h"
