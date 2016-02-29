@@ -41,7 +41,6 @@ public:
     }
 };
 
-bool ssn_ropt_set_reader_sstamp(xid_context *xc, uint64_t sstamp);
 uint64_t serial_get_last_read_mostly_cstamp(int xid_idx);
 void serial_stamp_last_committed_lsn(LSN lsn);
 bool serial_register_reader_tx(dbtuple *tup, XID xid);
