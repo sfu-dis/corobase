@@ -489,7 +489,7 @@ sm_oid_mgr::create(LSN chkpt_start, char const *dname, sm_log_recover_mgr *lm)
     oidmgr->dfd = dirent_iterator(dname).dup();
     chkptmgr = new sm_chkpt_mgr(chkpt_start);
 
-    if (not sm_log::need_recovery)
+    if (not sm_log::need_recovery or chkpt_start.offset() == 0)
         return;
 
     // Find the chkpt file and recover from there
