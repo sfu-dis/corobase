@@ -337,9 +337,7 @@ struct sm_log {
        directory will be created.
      */
     static
-    sm_log *new_log(char const *dname, size_t segment_size,
-                    sm_log_recover_function *rfn, void *rfn_arg,
-                    size_t bufsz, bool null_log_device);
+    sm_log *new_log(sm_log_recover_function *rfn, void *rfn_arg);
 
     /* Return a pointer to the log's scan manager.
 
