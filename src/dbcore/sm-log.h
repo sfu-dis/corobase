@@ -329,6 +329,7 @@ struct sm_log {
 
     void update_chkpt_mark(LSN cstart, LSN cend);
     LSN flush();
+    LSN flush_cur_lsn();
 
     void setup_tls_lsn_offset(uint32_t threads);
 

@@ -23,6 +23,12 @@ sm_log::flush()
     return get_impl(this)->_lm.flush();
 }
 
+LSN
+sm_log::flush_cur_lsn()
+{
+    return get_impl(this)->_lm.flush_cur_lsn();
+}
+
 void
 sm_log::update_chkpt_mark(LSN cstart, LSN cend)
 {

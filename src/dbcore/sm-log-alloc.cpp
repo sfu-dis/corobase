@@ -82,7 +82,7 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr()
         DEFER(_write_daemon_mutex.unlock());
         
         _write_daemon_should_stop = true;
-        _kick_log_write_daemon();
+        flush_cur_lsn();
     }
     
     int err = pthread_join(_write_daemon_tid, NULL);
@@ -148,6 +148,24 @@ sm_log_alloc_mgr::flush()
     _kick_log_write_daemon();
     _dmark_updated_cond.wait(_write_daemon_mutex);
     return _lm.get_durable_mark();
+}
+
+/* Flush **everything** up to the current largest thread-local committed LSN.
+ * This implicitly assumes **all** the transactions with a clsn < the largest
+ * TLS commit lsn offset have concluded, so flushing up to the most recent offset
+ * won't make any holes.
+ *
+ * **USE THIS ONLY WHEN YOU SURE ABOUT WHAT YOU'RE DOING**
+ *
+ * So far the only user of this function is ~sm_log_alloc_mgr.
+ */
+LSN
+sm_log_alloc_mgr::flush_cur_lsn()
+{
+    for (uint32_t i = 0; i < sysconf::_active_threads; ++i) {
+        volatile_write(_tls_lsn_offset[i], cur_lsn_offset());
+    }
+    return flush();
 }
 
 /* Allocating a log block is a multi-step process.
