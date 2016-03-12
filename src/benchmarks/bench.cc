@@ -237,6 +237,9 @@ bench_runner::run()
   // Use the real worker_threads to initialize the tls_lsn_offset array.
   logmgr->setup_tls_lsn_offset(sysconf::worker_threads);
 
+  // Persist the database
+  logmgr->flush_cur_lsn();
+
   const vector<bench_worker *> workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (vector<bench_worker *>::const_iterator it = workers.begin();
