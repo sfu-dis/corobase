@@ -30,16 +30,12 @@ namespace {
 void
 sm_log_alloc_mgr::setup_tls_lsn_offset(uint32_t threads)
 {
-    // one extra for the flusher
-    if (threads < sysconf::MAX_THREADS)
-        threads++;
-
-    sysconf::threads = threads;
     sysconf::_active_threads = 0;
     if (_tls_lsn_offset)
         _tls_lsn_offset = (uint64_t *)realloc(_tls_lsn_offset, sizeof(uint64_t) * threads);
     else
         _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * threads);
+
     for (uint32_t i = 0; i < threads; i++)
         _tls_lsn_offset[i] = _lm.get_durable_mark().offset();
 }
@@ -57,8 +53,8 @@ sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset)
  */
 sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
                                    sm_log_recover_function *rfn, void *rfn_arg,
-                                   size_t bufsz, bool null_log_device)
-    : _lm(dname, segment_size, null_log_device ? NULL : rfn, rfn_arg)
+                                   size_t bufsz)
+    : _lm(dname, segment_size, sysconf::null_log_device ? NULL : rfn, rfn_arg)
     , _logbuf(bufsz, get_starting_byte_offset(&_lm))
     , _durable_lsn_offset(_lm.get_durable_mark().offset())
     , _write_daemon_state(0)
@@ -66,7 +62,6 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
     , _waiting_for_dmark(false)
     , _write_daemon_should_wake(false)
     , _write_daemon_should_stop(false)
-    , _null_log_device(null_log_device)
     , _lsn_offset(_lm.get_durable_mark().offset())
 {
     setup_tls_lsn_offset(sysconf::MAX_THREADS);
@@ -419,13 +414,12 @@ sm_log_alloc_mgr::_log_write_daemon()
            possible. Do not span segments.
         */
         uint64_t oldest_offset = cur_offset;
-        for (uint32_t i = 0; i < sysconf::threads; i++) {
+        for (uint32_t i = 0; i < sysconf::_active_threads; i++) {
             // Skip too small/stale LSNs (maybe due to running read-only
             // transactions using SSN's safesnap) so that we can make progress.
             if (_tls_lsn_offset[i] > _durable_lsn_offset)
                 oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
         }
-
         while (_durable_lsn_offset < oldest_offset) {
             sm_log_recover_mgr::segment_id *new_sid;
             uint64_t new_offset;
@@ -466,7 +460,7 @@ sm_log_alloc_mgr::_log_write_daemon()
             uint64_t nbytes = new_byte - durable_byte;
             auto *buf = _logbuf.read_buf(durable_byte, nbytes);
             auto file_offset = durable_sid->offset(_durable_lsn_offset);
-            if (!_null_log_device) {
+            if (!sysconf::null_log_device) {
               uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
               THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
             }

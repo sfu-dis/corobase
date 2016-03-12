@@ -43,19 +43,25 @@ sm_log::load_ext_pointer(fat_ptr ptr)
 
 
 sm_log *
-sm_log::new_log(char const *dname, size_t segsz,
-                sm_log_recover_function *rfn, void *rarg,
-                size_t bufsz, bool null_log_device)
+sm_log::new_log(sm_log_recover_function *rfn, void *rarg)
 {
     need_recovery = false;
-    if (null_log_device) {
-      dirent_iterator iter(dname);
+    if (sysconf::null_log_device) {
+      dirent_iterator iter(sysconf::log_dir.c_str());
       for (char const *fname : iter) {
         if (strcmp(fname, ".") and strcmp(fname, ".."))
           os_unlinkat(iter.dup(), fname);
       }
     }
-    return new sm_log_impl(dname, segsz, rfn, rarg, bufsz, null_log_device);
+    ALWAYS_ASSERT(sysconf::log_segment_mb);
+    ALWAYS_ASSERT(sysconf::log_buffer_mb);
+    size_t mb = 1024 * 1024;
+    return new sm_log_impl(
+      sysconf::log_dir.c_str(),
+      sysconf::log_segment_mb * mb,
+      rfn,
+      rarg,
+      sysconf::log_buffer_mb * mb);
 }
 
 sm_log_scan_mgr *

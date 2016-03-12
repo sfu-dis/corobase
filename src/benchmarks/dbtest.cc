@@ -66,12 +66,7 @@ main(int argc, char **argv)
   string bench_opts;
   free(curdir);
   int saw_run_spec = 0;
-  string *log_dir = NULL;
-  size_t log_seg_gig = 1024 * 1024 * 1024;
-  size_t log_segsize = log_seg_gig * 8; // log segment size
-  size_t log_bufsize = 512 * 1024 * 1024;  // log buffer size
   string stats_server_sockfile;
-  int null_log_device = 0;
   // Do whatever we can to gather configs independent of cmdargs
   sysconf::init();
 
@@ -93,13 +88,13 @@ main(int argc, char **argv)
       {"ops-per-worker"             , required_argument , 0                          , 'n'} ,
       {"bench-opts"                 , required_argument , 0                          , 'o'} ,
       {"log-dir"                    , required_argument , 0                          , 'l'} ,
-      {"log-segsize"                , required_argument , 0                          , 'e'} ,
-      {"log-bufsize"                , required_argument , 0                          , 'u'} ,
+      {"log-segment-mb"             , required_argument , 0                          , 'e'} ,
+      {"log-buffer-mb"              , required_argument , 0                          , 'u'} ,
       {"warm-up"                    , required_argument , 0                          , 'w'} ,
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
-      {"null-log-device"            , no_argument       , &null_log_device           , 1} ,
+      {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
       {"prefault-gig"               , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
@@ -115,7 +110,7 @@ main(int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:a:x:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:", long_options, &option_index);
     if (c == -1)
       break;
 
@@ -190,7 +185,7 @@ main(int argc, char **argv)
       break;
 
     case 'l':
-      log_dir = new string(optarg);
+      sysconf::log_dir = std::string(optarg);
       break;
 
     case 'm':
@@ -198,13 +193,13 @@ main(int argc, char **argv)
       break;
 
     case 'e':
-      log_segsize = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(log_segsize > 0);
+      sysconf::log_segment_mb = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(sysconf::log_segment_mb);
       break;
 
     case 'u':
-      log_bufsize = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(log_bufsize > 0);
+      sysconf::log_buffer_mb = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(sysconf::log_buffer_mb);
       break;
 
     case 'x':
@@ -230,7 +225,7 @@ main(int argc, char **argv)
   else
     ALWAYS_ASSERT(false);
 
-  if (!log_dir) {
+  if (sysconf::log_dir.empty()) {
     cerr << "[ERROR] no log dir specified" << endl;
     return 1;
   }
@@ -301,9 +296,9 @@ main(int argc, char **argv)
     cerr << "  allocator   : libc"                          << endl;
 #endif
     cerr << "  tmpfs-dir   : " << sysconf::tmpfs_dir        << endl;
-    cerr << "  log-dir     : " << *log_dir                  << endl;
-    cerr << "  log-segsize : " << log_segsize               << endl;
-    cerr << "  log-bufsize : " << log_bufsize               << endl;
+    cerr << "  log-dir     : " << sysconf::log_dir          << endl;
+    cerr << "  log-segment-mb: " << sysconf::log_segment_mb   << endl;
+    cerr << "  log-buffer-mb: " << sysconf::log_buffer_mb    << endl;
     cerr << "  warm-up     : ";
     if (sm_log::warm_up == sm_log::WU_NONE)
       cerr << "0";
@@ -314,9 +309,9 @@ main(int argc, char **argv)
       cerr << "eager";
     }
     cerr << endl;
-    cerr << "  enable-chkpt: " << enable_chkpt              << endl;
-    cerr << "  enable-gc:    " << sysconf::enable_gc        << endl;
-    cerr << "  null-log-device: " << null_log_device        << endl;
+    cerr << "  enable-chkpt    : " << enable_chkpt           << endl;
+    cerr << "  enable-gc       : " << sysconf::enable_gc     << endl;
+    cerr << "  null-log-device : " << sysconf::null_log_device << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;
@@ -360,7 +355,7 @@ main(int argc, char **argv)
 
   // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)
   sysconf::sanity_check();
-  db = new ndb_wrapper(log_dir->c_str(), log_segsize, log_bufsize, null_log_device);
+  db = new ndb_wrapper();
   test_fn(db, argc, new_argv);
   delete db;
   return 0;
