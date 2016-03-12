@@ -76,12 +76,7 @@ struct sm_log_file_mgr {
         
         segment_id * volatile arr[NUM_LOG_SEGMENTS];
     };
-    
-    struct segment_list : std::deque<segment_id*> {
-        using std::deque<segment_id*>::deque;
-        ~segment_list();
-    };
-    
+
     sm_log_file_mgr(char const *dname, size_t segment_size);
 
     /* Change the segment size.
