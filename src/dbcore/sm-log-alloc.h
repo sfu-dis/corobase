@@ -33,6 +33,7 @@ struct sm_log_alloc_mgr {
      * the log buffer
      */
     LSN flush();
+    LSN flush_cur_lsn();
 
     /* Retrieve the current end of log
      */
