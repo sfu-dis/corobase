@@ -157,7 +157,8 @@ sm_log_alloc_mgr::flush()
  *
  * **USE THIS ONLY WHEN YOU SURE ABOUT WHAT YOU'RE DOING**
  *
- * So far the only user of this function is ~sm_log_alloc_mgr.
+ * So far the only users of this function are ~sm_log_alloc_mgr and the loader
+ * (after loaded the database).
  */
 LSN
 sm_log_alloc_mgr::flush_cur_lsn()
