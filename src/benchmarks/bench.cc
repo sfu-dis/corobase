@@ -16,9 +16,10 @@
 #include "../scopedperf.hh"
 #include "../allocator.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-chkpt.h"
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-log.h"
-#include "../dbcore/sm-chkpt.h"
+#include "../dbcore/sm-rep.h"
 
 #ifdef USE_JEMALLOC
 //cannot include this header b/c conflicts with malloc.h
@@ -187,8 +188,8 @@ retry:
 void
 bench_runner::run()
 {
-  // load data
-  if (not sm_log::need_recovery) {
+  // load data, unless we recover from logs or is a backup server (recover from shipped logs)
+  if (not sm_log::need_recovery && not sysconf::is_backup_srv) {
     const vector<bench_loader *> loaders = make_loaders();
     spin_barrier b(loaders.size());
     const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
@@ -217,6 +218,16 @@ bench_runner::run()
       cerr << "DB size: " << delta_mb << " MB" << endl;
 
     delete_pointers(loaders);
+  }
+
+  if (sysconf::num_backups) {
+    std::cout << "[Primary] Expect " << sysconf::num_backups << " backups\n";
+    ALWAYS_ASSERT(not sysconf::is_backup_srv);
+    rep::start_as_primary();
+    if (sysconf::wait_for_backups) {
+      while (volatile_read(sysconf::num_active_backups) != volatile_read(sysconf::num_backups)) {}
+      std::cout << "[Primary] " << sysconf::num_backups << " backups\n";
+    }
   }
 
   if (!no_reset_counters) {

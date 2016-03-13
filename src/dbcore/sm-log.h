@@ -14,8 +14,10 @@
    transaction commits.
 
  */
-#include "sm-common.h"
 #include <unordered_map>
+#include "sm-common.h"
+#include "sm-rep.h"
+
 class ndb_ordered_index;
 class object;
 

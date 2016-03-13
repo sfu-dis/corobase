@@ -28,6 +28,12 @@ public:
     // for update-intensive workloads, like tpcc. TPC-E to test and verify.
     static int enable_safesnap;
 
+    /* Log shipping related options */
+    static int is_backup_srv;
+    static int wait_for_backups;
+    static int num_backups;
+    static int num_active_backups;
+    static std::string primary_srv;
 
     inline static uint32_t my_thread_id() {
         static __thread uint32_t __id = 0;
