@@ -157,6 +157,7 @@ DBCORE_SRCFILES = dbcore/burt-hash.cpp \
 	dbcore/sm-oid-alloc-impl.cpp \
 	dbcore/sm-exceptions.cpp \
 	dbcore/sm-common.cpp \
+	dbcore/sm-rep.cpp \
 	dbcore/window-buffer.cpp \
 	dbcore/rcu-slist.cpp \
 	dbcore/rcu.cpp \

@@ -11,10 +11,15 @@ std::string sysconf::tmpfs_dir("/tmpfs");
 int sysconf::enable_safesnap = 0;
 int sysconf::enable_ssi_read_only_opt = 0;
 uint64_t sysconf::ssn_read_opt_threshold = sysconf::SSN_READ_OPT_DISABLED;
+int sysconf::is_backup_srv = 0;
+int sysconf::wait_for_backups = 0;
+int sysconf::num_backups = 0;
+int sysconf::num_active_backups = 0;
 int sysconf::log_buffer_mb = 512;
 int sysconf::log_segment_mb = 8192;
 std::string sysconf::log_dir("");
 int sysconf::null_log_device = 0;
+std::string sysconf::primary_srv("");
 
 void
 sysconf::init() {

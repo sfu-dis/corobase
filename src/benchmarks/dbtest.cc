@@ -13,6 +13,7 @@
 
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-alloc.h"
+#include "../dbcore/sm-rep.h"
 #include "../allocator.h"
 #include "../stats_server.h"
 #include "bench.h"
@@ -98,6 +99,10 @@ main(int argc, char **argv)
       {"prefault-gig"               , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
+      {"as-backup"                  , no_argument       , &sysconf::is_backup_srv    , 1},
+      {"primary"                    , required_argument , 0                          , 'g'},
+      {"wait-for-backups"           , no_argument       , &sysconf::wait_for_backups , 1},
+      {"num-backups"                , required_argument , 0                          , 'a'},
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
       {"safesnap"                   , no_argument       , &sysconf::enable_safesnap  , 1},
 #ifdef USE_PARALLEL_SSI
@@ -110,7 +115,7 @@ main(int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:g:a:", long_options, &option_index);
     if (c == -1)
       break;
 
@@ -120,10 +125,17 @@ main(int argc, char **argv)
       if (long_options[option_index].flag != 0)
         break;
       abort();
+
+    case 'a':
+      sysconf::num_backups = strtoul(optarg, NULL, 10);
       break;
 
     case 'p':
       sysconf::prefault_gig = strtoul(optarg, NULL, 10);
+      break;
+
+    case 'g':
+      sysconf::primary_srv = std::string(optarg);
       break;
 
     case 'b':
@@ -312,6 +324,9 @@ main(int argc, char **argv)
     cerr << "  enable-chkpt    : " << enable_chkpt           << endl;
     cerr << "  enable-gc       : " << sysconf::enable_gc     << endl;
     cerr << "  null-log-device : " << sysconf::null_log_device << endl;
+    cerr << "  as-backup       : " << sysconf::is_backup_srv << endl;
+    cerr << "  num-backups     : " << sysconf::num_backups   << endl;
+    cerr << "  wait-for-backups: " << sysconf::wait_for_backups << endl;
     cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;
@@ -345,6 +360,11 @@ main(int argc, char **argv)
     thread(&stats_server::serve_forever, srvr).detach();
   }
 
+  if (sysconf::wait_for_backups and sysconf::num_backups == 0) {
+    std::cout << "[Primary] no backups\n";
+    abort();
+  }
+
   heap_prefault();
   vector<string> bench_toks = split_ws(bench_opts);
   argc = 1 + bench_toks.size();
@@ -352,6 +372,9 @@ main(int argc, char **argv)
   new_argv[0] = (char *) bench_type.c_str();
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
+
+  if (sysconf::is_backup_srv)
+    rep::start_as_backup(sysconf::primary_srv);
 
   // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)
   sysconf::sanity_check();
