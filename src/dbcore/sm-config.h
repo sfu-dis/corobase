@@ -6,7 +6,7 @@ public:
     static uint32_t _active_threads;
     static uint32_t worker_threads;
     static int numa_nodes;
-    static const uint32_t MAX_THREADS = 1024;
+    static const uint32_t MAX_THREADS = 256;
     static uint64_t prefault_gig;
     static int enable_gc;
     static std::string tmpfs_dir;
