@@ -28,19 +28,6 @@ namespace {
 } // end anonymous namespace
 
 void
-sm_log_alloc_mgr::setup_tls_lsn_offset(uint32_t threads)
-{
-    sysconf::_active_threads = 0;
-    if (_tls_lsn_offset)
-        _tls_lsn_offset = (uint64_t *)realloc(_tls_lsn_offset, sizeof(uint64_t) * threads);
-    else
-        _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * threads);
-
-    for (uint32_t i = 0; i < threads; i++)
-        _tls_lsn_offset[i] = _lm.get_durable_mark().offset();
-}
-
-void
 sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset)
 {
     volatile_write(_tls_lsn_offset[sysconf::my_thread_id()], offset);
@@ -64,7 +51,11 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(char const *dname, size_t segment_size,
     , _write_daemon_should_stop(false)
     , _lsn_offset(_lm.get_durable_mark().offset())
 {
-    setup_tls_lsn_offset(sysconf::MAX_THREADS);
+    sysconf::_active_threads = 0;
+    _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * sysconf::MAX_THREADS);
+    for (uint32_t i = 0; i < sysconf::MAX_THREADS; i++)
+        _tls_lsn_offset[i] = _lm.get_durable_mark().offset();
+
     // fire up the log writing daemon
     _write_daemon_mutex.lock();
     DEFER(_write_daemon_mutex.unlock());

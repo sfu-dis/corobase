@@ -11,12 +11,6 @@ sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 int sm_log::warm_up = sm_log::WU_NONE;
 
-void
-sm_log::setup_tls_lsn_offset(uint32_t threads)
-{
-    get_impl(this)->_lm.setup_tls_lsn_offset(threads);
-}
-
 LSN
 sm_log::flush()
 {

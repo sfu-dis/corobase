@@ -245,9 +245,6 @@ bench_runner::run()
     chkptmgr->start_chkpt_thread();
   }
 
-  // Use the real worker_threads to initialize the tls_lsn_offset array.
-  logmgr->setup_tls_lsn_offset(sysconf::worker_threads);
-
   // Persist the database
   logmgr->flush_cur_lsn();
 
