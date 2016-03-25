@@ -333,8 +333,6 @@ struct sm_log {
     LSN flush();
     LSN flush_cur_lsn();
 
-    void setup_tls_lsn_offset(uint32_t threads);
-
     /* Allocate and return a new sm_log object. If [dname] exists, it
        will be mounted and used. Otherwise, a new (empty) log
        directory will be created.
