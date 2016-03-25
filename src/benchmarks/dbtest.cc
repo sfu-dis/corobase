@@ -144,7 +144,6 @@ main(int argc, char **argv)
 
     case 's':
       scale_factor = strtod(optarg, NULL);
-      ALWAYS_ASSERT(scale_factor > 0.0);
       break;
 
     case 't':
@@ -226,11 +225,10 @@ main(int argc, char **argv)
       abort();
     }
   }
-// FIXME: tzwang: only keep tpcc for now
-/* if (bench_type == "ycsb")
+
+ if (bench_type == "ycsb")
     test_fn = ycsb_do_test;
-  else */
-  if (bench_type == "tpcc")
+  else if (bench_type == "tpcc")
     test_fn = tpcc_do_test;
   else if (bench_type == "tpce")
     test_fn = tpce_do_test;

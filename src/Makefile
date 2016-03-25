@@ -193,12 +193,8 @@ BENCH_SRCFILES = \
 	benchmarks/ndb_wrapper.cc \
 	benchmarks/bench.cc \
 	benchmarks/tpce.cc	\
-	benchmarks/tpcc.cc
-	#benchmarks/encstress.cc \
-	benchmarks/bid.cc \
-	benchmarks/masstree/kvrandom.cc \
-	benchmarks/queue.cc \
-	benchmarks/tpcc.cc	
+	benchmarks/tpcc.cc  \
+	benchmarks/ycsb.cc
 
 EGEN_SRCFILES = \
    benchmarks/egen/DateTime.cpp \
