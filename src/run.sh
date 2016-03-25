@@ -38,7 +38,7 @@ if [ "$bench" == "tpcc" ]; then
   sf=$threads
 elif [ "$bench" == "tpce" ]; then
   sf="500"
-else
+elif [ "$bench" != "ycsb" ]; then
   echo "Unsupported benchmark $bench."
 fi
 
@@ -69,6 +69,8 @@ elif [ "$bench" == "tpce" ]; then
     query_rng=${workload:4}
     numactl --interleave=all $options -o "--query-range $query_rng --egen-dir ./benchmarks/egen/flat/egen_flat_in --customer 5000 --working-days 10 --workload-mix="4.9,8,1,13,14,8,10.1,10,9,2,20" $6"
   fi
+elif [ "$bench" == "ycsb" ]; then
+  numactl --interleave=all $options -o "$6"
 else
   echo "Unspported benchmark $bench."
 fi
