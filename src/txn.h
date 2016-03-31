@@ -37,7 +37,6 @@
 #include "prefetch.h"
 #include "tuple.h"
 #include "scopedperf.hh"
-#include "marked_ptr.h"
 #include "ndb_type_traits.h"
 #include "object.h"
 
