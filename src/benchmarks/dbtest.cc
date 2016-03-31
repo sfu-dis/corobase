@@ -14,7 +14,6 @@
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/sm-rep.h"
-#include "../allocator.h"
 #include "../stats_server.h"
 #include "bench.h"
 #include "ndb_wrapper.h"

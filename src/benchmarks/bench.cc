@@ -14,7 +14,6 @@
 
 #include "../counter.h"
 #include "../scopedperf.hh"
-#include "../allocator.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-chkpt.h"
 #include "../dbcore/sm-config.h"
