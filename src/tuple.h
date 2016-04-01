@@ -17,7 +17,6 @@
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
-#include "allocator.h"
 #include "thread.h"
 #include "spinlock.h"
 #include "small_unordered_map.h"
