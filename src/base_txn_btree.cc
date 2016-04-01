@@ -80,27 +80,6 @@ rc_t base_txn_btree::do_tree_put(
     OID oid = 0;
     if (!this->underlying_btree.search(varkey(k), oid, bv, t.xc))
         return rc_t{RC_ABORT_INTERNAL};
-#ifdef PHANTOM_PROT_TABLE_LOCK
-    // for delete
-    bool instant_lock = false;
-    table_lock_t *l = NULL;
-    if (not v) {
-        l = this->underlying_btree.tuple_vec()->lock_ptr();
-        transaction::table_lock_set_t::iterator it =
-            std::find(t.table_locks.begin(), t.table_locks.end(), l);
-        if (it == t.table_locks.end()) {
-            if (not object_vector::lock(l, TABLE_LOCK_X))
-                return rc_t{RC_ABORT_PHANTOM};
-            instant_lock = true;
-        }
-        else {
-            if (not object_vector::upgrade_lock(l))
-                return rc_t{RC_ABORT_PHANTOM};
-        }
-        ASSERT((volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_X or
-               (volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX);
-    }
-#endif
 
     dbtuple *tuple = NULL;
     // first *updater* wins
@@ -176,10 +155,6 @@ rc_t base_txn_btree::do_tree_put(
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set)
             oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
-#ifdef PHANTOM_PROT_TABLE_LOCK
-            if (instant_lock)
-                object_vector::unlock(l);
-#endif
             return rc_t{RC_ABORT_SERIAL};
         }
 #endif
@@ -209,12 +184,6 @@ rc_t base_txn_btree::do_tree_put(
         t.write_set.emplace_back(tuple->get_object(), this->underlying_btree.tuple_vec(), oid);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
-
-#ifdef PHANTOM_PROT_TABLE_LOCK
-        if (instant_lock)
-            object_vector::unlock(l);
-#endif
-
         INVARIANT(t.log);
         if (not v)
             t.log->log_delete(this->fid, oid);
@@ -235,10 +204,6 @@ rc_t base_txn_btree::do_tree_put(
         return rc_t{RC_TRUE};
     }
     else {  // somebody else acted faster than we did
-#ifdef PHANTOM_PROT_TABLE_LOCK
-        if (instant_lock)
-            object_vector::unlock(l);
-#endif
         return rc_t{RC_ABORT_SI_CONFLICT};
     }
 }
@@ -317,22 +282,6 @@ base_txn_btree::do_search_range_call(
     if (unlikely(upper_str && *upper_str <= *lower_str))
         return;
 
-#ifdef PHANTOM_PROT_TABLE_LOCK
-    table_lock_t *l = this->underlying_btree.tuple_vec()->lock_ptr();
-    if (std::find(t.table_locks.begin(), t.table_locks.end(), l) == t.table_locks.end()) {
-        if (object_vector::lock(l, TABLE_LOCK_S))
-            t.table_locks.push_back(l);
-        else {
-            callback.return_code = rc_t{RC_ABORT_PHANTOM};
-            return;
-        }
-    }
-    else {
-        ASSERT((volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_S or
-            (volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX);
-    }
-#endif
-
     txn_search_range_callback c(&t, &callback, &key_reader, &value_reader);
 
     varkey uppervk;
@@ -364,22 +313,6 @@ base_txn_btree::do_rsearch_range_call(
 
     if (unlikely(lower_str && *upper_str <= *lower_str))
         return;
-
-#ifdef PHANTOM_PROT_TABLE_LOCK
-    table_lock_t *l = this->underlying_btree.tuple_vec()->lock_ptr();
-    if (std::find(t.table_locks.begin(), t.table_locks.end(), l) == t.table_locks.end()) {
-        if (object_vector::lock(l, TABLE_LOCK_S))
-            t.table_locks.push_back(l);
-        else {
-            callback.return_code = rc_t{RC_ABORT_PHANTOM};
-            return;
-        }
-    }
-    else {
-        ASSERT((volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_S or
-               (volatile_read(*l) & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX);
-    }
-#endif
 
     txn_search_range_callback c(&t, &callback, &key_reader, &value_reader);
 

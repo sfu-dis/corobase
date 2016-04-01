@@ -21,10 +21,6 @@
 #error "can't use SSI and SSN together."
 #endif
 
-//#define PHANTOM_PROT_TABLE_LOCK
-#ifdef PHANTOM_PROT_TABLE_LOCK
-#endif
-
 #define PHANTOM_PROT_NODE_SET   // silo's phantom protection scheme
 
 //#define USE_DYNARRAY_STR_ARENA
