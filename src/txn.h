@@ -160,10 +160,7 @@ protected:
 
   typedef std::vector<write_record_t> write_set_map;
 
-#ifdef PHANTOM_PROT_TABLE_LOCK
-  typedef std::vector<table_lock_t*> table_lock_set_t;
-  table_lock_set_t table_locks;
-#elif defined(PHANTOM_PROT_NODE_SET)
+#ifdef PHANTOM_PROT_NODE_SET
   // the absent set is a mapping from (btree_node -> version_number).
   struct absent_record_t { uint64_t version; };
   typedef dense_hash_map<const concurrent_btree::node_opaque_t*, absent_record_t> absent_set_map;

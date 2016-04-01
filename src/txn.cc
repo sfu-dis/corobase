@@ -68,12 +68,6 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 
 transaction::~transaction()
 {
-#ifdef PHANTOM_PROT_TABLE_LOCK
-    // release table locks
-    for (auto l : table_locks)
-        object_vector::unlock(l);
-#endif
-
     // transaction shouldn't fall out of scope w/o resolution
     // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
     INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
@@ -981,64 +975,16 @@ transaction::try_insert_new_tuple(
     dbtuple *tuple = object->tuple();
     tuple->get_object()->_clsn = xid.to_ptr();
 
-#ifdef PHANTOM_PROT_TABLE_LOCK
-    // here we return false if some reader is already scanning.
-    // the caller (do_tree_put) will detect this return value (false)
-    // and then do a tree search. If the tree search succeeded, then
-    // somebody else has acquired the lock and successfully inserted
-    // so we need to fallback to update; otherwise the tree search
-    // will return false, ie no index, so we abort.
-    //
-    // drawback of this implementation is we can't differentiate aborts
-    // due to failure of acquiring table lock.
-    table_lock_t *l = tuple_vector->lock_ptr();
-    table_lock_set_t::iterator it = std::find(table_locks.begin(), table_locks.end(), l);
-    bool instant_xlock = false;
-
-    if (it == table_locks.end()) {
-        // not holding (in S/SIX mode), grab it
-        if (not object_vector::lock(l, TABLE_LOCK_X)) {
-            return false;
-            //while (not object_vector::lock(l, true)); // spin, super slow..
-        }
-        // before X lock is granted, there's no reader
-        // after the insert, readers can see the insert freely
-        // X lock can be instant, no need to add lock to lock list
-        instant_xlock = true;
-    }
-    else {
-        if (not object_vector::upgrade_lock(l))
-            return false;
-    }
-    ASSERT((*l & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_SIX or
-           (*l & TABLE_LOCK_MODE_MASK) == TABLE_LOCK_X);
-#endif
-
     OID oid = oidmgr->alloc_oid(fid);
     fat_ptr new_head = fat_ptr::make(object, INVALID_SIZE_CODE, 0);
     oidmgr->oid_put_new(btr->tuple_vec(), oid, new_head);
-#ifdef PHANTOM_PROT_TABLE_LOCK
-    if (not tuple_vector->put(oid, new_head)) {
-        if (instant_xlock)
-            object_vector::unlock(l);
-        return false;
-    }
-#endif
-
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, &ins_info))) {
         oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
-#ifdef PHANTOM_PROT_TABLE_LOCK
-        if (instant_xlock)
-            object_vector::unlock(l);
-#endif
         return false;
     }
 
-#ifdef PHANTOM_PROT_TABLE_LOCK
-    if (instant_xlock)
-        object_vector::unlock(l);
-#elif defined(PHANTOM_PROT_NODE_SET)
+#ifdef PHANTOM_PROT_NODE_SET
     // update node #s
     INVARIANT(ins_info.node);
     if (!absent_set.empty()) {
