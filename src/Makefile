@@ -73,7 +73,7 @@ else
 	$(error invalid mode)
 endif
 
-CXXFLAGS := -Wall -std=c++0x -g
+CXXFLAGS := -Wall -std=c++0x
 CXXFLAGS += -MD -Ithird-party/sparsehash/src -DCONFIG_H=\"$(CONFIG_H)\"
 
 ifeq ($(SSI_S),1)
