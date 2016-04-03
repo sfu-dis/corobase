@@ -146,8 +146,6 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
     LSN my_begin_lsn = epoch_excl_begin_lsn[e % 3];
     if (not sysconf::enable_gc or my_begin_lsn == INVALID_LSN)
         return;
-
-    ASSERT(epoch_reclaim_lsn[e % 3] == INVALID_LSN);
     epoch_reclaim_lsn[e % 3] = my_begin_lsn;
     if (sysconf::enable_safesnap) {
         // Make versions created during epoch N available for transactions
