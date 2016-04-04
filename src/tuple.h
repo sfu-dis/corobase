@@ -6,19 +6,15 @@
 #include <string>
 #include <utility>
 #include <limits>
-#include <unordered_map>
-#include <unordered_set>
 #include <ostream>
 #include <thread>
 
 #include "amd64.h"
-#include "core.h"
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
 #include "thread.h"
 #include "spinlock.h"
-#include "small_unordered_map.h"
 #include "prefetch.h"
 #include "ownership_checker.h"
 
@@ -69,14 +65,6 @@ public:
                      // so that read-my-own-update can copy from here.
   uint8_t value_start[0];   // must be last field
 
-private:
-  static inline ALWAYS_INLINE size_type
-  CheckBounds(size_type s)
-  {
-    INVARIANT(s <= std::numeric_limits<size_type>::max());
-    return s;
-  }
-
   dbtuple(size_type size)
     :
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
@@ -99,7 +87,6 @@ private:
 
   ~dbtuple();
 
-public:
   enum ReadStatus {
     READ_FAILED,
     READ_EMPTY,
@@ -221,6 +208,12 @@ public:
   }
 
 private:
+  static inline ALWAYS_INLINE size_type
+  CheckBounds(size_type s)
+  {
+    INVARIANT(s <= std::numeric_limits<size_type>::max());
+    return s;
+  }
 
 public:
   inline ALWAYS_INLINE ReadStatus
@@ -255,16 +248,7 @@ public:
       memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());
     }
   }
-
-  static inline dbtuple *
-  init(char*p ,size_type sz)
-  {
-    return new (p) dbtuple(sz);
-  }
 }
-#if !defined(CHECK_INVARIANTS)
-//PACKED
-#endif
 ;
 
 #endif /* _NDB_TUPLE_H_ */

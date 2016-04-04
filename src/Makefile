@@ -14,7 +14,7 @@ CHECK_INVARIANTS ?= 0
 # 1 = jemalloc
 # 2 = tcmalloc
 # 3 = flow
-USE_MALLOC_MODE ?= 2
+USE_MALLOC_MODE ?= 0
 
 MYSQL ?= 1
 MYSQL_SHARE_DIR ?= /x/stephentu/mysql-5.5.29/build/sql/share
@@ -124,9 +124,7 @@ ifneq ($(strip $(CUSTOM_LDPATH)), )
 endif
 
 SRCFILES = base_txn_btree.cc \
-	core.cc \
 	object.cc \
-	rcu-wrapper.cc \
 	thread.cc \
 	tuple.cc \
 	txn.cc \

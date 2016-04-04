@@ -327,7 +327,7 @@ class tpce_worker :
 				<< endl;
 		}
 
-        auto i = worker_id % coreid::num_cpus_online();
+        auto i = worker_id % sysconf::worker_threads;
         mee = mees[i];
         ALWAYS_ASSERT(i >= 0 and i < mees.size());
         MarketFeedInputBuffer = MarketFeedInputBuffers[i];
@@ -654,11 +654,8 @@ class tpce_worker :
 		virtual void
 			on_run_setup() OVERRIDE
 			{
-				if (!pin_cpus)
-					return;
-				const size_t a = worker_id % coreid::num_cpus_online();
-				const size_t b = a % sysconf::worker_threads;
-				RCU::pin_current_thread(b);
+        const size_t b = worker_id % sysconf::worker_threads;
+        sysconf::pin_current_thread(b);
 			}
 
 
@@ -5048,11 +5045,6 @@ class tpce_bench_runner : public bench_runner {
 		virtual vector<bench_worker *>
 			make_workers()
 			{
-				const unsigned alignment = coreid::num_cpus_online();
-				const int blockstart =
-					coreid::allocate_contiguous_aligned_block(sysconf::worker_threads, alignment);
-				ALWAYS_ASSERT(blockstart >= 0);
-				ALWAYS_ASSERT((blockstart % alignment) == 0);
 				fast_random r(23984543);
 				vector<bench_worker *> ret;
 				static bool const NO_PIN_WH = false;
@@ -5060,7 +5052,7 @@ class tpce_bench_runner : public bench_runner {
 					for (size_t i = 0; i < sysconf::worker_threads; i++)
 						ret.push_back(
 								new tpce_worker(
-									blockstart + i,
+									i,
 									r.next(), db, open_tables, partitions,
 									&barrier_a, &barrier_b,
 									1, NumPartitions() + 1));
@@ -5069,7 +5061,7 @@ class tpce_bench_runner : public bench_runner {
 					for (size_t i = 0; i < sysconf::worker_threads; i++)
 						ret.push_back(
 								new tpce_worker(
-									blockstart + i,
+									i,
 									r.next(), db, open_tables, partitions,
 									&barrier_a, &barrier_b,
 									(i % NumPartitions()) + 1, (i % NumPartitions()) + 2));
@@ -5082,7 +5074,7 @@ class tpce_bench_runner : public bench_runner {
 						const unsigned wend   = (i + 1)*N/T;
 						ret.push_back(
 								new tpce_worker(
-									blockstart + i,
+									i,
 									r.next(), db, open_tables, partitions,
 									&barrier_a, &barrier_b, wstart+1, wend+1));
 					}

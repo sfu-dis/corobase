@@ -24,8 +24,6 @@
 #include "small_vector.h"
 #include "ownership_checker.h"
 
-#include "rcu-wrapper.h"
-
 #include "masstree/masstree_scan.hh"
 #include "masstree/masstree_insert.hh"
 #include "masstree/masstree_remove.hh"

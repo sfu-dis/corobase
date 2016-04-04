@@ -1,61 +1,14 @@
 #pragma once
-#include <sched.h>
-#include <numa.h>
-#include <atomic>
-#include <cstring>
-#include <cstdlib>
-#include <iostream>
 #include <mutex>
-#include <vector>
-#include <future>
-#include <new>
 #include "sm-defs.h"
 #include "epoch.h"
 #include "../macros.h"
 #include "../object.h"
 
+#include <sparsehash/dense_hash_map>
+using google::dense_hash_map;
+
 typedef epoch_mgr::epoch_num epoch_num;
-// A pool of objects deallocated by GC, save some calls to
-// tcmalloc in allocate().
-// Note: object_pool is supoosed to be tx/thread-local.
-//
-// order 0: (0, 32B)
-// order 1: [32, 64)
-// order 2: [64, 128)
-// order 3: [128, +inf)
-//
-// Transactions can reuse these objects via put/get functions.
-#ifdef REUSE_OBJECTS
-enum { MAX_SIZE_ORDER=4, BASE_OBJECT_SIZE=32 };
-class object_pool {
-    struct reuse_object {
-        uint64_t cstamp;
-        //epoch_num epoch;    // object created during this epoch
-        object *obj;
-        reuse_object *next;
-        reuse_object(uint64_t c, object *p) : cstamp(c), obj(p), next(NULL) {}
-    };
-
-    // put at tail, get at head
-    reuse_object *head[MAX_SIZE_ORDER];
-    reuse_object *tail[MAX_SIZE_ORDER];
-
-    int get_order(size_t size) {
-        int o = size / BASE_OBJECT_SIZE;
-        if (o > MAX_SIZE_ORDER-1)
-            o = MAX_SIZE_ORDER-1;
-        return o;
-    }
-
-public:
-    object_pool() {
-        memset(head, '\0', sizeof(reuse_object *) * MAX_SIZE_ORDER);
-        memset(tail, '\0', sizeof(reuse_object *) * MAX_SIZE_ORDER);
-    }
-    object *get(size_t size);
-    void put(epoch_num e, object *p);
-};
-#endif
 
 // oids that got updated, ie need to cleanup the overwritten versions
 struct oid_array;
@@ -67,8 +20,71 @@ struct recycle_oid {
 };
 
 namespace MM {
-    void *allocate(uint64_t size);
+    /* Object allocation and reuse:
+     * The GC threads continuously removes stale versions that aren't needed any 
+     * more from version chains and put these objects to a centralized pool,
+     * which contains a hashtab indexed by object size. All objects are allocated
+     * in aligned sizes (ie allocated size might be larger than the actual size).
+     *
+     * Each transaction thread has a TLS pool of objects, which is almost the
+     * same as the global pool, but without any CC. Only the thread itself has
+     * access. To allocate an object, the thread first checks this local pool,
+     * if empty it will ask the global pool for a list of objects (object_list).
+     *
+     * The GC thread replenishes the central pool in units of object_lists.
+     *
+     * If GC is disabled, we'd always be allocating from the central memory pool
+     * (not the **object** pool, which will be empty all the time).
+     */
+
+    // The GC thread returns a list of objects each time
+    struct object_list {
+        static const size_t CAPACITY = 128;
+
+        fat_ptr head;
+        fat_ptr tail;
+        object_list* next;
+        uint32_t nobjects;
+
+        object_list(fat_ptr h, fat_ptr t, object_list* nxt, uint32_t nr) :
+            head(h), tail(t), next(nxt), nobjects(nr)  {}
+        object_list() : head(NULL_PTR), tail(NULL_PTR), next(NULL), nobjects(0) {}
+
+        inline size_t object_size() { return decode_size_aligned(head.size_code()); }
+        bool put(fat_ptr objptr);
+    };
+
+    class object_pool {
+        // A hashtab of objects reclaimed by the gc daemon.
+        // Maps object size -> head of list of object lists which have the the same object size
+        // Threads are free to grab (multiple) objects from here.
+        dense_hash_map<size_t, object_list*> pool;
+        std::mutex lock;
+
+    public:
+        object_pool() { pool.set_empty_key(0); }
+
+        // Tx threads use this to replenish their TLS pool
+        object_list* get_object_list(size_t size);
+
+        // Return a list of objects to the pool; the gc thread is the only caller.
+        void put_object_list(object_list& ol);
+    };
+
+    // Same thing as object_pool, but for a thread; no CC whatsoever
+    class thread_object_pool {
+        dense_hash_map<size_t, object_list> pool;
+    public:
+        thread_object_pool() { pool.set_empty_key(0); }
+
+        object* get_object(size_t size);
+        void put_objects(object_list& ol);
+    };
+
+    void prepare_node_memory();
+    void *allocate(size_t size);
     void deallocate(void *p);
+    void* allocate_onnode(size_t size);
 
     extern LSN safesnap_lsn;
 
@@ -86,14 +102,18 @@ namespace MM {
     void* epoch_ended_thread(void *cookie, void *epoch_cookie, void *thread_cookie);
     void epoch_reclaimed(void *cookie, void *epoch_cookie);
 
-    void register_thread();
-    void deregister_thread();
-    epoch_num epoch_enter(void);
-    void epoch_exit(LSN s, epoch_num e);
+    extern epoch_mgr mm_epochs;
+    inline void register_thread() {
+        mm_epochs.thread_init();
+    }
+    inline void deregister_thread() {
+        mm_epochs.thread_fini();
+    }
+    inline epoch_num epoch_enter(void) {
+        return mm_epochs.thread_enter();
+    }
 
-#ifdef REUSE_OBJECTS
-    object_pool *get_object_pool();
-#endif
+    void epoch_exit(LSN s, epoch_num e);
     void recycle(oid_array *oa, OID oid);
     void recycle(recycle_oid *list_head, recycle_oid *list_tail);
 };

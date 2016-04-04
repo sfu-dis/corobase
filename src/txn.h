@@ -1,7 +1,6 @@
 #ifndef _NDB_TXN_H_
 #define _NDB_TXN_H_
 
-#include <malloc.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <pthread.h>
@@ -16,7 +15,6 @@
 #include <type_traits>
 #include <tuple>
 
-#include <unordered_map>
 #include "dbcore/xid.h"
 #include "dbcore/sm-config.h"
 #include "dbcore/sm-oid.h"
@@ -24,14 +22,11 @@
 #include "dbcore/sm-rc.h"
 #include "amd64.h"
 #include "btree_choice.h"
-#include "core.h"
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
 #include "thread.h"
 #include "spinlock.h"
-#include "small_unordered_map.h"
-#include "static_unordered_map.h"
 #include "static_vector.h"
 #include "prefetch.h"
 #include "tuple.h"
@@ -232,9 +227,6 @@ protected:
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   typedef std::vector<dbtuple *> read_set_map;
   read_set_map read_set;
-#endif
-#ifdef REUSE_OBJECTS
-  object_pool *op;
 #endif
   epoch_num epoch;
 };

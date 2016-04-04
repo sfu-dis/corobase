@@ -39,7 +39,6 @@ uint64_t runtime = 30;
 uint64_t ops_per_worker = 0;
 int run_mode = RUNMODE_TIME;
 int enable_parallel_loading = false;
-int pin_cpus = 0;
 int slow_exit = 0;
 int retry_aborted_transaction = 0;
 int backoff_aborted_transaction = 0;
@@ -235,6 +234,8 @@ bench_runner::run()
 
   // Persist the database
   logmgr->flush_cur_lsn();
+
+  volatile_write(sysconf::loading, false);
 
   const vector<bench_worker *> workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());

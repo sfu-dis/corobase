@@ -4,6 +4,7 @@
 #include "../benchmarks/ndb_wrapper.h"
 #include "../txn_btree.h"
 #include <cstring>
+#include <future>
 
 using namespace RCU;
 
@@ -305,7 +306,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
 
     // Load tuple varstr from logrec
     dbtuple* tuple = (dbtuple *)obj->payload();
-    tuple = dbtuple::init((char*)tuple, sz);
+    new (tuple) dbtuple(sz);
     logrec->load_object((char *)tuple->get_value_start(), sz);
 
     // Strip out the varstr stuff

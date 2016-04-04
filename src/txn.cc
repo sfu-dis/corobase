@@ -19,9 +19,6 @@ transaction::transaction(uint64_t flags, str_arena &sa)
   : flags(flags), sa(&sa)
 {
     epoch = MM::epoch_enter();
-#ifdef REUSE_OBJECTS
-    op = MM::get_object_pool();
-#endif
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::NodeLockRegionBegin();
 #endif
@@ -121,10 +118,7 @@ transaction::abort()
         }
 #endif
         oidmgr->oid_unlink(w.oa, w.oid, tuple);
-#if defined(REUSE_OBJECTS)
-        object *obj = (object *)((char *)tuple - sizeof(object));
-        op->put(xc->end.offset(), obj);
-#endif
+        MM::deallocate(tuple->get_object());
     }
 
     // Read-only tx on a safesnap won't have log
@@ -970,12 +964,12 @@ transaction::try_insert_new_tuple(
     FID fid)
 {
     INVARIANT(key);
-    object *object = object::create_tuple_object(value, false);
-    dbtuple *tuple = object->tuple();
+    fat_ptr new_head = object::create_tuple_object(value, false);
+    ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+    dbtuple *tuple = ((object *)new_head.offset())->tuple();
+    ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
     tuple->get_object()->_clsn = xid.to_ptr();
-
     OID oid = oidmgr->alloc_oid(fid);
-    fat_ptr new_head = fat_ptr::make(object, INVALID_SIZE_CODE, 0);
     oidmgr->oid_put_new(btr->tuple_vec(), oid, new_head);
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, &ins_info))) {
@@ -1025,6 +1019,7 @@ transaction::try_insert_new_tuple(
                           DEFAULT_ALIGNMENT_BITS, NULL);
 
     // update write_set
+    ASSERT(tuple->pvalue->size() == tuple->size);
     write_set.emplace_back(tuple->get_object(), btr->tuple_vec(), oid);
     return true;
 }

@@ -6,8 +6,6 @@
 #include "size-encode.h"
 #include "sm-defs.h"
 
-#include "../rcu-wrapper.h" // for delete_entry
-
 #include <stdint.h>
 #include <pthread.h>
 #include <map>
