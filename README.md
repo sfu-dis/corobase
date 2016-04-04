@@ -44,7 +44,7 @@ $run.sh \
 
 #### System-wide runtime options
 
-`--prefault-gig`: how many GBs of memory to prefault upon start.
+`--node-memory-gb`: how many GBs of memory to allocate per socket.
 
 `--null-log-device`: flush log buffer to `/dev/null`. With more than 30 threads, log flush (even to tmpfs) can easily become a bottleneck because of a mutex in the kernel held during the flush. This option does *not* disable logging, but it voids the ability to recover.
 
