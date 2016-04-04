@@ -151,9 +151,3 @@ protected:
   FID fid;
   bool been_destructed;
 };
-
-namespace private_ {
-  STATIC_COUNTER_DECL(scopedperf::tsc_ctr, txn_btree_search_probe0, txn_btree_search_probe0_cg)
-  STATIC_COUNTER_DECL(scopedperf::tsc_ctr, txn_btree_search_probe1, txn_btree_search_probe1_cg)
-}
-

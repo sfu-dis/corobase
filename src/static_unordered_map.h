@@ -162,16 +162,6 @@ public:
   {
     for (size_t i = 0; i < n; i++)
       elems[i].destroy();
-#ifdef ENABLE_EVENT_COUNTERS
-    size_t ml = 0;
-    for (size_t i = 0; i < TableSize; i++) {
-      const size_t l = chain_length(table[i]);
-      ml = std::max(ml, l);
-
-    }
-    if (ml)
-      private_::evt_avg_max_unordered_map_chain_length.offer(ml);
-#endif
   }
 
   static_unordered_map(const static_unordered_map &other)

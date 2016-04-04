@@ -13,7 +13,6 @@
 
 #include "amd64.h"
 #include "core.h"
-#include "counter.h"
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
@@ -96,12 +95,9 @@ private:
     // case when dbtuple is without those ssn-related fields.
     //INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
 #endif
-    ++g_evt_dbtuple_creates;
   }
 
   ~dbtuple();
-
-  static event_avg_counter g_evt_avg_dbtuple_read_retries;
 
 public:
   enum ReadStatus {
@@ -225,22 +221,6 @@ public:
   }
 
 private:
-
-#ifdef ENABLE_EVENT_COUNTERS
-  struct scoped_recorder {
-    scoped_recorder(unsigned long &n) : n(&n) {}
-    ~scoped_recorder()
-    {
-      g_evt_avg_dbtuple_read_retries.offer(*n);
-    }
-  private:
-    unsigned long *n;
-  };
-#endif
-
-  static event_counter g_evt_dbtuple_creates;
-  static event_counter g_evt_dbtuple_bytes_allocated;
-  static event_counter g_evt_dbtuple_bytes_freed;
 
 public:
   inline ALWAYS_INLINE ReadStatus

@@ -8,7 +8,6 @@
 #include <type_traits>
 
 #include "macros.h"
-#include "counter.h"
 #include "log2.hh"
 #include "ndb_type_traits.h"
 
@@ -29,9 +28,6 @@ namespace private_ {
   template <> struct is_eq_expensive<int32_t>  : public cheap_eq {};
   template <> struct is_eq_expensive<uint64_t> : public cheap_eq {};
   template <> struct is_eq_expensive<int64_t>  : public cheap_eq {};
-
-  static event_avg_counter evt_avg_max_unordered_map_chain_length CACHE_ALIGNED
-    ("avg_max_unordered_map_chain_length");
 
   template <typename T>
   struct fast_func_param {

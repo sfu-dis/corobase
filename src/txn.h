@@ -25,7 +25,6 @@
 #include "amd64.h"
 #include "btree_choice.h"
 #include "core.h"
-#include "counter.h"
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
@@ -36,7 +35,6 @@
 #include "static_vector.h"
 #include "prefetch.h"
 #include "tuple.h"
-#include "scopedperf.hh"
 #include "ndb_type_traits.h"
 #include "object.h"
 

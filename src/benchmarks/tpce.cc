@@ -11,7 +11,6 @@
 
 #include "../txn.h"
 #include "../macros.h"
-#include "../scopedperf.hh"
 #include "../spinlock.h"
 
 #include "bench.h"
@@ -346,7 +345,6 @@ class tpce_worker :
 		// BrokerVolume transaction
         static rc_t BrokerVolume(bench_worker *w)
 		{
-			ANON_REGION("BrokerVolume:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->broker_volume();
 		}
         rc_t broker_volume()
@@ -365,7 +363,6 @@ class tpce_worker :
 		// CustomerPosition transaction
         static rc_t CustomerPosition(bench_worker *w)
 		{
-			ANON_REGION("CustomerPosition:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->customer_position();
 		}
         rc_t customer_position()
@@ -386,7 +383,6 @@ class tpce_worker :
 		// MarketFeed transaction
         static rc_t MarketFeed(bench_worker *w)
 		{
-			ANON_REGION("MarketFeed:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->market_feed();
 		}
         rc_t market_feed()
@@ -418,7 +414,6 @@ class tpce_worker :
 		// MarketWatch
         static rc_t MarketWatch(bench_worker *w)
 		{
-			ANON_REGION("MarketWatch:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->market_watch();
 		}
         rc_t market_watch()
@@ -437,7 +432,6 @@ class tpce_worker :
 		// SecurityDetail
         static rc_t SecurityDetail(bench_worker *w)
 		{
-			ANON_REGION("SecurityDetail:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->security_detail();
 		}
         rc_t security_detail()
@@ -456,7 +450,6 @@ class tpce_worker :
 		// TradeLookup
         static rc_t TradeLookup(bench_worker *w)
 		{
-			ANON_REGION("TradeLookup:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->trade_lookup();
 		}
         rc_t trade_lookup()
@@ -478,7 +471,6 @@ class tpce_worker :
 		// TradeOrder
         static rc_t TradeOrder(bench_worker *w)
 		{
-			ANON_REGION("TradeOrder:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->trade_order();
 		}
         rc_t trade_order()
@@ -504,7 +496,6 @@ class tpce_worker :
 		// TradeResult
         static rc_t TradeResult(bench_worker *w)
 		{
-			ANON_REGION("TradeResult:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->trade_result();
 		}
         rc_t trade_result()
@@ -539,7 +530,6 @@ class tpce_worker :
 		// TradeStatus
         static rc_t TradeStatus(bench_worker *w)
 		{
-			ANON_REGION("TradeStatus:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->trade_status();
 		}
         rc_t trade_status()
@@ -558,7 +548,6 @@ class tpce_worker :
 		// TradeUpdate
         static rc_t TradeUpdate(bench_worker *w)
 		{
-			ANON_REGION("TradeUpdate:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->trade_update();
 		}
         rc_t trade_update()
@@ -579,7 +568,6 @@ class tpce_worker :
 		// Long query 
         static rc_t LongQuery(bench_worker *w)
 		{
-			ANON_REGION("LongQuery:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->long_query();
 		}
 
@@ -593,7 +581,6 @@ class tpce_worker :
 		// DataMaintenance
         static rc_t DataMaintenance(bench_worker *w)
 		{
-			ANON_REGION("DataMaintenance:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->data_maintenance();
 		}
         rc_t data_maintenance()
@@ -611,7 +598,6 @@ class tpce_worker :
 		// TradeCleanup
         static rc_t TradeCleanup(bench_worker *w)
 		{
-			ANON_REGION("TradeCleanup:", &tpce_txn_cg);
 			return static_cast<tpce_worker *>(w)->trade_cleanup();
 		}
         rc_t trade_cleanup()

@@ -11,12 +11,10 @@
 #include <atomic>
 #include <memory>
 
-#include "core.h"
 #include "btree.h"
 #include "thread.h"
 #include "txn.h"
 #include "util.h"
-#include "scopedperf.hh"
 
 template <typename P>
 void
@@ -100,16 +98,10 @@ btree<P>::node::invariant_checker(const key_slice *min_key,
     AsInternal(this)->invariant_checker_impl(min_key, max_key, left_sibling, right_sibling, is_root) ;
 }
 
-//static event_counter evt_btree_leaf_node_creates("btree_leaf_node_creates");
-//static event_counter evt_btree_leaf_node_deletes("btree_leaf_node_deletes");
-
-//event_counter btree<P>::leaf_node::g_evt_suffixes_array_created("btree_leaf_node_suffix_array_creates");
-
 template <typename P>
 btree<P>::leaf_node::leaf_node()
   : node(), min_key_(0), prev_(NULL), next_(NULL), suffixes_(NULL)
 {
-  //++evt_btree_leaf_node_creates;
 }
 
 template <typename P>
@@ -118,7 +110,6 @@ btree<P>::leaf_node::~leaf_node()
   if (suffixes_)
     delete [] suffixes_;
   //suffixes_ = NULL;
-  //++evt_btree_leaf_node_deletes;
 }
 
 template <typename P>
@@ -140,20 +131,15 @@ btree<P>::leaf_node::invariant_checker_impl(const key_slice *min_key,
       this->values_[i].n_->invariant_checker(NULL, NULL, NULL, NULL, true);
 }
 
-//static event_counter evt_btree_internal_node_creates("btree_internal_node_creates");
-//static event_counter evt_btree_internal_node_deletes("btree_internal_node_deletes");
-
 template <typename P>
 btree<P>::internal_node::internal_node()
 {
   VersionManip::Store(this->hdr_, 1);
-  //++evt_btree_internal_node_creates;
 }
 
 template <typename P>
 btree<P>::internal_node::~internal_node()
 {
-  //++evt_btree_internal_node_deletes;
 }
 
 template <typename P>
@@ -226,8 +212,6 @@ btree<P>::recursive_delete(node *n)
     internal_node::deleter(internal);
   }
 }
-
-//STATIC_COUNTER_DECL(scopedperf::tsc_ctr, btree_search_impl_tsc, btree_search_impl_perf_cg);
 
 template <typename P>
 bool
