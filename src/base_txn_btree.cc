@@ -106,7 +106,7 @@ rc_t base_txn_btree::do_tree_put(
                             break;
 
                         XID rxid = volatile_read(rlist.xids[xid_idx]);
-                        ASSERT(rxid != xc->owner);
+                        ASSERT(rxid != t.xc->owner);
                         if (rxid == INVALID_XID)    // reader is gone, check xstamp in the end
                             continue;
 
