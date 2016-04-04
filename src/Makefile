@@ -32,7 +32,6 @@ MASSTREE ?= 1
 
 DEBUG_S=$(strip $(DEBUG))
 CHECK_INVARIANTS_S=$(strip $(CHECK_INVARIANTS))
-EVENT_COUNTERS_S=$(strip $(EVENT_COUNTERS))
 USE_MALLOC_MODE_S=$(strip $(USE_MALLOC_MODE))
 MODE_S=$(strip $(MODE))
 MASSTREE_S=$(strip $(MASSTREE))
@@ -54,9 +53,6 @@ ifeq ($(CHECK_INVARIANTS_S),1)
 	MASSTREE_CONFIG+=--enable-invariants --enable-preconditions
 else
 	MASSTREE_CONFIG+=--disable-invariants --disable-preconditions
-endif
-ifeq ($(EVENT_COUNTERS_S),1)
-	OSUFFIX_E=.ectrs
 endif
 OSUFFIX=$(OSUFFIX_D)$(OSUFFIX_S)$(OSUFFIX_E)
 
@@ -92,9 +88,6 @@ else
 endif
 ifeq ($(CHECK_INVARIANTS_S),1)
 	CXXFLAGS += -DCHECK_INVARIANTS
-endif
-ifeq ($(EVENT_COUNTERS_S),1)
-	CXXFLAGS += -DENABLE_EVENT_COUNTERS
 endif
 ifeq ($(MASSTREE_S),1)
 	CXXFLAGS += -DNDB_MASSTREE -include masstree/config.h
@@ -132,10 +125,8 @@ endif
 
 SRCFILES = base_txn_btree.cc \
 	core.cc \
-	counter.cc \
 	object.cc \
 	rcu-wrapper.cc \
-	stats_server.cc \
 	thread.cc \
 	tuple.cc \
 	txn.cc \
@@ -282,12 +273,6 @@ test: $(O)/test
 $(O)/test: $(O)/test.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES)
 	$(CXX) -o $(O)/test $^ $(LDFLAGS)
 
-.PHONY: stats_client
-stats_client: $(O)/stats_client
-
-$(O)/stats_client: $(O)/stats_client.o
-	$(CXX) -o $(O)/stats_client $(O)/stats_client.o $(LDFLAGS)
-
 masstree/config.h: $(O)/buildstamp.masstree masstree/configure masstree/config.h.in
 	rm -f $@
 	cd masstree; LDFLAGS=$(MASSTREE_LDFLAGS) ./configure $(MASSTREE_CONFIG)
@@ -325,10 +310,6 @@ endif
 
 ifeq ($(MASSTREE_S),1)
 #UPDATE_MASSTREE := $(shell cd ./`git rev-parse --show-cdup` && cur=`git submodule status --cached masstree | head -c 41 | tail -c +2` && if test -z `cd masstree; git rev-list -n1 $$cur^..HEAD 2>/dev/null`; then (echo Updating masstree... 1>&2; cd masstree; git checkout -f master >/dev/null; git pull; cd ..; git submodule update masstree); fi)
-endif
-
-ifneq ($(strip $(DEBUG_S).$(CHECK_INVARIANTS_S).$(EVENT_COUNTERS_S)),$(strip $(DEP_MAIN_CONFIG)))
-DEP_MAIN_CONFIG := $(shell mkdir -p $(O); echo >$(O)/buildstamp; echo "DEP_MAIN_CONFIG:=$(DEBUG_S).$(CHECK_INVARIANTS_S).$(EVENT_COUNTERS_S)" >$(O)/_main_config.d)
 endif
 
 ifneq ($(strip $(MYSQL_S)),$(strip $(DEP_BENCH_CONFIG)))

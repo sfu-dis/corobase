@@ -18,7 +18,7 @@
 
 #include "../txn.h"
 #include "../macros.h"
-#include "../scopedperf.hh"
+#include "../small_unordered_map.h"
 #include "../spinlock.h"
 
 #include "bench.h"
@@ -566,8 +566,6 @@ string tpcc_worker_mixin::NameTokens[] =
     string("EING"),
   };
 
-STATIC_COUNTER_DECL(scopedperf::tsc_ctr, tpcc_txn, tpcc_txn_cg)
-
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
 public:
   tpcc_worker(unsigned int worker_id,
@@ -593,7 +591,6 @@ public:
   static rc_t
   TxnNewOrder(bench_worker *w)
   {
-    ANON_REGION("TxnNewOrder:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_new_order();
   }
 
@@ -602,7 +599,6 @@ public:
   static rc_t
   TxnDelivery(bench_worker *w)
   {
-    ANON_REGION("TxnDelivery:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_delivery();
   }
 
@@ -610,7 +606,6 @@ public:
   static rc_t
   TxnCreditCheck(bench_worker *w)
   {
-    ANON_REGION("TxnCreditCheck:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_credit_check();
   }
 
@@ -619,7 +614,6 @@ public:
   static rc_t
   TxnPayment(bench_worker *w)
   {
-    ANON_REGION("TxnPayment:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_payment();
   }
 
@@ -628,7 +622,6 @@ public:
   static rc_t
   TxnOrderStatus(bench_worker *w)
   {
-    ANON_REGION("TxnOrderStatus:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_order_status();
   }
 
@@ -637,7 +630,6 @@ public:
   static rc_t
   TxnStockLevel(bench_worker *w)
   {
-    ANON_REGION("TxnStockLevel:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_stock_level();
   }
 
@@ -646,7 +638,6 @@ public:
   static rc_t
   TxnMicroBenchRandom(bench_worker *w)
   {
-    ANON_REGION("TxnMicroBenchRandom:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_microbench_random();
   }
 
@@ -655,7 +646,6 @@ public:
   static rc_t
   TxnQuery2(bench_worker *w)
   {
-    ANON_REGION("TxnQuery2:", &tpcc_txn_cg);
     return static_cast<tpcc_worker *>(w)->txn_query2();
   }
   virtual workload_desc_vec
@@ -1400,10 +1390,6 @@ private:
   ssize_t warehouse_id;
 };
 
-static event_counter evt_tpcc_cross_partition_new_order_txns("tpcc_cross_partition_new_order_txns");
-static event_counter evt_tpcc_cross_partition_payment_txns("tpcc_cross_partition_payment_txns");
-static event_counter evt_tpcc_cross_partition_credit_check_txns("tpcc_cross_partition_credit_check_txns");
-
 rc_t
 tpcc_worker::txn_new_order()
 {
@@ -1428,8 +1414,6 @@ tpcc_worker::txn_new_order()
     orderQuantities[i] = RandomNumber(r, 1, 10);
   }
   INVARIANT(!g_disable_xpartition_txn || allLocal);
-  if (!allLocal)
-    ++evt_tpcc_cross_partition_new_order_txns;
 
   // XXX(stephentu): implement rollback
   //
@@ -1597,8 +1581,6 @@ private:
   const new_order::key *k_no;
 };
 
-STATIC_COUNTER_DECL(scopedperf::tod_ctr, delivery_probe0_tod, delivery_probe0_cg)
-
 rc_t
 tpcc_worker::txn_delivery()
 {
@@ -1633,7 +1615,6 @@ tpcc_worker::txn_delivery()
       const new_order::key k_no_1(warehouse_id, d, numeric_limits<int32_t>::max());
       new_order_scan_callback new_order_c;
       {
-        ANON_REGION("DeliverNewOrderScan:", &delivery_probe0_cg);
         try_catch(tbl_new_order(warehouse_id)->scan(txn, Encode(str(Size(k_no_0)), k_no_0), &Encode(str(Size(k_no_1)), k_no_1), new_order_c, s_arena.get()));
       }
 
@@ -1702,8 +1683,6 @@ tpcc_worker::txn_delivery()
     try_catch(db->commit_txn(txn));
     return {RC_TRUE};
 }
-
-static event_avg_counter evt_avg_cust_name_idx_scan_size("avg_cust_name_idx_scan_size");
 
 class credit_check_order_scan_callback : public abstract_ordered_index::scan_callback {
 	public:
@@ -1785,8 +1764,6 @@ tpcc_worker::txn_credit_check()
 			mlock.enq(LockForPartition(customerWarehouseID));
 		mlock.multilock();
 	}
-	if (customerWarehouseID != warehouse_id)
-		++evt_tpcc_cross_partition_credit_check_txns;
 
 		// select * from customer with random C_ID
 		customer::key k_c;
@@ -1893,8 +1870,6 @@ tpcc_worker::txn_payment()
       mlock.enq(LockForPartition(customerWarehouseID));
     mlock.multilock();
   }
-  if (customerWarehouseID != warehouse_id)
-    ++evt_tpcc_cross_partition_payment_txns;
 
     const warehouse::key k_w(warehouse_id);
     warehouse::value v_w_temp;
@@ -1950,7 +1925,6 @@ tpcc_worker::txn_payment()
       int index = c.size() / 2;
       if (c.size() % 2 == 0)
         index--;
-      evt_avg_cust_name_idx_scan_size.offer(c.size());
 
       customer_name_idx::value v_c_idx_temp;
       const customer_name_idx::value *v_c_idx = Decode(*c.values[index].second, v_c_idx_temp);
@@ -2031,9 +2005,6 @@ public:
   size_t n;
 };
 
-STATIC_COUNTER_DECL(scopedperf::tod_ctr, order_status_probe0_tod, order_status_probe0_cg)
-STATIC_COUNTER_DECL(scopedperf::tod_ctr, credit_check_probe0_tod, credit_check_probe0_cg)
-
 rc_t
 tpcc_worker::txn_order_status()
 {
@@ -2090,7 +2061,6 @@ tpcc_worker::txn_order_status()
       int index = c.size() / 2;
       if (c.size() % 2 == 0)
         index--;
-      evt_avg_cust_name_idx_scan_size.offer(c.size());
 
       customer_name_idx::value v_c_idx_temp;
       const customer_name_idx::value *v_c_idx = Decode(*c.values[index].second, v_c_idx_temp);
@@ -2128,7 +2098,6 @@ tpcc_worker::txn_order_status()
       const oorder_c_id_idx::key k_oo_idx_0(warehouse_id, districtID, k_c.c_id, 0);
       const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id, numeric_limits<int32_t>::max());
       {
-        ANON_REGION("OrderStatusOOrderScan:", &order_status_probe0_cg);
         try_catch(tbl_oorder_c_id_idx(warehouse_id)->scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0), &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder, s_arena.get()));
       }
       ALWAYS_ASSERT(c_oorder.size());
@@ -2179,12 +2148,6 @@ public:
   small_unordered_map<uint, bool, 512> s_i_ids;
 };
 
-STATIC_COUNTER_DECL(scopedperf::tod_ctr, stock_level_probe0_tod, stock_level_probe0_cg)
-STATIC_COUNTER_DECL(scopedperf::tod_ctr, stock_level_probe1_tod, stock_level_probe1_cg)
-STATIC_COUNTER_DECL(scopedperf::tod_ctr, stock_level_probe2_tod, stock_level_probe2_cg)
-
-static event_avg_counter evt_avg_stock_level_loop_join_lookups("stock_level_loop_join_lookups");
-
 rc_t
 tpcc_worker::txn_stock_level()
 {
@@ -2228,13 +2191,11 @@ tpcc_worker::txn_stock_level()
     const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
     const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
     {
-      ANON_REGION("StockLevelOrderLineScan:", &stock_level_probe0_cg);
       try_catch(tbl_order_line(warehouse_id)->scan(txn, Encode(str(Size(k_ol_0)), k_ol_0), &Encode(str(Size(k_ol_1)), k_ol_1), c, s_arena.get()));
     }
     {
       small_unordered_map<uint, bool, 512> s_i_ids_distinct;
       for (auto &p : c.s_i_ids) {
-        ANON_REGION("StockLevelLoopJoinIter:", &stock_level_probe1_cg);
 
         const size_t nbytesread = serializer<int16_t, true>::max_nbytes();
 
@@ -2243,7 +2204,6 @@ tpcc_worker::txn_stock_level()
         varstr sv_s = str(Size(v_s));
         INVARIANT(p.first >= 1 && p.first <= NumItems());
         {
-          ANON_REGION("StockLevelLoopJoinGet:", &stock_level_probe2_cg);
           try_verify_relax(tbl_stock(warehouse_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s, nbytesread));
         }
         INVARIANT(sv_s.size() <= nbytesread);
@@ -2253,7 +2213,6 @@ tpcc_worker::txn_stock_level()
         if (i16tmp < int(threshold))
           s_i_ids_distinct[p.first] = 1;
       }
-      evt_avg_stock_level_loop_join_lookups.offer(c.s_i_ids.size());
       // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
     }
     measure_txn_counters(txn, "txn_stock_level");

@@ -11,7 +11,6 @@
 #include "macros.h"
 #include "rcu-wrapper.h"
 #include "util.h"
-#include "counter.h"
 
 /**
  * Not-really-immutable string, for perf reasons. Also can use
@@ -34,26 +33,18 @@ class base_imstring {
     return l;
   }
 
-  static event_counter g_evt_imstring_bytes_allocated;
-  static event_counter g_evt_imstring_bytes_freed;
-  static event_avg_counter g_evt_avg_imstring_len;
-
 public:
   base_imstring() : p(NULL), l(0) {}
 
   base_imstring(const uint8_t *src, size_t l)
     : p(new uint8_t[l]), l(CheckBounds(l))
   {
-    g_evt_imstring_bytes_allocated += l;
-    g_evt_avg_imstring_len.offer(l);
     NDB_MEMCPY(p, src, l);
   }
 
   base_imstring(const std::string &s)
     : p(new uint8_t[s.size()]), l(CheckBounds(s.size()))
   {
-    g_evt_imstring_bytes_allocated += l;
-    g_evt_avg_imstring_len.offer(l);
     NDB_MEMCPY(p, s.data(), l);
   }
 
@@ -78,7 +69,6 @@ public:
   ~base_imstring()
   {
     release();
-    g_evt_imstring_bytes_freed += l;
   }
 
   inline const uint8_t *
@@ -110,15 +100,6 @@ private:
   uint8_t *p;
   internal_size_type l;
 } PACKED;
-
-template <bool RCU>
-event_counter base_imstring<RCU>::g_evt_imstring_bytes_allocated("imstring_bytes_allocated");
-
-template <bool RCU>
-event_counter base_imstring<RCU>::g_evt_imstring_bytes_freed("imstring_bytes_freed");
-
-template <bool RCU>
-event_avg_counter base_imstring<RCU>::g_evt_avg_imstring_len("avg_imstring_len");
 
 typedef base_imstring<false> imstring;
 typedef base_imstring<true>  rcu_imstring;

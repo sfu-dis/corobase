@@ -17,7 +17,6 @@
 #include "log2.hh"
 #include "ndb_type_traits.h"
 #include "varkey.h"
-#include "counter.h"
 #include "macros.h"
 #include "prefetch.h"
 #include "amd64.h"

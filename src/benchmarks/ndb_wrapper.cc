@@ -3,12 +3,10 @@
 
 #include <stdint.h>
 #include "ndb_wrapper.h"
-#include "../counter.h"
 #include "../dbcore/rcu.h"
 #include "../varkey.h"
 #include "../macros.h"
 #include "../util.h"
-#include "../scopedperf.hh"
 #include "../txn.h"
 #include "../tuple.h"
 
@@ -125,8 +123,6 @@ ndb_ordered_index::get(
     const varstr &key,
     varstr &value, size_t max_bytes_read)
 {
-  PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-  ANON_REGION(probe1_name.c_str(), &private_::ndb_get_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   auto t = (transaction *)&p->buf[0];
   return btr.search(*t, key, value, max_bytes_read);
@@ -138,8 +134,6 @@ ndb_ordered_index::put(
     const varstr &key,
     const varstr &value)
 {
-  PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-  ANON_REGION(probe1_name.c_str(), &private_::ndb_put_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   auto t = (transaction *)&p->buf[0];
   return btr.put(*t, key, value);
@@ -162,8 +156,6 @@ ndb_ordered_index::insert(
     const varstr &key,
     const varstr &value)
 {
-  PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-  ANON_REGION(probe1_name.c_str(), &private_::ndb_insert_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   auto t = (transaction *)&p->buf[0];
   return btr.insert(*t, key, value);
@@ -204,8 +196,6 @@ ndb_ordered_index::scan(
     scan_callback &callback,
     str_arena *arena)
 {
-  PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-  ANON_REGION(probe1_name.c_str(), &private_::ndb_scan_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   auto t = (transaction *)&p->buf[0];
   ndb_wrapper_search_range_callback c(callback);
@@ -233,8 +223,6 @@ ndb_ordered_index::rscan(
 rc_t
 ndb_ordered_index::remove(void *txn, const varstr &key)
 {
-  PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
-  ANON_REGION(probe1_name.c_str(), &private_::ndb_remove_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   auto t = (transaction *)&p->buf[0];
   return btr.remove(*t, key);

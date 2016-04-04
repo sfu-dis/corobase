@@ -2,7 +2,6 @@
 #include "amd64.h"
 #include "txn.h"
 #include "lockguard.h"
-#include "scopedperf.hh"
 #include "dbcore/serial.h"
 
 #include <atomic>
@@ -1059,8 +1058,6 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     // do the actual tuple read
     dbtuple::ReadStatus stat;
     {
-        PERF_DECL(static std::string probe0_name(std::string(__PRETTY_FUNCTION__) + std::string(":do_read:")));
-        ANON_REGION(probe0_name.c_str(), &private_::txn_btree_search_probe0_cg);
         tuple->prefetch();
         stat = tuple->do_read(value_reader, this->string_allocator(), not read_my_own);
 
