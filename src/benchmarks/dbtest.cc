@@ -40,20 +40,6 @@ split_ws(const string &s)
   return r;
 }
 
-void
-heap_prefault()
-{
-    uint64_t size = (((uint64_t)1<<30)* sysconf::prefault_gig);
-    if (not size)
-        return;
-    uint8_t* p = (uint8_t*)malloc(size);
-    ALWAYS_ASSERT(p);
-    ALWAYS_ASSERT(not mlock(p, size));
-    mallopt (M_TRIM_THRESHOLD, -1);
-    mallopt (M_MMAP_MAX, 0);
-    free(p);
-}
-
 int
 main(int argc, char **argv)
 {
@@ -65,16 +51,12 @@ main(int argc, char **argv)
   string bench_opts;
   free(curdir);
   int saw_run_spec = 0;
-  string stats_server_sockfile;
-  // Do whatever we can to gather configs independent of cmdargs
-  sysconf::init();
 
   while (1) {
     static struct option long_options[] =
     {
       {"verbose"                    , no_argument       , &verbose                   , 1}   ,
       {"parallel-loading"           , no_argument       , &enable_parallel_loading   , 1}   ,
-      {"pin-cpus"                   , no_argument       , &pin_cpus                  , 1}   ,
       {"slow-exit"                  , no_argument       , &slow_exit                 , 1}   ,
       {"retry-aborted-transactions" , no_argument       , &retry_aborted_transaction , 1}   ,
       {"backoff-aborted-transactions" , no_argument     , &backoff_aborted_transaction , 1}   ,
@@ -92,7 +74,7 @@ main(int argc, char **argv)
       {"warm-up"                    , required_argument , 0                          , 'w'} ,
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
-      {"prefault-gig"               , required_argument , 0                          , 'p'},
+      {"node-memory-gb"             , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
       {"as-backup"                  , no_argument       , &sysconf::is_backup_srv    , 1},
@@ -127,7 +109,7 @@ main(int argc, char **argv)
       break;
 
     case 'p':
-      sysconf::prefault_gig = strtoul(optarg, NULL, 10);
+      sysconf::node_memory_gb = strtoul(optarg, NULL, 10);
       break;
 
     case 'g':
@@ -227,6 +209,7 @@ main(int argc, char **argv)
   else
     ALWAYS_ASSERT(false);
 
+  sysconf::init();
   if (sysconf::log_dir.empty()) {
     cerr << "[ERROR] no log dir specified" << endl;
     return 1;
@@ -255,19 +238,16 @@ main(int argc, char **argv)
 #else
     printf("System: SI\n");
 #endif
-    const unsigned long ncpus = coreid::num_cpus_online();
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
     cerr << "settings:"                                     << endl;
-    cerr << "  prefault-gig: " << sysconf::prefault_gig     << endl;
+    cerr << "  node-memory : " << sysconf::node_memory_gb << "GB" << endl;
     cerr << "  par-loading : " << enable_parallel_loading   << endl;
-    cerr << "  pin-cpus    : " << pin_cpus                  << endl;
     cerr << "  slow-exit   : " << slow_exit                 << endl;
     cerr << "  retry-txns  : " << retry_aborted_transaction << endl;
     cerr << "  backoff-txns: " << backoff_aborted_transaction << endl;
     cerr << "  bench       : " << bench_type                << endl;
     cerr << "  scale       : " << scale_factor              << endl;
-    cerr << "  num-cpus    : " << ncpus                     << endl;
     cerr << "  num-threads : " << sysconf::worker_threads   << endl;
     cerr << "  numa-nodes  : " << sysconf::numa_nodes       << endl;
     cerr << "  basedir     : " << basedir                   << endl;
@@ -343,7 +323,7 @@ main(int argc, char **argv)
     abort();
   }
 
-  heap_prefault();
+  MM::prepare_node_memory();
   vector<string> bench_toks = split_ws(bench_opts);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];

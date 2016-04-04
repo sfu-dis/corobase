@@ -20,7 +20,6 @@
 #include "../dbcore/sm-rc.h"
 #include <stdio.h>
 #include <sys/mman.h> // Needed for mlockall()
-#include <malloc.h>
 #include <sys/time.h> // needed for getrusage
 #include <sys/resource.h> // needed for getrusage
 #include <numa.h>
@@ -45,7 +44,6 @@ extern uint64_t runtime;
 extern uint64_t ops_per_worker;
 extern int run_mode;
 extern int enable_parallel_loading;
-extern int pin_cpus;
 extern int slow_exit;
 extern int retry_aborted_transaction;
 extern int no_reset_counters;

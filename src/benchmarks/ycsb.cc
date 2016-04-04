@@ -14,11 +14,9 @@
 #include <numa.h>
 
 #include "../macros.h"
-#include "../rcu-wrapper.h"
 #include "../thread.h"
 #include "../util.h"
 #include "../spinbarrier.h"
-#include "../core.h"
 
 #include "bench.h"
 #include "ycsb.h"
@@ -163,11 +161,8 @@ protected:
   virtual void
   on_run_setup() OVERRIDE
   {
-    if (!pin_cpus)
-      return;
-    const size_t a = worker_id % coreid::num_cpus_online();
-    const size_t b = a % sysconf::worker_threads;
-    RCU::pin_current_thread(b);
+    const size_t b = worker_id % sysconf::worker_threads;
+    sysconf::pin_current_thread(b);
   }
 
   inline ALWAYS_INLINE varstr&
@@ -266,17 +261,12 @@ protected:
   virtual vector<bench_worker *>
   make_workers()
   {
-    const unsigned alignment = coreid::num_cpus_online();
-    const int blockstart =
-      coreid::allocate_contiguous_aligned_block(sysconf::worker_threads, alignment);
-    ALWAYS_ASSERT(blockstart >= 0);
-    ALWAYS_ASSERT((blockstart % alignment) == 0);
     fast_random r(8544290);
     vector<bench_worker *> ret;
     for (size_t i = 0; i < sysconf::worker_threads; i++)
       ret.push_back(
         new ycsb_worker(
-          blockstart + i, r.next(), db, open_tables,
+          i, r.next(), db, open_tables,
           &barrier_a, &barrier_b));
     return ret;
   }

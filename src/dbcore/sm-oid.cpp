@@ -799,6 +799,7 @@ sm_oid_mgr::oid_put_update(oid_array *oa,
 start_over:
     fat_ptr head = *ptr;
     object *old_desc = (object *)head.offset();
+    ASSERT(head.size_code() != INVALID_SIZE_CODE);
     dbtuple *version = (dbtuple *)old_desc->payload();
     bool overwrite = false;
 
@@ -874,9 +875,9 @@ install:
     // Note for this to be correct we shouldn't allow multiple txs
     // working on the same tuple at the same time.
 
-    object *new_object = object::create_tuple_object(value, false);
+    fat_ptr new_ptr= object::create_tuple_object(value, false);
+    object* new_object = (object *)new_ptr.offset();
     new_object->_clsn = updater_xc->owner.to_ptr();
-    fat_ptr new_ptr = fat_ptr::make(new_object, INVALID_SIZE_CODE);
 
     if (overwrite) {
         volatile_write(new_object->_next, old_desc->_next);
@@ -950,11 +951,7 @@ sm_oid_mgr::ensure_tuple(fat_ptr *ptr)
 
     // Now new_ptr should point to some location in memory
     if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
-#ifdef REUSE_OBJECTS
-        MM::get_object_pool()->put(0, (object *)new_ptr.offset());
-#else
         MM::deallocate((object *)new_ptr.offset());
-#endif
         // somebody might acted faster, no need to retry
     }
     // FIXME: handle ASI_HEAP and ASI_EXT too

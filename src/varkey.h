@@ -10,7 +10,6 @@
 #include <type_traits>
 #include <limits>
 
-#include "imstring.h"
 #include "macros.h"
 #include "util.h"
 
@@ -39,23 +38,6 @@ public:
     : p(s->data()), l(s->size())
   {
   }
-
-#if 0
-  explicit inline varkey(const std::string &s)
-    : p((const uint8_t *) s.data()), l(s.size())
-  {
-  }
-
-  explicit inline varkey(const char *s)
-    : p((const uint8_t *) s), l(strlen(s))
-  {
-  }
-
-  explicit inline varkey(const imstring &s)
-    : p(s.data()), l(s.size())
-  {
-  }
-#endif
 
   inline bool
   operator==(const varkey &that) const

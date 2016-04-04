@@ -21,7 +21,6 @@
 #include "macros.h"
 #include "prefetch.h"
 #include "amd64.h"
-#include "rcu-wrapper.h"
 #include "util.h"
 #include "small_vector.h"
 #include "ownership_checker.h"
@@ -904,7 +903,7 @@ private:
     static inline leaf_node*
     alloc()
     {
-      void * const p = RCU::allocate(LeafNodeAllocSize);
+      void * const p = RCU::rcu_alloc(LeafNodeAllocSize);
       INVARIANT(p);
       return new (p) leaf_node;
     }

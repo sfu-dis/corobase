@@ -397,12 +397,7 @@ protected: \
   {
     const unsigned int partid = PartitionId(wid);
     ALWAYS_ASSERT(partid < sysconf::worker_threads);
-    const unsigned int pinid  = partid;
-    if (verbose)
-      cerr << "PinToWarehouseId(): coreid=" << coreid::core_id()
-           << " pinned to whse=" << wid << " (partid=" << partid << ")"
-           << endl;
-    RCU::pin_current_thread(pinid);
+    sysconf::pin_current_thread(partid);
   }
 
 public:
@@ -686,11 +681,8 @@ protected:
   virtual void
   on_run_setup() OVERRIDE
   {
-    if (!pin_cpus)
-      return;
-    const size_t a = worker_id % coreid::num_cpus_online();
-    const size_t b = a % sysconf::worker_threads;
-    RCU::pin_current_thread(b);
+    const size_t b = worker_id % sysconf::worker_threads;
+    sysconf::pin_current_thread(b);
   }
 
   inline ALWAYS_INLINE varstr &
@@ -999,8 +991,7 @@ protected:
       const size_t batchsize =
         (db->txn_max_batch_size() == -1) ? NumItems() : db->txn_max_batch_size();
 
-      if (pin_cpus)
-        PinToWarehouseId(w);
+      PinToWarehouseId(w);
 
       for(size_t i=0; i < NumItems(); ) {
         size_t iend = std::min(i+batchsize, NumItems());
@@ -1087,8 +1078,7 @@ protected:
     uint64_t district_total_sz = 0, n_districts = 0;
       uint cnt = 0;
       for (uint w = 1; w <= NumWarehouses(); w++) {
-        if (pin_cpus)
-          PinToWarehouseId(w);
+        PinToWarehouseId(w);
         for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++, cnt++) {
           const district::key k(w, d);
 
@@ -1162,8 +1152,7 @@ protected:
     uint64_t total_sz = 0;
 
     for (uint w = w_start; w <= w_end; w++) {
-      if (pin_cpus)
-        PinToWarehouseId(w);
+      PinToWarehouseId(w);
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         for (uint batch = 0; batch < nbatches;) {
           scoped_str_arena s_arena(arena);
@@ -1291,8 +1280,7 @@ protected:
       NumWarehouses() : static_cast<uint>(warehouse_id);
 
     for (uint w = w_start; w <= w_end; w++) {
-      if (pin_cpus)
-        PinToWarehouseId(w);
+      PinToWarehouseId(w);
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         set<uint> c_ids_s;
         vector<uint> c_ids;
@@ -2474,7 +2462,7 @@ public:
   tpcc_bench_runner(abstract_db *db)
     : bench_runner(db)
   {
-
+    sysconf::pin_current_thread(0);
 #define OPEN_TABLESPACE_X(x) \
     partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));
 
@@ -2553,16 +2541,11 @@ protected:
   virtual vector<bench_worker *>
   make_workers()
   {
-    const unsigned alignment = coreid::num_cpus_online();
-    const int blockstart =
-      coreid::allocate_contiguous_aligned_block(sysconf::worker_threads, alignment);
-    ALWAYS_ASSERT(blockstart >= 0);
-    ALWAYS_ASSERT((blockstart % alignment) == 0);
     fast_random r(23984543);
     vector<bench_worker *> ret;
     if (NumWarehouses() <= sysconf::worker_threads) {
       for (size_t i = 0; i < sysconf::worker_threads; i++)
-        ret.push_back(new tpcc_worker(blockstart + i, r.next(), db,
+        ret.push_back(new tpcc_worker(i, r.next(), db,
                                       open_tables, partitions,
                                       &barrier_a, &barrier_b,
                                       (i % NumWarehouses()) + 1));
@@ -2571,7 +2554,7 @@ protected:
       for (size_t i = 0; i < sysconf::worker_threads; i++) {
         ret.push_back(
           new tpcc_worker(
-            blockstart + i,
+            i,
             r.next(), db, open_tables, partitions,
             &barrier_a, &barrier_b, i + 1));
       }

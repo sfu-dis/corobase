@@ -171,9 +171,7 @@ rc_t base_txn_btree::do_tree_put(
             // updating my own updates!
             // prev's prev: previous *committed* version
             ASSERT(prev->is_defunct()); // oid_put_update did this
-#if defined(REUSE_OBJECTS)
-            t.op->put(t.epoch, prev_obj);
-#endif
+            MM::deallocate(prev->get_object());
         }
         else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
@@ -181,6 +179,7 @@ rc_t base_txn_btree::do_tree_put(
 #endif
         }
 
+        ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
         t.write_set.emplace_back(tuple->get_object(), this->underlying_btree.tuple_vec(), oid);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
