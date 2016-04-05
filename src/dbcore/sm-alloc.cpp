@@ -65,12 +65,13 @@ LSN epoch_excl_begin_lsn[3] = {INVALID_LSN, INVALID_LSN, INVALID_LSN};
 LSN epoch_reclaim_lsn[3] = {INVALID_LSN, INVALID_LSN, INVALID_LSN};
 LSN safesnap_lsn = INVALID_LSN;
 
-object_pool central_object_pool;
-static __thread thread_object_pool *tls_object_pool;
+object_pool central_object_pool CACHE_ALIGNED;
+static __thread thread_object_pool *tls_object_pool CACHE_ALIGNED;
+static __thread fat_ptr tls_unlinked_objects CACHE_ALIGNED;
 
 char **node_memory = NULL;
 uint64_t *allocated_node_memory = NULL;
-static uint64_t __thread tls_allocated_node_memory;
+static uint64_t __thread tls_allocated_node_memory CACHE_ALIGNED;
 static const uint64_t tls_node_memory_gb = 1;
 
 void
@@ -116,24 +117,49 @@ void global_init(void*)
 }
 
 // epochs related
-static __thread struct thread_data epoch_tls;
+static __thread struct thread_data epoch_tls CACHE_ALIGNED;
 epoch_mgr mm_epochs {{nullptr, &global_init, &get_tls,
                     &thread_registered, &thread_deregistered,
                     &epoch_ended, &epoch_ended_thread, &epoch_reclaimed}};
 
-void *allocate(size_t size) {
+void *allocate(size_t size, epoch_num e) {
+    size = align_up(size);
+    void *p = NULL;
+
     // Don't bother TLS if it's still loading
     if (sysconf::loading) {
-        return allocate_onnode(size);
+        p = allocate_onnode(size);
+        goto out;
     }
 
-    size = align_up(size);
+    ALWAYS_ASSERT(not p);
+    // Can we reuse some of our own unlinked object?
+    // A bit expensive to go over all of them, take a look at the first a few
+    static const int rounds = 5;
+    if (tls_unlinked_objects != NULL_PTR) {
+        fat_ptr ptr = tls_unlinked_objects;
+        int n = 0;
+        while (ptr != NULL_PTR and n++ < rounds) {
+            object *obj = (object *)ptr.offset();
+            if (obj->_alloc_epoch <= e - 4 and decode_size_aligned(ptr.size_code()) == size) {
+                p = (void *)ptr.offset();
+                tls_unlinked_objects = obj->_next;
+                goto out;
+            }
+            ptr = ((object *)ptr.offset())->_next;
+        }
+    }
+
+    ALWAYS_ASSERT(not p);
+    // Have to ask the TLS pool (possibly the central pool)
     if (unlikely(!tls_object_pool)) {
         tls_object_pool = new thread_object_pool();
     }
     ASSERT(tls_object_pool);
-    void *p = (void *)tls_object_pool->get_object(size);
-    if (not p) {
+    p = (void *)tls_object_pool->get_object(size);
+    if (p) {
+        goto out;
+    } else {
         auto* ol = central_object_pool.get_object_list(size);
         if (ol) {
             ASSERT(ol->head != NULL_PTR);
@@ -145,19 +171,24 @@ void *allocate(size_t size) {
         }
     }
 
+    ALWAYS_ASSERT(not p);
     // Have to use the vanilla bump allocator, hopefully later we reuse them
-    static __thread char* tls_node_memory;
+    static __thread char* tls_node_memory CACHE_ALIGNED;
     static const uint64_t gb = 1024 * 1024 * 1024;
-    if (unlikely(not tls_node_memory) or tls_allocated_node_memory + size >= tls_node_memory_gb * gb) {
+    if (unlikely(not tls_node_memory) or
+        tls_allocated_node_memory + size >= tls_node_memory_gb * gb) {
         tls_node_memory = (char *)allocate_onnode(tls_node_memory_gb * gb);
         tls_allocated_node_memory = 0;
     }
 
-    ASSERT(tls_node_memory);
-    p = tls_node_memory + tls_allocated_node_memory;
-    tls_allocated_node_memory += size;
+    if (likely(tls_node_memory)) {
+        p = tls_node_memory + tls_allocated_node_memory;
+        tls_allocated_node_memory += size;
+        goto out;
+    }
 
 out:
+    ALWAYS_ASSERT(p);
     epoch_tls.nbytes += size;
     epoch_tls.counts += 1;
     return p;
@@ -170,14 +201,20 @@ void* allocate_onnode(size_t size) {
     ALWAYS_ASSERT(node < sysconf::numa_nodes);
     static const uint64_t gb = 1024 * 1024 * 1024;
     auto offset = __sync_fetch_and_add(&allocated_node_memory[node], size);
-    ALWAYS_ASSERT(offset + size <= sysconf::node_memory_gb * gb);
-    return node_memory[node] + offset;
+    if (likely(offset + size <= sysconf::node_memory_gb * gb)) {
+        return node_memory[node] + offset;
+    }
+    return NULL;
 }
 
-void deallocate(void *p)
+void deallocate(fat_ptr p)
 {
-    ASSERT(p);
-    //free(p);
+    ASSERT(p != NULL_PTR);
+    ASSERT(p.size_code());
+    ASSERT(p.size_code() != INVALID_SIZE_CODE);
+    object *obj = (object *)p.offset();
+    obj->_next = tls_unlinked_objects;
+    tls_unlinked_objects = p;
 }
 
 // epoch mgr callbacks
@@ -229,7 +266,6 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
     LSN my_begin_lsn = epoch_excl_begin_lsn[e % 3];
     if (not sysconf::enable_gc or my_begin_lsn == INVALID_LSN)
         return;
-    //ASSERT(epoch_reclaim_lsn[e % 3] == INVALID_LSN);
     epoch_reclaim_lsn[e % 3] = my_begin_lsn;
     if (sysconf::enable_safesnap) {
         // Make versions created during epoch N available for transactions

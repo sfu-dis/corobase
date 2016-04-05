@@ -299,7 +299,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
     obj = t.op->get(sz);
     if (not obj)
 #endif
-        obj = new (MM::allocate(sz)) object(logrec->payload_ptr(), next);
+        obj = new (MM::allocate(sz, 0)) object(logrec->payload_ptr(), next, 0);
 
     if (warm_up != WU_EAGER)
         return fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);

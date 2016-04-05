@@ -543,11 +543,11 @@ sm_oid_mgr::create(LSN chkpt_start, char const *dname, sm_log_recover_mgr *lm)
             fat_ptr ptr = NULL_PTR;
             n = read(fd, &ptr, sizeof(fat_ptr));
             if (sm_log::warm_up == sm_log::WU_EAGER) {
-                ptr = object::create_tuple_object(ptr, NULL_PTR, lm);
+                ptr = object::create_tuple_object(ptr, NULL_PTR, 0, lm);
                 ASSERT(ptr.asi_type() == 0);
             }
             else {
-                object *obj = new (MM::allocate(sizeof(object))) object(ptr, NULL_PTR);
+                object *obj = new (MM::allocate(sizeof(object), 0)) object(ptr, NULL_PTR, 0);
                 ptr = fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
                 ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
             }
@@ -653,7 +653,7 @@ sm_oid_mgr::warm_up()
             OID himark = alloc->head.hiwater_mark;
             oid_array *oa = oidmgr->get_array(fid);
             for (OID oid = 0; oid < himark; oid++)
-                oidmgr->ensure_tuple(oa, oid);
+                oidmgr->ensure_tuple(oa, oid, 0);
         }
     }
 }
@@ -773,27 +773,27 @@ sm_oid_mgr::oid_put_new(oid_array *oa, OID o, fat_ptr p)
     *ptr = p;
 }
 
-dbtuple*
+fat_ptr
 sm_oid_mgr::oid_put_update(FID f,
                            OID o,
                            const varstr *value,
                            xid_context *updater_xc,
-                           dbtuple *&new_tuple)
+                           fat_ptr *new_obj_ptr)
 {
-    return oid_put_update(get_impl(this)->get_array(f), o, value, updater_xc, new_tuple);
+    return oid_put_update(get_impl(this)->get_array(f), o, value, updater_xc, new_obj_ptr);
 }
 
-dbtuple*
+fat_ptr
 sm_oid_mgr::oid_put_update(oid_array *oa,
                            OID o,
                            const varstr *value,
                            xid_context *updater_xc,
-                           dbtuple *&new_tuple)
+                           fat_ptr *new_obj_ptr)
 {
 #if CHECK_INVARIANTS
     int attempts = 0;
 #endif
-    auto *ptr = ensure_tuple(oa, o);
+    auto *ptr = ensure_tuple(oa, o, updater_xc->begin_epoch);
     // No need to call ensure_tuple() below start_over - it returns a ptr,
     // a dereference is enough to capture the content.
 start_over:
@@ -854,7 +854,7 @@ start_over:
             ASSERT(holder_xid != updater_xid);
             goto install;
         }
-        return NULL;
+        return NULL_PTR;
     }
     // check dirty writes
     else {
@@ -864,7 +864,7 @@ start_over:
         // failure: I can modify concurrent transaction's writes.
         ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
         if (LSN::from_ptr(clsn) > updater_xc->begin)
-            return NULL;
+            return NULL_PTR;
 #endif
         goto install;
     }
@@ -875,27 +875,26 @@ install:
     // Note for this to be correct we shouldn't allow multiple txs
     // working on the same tuple at the same time.
 
-    fat_ptr new_ptr= object::create_tuple_object(value, false);
-    object* new_object = (object *)new_ptr.offset();
+    *new_obj_ptr = object::create_tuple_object(value, false, updater_xc->begin_epoch);
+    object* new_object = (object *)new_obj_ptr->offset();
+    ASSERT(not new_object->tuple()->is_defunct());
     new_object->_clsn = updater_xc->owner.to_ptr();
 
     if (overwrite) {
         volatile_write(new_object->_next, old_desc->_next);
         // I already claimed it, no need to use cas then
-        volatile_write(ptr->_ptr, new_ptr._ptr);
+        volatile_write(ptr->_ptr, new_obj_ptr->_ptr);
         version->mark_defunct();
         __sync_synchronize();
-        new_tuple = new_object->tuple();
-        return version;
+        return head;
     }
     else {
         volatile_write(new_object->_next, head);
-        if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_ptr._ptr)) {
-            new_tuple = new_object->tuple();
-            return version;
+        if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_obj_ptr->_ptr)) {
+            return head;
         }
     }
-    return NULL;
+    return NULL_PTR;
 }
 
 dbtuple*
@@ -916,25 +915,25 @@ sm_oid_mgr::oid_get_latest_version(oid_array *oa, OID o)
 // Load the version from log if not present in memory
 // TODO: anti-caching
 fat_ptr*
-sm_oid_mgr::ensure_tuple(FID f, OID o)
+sm_oid_mgr::ensure_tuple(FID f, OID o, epoch_num e)
 {
-    return ensure_tuple(get_impl(this)->get_array(f), o);
+    return ensure_tuple(get_impl(this)->get_array(f), o, e);
 }
 
 fat_ptr*
-sm_oid_mgr::ensure_tuple(oid_array *oa, OID o)
+sm_oid_mgr::ensure_tuple(oid_array *oa, OID o, epoch_num e)
 {
     fat_ptr *ptr = oa->get(o);
     fat_ptr p = *ptr;
     if (p.asi_type() == fat_ptr::ASI_LOG)
-        ensure_tuple(ptr);
+        ensure_tuple(ptr, e);
     return ptr;
 }
 
 // @ptr: address of an object_header
 // Returns address of an object
 fat_ptr
-sm_oid_mgr::ensure_tuple(fat_ptr *ptr)
+sm_oid_mgr::ensure_tuple(fat_ptr *ptr, epoch_num epoch)
 {
     fat_ptr p = *ptr;
     if (p.asi_type() != fat_ptr::ASI_LOG) {
@@ -946,12 +945,12 @@ sm_oid_mgr::ensure_tuple(fat_ptr *ptr)
 
     // obj->_pdest should point to some location in the log
     ASSERT(obj->_pdest != NULL_PTR);
-    fat_ptr new_ptr = object::create_tuple_object(obj->_pdest, obj->_next);
+    fat_ptr new_ptr = object::create_tuple_object(obj->_pdest, obj->_next, epoch);
     ASSERT(new_ptr.offset());
 
     // Now new_ptr should point to some location in memory
     if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
-        MM::deallocate((object *)new_ptr.offset());
+        MM::deallocate(new_ptr);
         // somebody might acted faster, no need to retry
     }
     // FIXME: handle ASI_HEAP and ASI_EXT too
@@ -971,7 +970,7 @@ sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
     fat_ptr *pp = oa->get(o);
 start_over:
     while (1) {
-        auto ptr = ensure_tuple(pp);
+        auto ptr = ensure_tuple(pp, visitor_xc->begin_epoch);
         if (not ptr.offset())
             break;
 

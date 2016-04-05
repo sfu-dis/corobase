@@ -81,12 +81,15 @@ rc_t base_txn_btree::do_tree_put(
     if (!this->underlying_btree.search(varkey(k), oid, bv, t.xc))
         return rc_t{RC_ABORT_INTERNAL};
 
-    dbtuple *tuple = NULL;
     // first *updater* wins
-    dbtuple *prev = oidmgr->oid_put_update(this->underlying_btree.tuple_vec(), oid, v, t.xc, tuple);
+    fat_ptr new_obj_ptr = NULL_PTR;
+    fat_ptr prev_obj_ptr = oidmgr->oid_put_update(this->underlying_btree.tuple_vec(), oid, v, t.xc, &new_obj_ptr);
+    dbtuple *tuple = ((object *)new_obj_ptr.offset())->tuple();
+    ASSERT(tuple);
 
-    if (prev) { // succeeded
-        ASSERT(tuple);
+    if (prev_obj_ptr != NULL_PTR) { // succeeded
+        dbtuple *prev = ((object *)prev_obj_ptr.offset())->tuple();
+        ASSERT((uint64_t)prev->get_object() == prev_obj_ptr.offset());
         ASSERT(t.xc);
 #ifdef USE_PARALLEL_SSI
         ASSERT(prev->sstamp == NULL_PTR);
@@ -166,12 +169,14 @@ rc_t base_txn_btree::do_tree_put(
 
         // read prev's clsn first, in case it's a committing XID, the clsn's state
         // might change to ASI_LOG anytime
+        ASSERT((uint64_t)prev->get_object() == prev_obj_ptr.offset());
         fat_ptr prev_clsn = volatile_read(prev->get_object()->_clsn);
         if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {
             // updating my own updates!
             // prev's prev: previous *committed* version
             ASSERT(prev->is_defunct()); // oid_put_update did this
-            MM::deallocate(prev->get_object());
+            ASSERT(((object *)prev_obj_ptr.offset())->_alloc_epoch == t.xc->begin_epoch);
+            MM::deallocate(prev_obj_ptr);
         }
         else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
@@ -180,7 +185,7 @@ rc_t base_txn_btree::do_tree_put(
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
-        t.write_set.emplace_back(tuple->get_object(), this->underlying_btree.tuple_vec(), oid);
+        t.write_set.emplace_back(new_obj_ptr, this->underlying_btree.tuple_vec(), oid);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
         INVARIANT(t.log);

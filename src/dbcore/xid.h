@@ -3,6 +3,8 @@
 #include <atomic>
 #include <mutex>
 #include <vector>
+
+#include "epoch.h"
 #include "sm-common.h"
 #include "sm-config.h"
 #include "../macros.h"
@@ -13,6 +15,7 @@ namespace TXN {
 enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD, TXN_INVALID };
 
 struct xid_context {
+    epoch_mgr::epoch_num begin_epoch;  // tx start epoch, not owner.local()
     XID owner;
     LSN begin;
     LSN end;

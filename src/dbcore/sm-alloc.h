@@ -82,8 +82,8 @@ namespace MM {
     };
 
     void prepare_node_memory();
-    void *allocate(size_t size);
-    void deallocate(void *p);
+    void *allocate(size_t size, epoch_num e);
+    void deallocate(fat_ptr p);
     void* allocate_onnode(size_t size);
 
     extern LSN safesnap_lsn;

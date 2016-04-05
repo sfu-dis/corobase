@@ -18,7 +18,6 @@ using namespace TXN;
 transaction::transaction(uint64_t flags, str_arena &sa)
   : flags(flags), sa(&sa)
 {
-    epoch = MM::epoch_enter();
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::NodeLockRegionBegin();
 #endif
@@ -27,6 +26,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #endif
     xid = TXN::xid_alloc();
     xc = xid_get_context(xid);
+    xc->begin_epoch = MM::epoch_enter();
 #if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
     xc->xct = this;
     // If there's a safesnap, then SSN treats the snapshot as a transaction
@@ -81,9 +81,9 @@ transaction::~transaction()
         serial_deregister_tx(xid);
 #endif
     if (sysconf::enable_safesnap and flags & TXN_FLAG_READ_ONLY)
-        MM::epoch_exit(INVALID_LSN, epoch);
+        MM::epoch_exit(INVALID_LSN, xc->begin_epoch);
     else
-        MM::epoch_exit(xc->end, epoch);
+        MM::epoch_exit(xc->end, xc->begin_epoch);
     xid_free(xid);    // must do this after epoch_exit, which uses xc.end
 }
 
@@ -106,7 +106,7 @@ transaction::abort()
 #endif
 
     for (auto &w : write_set) {
-        dbtuple *tuple = w.new_object->tuple();
+        dbtuple *tuple = w.get_object()->tuple();
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->get_object()->_clsn) == xid);
         if (tuple->is_defunct())   // for repeated overwrites
@@ -117,8 +117,9 @@ transaction::abort()
             tuple->next()->welcome_readers();
         }
 #endif
+        volatile_write(w.get_object()->_clsn, NULL_PTR);
         oidmgr->oid_unlink(w.oa, w.oid, tuple);
-        MM::deallocate(tuple->get_object());
+        MM::deallocate(w.new_object);
     }
 
     // Read-only tx on a safesnap won't have log
@@ -295,7 +296,7 @@ transaction::parallel_ssn_commit()
     }
 
     for (auto &w : write_set) {
-        dbtuple *tuple = w.new_object->tuple();
+        dbtuple *tuple = w.get_object()->tuple();
         if (tuple->is_defunct())    // repeated overwrites
             continue;
 
@@ -483,7 +484,7 @@ transaction::parallel_ssn_commit()
     // post-commit: stuff access stamps for reads; init new versions
     auto clsn = xc->end;
     for (auto &w : write_set) {
-        dbtuple *tuple = w.new_object->tuple();
+        dbtuple *tuple = w.get_object()->tuple();
         if (tuple->is_defunct())
             continue;
         tuple->do_write();
@@ -688,9 +689,9 @@ transaction::parallel_ssi_commit()
     if (ct3) {
         // now see if I'm the unlucky T2
         for (auto &w : write_set) {
-            if (w.new_object->tuple()->is_defunct())
+            if (w.get_object()->tuple()->is_defunct())
                 continue;
-            dbtuple *overwritten_tuple = w.new_object->tuple()->next();
+            dbtuple *overwritten_tuple = w.get_object()->tuple()->next();
             if (not overwritten_tuple)
                 continue;
             // Note: the bits representing readers that will commit **after**
@@ -787,7 +788,7 @@ transaction::parallel_ssi_commit()
     // stamp overwritten versions, stuff clsn
     auto clsn = xc->end;
     for (auto &w : write_set) {
-        dbtuple* tuple = w.new_object->tuple();
+        dbtuple* tuple = w.get_object()->tuple();
         if (tuple->is_defunct())
             continue;
         tuple->do_write();
@@ -899,7 +900,7 @@ transaction::si_commit()
     recycle_oid *updated_oids_tail = NULL;
     auto clsn = xc->end;
     for (auto &w : write_set) {
-        dbtuple* tuple = w.new_object->tuple();
+        dbtuple* tuple = w.get_object()->tuple();
         if (tuple->is_defunct())
             continue;
         ASSERT(w.oa);
@@ -964,7 +965,7 @@ transaction::try_insert_new_tuple(
     FID fid)
 {
     INVARIANT(key);
-    fat_ptr new_head = object::create_tuple_object(value, false);
+    fat_ptr new_head = object::create_tuple_object(value, false, xc->begin_epoch);
     ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
     dbtuple *tuple = ((object *)new_head.offset())->tuple();
     ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
@@ -1020,7 +1021,7 @@ transaction::try_insert_new_tuple(
 
     // update write_set
     ASSERT(tuple->pvalue->size() == tuple->size);
-    write_set.emplace_back(tuple->get_object(), btr->tuple_vec(), oid);
+    write_set.emplace_back(new_head, btr->tuple_vec(), oid);
     return true;
 }
 
