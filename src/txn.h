@@ -144,11 +144,14 @@ protected:
   }
 
   struct write_record_t {
-    write_record_t(object *obj, oid_array *a, OID o) :
+    write_record_t(fat_ptr obj, oid_array *a, OID o) :
         new_object(obj), oa(a), oid(o) {}
-    object *new_object;
+    fat_ptr new_object;
     oid_array *oa;
     OID oid;
+    inline object *get_object() {
+      return (object *)new_object.offset();
+    }
   };
 
   typedef std::vector<write_record_t> write_set_map;
@@ -228,6 +231,5 @@ protected:
   typedef std::vector<dbtuple *> read_set_map;
   read_set_map read_set;
 #endif
-  epoch_num epoch;
 };
 #endif /* _NDB_TXN_H_ */

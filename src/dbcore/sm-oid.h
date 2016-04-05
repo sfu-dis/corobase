@@ -1,6 +1,7 @@
 // -*- mode:c++ -*-
 #pragma once
 
+#include "epoch.h"
 #include "sm-common.h"
 #include "sm-oid-alloc-impl.h"
 #include "sm-heap.h"
@@ -9,6 +10,8 @@
 #include "dynarray.h"
 
 #include "../tuple.h"
+
+typedef epoch_mgr::epoch_num epoch_num;
 
 /* OID arrays and allocators alike always occupy an integer number
    of dynarray pages, to ensure that we don't hit precision issues
@@ -176,10 +179,11 @@ struct sm_oid_mgr {
     void oid_put_new(FID f, OID o, fat_ptr p);
     void oid_put_new(oid_array *oa, OID o, fat_ptr p);
 
-    /* Return the overwritten version (could be an in-flight version!) */
-    dbtuple *oid_put_update(FID f, OID o, const varstr* value, xid_context *updater_xc, dbtuple *&new_tuple);
-    dbtuple *oid_put_update(oid_array *oa, OID o,
-                            const varstr *value, xid_context *updater_xc, dbtuple *&new_tuple);
+    /* Return a fat_ptr to the overwritten object (could be an in-flight version!) */
+    fat_ptr oid_put_update(
+      FID f, OID o, const varstr* value, xid_context *updater_xc, fat_ptr *new_obj_ptr);
+    fat_ptr oid_put_update(
+      oid_array *oa, OID o, const varstr *value, xid_context *updater_xc, fat_ptr *new_obj_ptr);
 
     dbtuple *oid_get_latest_version(FID f, OID o);
     dbtuple *oid_get_latest_version(oid_array *oa, OID o);
@@ -187,9 +191,9 @@ struct sm_oid_mgr {
     dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
     dbtuple *oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc);
 
-    fat_ptr *ensure_tuple(FID f, OID o);
-    fat_ptr *ensure_tuple(oid_array *oa, OID o);
-    fat_ptr ensure_tuple(fat_ptr *ptr);
+    fat_ptr *ensure_tuple(FID f, OID o, epoch_num e);
+    fat_ptr *ensure_tuple(oid_array *oa, OID o, epoch_num e);
+    fat_ptr ensure_tuple(fat_ptr *ptr, epoch_num e);
 
     void oid_unlink(FID f, OID o, void *object_payload);
     void oid_unlink(oid_array *oa, OID o, void *object_payload);
