@@ -34,7 +34,7 @@ void gc_daemon();
 // This is the list head; a committing tx atomically swaps the head of
 // its queue of updated OIDs with recycle_oid_list, and links its tail
 // to the old head which it got as the return value of the XCHG.
-std::atomic<recycle_oid*> recycle_oid_list(NULL);
+std::atomic<fat_ptr> recycle_oid_list(NULL_PTR);
 
 // tzwang (2015-11-01):
 // trim_lsn is the LSN of the no-longer-needed versions, which is the end LSN
@@ -312,11 +312,12 @@ epoch_exit(LSN s, epoch_num e)
     mm_epochs.thread_exit();
 }
 
-void recycle(recycle_oid *list_head, recycle_oid *list_tail)
+void recycle(fat_ptr list_head, fat_ptr list_tail)
 {
-    recycle_oid *succ_head = recycle_oid_list.exchange(list_head, std::memory_order_seq_cst);
-    ASSERT(not list_tail->next);
-    list_tail->next = succ_head;
+    fat_ptr succ_head = recycle_oid_list.exchange(list_head, std::memory_order_seq_cst);
+    object *tail_obj = (object *)list_tail.offset();
+    ASSERT(tail_obj->_next == NULL_PTR);
+    tail_obj->_next = succ_head;
     std::atomic_thread_fence(std::memory_order_release);    // Let the GC thread know
 }
 
@@ -330,15 +331,17 @@ try_recycle:
     uint64_t reclaimed_count = 0;
     uint64_t reclaimed_nbytes = 0;
     gc_trigger.wait(lock);
-    recycle_oid *r = recycle_oid_list.load();
+    fat_ptr r = recycle_oid_list.load();
+    object *r_obj = (object *)r.offset();
 
     // FIXME(tzwang): for now always start after the head, so we don't have to
     // worry about resetting the head list pointer...
-    if (not r or not r->next)
+    if (not r_obj or r_obj->_next == NULL_PTR)
         goto try_recycle;
-    auto *r_prev = r;
-    r = r->next;
-    ASSERT(r);
+    auto r_prev = r;
+    r = r_obj->_next;
+    ASSERT(r != NULL_PTR);
+    ASSERT(r != r_prev);
 
     while (1) {
         // need to update tlsn each time, to make sure we can make
@@ -351,19 +354,25 @@ try_recycle:
         if (tlsn == INVALID_LSN)
             break;
 
-        if (not r or reclaimed_count >= EPOCH_SIZE_COUNT or reclaimed_nbytes >= EPOCH_SIZE_NBYTES)
+        if (r == NULL_PTR or
+            reclaimed_count >= EPOCH_SIZE_COUNT or
+            reclaimed_nbytes >= EPOCH_SIZE_NBYTES) {
             break;
+        }
 
-        ASSERT(r->oa);
-        fat_ptr head = oidmgr->oid_get(r->oa, r->oid);
-        auto* r_next = r->next;
+        r_obj = (object *)r.offset();
+        recycle_oid *r_oid = (recycle_oid *)r_obj->payload();
+        ASSERT(r_oid->oa);
+        fat_ptr head = oidmgr->oid_get(r_oid->oa, r_oid->oid);
+        auto r_next = r_obj->_next;
         ASSERT(r_next != r);
         object *cur_obj = (object *)head.offset();
         if (not cur_obj) {
             // in case it's a delete... remove the oid as if we trimmed it
-            delete r;
-            ASSERT(r_prev);
-            volatile_write(r_prev->next, r_next);
+            deallocate(r);
+            ASSERT(r_prev != NULL_PTR);
+            object *r_prev_obj = (object *)r_prev.offset();
+            volatile_write(r_prev_obj->_next, r_next);
             r = r_next;
             continue;
         }
@@ -443,9 +452,10 @@ try_recycle:
 
         if (trimmed) {
             // really recycled something, detach the node, but don't update r_prev
-            ASSERT(r_prev);
-            delete r;
-            volatile_write(r_prev->next, r_next);
+            ASSERT(r_prev != NULL_PTR);
+            deallocate(r);
+            object *r_prev_obj = (object *)r_prev.offset();
+            volatile_write(r_prev_obj->_next, r_next);
         }
         else {
             r_prev = r;

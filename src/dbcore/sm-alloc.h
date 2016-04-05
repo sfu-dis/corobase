@@ -15,8 +15,7 @@ struct oid_array;
 struct recycle_oid {
     oid_array *oa;
     OID oid;
-    recycle_oid *next;
-    recycle_oid(oid_array *a, OID o) : oa(a), oid(o), next(NULL) {}
+    recycle_oid(oid_array *a, OID o) : oa(a), oid(o) {}
 };
 
 namespace MM {
@@ -115,6 +114,6 @@ namespace MM {
 
     void epoch_exit(LSN s, epoch_num e);
     void recycle(oid_array *oa, OID oid);
-    void recycle(recycle_oid *list_head, recycle_oid *list_tail);
+    void recycle(fat_ptr list_head, fat_ptr list_tail);
 };
 

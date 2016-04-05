@@ -205,6 +205,24 @@ protected:
   do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 #endif
 
+  inline void enqueue_recycle_oids(write_record_t &w) {
+    size_t size = sizeof(recycle_oid) + sizeof(object);
+    const size_t size_code = encode_size_aligned(size);
+    object *objr = (object *)MM::allocate(size, 0);
+    new (objr) object();
+    recycle_oid *r = (recycle_oid *)objr->payload();
+    new (r) recycle_oid(w.oa, w.oid);
+    fat_ptr myptr = fat_ptr::make(objr, size_code);
+    if (updated_oids_head == NULL_PTR) {
+        updated_oids_head = updated_oids_tail = myptr;
+    } else {
+        object *tail_obj = (object *)updated_oids_tail.offset();
+        ASSERT(tail_obj->_next == NULL_PTR);
+        tail_obj->_next = myptr;
+        updated_oids_tail = myptr;
+    }
+  }
+
 public:
   // expected public overrides
 
@@ -231,5 +249,7 @@ protected:
   typedef std::vector<dbtuple *> read_set_map;
   read_set_map read_set;
 #endif
+  fat_ptr updated_oids_head;
+  fat_ptr updated_oids_tail;
 };
 #endif /* _NDB_TXN_H_ */
