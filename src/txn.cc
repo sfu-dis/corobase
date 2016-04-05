@@ -470,9 +470,6 @@ transaction::parallel_ssn_commit()
     if (is_read_mostly())
         serial_stamp_last_committed_lsn(xc->end);
 
-    recycle_oid *updated_oids_head = NULL;
-    recycle_oid *updated_oids_tail = NULL;
-
     uint64_t my_sstamp = 0;
     if (is_read_mostly()) {
         my_sstamp = xc->sstamp.load(std::memory_order_acquire);
@@ -504,13 +501,7 @@ transaction::parallel_ssn_commit()
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
-            recycle_oid *r = new recycle_oid(w.oa, w.oid);
-            if (not updated_oids_head)
-                updated_oids_head = updated_oids_tail = r;
-            else {
-                updated_oids_tail->next = r;
-                updated_oids_tail = r;
-            }
+            enqueue_recycle_oids(w);
         }
     }
 
@@ -564,9 +555,9 @@ transaction::parallel_ssn_commit()
         serial_deregister_reader_tx(&r->readers_bitmap);
     }
 
-    if (updated_oids_head) {
+    if (updated_oids_head != NULL_PTR) {
         ASSERT(sysconf::enable_gc);
-        ASSERT(updated_oids_tail);
+        ASSERT(updated_oids_tail != NULL_PTR);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
 
@@ -782,9 +773,6 @@ transaction::parallel_ssi_commit()
     // survived!
     log->commit(NULL);
 
-    recycle_oid *updated_oids_head = NULL;
-    recycle_oid *updated_oids_tail = NULL;
-
     // stamp overwritten versions, stuff clsn
     auto clsn = xc->end;
     for (auto &w : write_set) {
@@ -806,13 +794,7 @@ transaction::parallel_ssi_commit()
         INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one XCHG per tx
-            recycle_oid *r = new recycle_oid(w.oa, w.oid);
-            if (not updated_oids_head)
-                updated_oids_head = updated_oids_tail = r;
-            else {
-                updated_oids_tail->next = r;
-                updated_oids_tail = r;
-            }
+            enqueue_recycle_oids(w);
         }
     }
 
@@ -868,9 +850,9 @@ transaction::parallel_ssi_commit()
     }
 
     // GC stuff, do it out of precommit
-    if (updated_oids_head) {
+    if (updated_oids_head != NULL_PTR) {
         ASSERT(sysconf::enable_gc);
-        ASSERT(updated_oids_tail);
+        ASSERT(updated_oids_tail != NULL_PTR);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
 
@@ -896,8 +878,6 @@ transaction::si_commit()
     // post-commit cleanup: install clsn to tuples
     // (traverse write-tuple)
     // stuff clsn in tuples in write-set
-    recycle_oid *updated_oids_head = NULL;
-    recycle_oid *updated_oids_tail = NULL;
     auto clsn = xc->end;
     for (auto &w : write_set) {
         dbtuple* tuple = w.get_object()->tuple();
@@ -909,13 +889,7 @@ transaction::si_commit()
         INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one XCHG per tx
-            recycle_oid *r = new recycle_oid(w.oa, w.oid);
-            if (not updated_oids_head)
-                updated_oids_head = updated_oids_tail = r;
-            else {
-                updated_oids_tail->next = r;
-                updated_oids_tail = r;
-            }
+            enqueue_recycle_oids(w);
         }
 #if CHECK_INVARIANT
         object *obj = tuple->get_object();
@@ -930,9 +904,9 @@ transaction::si_commit()
     // This is where (committed) tuple data are made visible to readers
     volatile_write(xc->state, TXN_CMMTD);
 
-    if (updated_oids_head) {
+    if (updated_oids_head != NULL_PTR) {
         ASSERT(sysconf::enable_gc);
-        ASSERT(updated_oids_tail);
+        ASSERT(updated_oids_tail != NULL_PTR);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
 
