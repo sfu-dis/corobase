@@ -49,11 +49,6 @@
 #define CACHELINE_SIZE 64 // XXX: don't assume x86
 #define LG_CACHELINE_SIZE __builtin_ctz(CACHELINE_SIZE)
 
-// global maximum on the number of unique threads allowed
-// in the system
-#define NMAXCOREBITS 10
-#define NMAXCORES    (1 << NMAXCOREBITS)
-
 // some helpers for cacheline alignment
 #define CACHE_ALIGNED __attribute__((aligned(CACHELINE_SIZE)))
 
