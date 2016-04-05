@@ -9,7 +9,6 @@
 #include <atomic>
 #include <memory>
 
-#include "core.h"
 #include "btree.h"
 #include "btree_impl.h"
 #include "thread.h"
