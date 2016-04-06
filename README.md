@@ -4,7 +4,7 @@ Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
 #### Environment configurations
 
-* Software dependencies: `libnuma` and `tcmalloc` (part of google perftools). Install from your favorite package manager.
+* Software dependencies: `libnuma`. Install from your favorite package manager.
 * `mlock` limits. Add the following to `/etc/security/limits.conf` (replace "[user]" with your login):
 ```
 [user] soft memlock unlimited
