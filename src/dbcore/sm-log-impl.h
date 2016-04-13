@@ -9,10 +9,8 @@
 
 struct sm_log_impl : sm_log {
 
-    sm_log_impl(char const *dname, size_t segsz,
-                    sm_log_recover_function *rfn, void *rarg,
-                    size_t bufsz)
-        : _lm(dname, segsz, rfn, rarg, bufsz)
+    sm_log_impl(sm_log_recover_function *rfn, void *rarg)
+        : _lm(rfn, rarg)
     {
     }
     

@@ -482,11 +482,11 @@ sm_oid_mgr::get_array(FID f)
 }
 
 void
-sm_oid_mgr::create(LSN chkpt_start, char const *dname, sm_log_recover_mgr *lm)
+sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
 {
     // Create an empty oidmgr, with initial internal files
     oidmgr = new sm_oid_mgr_impl{};
-    oidmgr->dfd = dirent_iterator(dname).dup();
+    oidmgr->dfd = dirent_iterator(sysconf::log_dir.c_str()).dup();
     chkptmgr = new sm_chkpt_mgr(chkpt_start);
 
     if (not sm_log::need_recovery or chkpt_start.offset() == 0)

@@ -160,12 +160,13 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
      */
     fat_ptr load_ext_pointer(fat_ptr ptr);
     
-    sm_log_recover_mgr(char const *dname, size_t segment_size,
-                       sm_log_recover_function *rfn, void *rfn_arg);
+    sm_log_recover_mgr(sm_log_recover_function *rfn, void *rfn_arg);
 
     ~sm_log_recover_mgr();
 
     sm_log_scan_mgr *scanner;
+    sm_log_recover_function *recover_function;
+    void *recover_function_arg;
 };
 
 #endif

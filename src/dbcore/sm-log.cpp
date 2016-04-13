@@ -75,13 +75,7 @@ sm_log::new_log(sm_log_recover_function *rfn, void *rarg)
     }
     ALWAYS_ASSERT(sysconf::log_segment_mb);
     ALWAYS_ASSERT(sysconf::log_buffer_mb);
-    size_t mb = 1024 * 1024;
-    return new sm_log_impl(
-      sysconf::log_dir.c_str(),
-      sysconf::log_segment_mb * mb,
-      rfn,
-      rarg,
-      sysconf::log_buffer_mb * mb);
+    return new sm_log_impl(rfn, rarg);
 }
 
 sm_log_scan_mgr *
@@ -183,7 +177,7 @@ sm_log::wait_for_durable_lsn(LSN dlsn)
  */
 void
 sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
-                LSN chkpt_begin, LSN chkpt_end, char const *dname)
+                LSN chkpt_begin, LSN chkpt_end)
 {
     RCU::rcu_register();
     RCU::rcu_enter();

@@ -85,12 +85,11 @@ prepare_node_memory() {
     for (int i = 0; i < sysconf::numa_nodes; i++) {
         std::cout << "Allocating " << sysconf::node_memory_gb << "GB on node " << i << std::endl;
         auto f = [=]{
-            uint64_t gb = 1024 * 1024 * 1024;
             ALWAYS_ASSERT(sysconf::node_memory_gb);
             allocated_node_memory[i] = 0;
             numa_set_preferred(i);
             node_memory[i] = (char *)mmap(NULL,
-                sysconf::node_memory_gb * gb,
+                sysconf::node_memory_gb * sysconf::GB,
                 PROT_READ | PROT_WRITE,
                 MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB | MAP_POPULATE,
                 -1,
@@ -174,10 +173,9 @@ void *allocate(size_t size, epoch_num e) {
     ALWAYS_ASSERT(not p);
     // Have to use the vanilla bump allocator, hopefully later we reuse them
     static __thread char* tls_node_memory CACHE_ALIGNED;
-    static const uint64_t gb = 1024 * 1024 * 1024;
     if (unlikely(not tls_node_memory) or
-        tls_allocated_node_memory + size >= tls_node_memory_gb * gb) {
-        tls_node_memory = (char *)allocate_onnode(tls_node_memory_gb * gb);
+        tls_allocated_node_memory + size >= tls_node_memory_gb * sysconf::GB) {
+        tls_node_memory = (char *)allocate_onnode(tls_node_memory_gb * sysconf::GB);
         tls_allocated_node_memory = 0;
     }
 
@@ -199,9 +197,8 @@ void* allocate_onnode(size_t size) {
     size = align_up(size);
     auto node = numa_node_of_cpu(sched_getcpu());
     ALWAYS_ASSERT(node < sysconf::numa_nodes);
-    static const uint64_t gb = 1024 * 1024 * 1024;
     auto offset = __sync_fetch_and_add(&allocated_node_memory[node], size);
-    if (likely(offset + size <= sysconf::node_memory_gb * gb)) {
+    if (likely(offset + size <= sysconf::node_memory_gb * sysconf::GB)) {
         return node_memory[node] + offset;
     }
     return NULL;

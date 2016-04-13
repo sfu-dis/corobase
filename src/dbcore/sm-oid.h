@@ -112,7 +112,7 @@ struct sm_oid_mgr {
        amount of data to ship for replication (no need to ship chkpts,
        the backup can have its own chkpts).
      */
-    static void create(LSN chkpt_start, char const *dname, sm_log_recover_mgr *lm);
+    static void create(LSN chkpt_start, sm_log_recover_mgr *lm);
 
     /* Record a snapshot of the OID manager's state as part of a
        checkpoint. The data will be durable by the time this function
