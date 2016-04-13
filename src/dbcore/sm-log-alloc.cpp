@@ -160,6 +160,108 @@ sm_log_alloc_mgr::flush_cur_lsn()
     return flush();
 }
 
+/* Figure out the corresponding segments in the logbuf and flush them.
+ * The caller should enter/exit_rcu().
+ */
+segment_id *
+sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
+{
+    LSN dlsn = _lm.get_durable_mark();
+    ASSERT(_durable_lsn_offset == dlsn.offset());
+    auto *durable_sid = _lm.get_segment(dlsn.segment());
+    uint64_t durable_byte = durable_sid->buf_offset(_durable_lsn_offset);
+    int active_fd = _lm.open_for_write(durable_sid);
+    DEFER(os_close(active_fd));
+
+    /* The block list contains a fluctuating---and usually fairly
+       short---set of log_allocation objects. Releasing or
+       discarding a block marks it as dead (without removing it)
+       and removes all dead blocks that follow it. The list is
+       primed at start-up with the durable LSN (as determined by
+       startup/recovery), and so is guaranteed to always contain
+       at least one (perhaps dead) node that later requests can
+       use to acquire a proper LSN.
+
+       Our goal is to find the oldest (= last) live block in the
+       list, and write out everything before that block's offset.
+
+       Once we know the offset, we can look up the corresponding
+       segment to obtain an LSN.
+     */
+    while (_durable_lsn_offset < new_dlsn_offset) {
+        segment_id *new_sid;
+        uint64_t new_offset;
+        uint64_t new_byte;
+
+        if (durable_sid->end_offset < new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+            /* Watch out for segment boundaries!
+
+               The true end of a segment is somewhere in the last
+               MIN_LOG_BLOCK_SIZE bytes, with the exact value
+               determined by the start_offset of its
+               successor. Fortunately, any request that lands in
+               this "red zone" also ensures that the next segment
+               has been created, so we can safely access it.
+             */
+            new_sid = _lm.get_segment((durable_sid->segnum+1) % NUM_LOG_SEGMENTS);
+            ASSERT(new_sid);
+            new_offset = new_sid->start_offset;
+            new_byte = new_sid->byte_offset;
+        }
+        else {
+            new_sid = durable_sid;
+            new_offset = new_dlsn_offset;
+            new_byte = new_sid->buf_offset(new_dlsn_offset);
+        }
+
+        ASSERT(durable_byte == logbuf.read_begin());
+        ASSERT(durable_byte < new_byte);
+        ASSERT(new_byte <= logbuf.write_end());
+
+        /* Log insertions don't advance the buffer window because
+           they tend to complete out of order. Do it for them now
+           that we know the correct value to use.
+         */
+        logbuf.advance_writer(new_byte);
+
+        // perform the write
+        uint64_t nbytes = new_byte - durable_byte;
+        auto *buf = logbuf.read_buf(durable_byte, nbytes);
+        auto file_offset = durable_sid->offset(_durable_lsn_offset);
+        if (!sysconf::null_log_device) {
+          uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
+          THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
+        }
+        if (sysconf::num_active_backups) {
+          auto start_lsn = durable_sid->make_lsn(_durable_lsn_offset);
+          auto end_lsn = durable_sid->make_lsn(new_offset);
+          ASSERT(start_lsn.segment() == end_lsn.segment());
+          rep::primary_ship_log_buffer_all(
+            buf,
+            durable_sid->make_lsn(_durable_lsn_offset),
+            durable_sid->make_lsn(new_offset),
+            nbytes);
+        }
+
+        logbuf.advance_reader(new_byte);
+
+        // segment change?
+        if (new_sid != durable_sid) {
+            os_close(active_fd);
+            active_fd = _lm.open_for_write(new_sid);
+        }
+
+        // update values for next round
+        durable_sid = new_sid;
+        _durable_lsn_offset = new_offset;
+        durable_byte = new_byte;
+
+        if (update_dmark)
+            _lm.update_durable_mark(durable_sid->make_lsn(_durable_lsn_offset));
+    }
+    return durable_sid;
+}
+
 /* Allocating a log block is a multi-step process.
 
    1. Ensure there is sufficient space in the log file for the new
@@ -370,7 +472,20 @@ sm_log_alloc_mgr::discard(log_allocation *x)
     b->checksum = b->full_checksum();
     release(x);
 }
-    
+
+uint64_t
+sm_log_alloc_mgr::latest_durable_lsn_offset()
+{
+    uint64_t oldest_offset = cur_lsn_offset();
+    for (uint32_t i = 0; i < sysconf::_active_threads; i++) {
+        // Skip too small/stale LSNs (maybe due to running read-only
+        // transactions using SSN's safesnap) so that we can make progress.
+        if (_tls_lsn_offset[i] > _durable_lsn_offset)
+            oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
+    }
+    return oldest_offset;
+}
+
 /* This guy's only job is to write released log blocks to disk. In
    steady state, new log blocks will be released during each log
    write, keeping the daemon busy most of the time. Whenever the log
@@ -386,118 +501,16 @@ sm_log_alloc_mgr::_log_write_daemon()
     rcu_enter();
     DEFER(rcu_exit());
 
-    LSN dlsn = _lm.get_durable_mark();
-    auto *durable_sid = _lm.get_segment(dlsn.segment());
-    ASSERT(_durable_lsn_offset == dlsn.offset());
-    uint64_t durable_byte = durable_sid->buf_offset(_durable_lsn_offset);
-    int active_fd = _lm.open_for_write(durable_sid);
-    DEFER(os_close(active_fd));
-
-    auto update_dmark = [&] {
-        dlsn = durable_sid->make_lsn(_durable_lsn_offset);
-        _lm.update_durable_mark(dlsn);
-    };
-
     // every 100 ms or so, update the durable mark on disk
     static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(5000)*1000*1000;
     uint64_t last_dmark = stopwatch_t::now();
     for (;;) {
-        
-        /* The block list contains a fluctuating---and usually fairly
-           short---set of log_allocation objects. Releasing or
-           discarding a block marks it as dead (without removing it)
-           and removes all dead blocks that follow it. The list is
-           primed at start-up with the durable LSN (as determined by
-           startup/recovery), and so is guaranteed to always contain
-           at least one (perhaps dead) node that later requests can
-           use to acquire a proper LSN.
-
-           Our goal is to find the oldest (= last) live block in the
-           list, and write out everything before that block's offset.
-
-           Once we know the offset, we can look up the corresponding
-           segment to obtain an LSN.
-         */
-        uint64_t cur_offset = cur_lsn_offset();
-        
-        /* Write out all available data in the largest chunks
-           possible. Do not span segments.
-        */
-        uint64_t oldest_offset = cur_offset;
-        for (uint32_t i = 0; i < sysconf::_active_threads; i++) {
-            // Skip too small/stale LSNs (maybe due to running read-only
-            // transactions using SSN's safesnap) so that we can make progress.
-            if (_tls_lsn_offset[i] > _durable_lsn_offset)
-                oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
-        }
-        while (_durable_lsn_offset < oldest_offset) {
-            sm_log_recover_mgr::segment_id *new_sid;
-            uint64_t new_offset;
-            uint64_t new_byte;
-            
-            if (durable_sid->end_offset < oldest_offset+MIN_LOG_BLOCK_SIZE) {
-                /* Watch out for segment boundaries!
-
-                   The true end of a segment is somewhere in the last
-                   MIN_LOG_BLOCK_SIZE bytes, with the exact value
-                   determined by the start_offset of its
-                   successor. Fortunately, any request that lands in
-                   this "red zone" also ensures that the next segment
-                   has been created, so we can safely access it.
-                 */
-                new_sid = _lm.get_segment((durable_sid->segnum+1) % NUM_LOG_SEGMENTS);
-                ASSERT(new_sid);
-                new_offset = new_sid->start_offset;
-                new_byte = new_sid->byte_offset;
-            }
-            else {
-                new_sid = durable_sid;
-                new_offset = oldest_offset;
-                new_byte = new_sid->buf_offset(oldest_offset);
-            }
-
-            ASSERT(durable_byte == _logbuf.read_begin());
-            ASSERT(durable_byte < new_byte);
-            ASSERT(new_byte <= _logbuf.write_end());
-
-            /* Log insertions don't advance the buffer window because
-               they tend to complete out of order. Do it for them now
-               that we know the correct value to use.
-             */
-            _logbuf.advance_writer(new_byte);
-            
-            // perform the write
-            uint64_t nbytes = new_byte - durable_byte;
-            auto *buf = _logbuf.read_buf(durable_byte, nbytes);
-            auto file_offset = durable_sid->offset(_durable_lsn_offset);
-            if (!sysconf::null_log_device) {
-              uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
-              THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
-            }
-            _logbuf.advance_reader(new_byte);
-
-            // segment change?
-            if (new_sid != durable_sid) {
-                os_close(active_fd);
-                active_fd = _lm.open_for_write(new_sid);
-            }
-
-            // update values for next round
-            durable_sid = new_sid;
-            _durable_lsn_offset = new_offset;
-            durable_byte = new_byte;
-        }
+        auto cur_offset = cur_lsn_offset();
+        auto new_dlsn_offset = latest_durable_lsn_offset();
+        auto *durable_sid = flush_log_buffer(_logbuf, new_dlsn_offset);
 
         rcu_exit();
 
-        // give busy threads some time to enqueue new requests (~1us)
-#if 0
-        struct timespec ts;
-        ts.tv_sec = 0;
-        ts.tv_nsec = 10000;
-        nanosleep(&ts, 0);
-#endif
-        
         /* Having completed a round of writes, notify waiting threads
            and take care of special cases
          */
@@ -520,7 +533,7 @@ sm_log_alloc_mgr::_log_write_daemon()
         
             if (should_update) {
                 last_dmark = now;
-                update_dmark();
+                _lm.update_durable_mark(durable_sid->make_lsn(_durable_lsn_offset));
             }
         }
 
@@ -531,7 +544,7 @@ sm_log_alloc_mgr::_log_write_daemon()
 
         // time to quit? (only if everything in the log reached disk)
         if (_write_daemon_should_stop and cur_offset == _durable_lsn_offset) {
-            if (oldest_offset == cur_offset)
+            if (new_dlsn_offset == cur_offset)
                 return;
         }
 

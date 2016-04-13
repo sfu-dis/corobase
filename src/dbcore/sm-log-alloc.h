@@ -74,6 +74,8 @@ struct sm_log_alloc_mgr {
 
     void _log_write_daemon();
     void _kick_log_write_daemon();
+    segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_dlsn, bool update_dmark=false);
+    uint64_t latest_durable_lsn_offset();
 
     sm_log_recover_mgr _lm;
     window_buffer _logbuf;
