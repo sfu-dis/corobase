@@ -1,3 +1,4 @@
+#include "sm-config.h"
 #include "sm-log-file.h"
 
 #include "rcu.h"
@@ -283,9 +284,9 @@ void sm_log_file_mgr::_make_new_log() {
     os_fsync(dfd);
 }
 
-sm_log_file_mgr::sm_log_file_mgr(char const *dname, size_t ssize)
+sm_log_file_mgr::sm_log_file_mgr()
 {
-    set_segment_size(ssize);
+    set_segment_size(sysconf::log_segment_mb * sysconf::MB);
 
     /* The code below does not close open segment file descriptors if
        anything goes wrong. There is no meaningful way to recover from
@@ -299,7 +300,7 @@ sm_log_file_mgr::sm_log_file_mgr(char const *dname, size_t ssize)
     bool nxt_seg_found = false;
 
     std::vector<segment_id*> tmp;
-    dirent_iterator dir(dname);
+    dirent_iterator dir(sysconf::log_dir.c_str());
     dfd = dir.dup();
     for (char const *fname : dir) {
         switch(fname[0]) {

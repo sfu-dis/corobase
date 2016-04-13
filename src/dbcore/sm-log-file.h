@@ -77,7 +77,7 @@ struct sm_log_file_mgr {
         segment_id * volatile arr[NUM_LOG_SEGMENTS];
     };
 
-    sm_log_file_mgr(char const *dname, size_t segment_size);
+    sm_log_file_mgr();
 
     /* Change the segment size.
 

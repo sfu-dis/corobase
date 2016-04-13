@@ -306,7 +306,7 @@ protected:
    before forward processing begins.
 */
 typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
-                                     LSN chkpt_begin, LSN chkpt_end, char const *dname);
+                                     LSN chkpt_begin, LSN chkpt_end);
 
 struct sm_log {
     typedef std::unordered_map<FID, OID> himark_map_t;
@@ -392,8 +392,7 @@ struct sm_log {
     /* Scan from a start LSN and apply log records.
      * Implements the sm_log_recover_function signature.
      */
-    static void recover(void *arg, sm_log_scan_mgr *scanner,
-                        LSN chkpt_begin, LSN chkpt_end, char const *dname);
+    static void recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
     static std::pair<FID, OID> redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid);
 
     window_buffer &get_logbuf();

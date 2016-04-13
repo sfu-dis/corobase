@@ -11,6 +11,8 @@ public:
     static uint32_t worker_threads;
     static int numa_nodes;
     static const uint32_t MAX_THREADS = 256;
+    static const uint64_t MB = 1024 * 1024;
+    static const uint64_t GB = MB * 1024;
     static int enable_gc;
     static std::string tmpfs_dir;
     static int htt_is_on;

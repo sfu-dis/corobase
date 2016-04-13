@@ -20,9 +20,7 @@
    between this log manager and the pieces it's built out of.
  */
 struct sm_log_alloc_mgr {
-    sm_log_alloc_mgr(char const *dname, size_t segment_size,
-                      sm_log_recover_function *rfn, void *rfn_arg,
-                      size_t bufsz);
+    sm_log_alloc_mgr(sm_log_recover_function *rfn, void *rfn_arg);
     
     ~sm_log_alloc_mgr();
 

@@ -7,10 +7,11 @@
 
 using namespace RCU;
 
-sm_log_recover_mgr::sm_log_recover_mgr(char const *dname, size_t segment_size,
-                       sm_log_recover_function *rfn, void *rfn_arg)
-    : sm_log_offset_mgr(dname, segment_size)
+sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_function *rfn, void *rfn_arg)
+    : sm_log_offset_mgr()
     , scanner(new sm_log_scan_mgr_impl{this})
+    , recover_function(rfn)
+    , recover_function_arg(rfn_arg)
 {
     LSN dlsn = get_durable_mark();
     bool changed = false;
@@ -29,11 +30,11 @@ sm_log_recover_mgr::sm_log_recover_mgr(char const *dname, size_t segment_size,
     auto *sid = get_segment(dlsn.segment());
     truncate_after(sid->segnum, dlsn.offset());
 
-    sm_oid_mgr::create(get_chkpt_start(), dname, this);
+    sm_oid_mgr::create(get_chkpt_start(), this);
     ASSERT(oidmgr);
 
     if (rfn and sm_log::need_recovery)
-        (*rfn)(rfn_arg, scanner, get_chkpt_start(), get_chkpt_end(), dname);
+        (*rfn)(rfn_arg, scanner, get_chkpt_start(), get_chkpt_end());
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr()
