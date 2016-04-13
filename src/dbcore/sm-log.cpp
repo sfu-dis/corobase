@@ -226,6 +226,8 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
 std::pair<FID, OID>
 sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
 {
+    // Pin myself somewhere so I can get memory...
+    sysconf::pin_current_thread(sysconf::my_thread_id());
     ASSERT(oidmgr->file_exists(fid));
 	RCU::rcu_register();
     RCU::rcu_enter();
