@@ -24,6 +24,12 @@ ndb_wrapper::ndb_wrapper()
   // rcu_deregister in dtor
 }
 
+ndb_wrapper::~ndb_wrapper()
+{
+  logmgr->flush();
+  RCU::rcu_deregister();
+}
+
 size_t
 ndb_wrapper::sizeof_txn_object(uint64_t txn_flags) const
 {
