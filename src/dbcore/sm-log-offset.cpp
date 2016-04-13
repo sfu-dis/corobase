@@ -64,7 +64,7 @@ sm_log_offset_mgr::ptr2lsn(fat_ptr ptr)
    the active_segment found has a compatible segment_number; if not,
    retry with all_segments[]).
 */
-sm_log_offset_mgr::segment_id *
+segment_id *
 sm_log_offset_mgr::get_segment(uint32_t mod_segnum) {
     ASSERT (mod_segnum < NUM_LOG_SEGMENTS);
     auto &slot = segments[mod_segnum];
@@ -103,7 +103,7 @@ sm_log_offset_mgr::get_segment(uint32_t mod_segnum) {
     return sid;
 }
 
-sm_log_offset_mgr::segment_id *
+segment_id *
 sm_log_offset_mgr::get_offset_segment(uint64_t lsn_offset)
 {
     for (auto *sid=_newest_segment(); sid; sid=volatile_read(segments[sid->segnum-1])) {
@@ -268,7 +268,7 @@ sm_log_offset_mgr::assign_segment(uint64_t lsn_begin, uint64_t lsn_end)
    (either because we won the race, or because the winner had an
    earlier offset). Otherwise, return NULL.
  */
-sm_log_offset_mgr::segment_id *
+segment_id *
 sm_log_offset_mgr::_install_segment(segment_id* sid, uint64_t lsn_offset)
 {
     segment_id *nsid = prepare_new_segment(lsn_offset);

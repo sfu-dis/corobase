@@ -81,7 +81,7 @@ static size_t const LOG_SEGMENT_ALIGN = 1024;
 
 struct segment_file_name {
     char buf[SEGMENT_FILE_NAME_BUFSZ];
-    segment_file_name(sm_log_file_mgr::segment_id *sid)
+    segment_file_name(segment_id *sid)
         : segment_file_name(sid->segnum, sid->start_offset, sid->end_offset)
     {
     }
@@ -128,12 +128,12 @@ struct nxt_seg_file_name {
 };
 
 
-sm_log_file_mgr::segment_id *
+segment_id *
 sm_log_file_mgr::_oldest_segment() {
     return segments[volatile_read(oldest_segnum)];
 }
 
-sm_log_file_mgr::segment_id *
+segment_id *
 sm_log_file_mgr::_newest_segment() {
     return volatile_read(active_segment);
 }
@@ -565,7 +565,7 @@ sm_log_file_mgr::open_for_write(segment_id *sid)
     return os_openat(dfd, sname, O_WRONLY|O_SYNC);
 }
 
-sm_log_file_mgr::segment_id*
+segment_id*
 sm_log_file_mgr::prepare_new_segment(uint64_t start)
 {
     auto *psid = _newest_segment();
@@ -576,7 +576,7 @@ sm_log_file_mgr::prepare_new_segment(uint64_t start)
     return _prepare_new_segment(psid->segnum+1, start, psid->byte_offset+pssize);
 }
 
-sm_log_file_mgr::segment_id*
+segment_id*
 sm_log_file_mgr::_prepare_new_segment(uint32_t segnum, uint64_t start, uint64_t byte_offset)
 {
     /* In order to avoid I/O on the critical path, we rely on a daemon

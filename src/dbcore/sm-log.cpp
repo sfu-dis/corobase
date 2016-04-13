@@ -1,4 +1,5 @@
 #include "sm-log-impl.h"
+#include "sm-log-offset.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
 #include "../benchmarks/ndb_wrapper.h"
@@ -11,6 +12,24 @@ using namespace RCU;
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 int sm_log::warm_up = sm_log::WU_NONE;
+
+window_buffer&
+sm_log::get_logbuf()
+{
+    return get_impl(this)->_lm._logbuf;
+}
+
+segment_id*
+sm_log::assign_segment(uint64_t lsn_begin, uint64_t lsn_end)
+{
+    return get_impl(this)->_lm._lm.assign_segment(lsn_begin, lsn_end).sid;
+}
+
+segment_id *
+sm_log::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
+{
+    return get_impl(this)->_lm.flush_log_buffer(logbuf, new_dlsn_offset, update_dmark);
+}
 
 LSN
 sm_log::flush()

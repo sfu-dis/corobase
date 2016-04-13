@@ -16,10 +16,14 @@
  */
 #include <unordered_map>
 #include "sm-common.h"
+//#include "sm-log-offset.h"
 #include "sm-rep.h"
+#include "window-buffer.h"
 
 class ndb_ordered_index;
 class object;
+class sm_log_file_mgr;
+class segment_id;
 
 struct sm_tx_log {
     /* Record an insertion. The payload of the version will be
@@ -391,6 +395,10 @@ struct sm_log {
     static void recover(void *arg, sm_log_scan_mgr *scanner,
                         LSN chkpt_begin, LSN chkpt_end, char const *dname);
     static std::pair<FID, OID> redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid);
+
+    window_buffer &get_logbuf();
+    segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
+    segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
 
     virtual ~sm_log() { }
 

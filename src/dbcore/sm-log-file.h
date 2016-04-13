@@ -14,55 +14,55 @@
    concerned with *why* a file exists, is updated, or deleted.
  */
 
+struct segment_id {
+    int fd;
+    uint32_t segnum;
+    uint64_t start_offset;
+    uint64_t end_offset;
+    uint64_t byte_offset;
+    
+    bool contains(uint64_t lsn_offset) {
+        return start_offset <= lsn_offset
+            and lsn_offset+MIN_LOG_BLOCK_SIZE <= end_offset;
+    }
+
+    bool contains(LSN lsn) {
+        if (lsn.segment() != segnum % NUM_LOG_SEGMENTS)
+            return false;
+        return contains(lsn.offset());
+    }
+
+    /* Compute the segment offset of an LSN in this segment
+     */
+    uint64_t offset(uint64_t lsn_offset) {
+        ASSERT(contains(lsn_offset));
+        return lsn_offset - start_offset;
+    }
+    uint64_t offset(LSN lsn) {
+        ASSERT(contains(lsn));
+        return offset(lsn.offset());
+    }
+
+    /* Compute the buffer offset of an LSN in this segment.
+     */
+    uint64_t buf_offset(uint64_t lsn_offset) {
+        return byte_offset + offset(lsn_offset);
+    }
+
+    /* Compute the buffer offset of an LSN in this segment.
+     */
+    uint64_t buf_offset(LSN lsn) {
+        return buf_offset(lsn.offset());
+    }
+
+    LSN make_lsn(uint64_t lsn_offset) {
+        ASSERT(contains(lsn_offset));
+        return LSN::make(lsn_offset, segnum % NUM_LOG_SEGMENTS);
+    }
+
+};
+
 struct sm_log_file_mgr {
-    struct segment_id {
-        int fd;
-        uint32_t segnum;
-        uint64_t start_offset;
-        uint64_t end_offset;
-        uint64_t byte_offset;
-        
-        bool contains(uint64_t lsn_offset) {
-            return start_offset <= lsn_offset
-                and lsn_offset+MIN_LOG_BLOCK_SIZE <= end_offset;
-        }
-
-        bool contains(LSN lsn) {
-            if (lsn.segment() != segnum % NUM_LOG_SEGMENTS)
-                return false;
-            return contains(lsn.offset());
-        }
-    
-        /* Compute the segment offset of an LSN in this segment
-         */
-        uint64_t offset(uint64_t lsn_offset) {
-            ASSERT(contains(lsn_offset));
-            return lsn_offset - start_offset;
-        }
-        uint64_t offset(LSN lsn) {
-            ASSERT(contains(lsn));
-            return offset(lsn.offset());
-        }
-    
-        /* Compute the buffer offset of an LSN in this segment.
-         */
-        uint64_t buf_offset(uint64_t lsn_offset) {
-            return byte_offset + offset(lsn_offset);
-        }
-
-        /* Compute the buffer offset of an LSN in this segment.
-         */
-        uint64_t buf_offset(LSN lsn) {
-            return buf_offset(lsn.offset());
-        }
-
-        LSN make_lsn(uint64_t lsn_offset) {
-            ASSERT(contains(lsn_offset));
-            return LSN::make(lsn_offset, segnum % NUM_LOG_SEGMENTS);
-        }
-
-    };
-
     /* A volatile modulo-indexed array, which forms part of the
        segment race-riddled assignment protocol.
      */
