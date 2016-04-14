@@ -47,7 +47,7 @@ struct sm_log_alloc_mgr {
     /* Block the caller until all log entries before [dlsn_offset]
        have been made durable, and the durable mark updated.
      */
-    void update_durable_mark(uint64_t dlsn_offset);
+    void update_wait_durable_mark(uint64_t dlsn_offset);
     
     /* Allocate a log block. 
      */
