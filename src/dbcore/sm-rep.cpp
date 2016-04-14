@@ -18,7 +18,6 @@ namespace rep {
 #define MAX_NBACKUPS 10
 
 replication_node primary_server;
-bool shutdown = false;
 
 // Maps sockfd -> rep_node*
 std::unordered_map<int, replication_node*> backup_nodes;
@@ -76,10 +75,7 @@ void primary_server_daemon() {
     }
 
     // wait for ack from the backup
-    size_t ack_size = 4;  // ACK\0
-    char buf[4];
-    receive(rnode->sockfd, buf, ack_size);
-    ALWAYS_ASSERT(strcmp(buf, "ACK") == 0);
+    expect_ack(rnode->sockfd);
     printf("[Primary] Backup %s received log\n", rnode->sock_addr);
   } while (++sysconf::num_active_backups < sysconf::num_backups);
 }
@@ -142,10 +138,7 @@ void primary_ship_log_buffer(
     nbytes, lph.start_lsn.offset(), lph.end_lsn.offset(), lph.start_lsn.segment(), bnode->sock_addr);
 
   // expect an ack message
-  char ack_buf[4];
-  size_t ack_size = 4;  // ACK\0
-  receive(bnode->sockfd, ack_buf, ack_size);
-  ALWAYS_ASSERT(strcmp(ack_buf, "ACK") == 0);
+  expect_ack(bnode->sockfd);
   printf("[Primary] Backup %s received log %lx-%lx\n",
     bnode->sock_addr, lph.start_lsn.offset(), lph.end_lsn.offset());
 }
@@ -158,8 +151,6 @@ void primary_ship_log_buffer_all(const char *buf, LSN start_lsn, LSN end_lsn, si
 
 void start_as_primary() {
   ALWAYS_ASSERT(!sysconf::is_backup_srv);
-  shutdown = false;
-
   struct addrinfo hints;
   struct addrinfo *result;
 
@@ -226,8 +217,6 @@ void backup_daemon() {
     ASSERT(sid->make_lsn(lph.end_lsn.offset()) == lph.end_lsn);
 
     // expect the real log data
-    // XXX(tzwang): assuming the primary and backup's log buffer are of the same size.
-    // Otherwise we need to reuse buf.
     std::cout << "[Backup] Will receive " << lph.data_size() << " bytes\n";
     ALWAYS_ASSERT(lph.data_size());
     auto& logbuf = logmgr->get_logbuf();
@@ -241,10 +230,7 @@ void backup_daemon() {
     logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
     ASSERT(logmgr->durable_lsn() == lph.end_lsn);
 
-    char ack_buf[4];
-    memcpy(ack_buf, "ACK", 4);
-    auto sent_bytes = send(primary_server.sockfd, ack_buf, 4, 0);
-    ALWAYS_ASSERT(sent_bytes == 4);
+    ack_primary();
 
     // roll forward
     printf("[Backup] Roll forward log %lx-%lx\n", lph.start_lsn.offset(), lph.end_lsn.offset());
@@ -320,10 +306,7 @@ void start_as_backup(std::string primary_address) {
       }
 
       // let the primary know we got all files
-      char buf[4];
-      memcpy(buf, "ACK", 4);
-      auto sent_bytes = send(sockfd, buf, 4, 0);
-      ALWAYS_ASSERT(sent_bytes == 4);
+      ack_primary();
 
       std::cout << "[Backup] Received initial log records.\n";
       std::thread t(backup_daemon);
