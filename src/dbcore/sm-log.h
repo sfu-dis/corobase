@@ -309,7 +309,6 @@ typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
                                      LSN chkpt_begin, LSN chkpt_end);
 
 struct sm_log {
-    typedef std::unordered_map<FID, OID> himark_map_t;
     static bool need_recovery;
 
     // Warm-up policy when recovering from a chkpt or the log.

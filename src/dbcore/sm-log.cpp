@@ -183,7 +183,6 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
     RCU::rcu_enter();
 
     // One hiwater_mark/capacity_mark per FID
-    himark_map_t himarks;
     std::vector<std::future<std::pair<FID, OID> > > futures;
     auto *scan = scanner->new_log_scan(chkpt_begin, warm_up == WU_EAGER);
 
