@@ -110,7 +110,7 @@ sm_log_alloc_mgr::wait_for_durable(uint64_t dlsn_offset)
 }
 
 void
-sm_log_alloc_mgr::update_durable_mark(uint64_t lsn_offset)
+sm_log_alloc_mgr::update_wait_durable_mark(uint64_t lsn_offset)
 {
     wait_for_durable(lsn_offset);
     _write_daemon_mutex.lock();
