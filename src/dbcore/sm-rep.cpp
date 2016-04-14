@@ -1,4 +1,5 @@
 #include <sys/fcntl.h>
+#include <sys/mman.h>
 #include <sys/sendfile.h>
 
 #include <condition_variable>
@@ -6,10 +7,10 @@
 #include <mutex>
 #include <thread>
 
-#include "../macros.h"
 #include "sm-common.h"
 #include "sm-config.h"
 #include "sm-log.h"
+#include "sm-log-offset.h"
 #include "sm-rep.h"
 
 namespace rep {
@@ -29,7 +30,7 @@ void primary_server_daemon() {
   printf("[Primary] %s:%s\n", s, PRIMARY_PORT);
 
   // Now start to listen for incoming connections
-  while (not volatile_read(shutdown)) {
+  do {
     struct sockaddr addr;
     socklen_t addr_size = sizeof(struct sockaddr_storage);
     int fd = accept(primary_server.sockfd, &addr, &addr_size);
@@ -73,7 +74,14 @@ void primary_server_daemon() {
       primary_ship_log_file(rnode->sockfd, fname, log_fd);
       close(log_fd);
     }
-  }
+
+    // wait for ack from the backup
+    size_t ack_size = 4;  // ACK\0
+    char buf[4];
+    receive(rnode->sockfd, buf, ack_size);
+    ALWAYS_ASSERT(strcmp(buf, "ACK") == 0);
+    printf("[Primary] Backup %s received log\n", rnode->sock_addr);
+  } while (++sysconf::num_active_backups < sysconf::num_backups);
 }
 
 void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
@@ -116,6 +124,35 @@ void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
     ALWAYS_ASSERT(sent_bytes == st.st_size);
     ALWAYS_ASSERT(offset == st.st_size);
     printf("[Primary] %s: %ld bytes, sent %ld bytes\n", log_fname, st.st_size, sent_bytes);
+  }
+}
+
+// Send the log buffer to backups
+void primary_ship_log_buffer(
+  replication_node *bnode, const char* buf, LSN start_lsn, LSN end_lsn, size_t size) {
+  ALWAYS_ASSERT(size);
+  ALWAYS_ASSERT(end_lsn > start_lsn);
+  log_packet::header lph(size + sizeof(log_packet::header), start_lsn, end_lsn);
+  ASSERT(lph.start_lsn.segment() == lph.end_lsn.segment());
+  size_t nbytes = send(bnode->sockfd, (char *)&lph, sizeof(lph), 0);
+  THROW_IF(nbytes != sizeof(lph), log_file_error, "Incomplete log shipping (header)");
+  nbytes = send(bnode->sockfd, buf, size, 0);
+  THROW_IF(nbytes != size, log_file_error, "Incomplete log shipping (data)");
+  printf("[Primary] Shipped %lu bytes of log (%lx-%lx, segment %d) to backup %s\n",
+    nbytes, lph.start_lsn.offset(), lph.end_lsn.offset(), lph.start_lsn.segment(), bnode->sock_addr);
+
+  // expect an ack message
+  char ack_buf[4];
+  size_t ack_size = 4;  // ACK\0
+  receive(bnode->sockfd, ack_buf, ack_size);
+  ALWAYS_ASSERT(strcmp(ack_buf, "ACK") == 0);
+  printf("[Primary] Backup %s received log %lx-%lx\n",
+    bnode->sock_addr, lph.start_lsn.offset(), lph.end_lsn.offset());
+}
+
+void primary_ship_log_buffer_all(const char *buf, LSN start_lsn, LSN end_lsn, size_t size) {
+  for (auto& n : backup_nodes) {
+    primary_ship_log_buffer(n.second, buf, start_lsn, end_lsn, size);
   }
 }
 
@@ -167,6 +204,55 @@ void start_as_primary() {
 }
 
 void backup_daemon() {
+  rcu_register();
+  rcu_enter();
+  DEFER(rcu_exit());
+  DEFER(rcu_deregister());
+  // Listen to incoming log records from the primary
+  log_packet::header lph;
+  while (1) {
+    // expect a log_packet header
+    receive(primary_server.sockfd, (char *)&lph, sizeof(lph));
+    ALWAYS_ASSERT(lph.data_size());
+    ALWAYS_ASSERT(lph.start_lsn.segment() == lph.end_lsn.segment());
+    ALWAYS_ASSERT(lph.start_lsn < lph.end_lsn);
+    ALWAYS_ASSERT(lph.start_lsn == logmgr->durable_lsn());
+
+    // prepare segment if needed
+    segment_id *sid = logmgr->assign_segment(lph.start_lsn.offset(), lph.end_lsn.offset());
+    ALWAYS_ASSERT(sid);
+    ASSERT(lph.start_lsn == logmgr->durable_lsn());
+    ASSERT(sid->make_lsn(lph.start_lsn.offset()) == lph.start_lsn);
+    ASSERT(sid->make_lsn(lph.end_lsn.offset()) == lph.end_lsn);
+
+    // expect the real log data
+    // XXX(tzwang): assuming the primary and backup's log buffer are of the same size.
+    // Otherwise we need to reuse buf.
+    std::cout << "[Backup] Will receive " << lph.data_size() << " bytes\n";
+    ALWAYS_ASSERT(lph.data_size());
+    auto& logbuf = logmgr->get_logbuf();
+    char *buf = logbuf.write_buf(sid->buf_offset(lph.start_lsn), lph.data_size());
+    ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
+    receive(primary_server.sockfd, buf, lph.data_size());
+    std::cout << "[Backup] Recieved " << lph.data_size() << " bytes ("
+      << std::hex << lph.start_lsn.offset() << "-" << lph.end_lsn.offset() << std::dec << ")\n";
+
+    // now got the batch of log records, persist them
+    logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
+    ASSERT(logmgr->durable_lsn() == lph.end_lsn);
+
+    char ack_buf[4];
+    memcpy(ack_buf, "ACK", 4);
+    auto sent_bytes = send(primary_server.sockfd, ack_buf, 4, 0);
+    ALWAYS_ASSERT(sent_bytes == 4);
+
+    // roll forward
+    printf("[Backup] Roll forward log %lx-%lx\n", lph.start_lsn.offset(), lph.end_lsn.offset());
+    logmgr->redo_log(lph.start_lsn, lph.end_lsn);
+  }
+}
+
+void backup_replay_log_buffer(char *buf) {
 }
 
 void start_as_backup(std::string primary_address) {
@@ -205,25 +291,12 @@ void start_as_backup(std::string primary_address) {
       int dfd = dir.dup();
 
       uint8_t nfiles = 0;
-      uint32_t to_receive = 1;  // expect one byte of for nfiles
-      uint32_t bytes_received = 0;
-      while (to_receive) {
-        bytes_received = recv(sockfd, &nfiles, to_receive, 0);
-        to_receive -= bytes_received;
-      }
-
+      receive(sockfd, (char *)&nfiles, sizeof(nfiles)); // expect one byte of for nfiles
       ALWAYS_ASSERT(nfiles);
 
       while (nfiles--) {
         // First packet, get filename etc
-        bytes_received = 0;
-        to_receive = 256;
-        while (to_receive) {
-          bytes_received = recv(sockfd, buffer + 256 - to_receive, to_receive, 0);
-          to_receive -= bytes_received;
-        }
-
-        ALWAYS_ASSERT(bytes_received == 256);
+        receive(sockfd, buffer, 256);
 
         uint8_t namelen = *(uint8_t *)buffer;
         memcpy(fname, buffer + sizeof(uint8_t), namelen);
@@ -237,13 +310,20 @@ void start_as_backup(std::string primary_address) {
         int fd = os_openat(dfd, fname, O_CREAT|O_WRONLY);
         while (fsize) {
           auto size = std::min(fsize, uint32_t{4096});
-          bytes_received = recv(sockfd, buffer, size, 0);
-          os_write(fd, buffer, bytes_received);
-          std::cout << "[Backup] Written " << bytes_received << " bytes for " << fname << std::endl;
-          fsize -= bytes_received;
+          receive(sockfd, buffer, size);
+          os_write(fd, buffer, size);
+          fsize -= size;
         }
+        os_fsync(fd);
         os_close(fd);
+        std::cout << "[Backup] Written " << fsize << " bytes for " << fname << std::endl;
       }
+
+      // let the primary know we got all files
+      char buf[4];
+      memcpy(buf, "ACK", 4);
+      auto sent_bytes = send(sockfd, buf, 4, 0);
+      ALWAYS_ASSERT(sent_bytes == 4);
 
       std::cout << "[Backup] Received initial log records.\n";
       std::thread t(backup_daemon);
