@@ -396,6 +396,7 @@ struct sm_log {
     window_buffer &get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
+    void redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn);
 
     virtual ~sm_log() { }
 

@@ -34,7 +34,14 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_function *rfn, void *rfn_a
     ASSERT(oidmgr);
 
     if (rfn and sm_log::need_recovery)
-        (*rfn)(rfn_arg, scanner, get_chkpt_start(), get_chkpt_end());
+        redo_log(get_chkpt_start(), get_chkpt_end());
+}
+
+void
+sm_log_recover_mgr::redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn)
+{
+    (*recover_function)(
+      recover_function_arg, scanner, chkpt_start_lsn, chkpt_end_lsn);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr()
