@@ -220,6 +220,7 @@ bench_runner::run()
       while (volatile_read(sysconf::num_active_backups) != volatile_read(sysconf::num_backups)) {}
       std::cout << "[Primary] " << sysconf::num_backups << " backups\n";
     }
+    getchar();
   }
 
   map<string, size_t> table_sizes_before;
