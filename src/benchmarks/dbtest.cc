@@ -341,6 +341,7 @@ main(int argc, char **argv)
     test_fn(db, argc, new_argv);
   } else {
     getchar();
+    test_fn(db, argc, new_argv);
   }
   delete db;
   return 0;

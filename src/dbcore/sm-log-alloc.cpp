@@ -254,6 +254,16 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         _durable_lsn_offset = new_offset;
         durable_byte = new_byte;
 
+        // update cur_lsn_offset as well if we're flushing on a backup
+        // XXX(tzwang): we don't have to do this, but just as a metric
+        // to see if the replicated database can still run benchmarks
+        // after replayed logs shipped from the primary.
+        if (_lsn_offset < _durable_lsn_offset) {
+          THROW_IF(not sysconf::is_backup_srv, illegal_argument,
+            "Wrong cur_lsn_offset on primary node");
+          _lsn_offset = _durable_lsn_offset;
+        }
+
         if (update_dmark)
             _lm.update_durable_mark(durable_sid->make_lsn(_durable_lsn_offset));
     }

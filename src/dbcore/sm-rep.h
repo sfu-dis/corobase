@@ -57,7 +57,7 @@ namespace rep {
     }
   };
 
-  extern bool shutdown;
+  extern replication_node primary_server;
 
   void start_as_primary();
   void start_as_backup(std::string primary_address);
@@ -72,5 +72,17 @@ namespace rep {
     while (to_receive) {
       to_receive -= recv(fd, buf + total - to_receive, to_receive, 0);
     }
+  }
+
+  static const int ACK_TEXT_LEN = 4;
+  static const char *ACK_TEXT= "ACK";
+  inline void ack_primary() {
+    auto sent_bytes = send(primary_server.sockfd, ACK_TEXT, 4, 0);
+    ALWAYS_ASSERT(sent_bytes == 4);
+  }
+  inline void expect_ack(int bfd) {
+    static char buf[ACK_TEXT_LEN];
+    receive(bfd, buf, ACK_TEXT_LEN);
+    ALWAYS_ASSERT(strcmp(buf, ACK_TEXT) == 0);
   }
 };  // namespace rep
