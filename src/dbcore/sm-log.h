@@ -16,7 +16,6 @@
  */
 #include <unordered_map>
 #include "sm-common.h"
-//#include "sm-log-offset.h"
 #include "sm-rep.h"
 #include "window-buffer.h"
 
