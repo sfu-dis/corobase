@@ -282,6 +282,10 @@ bench_runner::run()
     }
     running = false;
   }
+
+  // Persist whatever still left in the log buffer
+  logmgr->flush();
+
   __sync_synchronize();
   for (size_t i = 0; i < sysconf::worker_threads; i++)
     workers[i]->join();
@@ -392,16 +396,6 @@ bench_runner::run()
 	cerr << "objects_stashed : " << gc_info.objects_stashed<< endl;
 	cerr << "bytes_stashed: " << gc_info.bytes_stashed << endl;
     cerr << "---------------------------------------" << endl;
-#endif
-
-#ifdef USE_JEMALLOC
-    cerr << "dumping heap profile..." << endl;
-    mallctl("prof.dump", NULL, NULL, NULL, 0);
-    cerr << "printing jemalloc stats..." << endl;
-    malloc_stats_print(write_cb, NULL, "");
-#endif
-#ifdef XX_USE_TCMALLOC
-    HeapProfilerDump("before-exit");
 #endif
   }
 

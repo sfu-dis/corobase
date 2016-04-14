@@ -26,7 +26,6 @@ ndb_wrapper::ndb_wrapper()
 
 ndb_wrapper::~ndb_wrapper()
 {
-  logmgr->flush();
   RCU::rcu_deregister();
 }
 
