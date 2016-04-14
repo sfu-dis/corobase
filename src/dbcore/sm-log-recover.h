@@ -167,6 +167,8 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
     sm_log_scan_mgr *scanner;
     sm_log_recover_function *recover_function;
     void *recover_function_arg;
+
+    void redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn);
 };
 
 #endif
