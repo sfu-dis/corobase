@@ -334,7 +334,7 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
     obj->_clsn = get_impl(logrec)->start_lsn.to_log_ptr();
     ASSERT(logrec->payload_lsn().offset() == logrec->payload_ptr().offset());
     ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
-    return fat_ptr::make(obj, INVALID_SIZE_CODE);
+    return fat_ptr::make(obj, encode_size_aligned(sz));
 }
 
 void
