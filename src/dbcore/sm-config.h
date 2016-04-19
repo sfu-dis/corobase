@@ -17,7 +17,7 @@ public:
     static std::string tmpfs_dir;
     static int htt_is_on;
     static uint32_t max_threads_per_node;
-    static int loading;
+    static bool loading;
 
     static int log_buffer_mb;
     static int log_segment_mb;
