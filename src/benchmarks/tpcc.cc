@@ -2462,7 +2462,6 @@ public:
   tpcc_bench_runner(abstract_db *db)
     : bench_runner(db)
   {
-    sysconf::pin_current_thread(0);
 #define OPEN_TABLESPACE_X(x) \
     partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));
 

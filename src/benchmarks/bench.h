@@ -278,7 +278,12 @@ public:
   bench_runner &operator=(const bench_runner &) = delete;
 
   bench_runner(abstract_db *db)
-    : db(db), barrier_a(sysconf::worker_threads), barrier_b(1) {}
+    : db(db), barrier_a(sysconf::worker_threads), barrier_b(1) {
+    // Pin somewhere so I can get memory (doing thsi here because
+    // some inheriting class (e.g., tpcc_bench_runner) might need
+    // memory in their ctor.
+    sysconf::pin_current_thread(sysconf::my_thread_id());
+  }
   virtual ~bench_runner() {}
   void run();
 
