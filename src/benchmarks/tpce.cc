@@ -310,7 +310,7 @@ class tpce_worker :
 				const map<string, vector<abstract_ordered_index *>> &partitions,
 				spin_barrier *barrier_a, spin_barrier *barrier_b,
 				uint partition_id_start, uint partition_id_end)
-			: bench_worker(worker_id, true, seed, db,
+			: bench_worker(worker_id, seed, db,
 					open_tables, barrier_a, barrier_b),
 			tpce_worker_mixin(partitions),
 			partition_id_start(partition_id_start),
