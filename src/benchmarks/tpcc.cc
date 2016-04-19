@@ -569,7 +569,7 @@ public:
               const map<string, vector<abstract_ordered_index *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint home_warehouse_id)
-    : bench_worker(worker_id, true, seed, db,
+    : bench_worker(worker_id, seed, db,
                    open_tables, barrier_a, barrier_b),
       tpcc_worker_mixin(partitions),
       home_warehouse_id(home_warehouse_id)

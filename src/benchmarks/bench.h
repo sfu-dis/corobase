@@ -142,11 +142,10 @@ class bench_worker : public ndb_thread {
 public:
 
   bench_worker(unsigned int worker_id,
-               bool set_core_id,
                unsigned long seed, abstract_db *db,
                const std::map<std::string, abstract_ordered_index *> &open_tables,
                spin_barrier *barrier_a, spin_barrier *barrier_b)
-    : worker_id(worker_id), set_core_id(set_core_id),
+    : worker_id(worker_id),
       r(seed), db(db), open_tables(open_tables),
       barrier_a(barrier_a), barrier_b(barrier_b),
       latency_numer_us(0),
@@ -235,7 +234,6 @@ protected:
   inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
 
   unsigned int worker_id;
-  bool set_core_id;
   util::fast_random r;
   abstract_db *const db;
   std::map<std::string, abstract_ordered_index *> open_tables;
