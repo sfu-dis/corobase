@@ -24,7 +24,7 @@ int sysconf::htt_is_on= 1;
 uint64_t sysconf::node_memory_gb = 12;
 
 uint32_t sysconf::max_threads_per_node = 0;
-int sysconf::loading = 1;
+bool sysconf::loading = true;
 
 void
 sysconf::init() {
