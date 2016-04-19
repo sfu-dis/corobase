@@ -46,8 +46,10 @@ public:
 
     inline static uint32_t my_thread_id() {
         static __thread uint32_t __id = 0;
-        if (__id == 0) {
+        static __thread bool initialized;
+        if (not initialized) {
             __id = __sync_fetch_and_add(&_active_threads, 1);
+            initialized = true;
         }
         return __id;
     }
