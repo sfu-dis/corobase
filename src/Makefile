@@ -98,7 +98,7 @@ else
 endif
 
 TOP     := $(shell echo $${PWD-`pwd`})
-LDFLAGS := -lpthread -lnuma -lrt
+LDFLAGS := -lpthread -lnuma
 #ifeq ($(DEBUG_S),1)
 #LDFLAGS += -lasan
 #endif
@@ -174,7 +174,7 @@ dbcore/burt-hash.cpp:
 	@python2 dbcore/burt-hash.py > dbcore/burt-hash.cpp
 
 BENCH_CXXFLAGS := $(CXXFLAGS)
-BENCH_LDFLAGS := $(LDFLAGS) -lrt -ldl
+BENCH_LDFLAGS := $(LDFLAGS)
 
 BENCH_SRCFILES = \
 	benchmarks/ndb_wrapper.cc \
