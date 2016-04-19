@@ -153,7 +153,10 @@ LSN
 sm_log_alloc_mgr::flush_cur_lsn()
 {
     for (uint32_t i = 0; i < sysconf::_active_threads; ++i) {
-        volatile_write(_tls_lsn_offset[i], cur_lsn_offset());
+        // need std::max() because retired threads (eg loaders) will
+        // write 0xFFFFFFFFFFFFFFFF to their slots upon finishing the task.
+        volatile_write(_tls_lsn_offset[i],
+                       std::max(cur_lsn_offset(), _tls_lsn_offset[i]));
     }
     return flush();
 }
@@ -485,11 +488,13 @@ uint64_t
 sm_log_alloc_mgr::latest_durable_lsn_offset()
 {
     uint64_t oldest_offset = cur_lsn_offset();
+    // FIXME(tzwang): don't care if it's loading, but might need a way
+    // to deal with stragglers due to unbalanced workload.
+    if (sysconf::loading) {
+        return oldest_offset;
+    }
     for (uint32_t i = 0; i < sysconf::_active_threads; i++) {
-        // Skip too small/stale LSNs (maybe due to running read-only
-        // transactions using SSN's safesnap) so that we can make progress.
-        if (_tls_lsn_offset[i] > _durable_lsn_offset)
-            oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
+        oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
     }
     return oldest_offset;
 }
