@@ -236,6 +236,9 @@ bench_runner::run()
   // Persist the database
   logmgr->flush_cur_lsn();
 
+  // Invalidate my own tls_lsn_offset - I'm not doing transactions
+  logmgr->set_tls_lsn_offset(~uint64_t{0});
+
   volatile_write(sysconf::loading, false);
 
   const vector<bench_worker *> workers = make_workers();

@@ -334,6 +334,7 @@ struct sm_log {
     void update_chkpt_mark(LSN cstart, LSN cend);
     LSN flush();
     LSN flush_cur_lsn();
+    void set_tls_lsn_offset(uint64_t offset);
 
     /* Allocate and return a new sm_log object. If [dname] exists, it
        will be mounted and used. Otherwise, a new (empty) log

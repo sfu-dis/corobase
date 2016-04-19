@@ -15,6 +15,7 @@
 #include "../spinbarrier.h"
 #include "../dbcore/sm-config.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-log.h"
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/serial.h"
 #include "../dbcore/sm-rc.h"
@@ -115,6 +116,7 @@ public:
 #if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
     TXN::deassign_reader_bitmap_entry();
 #endif
+    logmgr->set_tls_lsn_offset(~uint64_t{0});
   }
   inline ALWAYS_INLINE varstr &
   str(uint64_t size)
