@@ -180,6 +180,11 @@ retry:
 void
 bench_runner::run()
 {
+  // Invalidate my own tls_lsn_offset - I'm not doing transactions.
+  // The benchmark's ctor should be the last place where it touches
+  // the log in this thread.
+  logmgr->set_tls_lsn_offset(~uint64_t{0});
+
   // load data, unless we recover from logs or is a backup server (recover from shipped logs)
   if (not sm_log::need_recovery && not sysconf::is_backup_srv) {
     const vector<bench_loader *> loaders = make_loaders();
@@ -235,9 +240,6 @@ bench_runner::run()
 
   // Persist the database
   logmgr->flush_cur_lsn();
-
-  // Invalidate my own tls_lsn_offset - I'm not doing transactions
-  logmgr->set_tls_lsn_offset(~uint64_t{0});
 
   volatile_write(sysconf::loading, false);
 
