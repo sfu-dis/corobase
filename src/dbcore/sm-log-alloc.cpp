@@ -488,11 +488,6 @@ uint64_t
 sm_log_alloc_mgr::latest_durable_lsn_offset()
 {
     uint64_t oldest_offset = cur_lsn_offset();
-    // FIXME(tzwang): don't care if it's loading, but might need a way
-    // to deal with stragglers due to unbalanced workload.
-    if (sysconf::loading) {
-        return oldest_offset;
-    }
     for (uint32_t i = 0; i < sysconf::_active_threads; i++) {
         oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
     }
