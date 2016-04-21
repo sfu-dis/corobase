@@ -238,14 +238,11 @@ void backup_daemon() {
     ack_primary();
 
     // roll forward
-    printf("[Backup] Roll forward log %lx-%lx\n", lph.start_lsn.offset(), lph.end_lsn.offset());
     logmgr->redo_log(lph.start_lsn, lph.end_lsn);
+    printf("[Backup] Rolled forward log %lx-%lx\n", lph.start_lsn.offset(), lph.end_lsn.offset());
     if (sysconf::nvram_log_buffer)
       logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
   }
-}
-
-void backup_replay_log_buffer(char *buf) {
 }
 
 void start_as_backup(std::string primary_address) {
