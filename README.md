@@ -27,7 +27,7 @@ Giving `-D[SCHEME]` to `$make` also works. `SCHEME` can be `RC`, `SI`, `RC_SSN`,
 
 #### Adjust maximum concurrent workers
 
-By default we support up to 256 cores (for SSN/SSI only; SI/RC are not affected). The limit can be adjusted by setting `MAX_THREADS` defined under `sysconf` in `dbcore/sm-config.h.` `MAX_THREADS` must be a multiple of 64.
+By default we support up to 256 cores. The limit can be adjusted by setting `MAX_THREADS` defined under `sysconf` in `dbcore/sm-config.h.` `MAX_THREADS` must be a multiple of 64.
 
 #### Build it
 --------
