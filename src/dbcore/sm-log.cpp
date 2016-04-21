@@ -143,17 +143,17 @@ retry:
 }
 
 LSN
-sm_log::durable_lsn()
+sm_log::durable_flushed_lsn()
 {
     auto *log = &get_impl(this)->_lm;
-    auto offset = log->dur_lsn_offset();
+    auto offset = log->dur_flushed_lsn_offset();
     auto *sid = log->_lm.get_offset_segment(offset);
     ASSERT(sid);
     return sid->make_lsn(offset);
 }
 
 void
-sm_log::wait_for_durable_lsn(LSN dlsn)
+sm_log::wait_for_durable_flushed_lsn(LSN dlsn)
 {
     auto *self = get_impl(this);
     self->_lm.wait_for_durable(dlsn.offset());

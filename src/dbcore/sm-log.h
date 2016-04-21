@@ -91,7 +91,7 @@ struct sm_tx_log {
        be called multiple times to retrieve an existing commit LSN.
 
        NOTE: the commit LSN actually points past-end of the commit
-       block, in keeping with cur_lsn and durable_lsn (which
+       block, in keeping with cur_lsn and durable_flushed_lsn (which
        respectively identify the first LSN past-end of any currently
        in use, and the first LSN that is not durable).
 
@@ -108,7 +108,7 @@ struct sm_tx_log {
        It is not necessary to have called pre_commit first.
 
        NOTE: the transaction will not actually be durable until
-       sm_log::durable_lsn catches up to the pre_commit LSN.
+       sm_log::durable_flushed_lsn catches up to the pre_commit LSN.
 
        WARNING: By calling this function, the caller gives up
        ownership of this object and should not access it again.
@@ -344,16 +344,16 @@ struct sm_log {
     /* Return the current durable LSN. This is the LSN before which
        all log records are known to have reached stable storage; any
        LSN at or beyond this point may not be durable yet. If
-       cur_lsn() == durable_lsn(), all log records are durable.
+       cur_lsn() == durable_flushed_lsn(), all log records are durable.
      */
-    LSN durable_lsn();
+    LSN durable_flushed_lsn();
 
-    /* Block the calling thread until durable_lsn() is not smaller
+    /* Block the calling thread until durable_flushed_lsn() is not smaller
        than [dlsn]. This will not occur until all log_allocation
        objects with LSN smaller than [dlsn] have been released or
        discarded.
      */
-    void wait_for_durable_lsn(LSN dlsn);
+    void wait_for_durable_flushed_lsn(LSN dlsn);
 
     /* Load the object referenced by [ptr] from the log. The pointer
        must reference the log (ASI_LOG) and the given buffer must be large
@@ -375,6 +375,7 @@ struct sm_log {
 
     window_buffer &get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
+    void persist_log_buffer() { /** dummy **/ }
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
     void redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn);
 

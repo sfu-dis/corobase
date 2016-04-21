@@ -23,6 +23,7 @@ public:
     static int log_segment_mb;
     static std::string log_dir;
     static int null_log_device;
+    static int nvram_log_buffer;
     static uint64_t node_memory_gb;
 
     // Warm-up policy when recovering from a chkpt or the log.

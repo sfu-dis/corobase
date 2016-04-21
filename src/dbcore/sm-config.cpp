@@ -24,6 +24,7 @@ int sysconf::htt_is_on= 1;
 uint64_t sysconf::node_memory_gb = 12;
 int sysconf::recovery_warm_up_policy = sysconf::WARM_UP_NONE;
 int sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_NONE;
+int sysconf::nvram_log_buffer = 0;
 
 uint32_t sysconf::max_threads_per_node = 0;
 bool sysconf::loading = true;

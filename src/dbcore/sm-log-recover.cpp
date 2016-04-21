@@ -54,7 +54,7 @@ sm_log_recover_mgr::block_scanner::block_scanner(sm_log_recover_mgr *lm, LSN sta
     : _lm(lm)
     , _follow_overflow(follow_overflow)
     , _fetch_payloads(fetch_payloads)
-    , _buf((char*)rcu_alloc(fetch_payloads? MAX_BLOCK_SIZE : MIN_BLOCK_FETCH))
+    , _buf((log_block*)rcu_alloc(fetch_payloads? MAX_BLOCK_SIZE : MIN_BLOCK_FETCH))
 {
     _load_block(start, _follow_overflow);
 }
@@ -72,7 +72,7 @@ sm_log_recover_mgr::block_scanner::operator++()
        follow them the second time around.
      */
     if (_overflow_chain.empty()) {
-        _load_block(_block->next_lsn(), _follow_overflow);
+        _load_block(_cur_block->next_lsn(), _follow_overflow);
     }
     else {
         _load_block(_overflow_chain.back(), false);
@@ -83,7 +83,7 @@ sm_log_recover_mgr::block_scanner::operator++()
 void
 sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
 {
-    DEFER_UNLESS(success, *_block = invalid_block());
+    DEFER_UNLESS(success, *_buf = invalid_block());
     if (x == INVALID_LSN)
         return;
     
@@ -100,35 +100,57 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
         if (sid->segnum % NUM_LOG_SEGMENTS != segnum % NUM_LOG_SEGMENTS)
             return;
     }
-    
+
     // helper function... pread may not read everything in one call
     auto pread = [&](size_t nbytes, uint64_t i)->size_t {
         uint64_t offset = sid->offset(x);
-        return i+os_pread(sid->fd, _buf+i, nbytes-i, offset+i);
+        // See if it's stepping into the log buffer
+        if (sysconf::is_backup_srv and sysconf::nvram_log_buffer and
+            logmgr and x >= logmgr ->durable_flushed_lsn()) {
+            // we should be scanning and replaying the log at a backup node
+            auto& logbuf = logmgr->get_logbuf();
+            // the caller should have called advance_writer(end_lsn) already
+            nbytes = std::min(nbytes, logbuf.read_end() - sid->buf_offset(x));
+            if (nbytes) {
+                ALWAYS_ASSERT(nbytes);
+                _cur_block = (log_block *)logbuf.read_buf(sid->buf_offset(x), nbytes);
+            }
+            return nbytes;
+        } else {
+            // otherwise we're recovering from disk, assuming the possibly NVRAM
+            // backed logbuf is already flushed, ie durable_flushed_lsn == durable_lsn.
+            _cur_block = _buf;
+            return i+os_pread(sid->fd, ((char *)_buf)+i, nbytes-i, offset+i);
+        }
     };
         
     /* Fetch log header */
+    _cur_block = nullptr;
     size_t n = pread(MIN_BLOCK_FETCH, 0);
+
     if (n < MIN_BLOCK_FETCH) {
         /* Not necessarily a problem: we could be at the end of a
-           segment and most log records are smaller than max size.
+           segment and most log records are smaller than max size,
+           or we could be reading from the NVRAM-backed log buffer
+           (ie replaying a shipped log buffer) and hit the end (n == 0).
          */
         if (n < MIN_LOG_BLOCK_SIZE)
             return; // truncate!
-        if (n < log_block::size(_block->nrec, 0))
+        if (n < log_block::size(_cur_block->nrec, 0))
             return; // truncate!
         
         // fall out: looks like we're OK
     }
 
+    ALWAYS_ASSERT(_cur_block);
     // cursory validation to avoid buffer overflow
-    if (x != _block->lsn or _block->nrec > MAX_BLOCK_RECORDS)
+    if (x != _cur_block->lsn or _cur_block->nrec > MAX_BLOCK_RECORDS)
         return; // corrupt ==> truncate
 
     if (follow_overflow) {
-        log_record *r = _block->records;
+        log_record *r = _cur_block->records;
         if (r->type == LOG_OVERFLOW) {
-            _overflow_chain.push_back(_block->lsn);
+            _overflow_chain.push_back(_cur_block->lsn);
             success = true;
             return _load_block(r->prev_lsn, true);
             /* ^^^
@@ -142,7 +164,7 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
     }
 
     if (_fetch_payloads) {
-        uint64_t bsize = _block->payload_end() - _buf;
+        uint64_t bsize = (char *)_cur_block->payload_end() - (char *)_cur_block;
         if (bsize > MAX_BLOCK_SIZE)
             return; // corrupt ==> truncate
         

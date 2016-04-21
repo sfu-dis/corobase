@@ -75,6 +75,7 @@ main(int argc, char **argv)
       {"log-ship-warm-up"           , required_argument , 0                          , 'i'} ,
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
+      {"nvram-log-buffer"           , no_argument       , &sysconf::nvram_log_buffer , 1},
       {"node-memory-gb"             , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
@@ -284,6 +285,7 @@ main(int argc, char **argv)
     cerr << "  log-dir     : " << sysconf::log_dir          << endl;
     cerr << "  log-segment-mb: " << sysconf::log_segment_mb   << endl;
     cerr << "  log-buffer-mb: " << sysconf::log_buffer_mb    << endl;
+    cerr << "  nvram-log-buffer: " << sysconf::nvram_log_buffer << endl;
     cerr << "  recovery-warm-up: ";
     if (sysconf::recovery_warm_up_policy == sysconf::WARM_UP_NONE)
       cerr << "none";
