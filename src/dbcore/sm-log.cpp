@@ -11,7 +11,6 @@ using namespace RCU;
 
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
-int sm_log::warm_up = sm_log::WU_NONE;
 
 void
 sm_log::set_tls_lsn_offset(uint64_t offset)
@@ -196,7 +195,7 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
 
     // One hiwater_mark/capacity_mark per FID
     std::vector<std::future<std::pair<FID, OID> > > futures;
-    auto *scan = scanner->new_log_scan(chkpt_begin, warm_up == WU_EAGER);
+    auto *scan = scanner->new_log_scan(chkpt_begin, sysconf::eager_warm_up());
 
     FID max_fid = 0;
     for (auto &fm : fid_map) {
@@ -257,7 +256,7 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
     RCU::rcu_enter();
     OID himark = 0;
     uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
-    auto *scan = scanner->new_log_scan(chkpt_begin, warm_up == WU_EAGER);
+    auto *scan = scanner->new_log_scan(chkpt_begin, sysconf::eager_warm_up());
     for (; scan->valid(); scan->next()) {
         auto f = scan->fid();
         if (f != fid)
@@ -315,14 +314,14 @@ sm_log::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec,
     // Note: payload_size() includes the whole varstr
     // See do_tree_put's log_update call.
     size_t sz = sizeof(object);
-    if (warm_up == WU_EAGER) {
+    if (sysconf::eager_warm_up()) {
         sz += (sizeof(dbtuple) + logrec->payload_size());
         sz = align_up(sz);
     }
 
     object *obj = new (MM::allocate(sz, 0)) object(logrec->payload_ptr(), next, 0);
 
-    if (warm_up != WU_EAGER)
+    if (not sysconf::eager_warm_up())
         return fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
 
     // Load tuple varstr from logrec
@@ -445,6 +444,6 @@ sm_log::recover_index()
     // XXX (tzwang): this doesn't belong here, but recover_index is invoked
     // by the benchmark code after opened indexes. Putting this in the
     // benchmark code looks even uglier...
-    if (warm_up == WU_LAZY)
+    if (sysconf::lazy_warm_up())
         oidmgr->start_warm_up();
 }

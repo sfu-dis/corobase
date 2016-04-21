@@ -71,7 +71,8 @@ main(int argc, char **argv)
       {"log-dir"                    , required_argument , 0                          , 'l'} ,
       {"log-segment-mb"             , required_argument , 0                          , 'e'} ,
       {"log-buffer-mb"              , required_argument , 0                          , 'u'} ,
-      {"warm-up"                    , required_argument , 0                          , 'w'} ,
+      {"recovery-warm-up"           , required_argument , 0                          , 'w'} ,
+      {"log-ship-warm-up"           , required_argument , 0                          , 'i'} ,
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
       {"node-memory-gb"             , required_argument , 0                          , 'p'},
@@ -93,11 +94,11 @@ main(int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:g:a:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:g:a:i:",
+                        long_options, &option_index);
     if (c == -1)
       break;
 
-    string *warm_up_policy = NULL;
     switch (c) {
     case 0:
       if (long_options[option_index].flag != 0)
@@ -152,13 +153,21 @@ main(int argc, char **argv)
       break;
 
     case 'w':
-      warm_up_policy = new string(optarg);
-      if (*warm_up_policy == "eager")
-        sm_log::warm_up = sm_log::WU_EAGER;
-      else if (*warm_up_policy == "lazy")
-        sm_log::warm_up = sm_log::WU_LAZY;
+      if (strcmp(optarg, "eager") == 0)
+        sysconf::recovery_warm_up_policy = sysconf::WARM_UP_EAGER;
+      else if (strcmp(optarg, "lazy") == 0)
+        sysconf::recovery_warm_up_policy = sysconf::WARM_UP_LAZY;
       else
-        sm_log::warm_up = sm_log::WU_NONE;
+        sysconf::recovery_warm_up_policy = sysconf::WARM_UP_NONE;
+      break;
+
+    case 'i':
+      if (strcmp(optarg, "eager") == 0)
+        sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_EAGER;
+      else if (strcmp(optarg, "lazy") == 0)
+        sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_LAZY;
+      else
+        sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_NONE;
       break;
 
     case 'n':
@@ -275,13 +284,23 @@ main(int argc, char **argv)
     cerr << "  log-dir     : " << sysconf::log_dir          << endl;
     cerr << "  log-segment-mb: " << sysconf::log_segment_mb   << endl;
     cerr << "  log-buffer-mb: " << sysconf::log_buffer_mb    << endl;
-    cerr << "  warm-up     : ";
-    if (sm_log::warm_up == sm_log::WU_NONE)
-      cerr << "0";
-    else if (sm_log::warm_up == sm_log::WU_LAZY)
+    cerr << "  recovery-warm-up: ";
+    if (sysconf::recovery_warm_up_policy == sysconf::WARM_UP_NONE)
+      cerr << "none";
+    else if (sysconf::recovery_warm_up_policy == sysconf::WARM_UP_LAZY)
       cerr << "lazy";
     else {
-      ALWAYS_ASSERT(sm_log::warm_up == sm_log::WU_EAGER);
+      ALWAYS_ASSERT(sysconf::recovery_warm_up_policy == sysconf::WARM_UP_EAGER);
+      cerr << "eager";
+    }
+    cerr << endl;
+    cerr << "  log-ship-warm-up: ";
+    if (sysconf::log_ship_warm_up_policy == sysconf::WARM_UP_NONE)
+      cerr << "none";
+    else if (sysconf::log_ship_warm_up_policy == sysconf::WARM_UP_LAZY)
+      cerr << "lazy";
+    else {
+      ALWAYS_ASSERT(sysconf::log_ship_warm_up_policy == sysconf::WARM_UP_EAGER);
       cerr << "eager";
     }
     cerr << endl;

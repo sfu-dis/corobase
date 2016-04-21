@@ -22,6 +22,8 @@ int sysconf::null_log_device = 0;
 std::string sysconf::primary_srv("");
 int sysconf::htt_is_on= 1;
 uint64_t sysconf::node_memory_gb = 12;
+int sysconf::recovery_warm_up_policy = sysconf::WARM_UP_NONE;
+int sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_NONE;
 
 uint32_t sysconf::max_threads_per_node = 0;
 bool sysconf::loading = true;
