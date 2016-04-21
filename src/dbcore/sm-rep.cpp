@@ -207,12 +207,12 @@ void backup_daemon() {
     ALWAYS_ASSERT(lph.data_size());
     ALWAYS_ASSERT(lph.start_lsn.segment() == lph.end_lsn.segment());
     ALWAYS_ASSERT(lph.start_lsn < lph.end_lsn);
-    ALWAYS_ASSERT(lph.start_lsn == logmgr->durable_lsn());
+    ALWAYS_ASSERT(lph.start_lsn == logmgr->durable_flushed_lsn());
 
     // prepare segment if needed
     segment_id *sid = logmgr->assign_segment(lph.start_lsn.offset(), lph.end_lsn.offset());
     ALWAYS_ASSERT(sid);
-    ASSERT(lph.start_lsn == logmgr->durable_lsn());
+    ASSERT(lph.start_lsn == logmgr->durable_flushed_lsn());
     ASSERT(sid->make_lsn(lph.start_lsn.offset()) == lph.start_lsn);
     ASSERT(sid->make_lsn(lph.end_lsn.offset()) == lph.end_lsn);
 
@@ -227,14 +227,21 @@ void backup_daemon() {
       << std::hex << lph.start_lsn.offset() << "-" << lph.end_lsn.offset() << std::dec << ")\n";
 
     // now got the batch of log records, persist them
-    logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
-    ASSERT(logmgr->durable_lsn() == lph.end_lsn);
+    if (sysconf::nvram_log_buffer) {
+      logmgr->persist_log_buffer();
+      logbuf.advance_writer(sid->buf_offset(lph.end_lsn));
+    } else {
+      logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
+      ASSERT(logmgr->durable_flushed_lsn() == lph.end_lsn);
+    }
 
     ack_primary();
 
     // roll forward
     printf("[Backup] Roll forward log %lx-%lx\n", lph.start_lsn.offset(), lph.end_lsn.offset());
     logmgr->redo_log(lph.start_lsn, lph.end_lsn);
+    if (sysconf::nvram_log_buffer)
+      logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
   }
 }
 

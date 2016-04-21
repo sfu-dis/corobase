@@ -66,13 +66,12 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
             return log_block{0,0,INVALID_LSN,{LOG_NOP,INVALID_SIZE_CODE,0,0,{INVALID_LSN}}};
         }
     
-        block_scanner(sm_log_recover_mgr *lm, LSN start,
-                      bool follow_overflow, bool fetch_payloads);
+        block_scanner(sm_log_recover_mgr *lm, LSN start, bool follow_overflow, bool fetch_payloads);
         ~block_scanner();
 
-        bool valid() { return _block->lsn != INVALID_LSN; }
+        bool valid() { return _cur_block and _cur_block->lsn != INVALID_LSN; }
 
-        log_block *get() { return valid()? _block : NULL; }
+        log_block *get() { return valid()? _cur_block : NULL; }
         operator log_block*() { return get(); }
         log_block *operator->() { return get(); }
         log_block &operator*() { return *get(); }
@@ -90,10 +89,8 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
         sm_log_recover_mgr *_lm;
         bool _follow_overflow;
         bool _fetch_payloads;
-        union {
-            char *_buf;
-            log_block *_block;
-        };
+        log_block *_buf;
+        log_block *_cur_block;
     };
 
     /* Iterate over individual records in the log, starting from the
