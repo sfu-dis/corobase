@@ -542,7 +542,7 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
 
             fat_ptr ptr = NULL_PTR;
             n = read(fd, &ptr, sizeof(fat_ptr));
-            if (sm_log::warm_up == sm_log::WU_EAGER) {
+            if (sysconf::eager_warm_up()) {
                 ptr = object::create_tuple_object(ptr, NULL_PTR, 0, lm);
                 ASSERT(ptr.asi_type() == 0);
             }
