@@ -271,16 +271,6 @@ main(int argc, char **argv)
 #else
     cerr << "  var-encode  : no"                            << endl;
 #endif
-
-#ifdef USE_JEMALLOC
-    cerr << "  allocator   : jemalloc"                      << endl;
-#elif defined USE_TCMALLOC
-    cerr << "  allocator   : tcmalloc"                      << endl;
-#elif defined USE_FLOW
-    cerr << "  allocator   : flow"                          << endl;
-#else
-    cerr << "  allocator   : libc"                          << endl;
-#endif
     cerr << "  tmpfs-dir   : " << sysconf::tmpfs_dir        << endl;
     cerr << "  log-dir     : " << sysconf::log_dir          << endl;
     cerr << "  log-segment-mb: " << sysconf::log_segment_mb   << endl;
