@@ -1,5 +1,4 @@
-#ifndef _NDB_BENCH_H_
-#define _NDB_BENCH_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -47,7 +46,6 @@ extern int run_mode;
 extern int enable_parallel_loading;
 extern int slow_exit;
 extern int retry_aborted_transaction;
-extern int no_reset_counters;
 extern int backoff_aborted_transaction;
 extern int enable_chkpt;
 
@@ -63,23 +61,6 @@ unique_filter(const std::vector<T> &v)
 		}
 	return ret;
 }
-
-class scoped_db_thread_ctx {
-public:
-  scoped_db_thread_ctx(const scoped_db_thread_ctx &) = delete;
-  scoped_db_thread_ctx(scoped_db_thread_ctx &&) = delete;
-  scoped_db_thread_ctx &operator=(const scoped_db_thread_ctx &) = delete;
-
-  scoped_db_thread_ctx(abstract_db *db, bool loader)
-    : db(db)
-  {
-  }
-  ~scoped_db_thread_ctx()
-  {
-  }
-private:
-  abstract_db *const db;
-};
 
 class bench_loader : public ndb_thread {
 public:
@@ -481,5 +462,3 @@ private:
   rc_t rc = oper;   \
   ALWAYS_ASSERT(rc._val == RC_TRUE);    \
 }
-
-#endif /* _NDB_BENCH_H_ */

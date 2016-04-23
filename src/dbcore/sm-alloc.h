@@ -20,7 +20,7 @@ struct recycle_oid {
 
 namespace MM {
     /* Object allocation and reuse:
-     * The GC threads continuously removes stale versions that aren't needed any 
+     * The GC thread continuously removes stale versions that aren't needed any 
      * more from version chains and put these objects to a centralized pool,
      * which contains a hashtab indexed by object size. All objects are allocated
      * in aligned sizes (ie allocated size might be larger than the actual size).

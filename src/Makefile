@@ -10,12 +10,6 @@ CXX=g++
 DEBUG ?= 0
 CHECK_INVARIANTS ?= 0
 
-# 0 = libc malloc
-# 1 = jemalloc
-# 2 = tcmalloc
-# 3 = flow
-USE_MALLOC_MODE ?= 0
-
 MYSQL ?= 1
 MYSQL_SHARE_DIR ?= /x/stephentu/mysql-5.5.29/build/sql/share
 
@@ -32,7 +26,6 @@ MASSTREE ?= 1
 
 DEBUG_S=$(strip $(DEBUG))
 CHECK_INVARIANTS_S=$(strip $(CHECK_INVARIANTS))
-USE_MALLOC_MODE_S=$(strip $(USE_MALLOC_MODE))
 MODE_S=$(strip $(MODE))
 MASSTREE_S=$(strip $(MASSTREE))
 MASSTREE_CONFIG:=--enable-max-key-len=1024
@@ -103,21 +96,7 @@ LDFLAGS := -lpthread -lnuma
 #LDFLAGS += -lasan
 #endif
 
-ifeq ($(USE_MALLOC_MODE_S),1)
-        CXXFLAGS+=-DUSE_JEMALLOC
-        LDFLAGS+=-ljemalloc
-	MASSTREE_CONFIG+=--with-malloc=jemalloc
-else ifeq ($(USE_MALLOC_MODE_S),2)
-        CXXFLAGS+=-DUSE_TCMALLOC
-        LDFLAGS+=-ltcmalloc
-	MASSTREE_CONFIG+=--with-malloc=tcmalloc
-else ifeq ($(USE_MALLOC_MODE_S),3)
-        CXXFLAGS+=-DUSE_FLOW
-        LDFLAGS+=-lflow
-	MASSTREE_CONFIG+=--with-malloc=flow
-else
-	MASSTREE_CONFIG+=--with-malloc=malloc
-endif
+MASSTREE_CONFIG+=--with-malloc=malloc
 
 ifneq ($(strip $(CUSTOM_LDPATH)), )
         LDFLAGS+=$(CUSTOM_LDPATH)
