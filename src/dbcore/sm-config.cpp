@@ -2,6 +2,7 @@
 #include <numa.h>
 #include "../macros.h"
 #include "sm-config.h"
+#include "sm-thread.h"
 #include <iostream>
 uint32_t sysconf::_active_threads = 0;
 uint32_t sysconf::worker_threads = 0;
@@ -40,6 +41,8 @@ sysconf::init() {
     max_threads_per_node = htt_is_on ?
         ncpus / 2 / (numa_max_node() + 1): ncpus / (numa_max_node() + 1);
     numa_nodes = (worker_threads + max_threads_per_node - 1) /  max_threads_per_node;
+
+    thread::init();
 }
 
 void sysconf::sanity_check() {

@@ -25,7 +25,6 @@
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
-#include "thread.h"
 #include "spinlock.h"
 #include "static_vector.h"
 #include "prefetch.h"

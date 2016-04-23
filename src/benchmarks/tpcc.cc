@@ -387,19 +387,6 @@ protected: \
 
 #undef DEFN_TBL_ACCESSOR_X
 
-  // only TPCC loaders need to call this- workers are automatically
-  // pinned by their worker id (which corresponds to warehouse id
-  // in TPCC)
-  //
-  // pins the *calling* thread
-  static void
-  PinToWarehouseId(unsigned int wid)
-  {
-    const unsigned int partid = PartitionId(wid);
-    ALWAYS_ASSERT(partid < sysconf::worker_threads);
-    sysconf::pin_current_thread(partid);
-  }
-
 public:
 
   static inline uint32_t
@@ -677,13 +664,6 @@ public:
   }
 
 protected:
-
-  virtual void
-  on_run_setup() OVERRIDE
-  {
-    const size_t b = worker_id % sysconf::worker_threads;
-    sysconf::pin_current_thread(b);
-  }
 
   inline ALWAYS_INLINE varstr &
   str(uint64_t size)
@@ -991,8 +971,6 @@ protected:
       const size_t batchsize =
         (db->txn_max_batch_size() == -1) ? NumItems() : db->txn_max_batch_size();
 
-      PinToWarehouseId(w);
-
       for(size_t i=0; i < NumItems(); ) {
         size_t iend = std::min(i+batchsize, NumItems());
         scoped_str_arena s_arena(arena);
@@ -1036,7 +1014,6 @@ protected:
             try_verify_strict(tbl_stock_data(w)->insert(txn, Encode(str(Size(k_data)), k_data), Encode(str(Size(v_data)), v_data)));
           }
           try_verify_strict(db->commit_txn(txn));
-          b++;
 
         // loop update
         i = iend;
@@ -1078,7 +1055,6 @@ protected:
     uint64_t district_total_sz = 0, n_districts = 0;
       uint cnt = 0;
       for (uint w = 1; w <= NumWarehouses(); w++) {
-        PinToWarehouseId(w);
         for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++, cnt++) {
           const district::key k(w, d);
 
@@ -1147,12 +1123,10 @@ protected:
     const size_t nbatches =
       (batchsize > NumCustomersPerDistrict()) ?
         1 : (NumCustomersPerDistrict() / batchsize);
-    cerr << "num batches: " << nbatches << endl;
 
     uint64_t total_sz = 0;
 
     for (uint w = w_start; w <= w_end; w++) {
-      PinToWarehouseId(w);
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         for (uint batch = 0; batch < nbatches;) {
           scoped_str_arena s_arena(arena);
@@ -1280,7 +1254,6 @@ protected:
       NumWarehouses() : static_cast<uint>(warehouse_id);
 
     for (uint w = w_start; w <= w_end; w++) {
-      PinToWarehouseId(w);
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         set<uint> c_ids_s;
         vector<uint> c_ids;
@@ -2461,6 +2434,10 @@ private:
 public:
   tpcc_bench_runner(abstract_db *db)
     : bench_runner(db)
+  {
+  }
+
+  virtual void prepare()
   {
 #define OPEN_TABLESPACE_X(x) \
     partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));

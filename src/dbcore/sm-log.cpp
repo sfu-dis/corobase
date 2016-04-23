@@ -18,6 +18,12 @@ sm_log::set_tls_lsn_offset(uint64_t offset)
     get_impl(this)->_lm.set_tls_lsn_offset(offset);
 }
 
+uint64_t
+sm_log::get_tls_lsn_offset()
+{
+    return get_impl(this)->_lm.get_tls_lsn_offset();
+}
+
 window_buffer&
 sm_log::get_logbuf()
 {
@@ -46,12 +52,6 @@ LSN
 sm_log::flush()
 {
     return get_impl(this)->_lm.flush();
-}
-
-LSN
-sm_log::flush_cur_lsn()
-{
-    return get_impl(this)->_lm.flush_cur_lsn();
 }
 
 void
@@ -153,10 +153,10 @@ sm_log::durable_flushed_lsn()
 }
 
 void
-sm_log::wait_for_durable_flushed_lsn(LSN dlsn)
+sm_log::wait_for_durable_flushed_lsn_offset(uint64_t offset)
 {
     auto *self = get_impl(this);
-    self->_lm.wait_for_durable(dlsn.offset());
+    self->_lm.wait_for_durable(offset);
 }
 
 /* The main recovery function.

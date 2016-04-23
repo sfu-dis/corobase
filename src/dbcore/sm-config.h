@@ -73,13 +73,6 @@ public:
         return __id;
     }
 
-    inline static void pin_current_thread(size_t cpu) {
-        int node = cpu / sysconf::max_threads_per_node % sysconf::numa_nodes;
-        ALWAYS_ASSERT(node < sysconf::numa_nodes);
-        ALWAYS_ASSERT(!numa_run_on_node(node));
-        ALWAYS_ASSERT(!sched_yield());
-    }
-
     inline static bool eager_warm_up() {
         return loading ?
             recovery_warm_up_policy == WARM_UP_EAGER :

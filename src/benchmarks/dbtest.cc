@@ -14,6 +14,7 @@
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/sm-rep.h"
+#include "../dbcore/sm-thread.h"
 #include "bench.h"
 #include "ndb_wrapper.h"
 //#include "kvdb_wrapper.h"
