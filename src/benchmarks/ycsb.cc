@@ -14,7 +14,6 @@
 #include <numa.h>
 
 #include "../macros.h"
-#include "../thread.h"
 #include "../util.h"
 #include "../spinbarrier.h"
 
