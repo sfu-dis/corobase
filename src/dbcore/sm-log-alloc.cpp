@@ -35,6 +35,12 @@ sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset)
     volatile_write(_tls_lsn_offset[sysconf::my_thread_id()], offset);
 }
 
+uint64_t
+sm_log_alloc_mgr::get_tls_lsn_offset()
+{
+    return volatile_read(_tls_lsn_offset[sysconf::my_thread_id()]);
+}
+
 /* We have to find the end of the log files on disk before
    constructing the log buffer in memory. It's also a convenient time
    to do the rest of recovery, because it prevents any attempt at
@@ -73,7 +79,7 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr()
         DEFER(_write_daemon_mutex.unlock());
         
         _write_daemon_should_stop = true;
-        flush_cur_lsn();
+        flush();
     }
     
     int err = pthread_join(_write_daemon_tid, NULL);
@@ -139,28 +145,6 @@ sm_log_alloc_mgr::flush()
     _kick_log_write_daemon();
     _dmark_updated_cond.wait(_write_daemon_mutex);
     return _lm.get_durable_mark();
-}
-
-/* Flush **everything** up to the current largest thread-local committed LSN.
- * This implicitly assumes **all** the transactions with a clsn < the largest
- * TLS commit lsn offset have concluded, so flushing up to the most recent offset
- * won't make any holes.
- *
- * **USE THIS ONLY WHEN YOU SURE ABOUT WHAT YOU'RE DOING**
- *
- * So far the only users of this function are ~sm_log_alloc_mgr and the loader
- * (after loaded the database).
- */
-LSN
-sm_log_alloc_mgr::flush_cur_lsn()
-{
-    for (uint32_t i = 0; i < sysconf::_active_threads; ++i) {
-        // need std::max() because retired threads (eg loaders) will
-        // write 0xFFFFFFFFFFFFFFFF to their slots upon finishing the task.
-        volatile_write(_tls_lsn_offset[i],
-                       std::max(cur_lsn_offset(), _tls_lsn_offset[i]));
-    }
-    return flush();
 }
 
 /* Figure out the corresponding segments in the logbuf and flush them.
@@ -504,7 +488,8 @@ sm_log_alloc_mgr::smallest_tls_lsn_offset()
 {
     uint64_t oldest_offset = cur_lsn_offset();
     for (uint32_t i = 0; i < sysconf::_active_threads; i++) {
-        oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
+        if (_tls_lsn_offset[i])
+            oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
     }
     return oldest_offset;
 }

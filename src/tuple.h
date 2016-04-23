@@ -13,7 +13,6 @@
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
-#include "thread.h"
 #include "spinlock.h"
 #include "prefetch.h"
 #include "ownership_checker.h"

@@ -104,7 +104,6 @@ endif
 
 SRCFILES = base_txn_btree.cc \
 	object.cc \
-	thread.cc \
 	tuple.cc \
 	txn.cc \
 	varint.cc
@@ -124,6 +123,7 @@ DBCORE_SRCFILES = dbcore/burt-hash.cpp \
 	dbcore/sm-exceptions.cpp \
 	dbcore/sm-common.cpp \
 	dbcore/sm-rep.cpp \
+	dbcore/sm-thread.cpp \
 	dbcore/window-buffer.cpp \
 	dbcore/rcu-slist.cpp \
 	dbcore/rcu.cpp \

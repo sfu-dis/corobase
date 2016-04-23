@@ -25,12 +25,12 @@ struct sm_log_alloc_mgr {
     ~sm_log_alloc_mgr();
 
     void set_tls_lsn_offset(uint64_t offset);
+    uint64_t get_tls_lsn_offset();
 
     /* Kick the log writer daemon and wait for it to finish flushing
      * the log buffer
      */
     LSN flush();
-    LSN flush_cur_lsn();
 
     /* Retrieve the current end of log
      */

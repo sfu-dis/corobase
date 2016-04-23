@@ -312,8 +312,8 @@ struct sm_log {
 
     void update_chkpt_mark(LSN cstart, LSN cend);
     LSN flush();
-    LSN flush_cur_lsn();
     void set_tls_lsn_offset(uint64_t offset);
+    uint64_t get_tls_lsn_offset();
 
     /* Allocate and return a new sm_log object. If [dname] exists, it
        will be mounted and used. Otherwise, a new (empty) log
@@ -353,7 +353,7 @@ struct sm_log {
        objects with LSN smaller than [dlsn] have been released or
        discarded.
      */
-    void wait_for_durable_flushed_lsn(LSN dlsn);
+    void wait_for_durable_flushed_lsn_offset(uint64_t offset);
 
     /* Load the object referenced by [ptr] from the log. The pointer
        must reference the log (ASI_LOG) and the given buffer must be large

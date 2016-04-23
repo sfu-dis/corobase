@@ -651,14 +651,6 @@ class tpce_worker :
 
 	protected:
 
-		virtual void
-			on_run_setup() OVERRIDE
-			{
-        const size_t b = worker_id % sysconf::worker_threads;
-        sysconf::pin_current_thread(b);
-			}
-
-
 		inline ALWAYS_INLINE varstr &
 			str(uint64_t size)
 			{
@@ -4994,7 +4986,10 @@ class tpce_bench_runner : public bench_runner {
 		tpce_bench_runner(abstract_db *db)
 			: bench_runner(db)
 		{
+    }
 
+    virtual void prepare()
+    {
 #define OPEN_TABLESPACE_X(x) \
 			partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));
 

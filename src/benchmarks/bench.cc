@@ -72,18 +72,8 @@ get_system_memory_info()
 }
 
 void
-bench_worker::run()
+bench_worker::my_work()
 {
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    TXN::assign_reader_bitmap_entry();
-#endif
-    // XXX. RCU register/deregister should be the outer most one b/c
-    // MM::deregister_thread could call cur_lsn inside
-	RCU::rcu_register();
-    MM::register_thread();
-	RCU::rcu_start_tls_cache( 32, 100000 );
-	on_run_setup();
-	scoped_db_thread_ctx ctx(db, false);
 	const workload_desc_vec workload = get_workload();
 	txn_counts.resize(workload.size());
 	barrier_a->count_down();
@@ -139,36 +129,40 @@ retry:
 			d -= workload[i].frequency;
 		}
 	}
-    MM::deregister_thread();
-    RCU::rcu_deregister();
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
-    TXN::deassign_reader_bitmap_entry();
-#endif
 }
 
 void
 bench_runner::run()
 {
-  // Invalidate my own tls_lsn_offset - I'm not doing transactions.
-  // The benchmark's ctor should be the last place where it touches
-  // the log in this thread.
-  logmgr->set_tls_lsn_offset(~uint64_t{0});
+  // get a thread to set the stage (e.g., create tables etc)
+  auto* runner_thread = thread::get_thread();
+  std::function<void(void)> f = std::bind(&bench_runner::prepare, this);
+  runner_thread->start_task(f);
+  runner_thread->join();
+  thread::put_thread(runner_thread);
 
   // load data, unless we recover from logs or is a backup server (recover from shipped logs)
   if (not sm_log::need_recovery && not sysconf::is_backup_srv) {
-    const vector<bench_loader *> loaders = make_loaders();
-    spin_barrier b(loaders.size());
+    vector<bench_loader *> loaders = make_loaders();
     const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
     {
       scoped_timer t("dataloading", verbose);
-      for (vector<bench_loader *>::const_iterator it = loaders.begin();
-          it != loaders.end(); ++it) {
-        (*it)->set_barrier(b);
-        (*it)->start();
+    process:
+      for (uint i = 0; i < loaders.size(); i++) {
+        auto* loader = loaders[i];
+        if (loader and not loader->is_impersonated() and loader->try_impersonate()) {
+          loader->start();
+        }
       }
-      for (vector<bench_loader *>::const_iterator it = loaders.begin();
-          it != loaders.end(); ++it)
-        (*it)->join();
+      for (uint i = 0; i < loaders.size(); i++) {
+        auto* loader = loaders[i];
+        if (loader and loader->is_impersonated()) {
+          loader->join();
+          loader->~bench_loader();
+          loaders[i] = nullptr;
+          goto process;
+        }
+      }
     }
     RCU::rcu_register();
     RCU::rcu_enter();
@@ -182,9 +176,9 @@ bench_runner::run()
     const double delta_mb = double(delta)/1048576.0;
     if (verbose)
       cerr << "DB size: " << delta_mb << " MB" << endl;
-
-    delete_pointers(loaders);
   }
+
+  volatile_write(sysconf::loading, false);
 
   if (sysconf::num_backups) {
     std::cout << "[Primary] Expect " << sysconf::num_backups << " backups\n";
@@ -208,9 +202,7 @@ bench_runner::run()
   }
 
   // Persist the database
-  logmgr->flush_cur_lsn();
-
-  volatile_write(sysconf::loading, false);
+  logmgr->flush();
 
   const vector<bench_worker *> workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
@@ -322,6 +314,7 @@ bench_runner::run()
       std::get<2>(agg_txn_counts[t.first]) += std::get<2>(t.second);
       std::get<3>(agg_txn_counts[t.first]) += std::get<3>(t.second);
     }
+    workers[i]->~bench_worker();
   }
 
   if (enable_chkpt)
@@ -433,8 +426,6 @@ bench_runner::run()
 
   }
   open_tables.clear();
-
-  delete_pointers(workers);
 }
 
 template <typename K, typename V>
