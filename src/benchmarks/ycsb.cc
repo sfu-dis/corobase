@@ -240,7 +240,7 @@ public:
   {
   }
 
-  virtual void prepare()
+  virtual void prepare(char *)
   {
     open_tables["USERTABLE"] = db->open_index("USERTABLE", kRecordSize);
   }

@@ -4988,7 +4988,7 @@ class tpce_bench_runner : public bench_runner {
 		{
     }
 
-    virtual void prepare()
+    virtual void prepare(char *)
     {
 #define OPEN_TABLESPACE_X(x) \
 			partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));

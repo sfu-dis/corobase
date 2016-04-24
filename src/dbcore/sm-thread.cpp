@@ -22,7 +22,7 @@ void sm_thread::idle_task() {
 
   while (not volatile_read(shutdown)) {
     if (volatile_read(has_work)) {
-      task();
+      task(task_input);
       auto my_offset = logmgr->get_tls_lsn_offset();
       // Must use a while loop here instead of using logmgr->wait_for_durable();
       // otherwise the N-1 out of N threads reached here at the same time will

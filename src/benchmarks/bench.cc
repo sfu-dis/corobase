@@ -72,7 +72,7 @@ get_system_memory_info()
 }
 
 void
-bench_worker::my_work()
+bench_worker::my_work(char *)
 {
 	const workload_desc_vec workload = get_workload();
 	txn_counts.resize(workload.size());
@@ -136,8 +136,8 @@ bench_runner::run()
 {
   // get a thread to set the stage (e.g., create tables etc)
   auto* runner_thread = thread::get_thread();
-  std::function<void(void)> f = std::bind(&bench_runner::prepare, this);
-  runner_thread->start_task(f);
+  thread::sm_thread::task_t runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
+  runner_thread->start_task(runner_task);
   runner_thread->join();
   thread::put_thread(runner_thread);
 
