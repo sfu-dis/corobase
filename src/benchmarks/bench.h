@@ -63,11 +63,11 @@ unique_filter(const std::vector<T> &v)
 	return ret;
 }
 
-class bench_loader {
+class bench_loader : public thread::sm_runner {
 public:
   bench_loader(unsigned long seed, abstract_db *db,
                const std::map<std::string, abstract_ordered_index *> &open_tables)
-    : me(nullptr), r(seed), db(db), open_tables(open_tables)
+    : sm_runner(), r(seed), db(db), open_tables(open_tables)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
     txn_obj_buf.resize(db->sizeof_txn_object(txn_flags));
@@ -75,43 +75,15 @@ public:
     // threads relies on this fact (see bench_runner::run()).
   }
 
-  ~bench_loader()
-  {
-    thread::put_thread(me);
-  }
+  ~bench_loader() {}
   inline ALWAYS_INLINE varstr &
   str(uint64_t size)
   {
     return *arena.next(size);
   }
 
-  inline void start()
-  {
-    std::function<void(void)> f = std::bind(&bench_loader::my_work, this);
-    me->start_task(f);
-  }
-
-  inline bool try_impersonate()
-  {
-    ALWAYS_ASSERT(not me);
-    me = thread::get_thread();
-    return me != nullptr;
-  }
-
-  inline void join()
-  {
-    me->join();
-  }
-
-  inline bool is_impersonated()
-  {
-    return me != nullptr;
-  }
-
 private:
-  thread::sm_thread *me;
-
-  void my_work()
+  virtual void my_work(char *)
   {
     load();
   }
@@ -131,14 +103,15 @@ protected:
 typedef std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tx_stat;
 typedef std::map<std::string, tx_stat> tx_stat_map;
 
-class bench_worker {
+class bench_worker : public thread::sm_runner {
 public:
 
   bench_worker(unsigned int worker_id,
                unsigned long seed, abstract_db *db,
                const std::map<std::string, abstract_ordered_index *> &open_tables,
                spin_barrier *barrier_a, spin_barrier *barrier_b)
-    : worker_id(worker_id),
+    : sm_runner(),
+      worker_id(worker_id),
       r(seed), db(db), open_tables(open_tables),
       barrier_a(barrier_a), barrier_b(barrier_b),
       latency_numer_us(0),
@@ -157,12 +130,7 @@ public:
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
     txn_obj_buf.resize(db->sizeof_txn_object(txn_flags));
-    me = thread::get_thread();
-  }
-
-  ~bench_worker()
-  {
-    thread::put_thread(me);
+    try_impersonate();
   }
 
   typedef rc_t (*txn_fn_t)(bench_worker *);
@@ -222,19 +190,8 @@ public:
 
   inline ssize_t get_size_delta() const { return size_delta; }
 
-  inline void start()
-  {
-    std::function<void(void)> f = std::bind(&bench_worker::my_work, this);
-    me->start_task(f);
-  }
-
-  inline void join() {
-    me->join();
-  }
-
 private:
-  thread::sm_thread *me;
-  void my_work();
+  virtual void my_work(char *);
 
 protected:
 
@@ -287,7 +244,7 @@ public:
   bench_runner(abstract_db *db)
     : db(db), barrier_a(sysconf::worker_threads), barrier_b(1) {}
   virtual ~bench_runner() {}
-  virtual void prepare() = 0;
+  virtual void prepare(char *) = 0;
   void run();
 
 protected:

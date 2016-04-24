@@ -13,13 +13,15 @@
 namespace thread {
 
 struct sm_thread {
+  typedef std::function<void(char *task_input)> task_t;
   std::thread thd;
   uint16_t node;
   uint16_t core;
   XID current_xid;
   bool shutdown;
   bool has_work;
-  std::function<void(void)> task;
+  task_t task;
+  char *task_input;
 
   std::condition_variable trigger;
   std::mutex trigger_lock;
@@ -39,8 +41,9 @@ struct sm_thread {
   void idle_task();
 
   // No CC whatsoever, caller must know what it's doing
-  inline void start_task(std::function<void(void)> &f) {
-    task = f;
+  inline void start_task(task_t t, char* input = nullptr) {
+    task = t;
+    task_input = input;
     has_work = true;
     __sync_synchronize();
     trigger.notify_all();
@@ -119,5 +122,39 @@ inline sm_thread *get_thread(/* don't care where */) {
 inline void put_thread(sm_thread *t) {
   thread_pools[t->node].put_thread(t);
 }
+
+// A wrapper that includes sm_thread for user code to use.
+// Benchmark and log replay threads deal with this only,
+// not with sm_thread.
+class sm_runner {
+public:
+  sm_runner() : me(nullptr) {}
+  ~sm_runner() {
+    if (me) {
+      join();
+      put_thread(me);
+    }
+  }
+
+  virtual void my_work(char *) = 0;
+
+  inline void start() {
+    ALWAYS_ASSERT(me);
+    thread::sm_thread::task_t t = std::bind(&sm_runner::my_work, this, std::placeholders::_1);
+    me->start_task(t);
+  }
+
+  inline bool try_impersonate() {
+    ALWAYS_ASSERT(not me);
+    me = thread::get_thread();
+    return me != nullptr;
+  }
+
+  inline void join() { me->join(); }
+  inline bool is_impersonated() { return me != nullptr; }
+
+private:
+  sm_thread *me;
+};
 }  // namespace thread
 
