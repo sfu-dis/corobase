@@ -165,7 +165,7 @@ void start_as_primary() {
   DEFER(freeaddrinfo(result));
 
   // flush the log so we can really ship it
-  LSN dlsn = logmgr->flush_cur_lsn();
+  LSN dlsn = logmgr->flush();
   std::cout << "[Primary] durable LSN offset: " << dlsn.offset() << "\n";
 
   for (auto *r = result; r; r = r->ai_next) {
