@@ -45,6 +45,8 @@ if [ "$bench" == "tpcc" ]; then
     $options -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=$suppliers --warehouse-spread=$wh_spread $6"
   elif [ "$btype" == "+" ]; then
     $options -o "--workload-mix="41,43,4,4,4,4,0,0" --suppliers=$suppliers --warehouse-spread=$wh_spread $6"
+  elif [ "$btype" == "r" ]; then
+    $options -o "--workload-mix="0,0,0,0,50,50,0,0" --warehouse-spread=$wh_spread $6"
   else
     if [ "$workload" == "tpcc_contention" ]; then
       wh_spread="100"
