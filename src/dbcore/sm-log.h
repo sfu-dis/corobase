@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include "sm-common.h"
 #include "sm-rep.h"
+#include "sm-thread.h"
 #include "window-buffer.h"
 
 class ndb_ordered_index;
@@ -371,7 +372,19 @@ struct sm_log {
      * Implements the sm_log_recover_function signature.
      */
     static void recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
-    static std::pair<FID, OID> redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid);
+    static FID redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid);
+
+    struct redo_runner : public thread::sm_runner {
+        sm_log_scan_mgr *scanner;
+        LSN chkpt_begin;
+        FID fid;
+        ndb_ordered_index *fid_index;
+        bool done;
+
+        redo_runner(sm_log_scan_mgr *s, LSN cb, FID f, ndb_ordered_index *i) : 
+            thread::sm_runner(), scanner(s), chkpt_begin(cb), fid(f), fid_index(i), done(false) {}
+        virtual void my_work(char *);
+    };
 
     window_buffer &get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
@@ -387,11 +400,11 @@ private:
     static fat_ptr recover_prepare_version(
                                 sm_log_scan_mgr::record_scan *logrec,
                                 fat_ptr next);
-    static void recover_fid(sm_log_scan_mgr::record_scan *logrec);
+    static ndb_ordered_index *recover_fid(sm_log_scan_mgr::record_scan *logrec);
 
 public:
-    static std::pair<std::string, uint64_t> rebuild_index(FID fid, ndb_ordered_index *index);
-    static void recover_index();
+    static std::pair<std::string, uint64_t> rebuild_index(
+      sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index);
 
 protected:
     // Forbid direct instantiation

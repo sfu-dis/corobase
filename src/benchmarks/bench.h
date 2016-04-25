@@ -13,9 +13,10 @@
 #include "../spinbarrier.h"
 #include "../dbcore/sm-config.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/serial.h"
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-alloc.h"
-#include "../dbcore/serial.h"
+#include "../dbcore/sm-oid.h"
 #include "../dbcore/sm-rc.h"
 #include "../dbcore/sm-thread.h"
 
@@ -246,6 +247,7 @@ public:
   virtual ~bench_runner() {}
   virtual void prepare(char *) = 0;
   void run();
+  void create_files_task(char *);
 
 protected:
   // only called once

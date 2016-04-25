@@ -30,21 +30,24 @@ public:
 
   base_txn_btree(size_type value_size_hint = 128,
             bool mostly_append = false,
-            const std::string &name = "<unknown>",
-            FID fid = 0)
+            const std::string &name = "<unknown>")
     : value_size_hint(value_size_hint),
       name(name),
-      fid(fid),
+      fid(0),
       been_destructed(false)
   {
-    underlying_btree.set_tuple_vec(oidmgr->get_array(fid));
-    ALWAYS_ASSERT(fid and this->fid);
   }
 
   ~base_txn_btree()
   {
     if (!been_destructed)
       unsafe_purge(false);
+  }
+
+  inline void set_tuple_vec(FID f)
+  {
+    fid = f;
+    underlying_btree.set_tuple_vec(oidmgr->get_array(f));
   }
 
   inline size_t

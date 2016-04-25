@@ -336,6 +336,11 @@ sm_oid_mgr_impl::recreate_file(FID f)
 void
 sm_oid_mgr_impl::recreate_allocator(FID f, OID m)
 {
+    static std::mutex recreate_lock;
+
+    recreate_lock.lock();
+    DEFER(recreate_lock.unlock());
+
     // Callers might be
     // 1. oidmgr when recovering from a chkpt
     // 2. logmgr when recovering from the log

@@ -2,10 +2,10 @@
 #include "sm-log-offset.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
+#include "sm-thread.h"
 #include "../benchmarks/ndb_wrapper.h"
 #include "../txn_btree.h"
 #include <cstring>
-#include <future>
 
 using namespace RCU;
 
@@ -190,69 +190,91 @@ void
 sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
                 LSN chkpt_begin, LSN chkpt_end)
 {
-    RCU::rcu_register();
     RCU::rcu_enter();
 
-    // One hiwater_mark/capacity_mark per FID
-    std::vector<std::future<std::pair<FID, OID> > > futures;
-    auto *scan = scanner->new_log_scan(chkpt_begin, sysconf::eager_warm_up());
-
-    FID max_fid = 0;
-    for (auto &fm : fid_map) {
-        FID fid = fm.second.first;
-        if (fid > max_fid)
-            max_fid = fid;
-
-        // Scan the rest of the log
-        futures.emplace_back(std::async(std::launch::async, redo_file,
-                                        scanner, chkpt_begin, fid));
-    }
-
     // Look for new table creations after the chkpt
-    // Spawn one redo thread per new table found
-    for (; scan->valid(); scan->next()) {
-        if (scan->type() != sm_log_scan_mgr::LOG_FID)
-            continue;
-        recover_fid(scan);
-        FID fid = scan->fid();
-        if (max_fid < fid)
-            max_fid = fid;
-        futures.emplace_back(std::async(std::launch::async, redo_file,
-                                        scanner, chkpt_begin, fid));
+    // Use one redo thread per new table found
+    // XXX(tzwang): no support for dynamically created tables for now
+    // TODO(tzwang): figure out how this interacts with chkpt
+
+    // One hiwater_mark/capacity_mark per FID
+    FID max_fid = 0;
+    static std::vector<struct redo_runner> redoers;
+    if (redoers.size() == 0) {
+        auto *scan = scanner->new_log_scan(chkpt_begin, sysconf::eager_warm_up());
+        for (; scan->valid(); scan->next()) {
+            if (scan->type() != sm_log_scan_mgr::LOG_FID)
+                continue;
+            FID fid = scan->fid();
+            max_fid = std::max(fid, max_fid);
+            redoers.emplace_back(scanner, chkpt_begin, fid, recover_fid(scan));
+        }
+        delete scan;
     }
 
-    // Now recover allocator status
-    // Note: must do this before opening indexes, because each index itself
-    // uses an OID array (for the tree itself), which is allocated thru
-    // alloc_oid. So we need to fix the watermarks here to make sure trees
-    // don't get some already allocated FID.
-    for (auto & f : futures) {
-        auto h = f.get();
-        if (h.second)
-            oidmgr->recreate_allocator(h.first, h.second);
+    if (redoers.size() == 0) {
+        for (auto &fm : fid_map) {
+            FID fid = fm.second.first;
+            ASSERT(fid);
+            max_fid = std::max(fid, max_fid);
+            redoers.emplace_back(scanner, chkpt_begin, fid, fm.second.second);
+        }
     }
 
-    // Fix internal files' marks too
+    // Fix internal files' marks
     oidmgr->recreate_allocator(sm_oid_mgr_impl::OBJARRAY_FID, max_fid);
     oidmgr->recreate_allocator(sm_oid_mgr_impl::ALLOCATOR_FID, max_fid);
     //oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
 
-    // So by now we will have a fully working database, once index is rebuilt.
+    process:
+    for (auto &r : redoers) {
+        // Scan the rest of the log
+        r.chkpt_begin = chkpt_begin;
+        r.scanner = scanner;
+        if (not r.done and not r.is_impersonated() and r.try_impersonate()) {
+            r.start();
+        }
+    }
+
+    for (auto &r : redoers) {
+        if (r.is_impersonated()) {
+            r.join();
+            goto process;
+        }
+    }
+
     // WARNING: DO NOT TAKE CHKPT UNTIL WE REPLAYED ALL INDEXES!
     // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
     //
     // For easier measurement (like "how long does it take to bring the
     // system back to fully memory-resident after recovery), we spawn the
     // warm-up thread after rebuilding indexes as well.
+    if (sysconf::lazy_warm_up())
+        oidmgr->start_warm_up();
 }
 
-std::pair<FID, OID>
+void
+sm_log::redo_runner::my_work(char *)
+{
+    auto himark = redo_file(scanner, chkpt_begin, fid);
+
+    // Now recover allocator status
+    // Note: must do this before opening indexes, because each index itself
+    // uses an OID array (for the tree itself), which is allocated thru
+    // alloc_oid. So we need to fix the watermarks here to make sure trees
+    // don't get some already allocated FID.
+    if (himark)
+        oidmgr->recreate_allocator(fid, himark);
+
+    rebuild_index(scanner, fid, fid_index);
+    done = true;
+    __sync_synchronize();
+}
+
+FID
 sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
 {
-    // Pin myself somewhere so I can get memory...
-    sysconf::pin_current_thread(sysconf::my_thread_id());
     ASSERT(oidmgr->file_exists(fid));
-	RCU::rcu_register();
     RCU::rcu_enter();
     OID himark = 0;
     uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
@@ -301,8 +323,7 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
 
     delete scan;
     RCU::rcu_exit();
-    RCU::rcu_deregister();
-    return std::make_pair(fid, himark);
+    return himark;
 }
 
 // The version-loading mechanism will only dig out the latest
@@ -373,7 +394,7 @@ sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
     //printf("[Recovery] update: FID=%d OID=%d\n", f, o);
 }
 
-void
+ndb_ordered_index*
 sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
 {
     FID f = logrec->fid();
@@ -381,24 +402,26 @@ sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
     char *buf = (char *)malloc(sz);
     logrec->load_object(buf, sz);
     std::string name(buf);
-    fid_map.emplace(name, std::make_pair(f, (ndb_ordered_index *)NULL));
+    // XXX(tzwang): no support for dynamically created tables for now
+    ASSERT(fid_map.find(name) != fid_map.end());
+    ASSERT(fid_map[name].second);
+    fid_map[name].first = f;  // fill in the fid
     ASSERT(not oidmgr->file_exists(f));
     oidmgr->recreate_file(f);
+    fid_map[name].second->set_btr_fid(f);
     printf("[Recovery: log] FID(%s) = %d\n", buf, f);
     free(buf);
+    return fid_map[name].second;
 }
 
 std::pair<std::string, uint64_t>
-sm_log::rebuild_index(FID fid, ndb_ordered_index *index)
+sm_log::rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index)
 {
     uint64_t count = 0;
-    RCU::rcu_register();
     RCU::rcu_enter();
-    //LSN chkpt_begin = get_impl(logmgr)->_lm._lm.get_chkpt_start();
-    //auto *scan = logmgr->get_scan_mgr()->new_log_scan(chkpt_begin, true);
     // This has to start from the beginning of the log for now, because we
     // don't checkpoint the key-oid pair.
-    auto *scan = logmgr->get_scan_mgr()->new_log_scan(LSN{0x1ff}, true);
+    auto *scan = scanner->new_log_scan(LSN{0x1ff}, true);
     for (; scan->valid(); scan->next()) {
         if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
             continue;
@@ -422,28 +445,5 @@ sm_log::rebuild_index(FID fid, ndb_ordered_index *index)
     }
     delete scan;
     RCU::rcu_exit();
-    RCU::rcu_deregister();
     return make_pair(index->name, count);
-}
-
-void
-sm_log::recover_index()
-{
-    std::vector<std::future<std::pair<std::string, uint64_t> > > futures;
-    for (auto &e : fid_map) {
-        ndb_ordered_index *index = e.second.second;
-        FID fid = e.second.first;
-        futures.emplace_back(std::async(std::launch::async, rebuild_index, fid, index));
-    }
-
-    for (auto &f : futures) {
-        std::pair<std::string, uint64_t> r = f.get();
-        printf("[Recovery] %s index inserts: %lu\n", r.first.c_str(), r.second);
-    }
-
-    // XXX (tzwang): this doesn't belong here, but recover_index is invoked
-    // by the benchmark code after opened indexes. Putting this in the
-    // benchmark code looks even uglier...
-    if (sysconf::lazy_warm_up())
-        oidmgr->start_warm_up();
 }
