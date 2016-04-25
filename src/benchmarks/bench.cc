@@ -224,6 +224,8 @@ bench_runner::run()
       std::cout << "[Primary] " << sysconf::num_backups << " backups\n";
     }
     getchar();
+  } else if (sysconf::is_backup_srv) {
+    getchar();
   }
 
   map<string, size_t> table_sizes_before;

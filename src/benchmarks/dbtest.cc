@@ -349,12 +349,7 @@ main(int argc, char **argv)
   // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)
   sysconf::sanity_check();
   db = new ndb_wrapper();
-  if (not sysconf::is_backup_srv) {
-    test_fn(db, argc, new_argv);
-  } else {
-    getchar();
-    test_fn(db, argc, new_argv);
-  }
+  test_fn(db, argc, new_argv);
   delete db;
   return 0;
 }
