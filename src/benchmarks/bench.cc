@@ -11,6 +11,7 @@
 #include <sys/sysinfo.h>
 
 #include "bench.h"
+#include "ndb_wrapper.h"
 
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-chkpt.h"
@@ -132,11 +133,45 @@ retry:
 }
 
 void
+bench_runner::create_files_task(char *)
+{
+  ALWAYS_ASSERT(sysconf::log_dir.size());
+  ALWAYS_ASSERT(not logmgr);
+  ALWAYS_ASSERT(not oidmgr);
+  RCU::rcu_enter();
+  logmgr = sm_log::new_log(sm_log::recover, NULL);
+  ASSERT(oidmgr);
+  RCU::rcu_exit();
+
+  if (not sm_log::need_recovery && not sysconf::is_backup_srv) {
+    // allocate an FID for each table
+    for (auto &index : fid_map) {
+      ALWAYS_ASSERT(index.second.second);
+      auto fid = oidmgr->create_file(true);
+      index.second.first = fid;
+      index.second.second->set_btr_fid(fid);
+      // log [table name, FID]
+      ASSERT(logmgr);
+      RCU::rcu_enter();
+      sm_tx_log *log = logmgr->new_tx_log();
+      log->log_fid(fid, index.first);
+      log->commit(NULL);
+      RCU::rcu_exit();
+    }
+  }
+}
+
+void
 bench_runner::run()
 {
   // get a thread to set the stage (e.g., create tables etc)
   auto* runner_thread = thread::get_thread();
   thread::sm_thread::task_t runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
+  runner_thread->start_task(runner_task);
+  runner_thread->join();
+
+  // start another task to create the logmgr and FIDs backing each table
+  runner_task = std::bind(&bench_runner::create_files_task, this, std::placeholders::_1);
   runner_thread->start_task(runner_task);
   runner_thread->join();
   thread::put_thread(runner_thread);

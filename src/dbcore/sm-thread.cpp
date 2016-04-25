@@ -23,17 +23,19 @@ void sm_thread::idle_task() {
   while (not volatile_read(shutdown)) {
     if (volatile_read(has_work)) {
       task(task_input);
-      auto my_offset = logmgr->get_tls_lsn_offset();
-      // Must use a while loop here instead of using logmgr->wait_for_durable();
-      // otherwise the N-1 out of N threads reached here at the same time will
-      // stuck - only the first guy can return from wait_for_durable() and the
-      // rest will wait indefinitely because flush() always flushes up to the
-      // smallest tls_lsn_offset. Invoking flush at the same time results in the
-      // same smallest offset and stuck at wait_for_durable. 
-      while (logmgr->durable_flushed_lsn().offset() < my_offset) {
-        logmgr->flush();
+      if (logmgr) {  // logmgr might be null during recovery
+        auto my_offset = logmgr->get_tls_lsn_offset();
+        // Must use a while loop here instead of using logmgr->wait_for_durable();
+        // otherwise the N-1 out of N threads reached here at the same time will
+        // stuck - only the first guy can return from wait_for_durable() and the
+        // rest will wait indefinitely because flush() always flushes up to the
+        // smallest tls_lsn_offset. Invoking flush at the same time results in the
+        // same smallest offset and stuck at wait_for_durable.
+        while (logmgr->durable_flushed_lsn().offset() < my_offset) {
+          logmgr->flush();
+        }
+        logmgr->set_tls_lsn_offset(0);  // clear thread as if did nothing!
       }
-      logmgr->set_tls_lsn_offset(0);  // clear thread as if did nothing!
       volatile_write(has_work, false);
     }
     // FIXME(tzwang): add a work queue so we can

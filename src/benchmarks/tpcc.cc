@@ -2446,9 +2446,6 @@ public:
 
 #undef OPEN_TABLESPACE_X
 
-    if (sm_log::need_recovery)
-        logmgr->recover_index();
-
     for (auto &t : partitions) {
       auto v = unique_filter(t.second);
       for (size_t i = 0; i < v.size(); i++)

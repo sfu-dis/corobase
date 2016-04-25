@@ -18,8 +18,8 @@ protected:
 
 public:
 
-  ndb_wrapper();
-  ~ndb_wrapper();
+  ndb_wrapper() {}
+  ~ndb_wrapper() {}
 
   virtual ssize_t txn_max_batch_size() const OVERRIDE { return 100; }
 
@@ -51,7 +51,9 @@ protected:
   typedef private_::ndbtxn ndbtxn;
 
 public:
-  ndb_ordered_index(const std::string &name, FID fid, size_t value_size_hint, bool mostly_append);
+  ndb_ordered_index(const std::string &name, size_t value_size_hint, bool mostly_append) :
+    name(name), btr(value_size_hint, mostly_append, name) {}
+
   virtual rc_t get(
       void *txn,
       const varstr &key,
@@ -92,6 +94,7 @@ public:
       varstr &&key);
   virtual size_t size() const;
   virtual std::map<std::string, uint64_t> clear();
+  inline void set_btr_fid(FID fid) { btr.set_tuple_vec(fid); }
 private:
   std::string name;
   txn_btree btr;

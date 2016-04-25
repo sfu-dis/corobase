@@ -132,7 +132,6 @@ public:
   ~sm_runner() {
     if (me) {
       join();
-      put_thread(me);
     }
   }
 
@@ -150,7 +149,11 @@ public:
     return me != nullptr;
   }
 
-  inline void join() { me->join(); }
+  inline void join() {
+    me->join();
+    put_thread(me);
+    me = nullptr;
+  }
   inline bool is_impersonated() { return me != nullptr; }
 
 private:
