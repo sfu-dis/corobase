@@ -2565,7 +2565,7 @@ tpcc_do_test(abstract_db *db, int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "r:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:w:s:t:n:p:q:z", long_options, &option_index);
     if (c == -1)
       break;
     switch (c) {
