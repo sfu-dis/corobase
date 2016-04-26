@@ -76,7 +76,7 @@ void primary_server_daemon() {
 
     // wait for ack from the backup
     expect_ack(rnode->sockfd);
-    printf("[Primary] Backup %s received log\n", rnode->sock_addr);
+    //printf("[Primary] Backup %s received log\n", rnode->sock_addr);
   } while (++sysconf::num_active_backups < sysconf::num_backups);
 }
 
@@ -111,7 +111,7 @@ void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
 
   auto sent_bytes = send(backup_fd, metadata, metadata_size, 0);
   ALWAYS_ASSERT(sent_bytes == metadata_size);
-  printf("[Primary] %s: sent %ld bytes of metadata\n", log_fname, sent_bytes);
+  //printf("[Primary] %s: sent %ld bytes of metadata\n", log_fname, sent_bytes);
 
   // Now we can send the file, in one go with sendfile()
   if (st.st_size) {
@@ -119,7 +119,7 @@ void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
     sent_bytes = sendfile(backup_fd, log_fd, &offset, st.st_size);
     ALWAYS_ASSERT(sent_bytes == st.st_size);
     ALWAYS_ASSERT(offset == st.st_size);
-    printf("[Primary] %s: %ld bytes, sent %ld bytes\n", log_fname, st.st_size, sent_bytes);
+    //printf("[Primary] %s: %ld bytes, sent %ld bytes\n", log_fname, st.st_size, sent_bytes);
   }
 }
 
@@ -134,13 +134,13 @@ void primary_ship_log_buffer(
   THROW_IF(nbytes != sizeof(lph), log_file_error, "Incomplete log shipping (header)");
   nbytes = send(bnode->sockfd, buf, size, 0);
   THROW_IF(nbytes != size, log_file_error, "Incomplete log shipping (data)");
-  printf("[Primary] Shipped %lu bytes of log (%lx-%lx, segment %d) to backup %s\n",
-    nbytes, lph.start_lsn.offset(), lph.end_lsn.offset(), lph.start_lsn.segment(), bnode->sock_addr);
+  //printf("[Primary] Shipped %lu bytes of log (%lx-%lx, segment %d) to backup %s\n",
+  //  nbytes, lph.start_lsn.offset(), lph.end_lsn.offset(), lph.start_lsn.segment(), bnode->sock_addr);
 
   // expect an ack message
   expect_ack(bnode->sockfd);
-  printf("[Primary] Backup %s received log %lx-%lx\n",
-    bnode->sock_addr, lph.start_lsn.offset(), lph.end_lsn.offset());
+  //printf("[Primary] Backup %s received log %lx-%lx\n",
+  //  bnode->sock_addr, lph.start_lsn.offset(), lph.end_lsn.offset());
 }
 
 void primary_ship_log_buffer_all(const char *buf, LSN start_lsn, LSN end_lsn, size_t size) {
@@ -166,7 +166,7 @@ void start_as_primary() {
 
   // flush the log so we can really ship it
   LSN dlsn = logmgr->flush();
-  std::cout << "[Primary] durable LSN offset: " << dlsn.offset() << "\n";
+  //std::cout << "[Primary] durable LSN offset: " << dlsn.offset() << "\n";
 
   for (auto *r = result; r; r = r->ai_next) {
     int sockfd = socket(r->ai_family, r->ai_socktype, r->ai_protocol);
@@ -217,14 +217,14 @@ void backup_daemon() {
     ASSERT(sid->make_lsn(lph.end_lsn.offset()) == lph.end_lsn);
 
     // expect the real log data
-    std::cout << "[Backup] Will receive " << lph.data_size() << " bytes\n";
+    //std::cout << "[Backup] Will receive " << lph.data_size() << " bytes\n";
     ALWAYS_ASSERT(lph.data_size());
     auto& logbuf = logmgr->get_logbuf();
     char *buf = logbuf.write_buf(sid->buf_offset(lph.start_lsn), lph.data_size());
     ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
     receive(primary_server.sockfd, buf, lph.data_size());
-    std::cout << "[Backup] Recieved " << lph.data_size() << " bytes ("
-      << std::hex << lph.start_lsn.offset() << "-" << lph.end_lsn.offset() << std::dec << ")\n";
+    //std::cout << "[Backup] Recieved " << lph.data_size() << " bytes ("
+    //  << std::hex << lph.start_lsn.offset() << "-" << lph.end_lsn.offset() << std::dec << ")\n";
 
     // now got the batch of log records, persist them
     if (sysconf::nvram_log_buffer) {
