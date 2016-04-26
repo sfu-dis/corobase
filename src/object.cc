@@ -41,6 +41,16 @@ object::create_tuple_object(fat_ptr ptr, fat_ptr nxt, epoch_num epoch, sm_log_re
 
     object *obj = new (MM::allocate(sz, 0)) object(ptr, nxt, epoch);
 
+    // If this is a backup server with NVRAM log buffer, then we might be
+    // trying to read a tuple that appears to be available in the OID array
+    // but its data is still in the buffer - not safe to dig out from the
+    // log buffer as it might be receiving a new batch from the primary.
+    // So spin here until the tuple is flushed from NVRAM to disk.
+    // XXX(tzwang): for now we can't flush - need coordinate with backup daemon
+    while (ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
+        ASSERT(sysconf::is_backup_srv);
+    }
+
     // Load tuple varstr from the log
     dbtuple* tuple = obj->tuple();
     new (tuple) dbtuple(sz);
