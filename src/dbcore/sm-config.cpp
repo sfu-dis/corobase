@@ -26,6 +26,8 @@ uint64_t sysconf::node_memory_gb = 12;
 int sysconf::recovery_warm_up_policy = sysconf::WARM_UP_NONE;
 int sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_NONE;
 int sysconf::nvram_log_buffer = 0;
+int sysconf::group_commit = 0;
+int sysconf::group_commit_queue_length = 5000;
 
 uint32_t sysconf::max_threads_per_node = 0;
 bool sysconf::loading = true;
@@ -47,4 +49,5 @@ sysconf::init() {
 
 void sysconf::sanity_check() {
     ALWAYS_ASSERT(numa_nodes);
+    ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
 }

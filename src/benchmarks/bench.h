@@ -105,6 +105,7 @@ typedef std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tx_stat;
 typedef std::map<std::string, tx_stat> tx_stat_map;
 
 class bench_worker : public thread::sm_runner {
+  friend class sm_log_alloc_mgr;
 public:
 
   bench_worker(unsigned int worker_id,
@@ -248,6 +249,8 @@ public:
   virtual void prepare(char *) = 0;
   void run();
   void create_files_task(char *);
+
+  static std::vector<bench_worker*> workers;
 
 protected:
   // only called once

@@ -24,6 +24,8 @@ public:
     static std::string log_dir;
     static int null_log_device;
     static int nvram_log_buffer;
+    static int group_commit;
+    static int group_commit_queue_length;  // how much to reserve
     static uint64_t node_memory_gb;
 
     // Warm-up policy when recovering from a chkpt or the log.

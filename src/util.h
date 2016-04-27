@@ -374,6 +374,11 @@ public:
     return ((uint64_t)tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
+  inline uint64_t get_start()
+  {
+    return start;
+  }
+
 private:
 
   uint64_t start;

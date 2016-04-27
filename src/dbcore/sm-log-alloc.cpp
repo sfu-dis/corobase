@@ -1,7 +1,9 @@
+#include "sm-config.h"
 #include "sm-log-alloc.h"
 #include "stopwatch.h"
+#include "../benchmarks/bench.h"
 #include "../macros.h"
-#include "sm-config.h"
+#include "../util.h"
 
 using namespace RCU;
 
@@ -60,6 +62,10 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_function *rfn, void *rfn_arg)
     sysconf::_active_threads = 0;
     _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * sysconf::MAX_THREADS);
     memset(_tls_lsn_offset, 0, sizeof(uint64_t) * sysconf::MAX_THREADS);
+    _commit_queue = new commit_queue[sysconf::worker_threads];
+    for (uint32_t i = 0; i < sysconf::worker_threads; ++i) {
+        _commit_queue[i].lm = this;
+    }
 
     // fire up the log writing daemon
     _write_daemon_mutex.lock();
@@ -83,6 +89,73 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr()
     
     int err = pthread_join(_write_daemon_tid, NULL);
     THROW_IF(err, os_error, err, "Unable to join log writer daemon thread");
+}
+
+void
+sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id, uint64_t start_time)
+{
+    ALWAYS_ASSERT(worker_id < sysconf::worker_threads);
+    _commit_queue[worker_id].push_back(get_tls_lsn_offset(), start_time);
+}
+
+void
+sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn, uint64_t start_time)
+{
+retry:
+    lock.lock();
+    if (start == (end + 1) % sysconf::group_commit_queue_length) {
+        // max_queue_length is too small?
+        lock.unlock();
+        if (sysconf::nvram_log_buffer) {
+            // just persist it, no need to flush to disk
+            auto persist_lsn_offset = logmgr->persist_log_buffer();
+            util::timer t;
+            lm->dequeue_committed_xcts(persist_lsn_offset, t.get_start());
+        }
+        else {
+            logmgr->flush();
+        }
+        goto retry;
+    }
+    volatile_write(queue[end].first, lsn);
+    volatile_write(queue[end].second, start_time);
+    volatile_write(end, (end + 1) % sysconf::group_commit_queue_length);
+    lock.unlock();
+}
+
+void
+sm_log_alloc_mgr::commit_queue::pop_front(uint32_t nelems)
+{
+    lock.lock();
+    for (uint32_t i = 0; i < nelems; ++i) {
+        queue[(start + i) % sysconf::group_commit_queue_length].first = 0;
+        queue[(start + i) % sysconf::group_commit_queue_length].second = 0;
+    }
+    volatile_write(start, (start + nelems) % sysconf::group_commit_queue_length);
+    lock.unlock();
+}
+
+void
+sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto, uint64_t end_time)
+{
+    for (uint32_t i = 0; i < sysconf::worker_threads; i++) {
+        uint32_t to_dequeue = 0;
+        _commit_queue[i].lock.lock();
+        auto slot = volatile_read(_commit_queue[i].start);
+        auto end = volatile_read(_commit_queue[i].end);
+        while (slot != end) {
+            auto &entry = _commit_queue[i].queue[slot];
+            if (volatile_read(entry.first) > upto) {
+                break;
+            }
+            bench_runner::workers[i]->latency_numer_us += (end_time - volatile_read(entry.second));
+            ++to_dequeue;
+            slot = (slot + 1) % sysconf::group_commit_queue_length;
+        }
+        ALWAYS_ASSERT(_commit_queue[i].size() >= to_dequeue);
+        _commit_queue[i].lock.unlock();
+        _commit_queue[i].pop_front(to_dequeue);
+    }
 }
 
 uint64_t
@@ -131,8 +204,6 @@ sm_log_alloc_mgr::update_wait_durable_mark(uint64_t lsn_offset)
 
 /* Flush the log buffer, wait for the daemon to finish, and return
  * a durable lsn.
- *
- * tzwang: the caller so far is only the chkpt thread.
  */
 LSN
 sm_log_alloc_mgr::flush()
@@ -267,6 +338,11 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
 
         if (update_dmark)
             _lm.update_durable_mark(durable_sid->make_lsn(_durable_flushed_lsn_offset));
+
+        if (sysconf::group_commit) {
+            util::timer t;
+            dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
+        }
     }
     return durable_sid;
 }

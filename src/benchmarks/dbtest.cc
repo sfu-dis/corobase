@@ -77,6 +77,8 @@ main(int argc, char **argv)
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
       {"nvram-log-buffer"           , no_argument       , &sysconf::nvram_log_buffer , 1},
+      {"group-commit"               , no_argument       , &sysconf::group_commit     , 1},
+      {"group-commit-queue-length"  , required_argument , 0                          , 'j'},
       {"node-memory-gb"             , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
@@ -96,7 +98,7 @@ main(int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:g:a:i:",
+    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:g:a:i:j:",
                         long_options, &option_index);
     if (c == -1)
       break;
@@ -113,6 +115,10 @@ main(int argc, char **argv)
 
     case 'p':
       sysconf::node_memory_gb = strtoul(optarg, NULL, 10);
+      break;
+
+    case 'j':
+      sysconf::group_commit_queue_length = strtoul(optarg, NULL, 10);
       break;
 
     case 'g':
@@ -272,6 +278,8 @@ main(int argc, char **argv)
 #else
     cerr << "  var-encode  : no"                            << endl;
 #endif
+    cerr << "  group-commit: " << sysconf::group_commit     << endl;
+    cerr << "  commit-queue: " << sysconf::group_commit_queue_length << endl;
     cerr << "  tmpfs-dir   : " << sysconf::tmpfs_dir        << endl;
     cerr << "  log-dir     : " << sysconf::log_dir          << endl;
     cerr << "  log-segment-mb: " << sysconf::log_segment_mb   << endl;
