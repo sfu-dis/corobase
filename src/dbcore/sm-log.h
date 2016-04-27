@@ -388,9 +388,10 @@ struct sm_log {
 
     window_buffer &get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
-    void persist_log_buffer() { /** dummy **/ }
+    uint64_t persist_log_buffer();
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
     void redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn);
+    void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
 
     virtual ~sm_log() { }
 

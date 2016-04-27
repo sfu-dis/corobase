@@ -2,6 +2,8 @@
 #ifndef __SM_LOG_ALLOC_H
 #define __SM_LOG_ALLOC_H
 
+#include <deque>
+#include "../spinlock.h"
 #include "sm-log-recover.h"
 
 /* The log block allocator.
@@ -74,6 +76,8 @@ struct sm_log_alloc_mgr {
     void _kick_log_write_daemon();
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_dlsn, bool update_dmark=false);
     uint64_t smallest_tls_lsn_offset();
+    void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
+    void dequeue_committed_xcts(uint64_t up_to, uint64_t end_time);
 
     sm_log_recover_mgr _lm;
     window_buffer _logbuf;
@@ -128,7 +132,28 @@ struct sm_log_alloc_mgr {
     // log buffer). The daemon is only responsible for flushing, ie making room in the
     // log buffer to take more transactions.
     uint64_t *_tls_lsn_offset;
-    uint64_t _lsn_offset;
+    uint64_t _lsn_offset CACHE_ALIGNED;
+
+    // One queue per worker thread to account latency under group commit
+    // The flusher dequeues all entries from these vectors up to flushed_durable_lsn 
+    struct commit_queue {
+        // Each entry is a std::pair<lsn_offset, start_time>
+        std::vector<std::pair<uint64_t, uint64_t> > queue;
+        spinlock lock;  // well hopefully this won't be a bottleneck
+        uint32_t start;
+        uint32_t end;
+        sm_log_alloc_mgr *lm;
+        commit_queue() : start(0), end(0), lm(nullptr) {
+            queue.reserve(sysconf::group_commit_queue_length);
+            for (uint32_t i = 0; i < queue.capacity(); ++i) {
+                queue.emplace_back(0, 0);
+            }
+        }
+        void push_back(uint64_t lsn, uint64_t start_time);
+        void pop_front(uint32_t nelems = 1);
+        inline uint32_t size() { return end - start; }
+    };
+    commit_queue *_commit_queue;
 };
 
 #endif

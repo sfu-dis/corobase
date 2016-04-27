@@ -35,6 +35,8 @@ int retry_aborted_transaction = 0;
 int backoff_aborted_transaction = 0;
 int enable_chkpt = 0;
 
+std::vector<bench_worker*> bench_runner::workers;
+
 template <typename T>
 static void
 delete_pointers(const vector<T *> &pts)
@@ -88,10 +90,14 @@ retry:
 				const unsigned long old_seed = r.get_seed();
 				const auto ret = workload[i].fn(this);
 
-                if (likely(not rc_is_abort(ret))) {
+        if (likely(not rc_is_abort(ret))) {
 					++ntxn_commits;
-                    std::get<0>(txn_counts[i])++;
-					latency_numer_us += t.lap();
+          std::get<0>(txn_counts[i])++;
+          if (sysconf::group_commit) {
+            logmgr->enqueue_committed_xct(worker_id, t.get_start());
+          } else {
+            latency_numer_us += t.lap();
+          }
 					backoff_shifts >>= 1;
 				} else {
 					++ntxn_aborts;
@@ -241,7 +247,7 @@ bench_runner::run()
   // Persist the database
   logmgr->flush();
 
-  const vector<bench_worker *> workers = make_workers();
+  workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it)

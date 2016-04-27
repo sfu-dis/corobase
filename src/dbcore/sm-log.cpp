@@ -12,6 +12,14 @@ using namespace RCU;
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 
+uint64_t
+sm_log::persist_log_buffer()
+{
+    ALWAYS_ASSERT(sysconf::nvram_log_buffer);
+    /** dummy. FIXME(tzwang) **/
+    return get_impl(this)->_lm.smallest_tls_lsn_offset();
+}
+
 void
 sm_log::set_tls_lsn_offset(uint64_t offset)
 {
@@ -46,6 +54,11 @@ segment_id *
 sm_log::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
 {
     return get_impl(this)->_lm.flush_log_buffer(logbuf, new_dlsn_offset, update_dmark);
+}
+
+void sm_log::enqueue_committed_xct(uint32_t worker_id, uint64_t start_time)
+{
+    get_impl(this)->_lm.enqueue_committed_xct(worker_id, start_time);
 }
 
 LSN
