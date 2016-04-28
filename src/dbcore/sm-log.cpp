@@ -239,7 +239,8 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
     oidmgr->recreate_allocator(sm_oid_mgr_impl::ALLOCATOR_FID, max_fid);
     //oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
 
-    process:
+    uint32_t done = 0;
+process:
     for (auto &r : redoers) {
         // Scan the rest of the log
         r.chkpt_begin = chkpt_begin;
@@ -249,10 +250,17 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
         }
     }
 
-    for (auto &r : redoers) {
-        if (r.is_impersonated()) {
-            r.join();
-            goto process;
+    // Loop over existing redoers to scavenge and reuse available threads
+    while (done < redoers.size()) {
+        for (auto &r : redoers) {
+            if (r.is_impersonated() and r.try_join()) {
+                if (++done < redoers.size()) {
+                    goto process;
+                }
+                else {
+                    break;
+                }
+            }
         }
     }
 

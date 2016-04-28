@@ -188,6 +188,7 @@ bench_runner::run()
     const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
     {
       scoped_timer t("dataloading", verbose);
+      uint32_t done = 0;
     process:
       for (uint i = 0; i < loaders.size(); i++) {
         auto* loader = loaders[i];
@@ -195,13 +196,17 @@ bench_runner::run()
           loader->start();
         }
       }
-      for (uint i = 0; i < loaders.size(); i++) {
-        auto* loader = loaders[i];
-        if (loader and loader->is_impersonated()) {
-          loader->join();
-          loader->~bench_loader();
-          loaders[i] = nullptr;
-          goto process;
+
+      // Loop over existing loaders to scavenge and reuse available threads
+      while (done < loaders.size()) {
+        for (uint i = 0; i < loaders.size(); i++) {
+          auto* loader = loaders[i];
+          if (loader and loader->is_impersonated() and loader->try_join()) {
+            loader->~bench_loader();
+            loaders[i] = nullptr;
+            done++;
+            goto process;
+          }
         }
       }
     }

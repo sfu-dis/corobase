@@ -53,6 +53,10 @@ struct sm_thread {
     while (volatile_read(has_work)) { /** spin **/}
   }
 
+  inline bool try_join() {
+    return not volatile_read(has_work);
+  }
+
   inline void destroy() {
     volatile_write(shutdown, true);
   }
@@ -155,6 +159,14 @@ public:
     me = nullptr;
   }
   inline bool is_impersonated() { return me != nullptr; }
+  inline bool try_join() {
+    if (me->try_join()) {
+      put_thread(me);
+      me = nullptr;
+      return true;
+    }
+    return false;
+  }
 
 private:
   sm_thread *me;
