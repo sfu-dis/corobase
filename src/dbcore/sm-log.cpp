@@ -265,6 +265,11 @@ process:
         }
     }
 
+    // Reset redoer states for backup servers to reuse
+    for (auto &r : redoers) {
+        r.done = false;
+    }
+
     // WARNING: DO NOT TAKE CHKPT UNTIL WE REPLAYED ALL INDEXES!
     // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
     //
