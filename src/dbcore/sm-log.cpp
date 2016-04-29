@@ -280,10 +280,9 @@ sm_log::redo_runner::my_work(char *)
     auto himark = redo_file(scanner, chkpt_begin, fid);
 
     // Now recover allocator status
-    // Note: must do this before opening indexes, because each index itself
-    // uses an OID array (for the tree itself), which is allocated thru
-    // alloc_oid. So we need to fix the watermarks here to make sure trees
-    // don't get some already allocated FID.
+    // Note: indexes currently don't use an OID array for themselves
+    // (ie for tree nodes) so it's safe to do this any time as long
+    // as it's before starting to process new transactions.
     if (himark)
         oidmgr->recreate_allocator(fid, himark);
 
