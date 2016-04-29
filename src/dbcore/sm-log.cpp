@@ -12,6 +12,9 @@ using namespace RCU;
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 
+#define SEPARATE_INDEX_REBUILD 0
+std::unordered_map<FID, ndb_ordered_index *> reverse_fid_map;
+
 uint64_t
 sm_log::persist_log_buffer()
 {
@@ -192,12 +195,10 @@ sm_log::wait_for_durable_flushed_lsn_offset(uint64_t offset)
  * Note that alloc_oid hasn't been used so far, and the caching structures
  * should all be empty.
  *
- * A second scan then starts (again from the beginning of the log) to rebuild
- * indexes. Note that the previous step on recreate allocators must be done
- * before index rebuild, because each index's tree data structure will use
- * create_file and alloc_oid to store their nodes. So we need to make the OID
- * allocators (esp. the internal files) ready to avoid allocating already-
- * allocated OIDs.
+ * The SEPARATE_INDEX_REBUILD macro defines whether we insert into indexs while
+ * redoing LOG_INSERT. If so, there is no need for another pass of scanning the
+ * log to rebuild indexes (rebuild_index()). Otherwise a second scan then starts
+ * (again from the beginning of the log) to rebuild indexes.
  */
 void
 sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
@@ -286,7 +287,10 @@ sm_log::redo_runner::my_work(char *)
     if (himark)
         oidmgr->recreate_allocator(fid, himark);
 
+#if SEPARATE_INDEX_REBUILD
     rebuild_index(scanner, fid, fid_index);
+#endif
+
     done = true;
     __sync_synchronize();
 }
@@ -320,7 +324,9 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
             break;
         case sm_log_scan_mgr::LOG_INSERT_INDEX:
             iicount++;
-            // ignore for now, we redo this in open_index
+#if SEPARATE_INDEX_REBUILD == 0
+            recover_index_insert(scan);
+#endif
             break;
         case sm_log_scan_mgr::LOG_INSERT:
             icount++;
@@ -330,7 +336,7 @@ sm_log::redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid)
         case sm_log_scan_mgr::LOG_CHKPT:
             break;
         case sm_log_scan_mgr::LOG_FID:
-            // The main recover function should already did this
+            // The main recover function should have already did this
             ASSERT(oidmgr->file_exists(fid));
             break;
         default:
@@ -398,6 +404,40 @@ sm_log::recover_insert(sm_log_scan_mgr::record_scan *logrec)
 }
 
 void
+sm_log::recover_index_insert(sm_log_scan_mgr::record_scan *logrec)
+{
+    ASSERT(SEPARATE_INDEX_REBUILD == 0);
+    recover_index_insert(logrec, reverse_fid_map[logrec->fid()]);
+}
+
+void
+sm_log::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index)
+{
+    auto sz = logrec->payload_size();
+    static __thread char *buf;
+    static __thread uint64_t buf_size;
+    if (unlikely(not buf)) {
+        buf = (char *)MM::allocate(sz, 0);
+        buf_size = align_up(sz);
+    } else if (unlikely(buf_size < sz)) {
+        MM::deallocate(fat_ptr::make(buf, encode_size_aligned(buf_size)));
+        buf = (char *)MM::allocate(sz, 0);
+        buf_size = sz;
+    }
+    logrec->load_object(buf, sz);
+
+    // Extract the real key length (don't use varstr.data()!)
+    size_t len = ((varstr *)buf)->size();
+    ASSERT(align_up(len + sizeof(varstr)) == sz);
+
+    // Construct the varkey (skip the varstr struct then it's data)
+    varkey key((uint8_t *)((char *)buf + sizeof(varstr)), len);
+
+    //printf("key %s %s\n", (char *)key.data(), buf);
+    ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, logrec->oid(), NULL));
+}
+
+void
 sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
 {
     FID f = logrec->fid();
@@ -430,51 +470,28 @@ sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
     ASSERT(not oidmgr->file_exists(f));
     oidmgr->recreate_file(f);
     fid_map[name].second->set_btr_fid(f);
+    reverse_fid_map.emplace(f, fid_map[name].second);
     printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
     return fid_map[name].second;
 }
 
-std::pair<std::string, uint64_t>
+void
 sm_log::rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index)
 {
+    ALWAYS_ASSERT(SEPARATE_INDEX_REBUILD);
     uint64_t count = 0;
     RCU::rcu_enter();
     // This has to start from the beginning of the log for now, because we
     // don't checkpoint the key-oid pair.
     auto *scan = scanner->new_log_scan(LSN{0x1ff}, true);
-    char *buf = NULL;
-    uint64_t buf_size = 0;
     for (; scan->valid(); scan->next()) {
         if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
             continue;
         // Below ASSERT has to go as the object might be already deleted
         //ASSERT(oidmgr->oid_get(fid, scan->oid()).offset());
-        auto sz = scan->payload_size();
-        if (not buf) {
-            buf = (char *)MM::allocate(sz, 0);
-            buf_size = align_up(sz);
-        } else if (buf_size < sz) {
-            MM::deallocate(fat_ptr::make(buf, encode_size_aligned(buf_size)));
-            buf = (char *)MM::allocate(sz, 0);
-            buf_size = sz;
-        }
-        scan->load_object(buf, sz);
-
-        // Extract the real key length (don't use varstr.data()!)
-        size_t len = ((varstr *)buf)->size();
-        ASSERT(align_up(len + sizeof(varstr)) == sz);
-
-        // Construct the varkey (skip the varstr struct then it's data)
-        varkey key((uint8_t *)((char *)buf + sizeof(varstr)), len);
-
-        //printf("key %s %s\n", (char *)key.data(), buf);
-        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, scan->oid(), NULL));
+        recover_index_insert(scan, index);
         count++;
-    }
-    if (buf) {
-        MM::deallocate(fat_ptr::make(buf, encode_size_aligned(buf_size)));
     }
     delete scan;
     RCU::rcu_exit();
-    return make_pair(index->name, count);
 }

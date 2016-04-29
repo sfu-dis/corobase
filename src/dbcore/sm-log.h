@@ -397,15 +397,15 @@ struct sm_log {
 
 private:
     static void recover_insert(sm_log_scan_mgr::record_scan *logrec);
+    static void recover_index_insert(sm_log_scan_mgr::record_scan *logrec);
     static void recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete = false);
     static fat_ptr recover_prepare_version(
                                 sm_log_scan_mgr::record_scan *logrec,
                                 fat_ptr next);
     static ndb_ordered_index *recover_fid(sm_log_scan_mgr::record_scan *logrec);
-
-public:
-    static std::pair<std::string, uint64_t> rebuild_index(
-      sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index);
+    static void recover_index_insert(
+        sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index);
+    static void rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index);
 
 protected:
     // Forbid direct instantiation
