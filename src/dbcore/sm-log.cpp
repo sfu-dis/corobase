@@ -278,6 +278,8 @@ process:
     // warm-up thread after rebuilding indexes as well.
     if (sysconf::lazy_warm_up())
         oidmgr->start_warm_up();
+
+    std::cout << "[Recovery] done\n";
 }
 
 void
