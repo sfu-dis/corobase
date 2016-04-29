@@ -418,11 +418,12 @@ sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
 ndb_ordered_index*
 sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
 {
+    static char name_buf[256];
     FID f = logrec->fid();
     auto sz = logrec->payload_size();
-    char *buf = (char *)malloc(sz);
-    logrec->load_object(buf, sz);
-    std::string name(buf);
+    ALWAYS_ASSERT(sz <= 256);  // 256 should be enough, revisit later if not
+    logrec->load_object(name_buf, sz);
+    std::string name(name_buf);
     // XXX(tzwang): no support for dynamically created tables for now
     ASSERT(fid_map.find(name) != fid_map.end());
     ASSERT(fid_map[name].second);
@@ -430,8 +431,7 @@ sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
     ASSERT(not oidmgr->file_exists(f));
     oidmgr->recreate_file(f);
     fid_map[name].second->set_btr_fid(f);
-    printf("[Recovery: log] FID(%s) = %d\n", buf, f);
-    free(buf);
+    printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
     return fid_map[name].second;
 }
 
@@ -443,13 +443,22 @@ sm_log::rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *inde
     // This has to start from the beginning of the log for now, because we
     // don't checkpoint the key-oid pair.
     auto *scan = scanner->new_log_scan(LSN{0x1ff}, true);
+    char *buf = NULL;
+    uint64_t buf_size = 0;
     for (; scan->valid(); scan->next()) {
         if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
             continue;
         // Below ASSERT has to go as the object might be already deleted
         //ASSERT(oidmgr->oid_get(fid, scan->oid()).offset());
         auto sz = scan->payload_size();
-        char *buf = (char *)malloc(sz);
+        if (not buf) {
+            buf = (char *)MM::allocate(sz, 0);
+            buf_size = align_up(sz);
+        } else if (buf_size < sz) {
+            MM::deallocate(fat_ptr::make(buf, encode_size_aligned(buf_size)));
+            buf = (char *)MM::allocate(sz, 0);
+            buf_size = sz;
+        }
         scan->load_object(buf, sz);
 
         // Extract the real key length (don't use varstr.data()!)
@@ -462,7 +471,9 @@ sm_log::rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *inde
         //printf("key %s %s\n", (char *)key.data(), buf);
         ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, scan->oid(), NULL));
         count++;
-        free((void *)buf);
+    }
+    if (buf) {
+        MM::deallocate(fat_ptr::make(buf, encode_size_aligned(buf_size)));
     }
     delete scan;
     RCU::rcu_exit();
