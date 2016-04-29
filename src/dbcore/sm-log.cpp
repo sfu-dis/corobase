@@ -220,7 +220,7 @@ sm_log::recover(void *arg, sm_log_scan_mgr *scanner,
                 continue;
             FID fid = scan->fid();
             max_fid = std::max(fid, max_fid);
-            redoers.emplace_back(scanner, chkpt_begin, fid, recover_fid(scan));
+            recover_fid(scan);
         }
         delete scan;
     }
@@ -418,7 +418,7 @@ sm_log::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete)
 ndb_ordered_index*
 sm_log::recover_fid(sm_log_scan_mgr::record_scan *logrec)
 {
-    static char name_buf[256];
+    static char name_buf[256];  // No CC for this, don't run multiple recover_fid() threads
     FID f = logrec->fid();
     auto sz = logrec->payload_size();
     ALWAYS_ASSERT(sz <= 256);  // 256 should be enough, revisit later if not
