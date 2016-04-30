@@ -146,7 +146,7 @@ bench_runner::create_files_task(char *)
   ALWAYS_ASSERT(not logmgr);
   ALWAYS_ASSERT(not oidmgr);
   RCU::rcu_enter();
-  logmgr = sm_log::new_log(new parallel_file_replay, NULL);
+  logmgr = sm_log::new_log(sysconf::recover_functor, nullptr);
   ASSERT(oidmgr);
   RCU::rcu_exit();
 

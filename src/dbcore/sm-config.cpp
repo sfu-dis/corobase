@@ -2,8 +2,10 @@
 #include <numa.h>
 #include "../macros.h"
 #include "sm-config.h"
+#include "sm-log-recover-impl.h"
 #include "sm-thread.h"
 #include <iostream>
+
 uint32_t sysconf::_active_threads = 0;
 uint32_t sysconf::worker_threads = 0;
 int sysconf::numa_nodes = 0;
@@ -28,6 +30,7 @@ int sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_NONE;
 int sysconf::nvram_log_buffer = 0;
 int sysconf::group_commit = 0;
 int sysconf::group_commit_queue_length = 5000;
+sm_log_recover_impl *sysconf::recover_functor = nullptr;
 
 uint32_t sysconf::max_threads_per_node = 0;
 bool sysconf::loading = true;
@@ -48,6 +51,7 @@ sysconf::init() {
 }
 
 void sysconf::sanity_check() {
+    ALWAYS_ASSERT(recover_functor);
     ALWAYS_ASSERT(numa_nodes);
     ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sm-config.h"
 #include "sm-thread.h"
 #include "sm-log-recover.h"
 
@@ -44,4 +45,23 @@ struct parallel_file_replay : public sm_log_recover_impl {
 };
 
 struct parallel_oid_replay : public sm_log_recover_impl {
+  struct redo_runner : public thread::sm_runner {
+    parallel_oid_replay *owner;
+    OID oid_partition;
+    bool done;
+
+    redo_runner(parallel_oid_replay *o, OID part) :
+      thread::sm_runner(), owner(o), oid_partition(part), done(false) {}
+    virtual void my_work(char *);
+    void redo_partition();
+  };
+
+  uint32_t nredoers;
+  std::vector<struct redo_runner> redoers;
+  sm_log_scan_mgr *scanner;
+  LSN chkpt_begin;
+
+  // Assuming probably 1 or 2 threads not available; revisit later
+  parallel_oid_replay() : nredoers(sysconf::worker_threads) {}
+  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
 };
