@@ -11,8 +11,9 @@
 #include <unistd.h>
 #include <sys/sysinfo.h>
 
-#include "../dbcore/sm-config.h"
 #include "../dbcore/sm-alloc.h"
+#include "../dbcore/sm-config.h"
+#include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
 #include "../dbcore/sm-thread.h"
 #include "bench.h"
@@ -52,6 +53,7 @@ main(int argc, char **argv)
   string bench_opts;
   free(curdir);
   int saw_run_spec = 0;
+  string replay_mode("oid");
 
   while (1) {
     static struct option long_options[] =
@@ -79,6 +81,7 @@ main(int argc, char **argv)
       {"nvram-log-buffer"           , no_argument       , &sysconf::nvram_log_buffer , 1},
       {"group-commit"               , no_argument       , &sysconf::group_commit     , 1},
       {"group-commit-queue-length"  , required_argument , 0                          , 'j'},
+      {"parallel-recovery-by"       , required_argument , 0                          , 'c'},
       {"node-memory-gb"             , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
@@ -111,6 +114,18 @@ main(int argc, char **argv)
 
     case 'a':
       sysconf::num_backups = strtoul(optarg, NULL, 10);
+      break;
+
+    case 'c':
+      replay_mode = string(optarg);
+      if (replay_mode == "oid") {
+        sysconf::recover_functor = new parallel_oid_replay;
+      } else if (replay_mode == "file") {
+        sysconf::recover_functor = new parallel_file_replay;
+      } else {
+        std::cout << "Invalid parallel replay mode: " << replay_mode << "\n";
+        abort();
+      }
       break;
 
     case 'p':
@@ -226,6 +241,11 @@ main(int argc, char **argv)
   else
     ALWAYS_ASSERT(false);
 
+  // parallel replay by oid partitions by default
+  if (not sysconf::recover_functor) {
+    sysconf::recover_functor = new parallel_oid_replay;
+  }
+
   sysconf::init();
   if (sysconf::log_dir.empty()) {
     cerr << "[ERROR] no log dir specified" << endl;
@@ -295,6 +315,7 @@ main(int argc, char **argv)
       cerr << "eager";
     }
     cerr << endl;
+    cerr << "  parallel-recover-by: " << replay_mode         << endl;
     cerr << "  log-ship-warm-up: ";
     if (sysconf::log_ship_warm_up_policy == sysconf::WARM_UP_NONE)
       cerr << "none";

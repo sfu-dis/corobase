@@ -5,6 +5,8 @@
 #include "sm-defs.h"
 #include "../macros.h"
 
+class sm_log_recover_impl;
+
 class sysconf {
 public:
     static uint32_t _active_threads;
@@ -26,6 +28,7 @@ public:
     static int nvram_log_buffer;
     static int group_commit;
     static int group_commit_queue_length;  // how much to reserve
+    static sm_log_recover_impl *recover_functor;
     static uint64_t node_memory_gb;
 
     // Warm-up policy when recovering from a chkpt or the log.
