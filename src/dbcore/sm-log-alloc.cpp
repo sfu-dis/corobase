@@ -124,18 +124,6 @@ retry:
 }
 
 void
-sm_log_alloc_mgr::commit_queue::pop_front(uint32_t nelems)
-{
-    lock.lock();
-    for (uint32_t i = 0; i < nelems; ++i) {
-        queue[(start + i) % sysconf::group_commit_queue_length].first = 0;
-        queue[(start + i) % sysconf::group_commit_queue_length].second = 0;
-    }
-    volatile_write(start, (start + nelems) % sysconf::group_commit_queue_length);
-    lock.unlock();
-}
-
-void
 sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto, uint64_t end_time)
 {
     for (uint32_t i = 0; i < sysconf::worker_threads; i++) {
@@ -148,13 +136,17 @@ sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto, uint64_t end_time)
             if (volatile_read(entry.first) > upto) {
                 break;
             }
-            bench_runner::workers[i]->latency_numer_us += (end_time - volatile_read(entry.second));
+            uint64_t worker_latency = volatile_read(bench_runner::workers[i]->latency_numer_us);
+            uint64_t latency = end_time - volatile_read(entry.second);
+            // Must do volatile_write here
+            volatile_write(bench_runner::workers[i]->latency_numer_us, worker_latency + latency);
             ++to_dequeue;
             slot = (slot + 1) % sysconf::group_commit_queue_length;
         }
         ALWAYS_ASSERT(_commit_queue[i].size() >= to_dequeue);
+        volatile_write(_commit_queue[i].start,
+          (volatile_read(_commit_queue[i].start) + to_dequeue) % sysconf::group_commit_queue_length);
         _commit_queue[i].lock.unlock();
-        _commit_queue[i].pop_front(to_dequeue);
     }
 }
 
