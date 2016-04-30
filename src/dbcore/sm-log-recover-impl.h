@@ -61,7 +61,6 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   sm_log_scan_mgr *scanner;
   LSN chkpt_begin;
 
-  // Assuming probably 1 or 2 threads not available; revisit later
   parallel_oid_replay() : nredoers(sysconf::worker_threads) {}
   virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
 };
