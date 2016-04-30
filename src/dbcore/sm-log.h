@@ -24,6 +24,7 @@ class ndb_ordered_index;
 class object;
 class sm_log_file_mgr;
 class segment_id;
+class sm_log_recover_impl;
 
 struct sm_tx_log {
     /* Record an insertion. The payload of the version will be
@@ -321,7 +322,7 @@ struct sm_log {
        directory will be created.
      */
     static
-    sm_log *new_log(sm_log_recover_function *rfn, void *rfn_arg);
+    sm_log *new_log(sm_log_recover_impl *recover_functor, void *rarg);
 
     /* Return a pointer to the log's scan manager.
 
@@ -368,24 +369,6 @@ struct sm_log {
      */
     fat_ptr load_ext_pointer(fat_ptr ptr);
 
-    /* Scan from a start LSN and apply log records.
-     * Implements the sm_log_recover_function signature.
-     */
-    static void recover(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
-    static FID redo_file(sm_log_scan_mgr *scanner, LSN chkpt_begin, FID fid);
-
-    struct redo_runner : public thread::sm_runner {
-        sm_log_scan_mgr *scanner;
-        LSN chkpt_begin;
-        FID fid;
-        ndb_ordered_index *fid_index;
-        bool done;
-
-        redo_runner(sm_log_scan_mgr *s, LSN cb, FID f, ndb_ordered_index *i) : 
-            thread::sm_runner(), scanner(s), chkpt_begin(cb), fid(f), fid_index(i), done(false) {}
-        virtual void my_work(char *);
-    };
-
     window_buffer &get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
     uint64_t persist_log_buffer();
@@ -394,18 +377,6 @@ struct sm_log {
     void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
 
     virtual ~sm_log() { }
-
-private:
-    static void recover_insert(sm_log_scan_mgr::record_scan *logrec);
-    static void recover_index_insert(sm_log_scan_mgr::record_scan *logrec);
-    static void recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete = false);
-    static fat_ptr recover_prepare_version(
-                                sm_log_scan_mgr::record_scan *logrec,
-                                fat_ptr next);
-    static ndb_ordered_index *recover_fid(sm_log_scan_mgr::record_scan *logrec);
-    static void recover_index_insert(
-        sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index);
-    static void rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index);
 
 protected:
     // Forbid direct instantiation

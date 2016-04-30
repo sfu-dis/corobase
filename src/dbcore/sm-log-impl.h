@@ -9,8 +9,8 @@
 
 struct sm_log_impl : sm_log {
 
-    sm_log_impl(sm_log_recover_function *rfn, void *rarg)
-        : _lm(rfn, rarg)
+    sm_log_impl(sm_log_recover_impl *rf, void *rarg)
+        : _lm(rf, rarg)
     {
     }
     

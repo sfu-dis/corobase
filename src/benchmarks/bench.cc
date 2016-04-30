@@ -17,6 +17,7 @@
 #include "../dbcore/sm-chkpt.h"
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-log.h"
+#include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
 
 using namespace std;
@@ -145,7 +146,7 @@ bench_runner::create_files_task(char *)
   ALWAYS_ASSERT(not logmgr);
   ALWAYS_ASSERT(not oidmgr);
   RCU::rcu_enter();
-  logmgr = sm_log::new_log(sm_log::recover, NULL);
+  logmgr = sm_log::new_log(new parallel_file_replay, NULL);
   ASSERT(oidmgr);
   RCU::rcu_exit();
 

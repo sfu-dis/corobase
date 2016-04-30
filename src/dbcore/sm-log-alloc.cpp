@@ -48,8 +48,8 @@ sm_log_alloc_mgr::get_tls_lsn_offset()
    to do the rest of recovery, because it prevents any attempt at
    forward processing before recovery completes. 
  */
-sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_function *rfn, void *rfn_arg)
-    : _lm(sysconf::null_log_device ? NULL : rfn, rfn_arg)
+sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
+    : _lm(sysconf::null_log_device ? NULL : rf, rfn_arg)
     , _logbuf(sysconf::log_buffer_mb * 1024 * 1024, get_starting_byte_offset(&_lm))
     , _durable_flushed_lsn_offset(_lm.get_durable_mark().offset())
     , _write_daemon_state(0)
