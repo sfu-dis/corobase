@@ -46,7 +46,7 @@ public:
 };
 
 class ndb_ordered_index : public abstract_ordered_index {
-    friend class sm_log;    // for recover_index()
+    friend class sm_log_recover_impl;
 protected:
   typedef private_::ndbtxn ndbtxn;
 

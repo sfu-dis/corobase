@@ -1,4 +1,5 @@
 #include "sm-log-recover.h"
+#include "sm-log-recover-impl.h"
 #include "sm-log-impl.h"
 #include "sm-oid.h"
 
@@ -7,11 +8,11 @@
 
 using namespace RCU;
 
-sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_function *rfn, void *rfn_arg)
+sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     : sm_log_offset_mgr()
     , scanner(new sm_log_scan_mgr_impl{this})
-    , recover_function(rfn)
-    , recover_function_arg(rfn_arg)
+    , recover_functor(rf)
+    , recover_functor_arg(rf_arg)
 {
     LSN dlsn = get_durable_mark();
     bool changed = false;
@@ -33,15 +34,14 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_function *rfn, void *rfn_a
     sm_oid_mgr::create(get_chkpt_start(), this);
     ASSERT(oidmgr);
 
-    if (rfn and sm_log::need_recovery)
+    if (rf and sm_log::need_recovery)
         redo_log(get_chkpt_start(), get_chkpt_end());
 }
 
 void
 sm_log_recover_mgr::redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn)
 {
-    (*recover_function)(
-      recover_function_arg, scanner, chkpt_start_lsn, chkpt_end_lsn);
+    (*recover_functor)(recover_functor_arg, scanner, chkpt_start_lsn, chkpt_end_lsn);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr()

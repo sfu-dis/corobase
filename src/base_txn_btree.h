@@ -14,7 +14,7 @@
 using namespace TXN;
 
 class base_txn_btree {
-    friend class sm_log;    // for recover_index()
+    friend class sm_log_recover_impl;
 public:
 
   typedef dbtuple::size_type size_type;

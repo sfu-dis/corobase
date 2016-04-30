@@ -116,6 +116,7 @@ DBCORE_SRCFILES = dbcore/burt-hash.cpp \
 	dbcore/sm-tx-log.cpp \
 	dbcore/sm-log-alloc.cpp \
 	dbcore/sm-log-recover.cpp \
+	dbcore/sm-log-recover-impl.cpp \
 	dbcore/sm-log-offset.cpp \
 	dbcore/sm-log-file.cpp \
 	dbcore/sm-oid.cpp \
