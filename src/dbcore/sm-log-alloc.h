@@ -150,7 +150,6 @@ struct sm_log_alloc_mgr {
             }
         }
         void push_back(uint64_t lsn, uint64_t start_time);
-        void pop_front(uint32_t nelems = 1);
         inline uint32_t size() { return end - start; }
     };
     commit_queue *_commit_queue;

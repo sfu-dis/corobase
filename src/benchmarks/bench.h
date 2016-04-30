@@ -169,7 +169,7 @@ public:
   inline void inc_ntxn_phantom_aborts() { ++ntxn_phantom_aborts; }
   inline void inc_ntxn_query_commits() { ++ntxn_query_commits; }
 
-  inline uint64_t get_latency_numer_us() const { return latency_numer_us; }
+  inline uint64_t get_latency_numer_us() const { return volatile_read(latency_numer_us); }
 
   inline double
   get_avg_latency_us() const
