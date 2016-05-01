@@ -203,7 +203,7 @@ bench_runner::run()
         for (uint i = 0; i < loaders.size(); i++) {
           auto* loader = loaders[i];
           if (loader and loader->is_impersonated() and loader->try_join()) {
-            loader->~bench_loader();
+            delete loader;
             loaders[i] = nullptr;
             done++;
             goto process;
