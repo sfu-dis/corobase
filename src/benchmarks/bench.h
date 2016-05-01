@@ -76,7 +76,7 @@ public:
     // threads relies on this fact (see bench_runner::run()).
   }
 
-  ~bench_loader() {}
+  virtual ~bench_loader() {}
   inline ALWAYS_INLINE varstr &
   str(uint64_t size)
   {
