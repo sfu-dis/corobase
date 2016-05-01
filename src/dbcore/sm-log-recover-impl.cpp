@@ -1,5 +1,6 @@
 #include "../benchmarks/ndb_wrapper.h"
 #include "../txn_btree.h"
+#include "../util.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
@@ -328,6 +329,7 @@ parallel_file_replay::redo_runner::redo_file() {
 
 void
 parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN cb, LSN ce) {
+  util::scoped_timer t("parallel_oid_replay");
   scanner = s;
   chkpt_begin = cb;
 
@@ -400,11 +402,12 @@ process:
     oidmgr->start_warm_up();
   }
 
-  std::cout << "[Recovery] done\n";
+  //std::cout << "[Recovery] done\n";
 }
 
 void
 parallel_oid_replay::redo_runner::redo_partition() {
+  util::scoped_timer t("redo_partition");
   RCU::rcu_enter();
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
   auto *scan = owner->scanner->new_log_scan(owner->chkpt_begin, sysconf::eager_warm_up());
