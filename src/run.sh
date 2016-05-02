@@ -32,7 +32,7 @@ elif [ "$bench" != "ycsb" ]; then
 fi
 
 options="$1 --verbose $5 --bench $bench --num-threads $threads --scale-factor $sf --runtime $runtime \
-  --log-dir $LOGDIR --log-buffer-mb=512 --log-segment-mb=8192"
+  --log-dir $LOGDIR --log-buffer-mb=512 --log-segment-mb=8192 --parallel-loading"
 echo $options
 if [ "$bench" == "tpcc" ]; then
   btype=${workload:4:1}
