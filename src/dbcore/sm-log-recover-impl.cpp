@@ -66,6 +66,7 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) 
 
 void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index) {
+  ASSERT(index);
   auto sz = logrec->payload_size();
   static __thread char *buf;
   static __thread uint64_t buf_size;
@@ -121,7 +122,11 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   ASSERT(not oidmgr->file_exists(f));
   oidmgr->recreate_file(f);
   fid_map[name].second->set_btr_fid(f);
-  reverse_fid_map.emplace(f, fid_map[name].second);
+  if (not reverse_fid_map[f]) {
+    // chkpt recovery might have did this
+    ASSERT(fid_map[name].second);
+    reverse_fid_map[f] = fid_map[name].second;
+  }
   printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
   return fid_map[name].second;
 }
