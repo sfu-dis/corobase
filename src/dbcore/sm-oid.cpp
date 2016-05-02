@@ -1,14 +1,18 @@
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <map>
+
 #include "../util.h"
-#include "sm-oid-impl.h"
+#include "../txn.h"
+
+#include "burt-hash.h"
+#include "sc-hash.h"
 #include "sm-alloc.h"
 #include "sm-chkpt.h"
 #include "sm-config.h"
-#include "sc-hash.h"
-#include "burt-hash.h"
-#include "../txn.h"
-#include <map>
-#include <fcntl.h>
-#include <unistd.h>
+#include "sm-log-recover-impl.h"
+#include "sm-oid-impl.h"
 
 sm_oid_mgr *oidmgr = NULL;
 // maps table name to its fid
@@ -528,7 +532,9 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
         n = read(fd, &f, sizeof(FID));
 
         // Recover fid_map and recreate the empty file
-        fid_map.emplace(name, std::make_pair(f, (ndb_ordered_index *)NULL));
+        ASSERT(fid_map[name].second);
+        fid_map[name].first = f;
+        reverse_fid_map[f] = fid_map[name].second;
         ASSERT(not oidmgr->file_exists(f));
         oidmgr->recreate_file(f);
         printf("[Recovery.chkpt] FID=%d %s\n", f, name.c_str());
