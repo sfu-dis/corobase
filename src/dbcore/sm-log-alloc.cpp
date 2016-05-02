@@ -288,7 +288,8 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
             auto end_lsn = durable_sid->make_lsn(new_offset);
             ASSERT(start_lsn.segment() == end_lsn.segment());
             // Flush first if the logbuf is not backed by NVRAM
-            if (not sysconf::nvram_log_buffer) {
+            if (sysconf::loading or
+                (not sysconf::null_log_device and not sysconf::nvram_log_buffer)) {
                 uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
                 THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
                 flushed = true;
@@ -300,7 +301,7 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
                 nbytes);
         }
 
-        if (not flushed and not sysconf::null_log_device) {
+        if (not flushed and (not sysconf::null_log_device or sysconf::loading)) {
             uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
             THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
         }
