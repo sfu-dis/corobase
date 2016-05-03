@@ -1,3 +1,4 @@
+#include "serial.h"
 #include "sm-alloc.h"
 #include "sm-log.h"
 #include "sm-thread.h"
