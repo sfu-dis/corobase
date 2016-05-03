@@ -1132,7 +1132,7 @@ transaction::ssi_read(dbtuple *tuple)
     // see if there was a guy with cstamp=tuple_s1 who overwrote this version
     if (tuple_s1.asi_type() == fat_ptr::ASI_LOG) { // I'm T2
         // remember the smallest sstamp and use it during precommit
-        if (xc->ct3 > tuple_s1.offset())
+        if (not xc->ct3 or xc->ct3 > tuple_s1.offset())
             xc->ct3 = tuple_s1.offset();
         // The purpose of adding a version to read-set is to re-check its
         // sstamp status at precommit and set its xstamp for updaters' (if
