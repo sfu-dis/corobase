@@ -685,6 +685,13 @@ transaction::parallel_ssi_commit()
             dbtuple *overwritten_tuple = w.get_object()->tuple()->next();
             if (not overwritten_tuple)
                 continue;
+
+            // Check xstamp before continue to examine concurrent readers,
+            // in case there is no concurrent readers (or they all have left
+            // at this point).
+            if (volatile_read(overwritten_tuple->xstamp) >= ct3)
+                return {RC_ABORT_SERIAL};
+
             // Note: the bits representing readers that will commit **after**
             // me are stable; those representing readers older than my cstamp
             // could go away any time. But I can look at the version's xstamp
