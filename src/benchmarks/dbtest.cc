@@ -20,9 +20,6 @@
 #include "ndb_wrapper.h"
 //#include "kvdb_wrapper.h"
 //#include "kvdb_wrapper_impl.h"
-#if !NO_MYSQL
-#include "mysql_wrapper.h"
-#endif
 
 #if defined(USE_PARALLEL_SSI) && defined(USE_PARALLEL_SSN)
 #error "SSI + SSN?"
