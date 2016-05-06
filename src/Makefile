@@ -2,16 +2,11 @@
 
 ### Options ###
 #CXX=icc
-#CXX=clang
 #CXX=/home/ipandis/apps/bin/gcc483/g++
 CXX=g++
-#CXX=g++491
 
 DEBUG ?= 0
 CHECK_INVARIANTS ?= 0
-
-MYSQL ?= 1
-MYSQL_SHARE_DIR ?= /x/stephentu/mysql-5.5.29/build/sql/share
 
 # Available modes
 #   * perf
@@ -199,21 +194,8 @@ EGEN_SRCFILES = \
    benchmarks/egen/progressmeterinterface.cpp \
    benchmarks/egen/bucketsimulator.cpp
 
-ifeq ($(MYSQL_S),1)
-BENCH_CXXFLAGS += -DMYSQL_SHARE_DIR=\"$(MYSQL_SHARE_DIR)\"
-BENCH_LDFLAGS := -L/usr/lib/mysql -lmysqld $(BENCH_LDFLAGS)
-BENCH_SRCFILES += benchmarks/mysql_wrapper.cc
-else
-BENCH_CXXFLAGS += -DNO_MYSQL
-endif
-
 BENCH_OBJFILES := $(patsubst %.cc, $(O)/%.o, $(BENCH_SRCFILES))
 EGEN_OBJFILES := $(patsubst %.cpp, $(O)/%.o, $(EGEN_SRCFILES))
-
-NEWBENCH_SRCFILES = new-benchmarks/bench.cc \
-	new-benchmarks/tpcc.cc
-
-NEWBENCH_OBJFILES := $(patsubst %.cc, $(O)/%.o, $(NEWBENCH_SRCFILES))
 
 all: $(O)/test
 
@@ -226,10 +208,6 @@ $(O)/benchmarks/masstree/%.o: benchmarks/masstree/%.cc $(O)/buildstamp $(O)/buil
 	$(CXX) $(BENCH_CXXFLAGS) -c $< -o $@
 
 $(EGEN_OBJFILES) : $(O)/benchmarks/egen/%.o: benchmarks/egen/%.cpp $(OBJDEP)
-	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-$(O)/new-benchmarks/%.o: new-benchmarks/%.cc $(O)/buildstamp $(O)/buildstamp.bench $(OBJDEP)
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
@@ -271,12 +249,6 @@ kvtest: $(O)/benchmarks/masstree/kvtest
 $(O)/benchmarks/masstree/kvtest: $(O)/benchmarks/masstree/kvtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(BENCH_OBJFILES)
 	$(CXX) -o $(O)/benchmarks/masstree/kvtest $^ $(BENCH_LDFLAGS)
 
-.PHONY: newdbtest
-newdbtest: $(O)/new-benchmarks/dbtest
-
-$(O)/new-benchmarks/dbtest: $(O)/new-benchmarks/dbtest.o $(OBJFILES) $(DBCORE_OBJFILES) $(MASSTREE_OBJFILES) $(NEWBENCH_OBJFILES)
-	$(CXX) -o $(O)/new-benchmarks/dbtest $^ $(LDFLAGS)
-
 DEPFILES := $(wildcard $(O)/*.d $(O)/*/*.d $(O)/*/*/*.d masstree/_masstree_config.d)
 ifneq ($(DEPFILES),)
 -include $(DEPFILES)
@@ -288,10 +260,6 @@ endif
 
 ifeq ($(MASSTREE_S),1)
 #UPDATE_MASSTREE := $(shell cd ./`git rev-parse --show-cdup` && cur=`git submodule status --cached masstree | head -c 41 | tail -c +2` && if test -z `cd masstree; git rev-list -n1 $$cur^..HEAD 2>/dev/null`; then (echo Updating masstree... 1>&2; cd masstree; git checkout -f master >/dev/null; git pull; cd ..; git submodule update masstree); fi)
-endif
-
-ifneq ($(strip $(MYSQL_S)),$(strip $(DEP_BENCH_CONFIG)))
-DEP_BENCH_CONFIG := $(shell mkdir -p $(O); echo >$(O)/buildstamp.bench; echo "DEP_BENCH_CONFIG:=$(MYSQL_S)" >$(O)/_bench_config.d)
 endif
 
 ifneq ($(strip $(MASSTREE_CONFIG)),$(strip $(DEP_MASSTREE_CONFIG)))
