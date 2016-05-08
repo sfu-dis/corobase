@@ -86,7 +86,7 @@ else
 endif
 
 TOP     := $(shell echo $${PWD-`pwd`})
-LDFLAGS := -lpthread -lnuma -lrt
+LDFLAGS := -lpthread -lnuma -lrt -libverbs
 #ifeq ($(DEBUG_S),1)
 #LDFLAGS += -lasan
 #endif
@@ -120,6 +120,7 @@ DBCORE_SRCFILES = dbcore/burt-hash.cpp \
 	dbcore/sm-common.cpp \
 	dbcore/sm-rep.cpp \
 	dbcore/sm-thread.cpp \
+	dbcore/rdma.cpp \
 	dbcore/window-buffer.cpp \
 	dbcore/rcu-slist.cpp \
 	dbcore/rcu.cpp \
