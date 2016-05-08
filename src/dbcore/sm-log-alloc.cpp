@@ -74,7 +74,6 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     int err = pthread_create(&_write_daemon_tid, NULL,
                              &log_write_daemon_thunk, this);
     THROW_IF(err, os_error, err, "Unable to start log writer daemon thread");
-
 }
 
 sm_log_alloc_mgr::~sm_log_alloc_mgr()
