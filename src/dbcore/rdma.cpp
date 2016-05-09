@@ -4,6 +4,7 @@
 #include "../macros.h"
 #include "rdma.h"
 #include "sm-common.h"
+#include "tcp.h"
 
 namespace rdma {
 
@@ -73,12 +74,13 @@ void context::init(char *server) {
   THROW_IF(ret, illegal_argument, "Could not modify QP to INIT, ibv_modify_qp");
 
   if (is_server()) {
-    tcp_server_listen();
+    tcp::server_context stcp(port, 1);  // FIXME(tzwang): 1 client for now
+    exchange_ib_connection_info(stcp.expect_client());
   } else {
-    tcp_client_connect();
+    tcp::client_context ctcp(server, port);
+    exchange_ib_connection_info(ctcp.server_sockfd);
   }
 
-  exchange_ib_connection_info();
   qp_change_state_rts();
 }
 
@@ -90,7 +92,6 @@ context::~context() {
   ibv_dereg_mr(buf_mr);
   ibv_dereg_mr(msg_mr);
   ibv_dealloc_pd(pd);
-  close(sockfd);
 }
 
 void context::qp_change_state_rts() {
@@ -126,62 +127,7 @@ void context::qp_change_state_rtr() {
   THROW_IF(ret, illegal_argument, "Could not modify QP to RTR state");
 }
 
-void context::tcp_client_connect() {
-  struct addrinfo *res = nullptr;
-  struct addrinfo hints;
-  memset(&hints, 0, sizeof(struct addrinfo));
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_STREAM;
-
-  char *service;
-  asprintf(&service, "%d", port);
-  int ret = getaddrinfo(server_name.c_str(), service, &hints, &res);
-  THROW_IF(ret != 0, illegal_argument, "Error getaddrinfo(): %s", gai_strerror(ret));
-  DEFER(freeaddrinfo(res));
-
-  for (auto *t = res; t; t = t->ai_next){
-    sockfd = socket(t->ai_family, t->ai_socktype, t->ai_protocol);
-    if (sockfd == -1) {
-      continue;
-    }
-    connect(sockfd,t->ai_addr, t->ai_addrlen);
-    break;
-  }
-  ALWAYS_ASSERT(sockfd);
-}
-
-void context::tcp_server_listen() {
-  struct addrinfo hints;
-  memset(&hints, 0, sizeof(struct addrinfo));
-  hints.ai_flags = AI_PASSIVE;
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-
-  char *service = nullptr;
-  asprintf(&service, "%d", port);
-  struct addrinfo *res = nullptr;
-  int ret = getaddrinfo(NULL, service, &hints, &res);
-  THROW_IF(ret != 0, illegal_argument, "Error getaddrinfo(): %s", gai_strerror(ret));
-
-  for (auto *r = res; r; r = r->ai_next) {
-    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    THROW_IF(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &ret, sizeof(int)) == -1,
-             illegal_argument, "Can't setsocketopt()");
-    if (bind(sockfd,res->ai_addr, res->ai_addrlen) == 0) {
-      THROW_IF(listen(sockfd, 1) == -1, illegal_argument, "listen() failed");
-      struct sockaddr addr;
-      socklen_t addr_size = sizeof(struct sockaddr_storage);
-      int connfd = accept(sockfd, &addr, &addr_size);
-      ALWAYS_ASSERT(connfd);
-      freeaddrinfo(res);
-      sockfd = connfd;
-      return;
-    }
-  }
-  ALWAYS_ASSERT(0);
-}
-
-void context::exchange_ib_connection_info() {
+void context::exchange_ib_connection_info(int peer_sockfd) {
   char msg[sizeof("0000:000000:000000:00000000:00000000:0000000000000000:0000000000000000")];
   local_connection = new ib_connection(this);
 
@@ -190,9 +136,9 @@ void context::exchange_ib_connection_info() {
     local_connection->buf_rkey, local_connection->msg_rkey,
     local_connection->buf_vaddr, local_connection->msg_vaddr);
 
-  int ret = write(sockfd, msg, sizeof(msg));
+  int ret = write(peer_sockfd, msg, sizeof(msg));
   THROW_IF(ret != sizeof(msg), os_error, ret, "Could not send connection_details to peer");
-  ret = read(sockfd, msg, sizeof(msg));
+  ret = read(peer_sockfd, msg, sizeof(msg));
   THROW_IF(ret != sizeof(msg), os_error, ret, "Could not receive connection_details to peer");
   remote_connection = new ib_connection(msg);
 }

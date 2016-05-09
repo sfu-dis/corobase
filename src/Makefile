@@ -121,6 +121,7 @@ DBCORE_SRCFILES = dbcore/burt-hash.cpp \
 	dbcore/sm-rep.cpp \
 	dbcore/sm-thread.cpp \
 	dbcore/rdma.cpp \
+	dbcore/tcp.cpp \
 	dbcore/window-buffer.cpp \
 	dbcore/rcu-slist.cpp \
 	dbcore/rcu.cpp \
