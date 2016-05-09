@@ -292,7 +292,8 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
                 THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
                 flushed = true;
             }
-            rep::primary_ship_log_buffer_all(buf, durable_sid->make_lsn(new_offset), nbytes);
+            ASSERT(end_lsn.offset() - _durable_flushed_lsn_offset == nbytes);
+            rep::primary_ship_log_buffer_all(buf, nbytes);
         }
 
         if (not flushed and (not sysconf::null_log_device or sysconf::loading)) {
