@@ -39,13 +39,11 @@ inline void send_ack(int sockfd) {
 
 struct server_context {
 private:
-  std::vector<int> client_sockfds;
   char sock_addr[INET_ADDRSTRLEN];
   int sockfd;
-  uint32_t nclients;
 
 public:
-  server_context(const char *port, uint32_t nc);
+  server_context(const char *port, uint32_t nclients);
   ~server_context() {
     if (sockfd) {
       close(sockfd);
