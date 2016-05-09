@@ -9,9 +9,8 @@
 
 namespace tcp {
 
-server_context::server_context(const char *port, uint32_t nc) : sockfd(0), nclients(nc) {
+server_context::server_context(const char *port, uint32_t nclients) : sockfd(0) {
   gethostname(sock_addr, INET_ADDRSTRLEN);
-  client_sockfds.reserve(nclients);
   printf("[Server] %s:%s\n", get_sock_addr(), port);
   struct addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
@@ -59,7 +58,6 @@ int server_context::expect_client() {
   char s[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &sin.sin_addr, s, INET_ADDRSTRLEN);
   printf("[Server] New client: %s\n", s);
-  client_sockfds.push_back(fd);
   return fd;
 }
 
