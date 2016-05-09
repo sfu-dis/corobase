@@ -49,7 +49,7 @@ private:
   struct ibv_send_wr wr;
 
   std::string server_name;
-  int port;
+  char *port;
   int ib_port;
   char *buf;
   uint64_t buf_size;
@@ -58,15 +58,13 @@ private:
 
   struct ib_connection *local_connection;
   struct ib_connection *remote_connection;
-  int sockfd;
 
   // Ready-to-receive/ready-to-send attr for state change later
   struct ibv_qp_attr rtr_attr;
   struct ibv_qp_attr rts_attr;
 
   void tcp_client_connect();
-  void tcp_server_listen();
-  void exchange_ib_connection_info();
+  void exchange_ib_connection_info(int peer_sockfd);
   void qp_change_state_rts();
   void qp_change_state_rtr();
 
@@ -74,14 +72,14 @@ private:
   inline bool is_server() { return server_name.length() == 0; }
 
 public:
-  context(char *server, int port, int ib_port, char *buf, uint64_t buf_size) :
+  context(char *server, char *port, int ib_port, char *buf, uint64_t buf_size) :
     port(port), ib_port(ib_port), buf(buf), buf_size(buf_size),
-    local_connection(nullptr), remote_connection(nullptr), sockfd(0) {
+    local_connection(nullptr), remote_connection(nullptr) {
     init(server);
   }
-  context(int port, int ib_port, char *buf, uint64_t buf_size) :
+  context(char *port, int ib_port, char *buf, uint64_t buf_size) :
     port(port), ib_port(ib_port), buf(buf), buf_size(buf_size),
-    local_connection(nullptr), remote_connection(nullptr), sockfd(0) {
+    local_connection(nullptr), remote_connection(nullptr) {
     init(nullptr);
   }
   ~context();
