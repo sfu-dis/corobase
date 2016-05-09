@@ -100,26 +100,21 @@ void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
 
 // Send the log buffer to backups
 void primary_ship_log_buffer(
-  int backup_sockfd, const char* buf, LSN end_lsn, size_t size) {
+  int backup_sockfd, const char* buf, uint32_t size) {
   ALWAYS_ASSERT(size);
-  log_packet::header lph(size + sizeof(log_packet::header), end_lsn);
-  size_t nbytes = send(backup_sockfd, (char *)&lph, sizeof(lph), 0);
-  THROW_IF(nbytes != sizeof(lph), log_file_error, "Incomplete log shipping (header)");
+  size_t nbytes = send(backup_sockfd, (char *)&size, sizeof(uint32_t), 0);
+  THROW_IF(nbytes != sizeof(uint32_t), log_file_error, "Incomplete log shipping (header)");
   nbytes = send(backup_sockfd, buf, size, 0);
   THROW_IF(nbytes != size, log_file_error, "Incomplete log shipping (data)");
-  //printf("[Primary] Shipped %lu bytes of log (till %lx, segment %d) to backup %d\n",
-  //  nbytes, lph.end_lsn.offset(), lph.end_lsn.segment(), backup_sockfd);
 
   // expect an ack message
   tcp::expect_ack(backup_sockfd);
-  //printf("[Primary] Backup %d received log till %lx\n",
-  //  backup_sockfd, lph.end_lsn.offset());
 }
 
-void primary_ship_log_buffer_all(const char *buf, LSN end_lsn, size_t size) {
+void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
   ASSERT(backup_sockfds.size());
   for (int &fd : backup_sockfds) {
-    primary_ship_log_buffer(fd, buf, end_lsn, size);
+    primary_ship_log_buffer(fd, buf, size);
   }
 }
 
@@ -139,44 +134,45 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   DEFER(rcu_deregister());
   DEFER(delete cctx);
   // Listen to incoming log records from the primary
-  log_packet::header lph;
+  uint32_t size = 0;
   while (1) {
     // expect a log_packet header
-    tcp::receive(cctx->server_sockfd, (char *)&lph, sizeof(lph));
-    ALWAYS_ASSERT(lph.data_size());
+    tcp::receive(cctx->server_sockfd, (char *)&size, sizeof(size));
+    ALWAYS_ASSERT(size);
 
     // prepare segment if needed
     LSN start_lsn =  logmgr->durable_flushed_lsn();
-    segment_id *sid = logmgr->assign_segment(start_lsn.offset(), lph.end_lsn.offset());
+    uint64_t end_lsn_offset = start_lsn.offset() + size;
+    segment_id *sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
     ALWAYS_ASSERT(sid);
-    ASSERT(sid->make_lsn(lph.end_lsn.offset()) == lph.end_lsn);
+    LSN end_lsn = sid->make_lsn(end_lsn_offset);
+    ASSERT(end_lsn_offset == end_lsn.offset());
 
     // expect the real log data
-    //std::cout << "[Backup] Will receive " << lph.data_size() << " bytes\n";
-    ALWAYS_ASSERT(lph.data_size());
+    //std::cout << "[Backup] Will receive " << size << " bytes\n";
     auto& logbuf = logmgr->get_logbuf();
-    char *buf = logbuf.write_buf(sid->buf_offset(start_lsn), lph.data_size());
+    char *buf = logbuf.write_buf(sid->buf_offset(start_lsn), size);
     ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
-    tcp::receive(cctx->server_sockfd, buf, lph.data_size());
-    //std::cout << "[Backup] Recieved " << lph.data_size() << " bytes ("
-    //  << std::hex << start_lsn.offset() << "-" << lph.end_lsn.offset() << std::dec << ")\n";
+    tcp::receive(cctx->server_sockfd, buf, size);
+    //std::cout << "[Backup] Recieved " << size << " bytes ("
+    //  << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
 
     // now got the batch of log records, persist them
     if (sysconf::nvram_log_buffer) {
       logmgr->persist_log_buffer();
-      logbuf.advance_writer(sid->buf_offset(lph.end_lsn));
+      logbuf.advance_writer(sid->buf_offset(end_lsn));
     } else {
-      logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
-      ASSERT(logmgr->durable_flushed_lsn() == lph.end_lsn);
+      logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
+      ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
     }
 
     tcp::send_ack(cctx->server_sockfd);
 
     // roll forward
-    logmgr->redo_log(start_lsn, lph.end_lsn);
-    printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), lph.end_lsn.offset());
+    logmgr->redo_log(start_lsn, end_lsn);
+    printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     if (sysconf::nvram_log_buffer)
-      logmgr->flush_log_buffer(logbuf, lph.end_lsn.offset(), true);
+      logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
   }
 }
 
