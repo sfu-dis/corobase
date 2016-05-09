@@ -283,9 +283,8 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
         bool flushed = false;
         if (sysconf::num_active_backups) {
-            auto start_lsn = durable_sid->make_lsn(_durable_flushed_lsn_offset);
             auto end_lsn = durable_sid->make_lsn(new_offset);
-            ASSERT(start_lsn.segment() == end_lsn.segment());
+            ASSERT(durable_sid->make_lsn(_durable_flushed_lsn_offset).segment() == end_lsn.segment());
             // Flush first if the logbuf is not backed by NVRAM
             if (sysconf::loading or
                 (not sysconf::null_log_device and not sysconf::nvram_log_buffer)) {
@@ -293,11 +292,7 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
                 THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
                 flushed = true;
             }
-            rep::primary_ship_log_buffer_all(
-                buf,
-                durable_sid->make_lsn(_durable_flushed_lsn_offset),
-                durable_sid->make_lsn(new_offset),
-                nbytes);
+            rep::primary_ship_log_buffer_all(buf, durable_sid->make_lsn(new_offset), nbytes);
         }
 
         if (not flushed and (not sysconf::null_log_device or sysconf::loading)) {
