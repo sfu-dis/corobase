@@ -136,7 +136,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   // Listen to incoming log records from the primary
   uint32_t size = 0;
   while (1) {
-    // expect a log_packet header
+    // expect an integer indicating data size
     tcp::receive(cctx->server_sockfd, (char *)&size, sizeof(size));
     ALWAYS_ASSERT(size);
 
