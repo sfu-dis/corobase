@@ -42,16 +42,13 @@ void context::init(char *server) {
   ch = ibv_create_comp_channel(ctx);
   THROW_IF(not ch, illegal_argument, "ibv_create_comp_channel() failed");
 
-  rcq = ibv_create_cq(ctx, 1, NULL, NULL, 0);
-  THROW_IF(not rcq, illegal_argument, "Could not create receive completion queue, ibv_create_cq");
-
-  scq = ibv_create_cq(ctx, tx_depth, (void *)this, ch, 0);
-  THROW_IF(not scq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
+  cq = ibv_create_cq(ctx, tx_depth, (void *)this, ch, 0);
+  THROW_IF(not cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
 
   struct ibv_qp_init_attr qp_init_attr;
   memset(&qp_init_attr, 0, sizeof(qp_init_attr));
-  qp_init_attr.send_cq = scq;
-  qp_init_attr.recv_cq = rcq;
+  qp_init_attr.send_cq = cq;
+  qp_init_attr.recv_cq = cq;
   qp_init_attr.qp_type = IBV_QPT_RC;
   qp_init_attr.cap.max_send_wr = tx_depth;
   qp_init_attr.cap.max_recv_wr = 1;
@@ -86,8 +83,7 @@ void context::init(char *server) {
 
 context::~context() {
   ibv_destroy_qp(qp);
-  ibv_destroy_cq(scq);
-  ibv_destroy_cq(rcq);
+  ibv_destroy_cq(cq);
   ibv_destroy_comp_channel(ch);
   ibv_dereg_mr(buf_mr);
   ibv_dereg_mr(msg_mr);
@@ -163,6 +159,27 @@ void context::rdma_write(uint64_t offset, uint64_t size) {
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
 }
 
+void context::rdma_write(uint64_t offset, uint64_t size, uint32_t imm_data) {
+  sge_list.addr = (uintptr_t)buf + offset;
+  sge_list.length = size;
+  sge_list.lkey = buf_mr->lkey;
+
+  memset(&wr, 0, sizeof(wr));
+  wr.wr.rdma.remote_addr = remote_connection->buf_vaddr;
+  wr.wr.rdma.rkey = remote_connection->buf_rkey;
+  wr.wr_id = RDMA_WRID;
+  wr.sg_list = &sge_list;
+  wr.num_sge = 1;
+  wr.imm_data = htonl(imm_data);
+  wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+  wr.send_flags = IBV_SEND_SIGNALED;
+  wr.next = NULL;
+
+  struct ibv_send_wr *bad_wr = nullptr;
+  int ret = ibv_post_send(qp, &wr, &bad_wr);
+  THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+}
+
 void context::rdma_write_msg() {
   sge_list.addr = (uintptr_t)msg;
   sge_list.length = MAX_MSG_SIZE;
@@ -181,6 +198,26 @@ void context::rdma_write_msg() {
   struct ibv_send_wr *bad_wr = nullptr;
   int ret = ibv_post_send(qp, &wr, &bad_wr);
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+}
+
+/*
+ * Post a receive work request to wait for an RDMA write with
+ * immediate from the peer. Returns the immediate, [buf] will
+ * contain the result of the RDMA write.
+ */
+uint32_t context::receive_rdma_with_imm() {
+  struct ibv_recv_wr wr, *bad_wr = nullptr;
+  memset(&wr, 0, sizeof(wr));
+  wr.wr_id = RDMA_WRID;
+  wr.sg_list = nullptr;
+  wr.num_sge = 0;
+  int ret = ibv_post_recv(qp, &wr, &bad_wr);
+  THROW_IF(ret, illegal_argument, "ibv_post_recv() failed");
+
+  struct ibv_wc wc;
+  while (not (ibv_poll_cq(cq, 1, &wc) and wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM)) {}
+  THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status, "Failed wc status");
+  return ntohl(wc.imm_data);
 }
 
 ib_connection::ib_connection(char *msg) {

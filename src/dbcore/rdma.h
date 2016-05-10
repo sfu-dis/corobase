@@ -39,8 +39,7 @@ private:
   struct ibv_pd *pd;
   struct ibv_mr *buf_mr;
   struct ibv_mr *msg_mr;
-  struct ibv_cq *rcq;
-  struct ibv_cq *scq;
+  struct ibv_cq *cq;
   struct ibv_qp *qp;
   struct ibv_comp_channel *ch;
   struct ibv_device *ib_dev;
@@ -86,7 +85,9 @@ public:
   inline char *get_buf() { return buf; }
   inline char *get_msg() { return msg; }
   void rdma_write(uint64_t offset, uint64_t size);
+  void rdma_write(uint64_t offset, uint64_t size, uint32_t imm_data);
   void rdma_write_msg();
+  uint32_t receive_rdma_with_imm();
 };
 
 struct ib_connection {
