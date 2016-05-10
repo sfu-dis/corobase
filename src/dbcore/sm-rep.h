@@ -14,17 +14,13 @@
 #include "../macros.h"
 
 namespace rep {
-/** Describes a bunch of log records shipped from the primary */
-struct log_packet {
-  uint32_t size;
-  char *data;
-
-  log_packet() : size(0), data(nullptr) {}
-  log_packet(char *buf, size_t size) : size(size), data(buf) {}
-};
-
 void start_as_primary();
 void start_as_backup(std::string primary_address);
+
+/* Ships a log file (on-disk) to a backup server via TCP.
+ * For primary server only. So far the only user is when the
+ * primary server starts and has loaded the database.
+ */
 void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd);
 void primary_ship_log_buffer(
   int backup_sockfd, const char* buf, uint32_t size);
