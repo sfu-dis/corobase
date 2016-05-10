@@ -807,6 +807,8 @@ sm_oid_mgr::oid_put_update(oid_array *oa,
     auto *ptr = ensure_tuple(oa, o, updater_xc->begin_epoch);
     // No need to call ensure_tuple() below start_over - it returns a ptr,
     // a dereference is enough to capture the content.
+    // Note: this is different from oid_get_version where start_over must
+    // appear *above* ensure_tuple: here we don't change the value of ptr.
 start_over:
     fat_ptr head = *ptr;
     object *old_desc = (object *)head.offset();
@@ -815,7 +817,10 @@ start_over:
     bool overwrite = false;
 
     auto clsn = volatile_read(old_desc->_clsn);
-    if (clsn.asi_type() == fat_ptr::ASI_XID) {
+    if (clsn == NULL_PTR) {
+        // stepping on an unlinked version?
+        goto start_over;
+    } else if (clsn.asi_type() == fat_ptr::ASI_XID) {
         /* Grab the context for this XID. If we're too slow,
            the context might be recycled for a different XID,
            perhaps even *while* we are reading the
@@ -869,11 +874,11 @@ start_over:
     }
     // check dirty writes
     else {
+        ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
 #ifndef USE_READ_COMMITTED
         // First updater wins: if some concurrent tx committed first,
         // I have to abort. Same as in Oracle. Otherwise it's an isolation
         // failure: I can modify concurrent transaction's writes.
-        ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
         if (LSN::from_ptr(clsn) > updater_xc->begin)
             return NULL_PTR;
 #endif
@@ -978,17 +983,45 @@ sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 dbtuple*
 sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 {
-    fat_ptr *pp = oa->get(o);
 start_over:
+    // must pui start_over above this, because we'll update pp later
+    fat_ptr *pp = oa->get(o);
+    fat_ptr ptr = *pp;
     while (1) {
-        auto ptr = ensure_tuple(pp, visitor_xc->begin_epoch);
+        if (ptr.asi_type() != fat_ptr::ASI_LOG) {
+            ASSERT(ptr.asi_type() == 0);  // must be in memory
+        } else {
+            ptr = ensure_tuple(pp, visitor_xc->begin_epoch);
+        }
+
         if (not ptr.offset())
             break;
 
         auto *cur_obj = (object*)ptr.offset();
         pp = &cur_obj->_next;
 
+        // Must dereference this before reading cur_obj->_clsn:
+        // the version we're currently reading (ie cur_obj) might be unlinked
+        // and thus recycled by the memory allocator at any time if it's not
+        // a committed version. If so, cur_obj->_next will be pointing to some
+        // other object in the allocator's free object pool - we'll probably
+        // end up at la-la land if we followed this _next pointer value...
+        // Here we employ some flavor of OCC to solve this problem:
+        // the aborting transaction that will unlink cur_obj will update
+        // cur_obj->_clsn to NULL_PTR, then deallocate(). Before reading
+        // cur_obj->_clsn, we (as the visitor), first dereference pp to get
+        // a stable value that "should" contain the right address of the next
+        // version. We then read cur_obj->_clsn to verify: if it's NULL_PTR
+        // that means we might have read a wrong _next value that's actually
+        // pointing to some irrelevant object in the allocator's memory pool,
+        // hence must start over from the beginning of the version chain.
+        ptr = volatile_read(*pp);
         auto clsn = volatile_read(cur_obj->_clsn);
+        if (clsn == NULL_PTR) {
+            // dead tuple that was (or about to be) unlinked, start over
+            goto start_over;
+        }
+
         ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
         // xid tracking & status check
         if (clsn.asi_type() == fat_ptr::ASI_XID) {
@@ -1003,7 +1036,7 @@ start_over:
                 return cur_obj->tuple();
             }
             xid_context *holder = xid_get_context(holder_xid);
-            if (not holder) // invalid XID (dead tuple, maybe better retry than goto next in the chain)
+            if (not holder) // invalid XID (dead tuple, must retry than goto next in the chain)
                 goto start_over;
 
             auto state = volatile_read(holder->state);

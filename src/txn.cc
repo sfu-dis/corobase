@@ -117,8 +117,8 @@ transaction::abort()
             tuple->next()->welcome_readers();
         }
 #endif
-        volatile_write(w.get_object()->_clsn, NULL_PTR);
         oidmgr->oid_unlink(w.oa, w.oid, tuple);
+        volatile_write(w.get_object()->_clsn, NULL_PTR);
         MM::deallocate(w.new_object);
     }
 

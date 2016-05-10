@@ -116,6 +116,7 @@ public:
         goto retry;
     }
     else {
+      ASSERT(cstamp.asi_type() == fat_ptr::ASI_LOG);
       end = cstamp.offset();
     }
 
