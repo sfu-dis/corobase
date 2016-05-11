@@ -1062,8 +1062,14 @@ start_over:
                 return cur_obj->tuple();
 #endif
 #else
-                if (holder->end < visitor_xc->begin)
+                if (holder->end < visitor_xc->begin) {
                     return cur_obj->tuple();
+                }
+#if defined(USE_PARALLEL_SSI) or defined(USE_PARALLEL_SSN)
+                else {
+                    oid_check_phantom(visitor_xc, holder->end.offset());
+                }
+#endif
 #endif
             }
 #ifdef READ_COMMITTED_SPIN
@@ -1087,8 +1093,14 @@ start_over:
             return cur_obj->tuple();
 #endif
 #else
-            if (LSN::from_ptr(clsn) <= visitor_xc->begin)
+            if (LSN::from_ptr(clsn) <= visitor_xc->begin) {
                 return cur_obj->tuple();
+            }
+#if defined(USE_PARALLEL_SSI) or defined(USE_PARALLEL_SSN)
+            else {
+                oid_check_phantom(visitor_xc, clsn.offset());
+            }
+#endif
 #endif
         }
         else {
@@ -1097,6 +1109,45 @@ start_over:
     }
 
     return NULL;    // No Visible records
+}
+
+void
+sm_oid_mgr::oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
+  /*
+   * tzwang (May 05, 2016): Preventing phantom:
+   * Consider an example:
+   *
+   * Assume the database has tuples B (key=1) and C (key=2).
+   *
+   * Time      T1             T2
+   * 1        ...           Read B
+   * 2        ...           Insert A
+   * 3        ...           Commit
+   * 4       Scan key > 1
+   * 5       Update B
+   * 6       Commit (?)
+   *
+   * At time 6 T1 should abort, but checking index version changes
+   * wouldn't make T1 abort, since its scan happened after T2's
+   * commit and yet its begin timestamp is before T2 - T1 wouldn't
+   * see A (oid_get_version will skip it even it saw it from the tree)
+   * but the scanning wouldn't record a version change in tree structure
+   * either (T2 already finished all SMOs).
+   *
+   * Under SSN/SSI, this essentially requires we update the corresponding
+   * stamps upon hitting an invisible version, treating it like some
+   * successor updated our read set. For SSI, this translates to updating
+   * ct3; for SSN, update the visitor's sstamp.
+   */
+#ifdef USE_PARALLEL_SSI
+  auto vct3 = volatile_read(visitor_xc->ct3);
+  if (not vct3 or vct3 > vcstamp) {
+      volatile_write(visitor_xc->ct3, vcstamp);
+  }
+#elif defined USE_PARALLEL_SSN
+  visitor_xc->sstamp = std::min(visitor_xc->sstamp.load(), vcstamp);
+  // TODO(tzwang): do early SSN check here
+#endif  // USE_PARALLEL_SSI/SSN
 }
 
 void
