@@ -195,6 +195,7 @@ struct sm_oid_mgr {
     fat_ptr *ensure_tuple(oid_array *oa, OID o, epoch_num e);
     fat_ptr ensure_tuple(fat_ptr *ptr, epoch_num e);
 
+    void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp);
     void oid_unlink(FID f, OID o, void *object_payload);
     void oid_unlink(oid_array *oa, OID o, void *object_payload);
 
