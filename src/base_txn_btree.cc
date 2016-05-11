@@ -67,13 +67,12 @@ rc_t base_txn_btree::do_tree_put(
                                  // to not be present, so we assert this doesn't happen
                                  // for now [since this would indicate a suboptimality]
     t.ensure_active();
-
-    // FIXME: tzwang: try_insert_new_tuple only tries once (no waiting, just one cas),
-    // it fails if somebody else acted faster to insert new, we then
-    // (fall back to) with the normal update procedure.
-    // try_insert_new_tuple should add tuple to write-set too, if succeeded.
-    if (expect_new and t.try_insert_new_tuple(&this->underlying_btree, k, v, this->fid))
-        return rc_t{RC_TRUE};
+    if (expect_new) {
+        if (t.try_insert_new_tuple(&this->underlying_btree, k, v, this->fid))
+            return rc_t{RC_TRUE};
+        else
+            return rc_t{RC_ABORT_INTERNAL};
+    }
 
     // do regular search
     dbtuple * bv = 0;
