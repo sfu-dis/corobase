@@ -15,6 +15,7 @@
  */
 
 #include <string>
+#include <string.h>
 
 #include <infiniband/verbs.h>
 #include <netdb.h>
@@ -67,11 +68,11 @@ private:
   void qp_change_state_rts();
   void qp_change_state_rtr();
 
-  void init(char *server);
+  void init(const char *server);
   inline bool is_server() { return server_name.length() == 0; }
 
 public:
-  context(char *server, char *port, int ib_port, char *buf, uint64_t buf_size) :
+  context(const char *server, char *port, int ib_port, char *buf, uint64_t buf_size) :
     port(port), ib_port(ib_port), buf(buf), buf_size(buf_size),
     local_connection(nullptr), remote_connection(nullptr) {
     init(server);
@@ -84,9 +85,26 @@ public:
   ~context();
   inline char *get_buf() { return buf; }
   inline char *get_msg() { return msg; }
-  void rdma_write(uint64_t offset, uint64_t size);
-  void rdma_write(uint64_t offset, uint64_t size, uint32_t imm_data);
+
+  /* Write [size] of bytes placed in [buf + local_offset] to remote address + [remote_offset] */
+  void rdma_write(uint64_t local_offset, uint64_t remote_offset, uint64_t size);
+
+  /* Same as rdma_write() above, but with immediate data [imm_data] */
+  void rdma_write(
+    uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data);
+
+  /* RDMA write whatever stored in [msg] */
   void rdma_write_msg();
+
+  /* A shortcut to rdma_write_msg(). */
+  void rdma_write_msg(const char *m, const uint32_t nbytes) {
+    memcpy(msg, m, nbytes);
+    rdma_write_msg();
+  }
+
+  /* Post a receive request to "receive" data sent by rdma_write with immediate from the peer.
+   * Returns the immediate, [buf] will contain the data sent.
+   */
   uint32_t receive_rdma_with_imm();
 };
 
