@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 
+#include "rdma.h"
 #include "sm-common.h"
 #include "sm-config.h"
 #include "sm-log.h"
@@ -14,14 +15,17 @@
 #include "tcp.h"
 
 namespace rep {
-#define PRIMARY_PORT "10002"
+#define PRIMARY_PORT "20002"
 #define MAX_NBACKUPS 10
 
-tcp::server_context *primary_tcp_ctx = nullptr;  // for primary server only
-std::vector<int> backup_sockfds;  // for primary server only
+// for primary server only
+tcp::server_context *primary_tcp_ctx = nullptr;
+std::vector<int> backup_sockfds;
+
+rdma::context *primary_rdma_ctx = nullptr;
 
 void primary_server_daemon() {
-  DEFER(delete primary_tcp_ctx);
+  logmgr->flush();  // persist everything before shipping
   do {
     int backup_sockfd = primary_tcp_ctx->expect_client();
     backup_sockfds.push_back(backup_sockfd);
@@ -53,6 +57,13 @@ void primary_server_daemon() {
     tcp::expect_ack(backup_sockfd);
     //printf("[Primary] Backup received log\n");
   } while (++sysconf::num_active_backups < sysconf::num_backups);
+
+  delete primary_tcp_ctx;
+  if (sysconf::log_ship_by_rdma) {
+    auto& logbuf = logmgr->get_logbuf();
+    primary_rdma_ctx = new rdma::context(
+      PRIMARY_PORT, 1, logbuf._data, logbuf.window_size() * 2);
+  }
 }
 
 void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
@@ -104,24 +115,40 @@ void primary_ship_log_buffer(
   ALWAYS_ASSERT(size);
   size_t nbytes = send(backup_sockfd, (char *)&size, sizeof(uint32_t), 0);
   THROW_IF(nbytes != sizeof(uint32_t), log_file_error, "Incomplete log shipping (header)");
+  //printf("[Primary] Will send %u bytes\n", size);
   nbytes = send(backup_sockfd, buf, size, 0);
   THROW_IF(nbytes != size, log_file_error, "Incomplete log shipping (data)");
-
+  //printf("[Primary] Sent %u bytes\n", size);
   // expect an ack message
+  // XXX(tzwang): do this in flush()?
   tcp::expect_ack(backup_sockfd);
 }
 
 void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
-  ASSERT(backup_sockfds.size());
-  for (int &fd : backup_sockfds) {
-    primary_ship_log_buffer(fd, buf, size);
+  if (sysconf::log_ship_by_rdma) {
+    primary_ship_log_buffer_rdma(buf, size);
+  } else {
+    ASSERT(backup_sockfds.size());
+    for (int &fd : backup_sockfds) {
+      primary_ship_log_buffer(fd, buf, size);
+    }
   }
 }
 
+// Support only one peer for now
+void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
+  ALWAYS_ASSERT(size);
+  // wait for the "go" signal
+  while (*(uint64_t *)primary_rdma_ctx->get_msg() != RDMA_READY_TO_RECEIVE) {}
+  // reset it so I'm not confused next time
+  *(uint64_t *)primary_rdma_ctx->get_msg() = RDMA_WAITING;
+  uint64_t offset = buf - primary_rdma_ctx->get_buf();
+  primary_rdma_ctx->rdma_write(offset, offset, size, size);
+}
+
 void start_as_primary() {
-  ALWAYS_ASSERT(!sysconf::is_backup_srv);
+  ALWAYS_ASSERT(not sysconf::is_backup_srv());
   primary_tcp_ctx = new tcp::server_context(PRIMARY_PORT, sysconf::num_backups);
-  logmgr->flush();
   // Spawn a new thread to listen to incoming connections
   std::thread t(primary_server_daemon);
   t.detach();
@@ -133,8 +160,13 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   DEFER(rcu_exit());
   DEFER(rcu_deregister());
   DEFER(delete cctx);
+
   // Listen to incoming log records from the primary
   uint32_t size = 0;
+  // Wait for the main thread to create logmgr - it might run slower than me
+  while (not volatile_read(logmgr)) {}
+  auto& logbuf = logmgr->get_logbuf();
+
   while (1) {
     // expect an integer indicating data size
     tcp::receive(cctx->server_sockfd, (char *)&size, sizeof(size));
@@ -150,7 +182,6 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
 
     // expect the real log data
     //std::cout << "[Backup] Will receive " << size << " bytes\n";
-    auto& logbuf = logmgr->get_logbuf();
     char *buf = logbuf.write_buf(sid->buf_offset(start_lsn), size);
     ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
     tcp::receive(cctx->server_sockfd, buf, size);
@@ -173,6 +204,60 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     if (sysconf::nvram_log_buffer)
       logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
+  }
+}
+
+void backup_daemon_rdma(std::string primary_address) {
+  rcu_register();
+  rcu_enter();
+  DEFER(rcu_exit());
+  DEFER(rcu_deregister());
+
+  // Wait for the main thread to create logmgr - it might run slower than me
+  while (not volatile_read(logmgr)) {}
+  auto& logbuf = logmgr->get_logbuf();
+  rdma::context *cctx = new rdma::context(
+    primary_address.c_str(), PRIMARY_PORT, 1, logbuf._data, logbuf.window_size() * 2);
+
+  DEFER(delete cctx);
+
+  // Listen to incoming log records from the primary
+  uint32_t size = 0;
+  while (1) {
+    // tell the peer i'm ready
+    cctx->rdma_write_msg((char *)&RDMA_READY_TO_RECEIVE, sizeof(uint64_t));
+
+    // post an RR to get the data and its size embedded as an immediate
+    size = cctx->receive_rdma_with_imm();
+    THROW_IF(not size, illegal_argument, "Invalid data size");
+
+    // now we should already have data sitting in the buffer, but we need
+    // to use the data size we got to calculate a new durable lsn first.
+    LSN start_lsn =  logmgr->durable_flushed_lsn();
+    uint64_t end_lsn_offset = start_lsn.offset() + size;
+    segment_id *sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
+    ALWAYS_ASSERT(sid);
+    LSN end_lsn = sid->make_lsn(end_lsn_offset);
+    ASSERT(end_lsn_offset == end_lsn.offset());
+
+    std::cout << "[Backup] Recieved " << size << " bytes ("
+      << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
+
+    // now we have the new durable lsn (end_lsn), persist the data we got
+    if (sysconf::nvram_log_buffer) {
+      logmgr->persist_log_buffer();
+      logbuf.advance_writer(sid->buf_offset(end_lsn));
+    } else {
+      logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
+      ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
+    }
+
+    // roll forward
+    logmgr->redo_log(start_lsn, end_lsn);
+    printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    if (sysconf::nvram_log_buffer) {
+      logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
+    }
   }
 }
 
@@ -210,17 +295,23 @@ void start_as_backup(std::string primary_address) {
       os_write(fd, buffer, size);
       fsize -= size;
     }
+    ALWAYS_ASSERT(fsize == 0);
     os_fsync(fd);
     os_close(fd);
-    std::cout << "[Backup] Written " << fsize << " bytes for " << fname << std::endl;
+    std::cout << "[Backup] Written " << fname << std::endl;
   }
 
   // let the primary know we got all files
   tcp::send_ack(cctx->server_sockfd);
 
   std::cout << "[Backup] Received initial log records.\n";
-  std::thread t(backup_daemon_tcp, cctx);
-  t.detach();
+  if (sysconf::log_ship_by_rdma) {
+    std::thread t(backup_daemon_rdma, primary_address);
+    t.detach();
+  } else {
+    std::thread t(backup_daemon_tcp, cctx);
+    t.detach();
+  }
 }
 }  // namespace rep
 
