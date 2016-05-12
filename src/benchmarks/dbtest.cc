@@ -71,6 +71,7 @@ main(int argc, char **argv)
       {"log-buffer-mb"              , required_argument , 0                          , 'u'} ,
       {"recovery-warm-up"           , required_argument , 0                          , 'w'} ,
       {"log-ship-warm-up"           , required_argument , 0                          , 'i'} ,
+      {"log-ship-by-rdma"           , no_argument       , &sysconf::log_ship_by_rdma , 1},
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
       {"nvram-log-buffer"           , no_argument       , &sysconf::nvram_log_buffer , 1},

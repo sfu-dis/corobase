@@ -66,6 +66,7 @@ public:
     static int num_active_backups;
     static std::string primary_srv;
     static int log_ship_warm_up_policy;
+    static int log_ship_by_rdma;
 
     inline static bool is_backup_srv() {
         return primary_srv.size();
