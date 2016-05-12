@@ -70,8 +70,10 @@ rc_t base_txn_btree::do_tree_put(
     if (expect_new) {
         if (t.try_insert_new_tuple(&this->underlying_btree, k, v, this->fid))
             return rc_t{RC_TRUE};
-        else
-            return rc_t{RC_ABORT_INTERNAL};
+        // FIXME(tzwang): May 12, 2016 keep this upsert behavior for now, aborting causes
+        // problem in recovery - even single-thread Payment in TPC-C aborts.
+        //else
+        //    return rc_t{RC_ABORT_INTERNAL};
     }
 
     // do regular search
