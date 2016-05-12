@@ -139,7 +139,7 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
   ALWAYS_ASSERT(size);
   // wait for the "go" signal
-  while (*(uint64_t *)primary_rdma_ctx->get_msg() != RDMA_READY_TO_RECEIVE) {}
+  while (volatile_read(*(uint64_t *)primary_rdma_ctx->get_msg()) != RDMA_READY_TO_RECEIVE) {}
   // reset it so I'm not confused next time
   *(uint64_t *)primary_rdma_ctx->get_msg() = RDMA_WAITING;
   uint64_t offset = buf - primary_rdma_ctx->get_buf();
