@@ -8,7 +8,7 @@
 
 namespace rdma {
 
-void context::init(char *server) {
+void context::init(const char *server) {
   ALWAYS_ASSERT(buf);
   ALWAYS_ASSERT(buf_size);
   memset(buf, 0, buf_size);
@@ -139,13 +139,13 @@ void context::exchange_ib_connection_info(int peer_sockfd) {
   remote_connection = new ib_connection(msg);
 }
 
-void context::rdma_write(uint64_t offset, uint64_t size) {
-  sge_list.addr = (uintptr_t)buf + offset;
+void context::rdma_write(uint64_t local_offset, uint64_t remote_offset, uint64_t size) {
+  sge_list.addr = (uintptr_t)buf + local_offset;
   sge_list.length = size;
   sge_list.lkey = buf_mr->lkey;
 
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->buf_vaddr;
+  wr.wr.rdma.remote_addr = remote_connection->buf_vaddr + remote_offset;
   wr.wr.rdma.rkey = remote_connection->buf_rkey;
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
@@ -159,13 +159,13 @@ void context::rdma_write(uint64_t offset, uint64_t size) {
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
 }
 
-void context::rdma_write(uint64_t offset, uint64_t size, uint32_t imm_data) {
-  sge_list.addr = (uintptr_t)buf + offset;
+void context::rdma_write(uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data) {
+  sge_list.addr = (uintptr_t)buf + local_offset;
   sge_list.length = size;
   sge_list.lkey = buf_mr->lkey;
 
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->buf_vaddr;
+  wr.wr.rdma.remote_addr = remote_connection->buf_vaddr + remote_offset;
   wr.wr.rdma.rkey = remote_connection->buf_rkey;
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
