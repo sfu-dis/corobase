@@ -316,6 +316,7 @@ main(int argc, char **argv)
       cerr << "eager";
     }
     cerr << endl;
+    cerr << "  log-ship-by-rdma: " << sysconf::log_ship_by_rdma << endl;
     cerr << "  enable-chkpt    : " << enable_chkpt           << endl;
     cerr << "  enable-gc       : " << sysconf::enable_gc     << endl;
     cerr << "  null-log-device : " << sysconf::null_log_device << endl;
