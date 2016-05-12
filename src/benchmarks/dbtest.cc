@@ -80,7 +80,6 @@ main(int argc, char **argv)
       {"node-memory-gb"             , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
-      {"as-backup"                  , no_argument       , &sysconf::is_backup_srv    , 1},
       {"primary"                    , required_argument , 0                          , 'g'},
       {"wait-for-backups"           , no_argument       , &sysconf::wait_for_backups , 1},
       {"num-backups"                , required_argument , 0                          , 'a'},
@@ -319,7 +318,6 @@ main(int argc, char **argv)
     cerr << "  enable-chkpt    : " << enable_chkpt           << endl;
     cerr << "  enable-gc       : " << sysconf::enable_gc     << endl;
     cerr << "  null-log-device : " << sysconf::null_log_device << endl;
-    cerr << "  as-backup       : " << sysconf::is_backup_srv << endl;
     cerr << "  num-backups     : " << sysconf::num_backups   << endl;
     cerr << "  wait-for-backups: " << sysconf::wait_for_backups << endl;
 
@@ -362,7 +360,7 @@ main(int argc, char **argv)
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
 
-  if (sysconf::is_backup_srv)
+  if (sysconf::is_backup_srv())
     rep::start_as_backup(sysconf::primary_srv);
 
   // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)

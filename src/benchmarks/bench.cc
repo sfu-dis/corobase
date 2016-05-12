@@ -150,7 +150,7 @@ bench_runner::create_files_task(char *)
   ASSERT(oidmgr);
   RCU::rcu_exit();
 
-  if (not sm_log::need_recovery && not sysconf::is_backup_srv) {
+  if (not sm_log::need_recovery && not sysconf::is_backup_srv()) {
     // allocate an FID for each table
     for (auto &index : fid_map) {
       ALWAYS_ASSERT(index.second.second);
@@ -184,7 +184,7 @@ bench_runner::run()
   thread::put_thread(runner_thread);
 
   // load data, unless we recover from logs or is a backup server (recover from shipped logs)
-  if (not sm_log::need_recovery && not sysconf::is_backup_srv) {
+  if (not sm_log::need_recovery && not sysconf::is_backup_srv()) {
     vector<bench_loader *> loaders = make_loaders();
     const pair<uint64_t, uint64_t> mem_info_before = get_system_memory_info();
     {
@@ -229,14 +229,14 @@ bench_runner::run()
 
   if (sysconf::num_backups) {
     std::cout << "[Primary] Expect " << sysconf::num_backups << " backups\n";
-    ALWAYS_ASSERT(not sysconf::is_backup_srv);
+    ALWAYS_ASSERT(not sysconf::is_backup_srv());
     rep::start_as_primary();
     if (sysconf::wait_for_backups) {
       while (volatile_read(sysconf::num_active_backups) != volatile_read(sysconf::num_backups)) {}
       std::cout << "[Primary] " << sysconf::num_backups << " backups\n";
     }
     getchar();
-  } else if (sysconf::is_backup_srv) {
+  } else if (sysconf::is_backup_srv()) {
     getchar();
   }
 

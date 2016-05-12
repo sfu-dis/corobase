@@ -319,7 +319,7 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         // to see if the replicated database can still run benchmarks
         // after replayed logs shipped from the primary.
         if (_lsn_offset < _durable_flushed_lsn_offset) {
-          THROW_IF(not sysconf::is_backup_srv, illegal_argument,
+          THROW_IF(not sysconf::is_backup_srv(), illegal_argument,
             "Wrong cur_lsn_offset on primary node");
           _lsn_offset = _durable_flushed_lsn_offset;
         }
