@@ -105,7 +105,7 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
     auto pread = [&](size_t nbytes, uint64_t i)->size_t {
         uint64_t offset = sid->offset(x);
         // See if it's stepping into the log buffer
-        if (sysconf::is_backup_srv and sysconf::nvram_log_buffer and
+        if (sysconf::is_backup_srv() and sysconf::nvram_log_buffer and
             logmgr and x >= logmgr ->durable_flushed_lsn()) {
             // we should be scanning and replaying the log at a backup node
             auto& logbuf = logmgr->get_logbuf();

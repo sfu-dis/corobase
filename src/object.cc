@@ -48,7 +48,7 @@ object::create_tuple_object(fat_ptr ptr, fat_ptr nxt, epoch_num epoch, sm_log_re
     // So spin here until the tuple is flushed from NVRAM to disk.
     // XXX(tzwang): for now we can't flush - need coordinate with backup daemon
     while (ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
-        ASSERT(sysconf::is_backup_srv);
+        ASSERT(sysconf::is_backup_srv());
     }
 
     // Load tuple varstr from the log
