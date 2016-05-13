@@ -154,6 +154,24 @@ void start_as_primary() {
   t.detach();
 }
 
+void redo_daemon() {
+  rcu_register();
+  rcu_enter();
+  DEFER(rcu_exit());
+  DEFER(rcu_deregister());
+
+  auto start_lsn = logmgr->durable_flushed_lsn();
+  while (true) {
+    auto end_lsn = logmgr->durable_flushed_lsn();
+    if (end_lsn > start_lsn) {
+      printf("[Backup] Rolling forward %lx-%lx\n", start_lsn.offset(), end_lsn.offset());
+      logmgr->redo_log(start_lsn, end_lsn);
+      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn.offset());
+      start_lsn = end_lsn;
+    }
+  }
+}
+
 void backup_daemon_tcp(tcp::client_context *cctx) {
   rcu_register();
   rcu_enter();
@@ -166,6 +184,12 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   // Wait for the main thread to create logmgr - it might run slower than me
   while (not volatile_read(logmgr)) {}
   auto& logbuf = logmgr->get_logbuf();
+
+  // Now safe to start the redo daemon with a valid durable_flushed_lsn
+  if (not sysconf::log_ship_sync_redo) {
+    std::thread rt(redo_daemon);
+    rt.detach();
+  }
 
   while (1) {
     // expect an integer indicating data size
@@ -199,9 +223,12 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
 
     tcp::send_ack(cctx->server_sockfd);
 
-    // roll forward
-    logmgr->redo_log(start_lsn, end_lsn);
-    printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    if (sysconf::log_ship_sync_redo) {
+      ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
+      printf("[Backup] Rolling forward %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+      logmgr->redo_log(start_lsn, end_lsn);
+      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    }
     if (sysconf::nvram_log_buffer)
       logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
   }
@@ -220,6 +247,12 @@ void backup_daemon_rdma(std::string primary_address) {
     primary_address.c_str(), PRIMARY_PORT, 1, logbuf._data, logbuf.window_size() * 2);
 
   DEFER(delete cctx);
+
+  // Now safe to start the redo daemon with a valid durable_flushed_lsn
+  if (not sysconf::log_ship_sync_redo) {
+    std::thread rt(redo_daemon);
+    rt.detach();
+  }
 
   // Listen to incoming log records from the primary
   uint32_t size = 0;
@@ -253,8 +286,10 @@ void backup_daemon_rdma(std::string primary_address) {
     }
 
     // roll forward
-    logmgr->redo_log(start_lsn, end_lsn);
-    printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    if (sysconf::log_ship_sync_redo) {
+      logmgr->redo_log(start_lsn, end_lsn);
+      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    }
     if (sysconf::nvram_log_buffer) {
       logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
     }

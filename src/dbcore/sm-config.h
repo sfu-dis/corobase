@@ -67,6 +67,7 @@ public:
     static std::string primary_srv;
     static int log_ship_warm_up_policy;
     static int log_ship_by_rdma;
+    static int log_ship_sync_redo;
 
     inline static bool is_backup_srv() {
         return primary_srv.size();

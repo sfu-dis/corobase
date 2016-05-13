@@ -72,6 +72,7 @@ main(int argc, char **argv)
       {"recovery-warm-up"           , required_argument , 0                          , 'w'} ,
       {"log-ship-warm-up"           , required_argument , 0                          , 'i'} ,
       {"log-ship-by-rdma"           , no_argument       , &sysconf::log_ship_by_rdma , 1},
+      {"log-ship-sync-redo"         , no_argument       , &sysconf::log_ship_sync_redo, 1},
       {"enable-chkpt"               , no_argument       , &enable_chkpt              , 1} ,
       {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
       {"nvram-log-buffer"           , no_argument       , &sysconf::nvram_log_buffer , 1},
@@ -317,6 +318,7 @@ main(int argc, char **argv)
     }
     cerr << endl;
     cerr << "  log-ship-by-rdma: " << sysconf::log_ship_by_rdma << endl;
+    cerr << "  log-ship-sync-redo: " << sysconf::log_ship_sync_redo << endl;
     cerr << "  enable-chkpt    : " << enable_chkpt           << endl;
     cerr << "  enable-gc       : " << sysconf::enable_gc     << endl;
     cerr << "  null-log-device : " << sysconf::null_log_device << endl;
