@@ -21,10 +21,14 @@ struct sm_log_recover_impl {
   ndb_ordered_index *recover_fid(sm_log_scan_mgr::record_scan *logrec);
   void recover_index_insert(
       sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index);
-  void rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index);
+  void rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index, LSN from, LSN to);
 
   // The main recovery function; the inheriting class should implement this
-  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end) = 0;
+  // The implementation shall replay the log from position [from] until [to],
+  // no more and no less; this is important for async log replay on backups.
+  // Recovery at startup however can give [from]=chkpt_begin, and [to]=+inf
+  // to replay the whole log.
+  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from, LSN to) = 0;
 };
 
 struct parallel_file_replay : public sm_log_recover_impl {
@@ -41,9 +45,10 @@ struct parallel_file_replay : public sm_log_recover_impl {
   };
 
   sm_log_scan_mgr *scanner;
-  LSN chkpt_begin;
+  LSN start_lsn;
+  LSN end_lsn;
 
-  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
+  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from, LSN to);
 };
 
 struct parallel_oid_replay : public sm_log_recover_impl {
@@ -61,8 +66,9 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   uint32_t nredoers;
   std::vector<struct redo_runner> redoers;
   sm_log_scan_mgr *scanner;
-  LSN chkpt_begin;
+  LSN start_lsn;
+  LSN end_lsn;
 
   parallel_oid_replay() : nredoers(sysconf::worker_threads) {}
-  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN chkpt_begin, LSN chkpt_end);
+  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from, LSN to);
 };
