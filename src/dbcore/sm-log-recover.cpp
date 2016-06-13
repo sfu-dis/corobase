@@ -35,7 +35,7 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     ASSERT(oidmgr);
 
     if (rf and sm_log::need_recovery)
-        redo_log(get_chkpt_start(), get_chkpt_end());
+        redo_log(get_chkpt_start(), LSN{~uint64_t{0}});  // till end of log
 }
 
 void

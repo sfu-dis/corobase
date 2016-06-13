@@ -132,14 +132,13 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
 }
 
 void
-sm_log_recover_impl::rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index) {
+sm_log_recover_impl::rebuild_index(
+  sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index, LSN start_lsn, LSN end_lsn) {
   ALWAYS_ASSERT(SEPARATE_INDEX_REBUILD);
   uint64_t count = 0;
   RCU::rcu_enter();
-  // This has to start from the beginning of the log for now, because we
-  // don't checkpoint the key-oid pair.
-  auto *scan = scanner->new_log_scan(LSN{0x1ff}, true);
-  for (; scan->valid(); scan->next()) {
+  auto *scan = scanner->new_log_scan(start_lsn, true);
+  for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
     if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
       continue;
     // Below ASSERT has to go as the object might be already deleted
@@ -177,9 +176,10 @@ sm_log_recover_impl::rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordere
  * (again from the beginning of the log) to rebuild indexes.
  */
 void
-parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN cb, LSN ce) {
+parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to) {
   scanner = s;
-  chkpt_begin = cb;
+  start_lsn = from;
+  end_lsn = to;
 
   RCU::rcu_enter();
   // Look for new table creations after the chkpt
@@ -191,8 +191,8 @@ parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN cb, LSN ce) 
   FID max_fid = 0;
   static std::vector<struct redo_runner> redoers;
   if (redoers.size() == 0) {
-    auto *scan = scanner->new_log_scan(chkpt_begin, sysconf::eager_warm_up());
-    for (; scan->valid(); scan->next()) {
+    auto *scan = scanner->new_log_scan(start_lsn, sysconf::eager_warm_up());
+    for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
       if (scan->type() != sm_log_scan_mgr::LOG_FID)
         continue;
       FID fid = scan->fid();
@@ -269,7 +269,7 @@ parallel_file_replay::redo_runner::my_work(char *) {
     oidmgr->recreate_allocator(fid, himark);
 
 #if SEPARATE_INDEX_REBUILD
-  rebuild_index(scanner, fid, fid_index);
+  rebuild_index(scanner, fid, fid_index, LSN{0x1ff}, LSN{~uint64_t{0}});
 #endif
 
   done = true;
@@ -282,8 +282,8 @@ parallel_file_replay::redo_runner::redo_file() {
   RCU::rcu_enter();
   OID himark = 0;
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
-  auto *scan = owner->scanner->new_log_scan(owner->chkpt_begin, sysconf::eager_warm_up());
-  for (; scan->valid(); scan->next()) {
+  auto *scan = owner->scanner->new_log_scan(owner->start_lsn, sysconf::eager_warm_up());
+  for (; scan->valid() and scan->payload_lsn() < owner->end_lsn; scan->next()) {
     auto f = scan->fid();
     if (f != fid)
       continue;
@@ -333,10 +333,11 @@ parallel_file_replay::redo_runner::redo_file() {
 }
 
 void
-parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN cb, LSN ce) {
+parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to) {
   util::scoped_timer t("parallel_oid_replay");
   scanner = s;
-  chkpt_begin = cb;
+  start_lsn = from;
+  end_lsn = to;
 
   RCU::rcu_enter();
   // Look for new table creations after the chkpt
@@ -347,8 +348,8 @@ parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN cb, LSN ce) {
   // One hiwater_mark/capacity_mark per FID
   FID max_fid = 0;
   if (redoers.size() == 0) {
-    auto *scan = scanner->new_log_scan(chkpt_begin, sysconf::eager_warm_up());
-    for (; scan->valid(); scan->next()) {
+    auto *scan = scanner->new_log_scan(start_lsn, sysconf::eager_warm_up());
+    for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
       if (scan->type() != sm_log_scan_mgr::LOG_FID)
         continue;
       FID fid = scan->fid();
@@ -415,10 +416,10 @@ parallel_oid_replay::redo_runner::redo_partition() {
   util::scoped_timer t("redo_partition");
   RCU::rcu_enter();
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
-  auto *scan = owner->scanner->new_log_scan(owner->chkpt_begin, sysconf::eager_warm_up());
+  auto *scan = owner->scanner->new_log_scan(owner->start_lsn, sysconf::eager_warm_up());
   static __thread std::unordered_map<FID, OID> max_oid;
 
-  for (; scan->valid(); scan->next()) {
+  for (; scan->valid() and scan->payload_lsn() < owner->end_lsn; scan->next()) {
     auto oid = scan->oid();
     if (oid % owner->redoers.size() != oid_partition)
       continue;

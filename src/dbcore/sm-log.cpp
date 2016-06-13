@@ -37,9 +37,9 @@ sm_log::get_logbuf()
 }
 
 void
-sm_log::redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn)
+sm_log::redo_log(LSN start_lsn, LSN end_lsn)
 {
-    get_impl(this)->_lm._lm.redo_log(chkpt_start_lsn, chkpt_end_lsn);
+    get_impl(this)->_lm._lm.redo_log(start_lsn, end_lsn);
 }
 
 segment_id*
