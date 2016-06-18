@@ -1035,7 +1035,6 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     // do the actual tuple read
     dbtuple::ReadStatus stat;
     {
-        tuple->prefetch();
         stat = tuple->do_read(value_reader, this->string_allocator(), not read_my_own);
 
         if (unlikely(stat == dbtuple::READ_FAILED))

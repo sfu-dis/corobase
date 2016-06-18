@@ -1,21 +1,10 @@
 #ifndef _NDB_TUPLE_H_
 #define _NDB_TUPLE_H_
 
-#include <atomic>
-#include <vector>
-#include <string>
-#include <utility>
-#include <limits>
-#include <ostream>
-#include <thread>
-
 #include "amd64.h"
 #include "macros.h"
 #include "varkey.h"
 #include "util.h"
-#include "spinlock.h"
-#include "prefetch.h"
-#include "ownership_checker.h"
 
 #include "reader_writer.h"
 #include "dbcore/xid.h"
@@ -27,8 +16,10 @@ using namespace TXN;
 // differentiate with delete case (pvalue = null)
 #define DEFUNCT_TUPLE_MARK ((varstr *)0x1)
 
+#ifdef USE_PARALLEL_SSN
 // Indicate somebody has read this tuple and thought it was an old one
 #define PERSISTENT_READER_MARK 0x1
+#endif
 
 /**
  * A dbtuple is the type of value which we stick
@@ -77,14 +68,9 @@ public:
       size(CheckBounds(size)),
       pvalue(NULL)
   {
-#ifdef USE_PARALLEL_SSN
-    // FIXME: seems this assumes some 8-byte alignment, which isn't the
-    // case when dbtuple is without those ssn-related fields.
-    //INVARIANT(((char *)this) + sizeof(*this) == (char *) &value_start[0]);
-#endif
   }
 
-  ~dbtuple();
+  ~dbtuple() {}
 
   enum ReadStatus {
     READ_FAILED,
@@ -92,7 +78,7 @@ public:
     READ_RECORD,
   };
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(USE_PARALLEL_SSN)
   /* return the tuple's age based on a safe_lsn provided by the calling tx.
    * safe_lsn usually = the calling tx's begin offset.
    *
@@ -123,7 +109,9 @@ public:
     // the caller must be alive...
     return volatile_read(visitor->begin).offset() - end;
   }
-  bool is_old(xid_context *visitor);    // FOR READERS ONLY!
+  inline bool is_old(xid_context *visitor) {  // FOR READERS ONLY!
+    return xc->xct->is_read_mostly() && age(xc) >= sysconf::ssn_read_opt_threshold;
+  }
   inline ALWAYS_INLINE bool set_persistent_reader() {
     uint64_t pr = 0;
     do {
@@ -153,14 +141,6 @@ public:
     ASSERT(not (volatile_read(preader) >> 7));
   }
 #endif
-
-  inline void
-  prefetch() const
-  {
-#ifdef TUPLE_PREFETCH
-    prefetch_bytes(this, sizeof(*this) + size);
-#endif
-  }
 
   inline ALWAYS_INLINE uint8_t *
   get_value_start()
@@ -243,6 +223,7 @@ public:
   inline ALWAYS_INLINE void
   do_write() const
   {
+    ASSERT(pvalue != DEFUNCT_TUPLE_MARK);
     if (pvalue) {
       ASSERT(pvalue->size() == size);
       memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());
