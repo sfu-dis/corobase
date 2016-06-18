@@ -109,8 +109,10 @@ transaction::abort()
         dbtuple *tuple = w.get_object()->tuple();
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->get_object()->_clsn) == xid);
-        if (tuple->is_defunct())   // for repeated overwrites
+        if (tuple->is_defunct()) {   // for repeated overwrites
+            // MM::deallocate(w.new_object);  // FIXME: recycle this
             continue;
+        }
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
         if (tuple->next()) {
             volatile_write(tuple->next()->sstamp, NULL_PTR);
@@ -119,7 +121,8 @@ transaction::abort()
 #endif
         oidmgr->oid_unlink(w.oa, w.oid, tuple);
         volatile_write(w.get_object()->_clsn, NULL_PTR);
-        MM::deallocate(w.new_object);
+        ASSERT(w.get_object()->_alloc_epoch == xc->begin_epoch);
+        // MM::deallocate(w.new_object);  // FIXME: recycle this
     }
 
     // Read-only tx on a safesnap won't have log
@@ -1002,7 +1005,7 @@ transaction::try_insert_new_tuple(
 
     // update write_set
     ASSERT(tuple->pvalue->size() == tuple->size);
-    write_set.emplace_back(new_head, btr->tuple_vec(), oid);
+    add_to_write_set(new_head, btr->tuple_vec(), oid);
     return true;
 }
 

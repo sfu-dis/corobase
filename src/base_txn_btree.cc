@@ -177,7 +177,7 @@ rc_t base_txn_btree::do_tree_put(
             // prev's prev: previous *committed* version
             ASSERT(prev->is_defunct()); // oid_put_update did this
             ASSERT(((object *)prev_obj_ptr.offset())->_alloc_epoch == t.xc->begin_epoch);
-            MM::deallocate(prev_obj_ptr);
+            // MM::deallocate(prev_obj_ptr);  // FIXME: recycle this
         }
         else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
@@ -186,7 +186,7 @@ rc_t base_txn_btree::do_tree_put(
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
-        t.write_set.emplace_back(new_obj_ptr, this->underlying_btree.tuple_vec(), oid);
+        t.add_to_write_set(new_obj_ptr, this->underlying_btree.tuple_vec(), oid);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
         INVARIANT(t.log);
