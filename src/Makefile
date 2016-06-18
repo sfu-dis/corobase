@@ -99,7 +99,6 @@ endif
 
 SRCFILES = base_txn_btree.cc \
 	object.cc \
-	tuple.cc \
 	txn.cc \
 	varint.cc
 
