@@ -240,9 +240,6 @@ public:
   void add_to_write_set(fat_ptr objptr, oid_array *oa, OID oid) {
 #if CHECK_INVARIANTS
     for (auto& w : write_set) {
-      if (w.new_object == objptr) {
-      sleep(1);
-      }
       ASSERT(w.new_object != objptr);
     }
 #endif
