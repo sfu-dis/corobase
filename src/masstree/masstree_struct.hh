@@ -133,8 +133,7 @@ class internode : public node_base<P> {
     }
 
     static internode<P>* make(threadinfo& ti) {
-        void* ptr = ti.pool_allocate(sizeof(internode<P>),
-                                     memtag_masstree_internode);
+        void* ptr = ti.allocate(sizeof(internode<P>), memtag_masstree_internode);
         internode<P>* n = new(ptr) internode<P>;
         assert(n);
         if (P::debug_level > 0)
@@ -169,10 +168,10 @@ class internode : public node_base<P> {
     void print(FILE* f, const char* prefix, int indent, int kdepth);
 
     void deallocate(threadinfo& ti) {
-        ti.pool_deallocate(this, sizeof(*this), memtag_masstree_internode);
+        ti.deallocate(this, sizeof(*this), memtag_masstree_internode);
     }
     void deallocate_rcu(threadinfo& ti) {
-        ti.pool_deallocate_rcu(this, sizeof(*this), memtag_masstree_internode);
+        ti.deallocate_rcu(this, sizeof(*this), memtag_masstree_internode);
     }
 
   private:
@@ -308,7 +307,7 @@ class leaf : public node_base<P> {
 
     static leaf<P>* make(int ksufsize, kvtimestamp_t node_ts, threadinfo& ti) {
         size_t sz = iceil(sizeof(leaf<P>) + std::min(ksufsize, 128), 64);
-        void* ptr = ti.pool_allocate(sz, memtag_masstree_leaf);
+        void* ptr = ti.allocate(sz, memtag_masstree_leaf);
         leaf<P>* n = new(ptr) leaf<P>(sz, node_ts);
         assert(n);
         if (P::debug_level > 0)
@@ -481,13 +480,13 @@ class leaf : public node_base<P> {
                           memtag_masstree_ksuffixes);
         if (extrasize64_ != 0)
             iksuf_[0].~stringbag();
-        ti.pool_deallocate(this, allocated_size(), memtag_masstree_leaf);
+        ti.deallocate(this, allocated_size(), memtag_masstree_leaf);
     }
     void deallocate_rcu(threadinfo& ti) {
         if (ksuf_)
             ti.deallocate_rcu(ksuf_, ksuf_->capacity(),
                               memtag_masstree_ksuffixes);
-        ti.pool_deallocate_rcu(this, allocated_size(), memtag_masstree_leaf);
+        ti.deallocate_rcu(this, allocated_size(), memtag_masstree_leaf);
     }
 
   private:

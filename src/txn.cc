@@ -110,8 +110,7 @@ transaction::abort()
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->get_object()->_clsn) == xid);
         if (tuple->is_defunct()) {   // for repeated overwrites
-            // MM::deallocate(w.new_object);  // FIXME: recycle this
-            continue;
+            continue;  // should have already called deallocate() during the update
         }
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
         if (tuple->next()) {
@@ -122,7 +121,7 @@ transaction::abort()
         oidmgr->oid_unlink(w.oa, w.oid, tuple);
         volatile_write(w.get_object()->_clsn, NULL_PTR);
         ASSERT(w.get_object()->_alloc_epoch == xc->begin_epoch);
-        // MM::deallocate(w.new_object);  // FIXME: recycle this
+        MM::deallocate(w.new_object);
     }
 
     // Read-only tx on a safesnap won't have log
@@ -957,7 +956,7 @@ transaction::try_insert_new_tuple(
     OID oid = oidmgr->alloc_oid(fid);
     oidmgr->oid_put_new(btr->tuple_vec(), oid, new_head);
     typename concurrent_btree::insert_info_t ins_info;
-    if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, &ins_info))) {
+    if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, xc, &ins_info))) {
         oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
         return false;
     }

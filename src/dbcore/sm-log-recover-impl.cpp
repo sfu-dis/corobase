@@ -88,7 +88,7 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, 
   varkey key((uint8_t *)((char *)buf + sizeof(varstr)), len);
 
   //printf("key %s %s\n", (char *)key.data(), buf);
-  ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, logrec->oid(), NULL));
+  ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, logrec->oid(), NULL, 0));
 }
 
 void
