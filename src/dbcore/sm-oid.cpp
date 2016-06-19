@@ -1169,9 +1169,10 @@ sm_oid_mgr::oid_unlink(oid_array *oa, OID o, void *object_payload)
     // using a CAS is overkill: head is guaranteed to be the (only) dirty version
     volatile_write(ptr->_ptr, head_obj->_next._ptr);
     __sync_synchronize();
-    // FIXME: tzwang: also need to free the old head during GC
-    // Note that a race exists here: some reader might be using
-    // that old head in fetch_version while we do the above CAS.
-    // So we can't immediate deallocate it here right now.
+    // tzwang: The caller is responsible for deallocate() the head version
+    // got unlinked - a update of own write will record the unlinked version
+    // in the transaction's write-set, during abortor commit the version's
+    // pvalue needs to be examined. So oid_unlink() shouldn't deallocate()
+    // here. Instead, the transaction does it in during commit or abort.
 }
 

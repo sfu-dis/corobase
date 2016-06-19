@@ -40,8 +40,8 @@
 
 class simple_threadinfo {
  public:
-    simple_threadinfo()
-        : ts_(0) { // XXX?
+    simple_threadinfo(epoch_num e)
+        : ts_(0), epoch_(e) {
     }
     class rcu_callback {
     public:
@@ -50,7 +50,7 @@ class simple_threadinfo {
 
  private:
     static inline void rcu_callback_function(void* p) {
-      simple_threadinfo ti;
+      simple_threadinfo ti(0);  // FIXME(tzwang): put a meaningful epoch here
       static_cast<rcu_callback*>(p)->operator()(ti);
     }
 
@@ -126,31 +126,22 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-      // FIXME(tzwang): broken for now
-        return MM::allocate(sz, 0);
+      object *obj = (object *)MM::allocate(sz + sizeof(object), epoch_);
+      new (obj) object(NULL_PTR, NULL_PTR, epoch_);
+      return obj->payload();
     }
     void deallocate(void* p, size_t sz, memtag) {
-      // FIXME(tzwang): broken for now
+      MM::deallocate(fat_ptr::make((char *)p - sizeof(object), encode_size_aligned(sz)));
     }
-    void deallocate_rcu(void *p, size_t sz, memtag) {
-      // FIXME(tzwang): broken for now
+    void deallocate_rcu(void *p, size_t sz, memtag m) {
+      deallocate(p, sz, m);  // FIXME(tzwang): add rcu callback support
     }
-
-    void* pool_allocate(size_t sz, memtag) {
-	int nl = (sz + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE;
-      // FIXME(tzwang): broken for now
-        return MM::allocate(nl * CACHE_LINE_SIZE, 0);
-    }
-    void pool_deallocate(void* p, size_t sz, memtag) {
-    }
-    void pool_deallocate_rcu(void* p, size_t sz, memtag) {
-    }
-
     void rcu_register(rcu_callback *cb) {
     }
 
   private:
     mutable kvtimestamp_t ts_;
+    epoch_num epoch_;
 };
 
 struct masstree_params : public Masstree::nodeparams<> {
@@ -223,12 +214,12 @@ public:
 #endif
 
   mbtree() {
-    threadinfo ti;
+    threadinfo ti(0);
     table_.initialize(ti);
   }
 
   ~mbtree() {
-    threadinfo ti;
+    threadinfo ti(0);
     table_.destroy(ti);
   }
 
@@ -241,7 +232,7 @@ public:
    * NOT THREAD SAFE
    */
   inline void clear() {
-    threadinfo ti;
+    threadinfo ti(0);
     table_.destroy(ti);
     table_.initialize(ti);
   }
@@ -389,7 +380,7 @@ public:
    * is written into old_v
    */
   inline bool
-  insert(const key_type &k, dbtuple * v,
+  insert(const key_type &k, dbtuple * v, xid_context *xc,
          value_type *old_v = NULL,
          insert_info_t *insert_info = NULL);
 
@@ -398,7 +389,7 @@ public:
    * if k inserted, false otherwise (k exists already)
    */
   inline bool
-  insert_if_absent(const key_type &k, OID o, dbtuple * v,
+  insert_if_absent(const key_type &k, OID o, dbtuple * v, xid_context *xc,
                    insert_info_t *insert_info = NULL);
 
   /**
@@ -408,7 +399,7 @@ public:
    * is written into old_v
    */
   inline bool
-  remove(const key_type &k, dbtuple* *old_v = NULL);
+  remove(const key_type &k, xid_context *xc, dbtuple* *old_v = NULL);
 
   /**
    * The tree walk API is a bit strange, due to the optimistic nature of the
@@ -585,7 +576,7 @@ template <typename P>
 inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple* &v, xid_context *xc,
                               versioned_node_t *search_info) const
 {
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_unlocked(ti);
   if (found)
@@ -601,11 +592,11 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple* &v, xid_contex
 }
 
 template <typename P>
-inline bool mbtree<P>::insert(const key_type &k, dbtuple * v,
+inline bool mbtree<P>::insert(const key_type &k, dbtuple * v, xid_context *xc,
                               value_type *old_v,
                               insert_info_t *insert_info)
 {
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_insert(ti);
   if (!found)
@@ -624,9 +615,10 @@ inline bool mbtree<P>::insert(const key_type &k, dbtuple * v,
 
 template <typename P>
 inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o, dbtuple * v,
+                                        xid_context *xc,
                                         insert_info_t *insert_info)
 {
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_insert(ti);
   if (!found) {
@@ -660,9 +652,9 @@ insert_new:
  * is written into old_v
  */
 template <typename P>
-inline bool mbtree<P>::remove(const key_type &k, dbtuple * *old_v)
+inline bool mbtree<P>::remove(const key_type &k, xid_context* xc, dbtuple * *old_v)
 {
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_locked(ti);
   if (found && old_v)
@@ -759,7 +751,7 @@ inline void mbtree<P>::search_range_call(const key_type &lower,
                                          low_level_search_range_callback &callback,
                                          xid_context *xc) const {
   low_level_search_range_scanner<false> scanner(this, upper, callback);
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xc, ti);
 }
 
@@ -769,7 +761,7 @@ inline void mbtree<P>::rsearch_range_call(const key_type &upper,
                                           low_level_search_range_callback &callback,
                                           xid_context *xc) const {
   low_level_search_range_scanner<true> scanner(this, lower, callback);
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xc, ti);
 }
 
@@ -780,7 +772,7 @@ inline void mbtree<P>::search_range(const key_type &lower,
                                     xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(this, upper, wrapper);
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   table_.scan(lcdf::Str(lower.data(), lower.length()), true, scanner, xc, ti);
 }
 
@@ -791,7 +783,7 @@ inline void mbtree<P>::rsearch_range(const key_type &upper,
                                      xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
-  threadinfo ti;
+  threadinfo ti(xc->begin_epoch);
   table_.rscan(lcdf::Str(upper.data(), upper.length()), true, scanner, xc, ti);
 }
 
