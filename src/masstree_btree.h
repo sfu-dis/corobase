@@ -618,7 +618,12 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o, dbtuple * v,
                                         xid_context *xc,
                                         insert_info_t *insert_info)
 {
-  threadinfo ti(xc->begin_epoch);
+  // Recovery will give a null xc, use epoch 0 for the memory allocated
+  epoch_num e = 0;
+  if (xc) {
+    e = xc->begin_epoch;
+  }
+  threadinfo ti(e);
   Masstree::tcursor<P> lp(table_, k.data(), k.length());
   bool found = lp.find_insert(ti);
   if (!found) {
