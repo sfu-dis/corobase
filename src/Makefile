@@ -100,6 +100,7 @@ endif
 SRCFILES = base_txn_btree.cc \
 	object.cc \
 	txn.cc \
+	tuple.cc \
 	varint.cc
 
 DBCORE_SRCFILES = dbcore/burt-hash.cpp \
