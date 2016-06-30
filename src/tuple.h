@@ -109,9 +109,7 @@ public:
     // the caller must be alive...
     return volatile_read(visitor->begin).offset() - end;
   }
-  inline bool is_old(xid_context *visitor) {  // FOR READERS ONLY!
-    return xc->xct->is_read_mostly() && age(xc) >= sysconf::ssn_read_opt_threshold;
-  }
+  bool is_old(xid_context *visitor);  // FOR READERS ONLY!
   inline ALWAYS_INLINE bool set_persistent_reader() {
     uint64_t pr = 0;
     do {
@@ -133,7 +131,8 @@ public:
         __sync_fetch_and_xor(&preader, uint8_t{1} << 7);
     ASSERT(volatile_read(preader) >> 7);
   }
-
+#endif
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
   // XXX: for the writer who's updating this tuple only
   inline ALWAYS_INLINE void welcome_readers() {
     if (volatile_read(preader) >> 7)
