@@ -22,6 +22,7 @@ int sysconf::log_segment_mb = 8192;
 std::string sysconf::log_dir("");
 int sysconf::null_log_device = 0;
 std::string sysconf::primary_srv("");
+std::string sysconf::primary_port("10000");
 int sysconf::htt_is_on= 1;
 uint64_t sysconf::node_memory_gb = 12;
 int sysconf::recovery_warm_up_policy = sysconf::WARM_UP_NONE;

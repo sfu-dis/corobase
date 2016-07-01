@@ -15,7 +15,6 @@
 #include "tcp.h"
 
 namespace rep {
-#define PRIMARY_PORT "20002"
 #define MAX_NBACKUPS 10
 
 // for primary server only
@@ -62,7 +61,7 @@ void primary_server_daemon() {
   if (sysconf::log_ship_by_rdma) {
     auto& logbuf = logmgr->get_logbuf();
     primary_rdma_ctx = new rdma::context(
-      PRIMARY_PORT, 1, logbuf._data, logbuf.window_size() * 2);
+      sysconf::primary_port, 1, logbuf._data, logbuf.window_size() * 2);
   }
 }
 
@@ -148,7 +147,7 @@ void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
 
 void start_as_primary() {
   ALWAYS_ASSERT(not sysconf::is_backup_srv());
-  primary_tcp_ctx = new tcp::server_context(PRIMARY_PORT, sysconf::num_backups);
+  primary_tcp_ctx = new tcp::server_context(sysconf::primary_port, sysconf::num_backups);
   // Spawn a new thread to listen to incoming connections
   std::thread t(primary_server_daemon);
   t.detach();
@@ -234,7 +233,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   }
 }
 
-void backup_daemon_rdma(std::string primary_address) {
+void backup_daemon_rdma() {
   rcu_register();
   rcu_enter();
   DEFER(rcu_exit());
@@ -244,7 +243,7 @@ void backup_daemon_rdma(std::string primary_address) {
   while (not volatile_read(logmgr)) {}
   auto& logbuf = logmgr->get_logbuf();
   rdma::context *cctx = new rdma::context(
-    primary_address.c_str(), PRIMARY_PORT, 1, logbuf._data, logbuf.window_size() * 2);
+    sysconf::primary_srv, sysconf::primary_port, 1, logbuf._data, logbuf.window_size() * 2);
 
   DEFER(delete cctx);
 
@@ -296,9 +295,12 @@ void backup_daemon_rdma(std::string primary_address) {
   }
 }
 
-void start_as_backup(std::string primary_address) {
-  std::cout << "[Backup] Connecting to " << primary_address << "\n";
-  tcp::client_context *cctx = new tcp::client_context(primary_address.c_str(), PRIMARY_PORT);
+void start_as_backup() {
+  ALWAYS_ASSERT(sysconf::is_backup_srv());
+  std::cout << "[Backup] Connecting to " << sysconf::primary_srv << ":"
+    << sysconf::primary_port << "\n";
+  tcp::client_context *cctx = new tcp::client_context(
+    sysconf::primary_srv, sysconf::primary_port);
 
   // Wait for the primary to ship the first part of the log so I can start "recovery"
   char buffer[4096];
@@ -341,7 +343,7 @@ void start_as_backup(std::string primary_address) {
 
   std::cout << "[Backup] Received initial log records.\n";
   if (sysconf::log_ship_by_rdma) {
-    std::thread t(backup_daemon_rdma, primary_address);
+    std::thread t(backup_daemon_rdma);
     t.detach();
   } else {
     std::thread t(backup_daemon_tcp, cctx);

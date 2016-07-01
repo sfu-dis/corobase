@@ -9,9 +9,9 @@
 
 namespace tcp {
 
-server_context::server_context(const char *port, uint32_t nclients) : sockfd(0) {
+server_context::server_context(std::string& port, uint32_t nclients) : sockfd(0) {
   gethostname(sock_addr, INET_ADDRSTRLEN);
-  printf("[Server] %s:%s\n", get_sock_addr(), port);
+  std::cout << "[Server] " << get_sock_addr() << ":" << port << std::endl;
   struct addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
   hints.ai_family = AF_INET;
@@ -19,7 +19,7 @@ server_context::server_context(const char *port, uint32_t nclients) : sockfd(0) 
   hints.ai_flags = AI_PASSIVE;
 
   struct addrinfo *result = nullptr;
-  int ret = getaddrinfo(nullptr, port, &hints, &result);
+  int ret = getaddrinfo(nullptr, port.c_str(), &hints, &result);
   THROW_IF(ret, illegal_argument, "Error getaddrinfo(): %s", gai_strerror(ret));
   DEFER(freeaddrinfo(result));
 
@@ -61,14 +61,14 @@ int server_context::expect_client() {
   return fd;
 }
 
-client_context::client_context(const char *server, const char *port) : server_sockfd(0) {
+client_context::client_context(std::string& server, std::string& port) : server_sockfd(0) {
   struct addrinfo hints;
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
 
   struct addrinfo *servinfo = nullptr;
-  int ret = getaddrinfo(server, port, &hints, &servinfo);
+  int ret = getaddrinfo(server.c_str(), port.c_str(), &hints, &servinfo);
   THROW_IF(ret != 0, illegal_argument, "Error getaddrinfo(): %s", gai_strerror(ret));
   DEFER(freeaddrinfo(servinfo));
 

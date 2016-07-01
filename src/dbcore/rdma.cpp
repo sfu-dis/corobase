@@ -74,7 +74,7 @@ void context::init(const char *server) {
     tcp::server_context stcp(port, 1);  // FIXME(tzwang): 1 client for now
     exchange_ib_connection_info(stcp.expect_client());
   } else {
-    tcp::client_context ctcp(server, port);
+    tcp::client_context ctcp(server_name, port);
     exchange_ib_connection_info(ctcp.server_sockfd);
   }
 

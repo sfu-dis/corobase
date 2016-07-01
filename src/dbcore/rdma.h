@@ -49,7 +49,7 @@ private:
   struct ibv_send_wr wr;
 
   std::string server_name;
-  char *port;
+  std::string port;
   int ib_port;
   char *buf;
   uint64_t buf_size;
@@ -72,12 +72,12 @@ private:
   inline bool is_server() { return server_name.length() == 0; }
 
 public:
-  context(const char *server, char *port, int ib_port, char *buf, uint64_t buf_size) :
+  context(std::string& server, std::string& port, int ib_port, char *buf, uint64_t buf_size) :
     port(port), ib_port(ib_port), buf(buf), buf_size(buf_size),
     local_connection(nullptr), remote_connection(nullptr) {
-    init(server);
+    init(server.c_str());
   }
-  context(char *port, int ib_port, char *buf, uint64_t buf_size) :
+  context(std::string& port, int ib_port, char *buf, uint64_t buf_size) :
     port(port), ib_port(ib_port), buf(buf), buf_size(buf_size),
     local_connection(nullptr), remote_connection(nullptr) {
     init(nullptr);

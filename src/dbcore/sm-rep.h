@@ -19,7 +19,7 @@ static const uint64_t RDMA_READY_TO_RECEIVE = 1UL;
 static const uint64_t RDMA_WAITING = 2UL;
 
 void start_as_primary();
-void start_as_backup(std::string primary_address);
+void start_as_backup();
 
 /* Ship a log file (on-disk) to a backup server via TCP using sendfile().
  * For primary server only. So far the only user is when the
