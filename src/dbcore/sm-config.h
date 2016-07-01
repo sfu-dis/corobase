@@ -65,6 +65,7 @@ public:
     static int num_backups;
     static int num_active_backups;
     static std::string primary_srv;
+    static std::string primary_port;
     static int log_ship_warm_up_policy;
     static int log_ship_by_rdma;
     static int log_ship_sync_redo;

@@ -82,7 +82,8 @@ main(int argc, char **argv)
       {"node-memory-gb"             , required_argument , 0                          , 'p'},
       {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
-      {"primary"                    , required_argument , 0                          , 'g'},
+      {"primary-addr"               , required_argument , 0                          , 'g'},
+      {"primary-port"               , required_argument , 0                          , 'k'},
       {"wait-for-backups"           , no_argument       , &sysconf::wait_for_backups , 1},
       {"num-backups"                , required_argument , 0                          , 'a'},
 #if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
@@ -134,6 +135,10 @@ main(int argc, char **argv)
 
     case 'g':
       sysconf::primary_srv = std::string(optarg);
+      break;
+
+    case 'k':
+      sysconf::primary_port = std::string(optarg);
       break;
 
     case 'b':
@@ -365,7 +370,7 @@ main(int argc, char **argv)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
 
   if (sysconf::is_backup_srv())
-    rep::start_as_backup(sysconf::primary_srv);
+    rep::start_as_backup();
 
   // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)
   sysconf::sanity_check();

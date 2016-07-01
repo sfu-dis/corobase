@@ -43,7 +43,7 @@ private:
   int sockfd;
 
 public:
-  server_context(const char *port, uint32_t nclients);
+  server_context(std::string& port, uint32_t nclients);
   ~server_context() {
     if (sockfd) {
       close(sockfd);
@@ -56,7 +56,7 @@ public:
 struct client_context {
   int server_sockfd;
   char server_sock_addr[INET_ADDRSTRLEN];
-  client_context(const char *server, const char *port);
+  client_context(std::string& server, std::string& port);
   ~client_context() {
     if (server_sockfd) {
       close(server_sockfd);
