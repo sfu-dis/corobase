@@ -27,7 +27,6 @@
 
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
-//#define TRAP_LARGE_ALLOOCATIONS
 #define USE_BUILTIN_MEMFUNCS
 //#define CHECK_INVARIANTS
 #define BTREE_NODE_ALLOC_CACHE_ALIGNED
@@ -37,8 +36,6 @@
 //#define DISABLE_FIELD_SELECTION
 //#define PARANOID_CHECKING
 //#define BTREE_LOCK_OWNERSHIP_CHECKING
-//#define MEMCHECK_MAGIC 0xFF
-//#define USE_PERF_CTRS
 
 #ifndef CONFIG_H
 #error "no CONFIG_H set"
@@ -124,8 +121,5 @@
 #else
 #define OVERRIDE
 #endif
-
-// number of nanoseconds in 1 second (1e9)
-#define ONE_SECOND_NS 1000000000
 
 #endif /* _MACROS_H_ */
