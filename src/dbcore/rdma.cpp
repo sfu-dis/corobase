@@ -166,6 +166,36 @@ void context::rdma_write(
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
 }
 
+uint64_t context::rdma_compare_and_swap(
+  uint32_t local_index,
+  uint64_t local_offset,
+  uint32_t remote_index,
+  uint64_t remote_offset,
+  uint64_t expected,
+  uint64_t new_value) {
+  auto* mem_region = mem_regions[local_index];
+  memset(&sge_list, 0, sizeof(sge_list));
+  sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
+  sge_list.length = sizeof(uint64_t);
+  sge_list.lkey = mem_region->mr->lkey;
+
+  memset(&wr, 0, sizeof(wr));
+  wr.wr_id = RDMA_WRID;
+  wr.sg_list = &sge_list;
+  wr.num_sge = 1;
+  wr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
+  wr.send_flags = IBV_SEND_SIGNALED;
+  wr.wr.atomic.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.atomic.rkey = remote_connection->rkeys[remote_index];
+  wr.wr.atomic.compare_add = expected;
+  wr.wr.atomic.swap = new_value;
+
+  struct ibv_send_wr *bad_wr = nullptr;
+  int ret = ibv_post_send(qp, &wr, &bad_wr);
+  THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+  return *(uint64_t *)(mem_region->buf + local_offset);
+}
+
 /*
  * Post a receive work request to wait for an RDMA write with
  * immediate from the peer. Returns the immediate, the caller
