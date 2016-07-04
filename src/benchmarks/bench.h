@@ -127,8 +127,7 @@ public:
       ntxn_serial_aborts(0),
       ntxn_rw_aborts(0),
       ntxn_phantom_aborts(0),
-      ntxn_query_commits(0),
-      size_delta(0)
+      ntxn_query_commits(0)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
     txn_obj_buf.resize(db->sizeof_txn_object(txn_flags));
@@ -190,8 +189,6 @@ public:
   }
 #endif
 
-  inline ssize_t get_size_delta() const { return size_delta; }
-
 private:
   virtual void my_work(char *);
 
@@ -231,7 +228,6 @@ protected:
 #endif
 
   std::vector<tx_stat> txn_counts; // commits and aborts breakdown
-  ssize_t size_delta; // how many logical bytes (of values) did the worker add to the DB
 
   std::string txn_obj_buf;
   str_arena arena;
