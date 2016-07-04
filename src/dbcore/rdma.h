@@ -127,6 +127,16 @@ public:
     uint64_t size,
     uint32_t imm_data);
 
+  /* Conduct a CAS at the offset of the specified remote buffer.
+   * Returns the old value. */
+  uint64_t rdma_compare_and_swap(
+    uint32_t local_index,    // Buffer for storing the old value
+    uint64_t local_offset,   // Where in the buffer to store the old value
+    uint32_t remote_index,   // Remote buffer for doing the CAS
+    uint64_t remote_offset,  // Where in the remote buffer to do the CAS
+    uint64_t expected,
+    uint64_t new_value);
+
   /* Post a receive request to "receive" data sent by rdma_write with immediate from the peer.
    * Returns the immediate, the caller should know where to look for the data.
    */
