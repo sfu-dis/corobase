@@ -149,6 +149,12 @@ bench_runner::create_files_task(char *)
       auto fid = oidmgr->create_file(true);
       nm.second->fid = fid;
       nm.second->index->set_oid_array(fid);
+
+      // Initialize the fid_map entries
+      if (sm_file_mgr::fid_map[nm.second->fid] != nm.second) {
+        sm_file_mgr::fid_map[nm.second->fid] = nm.second;
+      }
+
       // log [table name, FID]
       ASSERT(logmgr);
       RCU::rcu_enter();
