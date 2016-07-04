@@ -124,7 +124,7 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   if (sm_file_mgr::fid_map.find(f) == sm_file_mgr::fid_map.end()) {
     // chkpt recovery might have did this
     ASSERT(sm_file_mgr::name_map[name]->index);
-    sm_file_mgr::fid_map[f] = new sm_file_descriptor(f, name, sm_file_mgr::name_map[name]->index);
+    sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
   }
   printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
   return sm_file_mgr::get_index(name);
