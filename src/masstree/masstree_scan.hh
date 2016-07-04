@@ -347,7 +347,7 @@ int basic_table<P>::scan(H helper,
             ++scancount;
             dbtuple *v = NULL;
             OID o = entry.value();
-            v = oidmgr->oid_get_version(tuple_vec, o, xc);
+            v = oidmgr->oid_get_version(oid_array_, o, xc);
             if (v) {
                 if (!scanner.visit_value(ka, v))
                     goto done;

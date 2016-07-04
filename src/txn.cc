@@ -954,10 +954,10 @@ transaction::try_insert_new_tuple(
     ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
     tuple->get_object()->_clsn = xid.to_ptr();
     OID oid = oidmgr->alloc_oid(fid);
-    oidmgr->oid_put_new(btr->tuple_vec(), oid, new_head);
+    oidmgr->oid_put_new(btr->get_oid_array(), oid, new_head);
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, xc, &ins_info))) {
-        oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
+        oidmgr->oid_unlink(btr->get_oid_array(), oid, tuple);
         return false;
     }
 
@@ -970,7 +970,7 @@ transaction::try_insert_new_tuple(
             if (unlikely(it->second.version != ins_info.old_version)) {
                 // important: unlink the version, otherwise we risk leaving a dead
                 // version at chain head -> infinite loop or segfault...
-                oidmgr->oid_unlink(btr->tuple_vec(), oid, tuple);
+                oidmgr->oid_unlink(btr->get_oid_array(), oid, tuple);
                 return false;
             }
             // otherwise, bump the version
@@ -1004,7 +1004,7 @@ transaction::try_insert_new_tuple(
 
     // update write_set
     ASSERT(tuple->pvalue->size() == tuple->size);
-    add_to_write_set(new_head, btr->tuple_vec(), oid);
+    add_to_write_set(new_head, btr->get_oid_array(), oid);
     return true;
 }
 

@@ -94,7 +94,8 @@ public:
       varstr &&key);
   virtual size_t size() const;
   virtual std::map<std::string, uint64_t> clear();
-  inline void set_btr_fid(FID fid) { btr.set_tuple_vec(fid); }
+  inline void set_oid_array(FID fid) { btr.set_oid_array(fid); }
+  inline oid_array* get_oid_array() { return btr.get_oid_array(); }
 private:
   std::string name;
   txn_btree btr;
