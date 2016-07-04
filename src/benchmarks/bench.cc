@@ -148,7 +148,7 @@ bench_runner::create_files_task(char *)
       ALWAYS_ASSERT(nm.second->index);
       auto fid = oidmgr->create_file(true);
       nm.second->fid = fid;
-      nm.second->index->set_btr_fid(fid);
+      nm.second->index->set_oid_array(fid);
       // log [table name, FID]
       ASSERT(logmgr);
       RCU::rcu_enter();

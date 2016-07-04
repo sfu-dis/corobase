@@ -84,7 +84,8 @@ rc_t base_txn_btree::do_tree_put(
 
     // first *updater* wins
     fat_ptr new_obj_ptr = NULL_PTR;
-    fat_ptr prev_obj_ptr = oidmgr->oid_put_update(this->underlying_btree.tuple_vec(), oid, v, t.xc, &new_obj_ptr);
+    fat_ptr prev_obj_ptr = oidmgr->oid_put_update(
+      this->underlying_btree.get_oid_array(), oid, v, t.xc, &new_obj_ptr);
     dbtuple *tuple = ((object *)new_obj_ptr.offset())->tuple();
     ASSERT(tuple);
 
@@ -131,13 +132,13 @@ rc_t base_txn_btree::do_tree_put(
                         if (sysconf::enable_ssi_read_only_opt and
                             reader_xc->xct->write_set.size() == 0 and
                             reader_begin >= t.xc->ct3) {
-                            oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
+                            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid, tuple);
                             return {RC_ABORT_SERIAL};
                         }
                     }
                 }
                 else {
-                    oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
+                    oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid, tuple);
                     return {RC_ABORT_SERIAL};
                 }
             }
@@ -158,7 +159,7 @@ rc_t base_txn_btree::do_tree_put(
         if (not ssn_check_exclusion(t.xc)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set)
-            oidmgr->oid_unlink(this->underlying_btree.tuple_vec(), oid, tuple);
+            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid, tuple);
             return rc_t{RC_ABORT_SERIAL};
         }
 #endif
@@ -186,7 +187,7 @@ rc_t base_txn_btree::do_tree_put(
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
-        t.add_to_write_set(new_obj_ptr, this->underlying_btree.tuple_vec(), oid);
+        t.add_to_write_set(new_obj_ptr, this->underlying_btree.get_oid_array(), oid);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
         INVARIANT(t.log);

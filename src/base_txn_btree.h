@@ -44,10 +44,14 @@ public:
       unsafe_purge(false);
   }
 
-  inline void set_tuple_vec(FID f)
+  inline void set_oid_array(FID f)
   {
     fid = f;
-    underlying_btree.set_tuple_vec(oidmgr->get_array(f));
+    underlying_btree.set_oid_array(oidmgr->get_array(f));
+  }
+
+  inline oid_array* get_oid_array() {
+    return underlying_btree.get_oid_array();
   }
 
   inline size_t
