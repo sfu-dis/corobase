@@ -6,19 +6,29 @@
  *
  * Author: Tianzheng Wang
  *
- * Currently we use TCP to exchange connection information, without using rdma_cm.
- * Each peer associates itself with a context object (being the server or a client).
- * The context object provides two buffers: one data buffer and one message buffer.
- * The former is fully controlled by the user - customized size and allocation.
- * The latter is a fixed-length MAX_MSG_SIZE bytes (default 8 bytes) mostly for
- * exchanging simple, short messages.
+ * A typical usage is:
+ * 1. Create an RDMA context, e.g., ctx = new rdma::context().
+ * 2. Register one or more memory buffers using ctx->register_memory(...).
+ *    The register_memory() function uses ibverbs to register memory regions for the
+ *    buffer address provided. It can be called multiple times to register different
+ *    buffers. The buffers are fully controlled by the user, this library doesn't
+ *    interpret buffer contents.
+ * 3. After registering all buffers needed, call ctx->finish_init() which finishes
+ *    other needed steps before changing to RTS state.
+ *
+ * TODO(tzwang): allow dynamic add/delete of buffers.
  */
 
+#include <mutex>
 #include <string>
-#include <string.h>
+#include <vector>
 
 #include <infiniband/verbs.h>
 #include <netdb.h>
+#include <string.h>
+
+#include "../macros.h"
+#include "sm-common.h"
 
 namespace rdma {
 
@@ -27,8 +37,6 @@ struct context{
 
 private:
   const static int RDMA_WRID = 3;
-  const static int MSG_WRID = 2;
-  const static int MAX_MSG_SIZE = 8;
   const static int tx_depth = 100;
   const static int QP_RTS_ATTR =
     IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
@@ -36,10 +44,23 @@ private:
   const static int QP_RTR_ATTR = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU |
     IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
 
+  struct memory_region {
+    struct ibv_mr *mr;
+    char *buf;
+    uint64_t buf_size;
+    memory_region(struct ibv_pd *pd, char *addr, uint64_t size) : buf(addr), buf_size(size) {
+      mr = ibv_reg_mr(pd, buf, buf_size,
+        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+      THROW_IF(not mr, illegal_argument, "ibv_reg_mr() failed");
+    }
+    ~memory_region() {
+      ibv_dereg_mr(mr);
+      memset(this, 0, sizeof(*this));
+    }
+  };
+
   struct ibv_context *ctx;
   struct ibv_pd *pd;
-  struct ibv_mr *buf_mr;
-  struct ibv_mr *msg_mr;
   struct ibv_cq *cq;
   struct ibv_qp *qp;
   struct ibv_comp_channel *ch;
@@ -51,10 +72,9 @@ private:
   std::string server_name;
   std::string port;
   int ib_port;
-  char *buf;
-  uint64_t buf_size;
 
-  char msg[MAX_MSG_SIZE];
+  std::vector<memory_region*> mem_regions;
+  std::mutex mr_lock;
 
   struct ib_connection *local_connection;
   struct ib_connection *remote_connection;
@@ -72,53 +92,59 @@ private:
   inline bool is_server() { return server_name.length() == 0; }
 
 public:
-  context(std::string& server, std::string& port, int ib_port, char *buf, uint64_t buf_size) :
-    port(port), ib_port(ib_port), buf(buf), buf_size(buf_size),
+  context(std::string& server, std::string& port, int ib_port) :
+    pd(nullptr), port(port), ib_port(ib_port),
     local_connection(nullptr), remote_connection(nullptr) {
     init(server.c_str());
   }
-  context(std::string& port, int ib_port, char *buf, uint64_t buf_size) :
-    port(port), ib_port(ib_port), buf(buf), buf_size(buf_size),
+  context(std::string& port, int ib_port) :
+    pd(nullptr), port(port), ib_port(ib_port),
     local_connection(nullptr), remote_connection(nullptr) {
     init(nullptr);
   }
   ~context();
-  inline char *get_buf() { return buf; }
-  inline char *get_msg() { return msg; }
+  void finish_init();
+  inline char *get_memory_region(uint32_t idx) { return mem_regions[idx]->buf; }
 
-  /* Write [size] of bytes placed in [buf + local_offset] to remote address + [remote_offset] */
-  void rdma_write(uint64_t local_offset, uint64_t remote_offset, uint64_t size);
+  inline uint32_t register_memory(char *address, uint64_t size) {
+    mr_lock.lock();
+    DEFER(mr_lock.unlock());
+    uint32_t idx = mem_regions.size();
+    ALWAYS_ASSERT(pd);
+    mem_regions.push_back(new memory_region(pd, address, size));
+    return idx;
+  }
+
+  /* Write [size] of bytes placed at the offset of [local_offset] of the 
+   * buffer specified by [index] to remote address + [remote_offset] */
+  void rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size);
 
   /* Same as rdma_write() above, but with immediate data [imm_data] */
   void rdma_write(
-    uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data);
-
-  /* RDMA write whatever stored in [msg] */
-  void rdma_write_msg();
-
-  /* A shortcut to rdma_write_msg(). */
-  void rdma_write_msg(const char *m, const uint32_t nbytes) {
-    memcpy(msg, m, nbytes);
-    rdma_write_msg();
-  }
+    uint32_t index,
+    uint64_t local_offset,
+    uint64_t remote_offset,
+    uint64_t size,
+    uint32_t imm_data);
 
   /* Post a receive request to "receive" data sent by rdma_write with immediate from the peer.
-   * Returns the immediate, [buf] will contain the data sent.
+   * Returns the immediate, the caller should know where to look for the data.
    */
   uint32_t receive_rdma_with_imm();
 };
 
 struct ib_connection {
+  const static int kMaxMemoryRegions = 256;
+
   int lid;
   int qpn;
   int psn;
-  unsigned buf_rkey;
-  unsigned msg_rkey;
-  unsigned long long buf_vaddr;
-  unsigned long long msg_vaddr;
+  uint32_t nr_memory_regions;
+  unsigned rkeys[kMaxMemoryRegions];
+  unsigned long long vaddrs[kMaxMemoryRegions];
 
   ib_connection(struct context *ctx);
-  ib_connection(char *msg);
+  ib_connection() {}
 };
 
 }  // namespace rdma

@@ -23,6 +23,12 @@ std::vector<int> backup_sockfds;
 
 rdma::context *primary_rdma_ctx = nullptr;
 
+const static int kMessageSize = 8;
+char msgbuf[kMessageSize];
+
+uint32_t msgbuf_index = -1;
+uint32_t logbuf_index = -1;
+
 void primary_server_daemon() {
   logmgr->flush();  // persist everything before shipping
   do {
@@ -60,8 +66,10 @@ void primary_server_daemon() {
   delete primary_tcp_ctx;
   if (sysconf::log_ship_by_rdma) {
     auto& logbuf = logmgr->get_logbuf();
-    primary_rdma_ctx = new rdma::context(
-      sysconf::primary_port, 1, logbuf._data, logbuf.window_size() * 2);
+    primary_rdma_ctx = new rdma::context(sysconf::primary_port, 1);
+    logbuf_index = primary_rdma_ctx->register_memory(logbuf._data, logbuf.window_size() * 2);
+    msgbuf_index = primary_rdma_ctx->register_memory(msgbuf, kMessageSize);
+    primary_rdma_ctx->finish_init();
   }
 }
 
@@ -138,11 +146,11 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
   ALWAYS_ASSERT(size);
   // wait for the "go" signal
-  while (volatile_read(*(uint64_t *)primary_rdma_ctx->get_msg()) != RDMA_READY_TO_RECEIVE) {}
+  while (volatile_read(*(uint64_t *)primary_rdma_ctx->get_memory_region(msgbuf_index)) != RDMA_READY_TO_RECEIVE) {}
   // reset it so I'm not confused next time
-  *(uint64_t *)primary_rdma_ctx->get_msg() = RDMA_WAITING;
-  uint64_t offset = buf - primary_rdma_ctx->get_buf();
-  primary_rdma_ctx->rdma_write(offset, offset, size, size);
+  *(uint64_t *)primary_rdma_ctx->get_memory_region(msgbuf_index) = RDMA_WAITING;
+  uint64_t offset = buf - primary_rdma_ctx->get_memory_region(logbuf_index);
+  primary_rdma_ctx->rdma_write(logbuf_index, offset, offset, size, size);
 }
 
 void start_as_primary() {
@@ -242,8 +250,10 @@ void backup_daemon_rdma() {
   // Wait for the main thread to create logmgr - it might run slower than me
   while (not volatile_read(logmgr)) {}
   auto& logbuf = logmgr->get_logbuf();
-  rdma::context *cctx = new rdma::context(
-    sysconf::primary_srv, sysconf::primary_port, 1, logbuf._data, logbuf.window_size() * 2);
+  rdma::context *cctx = new rdma::context(sysconf::primary_srv, sysconf::primary_port, 1);
+  logbuf_index = cctx->register_memory(logbuf._data, logbuf.window_size() * 2);
+  msgbuf_index = cctx->register_memory(msgbuf, kMessageSize);
+  cctx->finish_init();
 
   DEFER(delete cctx);
 
@@ -257,7 +267,8 @@ void backup_daemon_rdma() {
   uint32_t size = 0;
   while (1) {
     // tell the peer i'm ready
-    cctx->rdma_write_msg((char *)&RDMA_READY_TO_RECEIVE, sizeof(uint64_t));
+    *(uint64_t *)cctx->get_memory_region(msgbuf_index) = RDMA_READY_TO_RECEIVE;
+    cctx->rdma_write(msgbuf_index, 0, 0, kMessageSize);
 
     // post an RR to get the data and its size embedded as an immediate
     size = cctx->receive_rdma_with_imm();
