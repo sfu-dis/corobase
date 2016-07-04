@@ -489,9 +489,9 @@ object_list::put(fat_ptr objptr) {
 object_list*
 object_pool::get_object_list(size_t size) {
     size_t aligned_size = align_up(size);
-    auto* list = pool[aligned_size];
     // peek at it first, don't bother if there's nothing
-    if (not list or volatile_read(list->head) == NULL_PTR) {
+    if (pool.find(aligned_size) == pool.end() or
+        volatile_read(pool[aligned_size]->head) == NULL_PTR) {
         return NULL;
     }
     lock.lock();
