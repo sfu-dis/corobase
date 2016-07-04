@@ -16,6 +16,7 @@
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-chkpt.h"
 #include "../dbcore/sm-config.h"
+#include "../dbcore/sm-file.h"
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
@@ -143,16 +144,16 @@ bench_runner::create_files_task(char *)
 
   if (not sm_log::need_recovery && not sysconf::is_backup_srv()) {
     // allocate an FID for each table
-    for (auto &index : fid_map) {
-      ALWAYS_ASSERT(index.second.second);
+    for (auto &nm : sm_file_mgr::name_map) {
+      ALWAYS_ASSERT(nm.second->index);
       auto fid = oidmgr->create_file(true);
-      index.second.first = fid;
-      index.second.second->set_btr_fid(fid);
+      nm.second->fid = fid;
+      nm.second->index->set_btr_fid(fid);
       // log [table name, FID]
       ASSERT(logmgr);
       RCU::rcu_enter();
       sm_tx_log *log = logmgr->new_tx_log();
-      log->log_fid(fid, index.first);
+      log->log_fid(fid, nm.second->name);
       log->commit(NULL);
       RCU::rcu_exit();
     }
