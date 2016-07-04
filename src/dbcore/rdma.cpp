@@ -122,6 +122,7 @@ void context::exchange_ib_connection_info(int peer_sockfd) {
 
 void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size) {
   auto* mem_region = mem_regions[index];
+  memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
   sge_list.length = size;
   sge_list.lkey = mem_region->mr->lkey;
@@ -141,8 +142,10 @@ void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
 }
 
-void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data) {
+void context::rdma_write(
+  uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data) {
   auto* mem_region = mem_regions[index];
+  memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
   sge_list.length = size;
   sge_list.lkey = mem_region->mr->lkey;
@@ -165,8 +168,8 @@ void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_
 
 /*
  * Post a receive work request to wait for an RDMA write with
- * immediate from the peer. Returns the immediate, [buf] will
- * contain the result of the RDMA write.
+ * immediate from the peer. Returns the immediate, the caller
+ * should know where to find the data as the result of RDMA write.
  */
 uint32_t context::receive_rdma_with_imm() {
   struct ibv_recv_wr wr, *bad_wr = nullptr;
