@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "ndb_wrapper.h"
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-file.h"
 #include "../varkey.h"
 #include "../macros.h"
 #include "../util.h"
@@ -63,7 +64,7 @@ ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mo
   auto *index = new ndb_ordered_index(name, value_size_hint, mostly_append);
   // Give an invalid FID for now, either the redoer or loader
   // will fill in a meaningful one
-  fid_map.emplace(name, std::make_pair(0, index));
+  sm_file_mgr::name_map[name] = new sm_file_descriptor(0, name, index);
   return index;
 }
 

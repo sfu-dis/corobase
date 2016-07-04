@@ -218,4 +218,3 @@ protected:
 };
 
 extern sm_oid_mgr *oidmgr;
-extern std::unordered_map<std::string, std::pair<FID, ndb_ordered_index *> > fid_map;

@@ -1,14 +1,13 @@
 #include "../benchmarks/ndb_wrapper.h"
 #include "../txn_btree.h"
 #include "../util.h"
+#include "sm-file.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
 
 #define SEPARATE_INDEX_REBUILD 0
-
-std::unordered_map<FID, ndb_ordered_index *> reverse_fid_map;
 
 // The version-loading mechanism will only dig out the latest version as a result.
 fat_ptr
@@ -61,7 +60,7 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec) {
 void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) {
   ASSERT(SEPARATE_INDEX_REBUILD == 0);
-  recover_index_insert(logrec, reverse_fid_map[logrec->fid()]);
+  recover_index_insert(logrec, sm_file_mgr::get_index(logrec->fid()));
 }
 
 void
@@ -116,19 +115,19 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   logrec->load_object(name_buf, sz);
   std::string name(name_buf);
   // XXX(tzwang): no support for dynamically created tables for now
-  ASSERT(fid_map.find(name) != fid_map.end());
-  ASSERT(fid_map[name].second);
-  fid_map[name].first = f;  // fill in the fid
+  ASSERT(sm_file_mgr::name_map.find(name) != sm_file_mgr::name_map.end());
+  ASSERT(sm_file_mgr::get_index(name));
+  sm_file_mgr::name_map[name]->fid = f;  // fill in the fid
   ASSERT(not oidmgr->file_exists(f));
   oidmgr->recreate_file(f);
-  fid_map[name].second->set_btr_fid(f);
-  if (not reverse_fid_map[f]) {
+  sm_file_mgr::name_map[name]->index->set_btr_fid(f);
+  if (sm_file_mgr::fid_map.find(f) == sm_file_mgr::fid_map.end()) {
     // chkpt recovery might have did this
-    ASSERT(fid_map[name].second);
-    reverse_fid_map[f] = fid_map[name].second;
+    ASSERT(sm_file_mgr::name_map[name]->index);
+    sm_file_mgr::fid_map[f] = new sm_file_descriptor(f, name, sm_file_mgr::name_map[name]->index);
   }
   printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
-  return fid_map[name].second;
+  return sm_file_mgr::get_index(name);
 }
 
 void
@@ -203,11 +202,11 @@ parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to
   }
 
   if (redoers.size() == 0) {
-    for (auto &fm : fid_map) {
-      FID fid = fm.second.first;
-      ASSERT(fid);
-      max_fid = std::max(fid, max_fid);
-      redoers.emplace_back(this, fid, fm.second.second);
+    for (auto &fm : sm_file_mgr::fid_map) {
+      sm_file_descriptor *fd = fm.second;
+      ASSERT(fd->fid);
+      max_fid = std::max(fd->fid, max_fid);
+      redoers.emplace_back(this, fd->fid, fd->index);
     }
   }
 
