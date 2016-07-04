@@ -1,18 +1,12 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "../macros.h"
 #include "rdma.h"
-#include "sm-common.h"
 #include "tcp.h"
 
 namespace rdma {
 
 void context::init(const char *server) {
-  ALWAYS_ASSERT(buf);
-  ALWAYS_ASSERT(buf_size);
-  memset(buf, 0, buf_size);
-
   if (server) {
     server_name = std::string(server);
   } else {
@@ -30,15 +24,9 @@ void context::init(const char *server) {
 
   pd = ibv_alloc_pd(ctx);
   THROW_IF(not pd, illegal_argument, "ibv_alloc_pd() failed");
+}
 
-  buf_mr = ibv_reg_mr(pd, buf, buf_size,
-    IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-  THROW_IF(not buf_mr, illegal_argument, "ibv_reg_mr() failed");
-
-  msg_mr = ibv_reg_mr(pd, msg, MAX_MSG_SIZE,
-    IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-  THROW_IF(not msg_mr, illegal_argument, "ibv_reg_mr() failed");
-
+void context::finish_init() {
   ch = ibv_create_comp_channel(ctx);
   THROW_IF(not ch, illegal_argument, "ibv_create_comp_channel() failed");
 
@@ -85,8 +73,9 @@ context::~context() {
   ibv_destroy_qp(qp);
   ibv_destroy_cq(cq);
   ibv_destroy_comp_channel(ch);
-  ibv_dereg_mr(buf_mr);
-  ibv_dereg_mr(msg_mr);
+  for (auto& r : mem_regions) {
+    delete r;
+  }
   ibv_dealloc_pd(pd);
 }
 
@@ -124,29 +113,22 @@ void context::qp_change_state_rtr() {
 }
 
 void context::exchange_ib_connection_info(int peer_sockfd) {
-  char msg[sizeof("0000:000000:000000:00000000:00000000:0000000000000000:0000000000000000")];
   local_connection = new ib_connection(this);
-
-  sprintf(msg, "%04x:%06x:%06x:%08x:%08x:%016Lx:%016Lx",
-    local_connection->lid, local_connection->qpn, local_connection->psn,
-    local_connection->buf_rkey, local_connection->msg_rkey,
-    local_connection->buf_vaddr, local_connection->msg_vaddr);
-
-  int ret = write(peer_sockfd, msg, sizeof(msg));
-  THROW_IF(ret != sizeof(msg), os_error, ret, "Could not send connection_details to peer");
-  ret = read(peer_sockfd, msg, sizeof(msg));
-  THROW_IF(ret != sizeof(msg), os_error, ret, "Could not receive connection_details to peer");
-  remote_connection = new ib_connection(msg);
+  int ret = send(peer_sockfd, local_connection, sizeof(ib_connection), 0);
+  THROW_IF(ret != sizeof(*local_connection), os_error, ret, "Could not send connection_details to peer");
+  remote_connection = new ib_connection();
+  tcp::receive(peer_sockfd, (char *)remote_connection, sizeof(ib_connection));
 }
 
-void context::rdma_write(uint64_t local_offset, uint64_t remote_offset, uint64_t size) {
-  sge_list.addr = (uintptr_t)buf + local_offset;
+void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size) {
+  auto* mem_region = mem_regions[index];
+  sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
   sge_list.length = size;
-  sge_list.lkey = buf_mr->lkey;
+  sge_list.lkey = mem_region->mr->lkey;
 
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->buf_vaddr + remote_offset;
-  wr.wr.rdma.rkey = remote_connection->buf_rkey;
+  wr.wr.rdma.remote_addr = remote_connection->vaddrs[index] + remote_offset;
+  wr.wr.rdma.rkey = remote_connection->rkeys[index];
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
   wr.num_sge = 1;
@@ -159,39 +141,20 @@ void context::rdma_write(uint64_t local_offset, uint64_t remote_offset, uint64_t
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
 }
 
-void context::rdma_write(uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data) {
-  sge_list.addr = (uintptr_t)buf + local_offset;
+void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data) {
+  auto* mem_region = mem_regions[index];
+  sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
   sge_list.length = size;
-  sge_list.lkey = buf_mr->lkey;
+  sge_list.lkey = mem_region->mr->lkey;
 
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->buf_vaddr + remote_offset;
-  wr.wr.rdma.rkey = remote_connection->buf_rkey;
+  wr.wr.rdma.remote_addr = remote_connection->vaddrs[index] + remote_offset;
+  wr.wr.rdma.rkey = remote_connection->rkeys[index];
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
   wr.num_sge = 1;
   wr.imm_data = htonl(imm_data);
   wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-  wr.send_flags = IBV_SEND_SIGNALED;
-  wr.next = NULL;
-
-  struct ibv_send_wr *bad_wr = nullptr;
-  int ret = ibv_post_send(qp, &wr, &bad_wr);
-  THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
-}
-
-void context::rdma_write_msg() {
-  sge_list.addr = (uintptr_t)msg;
-  sge_list.length = MAX_MSG_SIZE;
-  sge_list.lkey = msg_mr->lkey;
-
-  memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->msg_vaddr;
-  wr.wr.rdma.rkey = remote_connection->msg_rkey;
-  wr.wr_id = RDMA_WRID;
-  wr.sg_list = &sge_list;
-  wr.num_sge = 1;
-  wr.opcode = IBV_WR_RDMA_WRITE;
   wr.send_flags = IBV_SEND_SIGNALED;
   wr.next = NULL;
 
@@ -220,12 +183,6 @@ uint32_t context::receive_rdma_with_imm() {
   return ntohl(wc.imm_data);
 }
 
-ib_connection::ib_connection(char *msg) {
-  int parsed = sscanf(msg, "%x:%x:%x:%x:%x:%Lx:%Lx",
-    &lid, &qpn, &psn, &buf_rkey, &msg_rkey, &buf_vaddr, &msg_vaddr);
-  THROW_IF(parsed != 7, illegal_argument, "Could not parse message from peer");
-}
-
 ib_connection::ib_connection(struct context *ctx) {
   // Set up local IB connection attributes that will be exchanged via TCP
   struct ibv_port_attr attr;
@@ -234,9 +191,10 @@ ib_connection::ib_connection(struct context *ctx) {
   lid = attr.lid;
   qpn = ctx->qp->qp_num;
   psn = lrand48() & 0xffffff;
-  buf_rkey = ctx->buf_mr->rkey;
-  msg_rkey = ctx->msg_mr->rkey;
-  buf_vaddr = (uintptr_t)ctx->buf;
-  msg_vaddr = (uintptr_t)ctx->msg;
+  nr_memory_regions = ctx->mem_regions.size();
+  for (uint32_t i = 0; i < nr_memory_regions; ++i) {
+    rkeys[i] = ctx->mem_regions[i]->mr->rkey;
+    vaddrs[i] = (unsigned long long)ctx->mem_regions[i]->buf;
+  }
 }
 }  // namespace rdma
