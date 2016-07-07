@@ -36,10 +36,8 @@ if [ "$bench" == "tpcc" ]; then
   btype=${workload:4:1}
   wh_spread=0
   if [ "$btype" == "h" ]; then
-    suppliers_x=${workload:6}
-    echo $suppliers_x
-    suppliers=`expr $suppliers_x * 100`
-    echo $suppliers
+    suppliers_x=${workload:5}
+    suppliers=`expr $suppliers_x \* 100`
     $options -o "--workload-mix="40,38,0,4,4,4,10,0" --suppliers=$suppliers --warehouse-spread=$wh_spread $7"
   elif [ "$btype" == "+" ]; then
     $options -o "--workload-mix="41,43,4,4,4,4,0,0" --warehouse-spread=$wh_spread $7"
