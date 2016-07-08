@@ -212,6 +212,7 @@ protected:
     recycle_oid *r = (recycle_oid *)objr->payload();
     new (r) recycle_oid(w.oa, w.oid);
     fat_ptr myptr = fat_ptr::make(objr, size_code);
+    ASSERT(objr->_next == NULL_PTR);
     if (updated_oids_head == NULL_PTR) {
         updated_oids_head = updated_oids_tail = myptr;
     } else {
@@ -219,6 +220,7 @@ protected:
         ASSERT(tail_obj->_next == NULL_PTR);
         tail_obj->_next = myptr;
         updated_oids_tail = myptr;
+        ASSERT(((object *)updated_oids_tail.offset())->_next == NULL_PTR);
     }
   }
 
