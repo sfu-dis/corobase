@@ -490,13 +490,12 @@ object_list*
 object_pool::get_object_list(size_t size) {
     size_t aligned_size = align_up(size);
     // peek at it first, don't bother if there's nothing
-    if (pool.find(aligned_size) == pool.end() or
-        volatile_read(pool[aligned_size]->head) == NULL_PTR) {
+    if (pool.find(aligned_size) == pool.end()) {
         return NULL;
     }
     lock.lock();
     object_list* ol = pool[aligned_size];
-    if (ol) {
+    if (ol and ol->head != NULL_PTR) {
         pool[aligned_size] = ol->next;
     }
     lock.unlock();

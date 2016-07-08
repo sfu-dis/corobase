@@ -23,7 +23,13 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #endif
 #ifdef PHANTOM_PROT_NODE_SET
     absent_set.set_empty_key(NULL);    // google dense map
+    absent_set.clear();
 #endif
+    write_set.clear();
+#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    read_set.clear();
+#endif
+    updated_oids_head = updated_oids_tail = NULL_PTR;
     xid = TXN::xid_alloc();
     xc = xid_get_context(xid);
     xc->begin_epoch = MM::epoch_enter();
