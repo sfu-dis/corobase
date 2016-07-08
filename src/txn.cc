@@ -937,9 +937,6 @@ transaction::check_phantom()
 }
 #endif
 
-// FIXME: tzwang: note: we only try once in this function. If it
-// failed (returns false) then the caller (supposedly do_tree_put)
-// should fallback to normal update procedure.
 bool
 transaction::try_insert_new_tuple(
     concurrent_btree *btr,

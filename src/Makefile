@@ -72,7 +72,6 @@ ifeq ($(DEBUG_S),1)
         CXXFLAGS +=  -g -gdwarf-2 -fno-omit-frame-pointer -DDEBUG #-fsanitize=address
 else
         CXXFLAGS += -march=native -O2 -funroll-loops -fno-omit-frame-pointer
-        #CXXFLAGS += -Werror -O2 -funroll-loops -fno-omit-frame-pointer
 endif
 ifeq ($(CHECK_INVARIANTS_S),1)
 	CXXFLAGS += -DCHECK_INVARIANTS
