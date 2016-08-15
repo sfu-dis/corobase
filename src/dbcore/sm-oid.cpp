@@ -810,7 +810,7 @@ sm_oid_mgr::oid_put_update(oid_array *oa,
     // Note: this is different from oid_get_version where start_over must
     // appear *above* ensure_tuple: here we don't change the value of ptr.
 start_over:
-    fat_ptr head = *ptr;
+    fat_ptr head = volatile_read(*ptr);
     object *old_desc = (object *)head.offset();
     ASSERT(head.size_code() != INVALID_SIZE_CODE);
     dbtuple *version = (dbtuple *)old_desc->payload();
