@@ -326,6 +326,7 @@ void gc_daemon()
     std::unique_lock<std::mutex> lock(gc_lock);
     dense_hash_map<size_t, object_list> scavenged_object_lists;
     scavenged_object_lists.set_empty_key(0);
+    uint32_t next_thread = 0;
 
 try_recycle:
     uint64_t reclaimed_count = 0;
@@ -437,7 +438,7 @@ try_recycle:
                     ASSERT(size);
                     auto& sol = scavenged_object_lists[size];
                     if (not sol.put(cur)) {
-                        central_object_pool.put_object_list(sol);
+                        central_object_pool.put_object_list(sol, (++next_thread) % sysconf::_active_threads);
                         sol.head = sol.tail = NULL_PTR;
                         sol.nobjects = 0;
                         ALWAYS_ASSERT(sol.put(cur));
@@ -489,27 +490,28 @@ object_list::put(fat_ptr objptr) {
 object_list*
 object_pool::get_object_list(size_t size) {
     size_t aligned_size = align_up(size);
+    auto& my_pool = pool[sysconf::my_thread_id()];
     // peek at it first, don't bother if there's nothing
-    if (pool.find(aligned_size) == pool.end()) {
+    if (my_pool.find(aligned_size) == my_pool.end()) {
         return NULL;
     }
     lock.lock();
-    object_list* ol = pool[aligned_size];
+    object_list* ol = my_pool[aligned_size];
     if (ol and ol->head != NULL_PTR) {
-        pool[aligned_size] = ol->next;
+        my_pool[aligned_size] = ol->next;
     }
     lock.unlock();
     return ol;
 }
 
 void
-object_pool::put_object_list(object_list& ol) {
+object_pool::put_object_list(object_list& ol, uint32_t thread_index) {
     size_t aligned_size = align_up(decode_size_aligned(ol.head.size_code()));
     object_list *new_ol = new object_list();
     memcpy(new_ol, &ol, sizeof(ol));
     lock.lock();
-    new_ol->next = pool[aligned_size];
-    pool[aligned_size] = new_ol;
+    new_ol->next = (pool[thread_index])[aligned_size];
+    (pool[thread_index])[aligned_size] = new_ol;
     lock.unlock();
 }
 

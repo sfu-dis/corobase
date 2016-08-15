@@ -1,5 +1,6 @@
 #pragma once
 #include <mutex>
+#include "sm-config.h"
 #include "sm-defs.h"
 #include "epoch.h"
 #include "../macros.h"
@@ -38,7 +39,7 @@ namespace MM {
 
     // The GC thread returns a list of objects each time
     struct object_list {
-        static const size_t CAPACITY = 128;
+        static const size_t CAPACITY = 200000;
 
         fat_ptr head;
         fat_ptr tail;
@@ -56,18 +57,23 @@ namespace MM {
     class object_pool {
         // A hashtab of objects reclaimed by the gc daemon.
         // Maps object size -> head of list of object lists which have the the same object size
-        // Threads are free to grab (multiple) objects from here.
-        dense_hash_map<size_t, object_list*> pool;
+        // Each thread has its own private pool, the GC thread replenishes these per-thread pools
+        // in a round-robin manner. Threads are free to grab (multiple) objects from here.
+        dense_hash_map<size_t, object_list*> pool[sysconf::MAX_THREADS];
         std::mutex lock;
 
     public:
-        object_pool() { pool.set_empty_key(0); }
+        object_pool() {
+          for (uint32_t i = 0; i < sysconf::MAX_THREADS; ++i) {
+            pool[i].set_empty_key(0);
+          }
+        }
 
         // Tx threads use this to replenish their TLS pool
         object_list* get_object_list(size_t size);
 
         // Return a list of objects to the pool; the gc thread is the only caller.
-        void put_object_list(object_list& ol);
+        void put_object_list(object_list& ol, uint32_t thread_index);
     };
 
     // Same thing as object_pool, but for a thread; no CC whatsoever
