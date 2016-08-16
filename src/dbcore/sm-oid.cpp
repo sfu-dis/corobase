@@ -1142,7 +1142,6 @@ sm_oid_mgr::oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
   }
 #elif defined SSN
   visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
-  ALWAYS_ASSERT(ssn_check_exclusion(visitor_xc));
   // TODO(tzwang): do early SSN check here
 #endif  // SSI/SSN
 #else
