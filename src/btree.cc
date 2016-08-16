@@ -16,7 +16,7 @@
 #include "util.h"
 #include "scopedperf.hh"
 
-#if defined(NDB_MASSTREE)
+#ifdef MASSTREE
 #include "masstree_btree.h"
 struct testing_concurrent_btree_traits : public masstree_params {
   static const bool RcuRespCaller = false;

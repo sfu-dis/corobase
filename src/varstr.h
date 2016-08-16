@@ -12,9 +12,8 @@
 #include "macros.h"
 #include "util.h"
 
-#if NDB_MASSTREE
+#ifdef MASSTREE
 #include "prefetch.h"
-#include "masstree/config.h"
 #include "masstree/string_slice.hh"
 #endif
 
@@ -110,7 +109,7 @@ public:
     return util::host_endian_trfm<uint64_t>()(ret);
   }
 
-#if NDB_MASSTREE
+#ifdef MASSTREE
   inline uint64_t slice_at(int pos) const {
     return string_slice<uint64_t>::make_comparable((const char*) p + pos, std::min(int(l - pos), 8));
   }
@@ -119,14 +118,14 @@ public:
   inline varstr
   shift() const
   {
-    INVARIANT(l >= 8);
+    ASSERT(l >= 8);
     return varstr(p + 8, l - 8);
   }
 
   inline varstr
   shift_many(size_t n) const
   {
-    INVARIANT(l >= 8 * n);
+    ASSERT(l >= 8 * n);
     return varstr(p + 8 * n, l - 8 * n);
   }
 
@@ -157,7 +156,7 @@ public:
       return not size();
   }
 
-#if NDB_MASSTREE
+#ifdef MASSTREE
   inline operator lcdf::Str() const {
     return lcdf::Str(p, l);
   }

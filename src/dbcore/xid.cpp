@@ -87,12 +87,12 @@ take_one(thread_data *t)
     DEFER(t->bitmap &= (t->bitmap-1));
     auto id = t->base_id + __builtin_ctzll(t->bitmap);
     auto x = contexts[id].owner = XID::make(t->epoch, id);
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
     contexts[id].sstamp = ~uint64_t{0};
     contexts[id].pstamp = 0;
     contexts[id].xct = NULL;
 #endif
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
     contexts[id].ct3 = 0;
     contexts[id].last_safesnap = 0;
     contexts[id].xct = NULL;
@@ -261,7 +261,7 @@ xid_get_context(XID x) {
     return ctx;
 }
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
 txn_state __attribute__((noinline))
 spin_for_cstamp(XID xid, xid_context *xc) {
     txn_state state;
@@ -274,7 +274,7 @@ spin_for_cstamp(XID xid, xid_context *xc) {
     return state;
 }
 #endif
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
 bool
 xid_context::set_sstamp(uint64_t s) {
     ALWAYS_ASSERT(!(s & xid_context::sstamp_final_mark));

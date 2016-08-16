@@ -36,7 +36,7 @@ public:
   inline void
   unlock()
   {
-    INVARIANT(value);
+    ASSERT(value);
     value = 0;
     COMPILER_MEMORY_FENCE;
   }

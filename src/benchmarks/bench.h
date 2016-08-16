@@ -277,7 +277,7 @@ public:
       const char *keyp, size_t keylen,
       const varstr &value)
   {
-    INVARIANT(limit == -1 || n < size_t(limit));
+    ASSERT(limit == -1 || n < size_t(limit));
     values.emplace_back(varstr(keyp, keylen), value);
     return (limit == -1) || (++n < size_t(limit));
   }
@@ -303,7 +303,7 @@ public:
       const char *keyp, size_t keylen,
       const varstr &value)
   {
-    INVARIANT(limit == -1 || n < size_t(limit));
+    ASSERT(limit == -1 || n < size_t(limit));
     k->copy_from(keyp, keylen);
     ++n;
     return (limit == -1) || (n < size_t(limit));
@@ -338,13 +338,13 @@ public:
       const char *keyp, size_t keylen,
       const varstr &value)
   {
-    INVARIANT(n < N);
-    INVARIANT(arena->manages(&value));
+    ASSERT(n < N);
+    ASSERT(arena->manages(&value));
     if (ignore_key) {
       values.emplace_back(nullptr, &value);
     } else {
       varstr * const s_px = arena->next(keylen);
-      INVARIANT(s_px);
+      ASSERT(s_px);
       s_px->copy_from(keyp, keylen);
       values.emplace_back(s_px, &value);
     }

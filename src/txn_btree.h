@@ -150,16 +150,16 @@ public:
   inline rc_t
   insert(transaction &t, const key_type &k, const uint8_t *v, size_type sz)
   {
-    INVARIANT(v);
-    INVARIANT(sz);
+    ASSERT(v);
+    ASSERT(sz);
     return this->do_tree_put(t, stablize(t, k), stablize(t, v, sz), true);
   }
 
   inline void
   insert(transaction &t, const varkey &k, const uint8_t *v, size_type sz)
   {
-    INVARIANT(v);
-    INVARIANT(sz);
+    ASSERT(v);
+    ASSERT(sz);
     this->do_tree_put(t, stablize(t, k), stablize(t, v, sz), true);
   }
 

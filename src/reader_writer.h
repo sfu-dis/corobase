@@ -10,7 +10,7 @@ public:
         return s;
     }
 
-#if NDB_MASSTREE
+#ifdef MASSTREE
     inline ALWAYS_INLINE lcdf::Str operator()(lcdf::Str s) {
         return s;
     }

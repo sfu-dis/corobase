@@ -7,7 +7,7 @@
 fat_ptr
 sm_log_offset_mgr::lsn2ptr(LSN lsn, bool is_ext)
 {
-#if CHECK_INVARIANTS
+#ifndef NDEBUG
     auto *sid = get_segment(lsn.segment());
     ASSERT(sid->contains(lsn));
 #endif

@@ -21,7 +21,7 @@ public:
   ndb_wrapper() {}
   ~ndb_wrapper() {}
 
-  virtual ssize_t txn_max_batch_size() const OVERRIDE { return 100; }
+  virtual ssize_t txn_max_batch_size() const override { return 100; }
 
   virtual size_t
   sizeof_txn_object(uint64_t txn_flags) const;

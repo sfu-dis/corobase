@@ -61,8 +61,8 @@ public:
   inline reference
   front()
   {
-    INVARIANT(n > 0);
-    INVARIANT(n <= StaticSize);
+    ASSERT(n > 0);
+    ASSERT(n <= StaticSize);
     return *ptr();
   }
 
@@ -75,8 +75,8 @@ public:
   inline reference
   back()
   {
-    INVARIANT(n > 0);
-    INVARIANT(n <= StaticSize);
+    ASSERT(n > 0);
+    ASSERT(n <= StaticSize);
     return ptr()[n - 1];
   }
 
@@ -89,7 +89,7 @@ public:
   inline void
   pop_back()
   {
-    INVARIANT(n > 0);
+    ASSERT(n > 0);
     if (!is_trivially_destructible)
       ptr()[n - 1].~T();
     n--;
@@ -113,7 +113,7 @@ public:
   inline void
   emplace_back(Args &&... args)
   {
-    INVARIANT(n < StaticSize);
+    ASSERT(n < StaticSize);
     new (&(ptr()[n++])) T(std::forward<Args>(args)...);
   }
 
@@ -146,7 +146,7 @@ public:
   inline void
   resize(size_t n, value_type val = value_type())
   {
-    INVARIANT(n <= StaticSize);
+    ASSERT(n <= StaticSize);
     if (n > this->n) {
       // expand
       while (this->n < n)
@@ -366,7 +366,7 @@ private:
     if (unlikely(this == &that))
       return;
     clear();
-    INVARIANT(that.n <= StaticSize);
+    ASSERT(that.n <= StaticSize);
     if (is_trivially_copyable) {
       NDB_MEMCPY(ptr(), that.ptr(), that.n * sizeof(T));
     } else {

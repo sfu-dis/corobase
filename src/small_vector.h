@@ -80,8 +80,8 @@ public:
   {
     if (unlikely(large_elems))
       return large_elems->front();
-    INVARIANT(n > 0);
-    INVARIANT(n <= SmallSize);
+    ASSERT(n > 0);
+    ASSERT(n <= SmallSize);
     return *ptr();
   }
 
@@ -96,8 +96,8 @@ public:
   {
     if (unlikely(large_elems))
       return large_elems->back();
-    INVARIANT(n > 0);
-    INVARIANT(n <= SmallSize);
+    ASSERT(n > 0);
+    ASSERT(n <= SmallSize);
     return ptr()[n - 1];
   }
 
@@ -114,7 +114,7 @@ public:
       large_elems->pop_back();
       return;
     }
-    INVARIANT(n > 0);
+    ASSERT(n > 0);
     if (!is_trivially_destructible)
       ptr()[n - 1].~T();
     n--;
@@ -139,7 +139,7 @@ public:
   emplace_back(Args &&... args)
   {
     if (unlikely(large_elems)) {
-      INVARIANT(!n);
+      ASSERT(!n);
       large_elems->emplace_back(std::forward<Args>(args)...);
       return;
     }
@@ -149,7 +149,7 @@ public:
       n = 0;
       return;
     }
-    INVARIANT(n < SmallSize);
+    ASSERT(n < SmallSize);
     new (&(ptr()[n++])) T(std::forward<Args>(args)...);
   }
 
@@ -171,7 +171,7 @@ public:
   clear()
   {
     if (unlikely(large_elems)) {
-      INVARIANT(!n);
+      ASSERT(!n);
       large_elems->clear();
       return;
     }
@@ -207,7 +207,7 @@ private:
   clearDestructive()
   {
     if (unlikely(large_elems)) {
-      INVARIANT(!n);
+      ASSERT(!n);
       delete large_elems;
       large_elems = NULL;
       return;
@@ -518,28 +518,28 @@ private:
   inline small_iterator
   small_begin()
   {
-    INVARIANT(!large_elems);
+    ASSERT(!large_elems);
     return small_iterator(ptr());
   }
 
   inline const_small_iterator
   small_begin() const
   {
-    INVARIANT(!large_elems);
+    ASSERT(!large_elems);
     return const_small_iterator(ptr());
   }
 
   inline small_iterator
   small_end()
   {
-    INVARIANT(!large_elems);
+    ASSERT(!large_elems);
     return small_iterator(ptr() + n);
   }
 
   inline const_small_iterator
   small_end() const
   {
-    INVARIANT(!large_elems);
+    ASSERT(!large_elems);
     return const_small_iterator(ptr() + n);
   }
 
@@ -617,7 +617,7 @@ private:
     if (unlikely(that.large_elems)) {
       large_elems = new large_vector_type(*that.large_elems);
     } else {
-      INVARIANT(that.n <= SmallSize);
+      ASSERT(that.n <= SmallSize);
       if (is_trivially_copyable) {
         NDB_MEMCPY(ptr(), that.ptr(), that.n * sizeof(T));
       } else {

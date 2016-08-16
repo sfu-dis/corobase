@@ -7,7 +7,7 @@
 #include "../util.h"
 #include "../ndb_type_traits.h"
 
-#if NDB_MASSTREE
+#ifdef MASSTREE
 #include "../masstree/str.hh"
 #endif
 
@@ -324,7 +324,7 @@ Size(const T &t)
     return sizeof(*obj); \
   }
 
-#if NDB_MASSTREE
+#ifdef MASSTREE
 #define DO_STRUCT_MASSTREE(name) \
   inline ALWAYS_INLINE const struct name * \
   read(lcdf::Str buf, struct name *obj) const       \

@@ -1,6 +1,6 @@
 #pragma once
 
-#if NDB_MASSTREE
+#ifdef MASSTREE
 #include "masstree_btree.h"
 #else
 #include "btree.h"

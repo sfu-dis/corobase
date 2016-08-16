@@ -234,7 +234,7 @@ sm_oid_mgr_impl::sm_oid_mgr_impl()
        itself). Then seed it with OID arrays for allocators and
        metadata
      */
-#warning TODO DEFER deletion of these arrays if constructor throws
+    // TODO: DEFER deletion of these arrays if constructor throws
     fat_ptr ptr = oid_array::make();
     files = ptr;
     *files->get(OBJARRAY_FID) = ptr;
@@ -432,7 +432,7 @@ sm_oid_mgr_impl::destroy_file(FID f)
             *ptr = NULL_PTR;
         }
     }
-#warning TODO: delete metadata? or force caller to do it before now?
+    // TODO: delete metadata? or force caller to do it before now?
 
     // one allocator controls all three files
     thread_free(this, OBJARRAY_FID, f);
@@ -448,7 +448,7 @@ sm_oid_mgr_impl::oid_access(FID f, OID o)
 sm_allocator*
 sm_oid_mgr_impl::get_allocator(FID f)
 {
-#warning TODO: allow allocators to be paged out
+    // TODO: allow allocators to be paged out
     sm_allocator *alloc = oid_get(ALLOCATOR_FID, f);
     THROW_IF(not alloc, illegal_argument,
              "No allocator for FID %d", f);
@@ -458,7 +458,7 @@ sm_oid_mgr_impl::get_allocator(FID f)
 oid_array*
 sm_oid_mgr_impl::get_array(FID f)
 {
-#warning TODO: allow allocators to be paged out
+    // TODO: allow allocators to be paged out
     oid_array *oa = *files->get(f);
     THROW_IF(not oa, illegal_argument,
              "No such file: %d", f);
@@ -801,7 +801,7 @@ sm_oid_mgr::oid_put_update(oid_array *oa,
                            xid_context *updater_xc,
                            fat_ptr *new_obj_ptr)
 {
-#if CHECK_INVARIANTS
+#ifndef NDEBUG
     int attempts = 0;
 #endif
     auto *ptr = ensure_tuple(oa, o, updater_xc->begin_epoch);
@@ -841,20 +841,20 @@ start_over:
 
         xid_context *holder= xid_get_context(holder_xid);
         if (not holder) {
-#if CHECK_INVARIANTS
+#ifndef NDEBUG
             auto t = volatile_read(old_desc->_clsn).asi_type();
             ASSERT(t == fat_ptr::ASI_LOG or oid_get(oa, o) != head);
 #endif
             goto start_over;
         }
-        INVARIANT(holder);
+        ASSERT(holder);
         auto state = volatile_read(holder->state);
         auto owner = volatile_read(holder->owner);
         holder = NULL; // use cached values instead!
 
         // context still valid for this XID?
         if (unlikely(owner != holder_xid)) {
-#if CHECK_INVARIANTS
+#ifndef NDEBUG
             ASSERT(attempts < 2);
             attempts++;
 #endif
@@ -875,7 +875,7 @@ start_over:
     // check dirty writes
     else {
         ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
-#ifndef USE_READ_COMMITTED
+#ifndef RC
         // First updater wins: if some concurrent tx committed first,
         // I have to abort. Same as in Oracle. Otherwise it's an isolation
         // failure: I can modify concurrent transaction's writes.
@@ -1022,7 +1022,7 @@ start_over:
             goto start_over;
         }
 
-        ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
+        ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
         // xid tracking & status check
         if (clsn.asi_type() == fat_ptr::ASI_XID) {
             /* Same as above: grab and verify XID context,
@@ -1035,7 +1035,7 @@ start_over:
                 ASSERT(not cur_obj->_next.offset() or ((object *)cur_obj->_next.offset())->_clsn.asi_type() == fat_ptr::ASI_LOG);
                 return cur_obj->tuple();
             }
-            xid_context *holder = xid_get_context(holder_xid);
+            auto* holder = xid_get_context(holder_xid);
             if (not holder) // invalid XID (dead tuple, must retry than goto next in the chain)
                 goto start_over;
 
@@ -1049,62 +1049,57 @@ start_over:
             if (state == TXN_CMMTD) {
                 ASSERT(volatile_read(holder->end).offset());
                 ASSERT(owner == holder_xid);
-#ifdef USE_READ_COMMITTED
-#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+#if defined(RC) || defined(RC_SPIN)
+#if defined(SSI) || defined(SSN)
                 if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
-                    if (holder->end < visitor_xc->begin)
+                    if (holder->end < visitor_xc->begin) {
                         return cur_obj->tuple();
+                    }
                 }
                 else {
                     return cur_obj->tuple();
                 }
-#else
+#else  // SSI/SSN
                 return cur_obj->tuple();
-#endif
-#else
+#endif  // SSI/SSN
+#else  // not RC/RC_SPIN
                 if (holder->end < visitor_xc->begin) {
                     return cur_obj->tuple();
-                }
-#if defined(USE_PARALLEL_SSI) or defined(USE_PARALLEL_SSN)
-                else {
+                } else {
                     oid_check_phantom(visitor_xc, holder->end.offset());
                 }
 #endif
-#endif
-            }
-#ifdef READ_COMMITTED_SPIN
-            else {
+            } else {
+#ifdef RC_SPIN
                 // spin until the tx is settled (either aborted or committed)
-                if (wait_for_commit_result(holder))
+                if (spin_for_cstamp(holder_xid, holder) == TXN_CMMTD) {
                     return cur_obj->tuple();
-            }
+                }
 #endif
+            }
         }
         else if (clsn.asi_type() == fat_ptr::ASI_LOG) {
-#ifdef USE_READ_COMMITTED
-#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+#if defined(RC) || defined(RC_SPIN)
+#if defined(SSN)
             if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
-                if (LSN::from_ptr(clsn) <= visitor_xc->begin)
+                if (LSN::from_ptr(clsn) <= visitor_xc->begin) {
                     return cur_obj->tuple();
-            }
-            else
+                } else {
+                    oid_check_phantom(visitor_xc, clsn.offset());
+                }
+            } else {
                 return cur_obj->tuple();
+            }
 #else
             return cur_obj->tuple();
 #endif
-#else
+#else  // Not RC
             if (LSN::from_ptr(clsn) <= visitor_xc->begin) {
                 return cur_obj->tuple();
-            }
-#if defined(USE_PARALLEL_SSI) or defined(USE_PARALLEL_SSN)
-            else {
+            } else {
                 oid_check_phantom(visitor_xc, clsn.offset());
             }
 #endif
-#endif
-        }
-        else {
-            ALWAYS_ASSERT(false);
         }
     }
 
@@ -1113,6 +1108,7 @@ start_over:
 
 void
 sm_oid_mgr::oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
+#if defined(PHANTOM_PROT) && (defined(SSI) || defined(SSN))
   /*
    * tzwang (May 05, 2016): Preventing phantom:
    * Consider an example:
@@ -1139,15 +1135,18 @@ sm_oid_mgr::oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
    * successor updated our read set. For SSI, this translates to updating
    * ct3; for SSN, update the visitor's sstamp.
    */
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
   auto vct3 = volatile_read(visitor_xc->ct3);
   if (not vct3 or vct3 > vcstamp) {
       volatile_write(visitor_xc->ct3, vcstamp);
   }
-#elif defined USE_PARALLEL_SSN
-  visitor_xc->sstamp = std::min(visitor_xc->sstamp.load(), vcstamp);
+#elif defined SSN
+  visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
+  ALWAYS_ASSERT(ssn_check_exclusion(visitor_xc));
   // TODO(tzwang): do early SSN check here
-#endif  // USE_PARALLEL_SSI/SSN
+#endif  // SSI/SSN
+#else
+#endif
 }
 
 void

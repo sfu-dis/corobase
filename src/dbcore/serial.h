@@ -4,16 +4,16 @@
 #include "sm-rc.h"
 #include "xid.h"
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
 namespace TXN {
 void assign_reader_bitmap_entry();
 void deassign_reader_bitmap_entry();    
 
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
 // returns true if serializable, false means exclusion window violation
 inline bool ssn_check_exclusion(xid_context *xc) {
     auto ss = xc->sstamp.load(std::memory_order_acquire) & (~xid_context::sstamp_final_mark);
-#if CHECK_INVARIANTS
+#ifndef NDEBUG
     if (xc->pstamp >= ss) printf("ssn exclusion failure\n");
 #endif
     // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle

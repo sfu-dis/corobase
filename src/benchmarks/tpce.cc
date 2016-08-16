@@ -85,7 +85,7 @@ class table_scanner: public abstract_ordered_index::scan_callback {
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
 		{
 			varstr * const k = _arena->next(keylen);
-			INVARIANT(k);
+			ASSERT(k);
 			k->copy_from(keyp, keylen);
 			output.emplace_back(k, &value);
 			return true;
@@ -234,8 +234,8 @@ class tpce_worker_mixin : private _dummy {
 		static inline ALWAYS_INLINE int
 			CheckBetweenInclusive(int v, int lower, int upper)
 			{
-				INVARIANT(v >= lower);
-				INVARIANT(v <= upper);
+				ASSERT(v >= lower);
+				ASSERT(v <= upper);
 				return v;
 			}
 
@@ -316,10 +316,10 @@ class tpce_worker :
 			partition_id_start(partition_id_start),
 			partition_id_end(partition_id_end)
 	{
-		INVARIANT(partition_id_start >= 1);
-		INVARIANT(partition_id_start <= NumPartitions());
-		INVARIANT(partition_id_end > partition_id_start);
-		INVARIANT(partition_id_end <= (NumPartitions() + 1));
+		ASSERT(partition_id_start >= 1);
+		ASSERT(partition_id_start <= NumPartitions());
+		ASSERT(partition_id_end > partition_id_start);
+		ASSERT(partition_id_end <= (NumPartitions() + 1));
 		if (verbose) {
 			cerr << "tpce: worker id " << worker_id
 				<< " => partitions [" << partition_id_start
