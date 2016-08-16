@@ -21,19 +21,19 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::NodeLockRegionBegin();
 #endif
-#ifdef PHANTOM_PROT_NODE_SET
+#ifdef PHANTOM_PROT
     absent_set.set_empty_key(NULL);    // google dense map
     absent_set.clear();
 #endif
     write_set.clear();
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
     read_set.clear();
 #endif
     updated_oids_head = updated_oids_tail = NULL_PTR;
     xid = TXN::xid_alloc();
     xc = xid_get_context(xid);
     xc->begin_epoch = MM::epoch_enter();
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
     xc->xct = this;
     // If there's a safesnap, then SSN treats the snapshot as a transaction
     // that has read all the versions, which means every update transaction
@@ -55,9 +55,9 @@ transaction::transaction(uint64_t flags, str_arena &sa)
         RCU::rcu_enter();
         log = logmgr->new_tx_log();
         xc->begin = logmgr->cur_lsn();
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
         xc->pstamp = volatile_read(MM::safesnap_lsn).offset();
-#elif defined(USE_PARALLEL_SSI)
+#elif defined(SSI)
         xc->last_safesnap = volatile_read(MM::safesnap_lsn).offset();
 #endif
     }
@@ -72,8 +72,8 @@ transaction::~transaction()
 {
     // transaction shouldn't fall out of scope w/o resolution
     // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
-    INVARIANT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+    ASSERT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
+#if defined(SSN) || defined(SSI)
     if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         RCU::rcu_exit();
 #else
@@ -82,7 +82,7 @@ transaction::~transaction()
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::AssertAllNodeLocksReleased();
 #endif
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
     if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         serial_deregister_tx(xid);
 #endif
@@ -100,7 +100,7 @@ transaction::abort()
     // move on more quickly.
     volatile_write(xc->state, TXN_ABRTD);
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
     // Go over the read set first, to deregister from the tuple
     // asap so the updater won't wait for too long.
     for (auto &r : read_set) {
@@ -118,7 +118,7 @@ transaction::abort()
         if (tuple->is_defunct()) {   // for repeated overwrites
             continue;  // should have already called deallocate() during the update
         }
-#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+#if defined(SSI) || defined(SSN)
         if (tuple->next()) {
             volatile_write(tuple->next()->sstamp, NULL_PTR);
             tuple->next()->welcome_readers();
@@ -193,7 +193,7 @@ transaction::commit()
             ALWAYS_ASSERT(false);
     }
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
     // Safe snapshot optimization for read-only transactions:
     // Use the begin ts as cstamp if it's a read-only transaction
     // This is the same for both SSN and SSI.
@@ -209,9 +209,9 @@ transaction::commit()
         xc->end = log->pre_commit();
         if (xc->end == INVALID_LSN)
             return rc_t{RC_ABORT_INTERNAL};
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
         return parallel_ssn_commit();
-#elif defined USE_PARALLEL_SSI
+#elif defined SSI
         return parallel_ssi_commit();
 #endif
     }
@@ -220,7 +220,7 @@ transaction::commit()
 #endif
 }
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
 #define set_tuple_xstamp(tuple, s)    \
 {   \
     uint64_t x;  \
@@ -231,7 +231,7 @@ transaction::commit()
 }
 #endif
 
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
 rc_t
 transaction::parallel_ssn_commit()
 {
@@ -462,7 +462,7 @@ transaction::parallel_ssn_commit()
     if (not ssn_check_exclusion(xc))
         return rc_t{RC_ABORT_SERIAL};
 
-#ifdef PHANTOM_PROT_NODE_SET
+#ifdef PHANTOM_PROT
     if (not check_phantom())
         return rc_t{RC_ABORT_PHANTOM};
 #endif
@@ -571,7 +571,7 @@ transaction::parallel_ssn_commit()
 
     return rc_t{RC_TRUE};
 }
-#elif defined(USE_PARALLEL_SSI)
+#elif defined(SSI)
 rc_t
 transaction::parallel_ssi_commit()
 {
@@ -780,7 +780,7 @@ transaction::parallel_ssi_commit()
         }
     }
 
-#ifdef PHANTOM_PROT_NODE_SET
+#ifdef PHANTOM_PROT
     if (not check_phantom())
         return rc_t{RC_ABORT_PHANTOM};
 #endif
@@ -806,7 +806,7 @@ transaction::parallel_ssi_commit()
         }
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn.to_log_ptr());
-        INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one XCHG per tx
             enqueue_recycle_oids(w);
@@ -883,7 +883,7 @@ transaction::si_commit()
     if (xc->end == INVALID_LSN)
         return rc_t{RC_ABORT_INTERNAL};
 
-#ifdef PHANTOM_PROT_NODE_SET
+#ifdef PHANTOM_PROT
     if (not check_phantom())
         return rc_t{RC_ABORT_PHANTOM};
 #endif
@@ -901,12 +901,12 @@ transaction::si_commit()
         ASSERT(w.oa);
         tuple->do_write();
         tuple->get_object()->_clsn = clsn.to_log_ptr();
-        INVARIANT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         if (sysconf::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one XCHG per tx
             enqueue_recycle_oids(w);
         }
-#if CHECK_INVARIANT
+#ifndef NDEBUG
         object *obj = tuple->get_object();
         fat_ptr pdest = volatile_read(obj->_pdest);
         ASSERT((pdest == NULL_PTR and not tuple->size) or
@@ -929,7 +929,7 @@ transaction::si_commit()
 }
 #endif
 
-#ifdef PHANTOM_PROT_NODE_SET
+#ifdef PHANTOM_PROT
 // returns true if btree versions have changed, ie there's phantom
 bool
 transaction::check_phantom()
@@ -950,7 +950,7 @@ transaction::try_insert_new_tuple(
     const varstr *value,
     FID fid)
 {
-    INVARIANT(key);
+    ASSERT(key);
     fat_ptr new_head = object::create_tuple_object(value, false, xc->begin_epoch);
     ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
     dbtuple *tuple = ((object *)new_head.offset())->tuple();
@@ -964,9 +964,9 @@ transaction::try_insert_new_tuple(
         return false;
     }
 
-#ifdef PHANTOM_PROT_NODE_SET
+#ifdef PHANTOM_PROT
     // update node #s
-    INVARIANT(ins_info.node);
+    ASSERT(ins_info.node);
     if (!absent_set.empty()) {
         auto it = absent_set.find(ins_info.node);
         if (it != absent_set.end()) {
@@ -978,13 +978,12 @@ transaction::try_insert_new_tuple(
             }
             // otherwise, bump the version
             it->second.version = ins_info.new_version;
-            SINGLE_THREADED_INVARIANT(concurrent_btree::ExtractVersionNumber(it->first) == it->second);
         }
     }
 #endif
 
     // insert to log
-    INVARIANT(log);
+    ASSERT(log);
     ASSERT(tuple->size == value->size());
     auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
     auto size_code = encode_size_aligned(record_size);
@@ -1014,19 +1013,19 @@ transaction::try_insert_new_tuple(
 rc_t
 transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
 {
-    INVARIANT(tuple);
+    ASSERT(tuple);
     ASSERT(xc);
     bool read_my_own = (tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
     ASSERT(not read_my_own or (read_my_own and XID::from_ptr(volatile_read(tuple->get_object()->_clsn)) == xc->owner));
     ASSERT(not read_my_own or not(flags & TXN_FLAG_READ_ONLY));
 
-#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+#if defined(SSI) || defined(SSN)
     if (not read_my_own) {
         rc_t rc = {RC_INVALID};
         if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY))
             rc = {RC_TRUE};
         else {
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
             rc = ssn_read(tuple);
 #else
             rc = ssi_read(tuple);
@@ -1045,7 +1044,7 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
         if (unlikely(stat == dbtuple::READ_FAILED))
             return rc_t{RC_ABORT_INTERNAL};
     }
-    INVARIANT(stat == dbtuple::READ_EMPTY || stat == dbtuple::READ_RECORD);
+    ASSERT(stat == dbtuple::READ_EMPTY || stat == dbtuple::READ_RECORD);
     if (stat == dbtuple::READ_EMPTY) {
         return rc_t{RC_FALSE};
     }
@@ -1053,12 +1052,12 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     return {RC_TRUE};
 }
 
-#ifdef PHANTOM_PROT_NODE_SET
+#ifdef PHANTOM_PROT
 rc_t
 transaction::do_node_read(
     const typename concurrent_btree::node_opaque_t *n, uint64_t v)
 {
-    INVARIANT(n);
+    ASSERT(n);
     auto it = absent_set.find(n);
     if (it == absent_set.end())
         absent_set[n].version = v;
@@ -1068,7 +1067,7 @@ transaction::do_node_read(
 }
 #endif
 
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
 rc_t
 transaction::ssn_read(dbtuple *tuple)
 {
@@ -1112,7 +1111,7 @@ transaction::ssn_read(dbtuple *tuple)
         }
     }
 
-#ifdef DO_EARLY_SSN_CHECKS
+#ifdef EARLY_SSN_CHECK
     if (not ssn_check_exclusion(xc))
         return {RC_ABORT_SERIAL};
 #endif
@@ -1120,7 +1119,7 @@ transaction::ssn_read(dbtuple *tuple)
 }
 #endif
 
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
 rc_t
 transaction::ssi_read(dbtuple *tuple)
 {

@@ -1,5 +1,5 @@
 #include "serial.h"
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
 namespace TXN {
 
 /* The read optimization for SSN

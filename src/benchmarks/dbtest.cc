@@ -21,7 +21,7 @@
 //#include "kvdb_wrapper.h"
 //#include "kvdb_wrapper_impl.h"
 
-#if defined(USE_PARALLEL_SSI) && defined(USE_PARALLEL_SSN)
+#if defined(SSI) && defined(SSN)
 #error "SSI + SSN?"
 #endif
 
@@ -86,12 +86,12 @@ main(int argc, char **argv)
       {"primary-port"               , required_argument , 0                          , 'k'},
       {"wait-for-backups"           , no_argument       , &sysconf::wait_for_backups , 1},
       {"num-backups"                , required_argument , 0                          , 'a'},
-#if defined(USE_PARALLEL_SSI) || defined(USE_PARALLEL_SSN)
+#if defined(SSI) || defined(SSN)
       {"safesnap"                   , no_argument       , &sysconf::enable_safesnap  , 1},
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
       {"ssi-read-only-opt"          , no_argument       , &sysconf::enable_ssi_read_only_opt, 1},
 #endif
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
       {"ssn-read-opt-threshold"     , required_argument , 0                          , 'h'},
 #endif
 #endif
@@ -154,7 +154,7 @@ main(int argc, char **argv)
       ALWAYS_ASSERT(sysconf::worker_threads > 0);
       break;
 
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
     case 'h':
       sysconf::ssn_read_opt_threshold = strtoul(optarg, NULL, 16);
       break;
@@ -249,11 +249,11 @@ main(int argc, char **argv)
     return 1;
   }
 
-#ifdef DEBUG
+#ifndef NDEBUG
   cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
 #endif
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
   cerr << "WARNING: invariant checking is enabled - should disable for benchmark" << endl;
 #ifdef PARANOID_CHECKING
   cerr << "  *** Paranoid checking is enabled ***" << endl;
@@ -261,16 +261,23 @@ main(int argc, char **argv)
 #endif
 
   if (verbose) {
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
     printf("System: SSI\n");
-#elif defined(USE_PARALLEL_SSN)
-#ifdef USE_READ_COMMITTED
+#elif defined(SSN)
+#ifdef RC
     printf("System: RC+SSN\n");
+#elif defined RC_SPIN
+    printf("System: RC_SPIN+SSN\n");
 #else
     printf("System: SI+SSN\n");
 #endif
 #else
     printf("System: SI\n");
+#endif
+#ifdef PHANTOM_PROT
+    printf("Phantom protection: on\n");
+#else
+    printf("Phantom protection: off\n");
 #endif
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
@@ -345,13 +352,13 @@ main(int argc, char **argv)
 #else
     cerr << "  btree_node_prefetch     : no" << endl;
 #endif
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
     cerr << "  SSN/SSI safe snapshot   : " << sysconf::enable_safesnap << endl;
 #endif
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
     cerr << "  SSI read-only optimization: " << sysconf::enable_ssi_read_only_opt << endl;
 #endif
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
     cerr << "  SSN read optimization threshold: 0x" << hex << sysconf::ssn_read_opt_threshold << dec << endl;
 #endif
   }

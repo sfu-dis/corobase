@@ -463,7 +463,7 @@ try_recycle:
         }
         r = r_next;
     }
-#if CHECK_INVARIANTS
+#ifndef NDEBUG
     if (reclaimed_nbytes or reclaimed_count)
         printf("GC: reclaimed %lu bytes, %lu objects\n", reclaimed_nbytes, reclaimed_count);
 #endif

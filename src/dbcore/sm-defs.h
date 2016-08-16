@@ -175,7 +175,7 @@ void volatile_write(T volatile &x, U const &y) { *&x = y; }
 
 /* If [x] is not true, abort
  */
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
 #define ASSERT(x)                               \
     _MSG_IF(ASSERTION_FAILURE, not (x), #x, "")
 #else

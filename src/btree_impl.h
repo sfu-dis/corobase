@@ -189,7 +189,7 @@ void
 btree<P>::recursive_delete(node *n)
 {
   if (leaf_node *leaf = AsLeafCheck(n)) {
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     leaf->lock();
     leaf->mark_deleting();
     leaf->unlock();
@@ -204,7 +204,7 @@ btree<P>::recursive_delete(node *n)
     size_t n = internal->key_slots_used();
     for (size_t i = 0; i < n + 1; i++)
       recursive_delete(internal->children_[i]);
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     internal->lock();
     internal->mark_deleting();
     internal->unlock();
@@ -219,9 +219,9 @@ btree<P>::search_impl(const key_type &k, value_type &v,
                       typename util::vec<leaf_node *>::type &leaf_nodes,
                       versioned_node_t *search_info) const
 {
-  INVARIANT(RCU::rcu_is_active());
+  ASSERT(RCU::rcu_is_active());
   //ANON_REGION("btree<P>::search_impl:", &btree_search_impl_perf_cg);
-  INVARIANT(leaf_nodes.empty());
+  ASSERT(leaf_nodes.empty());
 
 retry:
   node *cur;
@@ -263,7 +263,7 @@ process:
         // found
         typename leaf_node::value_or_node_ptr vn = leaf->values_[ret];
         const bool is_layer = leaf->value_is_layer(ret);
-        INVARIANT(!is_layer || kslicelen == 9);
+        ASSERT(!is_layer || kslicelen == 9);
         varkey suffix(leaf->suffix(ret));
         if (unlikely(!leaf->check_version(version)))
           goto process;
@@ -332,7 +332,7 @@ process:
         cur = internal->children_[0];
       if (unlikely(!internal->check_version(version)))
         goto process;
-      INVARIANT(kret.second);
+      ASSERT(kret.second);
     }
   }
 }
@@ -402,7 +402,7 @@ btree<P>::search_range_at_layer(
         continue;
       // try from left_sibling
       leaf = left_sibling;
-      INVARIANT(leaf);
+      ASSERT(leaf);
       continue;
     }
 
@@ -447,7 +447,7 @@ btree<P>::search_range_at_layer(
         varkey zerokey;
         if (emitted_last_keyslice && last_keyslice == buf[i].key_)
           // NB(stephentu): this is implied by the filter above
-          INVARIANT(last_keyslice_len <= 8);
+          ASSERT(last_keyslice_len <= 8);
         if (!search_range_at_layer(next_layer, prefix, zerokey, false, NULL, callback))
           return false;
       } else {
@@ -458,7 +458,7 @@ btree<P>::search_range_at_layer(
               // skip
               continue;
           } else {
-            INVARIANT(buf[i].length_ == 9);
+            ASSERT(buf[i].length_ == 9);
             if (lower.size() > 8 && buf[i].suffix_ < lower.shift())
               // skip
               continue;
@@ -507,13 +507,13 @@ btree<P>::search_range_call(const key_type &lower,
                             string_type *buf) const
 {
   rcu_region guard;
-  INVARIANT(RCU::rcu_is_active);
+  ASSERT(RCU::rcu_is_active);
   if (unlikely(upper && *upper <= lower))
     return;
   typename util::vec<leaf_node *>::type leaf_nodes;
   value_type v = 0;
   search_impl(lower, v, leaf_nodes);
-  INVARIANT(!leaf_nodes.empty());
+  ASSERT(!leaf_nodes.empty());
   bool first = true;
   string_type prefix_tmp, *prefix_px;
   if (buf)
@@ -521,7 +521,7 @@ btree<P>::search_range_call(const key_type &lower,
   else
     prefix_px = &prefix_tmp;
   string_type &prefix(*prefix_px);
-  INVARIANT(prefix.empty());
+  ASSERT(prefix.empty());
   prefix.assign((const char *) lower.data(), 8 * (leaf_nodes.size() - 1));
   while (!leaf_nodes.empty()) {
     leaf_node *cur = leaf_nodes.back();
@@ -532,19 +532,19 @@ btree<P>::search_range_call(const key_type &lower,
       layer_upper = upper->shift_many(leaf_nodes.size());
       layer_has_upper = true;
     }
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     string_type prefix_before(prefix);
 #endif
     if (!search_range_at_layer(
           cur, prefix, lower.shift_many(leaf_nodes.size()),
           first, layer_has_upper ? &layer_upper : NULL, callback))
       return;
-#ifdef CHECK_INVARIANTS
-    INVARIANT(prefix == prefix_before);
+#ifndef NDEBUG
+    ASSERT(prefix == prefix_before);
 #endif
     first = false;
     if (!leaf_nodes.empty()) {
-      INVARIANT(prefix.size() >= 8);
+      ASSERT(prefix.size() >= 8);
       prefix.resize(prefix.size() - 8);
     }
   }
@@ -554,7 +554,7 @@ template <typename P>
 bool
 btree<P>::remove_stable_location(node **root_location, const key_type &k, value_type *old_v)
 {
-  INVARIANT(RCU::rcu_is_active());
+  ASSERT(RCU::rcu_is_active());
 retry:
   key_slice new_key;
   node *replace_node = NULL;
@@ -580,10 +580,10 @@ retry:
   case R_RETRY:
     goto retry;
   case R_REPLACE_NODE:
-    INVARIANT(local_root->is_deleting());
-    INVARIANT(local_root->is_lock_owner());
-    INVARIANT(local_root->is_root());
-    INVARIANT(local_root == *root_location);
+    ASSERT(local_root->is_deleting());
+    ASSERT(local_root->is_lock_owner());
+    ASSERT(local_root->is_root());
+    ASSERT(local_root == *root_location);
     replace_node->set_root();
     local_root->clear_root();
     COMPILER_MEMORY_FENCE;
@@ -620,7 +620,7 @@ void
 btree<P>::tree_walk(tree_walk_callback &callback) const
 {
   rcu_region guard;
-  INVARIANT(RCU::rcu_is_active());
+  ASSERT(RCU::rcu_is_active());
   std::vector<node *> q;
   // XXX: not sure if cast is safe
   q.push_back((node *) root_);
@@ -629,7 +629,7 @@ btree<P>::tree_walk(tree_walk_callback &callback) const
     q.pop_back();
     cur->prefetch();
     leaf_node *leaf = leftmost_descend_layer(cur);
-    INVARIANT(leaf);
+    ASSERT(leaf);
     while (leaf) {
       leaf->prefetch();
     process:
@@ -656,8 +656,8 @@ template <typename P>
 void
 btree<P>::size_walk_callback::on_node_begin(const node_opaque_t *n)
 {
-  INVARIANT(n->is_leaf_node());
-  INVARIANT(spec_size_ == 0);
+  ASSERT(n->is_leaf_node());
+  ASSERT(spec_size_ == 0);
   const leaf_node *leaf = (const leaf_node *) n;
   const size_t sz = leaf->key_slots_used();
   for (size_t i = 0; i < sz; i++)
@@ -765,7 +765,7 @@ btree<P>::FindRespLeafLowerBound(
       if (kslicelen0 <= kslicelen) {
         // invariant doesn't hold, b/c values can be changing
         // concurrently (leaf is not assumed to be locked)
-        //INVARIANT(idxmatch == -1);
+        //ASSERT(idxmatch == -1);
         idxlowerbound = i;
         if (kslicelen0 == kslicelen)
           idxmatch = i;
@@ -814,7 +814,7 @@ btree<P>::insert0(node *np,
   np->prefetch();
   if (leaf_node *leaf = AsLeafCheck(np)) {
     // locked nodes are acquired bottom to top
-    INVARIANT(locked_nodes.empty());
+    ASSERT(locked_nodes.empty());
 
 retry_cur_leaf:
     uint64_t version;
@@ -844,10 +844,10 @@ retry_cur_leaf:
           insert_info->node = 0;
         return UnlockAndReturn(locked_nodes, I_NONE_NOMOD);
       }
-      INVARIANT(kslicelen == 9);
+      ASSERT(kslicelen == 9);
       if (resp_leaf->value_is_layer(lenmatch)) {
         node *subroot = resp_leaf->values_[lenmatch].n_;
-        INVARIANT(subroot);
+        ASSERT(subroot);
         if (unlikely(!resp_leaf->check_version(version)))
           goto retry_cur_leaf;
         key_slice mk;
@@ -862,15 +862,15 @@ retry_cur_leaf:
         case I_NONE_NOMOD:
         case I_NONE_MOD:
         case I_RETRY:
-          INVARIANT(sub_locked_nodes.empty());
+          ASSERT(sub_locked_nodes.empty());
           return status;
 
         case I_SPLIT:
           // the subroot split, so we need to find the leaf again, lock the
           // node, and create a new internal node
 
-          INVARIANT(ret);
-          INVARIANT(ret->key_slots_used() > 0);
+          ASSERT(ret);
+          ASSERT(ret->key_slots_used() > 0);
 
           for (;;) {
             resp_leaf = FindRespLeafLowerBound(
@@ -883,19 +883,19 @@ retry_cur_leaf:
             resp_leaf->unlock();
           }
 
-          INVARIANT(lenmatch != -1);
-          INVARIANT(resp_leaf->value_is_layer(lenmatch));
+          ASSERT(lenmatch != -1);
+          ASSERT(resp_leaf->value_is_layer(lenmatch));
           subroot = resp_leaf->values_[lenmatch].n_;
-          INVARIANT(subroot->is_modifying());
-          INVARIANT(subroot->is_lock_owner());
-          INVARIANT(subroot->is_root());
+          ASSERT(subroot->is_modifying());
+          ASSERT(subroot->is_lock_owner());
+          ASSERT(subroot->is_root());
 
           internal_node *new_root = internal_node::alloc();
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
           new_root->lock();
           new_root->mark_modifying();
           locked_nodes.push_back(new_root);
-#endif /* CHECK_INVARIANTS */
+#endif
           new_root->children_[0] = subroot;
           new_root->children_[1] = ret;
           new_root->keys_[0] = mk;
@@ -918,7 +918,7 @@ retry_cur_leaf:
         }
         locked_nodes.push_back(resp_leaf);
 
-        INVARIANT(resp_leaf->suffixes_); // b/c lenmatch != -1 and this is not a layer
+        ASSERT(resp_leaf->suffixes_); // b/c lenmatch != -1 and this is not a layer
         // need to create a new btree layer, and add both existing key and
         // new key to it
 
@@ -927,10 +927,10 @@ retry_cur_leaf:
         resp_leaf->mark_modifying();
 
         leaf_node *new_root = leaf_node::alloc();
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
         new_root->lock();
         new_root->mark_modifying();
-#endif /* CHECK_INVARIANTS */
+#endif
         new_root->set_root();
         varkey old_slice(resp_leaf->suffix(lenmatch));
         new_root->keys_[0] = old_slice.slice();
@@ -948,9 +948,9 @@ retry_cur_leaf:
           resp_leaf->suffixes_[lenmatch].swap(i);
         }
         resp_leaf->value_set_layer(lenmatch);
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
         new_root->unlock();
-#endif /* CHECK_INVARIANTS */
+#endif
 
         key_slice mk;
         node *ret;
@@ -960,8 +960,8 @@ retry_cur_leaf:
           insert0(new_root, k.shift(), v, only_if_absent, old_v, insert_info,
               mk, ret, subparents, sub_locked_nodes);
         if (status != I_NONE_MOD)
-          INVARIANT(false);
-        INVARIANT(sub_locked_nodes.empty());
+          ASSERT(false);
+        ASSERT(sub_locked_nodes.empty());
         return UnlockAndReturn(locked_nodes, I_NONE_MOD);
       }
     }
@@ -997,7 +997,7 @@ retry_cur_leaf:
       }
       resp_leaf->inc_key_slots_used();
 
-//#ifdef CHECK_INVARIANTS
+//#ifndef NDEBUG
 //      resp_leaf->base_invariant_unique_keys_check();
 //#endif
       if (insert_info) {
@@ -1007,7 +1007,7 @@ retry_cur_leaf:
       }
       return UnlockAndReturn(locked_nodes, I_NONE_MOD);
     } else {
-      INVARIANT(n == NKeysPerNode);
+      ASSERT(n == NKeysPerNode);
 
       if (unlikely(resp_leaf != leaf))
         // sigh, we really do need parent points- if resp_leaf != leaf, then
@@ -1029,7 +1029,7 @@ retry_cur_leaf:
       if (parents.empty()) {
         if (unlikely(!resp_leaf->is_root()))
           return UnlockAndReturn(locked_nodes, I_RETRY);
-        //INVARIANT(resp_leaf == root);
+        //ASSERT(resp_leaf == root);
       } else {
         for (auto rit = parents.rbegin(); rit != parents.rend(); ++rit) {
           // lock the parent
@@ -1044,15 +1044,15 @@ retry_cur_leaf:
             // did the root change?
             if (unlikely(!p->is_root()))
               return UnlockAndReturn(locked_nodes, I_RETRY);
-            //INVARIANT(p == root);
+            //ASSERT(p == root);
           }
 
           // since the child needs a split, see if we have room in the parent-
           // if we don't have room, we'll also need to split the parent, in which
           // case we must grab its parent's lock
-          INVARIANT(p->is_internal_node());
+          ASSERT(p->is_internal_node());
           size_t parent_n = p->key_slots_used();
-          INVARIANT(parent_n > 0 && parent_n <= NKeysPerNode);
+          ASSERT(parent_n > 0 && parent_n <= NKeysPerNode);
           if (parent_n < NKeysPerNode)
             // can stop locking up now, since this node won't split
             break;
@@ -1066,11 +1066,11 @@ retry_cur_leaf:
       leaf_node *new_leaf = leaf_node::alloc();
       new_leaf->prefetch();
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
       new_leaf->lock();
       new_leaf->mark_modifying();
       locked_nodes.push_back(new_leaf);
-#endif /* CHECK_INVARIANTS */
+#endif
 
       if (!resp_leaf->next_ && resp_leaf->keys_[n - 1] < kslice) {
         // sequential insert optimization- in this case, we don't bother
@@ -1110,8 +1110,8 @@ retry_cur_leaf:
             break;
           left_split_point--;
         }
-        INVARIANT(left_split_point <= NKeysPerNode);
-        INVARIANT(left_split_point == 0 || resp_leaf->keys_[left_split_point - 1] != resp_leaf->keys_[left_split_point]);
+        ASSERT(left_split_point <= NKeysPerNode);
+        ASSERT(left_split_point == 0 || resp_leaf->keys_[left_split_point - 1] != resp_leaf->keys_[left_split_point]);
 
         right_split_point = NKeysPerNode / 2;
         for (ssize_t i = right_split_point - 1; i >= 0 && i < ssize_t(NKeysPerNode) - 1; i++) {
@@ -1119,8 +1119,8 @@ retry_cur_leaf:
             break;
           right_split_point++;
         }
-        INVARIANT(right_split_point <= NKeysPerNode);
-        INVARIANT(right_split_point == 0 || resp_leaf->keys_[right_split_point - 1] != resp_leaf->keys_[right_split_point]);
+        ASSERT(right_split_point <= NKeysPerNode);
+        ASSERT(right_split_point == 0 || resp_leaf->keys_[right_split_point - 1] != resp_leaf->keys_[right_split_point]);
 
         size_t split_point;
         if (std::min(left_split_point, NKeysPerNode - left_split_point) <
@@ -1165,16 +1165,16 @@ retry_cur_leaf:
           resp_leaf->set_key_slots_used(split_point);
           new_leaf->set_key_slots_used(NKeysPerNode - split_point + 1);
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
           resp_leaf->base_invariant_unique_keys_check();
           new_leaf->base_invariant_unique_keys_check();
-          INVARIANT(resp_leaf->keys_[split_point - 1] < new_leaf->keys_[0]);
-#endif /* CHECK_INVARIANTS */
+          ASSERT(resp_leaf->keys_[split_point - 1] < new_leaf->keys_[0]);
+#endif
 
         } else {
           // XXX: not really sure if this invariant is true, but we rely
           // on it for now
-          INVARIANT(size_t(lenlowerbound + 1) <= split_point);
+          ASSERT(size_t(lenlowerbound + 1) <= split_point);
 
           // put new key in original leaf
           copy_into(&new_leaf->keys_[0], resp_leaf->keys_, split_point, NKeysPerNode);
@@ -1205,11 +1205,11 @@ retry_cur_leaf:
           resp_leaf->set_key_slots_used(split_point + 1);
           new_leaf->set_key_slots_used(NKeysPerNode - split_point);
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
           resp_leaf->base_invariant_unique_keys_check();
           new_leaf->base_invariant_unique_keys_check();
-          INVARIANT(resp_leaf->keys_[split_point] < new_leaf->keys_[0]);
-#endif /* CHECK_INVARIANTS */
+          ASSERT(resp_leaf->keys_[split_point] < new_leaf->keys_[0]);
+#endif
         }
       }
 
@@ -1251,15 +1251,15 @@ retry_cur_leaf:
       insert0(child_ptr, k, v, only_if_absent, old_v, insert_info,
               mk, new_child, parents, locked_nodes);
     if (status != I_SPLIT) {
-      INVARIANT(locked_nodes.empty());
+      ASSERT(locked_nodes.empty());
       return status;
     }
-    INVARIANT(new_child);
-    INVARIANT(internal->is_locked()); // previous call to insert0() must lock internal node for insertion
-    INVARIANT(internal->is_lock_owner());
-    INVARIANT(internal->check_version(version));
-    INVARIANT(new_child->key_slots_used() > 0);
-    INVARIANT(n > 0);
+    ASSERT(new_child);
+    ASSERT(internal->is_locked()); // previous call to insert0() must lock internal node for insertion
+    ASSERT(internal->is_lock_owner());
+    ASSERT(internal->check_version(version));
+    ASSERT(new_child->key_slots_used() > 0);
+    ASSERT(n > 0);
     internal->mark_modifying();
     if (n < NKeysPerNode) {
       sift_right(internal->keys_, child_idx, n);
@@ -1269,16 +1269,16 @@ retry_cur_leaf:
       internal->inc_key_slots_used();
       return UnlockAndReturn(locked_nodes, I_NONE_MOD);
     } else {
-      INVARIANT(n == NKeysPerNode);
-      INVARIANT(ret == internal->key_lower_bound_search(mk).first);
+      ASSERT(n == NKeysPerNode);
+      ASSERT(ret == internal->key_lower_bound_search(mk).first);
 
       internal_node *new_internal = internal_node::alloc();
       new_internal->prefetch();
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
       new_internal->lock();
       new_internal->mark_modifying();
       locked_nodes.push_back(new_internal);
-#endif /* CHECK_INVARIANTS */
+#endif
 
       // there are three cases post-split:
       // (1) mk goes in the original node
@@ -1328,7 +1328,7 @@ retry_cur_leaf:
         internal->set_key_slots_used(NMinKeysPerNode);
       }
 
-      INVARIANT(internal->keys_[internal->key_slots_used() - 1] < new_internal->keys_[0]);
+      ASSERT(internal->keys_[internal->key_slots_used() - 1] < new_internal->keys_[0]);
       new_node = new_internal;
       return I_SPLIT;
     }
@@ -1342,7 +1342,7 @@ btree<P>::insert_stable_location(
     bool only_if_absent, value_type *old_v,
     insert_info_t *insert_info)
 {
-  INVARIANT(RCU::rcu_is_active());
+  ASSERT(RCU::rcu_is_active());
 retry:
   key_slice mk;
   node *ret;
@@ -1352,7 +1352,7 @@ retry:
   const insert_status status =
     insert0(local_root, k, v, only_if_absent, old_v, insert_info,
             mk, ret, parents, locked_nodes);
-  INVARIANT(status == I_SPLIT || locked_nodes.empty());
+  ASSERT(status == I_SPLIT || locked_nodes.empty());
   switch (status) {
   case I_NONE_NOMOD:
     return false;
@@ -1361,18 +1361,18 @@ retry:
   case I_RETRY:
     goto retry;
   case I_SPLIT:
-    INVARIANT(ret);
-    INVARIANT(ret->key_slots_used() > 0);
-    INVARIANT(local_root->is_modifying());
-    INVARIANT(local_root->is_lock_owner());
-    INVARIANT(local_root->is_root());
-    INVARIANT(local_root == *root_location);
+    ASSERT(ret);
+    ASSERT(ret->key_slots_used() > 0);
+    ASSERT(local_root->is_modifying());
+    ASSERT(local_root->is_lock_owner());
+    ASSERT(local_root->is_root());
+    ASSERT(local_root == *root_location);
     internal_node *new_root = internal_node::alloc();
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     new_root->lock();
     new_root->mark_modifying();
     locked_nodes.push_back(new_root);
-#endif /* CHECK_INVARIANTS */
+#endif
     new_root->children_[0] = local_root;
     new_root->children_[1] = ret;
     new_root->keys_[0] = mk;
@@ -1412,10 +1412,10 @@ btree<P>::remove0(node *np,
 
   np->prefetch();
   if (leaf_node *leaf = AsLeafCheck(np)) {
-    INVARIANT(locked_nodes.empty());
+    ASSERT(locked_nodes.empty());
 
-    SINGLE_THREADED_INVARIANT(!left_node || (leaf->prev_ == left_node && AsLeaf(left_node)->next == leaf));
-    SINGLE_THREADED_INVARIANT(!right_node || (leaf->next_ == right_node && AsLeaf(right_node)->prev == leaf));
+    SINGLE_THREADED_ASSERT(!left_node || (leaf->prev_ == left_node && AsLeaf(left_node)->next == leaf));
+    SINGLE_THREADED_ASSERT(!right_node || (leaf->next_ == right_node && AsLeaf(right_node)->prev == leaf));
 
 retry_cur_leaf:
     uint64_t version;
@@ -1432,7 +1432,7 @@ retry_cur_leaf:
     if (kslicelen == 9) {
       if (resp_leaf->value_is_layer(ret)) {
         node *subroot = resp_leaf->values_[ret].n_;
-        INVARIANT(subroot);
+        ASSERT(subroot);
         if (unlikely(!resp_leaf->check_version(version)))
           goto retry_cur_leaf;
 
@@ -1455,11 +1455,11 @@ retry_cur_leaf:
         case R_NONE_NOMOD:
         case R_NONE_MOD:
         case R_RETRY:
-          INVARIANT(sub_locked_nodes.empty());
+          ASSERT(sub_locked_nodes.empty());
           return status;
 
         case R_REPLACE_NODE:
-          INVARIANT(replace_node);
+          ASSERT(replace_node);
           for (;;) {
             resp_leaf = FindRespLeafExact(
                 resp_leaf, kslice, kslicelen, version, n, ret);
@@ -1471,9 +1471,9 @@ retry_cur_leaf:
             resp_leaf->unlock();
           }
 
-          INVARIANT(subroot->is_deleting());
-          INVARIANT(subroot->is_lock_owner());
-          INVARIANT(subroot->is_root());
+          ASSERT(subroot->is_deleting());
+          ASSERT(subroot->is_lock_owner());
+          ASSERT(subroot->is_root());
           replace_node->set_root();
           subroot->clear_root();
           resp_leaf->values_[ret].n_ = replace_node;
@@ -1500,7 +1500,7 @@ retry_cur_leaf:
       }
     }
 
-    //INVARIANT(!resp_leaf->value_is_layer(ret));
+    //ASSERT(!resp_leaf->value_is_layer(ret));
     if (n > NMinKeysPerNode) {
       const uint64_t locked_version = resp_leaf->lock();
       if (unlikely(!btree::CheckVersion(version, locked_version))) {
@@ -1558,10 +1558,10 @@ retry_cur_leaf:
         if (unlikely(!leaf->check_version(leaf_version)))
           return UnlockAndReturn(locked_nodes, R_RETRY);
       } else {
-        INVARIANT(parents.empty());
+        ASSERT(parents.empty());
         if (unlikely(!leaf->is_root()))
           return UnlockAndReturn(locked_nodes, R_RETRY);
-        //INVARIANT(leaf == root);
+        //ASSERT(leaf == root);
       }
 
       for (typename util::vec<remove_parent_entry>::type::reverse_iterator rit = parents.rbegin();
@@ -1590,7 +1590,7 @@ retry_cur_leaf:
         } else {
           if (unlikely(!p->is_root()))
             return UnlockAndReturn(locked_nodes, R_RETRY);
-          //INVARIANT(p == root);
+          //ASSERT(p == root);
         }
       }
 
@@ -1601,7 +1601,7 @@ retry_cur_leaf:
         size_t right_n = right_sibling->key_slots_used();
         if (right_n > NMinKeysPerNode) {
           // steal first contiguous key slices from right
-          INVARIANT(right_sibling->keys_[0] > leaf->keys_[n - 1]);
+          ASSERT(right_sibling->keys_[0] > leaf->keys_[n - 1]);
 
           // indices [0, steal_point) will be taken from the right
           size_t steal_point = 1;
@@ -1609,8 +1609,8 @@ retry_cur_leaf:
             if (likely(right_sibling->keys_[i] != right_sibling->keys_[steal_point]))
               break;
 
-          INVARIANT(steal_point <= sizeof(key_slice) + 2);
-          INVARIANT(steal_point <= right_n);
+          ASSERT(steal_point <= sizeof(key_slice) + 2);
+          ASSERT(steal_point <= right_n);
 
           // to steal, we need to ensure:
           // 1) we have enough room to steal
@@ -1639,18 +1639,18 @@ retry_cur_leaf:
             new_key = right_sibling->keys_[0];
             right_sibling->min_key_ = new_key;
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
             leaf->base_invariant_unique_keys_check();
             right_sibling->base_invariant_unique_keys_check();
-            INVARIANT(leaf->keys_[n - 1 + steal_point - 1] < new_key);
-#endif /* CHECK_INVARIANTS */
+            ASSERT(leaf->keys_[n - 1 + steal_point - 1] < new_key);
+#endif
 
             return R_STOLE_FROM_RIGHT;
           } else {
             // can't steal, so try merging- but only merge if we have room,
             // otherwise just allow this node to have less elements
             if ((n - 1 + right_n) > NKeysPerNode) {
-              INVARIANT(n > 1); // if we can't steal or merge, we must have
+              ASSERT(n > 1); // if we can't steal or merge, we must have
                                 // enough elements to just remove one w/o going empty
               remove_pos_from_leaf_node(leaf, ret, n);
               return UnlockAndReturn(locked_nodes, R_NONE_MOD);
@@ -1659,8 +1659,8 @@ retry_cur_leaf:
         }
 
         // merge right sibling into this node
-        INVARIANT(right_sibling->keys_[0] > leaf->keys_[n - 1]);
-        INVARIANT((right_n + (n - 1)) <= NKeysPerNode);
+        ASSERT(right_sibling->keys_[0] > leaf->keys_[n - 1]);
+        ASSERT((right_n + (n - 1)) <= NKeysPerNode);
 
         sift_left(leaf->keys_, ret, n);
         copy_into(&leaf->keys_[n - 1], right_sibling->keys_, 0, right_n);
@@ -1686,14 +1686,14 @@ retry_cur_leaf:
 
         // leaf->next_->prev won't change because we hold lock for both leaf
         // and right_sibling
-        INVARIANT(!leaf->next_ || leaf->next_->prev_ == leaf);
+        ASSERT(!leaf->next_ || leaf->next_->prev_ == leaf);
 
         // leaf->prev_->next might change, however, since the left node could be
         // splitting (and we might hold a pointer to the left-split of the left node,
         // before it gets updated)
-        SINGLE_THREADED_INVARIANT(!leaf->prev_ || leaf->prev_->next_ == leaf);
+        SINGLE_THREADED_ASSERT(!leaf->prev_ || leaf->prev_->next_ == leaf);
 
-//#ifdef CHECK_INVARIANTS
+//#ifndef NDEBUG
 //        leaf->base_invariant_unique_keys_check();
 //#endif
         leaf_node::release(right_sibling);
@@ -1705,7 +1705,7 @@ retry_cur_leaf:
         size_t left_n = left_sibling->key_slots_used();
         if (left_n > NMinKeysPerNode) {
           // try to steal from left
-          INVARIANT(left_sibling->keys_[left_n - 1] < leaf->keys_[0]);
+          ASSERT(left_sibling->keys_[left_n - 1] < leaf->keys_[0]);
 
           // indices [steal_point, left_n) will be taken from the left
           size_t steal_point = left_n - 1;
@@ -1714,8 +1714,8 @@ retry_cur_leaf:
               break;
 
           size_t nstolen = left_n - steal_point;
-          INVARIANT(nstolen <= sizeof(key_slice) + 2);
-          INVARIANT(steal_point < left_n);
+          ASSERT(nstolen <= sizeof(key_slice) + 2);
+          ASSERT(steal_point < left_n);
 
           if ((n - 1 + nstolen) <= NKeysPerNode && steal_point > 0) {
             sift_right(leaf->keys_, ret + 1, n, nstolen - 1);
@@ -1744,16 +1744,16 @@ retry_cur_leaf:
             new_key = leaf->keys_[0];
             leaf->min_key_ = new_key;
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
             leaf->base_invariant_unique_keys_check();
             left_sibling->base_invariant_unique_keys_check();
-            INVARIANT(left_sibling->keys_[left_n - nstolen - 1] < new_key);
-#endif /* CHECK_INVARIANTS */
+            ASSERT(left_sibling->keys_[left_n - nstolen - 1] < new_key);
+#endif
 
             return R_STOLE_FROM_LEFT;
           } else {
             if ((left_n + (n - 1)) > NKeysPerNode) {
-              INVARIANT(n > 1);
+              ASSERT(n > 1);
               remove_pos_from_leaf_node(leaf, ret, n);
               return UnlockAndReturn(locked_nodes, R_NONE_MOD);
             }
@@ -1761,8 +1761,8 @@ retry_cur_leaf:
         }
 
         // merge this node into left sibling
-        INVARIANT(left_sibling->keys_[left_n - 1] < leaf->keys_[0]);
-        INVARIANT((left_n + (n - 1)) <= NKeysPerNode);
+        ASSERT(left_sibling->keys_[left_n - 1] < leaf->keys_[0]);
+        ASSERT((left_n + (n - 1)) <= NKeysPerNode);
 
         copy_into(&left_sibling->keys_[left_n], leaf->keys_, 0, ret);
         copy_into(&left_sibling->keys_[left_n + ret], leaf->keys_, ret + 1, n);
@@ -1786,8 +1786,8 @@ retry_cur_leaf:
 
         // see comments in right_sibling case above, for why one of them is INVARIANT and
         // the other is SINGLE_THREADED_INVARIANT
-        INVARIANT(!left_sibling->next_ || left_sibling->next_->prev_ == left_sibling);
-        SINGLE_THREADED_INVARIANT(
+        ASSERT(!left_sibling->next_ || left_sibling->next_->prev_ == left_sibling);
+        SINGLE_THREADED_ASSERT(
             !left_sibling->prev_ ||
             left_sibling->prev_->next_ == left_sibling);
 
@@ -1797,8 +1797,8 @@ retry_cur_leaf:
       }
 
       // root node, so we are ok
-      //INVARIANT(leaf == root);
-      INVARIANT(leaf->is_root());
+      //ASSERT(leaf == root);
+      ASSERT(leaf->is_root());
       remove_pos_from_leaf_node(leaf, ret, n);
       return UnlockAndReturn(locked_nodes, R_NONE_MOD);
     }
@@ -1819,7 +1819,7 @@ retry_cur_leaf:
     if (unlikely(!internal->check_version(version)))
       return UnlockAndReturn(locked_nodes, R_RETRY);
     parents.push_back(remove_parent_entry(internal, left_node, right_node, version));
-    INVARIANT(n > 0);
+    ASSERT(n > 0);
     key_slice nk;
     node *rn;
     remove_status status = remove0(child_ptr,
@@ -1840,14 +1840,14 @@ retry_cur_leaf:
         return status;
 
       case R_STOLE_FROM_LEFT:
-        INVARIANT(internal->is_locked());
-        INVARIANT(internal->is_lock_owner());
+        ASSERT(internal->is_locked());
+        ASSERT(internal->is_lock_owner());
         internal->keys_[child_idx - 1] = nk;
         return UnlockAndReturn(locked_nodes, R_NONE_MOD);
 
       case R_STOLE_FROM_RIGHT:
-        INVARIANT(internal->is_locked());
-        INVARIANT(internal->is_lock_owner());
+        ASSERT(internal->is_locked());
+        ASSERT(internal->is_lock_owner());
         internal->keys_[child_idx] = nk;
         return UnlockAndReturn(locked_nodes, R_NONE_MOD);
 
@@ -1883,9 +1883,9 @@ retry_cur_leaf:
           if (right_sibling) {
             right_sibling->mark_modifying();
             size_t right_n = right_sibling->key_slots_used();
-            INVARIANT(max_key);
-            INVARIANT(right_sibling->keys_[0] > internal->keys_[n - 1]);
-            INVARIANT(*max_key > internal->keys_[n - 1]);
+            ASSERT(max_key);
+            ASSERT(right_sibling->keys_[0] > internal->keys_[n - 1]);
+            ASSERT(*max_key > internal->keys_[n - 1]);
             if (right_n > NMinKeysPerNode) {
               // steal from right
               sift_left(internal->keys_, del_key_idx, n);
@@ -1903,7 +1903,7 @@ retry_cur_leaf:
               return R_STOLE_FROM_RIGHT;
             } else {
               // merge with right
-              INVARIANT(max_key);
+              ASSERT(max_key);
 
               sift_left(internal->keys_, del_key_idx, n);
               internal->keys_[n - 1] = *max_key;
@@ -1921,10 +1921,10 @@ retry_cur_leaf:
           if (left_sibling) {
             left_sibling->mark_modifying();
             size_t left_n = left_sibling->key_slots_used();
-            INVARIANT(min_key);
-            INVARIANT(left_sibling->keys_[left_n - 1] < internal->keys_[0]);
-            INVARIANT(left_sibling->keys_[left_n - 1] < *min_key);
-            INVARIANT(*min_key < internal->keys_[0]);
+            ASSERT(min_key);
+            ASSERT(left_sibling->keys_[left_n - 1] < internal->keys_[0]);
+            ASSERT(left_sibling->keys_[left_n - 1] < *min_key);
+            ASSERT(*min_key < internal->keys_[0]);
             if (left_n > NMinKeysPerNode) {
               // steal from left
               sift_right(internal->keys_, 0, del_key_idx);
@@ -1939,7 +1939,7 @@ retry_cur_leaf:
               return R_STOLE_FROM_LEFT;
             } else {
               // merge into left sibling
-              INVARIANT(min_key);
+              ASSERT(min_key);
 
               size_t left_key_j = left_n;
               size_t left_child_j = left_n + 1;
@@ -1960,10 +1960,10 @@ retry_cur_leaf:
             }
           }
 
-          //INVARIANT(internal == root);
-          INVARIANT(internal->is_root());
+          //ASSERT(internal == root);
+          ASSERT(internal->is_root());
           remove_pos_from_internal_node(internal, del_key_idx, del_child_idx, n);
-          INVARIANT(internal->key_slots_used() + 1 == n);
+          ASSERT(internal->key_slots_used() + 1 == n);
           if ((n - 1) == 0) {
             replace_node = internal->children_[0];
             internal_node::release(internal);

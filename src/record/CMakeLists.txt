@@ -1,0 +1,2 @@
+set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
+)

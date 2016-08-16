@@ -16,7 +16,7 @@ using namespace TXN;
 // differentiate with delete case (pvalue = null)
 #define DEFUNCT_TUPLE_MARK ((varstr *)0x1)
 
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
 // Indicate somebody has read this tuple and thought it was an old one
 #define PERSISTENT_READER_MARK 0x1
 #endif
@@ -31,14 +31,14 @@ public:
   typedef uint32_t size_type;
   typedef varstr string_type;
 
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
   readers_list::bitmap_t   readers_bitmap;   // bitmap of in-flight readers
   fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
                            // normal write to indicate its existence; become writer cstamp at commit
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
   uint8_t preader;         // did I have some reader thinking I'm old?
 #endif
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
   uint64_t s2;  // smallest successor stamp of all reads performed by the tx
                 // that clobbered this version
                 // Consider a transaction T which clobbers this version, upon
@@ -57,12 +57,12 @@ public:
 
   dbtuple(size_type size)
     :
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
       sstamp(NULL_PTR),
       xstamp(0),
       preader(0),
 #endif
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
       s2(0),
 #endif
       size(CheckBounds(size)),
@@ -78,7 +78,7 @@ public:
     READ_RECORD,
   };
 
-#if defined(USE_PARALLEL_SSN)
+#if defined(SSN)
   /* return the tuple's age based on a safe_lsn provided by the calling tx.
    * safe_lsn usually = the calling tx's begin offset.
    *
@@ -132,7 +132,7 @@ public:
     ASSERT(volatile_read(preader) >> 7);
   }
 #endif
-#if defined(USE_PARALLEL_SSN) || defined(USE_PARALLEL_SSI)
+#if defined(SSN) || defined(SSI)
   // XXX: for the writer who's updating this tuple only
   inline ALWAYS_INLINE void welcome_readers() {
     if (volatile_read(preader) >> 7)
@@ -190,7 +190,7 @@ private:
   static inline ALWAYS_INLINE size_type
   CheckBounds(size_type s)
   {
-    INVARIANT(s <= std::numeric_limits<size_type>::max());
+    ASSERT(s <= std::numeric_limits<size_type>::max());
     return s;
   }
 

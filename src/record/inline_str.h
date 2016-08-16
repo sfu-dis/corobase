@@ -68,7 +68,7 @@ public:
   str(bool zeropad = false) const
   {
 		if (zeropad) {
-			INVARIANT(N >= sz);
+			ASSERT(N >= sz);
 			std::string r(N, 0);
 			NDB_MEMCPY((char *) r.data(), &buf[0], sz);
 			return r;
@@ -98,7 +98,7 @@ public:
   inline void
   assign(const char *s, size_t n)
   {
-    INVARIANT(n <= N);
+    ASSERT(n <= N);
     NDB_MEMCPY(&buf[0], s, n);
     sz = n;
   }
@@ -112,7 +112,7 @@ public:
   inline void
   resize(size_t n, char c = 0)
   {
-    INVARIANT(n <= N);
+    ASSERT(n <= N);
     if (n > sz)
       NDB_MEMSET(&buf[sz], c, n - sz);
     sz = n;
@@ -121,7 +121,7 @@ public:
   inline void
   resize_junk(size_t n)
   {
-    INVARIANT(n <= N);
+    ASSERT(n <= N);
     sz = n;
   }
 
@@ -237,7 +237,7 @@ public:
   inline void
   assign(const char *s, size_t n)
   {
-    INVARIANT(n <= N);
+    ASSERT(n <= N);
     NDB_MEMCPY(&buf[0], s, n);
     if ((N - n) > 0) // to suppress compiler warning
       NDB_MEMSET(&buf[n], FillChar, N - n); // pad with spaces

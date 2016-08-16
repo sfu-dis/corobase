@@ -90,7 +90,7 @@ class table_scanner: public abstract_ordered_index::scan_callback {
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
 		{
 			varstr * const k = _arena->next(keylen);
-			INVARIANT(k);
+			ASSERT(k);
 			k->copy_from(keyp, keylen);
 			output.emplace_back(k, &value);
 			return true;
@@ -159,11 +159,11 @@ public:
     ALWAYS_ASSERT(!did_lock);
     if (locks.size() > 1)
       sort(locks.begin(), locks.end());
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     if (set<T *>(locks.begin(), locks.end()).size() != locks.size()) {
       for (auto &t : locks)
         cerr << "lock: " << hexify(t) << endl;
-      INVARIANT(false && "duplicate locks found");
+      ASSERT(false && "duplicate locks found");
     }
 #endif
     for (auto &t : locks)
@@ -241,7 +241,7 @@ static aligned_padded_elem<atomic<uint64_t>> *g_district_ids = nullptr;
 static inline ALWAYS_INLINE unsigned int
 PartitionId(unsigned int wid)
 {
-  INVARIANT(wid >= 1 && wid <= NumWarehouses());
+  ASSERT(wid >= 1 && wid <= NumWarehouses());
   wid -= 1; // 0-idx
   if (NumWarehouses() <= sysconf::worker_threads)
     // more workers than partitions, so its easy
@@ -256,15 +256,15 @@ PartitionId(unsigned int wid)
 static inline ALWAYS_INLINE spinlock &
 LockForPartition(unsigned int wid)
 {
-  INVARIANT(g_enable_partition_locks);
+  ASSERT(g_enable_partition_locks);
   return g_partition_locks[PartitionId(wid)].elem;
 }
 
 static inline atomic<uint64_t> &
 NewOrderIdHolder(unsigned warehouse, unsigned district)
 {
-  INVARIANT(warehouse >= 1 && warehouse <= NumWarehouses());
-  INVARIANT(district >= 1 && district <= NumDistrictsPerWarehouse());
+  ASSERT(warehouse >= 1 && warehouse <= NumWarehouses());
+  ASSERT(district >= 1 && district <= NumDistrictsPerWarehouse());
   const unsigned idx =
     (warehouse - 1) * NumDistrictsPerWarehouse() + (district - 1);
   return g_district_ids[idx].elem;
@@ -283,69 +283,69 @@ struct checker {
   static inline ALWAYS_INLINE void
   SanityCheckCustomer(const customer::key *k, const customer::value *v)
   {
-    INVARIANT(k->c_w_id >= 1 && static_cast<size_t>(k->c_w_id) <= NumWarehouses());
-    INVARIANT(k->c_d_id >= 1 && static_cast<size_t>(k->c_d_id) <= NumDistrictsPerWarehouse());
-    INVARIANT(k->c_id >= 1 && static_cast<size_t>(k->c_id) <= NumCustomersPerDistrict());
-    INVARIANT(v->c_credit == "BC" || v->c_credit == "GC");
-    INVARIANT(v->c_middle == "OE");
+    ASSERT(k->c_w_id >= 1 && static_cast<size_t>(k->c_w_id) <= NumWarehouses());
+    ASSERT(k->c_d_id >= 1 && static_cast<size_t>(k->c_d_id) <= NumDistrictsPerWarehouse());
+    ASSERT(k->c_id >= 1 && static_cast<size_t>(k->c_id) <= NumCustomersPerDistrict());
+    ASSERT(v->c_credit == "BC" || v->c_credit == "GC");
+    ASSERT(v->c_middle == "OE");
   }
 
   static inline ALWAYS_INLINE void
   SanityCheckWarehouse(const warehouse::key *k, const warehouse::value *v)
   {
-    INVARIANT(k->w_id >= 1 && static_cast<size_t>(k->w_id) <= NumWarehouses());
-    INVARIANT(v->w_state.size() == 2);
-    INVARIANT(v->w_zip == "123456789");
+    ASSERT(k->w_id >= 1 && static_cast<size_t>(k->w_id) <= NumWarehouses());
+    ASSERT(v->w_state.size() == 2);
+    ASSERT(v->w_zip == "123456789");
   }
 
   static inline ALWAYS_INLINE void
   SanityCheckDistrict(const district::key *k, const district::value *v)
   {
-    INVARIANT(k->d_w_id >= 1 && static_cast<size_t>(k->d_w_id) <= NumWarehouses());
-    INVARIANT(k->d_id >= 1 && static_cast<size_t>(k->d_id) <= NumDistrictsPerWarehouse());
-    INVARIANT(v->d_next_o_id >= 3001);
-    INVARIANT(v->d_state.size() == 2);
-    INVARIANT(v->d_zip == "123456789");
+    ASSERT(k->d_w_id >= 1 && static_cast<size_t>(k->d_w_id) <= NumWarehouses());
+    ASSERT(k->d_id >= 1 && static_cast<size_t>(k->d_id) <= NumDistrictsPerWarehouse());
+    ASSERT(v->d_next_o_id >= 3001);
+    ASSERT(v->d_state.size() == 2);
+    ASSERT(v->d_zip == "123456789");
   }
 
   static inline ALWAYS_INLINE void
   SanityCheckItem(const item::key *k, const item::value *v)
   {
-    INVARIANT(k->i_id >= 1 && static_cast<size_t>(k->i_id) <= NumItems());
-    INVARIANT(v->i_price >= 1.0 && v->i_price <= 100.0);
+    ASSERT(k->i_id >= 1 && static_cast<size_t>(k->i_id) <= NumItems());
+    ASSERT(v->i_price >= 1.0 && v->i_price <= 100.0);
   }
 
   static inline ALWAYS_INLINE void
   SanityCheckStock(const stock::key *k, const stock::value *v)
   {
-    INVARIANT(k->s_w_id >= 1 && static_cast<size_t>(k->s_w_id) <= NumWarehouses());
-    INVARIANT(k->s_i_id >= 1 && static_cast<size_t>(k->s_i_id) <= NumItems());
+    ASSERT(k->s_w_id >= 1 && static_cast<size_t>(k->s_w_id) <= NumWarehouses());
+    ASSERT(k->s_i_id >= 1 && static_cast<size_t>(k->s_i_id) <= NumItems());
   }
 
   static inline ALWAYS_INLINE void
   SanityCheckNewOrder(const new_order::key *k, const new_order::value *v)
   {
-    INVARIANT(k->no_w_id >= 1 && static_cast<size_t>(k->no_w_id) <= NumWarehouses());
-    INVARIANT(k->no_d_id >= 1 && static_cast<size_t>(k->no_d_id) <= NumDistrictsPerWarehouse());
+    ASSERT(k->no_w_id >= 1 && static_cast<size_t>(k->no_w_id) <= NumWarehouses());
+    ASSERT(k->no_d_id >= 1 && static_cast<size_t>(k->no_d_id) <= NumDistrictsPerWarehouse());
   }
 
   static inline ALWAYS_INLINE void
   SanityCheckOOrder(const oorder::key *k, const oorder::value *v)
   {
-    INVARIANT(k->o_w_id >= 1 && static_cast<size_t>(k->o_w_id) <= NumWarehouses());
-    INVARIANT(k->o_d_id >= 1 && static_cast<size_t>(k->o_d_id) <= NumDistrictsPerWarehouse());
-    INVARIANT(v->o_c_id >= 1 && static_cast<size_t>(v->o_c_id) <= NumCustomersPerDistrict());
-    INVARIANT(v->o_carrier_id >= 0 && static_cast<size_t>(v->o_carrier_id) <= NumDistrictsPerWarehouse());
-    INVARIANT(v->o_ol_cnt >= 5 && v->o_ol_cnt <= 15);
+    ASSERT(k->o_w_id >= 1 && static_cast<size_t>(k->o_w_id) <= NumWarehouses());
+    ASSERT(k->o_d_id >= 1 && static_cast<size_t>(k->o_d_id) <= NumDistrictsPerWarehouse());
+    ASSERT(v->o_c_id >= 1 && static_cast<size_t>(v->o_c_id) <= NumCustomersPerDistrict());
+    ASSERT(v->o_carrier_id >= 0 && static_cast<size_t>(v->o_carrier_id) <= NumDistrictsPerWarehouse());
+    ASSERT(v->o_ol_cnt >= 5 && v->o_ol_cnt <= 15);
   }
 
   static inline ALWAYS_INLINE void
   SanityCheckOrderLine(const order_line::key *k, const order_line::value *v)
   {
-    INVARIANT(k->ol_w_id >= 1 && static_cast<size_t>(k->ol_w_id) <= NumWarehouses());
-    INVARIANT(k->ol_d_id >= 1 && static_cast<size_t>(k->ol_d_id) <= NumDistrictsPerWarehouse());
-    INVARIANT(k->ol_number >= 1 && k->ol_number <= 15);
-    INVARIANT(v->ol_i_id >= 1 && static_cast<size_t>(v->ol_i_id) <= NumItems());
+    ASSERT(k->ol_w_id >= 1 && static_cast<size_t>(k->ol_w_id) <= NumWarehouses());
+    ASSERT(k->ol_d_id >= 1 && static_cast<size_t>(k->ol_d_id) <= NumDistrictsPerWarehouse());
+    ASSERT(k->ol_number >= 1 && k->ol_number <= 15);
+    ASSERT(v->ol_i_id >= 1 && static_cast<size_t>(v->ol_i_id) <= NumItems());
   }
 
 };
@@ -378,8 +378,8 @@ protected: \
   inline ALWAYS_INLINE abstract_ordered_index * \
   tbl_ ## name (unsigned int wid) \
   { \
-    INVARIANT(wid >= 1 && wid <= NumWarehouses()); \
-    INVARIANT(tbl_ ## name ## _vec.size() == NumWarehouses()); \
+    ASSERT(wid >= 1 && wid <= NumWarehouses()); \
+    ASSERT(tbl_ ## name ## _vec.size() == NumWarehouses()); \
     return tbl_ ## name ## _vec[wid - 1]; \
   }
 
@@ -408,8 +408,8 @@ public:
   static inline ALWAYS_INLINE int
   CheckBetweenInclusive(int v, int lower, int upper)
   {
-    INVARIANT(v >= lower);
-    INVARIANT(v <= upper);
+    ASSERT(v >= lower);
+    ASSERT(v <= upper);
     return v;
   }
 
@@ -561,7 +561,7 @@ public:
       tpcc_worker_mixin(partitions),
       home_warehouse_id(home_warehouse_id)
   {
-    INVARIANT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
+    ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     NDB_MEMSET(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
   }
 
@@ -685,7 +685,7 @@ private:
       return w;
     }
     else {
-      INVARIANT(g_wh_spread >= 0 and g_wh_spread <= 1);
+      ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
       // wh_spread = 0: always use home wh
       // wh_spread = 1: always use random wh
       if (g_wh_spread == 0 or r.next_uniform() >= g_wh_spread)
@@ -1374,7 +1374,7 @@ tpcc_worker::txn_new_order()
     }
     orderQuantities[i] = RandomNumber(r, 1, 10);
   }
-  INVARIANT(!g_disable_xpartition_txn || allLocal);
+  ASSERT(!g_disable_xpartition_txn || allLocal);
 
   // XXX(stephentu): implement rollback
   //
@@ -1522,10 +1522,10 @@ public:
       const char *keyp, size_t keylen,
       const varstr &value)
   {
-    INVARIANT(keylen == sizeof(new_order::key));
-    INVARIANT(value.size() == sizeof(new_order::value));
+    ASSERT(keylen == sizeof(new_order::key));
+    ASSERT(value.size() == sizeof(new_order::value));
     k_no = Decode(keyp, k_no_temp);
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     new_order::value v_no_temp;
     const new_order::value *v_no = Decode(value, v_no_temp);
     checker::SanityCheckNewOrder(k_no, v_no);
@@ -1605,7 +1605,7 @@ tpcc_worker::txn_delivery()
         order_line::value v_ol_temp;
         const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
         order_line::key k_ol_temp;
         const order_line::key *k_ol = Decode(*c.values[i].first, k_ol_temp);
         checker::SanityCheckOrderLine(k_ol, v_ol);
@@ -1614,7 +1614,7 @@ tpcc_worker::txn_delivery()
         sum += v_ol->ol_amount;
         order_line::value v_ol_new(*v_ol);
         v_ol_new.ol_delivery_d = ts;
-        INVARIANT(s_arena.get()->manages(c.values[i].first));
+        ASSERT(s_arena.get()->manages(c.values[i].first));
         try_catch(tbl_order_line(warehouse_id)->put(txn, *c.values[i].first, Encode(str(Size(v_ol_new)), v_ol_new)));
       }
 
@@ -1651,7 +1651,7 @@ class credit_check_order_scan_callback : public abstract_ordered_index::scan_cal
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
 		{
 			varstr * const k= _arena->next(keylen);
-			INVARIANT(k);
+			ASSERT(k);
 			k->copy_from(keyp, keylen);
 			output.emplace_back(k);
 			return true;
@@ -1714,7 +1714,7 @@ tpcc_worker::txn_credit_check()
 			customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
 		} while (customerWarehouseID == warehouse_id);
 	}
-	INVARIANT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+	ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
 	void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_TPCC_CREDIT_CHECK);
 	scoped_str_arena s_arena(arena);
@@ -1813,7 +1813,7 @@ tpcc_worker::txn_payment()
   }
   const float paymentAmount = (float) (RandomNumber(r, 100, 500000) / 100.0);
   const uint32_t ts = GetCurrentTimeMillis();
-  INVARIANT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
   // output from txn counters:
   //   max_absent_range_set_size : 0
@@ -1882,7 +1882,7 @@ tpcc_worker::txn_payment()
       static_limit_callback<NMaxCustomerIdxScanElems> c(s_arena.get(), true); // probably a safe bet for now
       try_catch(tbl_customer_name_idx(customerWarehouseID)->scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0), &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, s_arena.get()));
       ALWAYS_ASSERT(c.size() > 0);
-      INVARIANT(c.size() < NMaxCustomerIdxScanElems); // we should detect this
+      ASSERT(c.size() < NMaxCustomerIdxScanElems); // we should detect this
       int index = c.size() / 2;
       if (c.size() % 2 == 0)
         index--;
@@ -1952,10 +1952,10 @@ public:
       const char *keyp, size_t keylen,
       const varstr &value)
   {
-    INVARIANT(keylen == sizeof(order_line::key));
+    ASSERT(keylen == sizeof(order_line::key));
     order_line::value v_ol_temp;
     const order_line::value *v_ol UNUSED = Decode(value, v_ol_temp);
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
     checker::SanityCheckOrderLine(k_ol, v_ol);
@@ -2018,7 +2018,7 @@ tpcc_worker::txn_order_status()
       static_limit_callback<NMaxCustomerIdxScanElems> c(s_arena.get(), true); // probably a safe bet for now
       try_catch(tbl_customer_name_idx(warehouse_id)->scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0), &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, s_arena.get()));
       ALWAYS_ASSERT(c.size() > 0);
-      INVARIANT(c.size() < NMaxCustomerIdxScanElems); // we should detect this
+      ASSERT(c.size() < NMaxCustomerIdxScanElems); // we should detect this
       int index = c.size() / 2;
       if (c.size() % 2 == 0)
         index--;
@@ -2091,11 +2091,11 @@ public:
       const char *keyp, size_t keylen,
       const varstr &value)
   {
-    INVARIANT(keylen == sizeof(order_line::key));
+    ASSERT(keylen == sizeof(order_line::key));
     order_line::value v_ol_temp;
     const order_line::value *v_ol = Decode(value, v_ol_temp);
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
     checker::SanityCheckOrderLine(k_ol, v_ol);
@@ -2163,11 +2163,11 @@ tpcc_worker::txn_stock_level()
         const stock::key k_s(warehouse_id, p.first);
         stock::value v_s;
         varstr sv_s = str(Size(v_s));
-        INVARIANT(p.first >= 1 && p.first <= NumItems());
+        ASSERT(p.first >= 1 && p.first <= NumItems());
         {
           try_verify_relax(tbl_stock(warehouse_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s, nbytesread));
         }
-        INVARIANT(sv_s.size() <= nbytesread);
+        ASSERT(sv_s.size() <= nbytesread);
         const uint8_t *ptr = (const uint8_t *) sv_s.data();
         int16_t i16tmp;
         ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
@@ -2256,7 +2256,7 @@ tpcc_worker::txn_query2()
 					try_verify_relax(tbl_stock(it.first)->get(txn, Encode(str(Size(k_s)), k_s), sv));
           const stock::value *v_s = Decode(sv, v_s_tmp);
 
-					INVARIANT( k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey );
+					ASSERT( k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey );
 					if( min_qty > v_s->s_quantity )
 					{
 						min_k_s.s_w_id = k_s.s_w_id;
@@ -2319,7 +2319,7 @@ tpcc_worker::txn_microbench_random()
 	void *txn = db->new_txn(txn_flags, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 	uint start_w = 0, start_s = 0;
-	INVARIANT(NumWarehouses() * NumItems() >= g_microbench_rows);
+	ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);
 
 	// pick start row, if it's not enough, later wrap to the first row
 	uint w = start_w = RandomNumber(r, 1, NumWarehouses() + 1);
@@ -2330,7 +2330,7 @@ tpcc_worker::txn_microbench_random()
 	varstr sv = str(Size(v));
 	for (uint i = 0; i < g_microbench_rows; i++) {
 		const stock::key k_s(w, s);
-		INVARIANT(cout << "rd " << w << " " << s << endl);
+		ASSERT(cout << "rd " << w << " " << s << endl);
 		scoped_lock_guard<spinlock> slock(
 				g_enable_partition_locks ? &LockForPartition(w) : nullptr);
 		try_catch(tbl_stock(w)->get(txn, Encode(str(Size(k_s)), k_s), sv));
@@ -2354,15 +2354,15 @@ tpcc_worker::txn_microbench_random()
 		const uint ww = idx / NumItems() + 1;
 		const uint ss = idx % NumItems() + 1;
 
-		INVARIANT(cout << (ww - 1) * NumItems() + ss - 1 << endl);
-		INVARIANT(cout << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) % (NumItems() * (NumWarehouses())) << endl);
-		INVARIANT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
-		INVARIANT((ww - 1) * NumItems() + ss - 1 ==
+		ASSERT(cout << (ww - 1) * NumItems() + ss - 1 << endl);
+		ASSERT(cout << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) % (NumItems() * (NumWarehouses())) << endl);
+		ASSERT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
+		ASSERT((ww - 1) * NumItems() + ss - 1 ==
 				((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) % (NumItems() * (NumWarehouses())));
 
 		// TODO. more plausible update needed
 		const stock::key k_s(ww, ss);
-		INVARIANT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << endl);
+		ASSERT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << endl);
 
 		stock::value v;
 		v.s_quantity = RandomNumber(r, 10, 100);
@@ -2374,9 +2374,9 @@ tpcc_worker::txn_microbench_random()
 		try_catch(tbl_stock(ww)->put(txn, Encode(str(Size(k_s)), k_s), Encode(str(Size(v)), v)));
 	}
 
-	INVARIANT(cout << "micro-random finished" << endl);
-#ifdef CHECK_INVARIANTS
-    abort();
+	ASSERT(cout << "micro-random finished" << endl);
+#ifndef NDEBUG
+  abort();
 #endif
 
 	measure_txn_counters(txn, "txn_microbench_random");

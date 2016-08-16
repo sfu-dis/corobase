@@ -498,7 +498,7 @@ void mbtree<P>::tree_walk(tree_walk_callback &callback) const {
     q.pop_back();
     prefetch(cur);
     leaf_type *leaf = leftmost_descend_layer(cur);
-    INVARIANT(leaf);
+    ASSERT(leaf);
     while (leaf) {
       leaf->prefetch();
     process:
@@ -734,11 +734,11 @@ class mbtree<P>::low_level_search_range_callback_wrapper :
 public:
   low_level_search_range_callback_wrapper(F& callback) : callback_(callback) {}
 
-  void on_resp_node(const node_opaque_t *n, uint64_t version) OVERRIDE {}
+  void on_resp_node(const node_opaque_t *n, uint64_t version) override {}
 
   bool
   invoke(const string_type &k, OID o, dbtuple * v,
-         const node_opaque_t *n, uint64_t version) OVERRIDE
+         const node_opaque_t *n, uint64_t version) override
   {
     return callback_(k, o, v);
   }

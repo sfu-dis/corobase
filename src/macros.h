@@ -1,34 +1,12 @@
-#ifndef _MACROS_H_
-#define _MACROS_H_
+#pragma once
 
-#include <assert.h>
-#include <stdexcept>
-
-/** options */
-//#define USE_PARALLEL_SSN
-#ifdef USE_PARALLEL_SSN
-#define DO_EARLY_SSN_CHECKS // ssn checks during normal r/w
-#endif
-
-//#define USE_READ_COMMITTED
-//#ifdef USE_READ_COMMITTED
-//#define READ_COMMITTED_SPIN // spin until the tx is settled when hit an XID
-//#endif
-
-//#define USE_PARALLEL_SSI
-
-#if defined(USE_PARALLEL_SSI) && defined(USE_PARALLEL_SSN)
-#error "can't use SSI and SSN together."
-#endif
-
-#define PHANTOM_PROT_NODE_SET   // silo's phantom protection scheme
+#include "dbcore/sm-defs.h"
 
 //#define USE_DYNARRAY_STR_ARENA
 
 //#define TUPLE_PREFETCH
 #define BTREE_NODE_PREFETCH
 #define USE_BUILTIN_MEMFUNCS
-//#define CHECK_INVARIANTS
 #define BTREE_NODE_ALLOC_CACHE_ALIGNED
 #define TXN_BTREE_DUMP_PURGE_STATS
 //#define ENABLE_BENCH_TXN_COUNTERS
@@ -37,13 +15,6 @@
 //#define PARANOID_CHECKING
 //#define BTREE_LOCK_OWNERSHIP_CHECKING
 
-#ifndef CONFIG_H
-#error "no CONFIG_H set"
-#endif
-
-#include CONFIG_H
-
-#define CACHELINE_SIZE 64 // XXX: don't assume x86
 #define LG_CACHELINE_SIZE __builtin_ctz(CACHELINE_SIZE)
 
 // some helpers for cacheline alignment
@@ -67,22 +38,13 @@
 #ifdef NDEBUG
   #define ALWAYS_ASSERT(expr) (likely((expr)) ? (void)0 : abort())
 #else
-  #define ALWAYS_ASSERT(expr) assert((expr))
+  #define ALWAYS_ASSERT(expr) ASSERT((expr))
 #endif /* NDEBUG */
 
 #define ARRAY_NELEMS(a) (sizeof(a)/sizeof((a)[0]))
 
 #define VERBOSE(expr) ((void)0)
 //#define VERBOSE(expr) (expr)
-
-#ifdef CHECK_INVARIANTS
-  #define INVARIANT(expr) ALWAYS_ASSERT(expr)
-#else
-  #define INVARIANT(expr) ((void)0)
-#endif /* CHECK_INVARIANTS */
-
-// XXX: would be nice if we checked these during single threaded execution
-#define SINGLE_THREADED_INVARIANT(expr) ((void)0)
 
 // tune away
 #define SMALL_SIZE_VEC       128
@@ -108,18 +70,3 @@
 #define NDB_MEMCPY memcpy
 #define NDB_MEMSET memset
 #endif
-
-#if __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7)
-#define GCC_AT_LEAST_47 1
-#else
-#define GCC_AT_LEAST_47 0
-#endif
-
-// g++-4.6 does not support override
-#if GCC_AT_LEAST_47
-#define OVERRIDE override
-#else
-#define OVERRIDE
-#endif
-
-#endif /* _MACROS_H_ */

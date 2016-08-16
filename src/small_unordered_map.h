@@ -185,7 +185,7 @@ private:
     inline bool
     operator==(const iterator_ &o) const
     {
-      INVARIANT(large == o.large);
+      ASSERT(large == o.large);
       if (likely(!large))
         return b == o.b;
       return large_it == o.large_it;
@@ -294,7 +294,7 @@ private:
   bucket *
   find_bucket(const key_type &k, size_t *hash_value)
   {
-    INVARIANT(!large_elems);
+    ASSERT(!large_elems);
     const size_t h = Hash()(k);
     if (hash_value)
       *hash_value = h;
@@ -342,7 +342,7 @@ public:
       n = 0;
       return large_elems->operator[](k);
     }
-    INVARIANT(n < SmallSize);
+    ASSERT(n < SmallSize);
     b = &small_elems[n++];
     b->construct(h, k, mapped_type());
     const size_t i = h % TableSize;
@@ -374,7 +374,7 @@ public:
       n = 0;
       return large_elems->operator[](std::move(k));
     }
-    INVARIANT(n < SmallSize);
+    ASSERT(n < SmallSize);
     b = &small_elems[n++];
     b->construct(h, std::move(k), mapped_type());
     const size_t i = h % TableSize;
@@ -455,7 +455,7 @@ public:
   clear()
   {
     if (unlikely(large_elems)) {
-      INVARIANT(!n);
+      ASSERT(!n);
       delete large_elems;
       large_elems = NULL;
       return;
@@ -480,12 +480,12 @@ private:
   {
     clear();
     if (that.large_elems) {
-      INVARIANT(!that.n);
-      INVARIANT(!n);
+      ASSERT(!that.n);
+      ASSERT(!n);
       large_elems = new large_table_type(*that.large_elems);
       return;
     }
-    INVARIANT(!large_elems);
+    ASSERT(!large_elems);
     for (size_t i = 0; i < that.n; i++) {
       bucket * const b = &small_elems[n++];
       const bucket * const that_b = &that.small_elems[i];

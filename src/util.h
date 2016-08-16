@@ -679,7 +679,7 @@ class unmanaged {
 public:
   template <class... Args>
   unmanaged(Args &&... args)
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     : destroyed_(false)
 #endif
   {
@@ -690,7 +690,7 @@ public:
   inline void
   destroy()
   {
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     ALWAYS_ASSERT(!destroyed_);
     destroyed_ = true;
 #endif
@@ -709,7 +709,7 @@ public:
 
 private:
   char obj_[sizeof(T)];
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
   bool destroyed_;
 #endif
 } PACKED;

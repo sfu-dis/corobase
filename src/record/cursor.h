@@ -20,8 +20,8 @@ public:
   inline bool
   skip_to(size_t i)
   {
-    INVARIANT(i >= n);
-    INVARIANT(i < value_descriptor_type::nfields());
+    ASSERT(i >= n);
+    ASSERT(i < value_descriptor_type::nfields());
     while (n < i) {
       const size_t sz = value_descriptor_type::failsafe_skip_fn(n++)(px_cur, nbytes, nullptr);
       if (unlikely(!sz))
@@ -35,7 +35,7 @@ public:
   inline void
   reset()
   {
-    INVARIANT(px_cur >= px_begin);
+    ASSERT(px_cur >= px_begin);
     nbytes += (px_cur - px_begin);
     px_cur = px_begin;
     n = 0;
@@ -51,7 +51,7 @@ public:
   inline size_t
   read_current_and_advance(value_type *v)
   {
-    INVARIANT(n < value_descriptor_type::nfields());
+    ASSERT(n < value_descriptor_type::nfields());
     uint8_t * const buf = reinterpret_cast<uint8_t *>(v) +
       value_descriptor_type::cstruct_offsetof(n);
     const uint8_t * const px_skip =
@@ -59,7 +59,7 @@ public:
     if (unlikely(!px_skip))
       return 0;
     const size_t rawsz = px_skip - px_cur;
-    INVARIANT(rawsz <= value_descriptor_type::max_nbytes(n - 1));
+    ASSERT(rawsz <= value_descriptor_type::max_nbytes(n - 1));
     nbytes -= rawsz;
     px_cur = px_skip;
     return rawsz;
@@ -69,12 +69,12 @@ public:
   inline size_t
   read_current_raw_size_and_advance()
   {
-    INVARIANT(n < value_descriptor_type::nfields());
+    ASSERT(n < value_descriptor_type::nfields());
     const size_t rawsz =
       value_descriptor_type::failsafe_skip_fn(n++)(px_cur, nbytes, nullptr);
     if (unlikely(!nbytes))
       return 0;
-    INVARIANT(rawsz <= value_descriptor_type::max_nbytes(n - 1));
+    ASSERT(rawsz <= value_descriptor_type::max_nbytes(n - 1));
     nbytes -= rawsz;
     px_cur += rawsz;
     return rawsz;
@@ -101,14 +101,14 @@ public:
   write_record_cursor(uint8_t *px)
     : px_begin(px), px_cur(px), px_end(nullptr), n(0)
   {
-    INVARIANT(px);
+    ASSERT(px);
   }
 
   inline void
   skip_to(size_t i)
   {
-    INVARIANT(i >= n);
-    INVARIANT(i < value_descriptor_type::nfields());
+    ASSERT(i >= n);
+    ASSERT(i < value_descriptor_type::nfields());
     while (n < i)
       px_cur += value_descriptor_type::skip_fn(n++)(px_cur, nullptr);
   }
@@ -134,11 +134,11 @@ public:
     const uint8_t * const buf = reinterpret_cast<const uint8_t *>(v) +
       value_descriptor_type::cstruct_offsetof(n);
     const size_t newsz = value_descriptor_type::nbytes_fn(n)(buf);
-    INVARIANT(newsz <= value_descriptor_type::max_nbytes(n));
+    ASSERT(newsz <= value_descriptor_type::max_nbytes(n));
     uint8_t stack_buf[value_descriptor_type::max_nbytes(n)];
     uint8_t * const old_buf = old_v ? old_v : &stack_buf[0];
     const size_t oldsz = value_descriptor_type::skip_fn(n)(px_cur, old_buf);
-    INVARIANT(oldsz <= value_descriptor_type::max_nbytes(n));
+    ASSERT(oldsz <= value_descriptor_type::max_nbytes(n));
     if (unlikely(oldsz != newsz)) {
       ++evt_write_memmove;
       compute_end();

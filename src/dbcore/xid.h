@@ -19,20 +19,20 @@ struct xid_context {
     XID owner;
     LSN begin;
     LSN end;
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
     uint64_t pstamp; // youngest predecessor (\eta)
     std::atomic<uint64_t> sstamp; // oldest successor (\pi)
     transaction *xct;
     bool set_sstamp(uint64_t s);
 #endif
-#ifdef USE_PARALLEL_SSI
+#ifdef SSI
     uint64_t ct3;   // smallest commit stamp of T3 in the dangerous structure
     uint64_t last_safesnap;
     transaction *xct;
 #endif
     txn_state state;
 
-#ifdef USE_PARALLEL_SSN
+#ifdef SSN
 const static uint64_t sstamp_final_mark = 1UL << 63;
 inline void finalize_sstamp() {
     std::atomic_fetch_or(&sstamp, sstamp_final_mark);
@@ -60,7 +60,7 @@ void xid_free(XID x);
  */
 xid_context *xid_get_context(XID x);
 
-#if defined(USE_PARALLEL_SSN) or defined(USE_PARALLEL_SSI)
+#if defined(SSN) or defined(SSI)
 txn_state spin_for_cstamp(XID xid, xid_context *xc);
 #endif
 };  // end of namespace

@@ -1,0 +1,30 @@
+set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
+  #${CMAKE_CURRENT_SOURCE_DIR}/checkpoint.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/clp.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/compiler.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/file.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/json.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/jsontest.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/kvio.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/kvrandom.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/kvthread.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/log.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/misc.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/msgpack.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/msgpacktest.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/mtclient.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/mtd.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/mttest.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/perfstat.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/query_masstree.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/straccum.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/str.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/string.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/string_slice.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/test_atomics.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/testrunner.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/test_string.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/value_array.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/value_string.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/value_versioned_array.cc
+)

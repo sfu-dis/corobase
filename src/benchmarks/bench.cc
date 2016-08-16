@@ -51,7 +51,7 @@ template <typename T>
 	static vector<T>
 elemwise_sum(const vector<T> &a, const vector<T> &b)
 {
-	INVARIANT(a.size() == b.size());
+	ASSERT(a.size() == b.size());
 	vector<T> ret(a.size());
 	for (size_t i = 0; i < a.size(); i++)
 		ret[i] = a[i] + b[i];

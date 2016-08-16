@@ -34,8 +34,8 @@ namespace private_ {
     static inline uint64_t
     Lock(uint64_t &t)
     {
-#ifdef CHECK_INVARIANTS
-      INVARIANT(!P::IsLocked(t));
+#ifndef NDEBUG
+      ASSERT(!P::IsLocked(t));
       t |= P::HDR_LOCKED_MASK;
       return t;
 #endif
@@ -51,22 +51,22 @@ namespace private_ {
     static inline void
     Unlock(uint64_t &t)
     {
-#ifdef CHECK_INVARIANTS
-      INVARIANT(P::IsLocked(t));
+#ifndef NDEBUG
+      ASSERT(P::IsLocked(t));
       t &= ~(P::HDR_LOCKED_MASK | P::HDR_MODIFYING_MASK);
 #endif
     }
     static inline uint64_t
     StableVersion(uint64_t t)
     {
-      INVARIANT(!P::IsModifying(t));
+      ASSERT(!P::IsModifying(t));
       return t;
     }
     static inline bool
     CheckVersion(uint64_t t, uint64_t stablev)
     {
-      INVARIANT(!P::IsModifying(stablev));
-      INVARIANT((t & ~P::HDR_LOCKED_MASK) == (stablev & ~P::HDR_LOCKED_MASK));
+      ASSERT(!P::IsModifying(stablev));
+      ASSERT((t & ~P::HDR_LOCKED_MASK) == (stablev & ~P::HDR_LOCKED_MASK));
       return true;
     }
   };
@@ -137,7 +137,7 @@ namespace private_ {
     static inline void
     Unlock(std::atomic<uint64_t> &v)
     {
-      INVARIANT(P::IsLocked(v));
+      ASSERT(P::IsLocked(v));
       const uint64_t oldh = Load(v);
       uint64_t h = oldh;
       bool newv = false;
@@ -151,9 +151,9 @@ namespace private_ {
       // clear locked + modifying bits
       h &= ~(P::HDR_LOCKED_MASK | P::HDR_MODIFYING_MASK);
       if (newv)
-        INVARIANT(!CheckVersion(oldh, h));
-      INVARIANT(!(h & P::HDR_LOCKED_MASK));
-      INVARIANT(!(h & P::HDR_MODIFYING_MASK));
+        ASSERT(!CheckVersion(oldh, h));
+      ASSERT(!(h & P::HDR_LOCKED_MASK));
+      ASSERT(!(h & P::HDR_MODIFYING_MASK));
       COMPILER_MEMORY_FENCE;
       Store(v, h);
     }
@@ -171,7 +171,7 @@ namespace private_ {
     static inline bool
     CheckVersion(uint64_t t, uint64_t stablev)
     {
-      INVARIANT(!(stablev & P::HDR_MODIFYING_MASK));
+      ASSERT(!(stablev & P::HDR_MODIFYING_MASK));
       COMPILER_MEMORY_FENCE;
       return (t & ~P::HDR_LOCKED_MASK) ==
              (stablev & ~P::HDR_LOCKED_MASK);
@@ -376,8 +376,8 @@ public:
   static inline void
   SetKeySlotsUsed(VersionType &v, size_t n)
   {
-    INVARIANT(n <= NKeysPerNode);
-    INVARIANT(IsModifying(v));
+    ASSERT(n <= NKeysPerNode);
+    ASSERT(IsModifying(v));
     uint64_t h = Load(v);
     h &= ~HDR_KEY_SLOTS_MASK;
     h |= (n << HDR_KEY_SLOTS_SHIFT);
@@ -393,15 +393,15 @@ public:
   static inline void
   DecKeySlotsUsed(VersionType &v)
   {
-    INVARIANT(KeySlotsUsed(v) > 0);
+    ASSERT(KeySlotsUsed(v) > 0);
     SetKeySlotsUsed(v, KeySlotsUsed(v) - 1);
   }
 
   static inline void
   SetRoot(VersionType &v)
   {
-    INVARIANT(IsLocked(v));
-    INVARIANT(!IsRoot(v));
+    ASSERT(IsLocked(v));
+    ASSERT(!IsRoot(v));
     uint64_t h = Load(v);
     h |= HDR_IS_ROOT_MASK;
     Store(v, h);
@@ -410,8 +410,8 @@ public:
   static inline void
   ClearRoot(VersionType &v)
   {
-    INVARIANT(IsLocked(v));
-    INVARIANT(IsRoot(v));
+    ASSERT(IsLocked(v));
+    ASSERT(IsRoot(v));
     uint64_t h = Load(v);
     h &= ~HDR_IS_ROOT_MASK;
     Store(v, h);
@@ -420,8 +420,8 @@ public:
   static inline void
   MarkModifying(VersionType &v)
   {
-    INVARIANT(IsLocked(v));
-    INVARIANT(!IsModifying(v));
+    ASSERT(IsLocked(v));
+    ASSERT(!IsModifying(v));
     uint64_t h = Load(v);
     h |= HDR_MODIFYING_MASK;
     Store(v, h);
@@ -430,8 +430,8 @@ public:
   static inline void
   MarkDeleting(VersionType &v)
   {
-    INVARIANT(IsLocked(v));
-    INVARIANT(!IsDeleting(v));
+    ASSERT(IsLocked(v));
+    ASSERT(!IsDeleting(v));
     uint64_t h = Load(v);
     h |= HDR_DELETING_MASK;
     Store(v, h);
@@ -558,8 +558,8 @@ private:
     {}
     ~node()
     {
-      INVARIANT(!is_locked());
-      INVARIANT(is_deleting());
+      ASSERT(!is_locked());
+      ASSERT(is_deleting());
     }
 
     inline bool
@@ -642,7 +642,7 @@ private:
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
       lock_owner_ = std::this_thread::get_id();
       AddNodeToLockRegion(this);
-      INVARIANT(is_lock_owner());
+      ASSERT(is_lock_owner());
 #endif
       return ret;
     }
@@ -652,7 +652,7 @@ private:
     {
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
       lock_owner_ = std::thread::id();
-      INVARIANT(!is_lock_owner());
+      ASSERT(!is_lock_owner());
 #endif
       VersionManip::Unlock(hdr_);
     }
@@ -778,8 +778,8 @@ private:
     inline void
     alloc_suffixes()
     {
-      INVARIANT(this->is_modifying());
-      INVARIANT(!suffixes_);
+      ASSERT(this->is_modifying());
+      ASSERT(!suffixes_);
       suffixes_ = new imstring[NKeysPerNode];
       //++g_evt_suffixes_array_created;
     }
@@ -787,7 +787,7 @@ private:
     inline void
     ensure_suffixes()
     {
-      INVARIANT(this->is_modifying());
+      ASSERT(this->is_modifying());
       if (!suffixes_)
         alloc_suffixes();
     }
@@ -811,34 +811,34 @@ private:
     inline size_t
     keyslice_length(size_t n) const
     {
-      INVARIANT(n < NKeysPerNode);
+      ASSERT(n < NKeysPerNode);
       return lengths_[n] & LEN_LEN_MASK;
     }
 
     inline void
     keyslice_set_length(size_t n, size_t len, bool layer)
     {
-      INVARIANT(n < NKeysPerNode);
-      INVARIANT(this->is_modifying());
-      INVARIANT(len <= 9);
-      INVARIANT(!layer || len == 9);
+      ASSERT(n < NKeysPerNode);
+      ASSERT(this->is_modifying());
+      ASSERT(len <= 9);
+      ASSERT(!layer || len == 9);
       lengths_[n] = (len | (layer ? LEN_TYPE_MASK : 0));
     }
 
     inline bool
     value_is_layer(size_t n) const
     {
-      INVARIANT(n < NKeysPerNode);
+      ASSERT(n < NKeysPerNode);
       return lengths_[n] & LEN_TYPE_MASK;
     }
 
     inline void
     value_set_layer(size_t n)
     {
-      INVARIANT(n < NKeysPerNode);
-      INVARIANT(this->is_modifying());
-      INVARIANT(keyslice_length(n) == 9);
-      INVARIANT(!value_is_layer(n));
+      ASSERT(n < NKeysPerNode);
+      ASSERT(this->is_modifying());
+      ASSERT(keyslice_length(n) == 9);
+      ASSERT(!value_is_layer(n));
       lengths_[n] |= LEN_TYPE_MASK;
     }
 
@@ -904,7 +904,7 @@ private:
     alloc()
     {
       void * const p = RCU::rcu_alloc(LeafNodeAllocSize);
-      INVARIANT(p);
+      ASSERT(p);
       return new (p) leaf_node;
     }
 
@@ -912,8 +912,8 @@ private:
     deleter(void *p)
     {
       leaf_node *n = (leaf_node *) p;
-      INVARIANT(n->is_deleting());
-      INVARIANT(!n->is_locked());
+      ASSERT(n->is_deleting());
+      ASSERT(!n->is_locked());
       n->~leaf_node();
       // FIXME: tzwang: dealloc to slab
       RCU::rcu_pointer u = {p};
@@ -1019,7 +1019,7 @@ private:
     alloc()
     {
       void * const p = RCU::allocate(InternalNodeAllocSize);
-      INVARIANT(p);
+      ASSERT(p);
       return new (p) internal_node;
     }
 
@@ -1027,8 +1027,8 @@ private:
     deleter(void *p)
     {
       internal_node *n = (internal_node *) p;
-      INVARIANT(n->is_deleting());
-      INVARIANT(!n->is_locked());
+      ASSERT(n->is_deleting());
+      ASSERT(!n->is_locked());
       n->~internal_node();
       // FIXME: tzwang: dealloc to slab
       RCU::rcu_pointer u = {p};
@@ -1079,7 +1079,7 @@ private:
   static inline leaf_node*
   AsLeaf(node *n)
   {
-    INVARIANT(!n || n->is_leaf_node());
+    ASSERT(!n || n->is_leaf_node());
     return static_cast<leaf_node *>(n);
   }
 
@@ -1092,7 +1092,7 @@ private:
   static inline internal_node*
   AsInternal(node *n)
   {
-    INVARIANT(!n || n->is_internal_node());
+    ASSERT(!n || n->is_internal_node());
     return static_cast<internal_node *>(n);
   }
 
@@ -1191,13 +1191,13 @@ public:
         NKeysPerNode <=
         (VersionManip::HDR_KEY_SLOTS_MASK >> VersionManip::HDR_KEY_SLOTS_SHIFT), "XX");
 
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     root_->lock();
     root_->set_root();
     root_->unlock();
 #else
     root_->set_root();
-#endif /* CHECK_INVARIANTS */
+#endif
   }
 
   ~btree()
@@ -1217,13 +1217,13 @@ public:
   {
     recursive_delete(root_);
     root_ = leaf_node::alloc();
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
     root_->lock();
     root_->set_root();
     root_->unlock();
 #else
     root_->set_root();
-#endif /* CHECK_INVARIANTS */
+#endif
   }
 
   /** Note: invariant checking is not thread safe */
@@ -1711,17 +1711,17 @@ private:
   inline ALWAYS_INLINE void
   remove_pos_from_leaf_node(leaf_node *leaf, size_t pos, size_t n)
   {
-    INVARIANT(leaf->key_slots_used() == n);
-    INVARIANT(pos < n);
+    ASSERT(leaf->key_slots_used() == n);
+    ASSERT(pos < n);
     if (leaf->value_is_layer(pos)) {
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
       leaf->values_[pos].n_->lock();
 #endif
       leaf->values_[pos].n_->mark_deleting();
-      INVARIANT(leaf->values_[pos].n_->is_leaf_node());
-      INVARIANT(leaf->values_[pos].n_->key_slots_used() == 0);
+      ASSERT(leaf->values_[pos].n_->is_leaf_node());
+      ASSERT(leaf->values_[pos].n_->key_slots_used() == 0);
       leaf_node::release((leaf_node *) leaf->values_[pos].n_);
-#ifdef CHECK_INVARIANTS
+#ifndef NDEBUG
       leaf->values_[pos].n_->unlock();
 #endif
     }
@@ -1737,9 +1737,9 @@ private:
   remove_pos_from_internal_node(
       internal_node *internal, size_t key_pos, size_t child_pos, size_t n)
   {
-    INVARIANT(internal->key_slots_used() == n);
-    INVARIANT(key_pos < n);
-    INVARIANT(child_pos < n + 1);
+    ASSERT(internal->key_slots_used() == n);
+    ASSERT(key_pos < n);
+    ASSERT(child_pos < n + 1);
     sift_left(internal->keys_, key_pos, n);
     sift_left(internal->children_, child_pos, n + 1);
     internal->dec_key_slots_used();
@@ -1795,7 +1795,7 @@ btree<P>::node::prefetch() const
 extern void TestConcurrentBtreeFast();
 extern void TestConcurrentBtreeSlow();
 
-#if !NDB_MASSTREE
+#ifndef MASSTREE
 typedef btree<concurrent_btree_traits> concurrent_btree;
 typedef btree<single_threaded_btree_traits> single_threaded_btree;
 #endif

@@ -216,7 +216,7 @@ public:
     bucket *b = find_bucket(k, &h);
     if (b)
       return b->ref().second;
-    INVARIANT(n < StaticSize);
+    ASSERT(n < StaticSize);
     b = &elems[n++];
     b->construct(h, k, mapped_type());
     const size_t i = h % TableSize;
@@ -232,7 +232,7 @@ public:
     bucket *b = find_bucket(k, &h);
     if (b)
       return b->ref().second;
-    INVARIANT(n < StaticSize);
+    ASSERT(n < StaticSize);
     b = &elems[n++];
     b->construct(h, std::move(k), mapped_type());
     const size_t i = h % TableSize;
