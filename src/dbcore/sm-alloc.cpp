@@ -189,6 +189,9 @@ void *allocate(size_t size, epoch_num e) {
     }
 
 out:
+    if(not p) {
+      std::cout << "OOM\n";
+    }
     ALWAYS_ASSERT(p);
     epoch_tls.nbytes += size;
     epoch_tls.counts += 1;
@@ -364,6 +367,8 @@ try_recycle:
         r_obj = (object *)r.offset();
         recycle_oid *r_oid = (recycle_oid *)r_obj->payload();
         ASSERT(r_oid->oa);
+
+      start_over:
         fat_ptr head = oidmgr->oid_get(r_oid->oa, r_oid->oid);
         auto r_next = r_obj->_next;
         ASSERT(r_next != r);
@@ -388,7 +393,7 @@ try_recycle:
         // now cur_obj should be the fisrt committed version, continue
         // to the version that can be safely trimmed (the version after
         // cur_obj).
-        fat_ptr cur = cur_obj->_next;
+        fat_ptr cur = volatile_read(cur_obj->_next);
         fat_ptr *prev_next = &cur_obj->_next;
 
         bool trimmed = false;
@@ -412,7 +417,10 @@ try_recycle:
             cur_obj = (object *)cur.offset();
             ASSERT(cur_obj);
             clsn = volatile_read(cur_obj->_clsn);
-            ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+            if(clsn.asi_type () != fat_ptr::ASI_LOG) {
+              goto start_over;
+            }
+            ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
             prev_next = &cur_obj->_next;
             cur = volatile_read(*prev_next);
             if (LSN::from_ptr(clsn) <= tlsn)
@@ -423,7 +431,7 @@ try_recycle:
             cur_obj = (object *)cur.offset();
             ASSERT(cur_obj);
             clsn = volatile_read(cur_obj->_clsn);
-            ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+            ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
             if (LSN::from_ptr(clsn) <= tlsn) {
                 // no need to CAS here if we only have one gc thread
                 volatile_write(prev_next->_ptr, 0);
