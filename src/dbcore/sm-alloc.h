@@ -91,7 +91,7 @@ namespace MM {
     void deallocate(fat_ptr p);
     void* allocate_onnode(size_t size);
 
-    extern LSN safesnap_lsn;
+    extern uint64_t safesnap_lsn;
 
     struct thread_data {
         bool initialized;
@@ -118,7 +118,7 @@ namespace MM {
         return mm_epochs.thread_enter();
     }
 
-    void epoch_exit(LSN s, epoch_num e);
+    void epoch_exit(uint64_t s, epoch_num e);
     void recycle(oid_array *oa, OID oid);
     void recycle(fat_ptr list_head, fat_ptr list_tail);
 };

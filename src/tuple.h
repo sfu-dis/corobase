@@ -97,7 +97,7 @@ public:
       if (xid == owner)   // my own update
         return 0;
       xid_context *xc = xid_get_context(xid);
-      end = volatile_read(xc->end).offset();
+      end = volatile_read(xc->end);
       if (not xc or xc->owner != xid)
         goto retry;
     }
@@ -107,7 +107,7 @@ public:
     }
 
     // the caller must be alive...
-    return volatile_read(visitor->begin).offset() - end;
+    return volatile_read(visitor->begin) - end;
   }
   bool is_old(xid_context *visitor);  // FOR READERS ONLY!
   inline ALWAYS_INLINE bool set_persistent_reader() {

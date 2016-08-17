@@ -17,8 +17,8 @@ enum txn_state { TXN_EMBRYO, TXN_ACTIVE, TXN_COMMITTING, TXN_CMMTD, TXN_ABRTD, T
 struct xid_context {
     epoch_mgr::epoch_num begin_epoch;  // tx start epoch, not owner.local()
     XID owner;
-    LSN begin;
-    LSN end;
+    uint64_t begin;
+    uint64_t end;
 #ifdef SSN
     uint64_t pstamp; // youngest predecessor (\eta)
     std::atomic<uint64_t> sstamp; // oldest successor (\pi)
