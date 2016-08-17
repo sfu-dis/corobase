@@ -36,3 +36,4 @@ set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/TradeGen.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/WheelTime.cpp
 )
+file(COPY flat DESTINATION ${CMAKE_BINARY_DIR}/benchmarks/egen)
