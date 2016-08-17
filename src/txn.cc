@@ -54,7 +54,14 @@ transaction::transaction(uint64_t flags, str_arena &sa)
         serial_register_tx(xid);
         RCU::rcu_enter();
         log = logmgr->new_tx_log();
-        xc->begin = logmgr->cur_lsn().offset();
+        // Must +1: a tx T can only update a tuple if its latest version was
+        // created before T's begin timestamp (i.e., version.clsn < T.begin,
+        // note the range is exclusive; see first updater wins rule in
+        // oid_put_update() in sm-oid.cpp). Otherwise we risk making no
+        // progress when retrying an aborted transaction: everyone is trying
+        // to update the same tuple with latest version stamped at cur_lsn()
+        // but no one can succeed (because version.clsn == cur_lsn == t.begin).
+        xc->begin = logmgr->cur_lsn().offset() + 1;
 #ifdef SSN
         xc->pstamp = volatile_read(MM::safesnap_lsn);
 #elif defined(SSI)
@@ -64,7 +71,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 #else
     RCU::rcu_enter();
     log = logmgr->new_tx_log();
-    xc->begin = logmgr->cur_lsn().offset();
+    xc->begin = logmgr->cur_lsn().offset() + 1;
 #endif
 }
 
