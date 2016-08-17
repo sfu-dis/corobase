@@ -68,5 +68,15 @@ add_executable(ermia_SSI_PP ${TMP_ALL_ERMIA_SRC})
 set_target_properties(ermia_SSI_PP PROPERTIES COMPILE_FLAGS "-DSSI -DPHANTOM_PROT")
 target_link_libraries(ermia_SSI_PP ${LINK_FLAGS})
 
+# SSI without PP
+add_executable(ermia_SSI ${TMP_ALL_ERMIA_SRC})
+set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
+target_link_libraries(ermia_SSI ${LINK_FLAGS})
+
+# SI+SSN+EARLY_CHECK without PP
+add_executable(ermia_SI_SSN_ESC ${TMP_ALL_ERMIA_SRC})
+set_target_properties(ermia_SI_SSN_ESC PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+target_link_libraries(ermia_SI_SSN_ESC ${LINK_FLAGS})
+
 # run script
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
