@@ -54,16 +54,16 @@ std::atomic<fat_ptr> recycle_oid_list(NULL_PTR);
 // snapshot. For simplicity, the daemon simply leave one version with LSN < the
 // trim_lsn available (so no need to figure out which safesnap lsn is the
 // appropriate one to rely on - it changes as the daemon does its work).
-LSN trim_lsn = INVALID_LSN;
+uint64_t trim_lsn = 0;
 
 uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
 uint64_t EPOCH_SIZE_COUNT = 200000;
 
 // epoch_excl_begin_lsn belongs to the previous **ending** epoch, and we're
 // using it as the **begin** lsn of the new epoch.
-LSN epoch_excl_begin_lsn[3] = {INVALID_LSN, INVALID_LSN, INVALID_LSN};
-LSN epoch_reclaim_lsn[3] = {INVALID_LSN, INVALID_LSN, INVALID_LSN};
-LSN safesnap_lsn = INVALID_LSN;
+uint64_t epoch_excl_begin_lsn[3] = {0, 0, 0};
+uint64_t epoch_reclaim_lsn[3] = {0, 0, 0};
+uint64_t safesnap_lsn = 0;
 
 object_pool central_object_pool CACHE_ALIGNED;
 static __thread thread_object_pool *tls_object_pool CACHE_ALIGNED;
@@ -266,8 +266,8 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
 {
     epoch_num e = *(epoch_num *)epoch_cookie;
     free(epoch_cookie);
-    LSN my_begin_lsn = epoch_excl_begin_lsn[e % 3];
-    if (not sysconf::enable_gc or my_begin_lsn == INVALID_LSN)
+    uint64_t my_begin_lsn = epoch_excl_begin_lsn[e % 3];
+    if (not sysconf::enable_gc or my_begin_lsn == 0)
         return;
     epoch_reclaim_lsn[e % 3] = my_begin_lsn;
     if (sysconf::enable_safesnap) {
@@ -284,20 +284,20 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
         // because they were not loaded at that time...
         // Also use epoch e+1's begin LSN = epoch e's end LSN
         auto new_safesnap_lsn = epoch_excl_begin_lsn[(e + 1) % 3];
-        volatile_write(safesnap_lsn._val, std::max(safesnap_lsn._val, new_safesnap_lsn._val));
+        volatile_write(safesnap_lsn, std::max(safesnap_lsn, new_safesnap_lsn));
     }
     if (e >= 2) {
         trim_lsn = epoch_reclaim_lsn[(e - 2) % 3];
-        epoch_reclaim_lsn[(e - 2) % 3] = INVALID_LSN;
+        epoch_reclaim_lsn[(e - 2) % 3] = 0;
         gc_trigger.notify_all();
     }
 }
 
 void
-epoch_exit(LSN s, epoch_num e)
+epoch_exit(uint64_t s, epoch_num e)
 {
-    // Transactions under a safesnap will pass s = INVALID_LSN
-    if (s != INVALID_LSN and
+    // Transactions under a safesnap will pass s = 0 (INVALID_LSN)
+    if (s != 0 and
         (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES or
          epoch_tls.counts >= EPOCH_SIZE_COUNT)) {
         // epoch_ended() (which is called by new_epoch() in its critical
@@ -354,8 +354,8 @@ try_recycle:
         // then we might never get out of the loop if the tlsn is
         // too old, unless we have a threshold of "examined # of
         // oids" or like here, update it at each iteration.
-        LSN tlsn = volatile_read(trim_lsn);
-        if (tlsn == INVALID_LSN)
+        auto tlsn = volatile_read(trim_lsn);
+        if (tlsn == 0)
             break;
 
         if (r == NULL_PTR or
@@ -423,7 +423,7 @@ try_recycle:
             ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
             prev_next = &cur_obj->_next;
             cur = volatile_read(*prev_next);
-            if (LSN::from_ptr(clsn) <= tlsn)
+            if (LSN::from_ptr(clsn).offset() <= tlsn)
                 break;
         }
 
@@ -432,7 +432,7 @@ try_recycle:
             ASSERT(cur_obj);
             clsn = volatile_read(cur_obj->_clsn);
             ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
-            if (LSN::from_ptr(clsn) <= tlsn) {
+            if (LSN::from_ptr(clsn).offset() <= tlsn) {
                 // no need to CAS here if we only have one gc thread
                 volatile_write(prev_next->_ptr, 0);
                 std::atomic_thread_fence(std::memory_order_release);

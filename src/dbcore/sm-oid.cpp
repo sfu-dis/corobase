@@ -879,7 +879,7 @@ start_over:
         // First updater wins: if some concurrent tx committed first,
         // I have to abort. Same as in Oracle. Otherwise it's an isolation
         // failure: I can modify concurrent transaction's writes.
-        if (LSN::from_ptr(clsn) >= updater_xc->begin)
+        if (LSN::from_ptr(clsn).offset() >= updater_xc->begin)
             return NULL_PTR;
 #endif
         goto install;
@@ -1047,7 +1047,7 @@ start_over:
                 goto start_over;
 
             if (state == TXN_CMMTD) {
-                ASSERT(volatile_read(holder->end).offset());
+                ASSERT(volatile_read(holder->end));
                 ASSERT(owner == holder_xid);
 #if defined(RC) || defined(RC_SPIN)
 #if defined(SSI) || defined(SSN)
@@ -1066,7 +1066,7 @@ start_over:
                 if (holder->end < visitor_xc->begin) {
                     return cur_obj->tuple();
                 } else {
-                    oid_check_phantom(visitor_xc, holder->end.offset());
+                    oid_check_phantom(visitor_xc, holder->end);
                 }
 #endif
             } else {
@@ -1082,7 +1082,7 @@ start_over:
 #if defined(RC) || defined(RC_SPIN)
 #if defined(SSN)
             if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
-                if (LSN::from_ptr(clsn) <= visitor_xc->begin) {
+                if (LSN::from_ptr(clsn).offset() <= visitor_xc->begin) {
                     return cur_obj->tuple();
                 } else {
                     oid_check_phantom(visitor_xc, clsn.offset());
@@ -1094,7 +1094,7 @@ start_over:
             return cur_obj->tuple();
 #endif
 #else  // Not RC
-            if (LSN::from_ptr(clsn) <= visitor_xc->begin) {
+            if (LSN::from_ptr(clsn).offset() <= visitor_xc->begin) {
                 return cur_obj->tuple();
             } else {
                 oid_check_phantom(visitor_xc, clsn.offset());

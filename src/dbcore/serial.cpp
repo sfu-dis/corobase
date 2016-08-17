@@ -229,15 +229,15 @@ void serial_deregister_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap) {
 }
 
 void
-serial_stamp_last_committed_lsn(LSN lsn)
+serial_stamp_last_committed_lsn(uint64_t lsn)
 {
-    volatile_write(rlist.last_read_mostly_clsns[tls_bitmap_info.xid_index()]._val, lsn._val);
+    volatile_write(rlist.last_read_mostly_clsns[tls_bitmap_info.xid_index()], lsn);
 }
 
 uint64_t
 serial_get_last_read_mostly_cstamp(int xid_idx)
 {
-    return volatile_read(rlist.last_read_mostly_clsns[xid_idx]).offset();
+    return volatile_read(rlist.last_read_mostly_clsns[xid_idx]);
 }
 
 bool

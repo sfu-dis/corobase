@@ -210,8 +210,8 @@ bench_runner::run()
     }
     RCU::rcu_register();
     RCU::rcu_enter();
-    volatile_write(MM::safesnap_lsn._val, logmgr->cur_lsn()._val);
-    ALWAYS_ASSERT(MM::safesnap_lsn.offset());
+    volatile_write(MM::safesnap_lsn, logmgr->cur_lsn().offset());
+    ALWAYS_ASSERT(MM::safesnap_lsn);
     RCU::rcu_exit();
     RCU::rcu_deregister();
   }

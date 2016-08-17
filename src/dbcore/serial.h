@@ -55,7 +55,7 @@ struct readers_list {
 
     bitmap_t bitmap;
     XID xids[bitmap_t::CAPACITY];  // one xid per bit position
-    LSN last_read_mostly_clsns[bitmap_t::CAPACITY];
+    uint64_t last_read_mostly_clsns[bitmap_t::CAPACITY];
 
     readers_list() {
         memset(xids, '\0', sizeof(XID) * bitmap_t::CAPACITY);
@@ -64,7 +64,7 @@ struct readers_list {
 };
 
 uint64_t serial_get_last_read_mostly_cstamp(int xid_idx);
-void serial_stamp_last_committed_lsn(LSN lsn);
+void serial_stamp_last_committed_lsn(uint64_t lsn);
 void serial_deregister_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap);
 void serial_register_reader_tx(XID xid, readers_list::bitmap_t* tuple_readers_bitmap);
 void serial_register_tx(XID xid);

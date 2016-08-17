@@ -127,7 +127,7 @@ rc_t base_txn_btree::do_tree_put(
                             continue;
 
                         // copy everything before doing anything
-                        reader_begin = volatile_read(reader_xc->begin).offset();
+                        reader_begin = volatile_read(reader_xc->begin);
                         reader_owner = volatile_read(reader_xc->owner);
                         if (reader_owner != rxid)  // consult xstamp later
                             continue;

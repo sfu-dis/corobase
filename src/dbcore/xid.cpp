@@ -98,7 +98,7 @@ take_one(thread_data *t)
     contexts[id].xct = NULL;
 #endif
     // Note: transaction needs to initialize xc->begin in ctor
-    contexts[id].end = INVALID_LSN;
+    contexts[id].end = 0;
     contexts[id].state = TXN_EMBRYO;
     return x;
 }
