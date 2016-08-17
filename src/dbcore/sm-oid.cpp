@@ -879,7 +879,7 @@ start_over:
         // First updater wins: if some concurrent tx committed first,
         // I have to abort. Same as in Oracle. Otherwise it's an isolation
         // failure: I can modify concurrent transaction's writes.
-        if (LSN::from_ptr(clsn) > updater_xc->begin)
+        if (LSN::from_ptr(clsn) >= updater_xc->begin)
             return NULL_PTR;
 #endif
         goto install;
