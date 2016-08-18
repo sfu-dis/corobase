@@ -44,8 +44,8 @@ struct sm_thread {
   inline void start_task(task_t t, char* input = nullptr) {
     task = t;
     task_input = input;
-    has_work = true;
-    __sync_synchronize();
+    COMPILER_MEMORY_FENCE;
+    volatile_write(has_work, true);
     trigger.notify_all();
   }
 
