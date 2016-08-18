@@ -38,6 +38,7 @@ void sm_thread::idle_task() {
         }
         logmgr->set_tls_lsn_offset(0);  // clear thread as if did nothing!
       }
+      COMPILER_MEMORY_FENCE;
       volatile_write(has_work, false);
     }
     // FIXME(tzwang): add a work queue so we can
