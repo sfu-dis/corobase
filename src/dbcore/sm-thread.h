@@ -13,13 +13,17 @@
 namespace thread {
 
 struct sm_thread {
+  const uint8_t kStateHasWork = 1U;
+  const uint8_t kStateSleep   = 2U;
+  const uint8_t kStateNoWork  = 3U;
+
   typedef std::function<void(char *task_input)> task_t;
   std::thread thd;
   uint16_t node;
   uint16_t core;
   XID current_xid;
   bool shutdown;
-  bool has_work;
+  uint8_t state;
   task_t task;
   char *task_input;
 
@@ -31,7 +35,7 @@ struct sm_thread {
     core(c),
     current_xid(INVALID_XID),
     shutdown(false),
-    has_work(false),
+    state(kStateNoWork),
     task(nullptr) {
     thd = std::move(std::thread(&sm_thread::idle_task, this));
   }
@@ -44,17 +48,23 @@ struct sm_thread {
   inline void start_task(task_t t, char* input = nullptr) {
     task = t;
     task_input = input;
-    COMPILER_MEMORY_FENCE;
-    volatile_write(has_work, true);
-    trigger.notify_all();
+    auto s = __sync_val_compare_and_swap(&state, kStateNoWork, kStateHasWork);
+    if (s == kStateSleep) {
+      while(volatile_read(state) != kStateNoWork) {
+        trigger.notify_all();
+      }
+      volatile_write(state, kStateHasWork);
+    } else {
+      ALWAYS_ASSERT(s == kStateNoWork);
+    }
   }
 
   inline void join() {
-    while (volatile_read(has_work)) { /** spin **/}
+    while (volatile_read(state) == kStateHasWork) { /** spin **/}
   }
 
   inline bool try_join() {
-    return not volatile_read(has_work);
+    return volatile_read(state) != kStateHasWork;
   }
 
   inline void destroy() {
