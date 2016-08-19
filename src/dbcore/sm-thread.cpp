@@ -22,7 +22,7 @@ void sm_thread::idle_task() {
   RCU::rcu_start_tls_cache( 32, 100000 );
 
   while (not volatile_read(shutdown)) {
-    if (volatile_read(has_work)) {
+    if (volatile_read(state) == kStateHasWork) {
       task(task_input);
       if (logmgr and not sysconf::is_backup_srv()) {
         // logmgr might be null during recovery and backups will flush on their own
@@ -39,11 +39,16 @@ void sm_thread::idle_task() {
         logmgr->set_tls_lsn_offset(0);  // clear thread as if did nothing!
       }
       COMPILER_MEMORY_FENCE;
-      volatile_write(has_work, false);
+      volatile_write(state, kStateNoWork);
     }
-    // FIXME(tzwang): add a work queue so we can
-    // continue if there is more work to do
-    trigger.wait(lock);
+    if (__sync_bool_compare_and_swap(&state, kStateNoWork, kStateSleep)) {
+      // FIXME(tzwang): add a work queue so we can
+      // continue if there is more work to do
+      trigger.wait(lock);
+      volatile_write(state, kStateNoWork);
+      // Somebody woke me up, wait for work to do
+      while(state != kStateHasWork) { /** spin **/ }
+    } // else can't sleep, go check another round
   }
 
   MM::deregister_thread();
