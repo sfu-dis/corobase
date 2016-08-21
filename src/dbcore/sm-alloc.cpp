@@ -125,11 +125,17 @@ void *allocate(size_t size, epoch_num e) {
     size = align_up(size);
     void *p = NULL;
 
+    // XXX(tzwang): 20160821: disabled for faster tpce loading -
+    // numa_* functions are too slow compared to TLS allocation,
+    // revisit if we need balanced allocation at loading phase too.
+    //
     // Don't bother TLS if it's still loading
+    /*
     if (sysconf::loading) {
         p = allocate_onnode(size);
         goto out;
     }
+    */
 
     ALWAYS_ASSERT(not p);
     // Can we reuse some of our own unlinked object?
