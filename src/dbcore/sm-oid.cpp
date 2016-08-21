@@ -1050,7 +1050,7 @@ start_over:
                 ASSERT(volatile_read(holder->end));
                 ASSERT(owner == holder_xid);
 #if defined(RC) || defined(RC_SPIN)
-#if defined(SSI) || defined(SSN)
+#ifdef SSN
                 if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
                     if (holder->end < visitor_xc->begin) {
                         return cur_obj->tuple();
@@ -1059,9 +1059,9 @@ start_over:
                 else {
                     return cur_obj->tuple();
                 }
-#else  // SSI/SSN
+#else  // SSN
                 return cur_obj->tuple();
-#endif  // SSI/SSN
+#endif  // SSN
 #else  // not RC/RC_SPIN
                 if (holder->end < visitor_xc->begin) {
                     return cur_obj->tuple();
