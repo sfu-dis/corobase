@@ -223,8 +223,11 @@ void serial_deregister_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap) {
     ASSERT(tls_bitmap_info.entry);
     // if a tx reads a tuple multiple times (e.g., 3 times),
     // then during post-commit it will call this function
-    // multiple times, so we use atomic and, instead of xor.
-    __sync_fetch_and_and(&tuple_readers_bitmap->array[tls_bitmap_info.index], ~tls_bitmap_info.entry);
+    // multiple times, so we take a look to see if it's still set before the xor.
+    auto b = volatile_read(tuple_readers_bitmap->array[tls_bitmap_info.index]);
+    if (b & tls_bitmap_info.entry) {
+      __sync_fetch_and_xor(&tuple_readers_bitmap->array[tls_bitmap_info.index], tls_bitmap_info.entry);
+    }
     ASSERT(not (tuple_readers_bitmap->array[tls_bitmap_info.index] & tls_bitmap_info.entry));
 }
 
