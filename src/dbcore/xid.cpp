@@ -99,7 +99,8 @@ take_one(thread_data *t)
 #endif
     // Note: transaction needs to initialize xc->begin in ctor
     contexts[id].end = 0;
-    contexts[id].state = TXN_EMBRYO;
+    ASSERT(contexts[id].state != TXN_COMMITTING);
+    contexts[id].state = TXN_ACTIVE;
     return x;
 }
 
@@ -236,6 +237,7 @@ void xid_free(XID x) {
     auto id = x.local();
     ASSERT(id < NCONTEXTS);
     auto *ctx = &contexts[id];
+    ASSERT(ctx->state == TXN_CMMTD or ctx->state == TXN_ABRTD);
     THROW_IF(ctx->owner != x, illegal_argument, "Invalid XID");
     // destroy the owner field (for SSN read-opt, which might
     // read very stale XID and try to find its context)

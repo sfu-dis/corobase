@@ -78,7 +78,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 transaction::~transaction()
 {
     // transaction shouldn't fall out of scope w/o resolution
-    // resolution means TXN_EMBRYO, TXN_CMMTD, and TXN_ABRTD
+    // resolution means TXN_CMMTD, and TXN_ABRTD
     ASSERT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
 #if defined(SSN) || defined(SSI)
     if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
@@ -151,7 +151,6 @@ inline const char *
 transaction_state_to_cstr(txn_state state)
 {
     switch (state) {
-        case TXN_EMBRYO: return "TXN_EMBRYO";
         case TXN_ACTIVE: return "TXN_ACTIVE";
         case TXN_ABRTD: return "TXN_ABRTD";
         case TXN_CMMTD: return "TXN_CMMTD";
@@ -192,18 +191,8 @@ transaction::dump_debug_info() const
 rc_t
 transaction::commit()
 {
-    switch (state()) {
-        case TXN_EMBRYO:
-        case TXN_ACTIVE:
-            volatile_write(xc->state, TXN_COMMITTING);
-            break;
-        case TXN_CMMTD:
-        case TXN_COMMITTING:
-        case TXN_ABRTD:
-        case TXN_INVALID:
-            ALWAYS_ASSERT(false);
-    }
-
+    ALWAYS_ASSERT(state() == TXN_ACTIVE);
+    volatile_write(xc->state, TXN_COMMITTING);
 #if defined(SSN) || defined(SSI)
     // Safe snapshot optimization for read-only transactions:
     // Use the begin ts as cstamp if it's a read-only transaction

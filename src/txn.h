@@ -137,8 +137,7 @@ protected:
   inline void
   ensure_active()
   {
-    if (state() == TXN_EMBRYO)
-      volatile_write(xc->state, TXN_ACTIVE);
+    volatile_write(xc->state, TXN_ACTIVE);
     ASSERT(state() == TXN_ACTIVE);
   }
 
