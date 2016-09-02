@@ -36,7 +36,7 @@ public:
   fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
                            // normal write to indicate its existence; become writer cstamp at commit
   uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
-  uint8_t preader;         // did I have some reader thinking I'm old?
+  uint64_t preader;         // did I have some reader thinking I'm old?
 #endif
 #ifdef SSI
   uint64_t s2;  // smallest successor stamp of all reads performed by the tx
@@ -129,7 +129,7 @@ public:
   // XXX: for the writer who's updating this tuple only
   inline ALWAYS_INLINE void lockout_readers() {
     if (not (volatile_read(preader) >> 7))
-        __sync_fetch_and_xor(&preader, uint8_t{1} << 7);
+        __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
     ASSERT(volatile_read(preader) >> 7);
   }
 
