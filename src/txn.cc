@@ -1152,7 +1152,7 @@ transaction::ssn_read(dbtuple *tuple)
             // successor of mine), so I need to update my \pi for the SSN check.
             // This is the easier case of anti-dependency (the other case is T1
             // already read a (then latest) version, then T2 comes to overwrite it).
-            read_set.emplace_back(tuple);
+            read_set->emplace_back(tuple);
         }
     }
 
