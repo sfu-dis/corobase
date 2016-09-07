@@ -54,55 +54,11 @@ namespace TXN {
    stragglers and restricts the number of concurrent epochs so that
    the problem cannot arise.
  */
-static uint16_t const NCONTEXTS = 32768;
 xid_context contexts[NCONTEXTS];
 
-struct bitmap {
-    static size_t const constexpr BITS_PER_WORD = 8*sizeof(uint64_t);
-    static size_t const constexpr NWORDS = NCONTEXTS/2/BITS_PER_WORD;
-    static_assert(not (NCONTEXTS % (2*BITS_PER_WORD)),
-                  "NCONTEXTS must must divide cleanly by 128");
-
-    
-    uint64_t data[NWORDS];
-    size_t widx;
-};
-
-static size_t const NBITMAPS = 4;
-bitmap bitmaps[NBITMAPS];
-
-struct thread_data {
-    epoch_mgr::epoch_num epoch;
-    uint64_t bitmap;
-    uint16_t base_id;
-    bool initialized;
-};
+xid_bitmap xid_bitmaps[NBITMAPS];
 
 __thread thread_data tls CACHE_ALIGNED;
-
-XID
-take_one(thread_data *t)
-{
-    ASSERT(t->bitmap);
-    DEFER(t->bitmap &= (t->bitmap-1));
-    auto id = t->base_id + __builtin_ctzll(t->bitmap);
-    auto x = contexts[id].owner = XID::make(t->epoch, id);
-#ifdef SSN
-    contexts[id].sstamp = ~uint64_t{0};
-    contexts[id].pstamp = 0;
-    contexts[id].xct = NULL;
-#endif
-#ifdef SSI
-    contexts[id].ct3 = 0;
-    contexts[id].last_safesnap = 0;
-    contexts[id].xct = NULL;
-#endif
-    // Note: transaction needs to initialize xc->begin in ctor
-    contexts[id].end = 0;
-    ASSERT(contexts[id].state != TXN_COMMITTING);
-    contexts[id].state = TXN_ACTIVE;
-    return x;
-}
 
 /***************************************
  * * * Callbacks for the epoch_mgr * * *
@@ -112,7 +68,7 @@ global_init(void*)
 {
     /* Set the first row to all ones so we have something to allocate */
     for (int i=0; i < 2; i++) {
-        for (auto &w : bitmaps[i].data)
+        for (auto &w : xid_bitmaps[i].data)
             w = ~uint64_t(0);
     }
 }
@@ -188,10 +144,10 @@ xid_alloc()
          */
         auto e = xid_epochs.thread_enter();
         DEFER_UNLESS(exited, xid_epochs.thread_exit());
-        auto &b = bitmaps[e % NBITMAPS];
+        auto &b = xid_bitmaps[e % NBITMAPS];
         auto i = volatile_read(b.widx);
-        ASSERT(i <= bitmap::NWORDS);
-        while (i < bitmap::NWORDS) {
+        ASSERT(i <= xid_bitmap::NWORDS);
+        while (i < xid_bitmap::NWORDS) {
             auto j = __sync_val_compare_and_swap(&b.widx, i, i+1);
             if (j == i) {
                 /* NOTE: no need for a goto: the compiler will thread
@@ -202,7 +158,7 @@ xid_alloc()
             i = j;
         }
 
-        if (i == bitmap::NWORDS) {
+        if (i == xid_bitmap::NWORDS) {
             // overflow!
             xid_epochs.thread_exit();
             exited = true;
@@ -216,7 +172,7 @@ xid_alloc()
                    If there are stragglers (highly unlikely) then
                    sleep until they leave.
                  */
-                bitmaps[(e+1) % NBITMAPS].widx = 0;
+                xid_bitmaps[(e+1) % NBITMAPS].widx = 0;
                 while (not xid_epochs.new_epoch())
                     usleep(1000);
                 
@@ -226,56 +182,12 @@ xid_alloc()
         }
 
         tls.epoch = e;
-        tls.base_id = (e % 2)*NCONTEXTS/2 + i*bitmap::BITS_PER_WORD;
+        tls.base_id = (e % 2)*NCONTEXTS/2 + i*xid_bitmap::BITS_PER_WORD;
         std::swap(tls.bitmap, b.data[i]);
     }
 
     return take_one(&tls);
 }
-
-void xid_free(XID x) {
-    auto id = x.local();
-    ASSERT(id < NCONTEXTS);
-    auto *ctx = &contexts[id];
-    ASSERT(ctx->state == TXN_CMMTD or ctx->state == TXN_ABRTD);
-    THROW_IF(ctx->owner != x, illegal_argument, "Invalid XID");
-    // destroy the owner field (for SSN read-opt, which might
-    // read very stale XID and try to find its context)
-    ctx->owner._val = 0;
-    
-    auto &b = bitmaps[x.epoch() % NBITMAPS];
-    auto &w = b.data[(id/bitmap::BITS_PER_WORD) % bitmap::NWORDS];
-    auto bit = id % bitmap::BITS_PER_WORD;
-    __sync_fetch_and_or(&w, uint64_t(1) << bit);
-}
-
-xid_context *
-xid_get_context(XID x) {
-    auto *ctx = &contexts[x.local()];
-    // read a consistent copy of owner (in case xid_free is destroying
-    // it while we're trying to use the epoch() fields)
-    XID owner = volatile_read(ctx->owner);
-    if (not owner._val)
-        return NULL;
-    ASSERT(owner.local() == x.local());
-    if (owner.epoch() < x.epoch() or owner.epoch() >= x.epoch()+3)
-        return NULL;
-    return ctx;
-}
-
-#if defined(SSN) || defined(SSI)
-txn_state __attribute__((noinline))
-spin_for_cstamp(XID xid, xid_context *xc) {
-    txn_state state;
-    do {
-        state = volatile_read(xc->state);
-        if (volatile_read(xc->owner) != xid)
-            return TXN_INVALID;
-    }
-    while (state != TXN_CMMTD and state != TXN_ABRTD);
-    return state;
-}
-#endif
 #ifdef SSN
 bool
 xid_context::set_sstamp(uint64_t s) {
@@ -286,9 +198,9 @@ xid_context::set_sstamp(uint64_t s) {
         // to update the reader's sstamp.
         uint64_t ss = sstamp.load(std::memory_order_acquire);
         do {
-            if (ss & sstamp_final_mark)  // std::atomic_cas will update ss
+            if (ss & sstamp_final_mark)
                 return false;
-        } while(ss > s && !std::atomic_compare_exchange_weak(&sstamp, &ss, s));
+        } while(ss > s && !std::atomic_compare_exchange_strong(&sstamp, &ss, s));
     } else {
         sstamp.store(s, std::memory_order_relaxed);
     }
