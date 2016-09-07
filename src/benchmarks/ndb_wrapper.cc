@@ -46,7 +46,7 @@ ndb_wrapper::abort_txn(void *txn)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   auto t = (transaction *)&p->buf[0];
-  t->abort();
+  t->abort_impl();
   t->~transaction();
 }
 

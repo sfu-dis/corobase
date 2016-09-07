@@ -218,7 +218,7 @@ void serial_register_reader_tx(XID xid, readers_list::bitmap_t* tuple_readers_bi
     ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
     // With read optimization, a transaction might not clear the bit,
     // so no need to set it again if it's set already (by a previous reader).
-    if (sysconf::ssn_read_opt_threshold != sysconf::SSN_READ_OPT_DISABLED &&
+    if (sysconf::ssn_read_opt_enabled() &&
         (volatile_read(tuple_readers_bitmap->array[tls_bitmap_info.index]) & tls_bitmap_info.entry) != 0) {
         return;
     }
