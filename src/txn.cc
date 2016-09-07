@@ -148,9 +148,7 @@ transaction::abort_impl()
         if (tuple->next()) {
             volatile_write(tuple->next()->sstamp, NULL_PTR);
 #ifdef SSN
-            if (sysconf::ssn_read_opt_threshold != sysconf::SSN_READ_OPT_DISABLED) {
-                tuple->next()->welcome_readers();
-            }
+            tuple->next()->welcome_read_mostly_tx();
 #endif
         }
 #endif
@@ -279,7 +277,6 @@ transaction::parallel_ssn_commit()
         auto &r = (*read_set)[i];
     try_get_successor:
         ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-
         // read tuple->slsn to a local variable before doing anything relying on it,
         // it might be changed any time...
         fat_ptr sucessor_clsn = volatile_read(r->sstamp);
@@ -341,13 +338,11 @@ transaction::parallel_ssn_commit()
         ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
 
         // Do this before examining the preader field and reading the readers bitmap
-        if (sysconf::ssn_read_opt_threshold != sysconf::SSN_READ_OPT_DISABLED) {
-          overwritten_tuple->lockout_readers();
-        }
+        overwritten_tuple->lockout_read_mostly_tx();
 
         // Now readers who think this is an old version won't be able to read it
         // Then read the readers bitmap - it's guaranteed to cover all possible
-        // readers (those who think it's an old version) as we lockout_readers()
+        // readers (those who think it's an old version) as we lockout_read_mostly_tx()
         // first. Readers who think this is a young version can still come at any
         // time - they will be handled by the orignal SSN machinery.
         readers_bitmap_iterator readers_iter(&overwritten_tuple->readers_bitmap);
@@ -533,9 +528,7 @@ transaction::parallel_ssn_commit()
             ASSERT(XID::from_ptr(next_tuple->sstamp) == xid);
             volatile_write(next_tuple->sstamp, LSN::make(my_sstamp, 0).to_log_ptr());
             ASSERT(next_tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
-            if (sysconf::ssn_read_opt_threshold != sysconf::SSN_READ_OPT_DISABLED) {
-                next_tuple->welcome_readers();
-            }
+            next_tuple->welcome_read_mostly_tx();
         }
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn_ptr);
