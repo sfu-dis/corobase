@@ -1414,8 +1414,6 @@ btree<P>::remove0(node *np,
   if (leaf_node *leaf = AsLeafCheck(np)) {
     ASSERT(locked_nodes.empty());
 
-    SINGLE_THREADED_ASSERT(!left_node || (leaf->prev_ == left_node && AsLeaf(left_node)->next == leaf));
-    SINGLE_THREADED_ASSERT(!right_node || (leaf->next_ == right_node && AsLeaf(right_node)->prev == leaf));
 
 retry_cur_leaf:
     uint64_t version;
@@ -1691,7 +1689,6 @@ retry_cur_leaf:
         // leaf->prev_->next might change, however, since the left node could be
         // splitting (and we might hold a pointer to the left-split of the left node,
         // before it gets updated)
-        SINGLE_THREADED_ASSERT(!leaf->prev_ || leaf->prev_->next_ == leaf);
 
 //#ifndef NDEBUG
 //        leaf->base_invariant_unique_keys_check();
@@ -1784,12 +1781,7 @@ retry_cur_leaf:
         if (leaf->next_)
           leaf->next_->prev_ = left_sibling;
 
-        // see comments in right_sibling case above, for why one of them is INVARIANT and
-        // the other is SINGLE_THREADED_INVARIANT
         ASSERT(!left_sibling->next_ || left_sibling->next_->prev_ == left_sibling);
-        SINGLE_THREADED_ASSERT(
-            !left_sibling->prev_ ||
-            left_sibling->prev_->next_ == left_sibling);
 
         //left_sibling->base_invariant_unique_keys_check();
         leaf_node::release(leaf);
