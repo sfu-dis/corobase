@@ -103,7 +103,7 @@ rc_t base_txn_btree::do_tree_put(
             // If I have a committed T3, that means T3 must committed after I started,
             // otherwise I would have read the version created by T3 - T3 wouldn't have
             // overwritten my read.
-            ASSERT(t.xc->begin.offset() < t.xc->ct3);
+            ASSERT(t.xc->begin < t.xc->ct3);
             if (volatile_read(prev->xstamp) >= t.xc->ct3 or not prev->readers_bitmap.is_empty(true)) {
                 // Read-only optimization: safe if T1 is read-only (so far) and T1's begin ts
                 // is before ct3.

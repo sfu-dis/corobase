@@ -1,10 +1,11 @@
 #!/bin/bash
 # $1 - executable
 # $2 - benchmark
-# $3 - num of threads
-# $4 - runtime
-# $5 - other parameters like --retry-aborted-transactions
-# $6 - other parameters for the workload, e.g., --fast-new-order-id-gen
+# $3 - scale factor (not applicable to TPC-E*)
+# $4 - num of threads
+# $5 - runtime
+# $6 - other parameters like --retry-aborted-transactions
+# $7 - other parameters for the workload, e.g., --fast-new-order-id-gen
 
 if [[ $# -lt 4 ]]; then
     echo "Too few arguments. "
