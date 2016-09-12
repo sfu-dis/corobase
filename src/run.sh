@@ -20,13 +20,11 @@ trap "rm -f $LOGDIR/*" EXIT
 exe=$1
 workload=$2
 bench=${workload:0:4}
-sf=$3
+sf=$3  # TPCE default sf=500
 threads=$4
 runtime=$5
 
-if [ "$bench" == "tpce" ]; then
-  sf="500"
-elif [[ "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
+if [[ "$bench" != "tpce" && "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
   echo "Unsupported benchmark $bench."
 fi
 

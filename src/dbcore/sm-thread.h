@@ -94,7 +94,6 @@ struct node_thread_pool {
   }
 
   inline void put_thread(sm_thread *t) {
-    ASSERT(not t->has_work);
     auto b = ~uint64_t{1UL << (t - threads)};
     //std::cout << "put_thread(): node " << t->node << ", " << t->core << std::endl;
     __sync_fetch_and_and(&bitmap, b);
