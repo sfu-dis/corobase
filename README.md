@@ -2,9 +2,17 @@
 
 Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
+For more information, you may refer to our SIGMOD'16 paper (https://github.com/ermia-db/ermia/raw/master/ermia.pdf)
+
 #### Environment configurations
 
-* Software dependencies: `libnuma`. Install from your favorite package manager.
+* Software dependencies: `libnuma`. Install from your favorite package manager. ERMIA uses `mmap` with `MAP_HUGETLB` to allocate huge pages. `MAP_HUGETLB` is available after Linux 2.6.32.
+* Make sure you have enough huge pages. Almost all memory allocations come from the space carved out here. Assuming 2MB pages, the command below will allocate 40GB of memory:
+```
+sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
+```
+This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see below).
+
 * `mlock` limits. Add the following to `/etc/security/limits.conf` (replace "[user]" with your login):
 ```
 [user] soft memlock unlimited
@@ -16,12 +24,12 @@ Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
 ERMIA supports Read Committed (RC), Snapshot Isolation (SI), Serializable Snapshot Isolation (SSI), and Serial Safety Net (SSN) with SI/RC. Switches are defined in src/macros.h:
 
-* `#define USE_PARALLEL_SSI` to use serializable snapshot isolation (SSI);
-* `#define USE_PARALLEL_SSN` to use the serial safety net (SSN);
-   - SSN may be used in conjunction with RC (`USE_READ_COMMITTED`) or SI (default);
-   - `# define DO_EARLY_SSN_CHECKS` enables SSN window exclusion tests during normal reads and writes.
+* `#define SSI` to use serializable snapshot isolation (SSI);
+* `#define SSN` to use the serial safety net (SSN);
+   - SSN may be used in conjunction with RC (`RC`) or SI (default);
+   - `# define EARLY_SSN_CHECK` enables SSN window exclusion tests during normal reads and writes.
 
-`USE_PARALLEL_SSI` and `USE_PARALLEL_SSN` are mutually exclusive.
+`SSI` and `SSN` are mutually exclusive.
 
 Giving `-D[SCHEME]` to `$make` also works. `SCHEME` can be `RC`, `SI`, `RC_SSN`, `SI_SSN`, or `SSI`.
 
@@ -39,6 +47,7 @@ Use `src/build.sh` to compile ERMIA. For performance runs, `$ build.sh`, `$ buil
 $run.sh \
        [executable] \
        [benchmark] \
+       [scale-factor] \
        [num-threads] \
        [duration (seconds)] \
        "[other system-wide runtime options]" \
@@ -61,7 +70,7 @@ $run.sh \
 `--warm-up`: strategy to load versions upon recovery. Candidates are:
 - `eager`: load all latest versions during recovery, so the database is fully in-memory when it starts to process new transactions;
 - `lazy`: start a thread to load versions in the background after recovery, so the database is partially in-memory when it starts to process new transactions.
-- `none`: load versions on-demand upon access (anti-caching).
+- `none`: load versions on-demand upon access.
 
 *SSI and SSN specific:*
 
