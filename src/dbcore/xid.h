@@ -117,7 +117,7 @@ inline XID take_one(thread_data *t)
     auto id = t->base_id + __builtin_ctzll(t->bitmap);
     auto x = contexts[id].owner = XID::make(t->epoch, id);
 #ifdef SSN
-    contexts[id].sstamp = ~uint64_t{0};
+    contexts[id].sstamp = 0;
     contexts[id].pstamp = 0;
     contexts[id].xct = NULL;
 #endif

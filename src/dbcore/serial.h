@@ -12,14 +12,11 @@ void deassign_reader_bitmap_entry();
 #ifdef SSN
 // returns true if serializable, false means exclusion window violation
 inline bool ssn_check_exclusion(xid_context *xc) {
-    auto ss = xc->sstamp.load(std::memory_order_acquire) & (~xid_context::sstamp_final_mark);
+    uint64_t ss = xc->sstamp.load(std::memory_order_acquire) & (~xid_context::sstamp_final_mark);
 #ifndef NDEBUG
-    if (xc->pstamp >= ss) printf("ssn exclusion failure\n");
+    if (ss and xc->pstamp >= ss) printf("ssn exclusion failure\n");
 #endif
-    // if predecessor >= sucessor, then predecessor might depend on sucessor => cycle
-    // note xc->sstamp is initialized to ~0, xc->pstamp's init value is 0,
-    // so don't return xc->pstamp < xc->sstamp...
-    if (xc->pstamp >= ss) {
+    if (ss and xc->pstamp >= ss) {
         return false;
     }
     return true;
