@@ -198,9 +198,10 @@ xid_context::set_sstamp(uint64_t s) {
         // to update the reader's sstamp.
         uint64_t ss = sstamp.load(std::memory_order_acquire);
         do {
-            if (ss & sstamp_final_mark)
+            if (ss & sstamp_final_mark) {
                 return false;
-        } while(ss > s && !std::atomic_compare_exchange_strong(&sstamp, &ss, s));
+            }
+        } while((ss == 0 || ss > s) && !std::atomic_compare_exchange_strong(&sstamp, &ss, s));
     } else {
         sstamp.store(s, std::memory_order_relaxed);
     }
