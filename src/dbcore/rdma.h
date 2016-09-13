@@ -30,6 +30,9 @@
 #include "../macros.h"
 #include "sm-common.h"
 
+// Use the experimental verbs and libmlx5 on Connect-IB to do atomic ops
+#define EXP_VERBS 1
+
 namespace rdma {
 
 struct context{
@@ -38,19 +41,42 @@ struct context{
 private:
   const static int RDMA_WRID = 3;
   const static int tx_depth = 100;
+#ifdef EXP_VERBS
+  const static int QP_EXP_RTS_ATTR =
+    IBV_EXP_QP_STATE | IBV_EXP_QP_TIMEOUT | IBV_EXP_QP_RETRY_CNT |
+    IBV_EXP_QP_RNR_RETRY | IBV_EXP_QP_SQ_PSN | IBV_EXP_QP_MAX_QP_RD_ATOMIC;
+  const static int QP_EXP_RTR_ATTR = IBV_EXP_QP_STATE | IBV_EXP_QP_AV | IBV_EXP_QP_PATH_MTU |
+    IBV_EXP_QP_DEST_QPN | IBV_EXP_QP_RQ_PSN | IBV_EXP_QP_MAX_DEST_RD_ATOMIC | IBV_EXP_QP_MIN_RNR_TIMER;
+#else
   const static int QP_RTS_ATTR =
     IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
     IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
   const static int QP_RTR_ATTR = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU |
     IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
+#endif
 
   struct memory_region {
     struct ibv_mr *mr;
     char *buf;
     uint64_t buf_size;
     memory_region(struct ibv_pd *pd, char *addr, uint64_t size) : buf(addr), buf_size(size) {
+#ifdef EXP_VERBS
+      struct ibv_exp_reg_mr_in in;
+      memset(&in, 0, sizeof(in));
+      in.pd = pd;
+      in.addr = buf;
+      in.length = buf_size;
+      in.exp_access = IBV_EXP_ACCESS_REMOTE_WRITE |
+                      IBV_EXP_ACCESS_REMOTE_READ |
+                      IBV_EXP_ACCESS_REMOTE_ATOMIC |
+                      IBV_EXP_ACCESS_LOCAL_WRITE;
+      in.create_flags = IBV_EXP_REG_MR_CREATE_CONTIG;
+      mr = ibv_exp_reg_mr(&in);
+#else
       mr = ibv_reg_mr(pd, buf, buf_size,
-        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE |
+        IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
+#endif
       THROW_IF(not mr, illegal_argument, "ibv_reg_mr() failed");
     }
     ~memory_region() {
@@ -68,6 +94,9 @@ private:
 
   struct ibv_sge sge_list;
   struct ibv_send_wr wr;
+#ifdef EXP_VERBS
+  struct ibv_exp_send_wr exp_wr;
+#endif
 
   std::string server_name;
   std::string port;
@@ -80,8 +109,13 @@ private:
   struct ib_connection *remote_connection;
 
   // Ready-to-receive/ready-to-send attr for state change later
+#ifdef EXP_VERBS
+  struct ibv_exp_qp_attr rtr_attr;
+  struct ibv_exp_qp_attr rts_attr;
+#else
   struct ibv_qp_attr rtr_attr;
   struct ibv_qp_attr rts_attr;
+#endif
 
   void tcp_client_connect();
   void exchange_ib_connection_info(int peer_sockfd);

@@ -1,3 +1,4 @@
+#include <iostream>
 #include <unistd.h>
 #include <string.h>
 
@@ -22,6 +23,20 @@ void context::init(const char *server) {
   ctx = ibv_open_device(ib_dev);
   THROW_IF(not ctx, illegal_argument, "ibv_open_device() failed");
 
+#ifdef EXP_VERBS
+  // Query for the IBV_EXP_ATOMIC_HCA_REPLY_BE atomic_cap to use experimental verbs
+  // for atomics on Connect-IB (libmlx5)
+  struct ibv_exp_device_attr exp_attr;
+  memset(&exp_attr, 0, sizeof(exp_attr));
+  int r = ibv_exp_query_device(ctx, &exp_attr);
+  THROW_IF(r, illegal_argument, "failed ibv_exp_query_device()");
+  if (exp_attr.exp_atomic_cap != IBV_EXP_ATOMIC_HCA_REPLY_BE) {
+    std::cout << "IBV_EXP_ATOMIC_HCA_REPLY_BE not supported" << std::endl;
+    abort();
+  }
+  std::cout << "[RDMA] Using experimental verbs for atomics" << std::endl;
+#endif
+
   pd = ibv_alloc_pd(ctx);
   THROW_IF(not pd, illegal_argument, "ibv_alloc_pd() failed");
 }
@@ -33,6 +48,42 @@ void context::finish_init() {
   cq = ibv_create_cq(ctx, tx_depth, (void *)this, ch, 0);
   THROW_IF(not cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
 
+#ifdef EXP_VERBS
+  struct ibv_exp_qp_init_attr exp_qp_init_attr;
+  memset(&exp_qp_init_attr, 0, sizeof(exp_qp_init_attr));
+  exp_qp_init_attr.pd = pd;
+  exp_qp_init_attr.send_cq = cq;
+  exp_qp_init_attr.recv_cq = cq;
+  exp_qp_init_attr.qp_type = IBV_QPT_RC;
+  exp_qp_init_attr.comp_mask |= IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS | IBV_EXP_QP_INIT_ATTR_PD;
+  // Allow atomics
+  exp_qp_init_attr.exp_create_flags = IBV_EXP_QP_CREATE_CROSS_CHANNEL |
+                                      IBV_EXP_QP_CREATE_IGNORE_SQ_OVERFLOW |
+                                      IBV_EXP_QP_CREATE_ATOMIC_BE_REPLY;
+  exp_qp_init_attr.sq_sig_all = 0;
+  exp_qp_init_attr.cap.max_send_wr = tx_depth;
+  exp_qp_init_attr.cap.max_recv_wr = 1;
+  exp_qp_init_attr.cap.max_send_sge = 1;
+  exp_qp_init_attr.cap.max_recv_sge = 1;
+  exp_qp_init_attr.cap.max_inline_data = 0;
+
+  qp = ibv_exp_create_qp(ctx, &exp_qp_init_attr);
+  THROW_IF(not qp, illegal_argument, "Could not create queue pair, ibv_exp_create_qp");
+
+  struct ibv_exp_qp_attr exp_attr;
+  memset(&exp_attr, 0, sizeof(exp_attr));
+  exp_attr.qp_state = IBV_QPS_INIT;
+  exp_attr.pkey_index = 0;
+  exp_attr.port_num = ib_port;
+  exp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+                             IBV_ACCESS_REMOTE_ATOMIC |
+                             IBV_ACCESS_REMOTE_READ |
+                             IBV_ACCESS_LOCAL_WRITE;
+
+  int ret = ibv_exp_modify_qp(qp, &exp_attr,
+    IBV_EXP_QP_STATE | IBV_EXP_QP_PKEY_INDEX | IBV_EXP_QP_PORT | IBV_EXP_QP_ACCESS_FLAGS);
+  THROW_IF(ret, illegal_argument, "Could not modify QP to INIT, ibv_exp_modify_qp");
+#else
   struct ibv_qp_init_attr qp_init_attr;
   memset(&qp_init_attr, 0, sizeof(qp_init_attr));
   qp_init_attr.send_cq = cq;
@@ -52,11 +103,15 @@ void context::finish_init() {
   attr.qp_state = IBV_QPS_INIT;
   attr.pkey_index = 0;
   attr.port_num = ib_port;
-  attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE;
+  attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
+                         IBV_ACCESS_REMOTE_ATOMIC |
+                         IBV_ACCESS_REMOTE_READ |
+                         IBV_ACCESS_LOCAL_WRITE;
 
   int ret = ibv_modify_qp(qp, &attr,
     IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
   THROW_IF(ret, illegal_argument, "Could not modify QP to INIT, ibv_modify_qp");
+#endif
 
   if (is_server()) {
     tcp::server_context stcp(port, 1);  // FIXME(tzwang): 1 client for now
@@ -91,7 +146,11 @@ void context::qp_change_state_rts() {
   rts_attr.rnr_retry = 7;  // infinite retry
   rts_attr.sq_psn = local_connection->psn;
   rts_attr.max_rd_atomic = 1;
+#ifdef EXP_VERBS
+  int ret = ibv_exp_modify_qp(qp, &rts_attr, QP_EXP_RTS_ATTR);
+#else
   int ret = ibv_modify_qp(qp, &rts_attr, QP_RTS_ATTR);
+#endif
   THROW_IF(ret, illegal_argument, "Could not modify QP to RTS state");
 }
 
@@ -108,7 +167,11 @@ void context::qp_change_state_rtr() {
   rtr_attr.ah_attr.sl = 1;
   rtr_attr.ah_attr.src_path_bits = 0;
   rtr_attr.ah_attr.port_num = ib_port;
+#ifdef EXP_VERBS
+  int ret = ibv_exp_modify_qp(qp, &rtr_attr, QP_EXP_RTR_ATTR);
+#else
   int ret = ibv_modify_qp(qp, &rtr_attr, QP_RTR_ATTR);
+#endif
   THROW_IF(ret, illegal_argument, "Could not modify QP to RTR state");
 }
 
@@ -179,6 +242,20 @@ uint64_t context::rdma_compare_and_swap(
   sge_list.length = sizeof(uint64_t);
   sge_list.lkey = mem_region->mr->lkey;
 
+#ifdef EXP_VERBS
+  memset(&exp_wr, 0, sizeof(wr));
+  exp_wr.wr_id = RDMA_WRID;
+  exp_wr.sg_list = &sge_list;
+  exp_wr.num_sge = 1;
+  exp_wr.exp_opcode = IBV_EXP_WR_ATOMIC_CMP_AND_SWP;
+  exp_wr.exp_send_flags = IBV_EXP_SEND_SIGNALED;
+  exp_wr.wr.atomic.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  exp_wr.wr.atomic.rkey = remote_connection->rkeys[remote_index];
+  exp_wr.wr.atomic.compare_add = expected;
+  exp_wr.wr.atomic.swap = new_value;
+  struct ibv_exp_send_wr *exp_bad_wr = nullptr;
+  int ret = ibv_exp_post_send(qp, &exp_wr, &exp_bad_wr);
+#else
   memset(&wr, 0, sizeof(wr));
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
@@ -192,7 +269,9 @@ uint64_t context::rdma_compare_and_swap(
 
   struct ibv_send_wr *bad_wr = nullptr;
   int ret = ibv_post_send(qp, &wr, &bad_wr);
+#endif
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+  // TODO(tzwang): need ibv_poll_cq?
   return *(uint64_t *)(mem_region->buf + local_offset);
 }
 
