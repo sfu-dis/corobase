@@ -271,8 +271,12 @@ uint64_t context::rdma_compare_and_swap(
   int ret = ibv_post_send(qp, &wr, &bad_wr);
 #endif
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+  struct ibv_wc wc;
+  memset(&wc, 0, sizeof(wc));
+  while (not (ibv_poll_cq(cq, 1, &wc))) {}
+  THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status, "Failed wc status");
   // TODO(tzwang): need ibv_poll_cq?
-  return *(uint64_t *)(mem_region->buf + local_offset);
+  return htobe64(*(uint64_t *)(mem_region->buf + local_offset));
 }
 
 /*
@@ -290,6 +294,7 @@ uint32_t context::receive_rdma_with_imm() {
   THROW_IF(ret, illegal_argument, "ibv_post_recv() failed");
 
   struct ibv_wc wc;
+  memset(&wc, 0, sizeof(wc));
   while (not (ibv_poll_cq(cq, 1, &wc) and wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM)) {}
   THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status, "Failed wc status");
   return ntohl(wc.imm_data);
