@@ -375,7 +375,7 @@ try_recycle:
         ASSERT(r_oid->oa);
 
       start_over:
-        fat_ptr head = oidmgr->oid_get(r_oid->oa, r_oid->oid);
+        fat_ptr head = *r_oid->entry;
         auto r_next = r_obj->_next;
         ASSERT(r_next != r);
         object *cur_obj = (object *)head.offset();

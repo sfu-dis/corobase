@@ -129,7 +129,6 @@ transaction::abort_impl()
     // asap so the updater won't wait for too long.
     for (uint32_t i = 0; i < read_set->size(); ++i) {
         auto &r = (*read_set)[i];
-        ASSERT(not r->is_defunct());
         ASSERT(r->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
         // remove myself from reader list
         serial_deregister_reader_tx(&r->readers_bitmap);
@@ -141,9 +140,6 @@ transaction::abort_impl()
         dbtuple *tuple = w.get_object()->tuple();
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->get_object()->_clsn) == xid);
-        if (tuple->is_defunct()) {   // for repeated overwrites
-            continue;  // should have already called deallocate() during the update
-        }
 #if defined(SSI) || defined(SSN)
         if (tuple->next()) {
             volatile_write(tuple->next()->sstamp, NULL_PTR);
@@ -152,10 +148,12 @@ transaction::abort_impl()
 #endif
         }
 #endif
-        oidmgr->oid_unlink(w.oa, w.oid, tuple);
-        volatile_write(w.get_object()->_clsn, NULL_PTR);
-        ASSERT(w.get_object()->_alloc_epoch == xc->begin_epoch);
-        MM::deallocate(w.new_object);
+        object *obj = w.get_object();
+        fat_ptr entry = *w.entry;
+        oidmgr->oid_unlink(w.entry);
+        volatile_write(obj->_clsn, NULL_PTR);
+        ASSERT(obj->_alloc_epoch == xc->begin_epoch);
+        MM::deallocate(entry);
     }
 
     // Read-only tx on a safesnap won't have log
@@ -374,8 +372,6 @@ transaction::parallel_ssn_commit()
     for (uint32_t i = 0; i < write_set->size(); ++i) {
         auto &w = (*write_set)[i];
         dbtuple *tuple = w.get_object()->tuple();
-        if (tuple->is_defunct())    // repeated overwrites
-            continue;
 
         // go to the precommitted or committed version I (am about to)
         // overwrite for the reader list
@@ -582,8 +578,6 @@ transaction::parallel_ssn_commit()
     for (uint32_t i = 0; i < write_set->size(); ++i) {
         auto &w = (*write_set)[i];
         dbtuple *tuple = w.get_object()->tuple();
-        if (tuple->is_defunct())
-            continue;
         tuple->do_write();
         dbtuple *next_tuple = tuple->next();
         ASSERT(not next_tuple or
@@ -823,8 +817,6 @@ transaction::parallel_ssi_commit()
         // now see if I'm the unlucky T2
         for (uint32_t i = 0; i < write_set->size(); ++i) {
             auto &w = (*write_set)[i];
-            if (w.get_object()->tuple()->is_defunct())
-                continue;
             dbtuple *overwritten_tuple = w.get_object()->tuple()->next();
             if (not overwritten_tuple)
                 continue;
@@ -945,8 +937,6 @@ transaction::parallel_ssi_commit()
     for (uint32_t i = 0; i < write_set->size(); ++i) {
         auto &w = (*write_set)[i];
         dbtuple* tuple = w.get_object()->tuple();
-        if (tuple->is_defunct())
-            continue;
         tuple->do_write();
         dbtuple *overwritten_tuple = tuple->next();
         if (overwritten_tuple) {    // update
@@ -1053,8 +1043,6 @@ transaction::si_commit()
     for (uint32_t i = 0; i < write_set->size(); ++i) {
         auto &w = (*write_set)[i];
         dbtuple* tuple = w.get_object()->tuple();
-        if (tuple->is_defunct())
-            continue;
         ASSERT(w.oa);
         tuple->do_write();
         tuple->get_object()->_clsn = clsn_ptr;
@@ -1117,7 +1105,7 @@ transaction::try_insert_new_tuple(
     oidmgr->oid_put_new(btr->get_oid_array(), oid, new_head);
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(varkey(key), oid, tuple, xc, &ins_info))) {
-        oidmgr->oid_unlink(btr->get_oid_array(), oid, tuple);
+        oidmgr->oid_unlink(btr->get_oid_array(), oid);
         return false;
     }
 
@@ -1130,7 +1118,7 @@ transaction::try_insert_new_tuple(
             if (unlikely(it->second.version != ins_info.old_version)) {
                 // important: unlink the version, otherwise we risk leaving a dead
                 // version at chain head -> infinite loop or segfault...
-                oidmgr->oid_unlink(btr->get_oid_array(), oid, tuple);
+                oidmgr->oid_unlink(btr->get_oid_array(), oid);
                 return false;
             }
             // otherwise, bump the version
@@ -1163,7 +1151,7 @@ transaction::try_insert_new_tuple(
 
     // update write_set
     ASSERT(tuple->pvalue->size() == tuple->size);
-    add_to_write_set(new_head, btr->get_oid_array(), oid);
+    add_to_write_set(btr->get_oid_array()->get(oid));
     return true;
 }
 

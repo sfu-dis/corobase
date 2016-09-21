@@ -561,7 +561,7 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
                 ptr = fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
                 ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
             }
-            oidmgr->oid_put_new(f, o, ptr);
+            oidmgr->oid_put_new(oa, o, ptr);
         }
     }
 }
@@ -736,22 +736,10 @@ sm_oid_mgr::oid_get(FID f, OID o)
     return *get_impl(this)->oid_access(f, o);
 }
 
-fat_ptr
-sm_oid_mgr::oid_get(oid_array *oa, OID o)
-{
-    return *oa->get(o);
-}
-
 fat_ptr*
 sm_oid_mgr::oid_get_ptr(FID f, OID o)
 {
     return get_impl(this)->oid_access(f, o);
-}
-
-fat_ptr*
-sm_oid_mgr::oid_get_ptr(oid_array *oa, OID o)
-{
-    return oa->get(o);
 }
 
 void
@@ -762,24 +750,9 @@ sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p)
 }
 
 void
-sm_oid_mgr::oid_put(oid_array *oa, OID o, fat_ptr p)
-{
-    auto *ptr = oa->get(o);
-    *ptr = p;
-}
-
-void
 sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p)
 {
     auto *ptr = get_impl(this)->oid_access(f, o);
-    ASSERT(*ptr == NULL_PTR);
-    *ptr = p;
-}
-
-void
-sm_oid_mgr::oid_put_new(oid_array *oa, OID o, fat_ptr p)
-{
-    auto *ptr = oa->get(o);
     ASSERT(*ptr == NULL_PTR);
     *ptr = p;
 }
@@ -893,14 +866,12 @@ install:
 
     *new_obj_ptr = object::create_tuple_object(value, false, updater_xc->begin_epoch);
     object* new_object = (object *)new_obj_ptr->offset();
-    ASSERT(not new_object->tuple()->is_defunct());
     new_object->_clsn = updater_xc->owner.to_ptr();
 
     if (overwrite) {
         volatile_write(new_object->_next, old_desc->_next);
         // I already claimed it, no need to use cas then
         volatile_write(ptr->_ptr, new_obj_ptr->_ptr);
-        version->mark_defunct();
         __sync_synchronize();
         return head;
     }
@@ -919,31 +890,12 @@ sm_oid_mgr::oid_get_latest_version(FID f, OID o)
     return oid_get_latest_version(get_impl(this)->get_array(f), o);
 }
 
-dbtuple*
-sm_oid_mgr::oid_get_latest_version(oid_array *oa, OID o)
-{
-    auto head_offset = oa->get(o)->offset();
-    if (head_offset)
-        return (dbtuple *)((object *)head_offset)->payload();
-    return NULL;
-}
-
 // Load the version from log if not present in memory
 // TODO: anti-caching
 fat_ptr*
 sm_oid_mgr::ensure_tuple(FID f, OID o, epoch_num e)
 {
     return ensure_tuple(get_impl(this)->get_array(f), o, e);
-}
-
-fat_ptr*
-sm_oid_mgr::ensure_tuple(oid_array *oa, OID o, epoch_num e)
-{
-    fat_ptr *ptr = oa->get(o);
-    fat_ptr p = *ptr;
-    if (p.asi_type() == fat_ptr::ASI_LOG)
-        ensure_tuple(ptr, e);
-    return ptr;
 }
 
 // @ptr: address of an object_header
@@ -1107,70 +1059,8 @@ start_over:
 }
 
 void
-sm_oid_mgr::oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
-#if defined(PHANTOM_PROT) && (defined(SSI) || defined(SSN))
-  /*
-   * tzwang (May 05, 2016): Preventing phantom:
-   * Consider an example:
-   *
-   * Assume the database has tuples B (key=1) and C (key=2).
-   *
-   * Time      T1             T2
-   * 1        ...           Read B
-   * 2        ...           Insert A
-   * 3        ...           Commit
-   * 4       Scan key > 1
-   * 5       Update B
-   * 6       Commit (?)
-   *
-   * At time 6 T1 should abort, but checking index version changes
-   * wouldn't make T1 abort, since its scan happened after T2's
-   * commit and yet its begin timestamp is before T2 - T1 wouldn't
-   * see A (oid_get_version will skip it even it saw it from the tree)
-   * but the scanning wouldn't record a version change in tree structure
-   * either (T2 already finished all SMOs).
-   *
-   * Under SSN/SSI, this essentially requires we update the corresponding
-   * stamps upon hitting an invisible version, treating it like some
-   * successor updated our read set. For SSI, this translates to updating
-   * ct3; for SSN, update the visitor's sstamp.
-   */
-#ifdef SSI
-  auto vct3 = volatile_read(visitor_xc->ct3);
-  if (not vct3 or vct3 > vcstamp) {
-      volatile_write(visitor_xc->ct3, vcstamp);
-  }
-#elif defined SSN
-  visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
-  // TODO(tzwang): do early SSN check here
-#endif  // SSI/SSN
-#else
-#endif
-}
-
-void
-sm_oid_mgr::oid_unlink(FID f, OID o, void *object_payload)
+sm_oid_mgr::oid_unlink(FID f, OID o)
 {
-    return oid_unlink(get_impl(this)->get_array(f), o, object_payload);
-}
-
-void
-sm_oid_mgr::oid_unlink(oid_array *oa, OID o, void *object_payload)
-{
-    // Now the head is guaranteed to be the only dirty version
-    // because we unlink the overwritten dirty version in put,
-    // essentially this function ditches the head directly.
-    // Otherwise use the commented out old code.
-    auto *ptr = oa->get(o);
-    object *head_obj = (object *)ptr->offset();
-    ASSERT(head_obj->payload() == object_payload);
-    // using a CAS is overkill: head is guaranteed to be the (only) dirty version
-    volatile_write(ptr->_ptr, head_obj->_next._ptr);
-    __sync_synchronize();
-    // tzwang: The caller is responsible for deallocate() the head version
-    // got unlinked - a update of own write will record the unlinked version
-    // in the transaction's write-set, during abortor commit the version's
-    // pvalue needs to be examined. So oid_unlink() shouldn't deallocate()
-    // here. Instead, the transaction does it in during commit or abort.
+    return oid_unlink(get_impl(this)->get_array(f), o);
 }
 

@@ -13,9 +13,6 @@
 
 using namespace TXN;
 
-// differentiate with delete case (pvalue = null)
-#define DEFUNCT_TUPLE_MARK ((varstr *)0x1)
-
 #ifdef SSN
 // Indicate somebody has read this tuple and thought it was an old one
 #define PERSISTENT_READER_MARK 0x1
@@ -176,20 +173,6 @@ public:
       return NULL;
   }
 
-  inline ALWAYS_INLINE bool
-  is_defunct()
-  {
-    return volatile_read(pvalue) == DEFUNCT_TUPLE_MARK;
-  }
-
-  inline ALWAYS_INLINE void
-  mark_defunct()
-  {
-    // pvalue is only readable by the writer itself,
-    // so this won't confuse readers.
-    volatile_write(pvalue, DEFUNCT_TUPLE_MARK);
-  }
-
 private:
   static inline ALWAYS_INLINE size_type
   CheckBounds(size_type s)
@@ -226,7 +209,6 @@ public:
   inline ALWAYS_INLINE void
   do_write() const
   {
-    ASSERT(pvalue != DEFUNCT_TUPLE_MARK);
     if (pvalue) {
       ASSERT(pvalue->size() == size);
       memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());

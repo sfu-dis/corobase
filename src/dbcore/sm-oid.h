@@ -167,17 +167,11 @@ struct sm_oid_mgr {
     fat_ptr oid_get(FID f, OID o);
     fat_ptr *oid_get_ptr(FID f, OID o);
 
-    fat_ptr oid_get(oid_array *oa, OID o);
-    fat_ptr *oid_get_ptr(oid_array *oa, OID o);
-
     /* Update the contents of the specified OID. The fat_ptr may
        reference memory or disk (or be NULL).
      */
     void oid_put(FID f, OID o, fat_ptr p);
-    void oid_put(oid_array *oa, OID o, fat_ptr p);
-
     void oid_put_new(FID f, OID o, fat_ptr p);
-    void oid_put_new(oid_array *oa, OID o, fat_ptr p);
 
     /* Return a fat_ptr to the overwritten object (could be an in-flight version!) */
     fat_ptr oid_put_update(
@@ -186,18 +180,102 @@ struct sm_oid_mgr {
       oid_array *oa, OID o, const varstr *value, xid_context *updater_xc, fat_ptr *new_obj_ptr);
 
     dbtuple *oid_get_latest_version(FID f, OID o);
-    dbtuple *oid_get_latest_version(oid_array *oa, OID o);
 
     dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
     dbtuple *oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc);
 
     fat_ptr *ensure_tuple(FID f, OID o, epoch_num e);
-    fat_ptr *ensure_tuple(oid_array *oa, OID o, epoch_num e);
     fat_ptr ensure_tuple(fat_ptr *ptr, epoch_num e);
 
-    void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp);
-    void oid_unlink(FID f, OID o, void *object_payload);
-    void oid_unlink(oid_array *oa, OID o, void *object_payload);
+    inline fat_ptr* ensure_tuple(oid_array *oa, OID o, epoch_num e) {
+        fat_ptr *ptr = oa->get(o);
+        fat_ptr p = *ptr;
+        if (p.asi_type() == fat_ptr::ASI_LOG)
+            ensure_tuple(ptr, e);
+        return ptr;
+    }
+
+    inline void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
+#if defined(PHANTOM_PROT) && (defined(SSI) || defined(SSN))
+      /*
+       * tzwang (May 05, 2016): Preventing phantom:
+       * Consider an example:
+       *
+       * Assume the database has tuples B (key=1) and C (key=2).
+       *
+       * Time      T1             T2
+       * 1        ...           Read B
+       * 2        ...           Insert A
+       * 3        ...           Commit
+       * 4       Scan key > 1
+       * 5       Update B
+       * 6       Commit (?)
+       *
+       * At time 6 T1 should abort, but checking index version changes
+       * wouldn't make T1 abort, since its scan happened after T2's
+       * commit and yet its begin timestamp is before T2 - T1 wouldn't
+       * see A (oid_get_version will skip it even it saw it from the tree)
+       * but the scanning wouldn't record a version change in tree structure
+       * either (T2 already finished all SMOs).
+       *
+       * Under SSN/SSI, this essentially requires we update the corresponding
+       * stamps upon hitting an invisible version, treating it like some
+       * successor updated our read set. For SSI, this translates to updating
+       * ct3; for SSN, update the visitor's sstamp.
+       */
+#ifdef SSI
+      auto vct3 = volatile_read(visitor_xc->ct3);
+      if (not vct3 or vct3 > vcstamp) {
+          volatile_write(visitor_xc->ct3, vcstamp);
+      }
+#elif defined SSN
+      visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
+      // TODO(tzwang): do early SSN check here
+#endif  // SSI/SSN
+#else
+#endif
+    }
+
+    inline dbtuple* oid_get_latest_version(oid_array *oa, OID o) {
+        auto head_offset = oa->get(o)->offset();
+        if (head_offset)
+            return (dbtuple *)((object *)head_offset)->payload();
+        return NULL;
+    }
+
+    void oid_unlink(FID f, OID o);
+    inline void oid_unlink(oid_array *oa, OID o) {
+        // Now the head is guaranteed to be the only dirty version
+        // because we unlink the overwritten dirty version in put,
+        // essentially this function ditches the head directly.
+        // Otherwise use the commented out old code.
+        oid_unlink(oa->get(o));
+    }
+    inline void oid_unlink(fat_ptr* ptr) {
+        object *head_obj = (object *)ptr->offset();
+        // using a CAS is overkill: head is guaranteed to be the (only) dirty version
+        volatile_write(ptr->_ptr, head_obj->_next._ptr);
+        __sync_synchronize();
+        // tzwang: The caller is responsible for deallocate() the head version
+        // got unlinked - a update of own write will record the unlinked version
+        // in the transaction's write-set, during abortor commit the version's
+        // pvalue needs to be examined. So oid_unlink() shouldn't deallocate()
+        // here. Instead, the transaction does it in during commit or abort.
+    }
+
+    inline void oid_put_new(oid_array *oa, OID o, fat_ptr p) {
+        auto *ptr = oa->get(o);
+        ASSERT(*ptr == NULL_PTR);
+        *ptr = p;
+    }
+
+    inline void oid_put(oid_array *oa, OID o, fat_ptr p) {
+        auto *ptr = oa->get(o);
+        *ptr = p;
+    }
+
+    inline fat_ptr* oid_get_ptr(oid_array *oa, OID o) { return oa->get(o); }
+    inline fat_ptr oid_get(oid_array *oa, OID o) { return *oa->get(o); }
 
     bool file_exists(FID f);
     void recreate_file(FID f);    // for recovery only

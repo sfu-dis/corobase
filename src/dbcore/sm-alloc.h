@@ -14,9 +14,8 @@ typedef epoch_mgr::epoch_num epoch_num;
 // oids that got updated, ie need to cleanup the overwritten versions
 struct oid_array;
 struct recycle_oid {
-    oid_array *oa;
-    OID oid;
-    recycle_oid(oid_array *a, OID o) : oa(a), oid(o) {}
+    fat_ptr* entry;
+    recycle_oid(fat_ptr* entry) : entry(entry) {}
 };
 
 namespace MM {

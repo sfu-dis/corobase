@@ -53,16 +53,17 @@ public:
   typedef std::vector<dbtuple *> read_set_t;
 #endif
 
+  // A write-set entry is essentially a pointer to the OID array entry
+  // begin updated. The write-set is naturally de-duplicated: repetitive
+  // updates will leave only one entry by the first update. Dereferencing
+  // the entry pointer results a fat_ptr to the new object.
   struct write_record_t {
-    write_record_t(fat_ptr obj, oid_array *a, OID o) :
-        new_object(obj), oa(a), oid(o) {}
-    fat_ptr new_object;
-    oid_array *oa;
-    OID oid;
+    fat_ptr* entry;
+    write_record_t(fat_ptr* entry) : entry(entry) {}
+    write_record_t() : entry(nullptr) {}
     inline object *get_object() {
-      return (object *)new_object.offset();
+      return (object *)entry->offset();
     }
-    write_record_t() : new_object(NULL_PTR), oa(nullptr), oid(0) {}
   };
   typedef std::vector<write_record_t> write_set_t;
 
@@ -212,7 +213,7 @@ protected:
     object *objr = (object *)MM::allocate(size, 0);
     new (objr) object();
     recycle_oid *r = (recycle_oid *)objr->payload();
-    new (r) recycle_oid(w.oa, w.oid);
+    new (r) recycle_oid(w.entry);
     fat_ptr myptr = fat_ptr::make(objr, size_code);
     ASSERT(objr->_next == NULL_PTR);
     if (updated_oids_head == NULL_PTR) {
@@ -241,14 +242,14 @@ public:
     return flags;
   }
 
-  void add_to_write_set(fat_ptr objptr, oid_array *oa, OID oid) {
+  void add_to_write_set(fat_ptr* entry) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set->size(); ++i) {
       auto& w = (*write_set)[i];
       ASSERT(w.new_object != objptr);
     }
 #endif
-    write_set->emplace_back(objptr, oa, oid);
+    write_set->emplace_back(entry);
   }
 
 protected:
