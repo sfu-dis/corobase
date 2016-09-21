@@ -8,10 +8,9 @@ struct sm_file_descriptor {
   FID fid;
   std::string name;
   ndb_ordered_index *index;
-  uint32_t rdma_mr_index;
-  sm_file_descriptor() : fid(0), name(""), index(nullptr), rdma_mr_index(-1) {}
+  sm_file_descriptor() : fid(0), name(""), index(nullptr) {}
   sm_file_descriptor(FID f, std::string n, ndb_ordered_index *i) :
-    fid(f), name(n), index(i), rdma_mr_index(-1) {}
+    fid(f), name(n), index(i) {}
 };
 
 
