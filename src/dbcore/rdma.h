@@ -31,7 +31,7 @@
 #include "sm-common.h"
 
 // Use the experimental verbs and libmlx5 on Connect-IB to do atomic ops
-#define EXP_VERBS 1
+// #define EXP_VERBS 1
 
 namespace rdma {
 
