@@ -33,6 +33,8 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-rep.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-rep-tcp.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-rep-rdma.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-thread.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-tx-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/tcp.cpp
