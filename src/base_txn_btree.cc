@@ -130,13 +130,13 @@ rc_t base_txn_btree::do_tree_put(
 
                         // we're safe if the reader is read-only (so far) and started after ct3
                         if (reader_xc->xct->write_set->size() > 0 and reader_begin <= t.xc->ct3) {
-                            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid, tuple);
+                            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid);
                             return {RC_ABORT_SERIAL};
                         }
                     }
                 }
                 else {
-                    oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid, tuple);
+                    oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid);
                     return {RC_ABORT_SERIAL};
                 }
             }
@@ -157,7 +157,7 @@ rc_t base_txn_btree::do_tree_put(
         if (not ssn_check_exclusion(t.xc)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set)
-            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid, tuple);
+            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid);
             return rc_t{RC_ABORT_SERIAL};
         }
 #endif
@@ -174,7 +174,6 @@ rc_t base_txn_btree::do_tree_put(
         if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {
             // updating my own updates!
             // prev's prev: previous *committed* version
-            ASSERT(prev->is_defunct()); // oid_put_update did this
             ASSERT(((object *)prev_obj_ptr.offset())->_alloc_epoch == t.xc->begin_epoch);
             MM::deallocate(prev_obj_ptr);
         }
@@ -182,10 +181,10 @@ rc_t base_txn_btree::do_tree_put(
 #if defined(SSI) || defined(SSN)
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
+            t.add_to_write_set(this->underlying_btree.get_oid_array()->get(oid));
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
-        t.add_to_write_set(new_obj_ptr, this->underlying_btree.get_oid_array(), oid);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
         ASSERT(t.log);
