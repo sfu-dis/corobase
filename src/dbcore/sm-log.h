@@ -16,7 +16,6 @@
  */
 #include <unordered_map>
 #include "sm-common.h"
-#include "sm-rep.h"
 #include "sm-thread.h"
 #include "window-buffer.h"
 
