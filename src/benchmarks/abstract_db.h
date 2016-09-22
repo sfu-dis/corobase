@@ -19,14 +19,6 @@
 class abstract_db {
 public:
 
-  /**
-   * both get() and put() can throw abstract_abort_exception. If thrown,
-   * abort_txn() must be called (calling commit_txn() will result in undefined
-   * behavior).  Also if thrown, subsequently calling get()/put() will also
-   * result in undefined behavior)
-   */
-  class abstract_abort_exception : public std::exception { };
-
   // ctor should open db
   abstract_db() {}
 
@@ -39,8 +31,6 @@ public:
    * A return value of -1 indicates no maximum
    */
   virtual ssize_t txn_max_batch_size() const { return -1; }
-
-  virtual bool index_has_stable_put_memory() const { return false; }
 
   // XXX(stephentu): laziness
   virtual size_t
@@ -57,7 +47,7 @@ public:
     // tpcc profiles
     HINT_TPCC_NEW_ORDER,
     HINT_TPCC_PAYMENT,
-	HINT_TPCC_CREDIT_CHECK,
+    HINT_TPCC_CREDIT_CHECK,
     HINT_TPCC_DELIVERY,
     HINT_TPCC_ORDER_STATUS,
     HINT_TPCC_ORDER_STATUS_READ_ONLY,

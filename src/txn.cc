@@ -195,14 +195,6 @@ transaction_flags_to_str(uint64_t flags)
 }
 };  // end of namespace
 
-void
-transaction::dump_debug_info() const
-{
-    std::cerr << "Transaction (obj=" << util::hexify(this) << ") -- state "
-              << transaction_state_to_cstr(state()) << std::endl;
-    std::cerr << "  Flags: " << transaction_flags_to_str(flags) << std::endl;
-}
-
 rc_t
 transaction::commit()
 {
