@@ -176,5 +176,4 @@ public:
   }
 
   static void Test();
-
 };

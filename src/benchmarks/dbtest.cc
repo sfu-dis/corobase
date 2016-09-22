@@ -18,8 +18,6 @@
 #include "../dbcore/sm-thread.h"
 #include "bench.h"
 #include "ndb_wrapper.h"
-//#include "kvdb_wrapper.h"
-//#include "kvdb_wrapper_impl.h"
 
 #if defined(SSI) && defined(SSN)
 #error "SSI + SSN?"

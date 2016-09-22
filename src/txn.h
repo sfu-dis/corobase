@@ -187,8 +187,6 @@ public:
 
   void abort_impl();
 
-  void dump_debug_info() const;
-
 protected:
   bool
   try_insert_new_tuple(

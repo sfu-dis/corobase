@@ -33,7 +33,6 @@ public:
       TxnProfileHint hint);
   virtual rc_t commit_txn(void *txn);
   virtual void abort_txn(void *txn);
-  virtual void print_txn_debug(void *txn) const;
 
   virtual abstract_ordered_index *
   open_index(const std::string &name,
@@ -42,7 +41,6 @@ public:
 
   virtual void
   close_index(abstract_ordered_index *idx);
-
 };
 
 class ndb_ordered_index : public abstract_ordered_index {

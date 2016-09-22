@@ -50,14 +50,6 @@ ndb_wrapper::abort_txn(void *txn)
   t->~transaction();
 }
 
-void
-ndb_wrapper::print_txn_debug(void *txn) const
-{
-  ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
-  auto t = (transaction *)&p->buf[0];
-  t->dump_debug_info(); \
-}
-
 abstract_ordered_index *
 ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append)
 {
