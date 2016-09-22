@@ -181,7 +181,8 @@ rc_t base_txn_btree::do_tree_put(
 #if defined(SSI) || defined(SSN)
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
-            t.add_to_write_set(this->underlying_btree.get_oid_array()->get(oid));
+            auto* oa = underlying_btree.get_oid_array();
+            t.add_to_write_set(oa->get(oid), oa);
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);

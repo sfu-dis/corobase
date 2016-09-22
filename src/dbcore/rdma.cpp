@@ -35,6 +35,7 @@ void context::init(const char *server) {
     abort();
   }
   std::cout << "[RDMA] Using experimental verbs for atomics" << std::endl;
+  std::cout << "[RDMA] Max memory region size " << exp_attr.max_mr_size << std::endl;
 #endif
 
   pd = ibv_alloc_pd(ctx);

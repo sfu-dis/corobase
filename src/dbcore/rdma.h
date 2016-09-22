@@ -77,6 +77,7 @@ private:
         IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE |
         IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
 #endif
+      ALWAYS_ASSERT(mr);
       THROW_IF(not mr, illegal_argument, "ibv_reg_mr() failed");
     }
     ~memory_region() {

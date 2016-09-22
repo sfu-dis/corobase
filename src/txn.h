@@ -40,6 +40,20 @@ using namespace TXN;
 // forward decl
 class base_txn_btree;
 
+// A write-set entry is essentially a pointer to the OID array entry
+// begin updated. The write-set is naturally de-duplicated: repetitive
+// updates will leave only one entry by the first update. Dereferencing
+// the entry pointer results a fat_ptr to the new object.
+struct write_record_t {
+  fat_ptr* entry;
+  oid_array* oa;  // for log rdma-based shipping
+  write_record_t(fat_ptr* entry, oid_array* oa) : entry(entry), oa(oa) {}
+  write_record_t() : entry(nullptr), oa(nullptr) {}
+  inline object *get_object() {
+    return (object *)entry->offset();
+  }
+};
+
 class transaction {
   // XXX: weaker than necessary
   friend class base_txn_btree;
@@ -52,19 +66,6 @@ public:
 #if defined(SSN) || defined(SSI)
   typedef std::vector<dbtuple *> read_set_t;
 #endif
-
-  // A write-set entry is essentially a pointer to the OID array entry
-  // begin updated. The write-set is naturally de-duplicated: repetitive
-  // updates will leave only one entry by the first update. Dereferencing
-  // the entry pointer results a fat_ptr to the new object.
-  struct write_record_t {
-    fat_ptr* entry;
-    write_record_t(fat_ptr* entry) : entry(entry) {}
-    write_record_t() : entry(nullptr) {}
-    inline object *get_object() {
-      return (object *)entry->offset();
-    }
-  };
   typedef std::vector<write_record_t> write_set_t;
 
   enum {
@@ -240,14 +241,14 @@ public:
     return flags;
   }
 
-  void add_to_write_set(fat_ptr* entry) {
+  void add_to_write_set(fat_ptr* entry, oid_array* oa) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set->size(); ++i) {
       auto& w = (*write_set)[i];
       ASSERT(w.new_object != objptr);
     }
 #endif
-    write_set->emplace_back(entry);
+    write_set->emplace_back(entry, oa);
   }
 
 protected:
