@@ -24,15 +24,35 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
     FID create_file(bool needs_alloc);
     void destroy_file(FID f);
 
-    sm_allocator *get_allocator(FID f);
-    oid_array *get_array(FID f);
+    sm_allocator *get_allocator(FID f) {
+        // TODO: allow allocators to be paged out
+        sm_allocator *alloc = oid_get(ALLOCATOR_FID, f);
+        THROW_IF(not alloc, illegal_argument,
+                 "No allocator for FID %d", f);
+        return alloc;
+    }
+    inline oid_array *get_array(FID f) {
+        // TODO: allow allocators to be paged out
+        oid_array *oa = *files->get(f);
+        THROW_IF(not oa, illegal_argument,
+                 "No such file: %d", f);
+        return oa;
+    }
+    inline void lock_file(FID f) {
+        mutexen[f % MUTEX_COUNT].lock();
+    }
+    inline void unlock_file(FID f) {
+        mutexen[f % MUTEX_COUNT].unlock();
+    }
+    inline fat_ptr *oid_access(FID f, OID o) {
+        auto *oa = get_array(f);
+        return oa->get(o);
+    }
+    inline bool file_exists(FID f) {
+        oid_array *oa = *files->get(f);
+        return oa != NULL;
+    }
 
-    void lock_file(FID f);
-    void unlock_file(FID f);
-
-    fat_ptr *oid_access(FID f, OID o);
-
-    bool file_exists(FID f);
     void recreate_file(FID f);    // for recovery only
     void recreate_allocator(FID f, OID m);  // for recovery only
 

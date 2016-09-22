@@ -437,52 +437,6 @@ sm_oid_mgr_impl::destroy_file(FID f)
     // one allocator controls all three files
     thread_free(this, OBJARRAY_FID, f);
 }
-
-fat_ptr*
-sm_oid_mgr_impl::oid_access(FID f, OID o)
-{
-    auto *oa = get_array(f);
-    return oa->get(o);
-}
-
-sm_allocator*
-sm_oid_mgr_impl::get_allocator(FID f)
-{
-    // TODO: allow allocators to be paged out
-    sm_allocator *alloc = oid_get(ALLOCATOR_FID, f);
-    THROW_IF(not alloc, illegal_argument,
-             "No allocator for FID %d", f);
-    return alloc;
-}
-
-oid_array*
-sm_oid_mgr_impl::get_array(FID f)
-{
-    // TODO: allow allocators to be paged out
-    oid_array *oa = *files->get(f);
-    THROW_IF(not oa, illegal_argument,
-             "No such file: %d", f);
-    return oa;
-}
-
-bool
-sm_oid_mgr_impl::file_exists(FID f)
-{
-    oid_array *oa = *files->get(f);
-    return oa != NULL;
-}
-
-void
-sm_oid_mgr_impl::lock_file(FID f)
-{
-    mutexen[f % MUTEX_COUNT].lock();
-}
-void
-sm_oid_mgr_impl::unlock_file(FID f)
-{
-    mutexen[f % MUTEX_COUNT].unlock();
-}
-
 oid_array*
 sm_oid_mgr::get_array(FID f)
 {
