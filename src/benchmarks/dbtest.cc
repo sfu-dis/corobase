@@ -253,9 +253,6 @@ main(int argc, char **argv)
 
 #ifndef NDEBUG
   cerr << "WARNING: invariant checking is enabled - should disable for benchmark" << endl;
-#ifdef PARANOID_CHECKING
-  cerr << "  *** Paranoid checking is enabled ***" << endl;
-#endif
 #endif
 
   if (verbose) {
