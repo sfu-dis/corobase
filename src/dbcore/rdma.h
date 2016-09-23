@@ -152,15 +152,22 @@ public:
 
   /* Write [size] of bytes placed at the offset of [local_offset] of the 
    * buffer specified by [index] to remote address + [remote_offset] */
-  void rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size);
+  void rdma_write(
+    uint32_t local_index, uint64_t local_offset,
+    uint32_t remote_index, uint64_t remote_offset, uint64_t size);
 
   /* Same as rdma_write() above, but with immediate data [imm_data] */
   void rdma_write(
-    uint32_t index,
-    uint64_t local_offset,
-    uint64_t remote_offset,
-    uint64_t size,
-    uint32_t imm_data);
+    uint32_t local_index, uint64_t local_offset,
+    uint32_t remote_index, uint64_t remote_offset,
+    uint64_t size, uint32_t imm_data);
+
+  /* Read [size] of bytes placed at the [remote_index] buffer with [remote_offset]
+   * into [local_index] buffer with [local_offset]. */
+  void rdma_read(
+    uint32_t local_index, uint64_t local_offset,
+    uint32_t remote_index, uint64_t remote_offset,
+    uint32_t size);
 
   /* Conduct a CAS at the offset of the specified remote buffer.
    * Returns the old value. */
