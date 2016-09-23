@@ -1144,7 +1144,7 @@ transaction::try_insert_new_tuple(
     // update write_set
     ASSERT(tuple->pvalue->size() == tuple->size);
     auto* oa = btr->get_oid_array();
-    add_to_write_set(oa->get(oid), oa);
+    add_to_write_set(oa->get(oid), sysconf::num_backups == 0 ? 0 : fid);
     return true;
 }
 
