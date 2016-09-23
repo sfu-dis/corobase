@@ -87,7 +87,10 @@ class basic_table {
     inline int modify_insert(Str key, F& f, threadinfo& ti);
 
     inline void set_oid_array(oid_array *oa) { oid_array_ = oa; }
-    oid_array* get_oid_array() const { return oid_array_; }
+    inline oid_array* get_oid_array() const { return oid_array_; }
+
+    inline void set_pdest_array(oid_array *pa) { pdest_array_ = pa; }
+    inline oid_array* get_pdest_array() const { return pdest_array_; }
 
     inline void print(FILE* f = 0, int indent = 0) const;
 
@@ -96,6 +99,7 @@ class basic_table {
 
     // For convenience...no need to take another lookup for the table
     oid_array *oid_array_;
+    oid_array *pdest_array_;
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,

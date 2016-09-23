@@ -231,6 +231,14 @@ public:
     table_.set_oid_array(oa);
   }
 
+  inline void set_pdest_array(oid_array* pa) {
+    table_.set_pdest_array(pa);
+  }
+
+  inline oid_array* get_pdest_array() {
+    return table_.get_pdest_array();
+  }
+
   /**
    * NOT THREAD SAFE
    */

@@ -5,46 +5,11 @@ namespace rep {
 // for primary server only
 tcp::server_context *primary_tcp_ctx = nullptr;
 std::vector<int> backup_sockfds;
-void primary_server_daemon() {
-  logmgr->flush();  // persist everything before shipping
-  do {
-    int backup_sockfd = primary_tcp_ctx->expect_client();
-    backup_sockfds.push_back(backup_sockfd);
-    // Got a new backup, send out my logs
-    // TODO(tzwang): handle backup joining after primary started forward processing
-    dirent_iterator dir(sysconf::log_dir.c_str());
-    int dfd = dir.dup();
 
-    // tell backup how many files to expect
-    uint8_t nfiles = 0;
-    for (char const *fname : dir) {
-      if (fname[0] != '.')
-        nfiles++;
-    }
-
-    auto sent_bytes = send(backup_sockfd, &nfiles, sizeof(nfiles), 0);
-    ALWAYS_ASSERT(sent_bytes == sizeof(nfiles));
-
-    // we're just starting the db, so send everything we have
-    for (char const *fname : dir) {
-      if (fname[0] == '.')
-        continue;
-      int log_fd = os_openat(dfd, fname, O_RDONLY);
-      primary_ship_log_file(backup_sockfd, fname, log_fd);
-      close(log_fd);
-    }
-
-    // wait for ack from the backup
-    tcp::expect_ack(backup_sockfd);
-    //printf("[Primary] Backup received log\n");
-  } while (++sysconf::num_active_backups < sysconf::num_backups);
-
-  delete primary_tcp_ctx;
-  if (sysconf::log_ship_by_rdma) {
-    init_rdma();
-  }
-}
-
+/* Ship a log file (on-disk) to a backup server via TCP using sendfile().
+ * For primary server only. So far the only user is when the
+ * primary server starts and has loaded the database.
+ */
 void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
   // First send over filename and file size
   static const uint32_t metadata_size = 256;
@@ -88,6 +53,48 @@ void primary_ship_log_file(int backup_fd, const char* log_fname, int log_fd) {
   }
 }
 
+// A daemon that runs on the primary to bring up standby servers by
+// shipping the log files of a newly loaded database via TCP.
+void primary_start_daemon() {
+  logmgr->flush();  // persist everything before shipping
+  do {
+    int backup_sockfd = primary_tcp_ctx->expect_client();
+    backup_sockfds.push_back(backup_sockfd);
+    // Got a new backup, send out my logs
+    // TODO(tzwang): handle backup joining after primary started forward processing
+    dirent_iterator dir(sysconf::log_dir.c_str());
+    int dfd = dir.dup();
+
+    // tell backup how many files to expect
+    uint8_t nfiles = 0;
+    for (char const *fname : dir) {
+      if (fname[0] != '.')
+        nfiles++;
+    }
+
+    auto sent_bytes = send(backup_sockfd, &nfiles, sizeof(nfiles), 0);
+    ALWAYS_ASSERT(sent_bytes == sizeof(nfiles));
+
+    // we're just starting the db, so send everything we have
+    for (char const *fname : dir) {
+      if (fname[0] == '.')
+        continue;
+      int log_fd = os_openat(dfd, fname, O_RDONLY);
+      primary_ship_log_file(backup_sockfd, fname, log_fd);
+      close(log_fd);
+    }
+
+    // wait for ack from the backup
+    tcp::expect_ack(backup_sockfd);
+    //printf("[Primary] Backup received log\n");
+  } while (++sysconf::num_active_backups < sysconf::num_backups);
+
+  if (sysconf::log_ship_by_rdma) {
+    delete primary_tcp_ctx;
+    primary_init_rdma();
+  }
+}
+
 void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
   if (sysconf::log_ship_by_rdma) {
     primary_ship_log_buffer_rdma(buf, size);
@@ -103,7 +110,7 @@ void start_as_primary() {
   ALWAYS_ASSERT(not sysconf::is_backup_srv());
   primary_tcp_ctx = new tcp::server_context(sysconf::primary_port, sysconf::num_backups);
   // Spawn a new thread to listen to incoming connections
-  std::thread t(primary_server_daemon);
+  std::thread t(primary_start_daemon);
   t.detach();
 }
 
@@ -173,8 +180,9 @@ void start_as_backup() {
 
   std::cout << "[Backup] Received initial log records.\n";
   if (sysconf::log_ship_by_rdma) {
-    std::thread t(backup_daemon_rdma);
+    std::thread t(backup_daemon_rdma, cctx);
     t.detach();
+    // The daemon will delete cctx
   } else {
     std::thread t(backup_daemon_tcp, cctx);
     t.detach();

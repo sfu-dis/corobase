@@ -126,6 +126,13 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
     ASSERT(sm_file_mgr::name_map[name]->index);
     sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
   }
+
+  // Initialize the pdest array (for RDMA only)
+  if (sysconf::log_ship_by_rdma && sysconf::is_backup_srv()) {
+      sm_file_mgr::get_file(f)->init_pdest_array();
+      std::cout << "[Backup recovery] Created pdest array for FID " << f << std::endl;
+  }
+
   printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
   return sm_file_mgr::get_index(name);
 }

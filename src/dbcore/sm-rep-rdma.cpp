@@ -12,7 +12,7 @@ uint32_t msgbuf_index = -1;
 uint32_t logbuf_index = -1;
 uint64_t scratch_buf_index = -1;  // for RDMA primary only
 
-void init_rdma() {
+void primary_init_rdma() {
   auto& logbuf = logmgr->get_logbuf();
   primary_rdma_ctx = new rdma::context(sysconf::primary_port, 1);
   // Must register in the exact sequence below, matching the backup node's sequence
@@ -20,9 +20,28 @@ void init_rdma() {
   msgbuf_index = primary_rdma_ctx->register_memory(msgbuf, kMessageSize);
   scratch_buf_index = primary_rdma_ctx->register_memory((char*)&scratch_buf, sizeof(uint64_t));
   primary_rdma_ctx->finish_init();
+  std::cout << "[Primary] RDMA initialized\n";
+
+  // Wait for the standby to send over <FID, memory region index> mappings
+  uint32_t msize = (sizeof(FID) + sizeof(int32_t)) * sm_file_mgr::fid_map.size();
+  ALWAYS_ASSERT(msize);
+  char* mapping = (char*)malloc(msize);
+  memset(mapping, 0, msize);
+
+  tcp::server_context stcp(sysconf::primary_port, 1);  // FIXME(tzwang): 1 client for now
+  tcp::receive(stcp.expect_client(), mapping, msize);  // 1 client for now
+  //tcp::send_ack(backup_sockfds[0]);
+  std::cout << "[Primary] Received <FID, memory region index> mappings from standby" << std::endl;
+  while (msize) {
+    msize -= (sizeof(FID) + sizeof(int32_t));
+    FID f = *(FID*)(mapping + msize);
+    int32_t index = *(int32_t*)(mapping + msize + sizeof(FID));
+    sm_file_mgr::fid_map[f]->pdest_array_mr_index = index;
+    // std::cout << "[Primary] FID " << f << " pdest_array_mr_index=" << index << std::endl;
+  }
 }
 
-void backup_daemon_rdma() {
+void backup_daemon_rdma(tcp::client_context* tcp_ctx) {
   rcu_register();
   rcu_enter();
   DEFER(rcu_exit());
@@ -35,18 +54,39 @@ void backup_daemon_rdma() {
   logbuf_index = cctx->register_memory(logbuf._data, logbuf.window_size() * 2);
   msgbuf_index = cctx->register_memory(msgbuf, kMessageSize);
   // After created logmgr, we should have finished recovery as well,
-  // i.e., all tables/FIDs are created now. Register them for RDMA.
+  // i.e., all tables/FIDs are created now. Register the pdest_arrays for RDMA.
+  // Also need to send the primary an <FID, memory region index> mapping for each table.
+  uint32_t msize = (sizeof(FID) + sizeof(int32_t)) * sm_file_mgr::fid_map.size();
+  char* mapping = (char*)malloc(msize);
+  memset(mapping, 0, msize);
+  uint32_t i = 0;
   for (auto& f : sm_file_mgr::fid_map) {
-    auto* oa = f.second->index->get_oid_array();
+    auto* pa = f.second->pdest_array;
     // TODO(tzwang): support resizing
-    ALWAYS_ASSERT(oa);
-    uint64_t size = oa->_backing_store.size();
+    ALWAYS_ASSERT(pa);
+    ALWAYS_ASSERT(f.second->fid);
+    uint64_t size = pa->_backing_store.size();
     ALWAYS_ASSERT(size);
-    //f.second->rdma_mr_index = cctx->register_memory(oa->_backing_store.data(), size);
-    //ALWAYS_ASSERT(f.second->rdma_mr_index >= 0);
-    std::cout << "[RDMA] Registered FID " << f.first << "(" << size << ")" << std::endl;
+    f.second->pdest_array_mr_index = cctx->register_memory(pa->_backing_store.data(), size);
+    ALWAYS_ASSERT(f.second->pdest_array_mr_index >= 0);
+    ALWAYS_ASSERT(f.second->fid == f.first);
+    // Copy FID and mr_index
+    memcpy(mapping + i * (sizeof(FID) + sizeof(int32_t)), (char*)&f.second->fid, sizeof(FID));
+    memcpy(mapping + i * (sizeof(FID) + sizeof(int32_t)) + sizeof(FID),
+           (char*)&f.second->pdest_array_mr_index, sizeof(int32_t));
+    std::cout << "[Backup] Registered FID " << f.first << "(" << size << ") " << f.second->pdest_array_mr_index << std::endl;
+    i++;
   }
   cctx->finish_init();
+  std::cout << "[Backup] RDMA initialized" << std::endl;
+
+  // Send over the mapping
+  tcp::client_context ctcp(sysconf::primary_srv, sysconf::primary_port);
+  int32_t ret = send(ctcp.server_sockfd, mapping, msize, 0);
+  THROW_IF(ret != msize, os_error, ret, "Could not send <FID, memory region index> mappings to peer");
+  //tcp::expect_ack(tcp_ctx->server_sockfd);
+  delete tcp_ctx;
+  std::cout << "[Backup] Sent <FID, memory region index> mappings" << std::endl;
 
   DEFER(delete cctx);
 
@@ -113,11 +153,28 @@ void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
 
 // Propogate OID array changes for the given write set entry to
 // backups; for RDMA-based log shipping only
-void update_oid_on_backup_rdma(write_record_t* w) {
+void update_pdest_on_backup_rdma(write_record_t* w) {
     ASSERT(sysconf::log_ship_by_rdma);
-    uint64_t expected = w->get_object()->_next.offset();
-    //primary_rdma_ctx->rdma_compare_and_swap(
-    //  scratch_buf_index, 0, w->oa->rdma_mr_index, (uint64_t)w - (uint64_t)&oa->entries_[0],
-    //  expected, (unit64_t)w);
+    sm_file_descriptor* file_desc = sm_file_mgr::fid_map[w->fid];
+    int32_t remote_index = file_desc->pdest_array_mr_index;
+    ALWAYS_ASSERT(remote_index > 0);
+    uint64_t offset = (uint64_t)w->entry - (uint64_t)file_desc->main_array->_backing_store.data();
+    object* obj = (object*)w->entry->offset();
+    object* next_obj = (object*)obj->_next.offset();
+    uint64_t expected = 0;
+    if (next_obj) {
+        expected = next_obj->_pdest._ptr;
+    }
+    while (true) {
+        // FIXME(tzwang): handle cases where the remote pdest array is too small
+        fat_ptr ret { primary_rdma_ctx->rdma_compare_and_swap(
+          scratch_buf_index, 0, remote_index, offset, expected, obj->_pdest._ptr) };
+        if (ret._ptr == expected || ret.offset() > w->entry->offset()) {
+            break;
+        }
+        ASSERT(((fat_ptr)ret).offset() != w->entry->offset());
+        expected = ret._ptr;
+    }
 }
+
 }  // namespace rep
