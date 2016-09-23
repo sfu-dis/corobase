@@ -56,12 +56,13 @@ void backup_daemon_rdma() {
     rt.detach();
   }
 
+  std::cout << "[Backup] Start to wait for logs from primary" << std::endl;
   // Listen to incoming log records from the primary
   uint32_t size = 0;
   while (1) {
     // tell the peer i'm ready
     *(uint64_t *)cctx->get_memory_region(msgbuf_index) = RDMA_READY_TO_RECEIVE;
-    cctx->rdma_write(msgbuf_index, 0, 0, kMessageSize);
+    cctx->rdma_write(msgbuf_index, 0, msgbuf_index, 0, kMessageSize);
 
     // post an RR to get the data and its size embedded as an immediate
     size = cctx->receive_rdma_with_imm();
@@ -107,7 +108,7 @@ void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
   // reset it so I'm not confused next time
   *(uint64_t *)primary_rdma_ctx->get_memory_region(msgbuf_index) = RDMA_WAITING;
   uint64_t offset = buf - primary_rdma_ctx->get_memory_region(logbuf_index);
-  primary_rdma_ctx->rdma_write(logbuf_index, offset, offset, size, size);
+  primary_rdma_ctx->rdma_write(logbuf_index, offset, logbuf_index, offset, size, size);
 }
 
 // Propogate OID array changes for the given write set entry to

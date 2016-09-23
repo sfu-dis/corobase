@@ -184,16 +184,18 @@ void context::exchange_ib_connection_info(int peer_sockfd) {
   tcp::receive(peer_sockfd, (char *)remote_connection, sizeof(ib_connection));
 }
 
-void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size) {
-  auto* mem_region = mem_regions[index];
+void context::rdma_write(
+  uint32_t local_index, uint64_t local_offset,
+  uint32_t remote_index, uint64_t remote_offset, uint64_t size) {
+  auto* mem_region = mem_regions[local_index];
   memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
   sge_list.length = size;
   sge_list.lkey = mem_region->mr->lkey;
 
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->vaddrs[index] + remote_offset;
-  wr.wr.rdma.rkey = remote_connection->rkeys[index];
+  wr.wr.rdma.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.rdma.rkey = remote_connection->rkeys[remote_index];
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
   wr.num_sge = 1;
@@ -207,21 +209,47 @@ void context::rdma_write(uint32_t index, uint64_t local_offset, uint64_t remote_
 }
 
 void context::rdma_write(
-  uint32_t index, uint64_t local_offset, uint64_t remote_offset, uint64_t size, uint32_t imm_data) {
-  auto* mem_region = mem_regions[index];
+  uint32_t local_index, uint64_t local_offset,
+  uint32_t remote_index, uint64_t remote_offset,
+  uint64_t size, uint32_t imm_data) {
+  auto* mem_region = mem_regions[local_index];
   memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
   sge_list.length = size;
   sge_list.lkey = mem_region->mr->lkey;
 
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->vaddrs[index] + remote_offset;
-  wr.wr.rdma.rkey = remote_connection->rkeys[index];
+  wr.wr.rdma.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.rdma.rkey = remote_connection->rkeys[remote_index];
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
   wr.num_sge = 1;
   wr.imm_data = htonl(imm_data);
   wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+  wr.send_flags = IBV_SEND_SIGNALED;
+  wr.next = NULL;
+
+  struct ibv_send_wr *bad_wr = nullptr;
+  int ret = ibv_post_send(qp, &wr, &bad_wr);
+  THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+}
+
+void context::rdma_read(
+  uint32_t local_index, uint64_t local_offset,
+  uint32_t remote_index, uint64_t remote_offset, uint32_t size) {
+  auto* mem_region = mem_regions[local_index];
+  memset(&sge_list, 0, sizeof(sge_list));
+  sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
+  sge_list.length = size;
+  sge_list.lkey = mem_region->mr->lkey;
+
+  memset(&wr, 0, sizeof(wr));
+  wr.wr.rdma.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.rdma.rkey = remote_connection->rkeys[remote_index];
+  wr.wr_id = RDMA_WRID;
+  wr.sg_list = &sge_list;
+  wr.num_sge = 1;
+  wr.opcode = IBV_WR_RDMA_READ;
   wr.send_flags = IBV_SEND_SIGNALED;
   wr.next = NULL;
 
