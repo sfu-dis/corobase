@@ -22,16 +22,13 @@ This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see b
 
 #### Choosing a CC scheme
 
-ERMIA supports Read Committed (RC), Snapshot Isolation (SI), Serializable Snapshot Isolation (SSI), and Serial Safety Net (SSN) with SI/RC. Switches are defined in src/macros.h:
+ERMIA supports Read Committed (RC), Snapshot Isolation (SI), Serializable Snapshot Isolation (SSI), and Serial Safety Net (SSN) with SI/RC. The CMake config will build all variants. For example:
 
-* `#define SSI` to use serializable snapshot isolation (SSI);
-* `#define SSN` to use the serial safety net (SSN);
-   - SSN may be used in conjunction with RC (`RC`) or SI (default);
-   - `# define EARLY_SSN_CHECK` enables SSN window exclusion tests during normal reads and writes.
-
-`SSI` and `SSN` are mutually exclusive.
-
-Giving `-D[SCHEME]` to `$make` also works. `SCHEME` can be `RC`, `SI`, `RC_SSN`, `SI_SSN`, or `SSI`.
+* `ERMIA_SI` - snapshot isolation;
+* `ERMIA_SI_SSN_ESC` - SI + SSN + SSN early exclusion window checks without phantom protection;
+* `ERMIA_SI_SSN_ESC_PP` - same as `ERMIA_SI_SSN_ESC` but with phantom protection;
+* `ERMIA_SSI` - SSI without phantom protection;
+* `ERMIA_SSI_PP` - SSI + phantom protection;
 
 #### Adjust maximum concurrent workers
 
