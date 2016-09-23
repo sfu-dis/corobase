@@ -149,10 +149,17 @@ bench_runner::create_files_task(char *)
       auto fid = oidmgr->create_file(true);
       nm.second->fid = fid;
       nm.second->index->set_oid_array(fid);
+      nm.second->main_array = oidmgr->get_array(fid);
 
       // Initialize the fid_map entries
       if (sm_file_mgr::fid_map[nm.second->fid] != nm.second) {
         sm_file_mgr::fid_map[nm.second->fid] = nm.second;
+      }
+
+      // Initialize the pdest array
+      if (sysconf::is_backup_srv()) {
+          sm_file_mgr::get_file(fid)->init_pdest_array();
+          std::cout << "[Backup] Created pdest array for FID " << fid << std::endl;
       }
 
       // log [table name, FID]

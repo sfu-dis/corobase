@@ -2,6 +2,7 @@
 #include "amd64.h"
 #include "txn.h"
 #include "lockguard.h"
+#include "dbcore/sm-rep.h"
 #include "dbcore/serial.h"
 
 #include <atomic>
@@ -1049,6 +1050,9 @@ transaction::si_commit()
         ASSERT((pdest == NULL_PTR and not tuple->size) or
                (pdest.asi_type() == fat_ptr::ASI_LOG));
 #endif
+        if (sysconf::log_ship_by_rdma && sysconf::num_active_backups && !sysconf::is_backup_srv()) {
+            rep::update_pdest_on_backup_rdma(&w);
+        }
     }
 
     // NOTE: make sure this happens after populating log block,

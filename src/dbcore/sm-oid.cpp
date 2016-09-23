@@ -437,6 +437,7 @@ sm_oid_mgr_impl::destroy_file(FID f)
     // one allocator controls all three files
     thread_free(this, OBJARRAY_FID, f);
 }
+
 oid_array*
 sm_oid_mgr::get_array(FID f)
 {
@@ -487,7 +488,7 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
         // Recover fid_map and recreate the empty file
         ASSERT(sm_file_mgr::get_index(name));
         sm_file_mgr::name_map[name]->fid = f;
-        sm_file_mgr::fid_map[f] = new sm_file_descriptor(f, name, sm_file_mgr::get_index(name));
+        sm_file_mgr::fid_map[f] = new sm_file_descriptor(f, name, sm_file_mgr::get_index(name), oidmgr->get_array(f));
         ASSERT(not oidmgr->file_exists(f));
         oidmgr->recreate_file(f);
         printf("[Recovery.chkpt] FID=%d %s\n", f, name.c_str());
@@ -496,6 +497,12 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
         oid_array *oa = oidmgr->get_array(f);
         oa->ensure_size(oa->alloc_size(himark));
         oidmgr->recreate_allocator(f, himark);
+
+        // Initialize the pdest array
+        if (sysconf::is_backup_srv()) {
+            sm_file_mgr::get_file(f)->init_pdest_array();
+            std::cout << "Created pdest array for FID " << f << std::endl;
+        }
 
         // Populate the OID array
         while (1) {
