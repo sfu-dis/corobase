@@ -182,7 +182,7 @@ rc_t base_txn_btree::do_tree_put(
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
             auto* oa = underlying_btree.get_oid_array();
-            t.add_to_write_set(oa->get(oid), oa);
+            t.add_to_write_set(oa->get(oid), sysconf::num_backups == 0 ? 0 : fid);
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);

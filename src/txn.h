@@ -46,9 +46,9 @@ class base_txn_btree;
 // the entry pointer results a fat_ptr to the new object.
 struct write_record_t {
   fat_ptr* entry;
-  oid_array* oa;  // for log rdma-based shipping
-  write_record_t(fat_ptr* entry, oid_array* oa) : entry(entry), oa(oa) {}
-  write_record_t() : entry(nullptr), oa(nullptr) {}
+  FID fid;  // for rdma-based log shipping
+  write_record_t(fat_ptr* entry, FID fid) : entry(entry), fid(fid) {}
+  write_record_t() : entry(nullptr), fid(0) {}
   inline object *get_object() {
     return (object *)entry->offset();
   }
@@ -241,14 +241,14 @@ public:
     return flags;
   }
 
-  void add_to_write_set(fat_ptr* entry, oid_array* oa) {
+  void add_to_write_set(fat_ptr* entry, FID fid) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set->size(); ++i) {
       auto& w = (*write_set)[i];
       ASSERT(w.new_object != objptr);
     }
 #endif
-    write_set->emplace_back(entry, oa);
+    write_set->emplace_back(entry, fid);
   }
 
 protected:
