@@ -115,7 +115,7 @@
 #define HAVE_STD_IS_RVALUE_REFERENCE 1
 
 /* Define if you have the std::is_trivially_copyable template. */
-#define HAVE_STD_IS_TRIVIALLY_COPYABLE 1
+#define HAVE_STD_IS_TRIVIALLY_COPYABLE 0
 
 /* Define to 1 if you have the <strings.h> header file. */
 #define HAVE_STRINGS_H 1
