@@ -6,11 +6,11 @@ rdma::context *primary_rdma_ctx = nullptr;
 
 const static int kMessageSize = 8;
 char msgbuf[kMessageSize] CACHE_ALIGNED;
-uint64_t scratch_buf CACHE_ALIGNED;
+uint64_t scratch_buf[sysconf::MAX_THREADS];
 
 uint32_t msgbuf_index = -1;
 uint32_t logbuf_index = -1;
-uint64_t scratch_buf_index = -1;  // for RDMA primary only
+uint64_t scratch_buf_index[sysconf::MAX_THREADS];  // for RDMA primary only
 
 void primary_init_rdma() {
   auto& logbuf = logmgr->get_logbuf();
@@ -18,7 +18,9 @@ void primary_init_rdma() {
   // Must register in the exact sequence below, matching the backup node's sequence
   logbuf_index = primary_rdma_ctx->register_memory(logbuf._data, logbuf.window_size() * 2);
   msgbuf_index = primary_rdma_ctx->register_memory(msgbuf, kMessageSize);
-  scratch_buf_index = primary_rdma_ctx->register_memory((char*)&scratch_buf, sizeof(uint64_t));
+  for (uint32_t i = 0; i < sysconf::worker_threads; ++i) {
+    scratch_buf_index[i] = primary_rdma_ctx->register_memory((char*)&scratch_buf[i], sizeof(uint64_t));
+  }
   primary_rdma_ctx->finish_init();
   std::cout << "[Primary] RDMA initialized\n";
 
@@ -165,10 +167,12 @@ void update_pdest_on_backup_rdma(write_record_t* w) {
     if (next_obj) {
         expected = next_obj->_pdest._ptr;
     }
+    fat_ptr ret = NULL_PTR;
     while (true) {
         // FIXME(tzwang): handle cases where the remote pdest array is too small
-        fat_ptr ret { primary_rdma_ctx->rdma_compare_and_swap(
-          scratch_buf_index, 0, remote_index, offset, expected, obj->_pdest._ptr) };
+        ret._ptr = primary_rdma_ctx->rdma_compare_and_swap(
+          scratch_buf_index[sysconf::my_thread_id() % sysconf::worker_threads], 0,
+          remote_index, offset, expected, obj->_pdest._ptr);
         if (ret._ptr == expected || ret.offset() > w->entry->offset()) {
             break;
         }
