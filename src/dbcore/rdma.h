@@ -93,12 +93,6 @@ private:
   struct ibv_comp_channel *ch;
   struct ibv_device *ib_dev;
 
-  struct ibv_sge sge_list;
-  struct ibv_send_wr wr;
-#ifdef EXP_VERBS
-  struct ibv_exp_send_wr exp_wr;
-#endif
-
   std::string server_name;
   std::string port;
   int ib_port;
