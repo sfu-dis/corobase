@@ -41,6 +41,7 @@ void primary_init_rdma() {
     sm_file_mgr::fid_map[f]->pdest_array_mr_index = index;
     // std::cout << "[Primary] FID " << f << " pdest_array_mr_index=" << index << std::endl;
   }
+  volatile_write(sysconf::loading, false);
 }
 
 void backup_daemon_rdma(tcp::client_context* tcp_ctx) {

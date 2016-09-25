@@ -1,11 +1,15 @@
 #include <iostream>
 #include <unistd.h>
+#include <atomic>
 #include <string.h>
 
 #include "rdma.h"
+#include "sm-config.h"
 #include "tcp.h"
 
 namespace rdma {
+
+static const uint64_t kPollOps = 1;
 
 void context::init(const char *server) {
   if (server) {
@@ -43,18 +47,25 @@ void context::init(const char *server) {
 }
 
 void context::finish_init() {
-  ch = ibv_create_comp_channel(ctx);
-  THROW_IF(not ch, illegal_argument, "ibv_create_comp_channel() failed");
+  struct ibv_device_attr dev_attr;
+  memset(&dev_attr, 0, sizeof(dev_attr));
+  int ret = ibv_query_device(ctx, &dev_attr);
+  cqe = dev_attr.max_cqe;
+  ALWAYS_ASSERT(cqe > kPollOps);
+  std::cout << "[RDMA] Max cqe=" << cqe << std::endl;
 
-  cq = ibv_create_cq(ctx, tx_depth, (void *)this, ch, 0);
-  THROW_IF(not cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
+  send_cq = ibv_create_cq(ctx, cqe, (void *)this, nullptr, 0);
+  THROW_IF(not send_cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
+
+  recv_cq = ibv_create_cq(ctx, cqe, (void *)this, nullptr, 0);
+  THROW_IF(not recv_cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
 
 #ifdef EXP_VERBS
   struct ibv_exp_qp_init_attr exp_qp_init_attr;
   memset(&exp_qp_init_attr, 0, sizeof(exp_qp_init_attr));
   exp_qp_init_attr.pd = pd;
-  exp_qp_init_attr.send_cq = cq;
-  exp_qp_init_attr.recv_cq = cq;
+  exp_qp_init_attr.send_cq = send_cq;
+  exp_qp_init_attr.recv_cq = recv_cq;
   exp_qp_init_attr.qp_type = IBV_QPT_RC;
   exp_qp_init_attr.comp_mask |= IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS | IBV_EXP_QP_INIT_ATTR_PD;
   // Allow atomics
@@ -66,7 +77,7 @@ void context::finish_init() {
   exp_qp_init_attr.cap.max_recv_wr = 1;
   exp_qp_init_attr.cap.max_send_sge = 1;
   exp_qp_init_attr.cap.max_recv_sge = 1;
-  exp_qp_init_attr.cap.max_inline_data = 0;
+  exp_qp_init_attr.cap.max_inline_data = 16;
 
   qp = ibv_exp_create_qp(ctx, &exp_qp_init_attr);
   THROW_IF(not qp, illegal_argument, "Could not create queue pair, ibv_exp_create_qp");
@@ -81,7 +92,7 @@ void context::finish_init() {
                              IBV_ACCESS_REMOTE_READ |
                              IBV_ACCESS_LOCAL_WRITE;
 
-  int ret = ibv_exp_modify_qp(qp, &exp_attr,
+  ret = ibv_exp_modify_qp(qp, &exp_attr,
     IBV_EXP_QP_STATE | IBV_EXP_QP_PKEY_INDEX | IBV_EXP_QP_PORT | IBV_EXP_QP_ACCESS_FLAGS);
   THROW_IF(ret, illegal_argument, "Could not modify QP to INIT, ibv_exp_modify_qp");
 #else
@@ -94,7 +105,7 @@ void context::finish_init() {
   qp_init_attr.cap.max_recv_wr = 1;
   qp_init_attr.cap.max_send_sge = 1;
   qp_init_attr.cap.max_recv_sge = 1;
-  qp_init_attr.cap.max_inline_data = 0;
+  qp_init_attr.cap.max_inline_data = 16;
 
   qp = ibv_create_qp(pd, &qp_init_attr);
   THROW_IF(not qp, illegal_argument, "Could not create queue pair, ibv_create_qp");
@@ -127,8 +138,8 @@ void context::finish_init() {
 
 context::~context() {
   ibv_destroy_qp(qp);
-  ibv_destroy_cq(cq);
-  ibv_destroy_comp_channel(ch);
+  ibv_destroy_cq(send_cq);
+  ibv_destroy_cq(recv_cq);
   for (auto& r : mem_regions) {
     delete r;
   }
@@ -184,6 +195,26 @@ void context::exchange_ib_connection_info(int peer_sockfd) {
   tcp::receive(peer_sockfd, (char *)remote_connection, sizeof(ib_connection));
 }
 
+void context::poll_send_cq() {
+  static uint64_t __thread nops;
+  nops++;
+
+  if (nops >= kPollOps) {
+    struct ibv_wc wc[kPollOps];
+    memset(wc, 0, sizeof(struct ibv_wc) * kPollOps);
+    int n = 0;
+    do {
+      n = ibv_poll_cq(send_cq, kPollOps, wc);
+    } while (n == 0);
+    for (int i = 0; i < n; ++i) {
+      ALWAYS_ASSERT(wc[i].status == IBV_WC_SUCCESS);
+      THROW_IF(wc[i].status != IBV_WC_SUCCESS, os_error, wc[i].status, "Failed wc status");
+    }
+    ALWAYS_ASSERT(n <= kPollOps);
+    nops -= n;
+  }
+}
+
 void context::rdma_write(
   uint32_t local_index, uint64_t local_offset,
   uint32_t remote_index, uint64_t remote_offset, uint64_t size) {
@@ -202,12 +233,13 @@ void context::rdma_write(
   wr.sg_list = &sge_list;
   wr.num_sge = 1;
   wr.opcode = IBV_WR_RDMA_WRITE;
-  wr.send_flags = IBV_SEND_SIGNALED;
+  wr.send_flags = IBV_SEND_INLINE | IBV_SEND_SIGNALED;
   wr.next = NULL;
 
   struct ibv_send_wr *bad_wr = nullptr;
   int ret = ibv_post_send(qp, &wr, &bad_wr);
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+  poll_send_cq();
 }
 
 void context::rdma_write(
@@ -236,6 +268,7 @@ void context::rdma_write(
   struct ibv_send_wr *bad_wr = nullptr;
   int ret = ibv_post_send(qp, &wr, &bad_wr);
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+  poll_send_cq();
 }
 
 void context::rdma_read(
@@ -256,7 +289,7 @@ void context::rdma_read(
   wr.sg_list = &sge_list;
   wr.num_sge = 1;
   wr.opcode = IBV_WR_RDMA_READ;
-  wr.send_flags = IBV_SEND_SIGNALED;
+  wr.send_flags = IBV_SEND_INLINE | IBV_SEND_SIGNALED;
   wr.next = NULL;
 
   struct ibv_send_wr *bad_wr = nullptr;
@@ -309,11 +342,7 @@ uint64_t context::rdma_compare_and_swap(
   int ret = ibv_post_send(qp, &wr, &bad_wr);
 #endif
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
-  struct ibv_wc wc;
-  memset(&wc, 0, sizeof(wc));
-  while (not (ibv_poll_cq(cq, 1, &wc))) {}
-  THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status, "Failed wc status");
-  // TODO(tzwang): need ibv_poll_cq?
+  poll_send_cq();
   return htobe64(*(uint64_t *)(mem_region->buf + local_offset));
 }
 
@@ -332,8 +361,19 @@ uint32_t context::receive_rdma_with_imm() {
   THROW_IF(ret, illegal_argument, "ibv_post_recv() failed");
 
   struct ibv_wc wc;
-  memset(&wc, 0, sizeof(wc));
-  while (not (ibv_poll_cq(cq, 1, &wc) and wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM)) {}
+  while (true) {
+    memset(&wc, 0, sizeof(wc));
+    int n = ibv_poll_cq(recv_cq, 1, &wc);
+    if (n > 0) {
+      if (wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
+        break;
+      }
+      //std::cout << "Not IBV_WC_RECV_RDMA_WITH_IMM\n";
+    } else {
+      //std::cout << "Nothing\n";
+    }
+  }
+  //while (not (ibv_poll_cq(cq, 1, &wc) and wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM)) {}
   THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status, "Failed wc status");
   return ntohl(wc.imm_data);
 }

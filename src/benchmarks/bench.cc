@@ -223,8 +223,6 @@ bench_runner::run()
     RCU::rcu_deregister();
   }
 
-  volatile_write(sysconf::loading, false);
-
   if (sysconf::num_backups) {
     std::cout << "[Primary] Expect " << sysconf::num_backups << " backups\n";
     ALWAYS_ASSERT(not sysconf::is_backup_srv());
@@ -233,9 +231,11 @@ bench_runner::run()
       while (volatile_read(sysconf::num_active_backups) != volatile_read(sysconf::num_backups)) {}
       std::cout << "[Primary] " << sysconf::num_backups << " backups\n";
     }
-    getchar();
+    while(volatile_read(sysconf::loading)) {}
   } else if (sysconf::is_backup_srv()) {
     getchar();
+  } else {
+    volatile_write(sysconf::loading, false);
   }
 
   map<string, size_t> table_sizes_before;
