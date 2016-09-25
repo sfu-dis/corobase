@@ -6,7 +6,6 @@
 #include "sm-thread.h"
 #include <iostream>
 
-uint32_t sysconf::_active_threads = 0;
 uint32_t sysconf::worker_threads = 0;
 int sysconf::numa_nodes = 0;
 int sysconf::enable_gc = 0;

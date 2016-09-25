@@ -12,6 +12,22 @@
 
 namespace thread {
 
+extern uint32_t _active_threads;
+
+inline static uint32_t my_id() {
+  static __thread uint32_t __id;
+  static __thread bool initialized;
+  if (not initialized) {
+      __id = __sync_fetch_and_add(&_active_threads, 1);
+      initialized = true;
+  }
+  return __id;
+}
+
+inline static void reset_active_threads() {
+  volatile_write(_active_threads, 0);
+}
+
 struct sm_thread {
   const uint8_t kStateHasWork = 1U;
   const uint8_t kStateSleep   = 2U;
