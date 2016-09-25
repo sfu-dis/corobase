@@ -41,6 +41,7 @@ struct context{
 private:
   const static int RDMA_WRID = 3;
   const static int tx_depth = 100;
+  int cqe;
 #ifdef EXP_VERBS
   const static int QP_EXP_RTS_ATTR =
     IBV_EXP_QP_STATE | IBV_EXP_QP_TIMEOUT | IBV_EXP_QP_RETRY_CNT |
@@ -88,9 +89,9 @@ private:
 
   struct ibv_context *ctx;
   struct ibv_pd *pd;
-  struct ibv_cq *cq;
+  struct ibv_cq *send_cq;
+  struct ibv_cq *recv_cq;
   struct ibv_qp *qp;
-  struct ibv_comp_channel *ch;
   struct ibv_device *ib_dev;
 
   std::string server_name;
@@ -119,6 +120,7 @@ private:
 
   void init(const char *server);
   inline bool is_server() { return server_name.length() == 0; }
+  void poll_send_cq();
 
 public:
   context(std::string& server, std::string& port, int ib_port) :
