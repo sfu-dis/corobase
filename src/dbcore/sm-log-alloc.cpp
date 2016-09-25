@@ -35,13 +35,13 @@ sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset)
 {
     // TODO(tzwang): clflush (or the like) before setting the value
     // if the logbuf is backed by NVRAM (--nvram-log-buffer is true).
-    volatile_write(_tls_lsn_offset[sysconf::my_thread_id()], offset);
+    volatile_write(_tls_lsn_offset[thread::my_id()], offset);
 }
 
 uint64_t
 sm_log_alloc_mgr::get_tls_lsn_offset()
 {
-    return volatile_read(_tls_lsn_offset[sysconf::my_thread_id()]);
+    return volatile_read(_tls_lsn_offset[thread::my_id()]);
 }
 
 /* We have to find the end of the log files on disk before
@@ -552,7 +552,7 @@ uint64_t
 sm_log_alloc_mgr::smallest_tls_lsn_offset()
 {
     uint64_t oldest_offset = cur_lsn_offset();
-    for (uint32_t i = 0; i < sysconf::_active_threads; i++) {
+    for (uint32_t i = 0; i < thread::_active_threads; i++) {
         if (_tls_lsn_offset[i])
             oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
     }

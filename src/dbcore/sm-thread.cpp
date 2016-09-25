@@ -5,6 +5,7 @@
 
 namespace thread {
 
+uint32_t _active_threads = 0;
 node_thread_pool *thread_pools = nullptr;
 
 void sm_thread::idle_task() {

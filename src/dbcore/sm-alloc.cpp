@@ -452,7 +452,7 @@ try_recycle:
                     ASSERT(size);
                     auto& sol = scavenged_object_lists[size];
                     if (not sol.put(cur)) {
-                        central_object_pool.put_object_list(sol, (++next_thread) % sysconf::_active_threads);
+                        central_object_pool.put_object_list(sol, (++next_thread) % thread::_active_threads);
                         sol.head = sol.tail = NULL_PTR;
                         sol.nobjects = 0;
                         ALWAYS_ASSERT(sol.put(cur));
@@ -504,7 +504,7 @@ object_list::put(fat_ptr objptr) {
 object_list*
 object_pool::get_object_list(size_t size) {
     size_t aligned_size = align_up(size);
-    auto& my_pool = pool[sysconf::my_thread_id()];
+    auto& my_pool = pool[thread::my_id()];
     // peek at it first, don't bother if there's nothing
     if (my_pool.find(aligned_size) == my_pool.end()) {
         return NULL;

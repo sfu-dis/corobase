@@ -172,7 +172,7 @@ void update_pdest_on_backup_rdma(write_record_t* w) {
     while (true) {
         // FIXME(tzwang): handle cases where the remote pdest array is too small
         ret._ptr = primary_rdma_ctx->rdma_compare_and_swap(
-          scratch_buf_index[sysconf::my_thread_id() % sysconf::worker_threads], 0,
+          scratch_buf_index[thread::my_id() % sysconf::worker_threads], 0,
           remote_index, offset, expected, obj->_pdest._ptr);
         if (ret._ptr == expected || ret.offset() > w->entry->offset()) {
             break;
