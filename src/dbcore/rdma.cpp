@@ -98,8 +98,8 @@ void context::finish_init() {
 #else
   struct ibv_qp_init_attr qp_init_attr;
   memset(&qp_init_attr, 0, sizeof(qp_init_attr));
-  qp_init_attr.send_cq = cq;
-  qp_init_attr.recv_cq = cq;
+  qp_init_attr.send_cq = send_cq;
+  qp_init_attr.recv_cq = recv_cq;
   qp_init_attr.qp_type = IBV_QPT_RC;
   qp_init_attr.cap.max_send_wr = tx_depth;
   qp_init_attr.cap.max_recv_wr = 1;
@@ -120,7 +120,7 @@ void context::finish_init() {
                          IBV_ACCESS_REMOTE_READ |
                          IBV_ACCESS_LOCAL_WRITE;
 
-  int ret = ibv_modify_qp(qp, &attr,
+  ret = ibv_modify_qp(qp, &attr,
     IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
   THROW_IF(ret, illegal_argument, "Could not modify QP to INIT, ibv_modify_qp");
 #endif

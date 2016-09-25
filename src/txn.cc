@@ -12,8 +12,6 @@
 #include <vector>
 #include <utility>
 
-using namespace std;
-using namespace util;
 using namespace TXN;
 
 // XXX(tzwang): TLS read and write sets to avoid malloc -
