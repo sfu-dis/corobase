@@ -16,13 +16,13 @@ using namespace TXN;
 
 // XXX(tzwang): TLS read and write sets to avoid malloc -
 // much faster especially under high contention
-static __thread transaction::write_set_t* tls_write_set;
+write_set_t tls_write_set[sysconf::MAX_THREADS];
 #if defined(SSN) || defined(SSI)
 static __thread transaction::read_set_t* tls_read_set;
 #endif
 
 transaction::transaction(uint64_t flags, str_arena &sa)
-  : flags(flags), sa(&sa)
+  : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()])
 {
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
     concurrent_btree::NodeLockRegionBegin();
@@ -31,12 +31,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     absent_set.set_empty_key(NULL);    // google dense map
     absent_set.clear();
 #endif
-    if (unlikely(not tls_write_set)) {
-        tls_write_set = new write_set_t;
-        tls_write_set->reserve(2000);
-    }
-    write_set = tls_write_set;
-    write_set->clear();
+    write_set.clear();
 #if defined(SSN) || defined(SSI)
     if (unlikely(not tls_read_set)) {
         tls_read_set = new read_set_t;
@@ -134,8 +129,8 @@ transaction::abort_impl()
     }
 #endif
 
-    for (uint32_t i = 0; i < write_set->size(); ++i) {
-        auto &w = (*write_set)[i];
+    for (uint32_t i = 0; i < write_set.size(); ++i) {
+        auto &w = write_set[i];
         dbtuple *tuple = w.get_object()->tuple();
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->get_object()->_clsn) == xid);
@@ -205,7 +200,7 @@ transaction::commit()
     // This is the same for both SSN and SSI.
     if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
         ASSERT(not log);
-        ASSERT(write_set->size() == 0);
+        ASSERT(write_set.size() == 0);
         xc->end = xc->begin;
         volatile_write(xc->state, TXN_CMMTD);
         return {RC_TRUE};
@@ -360,8 +355,8 @@ transaction::parallel_ssn_commit()
         }
     }
 
-    for (uint32_t i = 0; i < write_set->size(); ++i) {
-        auto &w = (*write_set)[i];
+    for (uint32_t i = 0; i < write_set.size(); ++i) {
+        auto &w = write_set[i];
         dbtuple *tuple = w.get_object()->tuple();
 
         // go to the precommitted or committed version I (am about to)
@@ -566,8 +561,8 @@ transaction::parallel_ssn_commit()
     // post-commit: stuff access stamps for reads; init new versions
     auto clsn = xc->end;
     fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
-    for (uint32_t i = 0; i < write_set->size(); ++i) {
-        auto &w = (*write_set)[i];
+    for (uint32_t i = 0; i < write_set.size(); ++i) {
+        auto &w = write_set[i];
         dbtuple *tuple = w.get_object()->tuple();
         tuple->do_write();
         dbtuple *next_tuple = tuple->next();
@@ -806,8 +801,8 @@ transaction::parallel_ssi_commit()
 
     if (ct3) {
         // now see if I'm the unlucky T2
-        for (uint32_t i = 0; i < write_set->size(); ++i) {
-            auto &w = (*write_set)[i];
+        for (uint32_t i = 0; i < write_set.size(); ++i) {
+            auto &w = write_set[i];
             dbtuple *overwritten_tuple = w.get_object()->tuple()->next();
             if (not overwritten_tuple)
                 continue;
@@ -925,8 +920,8 @@ transaction::parallel_ssi_commit()
     fat_ptr clsn_ptr = LSN::make(cstamp, 0).to_log_ptr();
     // stamp overwritten versions, stuff clsn
     auto clsn = xc->end;
-    for (uint32_t i = 0; i < write_set->size(); ++i) {
-        auto &w = (*write_set)[i];
+    for (uint32_t i = 0; i < write_set.size(); ++i) {
+        auto &w = write_set[i];
         dbtuple* tuple = w.get_object()->tuple();
         tuple->do_write();
         dbtuple *overwritten_tuple = tuple->next();
@@ -1031,8 +1026,8 @@ transaction::si_commit()
     // stuff clsn in tuples in write-set
     auto clsn = xc->end;
     fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
-    for (uint32_t i = 0; i < write_set->size(); ++i) {
-        auto &w = (*write_set)[i];
+    for (uint32_t i = 0; i < write_set.size(); ++i) {
+        auto &w = write_set[i];
         dbtuple* tuple = w.get_object()->tuple();
         ASSERT(w.oa);
         tuple->do_write();
@@ -1277,7 +1272,7 @@ transaction::ssi_read(dbtuple *tuple)
         // Read-only optimization: s2 is not a problem if we're read-only and
         // my begin ts is earlier than s2.
         if (not sysconf::enable_ssi_read_only_opt or
-            write_set->size() > 0 or
+            write_set.size() > 0 or
             xc->begin >= tuple->s2) {
             // sstamp will be valid too if s2 is valid
             ASSERT(tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
