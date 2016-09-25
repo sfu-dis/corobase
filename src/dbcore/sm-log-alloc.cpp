@@ -60,7 +60,6 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     , _write_daemon_should_stop(false)
     , _lsn_offset(_lm.get_durable_mark().offset())
 {
-    sysconf::_active_threads = 0;
     _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * sysconf::MAX_THREADS);
     memset(_tls_lsn_offset, 0, sizeof(uint64_t) * sysconf::MAX_THREADS);
     _commit_queue = new commit_queue[sysconf::worker_threads];
