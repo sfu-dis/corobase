@@ -37,9 +37,6 @@ using google::dense_hash_map;
 
 using namespace TXN;
 
-// forward decl
-class base_txn_btree;
-
 // A write-set entry is essentially a pointer to the OID array entry
 // begin updated. The write-set is naturally de-duplicated: repetitive
 // updates will leave only one entry by the first update. Dereferencing
@@ -54,6 +51,27 @@ struct write_record_t {
   }
 };
 
+struct write_set_t {
+  static const uint32_t kMaxEntries = 1024;
+  uint32_t num_entries;
+  write_record_t entries[kMaxEntries];
+  write_set_t() : num_entries(0) {}
+  inline void emplace_back(fat_ptr* oe, FID f) {
+    ALWAYS_ASSERT(num_entries < kMaxEntries);
+    new (&entries[num_entries]) write_record_t(oe, f);
+    ++num_entries;
+    ASSERT(entries[num_entries-1].entry == oe);
+  }
+  inline uint32_t size() { return num_entries; }
+  inline void clear() { num_entries = 0; }
+  inline write_record_t& operator[](uint32_t idx) { return entries[idx]; }
+};
+
+extern write_set_t tls_write_set[sysconf::MAX_THREADS];
+
+// forward decl
+class base_txn_btree;
+
 class transaction {
   // XXX: weaker than necessary
   friend class base_txn_btree;
@@ -66,7 +84,6 @@ public:
 #if defined(SSN) || defined(SSI)
   typedef std::vector<dbtuple *> read_set_t;
 #endif
-  typedef std::vector<write_record_t> write_set_t;
 
   enum {
     // use the low-level scan protocol for checking scan consistency,
@@ -243,12 +260,13 @@ public:
 
   void add_to_write_set(fat_ptr* entry, FID fid) {
 #ifndef NDEBUG
-    for (uint32_t i = 0; i < write_set->size(); ++i) {
-      auto& w = (*write_set)[i];
+    for (uint32_t i = 0; i < write_set.size(); ++i) {
+      auto& w = write_set[i];
+      ASSERT(w.entry);
       ASSERT(w.new_object != objptr);
     }
 #endif
-    write_set->emplace_back(entry, fid);
+    write_set.emplace_back(entry, fid);
   }
 
 protected:
@@ -257,7 +275,7 @@ protected:
   xid_context *xc;
   sm_tx_log* log;
   str_arena *sa;
-  write_set_t* write_set;
+  write_set_t& write_set;
 #if defined(SSN) || defined(SSI)
   read_set_t* read_set;
 #endif
