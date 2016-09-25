@@ -21,7 +21,6 @@ struct sm_thread {
   std::thread thd;
   uint16_t node;
   uint16_t core;
-  XID current_xid;
   bool shutdown;
   uint8_t state;
   task_t task;
@@ -33,7 +32,6 @@ struct sm_thread {
   sm_thread(uint16_t n, uint16_t c) :
     node(n),
     core(c),
-    current_xid(INVALID_XID),
     shutdown(false),
     state(kStateNoWork),
     task(nullptr) {
