@@ -129,7 +129,7 @@ rc_t base_txn_btree::do_tree_put(
                             continue;
 
                         // we're safe if the reader is read-only (so far) and started after ct3
-                        if (reader_xc->xct->write_set->size() > 0 and reader_begin <= t.xc->ct3) {
+                        if (reader_xc->xct->write_set.size() > 0 and reader_begin <= t.xc->ct3) {
                             oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid);
                             return {RC_ABORT_SERIAL};
                         }
