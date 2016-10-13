@@ -74,8 +74,8 @@ build_rmw_key(int worker_id) {
 class ycsb_worker : public bench_worker {
 public:
   ycsb_worker(unsigned int worker_id,
-              unsigned long seed, abstract_db *db,
-              const map<string, abstract_ordered_index *> &open_tables,
+              unsigned long seed, ndb_wrapper *db,
+              const map<string, ndb_ordered_index *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
     : bench_worker(worker_id, seed, db,
                    open_tables, barrier_a, barrier_b),
@@ -131,7 +131,7 @@ public:
   }
 
   rc_t txn_rmw() {
-    void *txn = db->new_txn(0, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+    void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto& key = build_rmw_key(worker_id);
@@ -163,21 +163,21 @@ protected:
   }
 
 private:
-  abstract_ordered_index *tbl;
+  ndb_ordered_index *tbl;
 };
 
 class ycsb_usertable_loader : public bench_loader {
 public:
   ycsb_usertable_loader(unsigned long seed,
-                        abstract_db *db,
-                        const map<string, abstract_ordered_index *> &open_tables)
+                        ndb_wrapper *db,
+                        const map<string, ndb_ordered_index *> &open_tables)
     : bench_loader(seed, db, open_tables)
   {}
 
 protected:
   // XXX(tzwang): for now this is serial
   void load() {
-    abstract_ordered_index *tbl = open_tables.at("USERTABLE");
+    ndb_ordered_index *tbl = open_tables.at("USERTABLE");
     std::vector<YcsbKey> keys;
     uint64_t records_per_thread = g_initial_table_size / sysconf::worker_threads;
     bool spread = true;
@@ -222,7 +222,7 @@ protected:
       YcsbRecord r('a');
       varstr k((char *)&key.data_, sizeof(key));
       varstr v(r.data_, sizeof(r));
-      void *txn = db->new_txn(0, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+      void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
       arena.reset();
       try_verify_strict(tbl->insert(txn, k, v));
       try_verify_strict(db->commit_txn(txn));
@@ -235,7 +235,7 @@ protected:
 
 class ycsb_bench_runner : public bench_runner {
 public:
-  ycsb_bench_runner(abstract_db *db)
+  ycsb_bench_runner(ndb_wrapper *db)
     : bench_runner(db)
   {
   }
@@ -269,7 +269,7 @@ protected:
 };
 
 void
-ycsb_do_test(abstract_db *db, int argc, char **argv)
+ycsb_do_test(ndb_wrapper *db, int argc, char **argv)
 {
   // parse options
   optind = 1;

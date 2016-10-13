@@ -79,7 +79,7 @@ TaxrateBuffer taxrateBuffer (325);
 ZipCodeBuffer zipCodeBuffer (14850);
 
 // Utils
-class table_scanner: public abstract_ordered_index::scan_callback {
+class table_scanner: public ndb_ordered_index::scan_callback {
 	public:
 		table_scanner( str_arena* arena) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
@@ -179,7 +179,7 @@ class tpce_worker_mixin : private _dummy {
 	, tbl_ ## name ## _vec(partitions.at(#name))
 
 	public:
-		tpce_worker_mixin(const map<string, vector<abstract_ordered_index *>> &partitions) :
+		tpce_worker_mixin(const map<string, vector<ndb_ordered_index *>> &partitions) :
 			_dummy() // so hacky...
 			TPCE_TABLE_LIST(DEFN_TBL_INIT_X)
 	{
@@ -191,9 +191,9 @@ class tpce_worker_mixin : private _dummy {
 
 #define DEFN_TBL_ACCESSOR_X(name) \
 	private:  \
-			  vector<abstract_ordered_index *> tbl_ ## name ## _vec; \
+			  vector<ndb_ordered_index *> tbl_ ## name ## _vec; \
 	protected: \
-			   inline ALWAYS_INLINE abstract_ordered_index * \
+			   inline ALWAYS_INLINE ndb_ordered_index * \
 		tbl_ ## name (unsigned int pid) \
 		{ \
 			return tbl_ ## name ## _vec[pid - 1];	\
@@ -305,9 +305,9 @@ class tpce_worker :
 	public:
 		// resp for [partition_id_start, partition_id_end)
 		tpce_worker(unsigned int worker_id,
-				unsigned long seed, abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				unsigned long seed, ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				spin_barrier *barrier_a, spin_barrier *barrier_b,
 				uint partition_id_start, uint partition_id_end)
 			: bench_worker(worker_id, seed, db,
@@ -706,7 +706,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 */
 
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	std::vector<std::pair<varstr *, const varstr *>> brokers;
 	for( auto i = 0; i < max_broker_list_len and pIn->broker_list[i] ; i++ )
@@ -806,7 +806,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut)
 {
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	// Get c_id;
 	const c_tax_id_index::key k_c_0( pIn->tax_id, MIN_VAL(k_c_0.c_id) );
@@ -1009,7 +1009,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
     //
     // Seems hstore (osdl dbt5) does this too:
     // https://github.com/apavlo/h-store/blob/master/src/benchmarks/edu/brown/benchmark/tpce/procedures/MarketFeed.java
-    txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+    txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 	for( int i = 0; i < max_feed_len; i++ )
 	{
 		TTickerEntry ticker = pIn->Entries[i];
@@ -1142,7 +1142,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut)
 {
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	std::vector<inline_str_fixed<cSYMBOL_len>> stock_list_cursor;
 
@@ -1282,7 +1282,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut)
 {
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	int64_t co_id;
 
@@ -1496,7 +1496,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
 	int i;
 
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	pOut->num_found = 0;
 	for( i = 0; i < pIn->max_trades; i++ )
@@ -1568,7 +1568,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
 rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTradeLookupFrame2Output *pOut)
 {
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_ca_id_index::key k_t_1( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id) );
@@ -1647,7 +1647,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
 rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTradeLookupFrame3Output *pOut)
 {
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 	
 	const t_s_symb_index::key k_t_0( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_s_symb_index::key k_t_1( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id) );
@@ -1731,7 +1731,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
 rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTradeLookupFrame4Output *pOut)
 {
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_ca_id_index::key k_t_1( pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id) );
@@ -1788,7 +1788,7 @@ rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTrade
 rc_t tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn, TTradeOrderFrame1Output *pOut)
 {
 
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const customer_account::key k_ca(pIn->acct_id);
 	customer_account::value v_ca_temp;
@@ -2226,7 +2226,7 @@ rc_t tpce_worker::DoTradeOrderFrame6(void)
 rc_t tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTradeResultFrame1Output *pOut)
 {
 
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const trade::key k_t(pIn->trade_id);
 	trade::value v_t_temp;
@@ -2764,7 +2764,7 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn, TTrade
 rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTradeStatusFrame1Output *pOut)
 {
   auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+  txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, MIN_VAL(k_t_0.t_dts), MIN_VAL(k_t_0.t_id) );
 	const t_ca_id_index::key k_t_1( pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id) );
@@ -2844,7 +2844,7 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTrade
 rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTradeUpdateFrame1Output *pOut)
 {
 
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	for( auto i = 0; i < pIn->max_trades; i++ )
 	{
@@ -2959,7 +2959,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
 rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTradeUpdateFrame2Output *pOut)
 {
 
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_ca_id_index::key k_t_1( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_0.t_id));
@@ -3052,7 +3052,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
 rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTradeUpdateFrame3Output *pOut)
 {
 
-	txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_s_symb_index::key k_t_0( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
 	const t_s_symb_index::key k_t_1( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_0.t_id));
@@ -3175,7 +3175,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
 
 rc_t tpce_worker::DoLongQueryFrame1()
 {
-	txn = db->new_txn(txn_flags | transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+	txn = db->new_txn(txn_flags | transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	auto total_range = max_ca_id - min_ca_id;
 	auto scan_range_size = (max_ca_id - min_ca_id) / 100 * long_query_scan_range;
@@ -3237,9 +3237,9 @@ rc_t tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn){ ret
 class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_charge_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3274,7 +3274,7 @@ class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
 					k.ch_c_tier = record->CH_C_TIER;
 					v.ch_chrg = record->CH_CHRG;
 
-					void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_charge(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -3292,9 +3292,9 @@ class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_commission_rate_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_commission_rate_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3332,7 +3332,7 @@ class tpce_commission_rate_loader : public bench_loader, public tpce_worker_mixi
 					v.cr_to_qty = record->CR_TO_QTY;
 					v.cr_rate = record->CR_RATE;
 
-					void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_commission_rate(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -3348,9 +3348,9 @@ class tpce_commission_rate_loader : public bench_loader, public tpce_worker_mixi
 class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_exchange_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions)
@@ -3384,7 +3384,7 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
 					v.ex_desc = string(record->EX_DESC);
 					v.ex_ad_id= record->EX_AD_ID;
 
-					void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_exchange(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -3397,9 +3397,9 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_industry_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3444,7 +3444,7 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
 					k_in_idx2.in_sc_id = string(record->IN_SC_ID);
 					k_in_idx2.in_id = string(record->IN_ID);
 
-					void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_industry(1)->insert(txn, Encode(str(sizeof(k_in)), k_in), Encode(str(sizeof(v_in)), v_in)));
 					try_verify_strict(tbl_in_name_index(1)->insert(txn, Encode(str(sizeof(k_in_idx1)), k_in_idx1), Encode(str(sizeof(v_in_idx1)), v_in_idx1)));
 					try_verify_strict(tbl_in_sc_id_index(1)->insert(txn, Encode(str(sizeof(k_in_idx2)), k_in_idx2), Encode(str(sizeof(v_in_idx2)), v_in_idx2)));
@@ -3462,9 +3462,9 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_sector_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3505,7 +3505,7 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
 					k.sc_id= string(record->SC_ID);
 					v.dummy = true;
 
-					void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_sector(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -3521,9 +3521,9 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_status_type_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3563,7 +3563,7 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
 						k.st_id = string(record->ST_ID);
 						v.st_name = string(record->ST_NAME );
 
-						void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+						void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 						try_verify_strict(tbl_status_type(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 						try_verify_strict(db->commit_txn(txn));
 						arena.reset();
@@ -3579,9 +3579,9 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_tax_rate_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3622,7 +3622,7 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
 						v.tx_name = string(record->TX_NAME );
 						v.tx_rate = record->TX_RATE;
 
-						void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+						void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 						try_verify_strict(tbl_tax_rate(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 						try_verify_strict(db->commit_txn(txn));
 						arena.reset();
@@ -3638,9 +3638,9 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_trade_type_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3682,7 +3682,7 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
 						v.tt_is_sell = record->TT_IS_SELL;
 						v.tt_is_mrkt = record->TT_IS_MRKT;
 
-						void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+						void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 						try_verify_strict(tbl_trade_type(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 						try_verify_strict(db->commit_txn(txn));
 						arena.reset();
@@ -3698,9 +3698,9 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_zip_code_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3736,7 +3736,7 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
 						v.zc_town = string(record->ZC_TOWN);
 						v.zc_div = string(record->ZC_DIV);
 
-						void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+						void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 						try_verify_strict(tbl_zip_code(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 						try_verify_strict(db->commit_txn(txn));
 						arena.reset();
@@ -3752,9 +3752,9 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_address_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3795,7 +3795,7 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
 							v.ad_zc_code = string(record->AD_ZC_CODE );
 							v.ad_ctry = string(record->AD_CTRY );
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_address(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -3812,9 +3812,9 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_customer_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3880,7 +3880,7 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 							k_idx_tax_id.c_id			= record->C_ID;
 							k_idx_tax_id.c_tax_id		= string(record->C_TAX_ID);
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_customers(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(tbl_c_tax_id_index(1)->insert(txn, Encode(str(sizeof(k_idx_tax_id)), k_idx_tax_id), Encode(str(sizeof(v_idx_tax_id)), v_idx_tax_id)));
 							try_verify_strict(db->commit_txn(txn));
@@ -3898,9 +3898,9 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_ca_and_ap_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -3961,7 +3961,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
 							k_idx1.ca_c_id = record->CA_C_ID;
 							v_idx1.ca_bal	= record->CA_BAL;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_customer_account(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 
 							try_verify_strict(tbl_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_idx1)), k_idx1), Encode(str(sizeof(v_idx1)), v_idx1)));
@@ -3982,7 +3982,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
 							v.ap_l_name	= string(record->AP_L_NAME);
 							v.ap_f_name	= string(record->AP_F_NAME);
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_account_permission(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4000,9 +4000,9 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_customer_taxrate_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_customer_taxrate_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4044,7 +4044,7 @@ class tpce_customer_taxrate_loader : public bench_loader, public tpce_worker_mix
 							k.cx_tx_id		= string(record->CX_TX_ID);
 							v.dummy 			= true;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_customer_taxrate(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4061,9 +4061,9 @@ class tpce_customer_taxrate_loader : public bench_loader, public tpce_worker_mix
 class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_wl_and_wi_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4108,7 +4108,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
 							k.wl_id = record->WL_ID;
 							v.dummy = true;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_watch_list(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4124,7 +4124,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
 							k.wi_wl_id	= record->WI_WL_ID;
 							k.wi_s_symb   = record->WI_S_SYMB;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_watch_item(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4142,9 +4142,9 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_company_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4198,7 +4198,7 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
 							k_idx2.co_in_id = string(record->CO_IN_ID);
 							k_idx2.co_id	= record->CO_ID;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_company(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(tbl_co_name_index(1)->insert(txn, Encode(str(sizeof(k_idx1)), k_idx1), Encode(str(sizeof(v_idx1)), v_idx1)));
 							try_verify_strict(tbl_co_in_id_index(1)->insert(txn, Encode(str(sizeof(k_idx2)), k_idx2), Encode(str(sizeof(v_idx2)), v_idx2)));
@@ -4217,9 +4217,9 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_company_competitor_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_company_competitor_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4259,7 +4259,7 @@ class tpce_company_competitor_loader : public bench_loader, public tpce_worker_m
 							k.cp_in_id			= string(record->CP_IN_ID);
 							v.dummy				= true;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_company_competitor(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4276,9 +4276,9 @@ class tpce_company_competitor_loader : public bench_loader, public tpce_worker_m
 class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_daily_market_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4320,7 +4320,7 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
 							v.dm_low				= record->DM_HIGH;
 							v.dm_vol				= record->DM_VOL;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_daily_market(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4337,9 +4337,9 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_financial_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4390,7 +4390,7 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
 							v.fi_out_basic		=	record->FI_OUT_BASIC;
 							v.fi_out_dilut		=	record->FI_OUT_DILUT;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_financial(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4407,9 +4407,9 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_last_trade_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4450,7 +4450,7 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
 							v.lt_open_price 	= record->LT_OPEN_PRICE;
 							v.lt_vol 			= record->LT_VOL;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_last_trade(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4467,9 +4467,9 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_ni_and_nx_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4513,7 +4513,7 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 
 							v.dummy = true;
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_news_xref(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4535,7 +4535,7 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 							v.ni_source	= string(record->NI_SOURCE);
 							v.ni_author	= string(record->NI_AUTHOR);
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_news_item(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(db->commit_txn(txn));
 							arena.reset();
@@ -4553,9 +4553,9 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_security_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4613,7 +4613,7 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
 							v_idx.s_name		= string(record->S_NAME);
 							v_idx.s_ex_id		= string(record->S_EX_ID);
 
-							void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+							void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 							try_verify_strict(tbl_security(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 							try_verify_strict(tbl_security_index(1)->insert(txn, Encode(str(sizeof(k_idx)), k_idx), Encode(str(sizeof(v_idx)), v_idx)));
 							try_verify_strict(db->commit_txn(txn));
@@ -4631,9 +4631,9 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 	public:
 		tpce_growing_loader(unsigned long seed,
-				abstract_db *db,
-				const map<string, abstract_ordered_index *> &open_tables,
-				const map<string, vector<abstract_ordered_index *>> &partitions,
+				ndb_wrapper *db,
+				const map<string, ndb_ordered_index *> &open_tables,
+				const map<string, vector<ndb_ordered_index *>> &partitions,
 				ssize_t partition_id)
 			: bench_loader(seed, db, open_tables),
 			tpce_worker_mixin(partitions),
@@ -4765,7 +4765,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					v_idx2.t_exec_name		=	string(record->T_EXEC_NAME);
 					v_idx2.t_trade_price	=	record->T_TRADE_PRICE	;
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_trade(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 
 					try_verify_strict(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_idx1)), k_idx1), Encode(str(sizeof(v_idx1)), v_idx1)));
@@ -4784,7 +4784,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					k.th_dts	=  record->TH_DTS.GetDate();
 					k.th_st_id = string( record->TH_ST_ID );
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_trade_history(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -4803,7 +4803,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					v.se_amt				=	record->SE_AMT;
 
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_settlement(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -4821,7 +4821,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					v.ct_amt			= record->CT_AMT;
 					v.ct_name			= string(record->CT_NAME);
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_cash_transaction(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -4838,7 +4838,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					v.hh_before_qty		= record->HH_BEFORE_QTY;
 					v.hh_after_qty		= record->HH_AFTER_QTY;
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_holding_history(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -4876,7 +4876,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					k_idx.b_name		= string(record->B_NAME );
 					k_idx.b_id			= record->B_ID;
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_broker(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(tbl_b_name_index(1)->insert(txn, Encode(str(sizeof(k_idx)), k_idx), Encode(str(sizeof(v_idx)), v_idx)));
 					try_verify_strict(db->commit_txn(txn));
@@ -4907,7 +4907,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					k.hs_s_symb		= string(record->HS_S_SYMB);
 					v.hs_qty			= record->HS_QTY;
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_holding_summary(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -4941,7 +4941,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 					v.h_price		= record->H_PRICE;
 					v.h_qty		= record->H_QTY;
 
-					void* txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_DEFAULT);
+					void* txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 					try_verify_strict(tbl_holding(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
 					try_verify_strict(db->commit_txn(txn));
 					arena.reset();
@@ -4971,19 +4971,19 @@ class tpce_bench_runner : public bench_runner {
 				return true;
 			}
 
-		static vector<abstract_ordered_index *>
-			OpenTablesForTablespace(abstract_db *db, const char *name, size_t expected_size)
+		static vector<ndb_ordered_index *>
+			OpenTablesForTablespace(ndb_wrapper *db, const char *name, size_t expected_size)
 			{
 				const string s_name(name);
-				vector<abstract_ordered_index *> ret(NumPartitions());
-                abstract_ordered_index *idx = db->open_index(s_name, expected_size, false);
+				vector<ndb_ordered_index *> ret(NumPartitions());
+                ndb_ordered_index *idx = db->open_index(s_name, expected_size, false);
 				for (size_t i = 0; i < NumPartitions(); i++)
 					ret[i] = idx;
 				return ret;
 			}
 
 	public:
-		tpce_bench_runner(abstract_db *db)
+		tpce_bench_runner(ndb_wrapper *db)
 			: bench_runner(db)
 		{
     }
@@ -5078,12 +5078,12 @@ class tpce_bench_runner : public bench_runner {
 			}
 
 	private:
-		map<string, vector<abstract_ordered_index *>> partitions;
+		map<string, vector<ndb_ordered_index *>> partitions;
 };
 
 
 // Benchmark entry function
-void tpce_do_test(abstract_db *db, int argc, char **argv)
+void tpce_do_test(ndb_wrapper *db, int argc, char **argv)
 {
 	int customers = 0;
 	int working_days = 0;

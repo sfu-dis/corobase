@@ -50,7 +50,7 @@ ndb_wrapper::abort_txn(void *txn)
   t->~transaction();
 }
 
-abstract_ordered_index *
+ndb_ordered_index *
 ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append)
 {
   auto *index = new ndb_ordered_index(name, value_size_hint, mostly_append);
@@ -61,7 +61,7 @@ ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mo
 }
 
 void
-ndb_wrapper::close_index(abstract_ordered_index *idx)
+ndb_wrapper::close_index(ndb_ordered_index *idx)
 {
   delete idx;
 }
@@ -123,7 +123,7 @@ ndb_ordered_index::insert(
 
 class ndb_wrapper_search_range_callback : public txn_btree::search_range_callback {
 public:
-  ndb_wrapper_search_range_callback(abstract_ordered_index::scan_callback &upcall)
+  ndb_wrapper_search_range_callback(ndb_ordered_index::scan_callback &upcall)
     : txn_btree::search_range_callback(), upcall(&upcall) {}
 
   virtual bool
@@ -134,7 +134,7 @@ public:
   }
 
 private:
-  abstract_ordered_index::scan_callback *upcall;
+  ndb_ordered_index::scan_callback *upcall;
 };
 
 rc_t
@@ -183,12 +183,6 @@ ndb_ordered_index::remove(void *txn, varstr &&key)
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
   auto t = (transaction *)&p->buf[0];
   return btr.remove(*t, std::move(key));
-}
-
-size_t
-ndb_ordered_index::size() const
-{
-  return btr.size_estimate();
 }
 
 std::map<std::string, uint64_t>
