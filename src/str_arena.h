@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include "small_vector.h"
 #include "varstr.h"
 #include "dbcore/sm-common.h"
 

@@ -5,7 +5,6 @@
 #include <iterator>
 #include <stdint.h>
 #include <unordered_map>
-#include <type_traits>
 
 #include "macros.h"
 #include "log2.hh"

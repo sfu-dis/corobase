@@ -1,14 +1,10 @@
 #pragma once
 
 #include "dbcore/sm-file.h"
-#include "txn.h"
 #include "util.h"
-#include "ndb_type_traits.h"
 
 #include <string>
 #include <map>
-#include <type_traits>
-#include <memory>
 
 using namespace TXN;
 
