@@ -11,7 +11,6 @@
 
 #include "../txn.h"
 #include "../macros.h"
-#include "../spinlock.h"
 
 #include "bench.h"
 #include "tpce.h"
