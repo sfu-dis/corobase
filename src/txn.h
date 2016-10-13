@@ -257,7 +257,7 @@ public:
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto& w = write_set[i];
       ASSERT(w.entry);
-      ASSERT(w.new_object != objptr);
+      ASSERT(w.entry != entry);
     }
 #endif
     write_set.emplace_back(entry, fid);

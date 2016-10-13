@@ -1027,7 +1027,7 @@ transaction::si_commit()
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
         dbtuple* tuple = w.get_object()->tuple();
-        ASSERT(w.oa);
+        ASSERT(w.entry);
         tuple->do_write();
         tuple->get_object()->_clsn = clsn_ptr;
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);

@@ -33,11 +33,7 @@
 
 #define COMPILER_MEMORY_FENCE asm volatile("" ::: "memory")
 
-#ifdef NDEBUG
-  #define ALWAYS_ASSERT(expr) (likely((expr)) ? (void)0 : abort())
-#else
-  #define ALWAYS_ASSERT(expr) ASSERT((expr))
-#endif /* NDEBUG */
+#define ALWAYS_ASSERT(expr) (likely((expr)) ? (void)0 : abort())
 
 #define ARRAY_NELEMS(a) (sizeof(a)/sizeof((a)[0]))
 
