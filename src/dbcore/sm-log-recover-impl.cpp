@@ -276,7 +276,7 @@ parallel_file_replay::redo_runner::my_work(char *) {
     oidmgr->recreate_allocator(fid, himark);
 
 #if SEPARATE_INDEX_REBUILD
-  rebuild_index(scanner, fid, fid_index, LSN{0x1ff}, LSN{~uint64_t{0}});
+  owner->rebuild_index(owner->scanner, fid, fid_index, LSN{0x1ff}, LSN{~uint64_t{0}});
 #endif
 
   done = true;
