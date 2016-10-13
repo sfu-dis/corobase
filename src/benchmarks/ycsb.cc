@@ -235,14 +235,13 @@ protected:
 
 class ycsb_bench_runner : public bench_runner {
 public:
-  ycsb_bench_runner(ndb_wrapper *db)
-    : bench_runner(db)
-  {
+  ycsb_bench_runner(ndb_wrapper *db) : bench_runner(db) {
+    db->open_table("USERTABLE");
   }
 
   virtual void prepare(char *)
   {
-    open_tables["USERTABLE"] = db->open_index("USERTABLE", kRecordSize);
+    open_tables["USERTABLE"] = sm_file_mgr::get_index("USERTABLE");
   }
 
 protected:

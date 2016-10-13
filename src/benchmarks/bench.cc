@@ -145,9 +145,10 @@ bench_runner::create_files_task(char *)
   if (not sm_log::need_recovery && not sysconf::is_backup_srv()) {
     // allocate an FID for each table
     for (auto &nm : sm_file_mgr::name_map) {
-      ALWAYS_ASSERT(nm.second->index);
       auto fid = oidmgr->create_file(true);
       nm.second->fid = fid;
+      ALWAYS_ASSERT(!nm.second->index);
+      nm.second->index = new ndb_ordered_index(nm.first);
       nm.second->index->set_oid_array(fid);
       nm.second->main_array = oidmgr->get_array(fid);
 
@@ -176,14 +177,18 @@ bench_runner::create_files_task(char *)
 void
 bench_runner::run()
 {
-  // get a thread to set the stage (e.g., create tables etc)
+  // Now we should already have a list of registered tables in sm_file_mgr::name_map,
+  // but all the index, oid_array fileds are empty; only the table name is available.
+
+  // Get a thread to create the logmgr, index and FIDs backing each table
   auto* runner_thread = thread::get_thread();
-  thread::sm_thread::task_t runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
+  thread::sm_thread::task_t runner_task = std::bind(&bench_runner::create_files_task, this, std::placeholders::_1);
   runner_thread->start_task(runner_task);
   runner_thread->join();
 
-  // start another task to create the logmgr and FIDs backing each table
-  runner_task = std::bind(&bench_runner::create_files_task, this, std::placeholders::_1);
+  // Get a thread to use benchmark-provided prepare(), which gathers information about
+  // index pointers created by create_file_task.
+  runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
   runner_thread->start_task(runner_task);
   runner_thread->join();
   thread::put_thread(runner_thread);

@@ -14,11 +14,7 @@ public:
 
 public:
 
-  txn_btree(size_type value_size_hint = 128,
-            bool mostly_append = false,
-            const std::string &name = "<unknown>")
-    : base_txn_btree(value_size_hint, mostly_append, name)
-  {}
+  txn_btree(const std::string &name = "<unknown>") : base_txn_btree(name) {}
 
   // either returns false or v is set to not-empty with value
   // precondition: max_bytes_read > 0

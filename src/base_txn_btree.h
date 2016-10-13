@@ -23,21 +23,16 @@ public:
     virtual bool invoke(const keystring_type &k, const varstr &v) = 0;
   };
 
-  base_txn_btree(size_type value_size_hint = 128,
-            bool mostly_append = false,
-            const std::string &name = "<unknown>")
-    : value_size_hint(value_size_hint),
-      name(name),
-      fid(0),
-      been_destructed(false)
-  {
-  }
+  base_txn_btree(const std::string &name = "<unknown>") :
+    name(name), fid(0), been_destructed(false) {}
 
   ~base_txn_btree()
   {
     if (!been_destructed)
       unsafe_purge(false);
   }
+
+  inline std::string& get_name() { return name; }
 
   inline void set_oid_array(FID f)
   {
@@ -62,18 +57,6 @@ public:
   size_estimate() const
   {
     return underlying_btree.size();
-  }
-
-  inline size_type
-  get_value_size_hint() const
-  {
-    return value_size_hint;
-  }
-
-  inline void
-  set_value_size_hint(size_type value_size_hint)
-  {
-    this->value_size_hint = value_size_hint;
   }
 
   inline void print() {
@@ -157,7 +140,6 @@ protected:
                    bool expect_new);
 
   concurrent_btree underlying_btree;
-  size_type value_size_hint;
   std::string name;
   FID fid;
   bool been_destructed;

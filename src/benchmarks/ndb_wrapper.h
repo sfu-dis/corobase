@@ -41,8 +41,7 @@ public:
     TxnProfileHint hint = HINT_DEFAULT);
   rc_t commit_txn(void *txn);
   void abort_txn(void *txn);
-  ndb_ordered_index* open_index(
-    const std::string &name, size_t value_size_hint, bool mostly_append = false);
+  void open_table(const std::string& name);
 
   void close_index(ndb_ordered_index *idx);
 
@@ -56,8 +55,7 @@ protected:
   typedef ndb_wrapper::ndbtxn ndbtxn;
 
 public:
-  ndb_ordered_index(const std::string &name, size_t value_size_hint, bool mostly_append) :
-    name(name), btr(value_size_hint, mostly_append, name) {}
+  ndb_ordered_index(const std::string &name) : btr(name) {}
 
   class scan_callback {
   public:
@@ -165,6 +163,5 @@ public:
   inline void set_oid_array(FID fid) { btr.set_oid_array(fid); }
   inline oid_array* get_oid_array() { return btr.get_oid_array(); }
 private:
-  std::string name;
   txn_btree btr;
 };
