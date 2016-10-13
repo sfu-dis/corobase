@@ -3,7 +3,6 @@
 
 #include "amd64.h"
 #include "macros.h"
-#include "varkey.h"
 #include "util.h"
 
 #include "reader_writer.h"

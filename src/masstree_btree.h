@@ -16,7 +16,6 @@
 
 #include "log2.hh"
 #include "ndb_type_traits.h"
-#include "varkey.h"
 #include "macros.h"
 #include "prefetch.h"
 #include "amd64.h"
@@ -164,7 +163,7 @@ class mbtree {
   typedef Masstree::leaf<P> node_type;
   typedef typename node_base_type::nodeversion_type nodeversion_type;
 
-  typedef varkey key_type;
+  typedef varstr key_type;
   typedef lcdf::Str string_type;
   typedef uint64_t key_slice;
   typedef typename P::value_type value_type;

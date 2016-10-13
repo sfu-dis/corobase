@@ -13,7 +13,7 @@ base_txn_btree::do_search(transaction &t, const varstr &k, value_reader &vr)
     dbtuple * tuple{};
     OID oid;
     concurrent_btree::versioned_node_t sinfo;
-    const bool found = this->underlying_btree.search(varkey(key_str), oid, tuple, t.xc, &sinfo);
+    const bool found = this->underlying_btree.search(*key_str, oid, tuple, t.xc, &sinfo);
     if (found)
         return t.do_tuple_read(tuple, vr);
 #ifdef PHANTOM_PROT
@@ -79,7 +79,7 @@ rc_t base_txn_btree::do_tree_put(
     // do regular search
     dbtuple * bv = 0;
     OID oid = 0;
-    if (!this->underlying_btree.search(varkey(k), oid, bv, t.xc))
+    if (!this->underlying_btree.search(*k, oid, bv, t.xc))
         return rc_t{RC_ABORT_INTERNAL};
 
     // first *updater* wins
@@ -288,11 +288,11 @@ base_txn_btree::do_search_range_call(
 
     txn_search_range_callback c(&t, &callback, &key_reader, &value_reader);
 
-    varkey uppervk;
+    varstr uppervk;
     if (upper_str)
-        uppervk = varkey(upper_str);
+        uppervk = *upper_str;
     this->underlying_btree.search_range_call(
-        varkey(lower_str), upper_str ? &uppervk : nullptr,
+        *lower_str, upper_str ? &uppervk : nullptr,
         c, t.xc);
 }
 
@@ -320,11 +320,11 @@ base_txn_btree::do_rsearch_range_call(
 
     txn_search_range_callback c(&t, &callback, &key_reader, &value_reader);
 
-    varkey lowervk;
+    varstr lowervk;
     if (lower_str)
-        lowervk = varkey(lower_str);
+        lowervk = *lower_str;
     this->underlying_btree.rsearch_range_call(
-        varkey(upper_str), lower_str ? &lowervk : nullptr,
+        *upper_str, lower_str ? &lowervk : nullptr,
         c, t.xc);
 }
 

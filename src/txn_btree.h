@@ -29,7 +29,7 @@ public:
 
 private:
   static inline ALWAYS_INLINE varstr
-  to_string_type(const varkey &k)
+  to_string_type(const varstr &k)
   {
     return varstr((const char *) k.data(), k.size());
   }
@@ -54,12 +54,6 @@ private:
     return px;
   }
 
-  static inline const varstr *
-  stablize(transaction &t, const varkey &k)
-  {
-    return stablize(t, k.data(), k.size());
-  }
-
 public:
 
   txn_btree(size_type value_size_hint = 128,
@@ -67,15 +61,6 @@ public:
             const std::string &name = "<unknown>")
     : base_txn_btree(value_size_hint, mostly_append, name)
   {}
-
-  inline rc_t
-  search(transaction &t,
-         const varkey &k,
-         value_type &v,
-         size_type max_bytes_read = ~size_type(0))
-  {
-    return search(t, to_string_type(k), v, max_bytes_read);
-  }
 
   // either returns false or v is set to not-empty with value
   // precondition: max_bytes_read > 0
@@ -113,28 +98,8 @@ public:
     this->do_rsearch_range_call(t, upper, lower, callback, kr, vr);
   }
 
-  inline void
-  search_range_call(transaction &t,
-                    const varkey &lower,
-                    const varkey *upper,
-                    search_range_callback &callback,
-                    size_type max_bytes_read = ~size_type(0))
-  {
-    key_type u;
-    if (upper)
-      u = to_string_type(*upper);
-    search_range_call(t, to_string_type(lower),
-        upper ? &u : nullptr, callback, max_bytes_read);
-  }
-
   inline rc_t
-  put(transaction &t, const key_type &k, const value_type &v)
-  {
-    return this->do_tree_put(t, stablize(t, k), stablize(t, v), false);
-  }
-
-  inline rc_t
-  put(transaction &t, const varkey &k, const value_type &v)
+  put(transaction &t, const varstr &k, const value_type &v)
   {
     return this->do_tree_put(t, stablize(t, k), stablize(t, v), false);
   }
@@ -147,16 +112,8 @@ public:
 
   // insert() methods below are for legacy use
 
-  inline rc_t
-  insert(transaction &t, const key_type &k, const uint8_t *v, size_type sz)
-  {
-    ASSERT(v);
-    ASSERT(sz);
-    return this->do_tree_put(t, stablize(t, k), stablize(t, v, sz), true);
-  }
-
   inline void
-  insert(transaction &t, const varkey &k, const uint8_t *v, size_type sz)
+  insert(transaction &t, const varstr &k, const uint8_t *v, size_type sz)
   {
     ASSERT(v);
     ASSERT(sz);
@@ -164,13 +121,7 @@ public:
   }
 
   inline rc_t
-  remove(transaction &t, const key_type &k)
-  {
-    return this->do_tree_put(t, stablize(t, k), nullptr, false);
-  }
-
-  inline rc_t
-  remove(transaction &t, const varkey &k)
+  remove(transaction &t, const varstr &k)
   {
     return this->do_tree_put(t, stablize(t, k), nullptr, false);
   }

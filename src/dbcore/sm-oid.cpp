@@ -897,7 +897,7 @@ dbtuple*
 sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 {
 start_over:
-    // must pui start_over above this, because we'll update pp later
+    // must put start_over above this, because we'll update pp later
     fat_ptr *pp = oa->get(o);
     fat_ptr ptr = *pp;
     while (1) {
