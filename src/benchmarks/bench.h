@@ -7,7 +7,7 @@
 #include <utility>
 #include <string>
 
-#include "abstract_db.h"
+#include "ndb_wrapper.h"
 #include "../macros.h"
 #include "../util.h"
 #include "../spinbarrier.h"
@@ -28,9 +28,9 @@
 #include <vector>
 #include <set>
 
-extern void ycsb_do_test(abstract_db *db, int argc, char **argv);
-extern void tpcc_do_test(abstract_db *db, int argc, char **argv);
-extern void tpce_do_test(abstract_db *db, int argc, char **argv);
+extern void ycsb_do_test(ndb_wrapper *db, int argc, char **argv);
+extern void tpcc_do_test(ndb_wrapper *db, int argc, char **argv);
+extern void tpce_do_test(ndb_wrapper *db, int argc, char **argv);
 
 enum {
   RUNMODE_TIME = 0,
@@ -66,8 +66,8 @@ unique_filter(const std::vector<T> &v)
 
 class bench_loader : public thread::sm_runner {
 public:
-  bench_loader(unsigned long seed, abstract_db *db,
-               const std::map<std::string, abstract_ordered_index *> &open_tables)
+  bench_loader(unsigned long seed, ndb_wrapper *db,
+               const std::map<std::string, ndb_ordered_index *> &open_tables)
     : sm_runner(), r(seed), db(db), open_tables(open_tables)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
@@ -95,8 +95,8 @@ protected:
   virtual void load() = 0;
 
   util::fast_random r;
-  abstract_db *const db;
-  std::map<std::string, abstract_ordered_index *> open_tables;
+  ndb_wrapper *const db;
+  std::map<std::string, ndb_ordered_index *> open_tables;
   std::string txn_obj_buf;
   str_arena arena;
 };
@@ -109,8 +109,8 @@ class bench_worker : public thread::sm_runner {
 public:
 
   bench_worker(unsigned int worker_id,
-               unsigned long seed, abstract_db *db,
-               const std::map<std::string, abstract_ordered_index *> &open_tables,
+               unsigned long seed, ndb_wrapper *db,
+               const std::map<std::string, ndb_ordered_index *> &open_tables,
                spin_barrier *barrier_a, spin_barrier *barrier_b)
     : sm_runner(),
       worker_id(worker_id),
@@ -178,8 +178,8 @@ public:
 
   const tx_stat_map get_txn_counts() const;
 
-  typedef abstract_db::counter_map counter_map;
-  typedef abstract_db::txn_counter_map txn_counter_map;
+  typedef ndb_wrapper::counter_map counter_map;
+  typedef ndb_wrapper::txn_counter_map txn_counter_map;
 
 #ifdef ENABLE_BENCH_TXN_COUNTERS
   inline txn_counter_map
@@ -198,8 +198,8 @@ protected:
 
   unsigned int worker_id;
   util::fast_random r;
-  abstract_db *const db;
-  std::map<std::string, abstract_ordered_index *> open_tables;
+  ndb_wrapper *const db;
+  std::map<std::string, ndb_ordered_index *> open_tables;
   spin_barrier *const barrier_a;
   spin_barrier *const barrier_b;
 
@@ -239,7 +239,7 @@ public:
   bench_runner(bench_runner &&) = delete;
   bench_runner &operator=(const bench_runner &) = delete;
 
-  bench_runner(abstract_db *db)
+  bench_runner(ndb_wrapper *db)
     : db(db), barrier_a(sysconf::worker_threads), barrier_b(1) {}
   virtual ~bench_runner() {}
   virtual void prepare(char *) = 0;
@@ -255,8 +255,8 @@ protected:
   // only called once
   virtual std::vector<bench_worker*> make_workers() = 0;
 
-  abstract_db *const db;
-  std::map<std::string, abstract_ordered_index *> open_tables;
+  ndb_wrapper *const db;
+  std::map<std::string, ndb_ordered_index *> open_tables;
 
   // barriers for actual benchmark execution
   spin_barrier barrier_a;
@@ -265,7 +265,7 @@ protected:
 
 // XXX(stephentu): limit_callback is not optimal, should use
 // static_limit_callback if possible
-class limit_callback : public abstract_ordered_index::scan_callback {
+class limit_callback : public ndb_ordered_index::scan_callback {
 public:
   limit_callback(ssize_t limit = -1)
     : limit(limit), n(0)
@@ -291,7 +291,7 @@ private:
 };
 
 
-class latest_key_callback : public abstract_ordered_index::scan_callback {
+class latest_key_callback : public ndb_ordered_index::scan_callback {
 public:
   latest_key_callback(varstr &k, ssize_t limit = -1)
     : limit(limit), n(0), k(&k)
@@ -325,7 +325,7 @@ private:
 // this isn't done for values, because each value has a distinct string from
 // the string allocator, so there are no mutations while holding > 1 ref-count
 template <size_t N>
-class static_limit_callback : public abstract_ordered_index::scan_callback {
+class static_limit_callback : public ndb_ordered_index::scan_callback {
 public:
   // XXX: push ignore_key into lower layer
   static_limit_callback(str_arena *arena, bool ignore_key)

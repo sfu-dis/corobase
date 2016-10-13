@@ -258,7 +258,7 @@ bench_runner::run()
 
   barrier_a.wait_for(); // wait for all threads to start up
   if (verbose) {
-    for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
+    for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->size();
       cerr << "table " << it->first << " size " << s << endl;
@@ -368,7 +368,7 @@ bench_runner::run()
 
   if (verbose) {
     cerr << "--- table statistics ---" << endl;
-    for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
+    for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->size();
       const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
@@ -449,7 +449,7 @@ bench_runner::run()
     return;
 
   map<string, uint64_t> agg_stats;
-  for (map<string, abstract_ordered_index *>::iterator it = open_tables.begin();
+  for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
        it != open_tables.end(); ++it) {
     map_agg(agg_stats, it->second->clear());
     delete it->second;

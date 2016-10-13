@@ -40,8 +40,8 @@ split_ws(const string &s)
 int
 main(int argc, char **argv)
 {
-  abstract_db *db = NULL;
-  void (*test_fn)(abstract_db *, int argc, char **argv) = NULL;
+  ndb_wrapper *db = NULL;
+  void (*test_fn)(ndb_wrapper *, int argc, char **argv) = NULL;
   string bench_type = "ycsb";
   char *curdir = get_current_dir_name();
   string bench_opts;

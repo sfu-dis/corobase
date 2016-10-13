@@ -84,7 +84,7 @@ const Nation nations[]={
 
 const char* regions[]={"AFRICA","AMERICA","ASIA","EUROPE", "MIDDLE EAST"};
 
-class table_scanner: public abstract_ordered_index::scan_callback {
+class table_scanner: public ndb_ordered_index::scan_callback {
 	public:
 		table_scanner( str_arena* arena) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
@@ -360,7 +360,7 @@ class tpcc_worker_mixin : private _dummy {
   , tbl_ ## name ## _vec(partitions.at(#name))
 
 public:
-  tpcc_worker_mixin(const map<string, vector<abstract_ordered_index *>> &partitions) :
+  tpcc_worker_mixin(const map<string, vector<ndb_ordered_index *>> &partitions) :
     _dummy() // so hacky...
     TPCC_TABLE_LIST(DEFN_TBL_INIT_X)
   {
@@ -373,9 +373,9 @@ protected:
 
 #define DEFN_TBL_ACCESSOR_X(name) \
 private:  \
-  vector<abstract_ordered_index *> tbl_ ## name ## _vec; \
+  vector<ndb_ordered_index *> tbl_ ## name ## _vec; \
 protected: \
-  inline ALWAYS_INLINE abstract_ordered_index * \
+  inline ALWAYS_INLINE ndb_ordered_index * \
   tbl_ ## name (unsigned int wid) \
   { \
     ASSERT(wid >= 1 && wid <= NumWarehouses()); \
@@ -551,9 +551,9 @@ string tpcc_worker_mixin::NameTokens[] =
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
 public:
   tpcc_worker(unsigned int worker_id,
-              unsigned long seed, abstract_db *db,
-              const map<string, abstract_ordered_index *> &open_tables,
-              const map<string, vector<abstract_ordered_index *>> &partitions,
+              unsigned long seed, ndb_wrapper *db,
+              const map<string, ndb_ordered_index *> &open_tables,
+              const map<string, vector<ndb_ordered_index *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint home_warehouse_id)
     : bench_worker(worker_id, seed, db,
@@ -711,9 +711,9 @@ vector<uint> tpcc_worker::cold_whs;
 class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_nation_loader(unsigned long seed,
-                        abstract_db *db,
-                        const map<string, abstract_ordered_index *> &open_tables,
-                        const map<string, vector<abstract_ordered_index *>> &partitions)
+                        ndb_wrapper *db,
+                        const map<string, ndb_ordered_index *> &open_tables,
+                        const map<string, vector<ndb_ordered_index *>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -743,9 +743,9 @@ protected:
 class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_region_loader(unsigned long seed,
-                        abstract_db *db,
-                        const map<string, abstract_ordered_index *> &open_tables,
-                        const map<string, vector<abstract_ordered_index *>> &partitions)
+                        ndb_wrapper *db,
+                        const map<string, ndb_ordered_index *> &open_tables,
+                        const map<string, vector<ndb_ordered_index *>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -773,9 +773,9 @@ protected:
 class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_supplier_loader(unsigned long seed,
-                        abstract_db *db,
-                        const map<string, abstract_ordered_index *> &open_tables,
-                        const map<string, vector<abstract_ordered_index *>> &partitions)
+                        ndb_wrapper *db,
+                        const map<string, ndb_ordered_index *> &open_tables,
+                        const map<string, vector<ndb_ordered_index *>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -811,9 +811,9 @@ protected:
 class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_warehouse_loader(unsigned long seed,
-                        abstract_db *db,
-                        const map<string, abstract_ordered_index *> &open_tables,
-                        const map<string, vector<abstract_ordered_index *>> &partitions)
+                        ndb_wrapper *db,
+                        const map<string, ndb_ordered_index *> &open_tables,
+                        const map<string, vector<ndb_ordered_index *>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -885,9 +885,9 @@ protected:
 class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_item_loader(unsigned long seed,
-                   abstract_db *db,
-                   const map<string, abstract_ordered_index *> &open_tables,
-                   const map<string, vector<abstract_ordered_index *>> &partitions)
+                   ndb_wrapper *db,
+                   const map<string, ndb_ordered_index *> &open_tables,
+                   const map<string, vector<ndb_ordered_index *>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -942,9 +942,9 @@ protected:
 class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_stock_loader(unsigned long seed,
-                    abstract_db *db,
-                    const map<string, abstract_ordered_index *> &open_tables,
-                    const map<string, vector<abstract_ordered_index *>> &partitions,
+                    ndb_wrapper *db,
+                    const map<string, ndb_ordered_index *> &open_tables,
+                    const map<string, vector<ndb_ordered_index *>> &partitions,
                     ssize_t warehouse_id)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions),
@@ -1037,9 +1037,9 @@ private:
 class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_district_loader(unsigned long seed,
-                       abstract_db *db,
-                       const map<string, abstract_ordered_index *> &open_tables,
-                       const map<string, vector<abstract_ordered_index *>> &partitions)
+                       ndb_wrapper *db,
+                       const map<string, ndb_ordered_index *> &open_tables,
+                       const map<string, vector<ndb_ordered_index *>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -1094,9 +1094,9 @@ protected:
 class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_customer_loader(unsigned long seed,
-                       abstract_db *db,
-                       const map<string, abstract_ordered_index *> &open_tables,
-                       const map<string, vector<abstract_ordered_index *>> &partitions,
+                       ndb_wrapper *db,
+                       const map<string, ndb_ordered_index *> &open_tables,
+                       const map<string, vector<ndb_ordered_index *>> &partitions,
                        ssize_t warehouse_id)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions),
@@ -1219,9 +1219,9 @@ private:
 class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_order_loader(unsigned long seed,
-                    abstract_db *db,
-                    const map<string, abstract_ordered_index *> &open_tables,
-                    const map<string, vector<abstract_ordered_index *>> &partitions,
+                    ndb_wrapper *db,
+                    const map<string, ndb_ordered_index *> &open_tables,
+                    const map<string, vector<ndb_ordered_index *>> &partitions,
                     ssize_t warehouse_id)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions),
@@ -1399,7 +1399,7 @@ tpcc_worker::txn_new_order()
   //   max_read_set_size : 15
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
-  void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_TPCC_NEW_ORDER);
+  void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_NEW_ORDER);
   scoped_str_arena s_arena(arena);
   scoped_multilock<spinlock> mlock;
   if (g_enable_partition_locks) {
@@ -1515,7 +1515,7 @@ tpcc_worker::txn_new_order()
     return {RC_TRUE};
 }
 
-class new_order_scan_callback : public abstract_ordered_index::scan_callback {
+class new_order_scan_callback : public ndb_ordered_index::scan_callback {
 public:
   new_order_scan_callback() : k_no(0) {}
   virtual bool invoke(
@@ -1567,7 +1567,7 @@ tpcc_worker::txn_delivery()
   //   max_read_set_size : 133
   //   max_write_set_size : 133
   //   num_txn_contexts : 4
-  void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_TPCC_DELIVERY);
+  void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_DELIVERY);
   scoped_str_arena s_arena(arena);
   scoped_lock_guard<spinlock> slock(
       g_enable_partition_locks ? &LockForPartition(warehouse_id) : nullptr);
@@ -1645,7 +1645,7 @@ tpcc_worker::txn_delivery()
     return {RC_TRUE};
 }
 
-class credit_check_order_scan_callback : public abstract_ordered_index::scan_callback {
+class credit_check_order_scan_callback : public ndb_ordered_index::scan_callback {
 	public:
 		credit_check_order_scan_callback( str_arena* arena ) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
@@ -1660,7 +1660,7 @@ class credit_check_order_scan_callback : public abstract_ordered_index::scan_cal
 		str_arena* _arena;
 };
 
-class credit_check_order_line_scan_callback : public abstract_ordered_index::scan_callback {
+class credit_check_order_line_scan_callback : public ndb_ordered_index::scan_callback {
 	public:
 		credit_check_order_line_scan_callback( str_arena* arena ) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
@@ -1716,7 +1716,7 @@ tpcc_worker::txn_credit_check()
 	}
 	ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
-	void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_TPCC_CREDIT_CHECK);
+	void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_CREDIT_CHECK);
 	scoped_str_arena s_arena(arena);
 	scoped_multilock<spinlock> mlock;
 	if (g_enable_partition_locks) {
@@ -1822,7 +1822,7 @@ tpcc_worker::txn_payment()
   //   max_read_set_size : 71
   //   max_write_set_size : 1
   //   num_txn_contexts : 5
-  void *txn = db->new_txn(txn_flags, arena, txn_buf(), abstract_db::HINT_TPCC_PAYMENT);
+  void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_PAYMENT);
   scoped_str_arena s_arena(arena);
   scoped_multilock<spinlock> mlock;
   if (g_enable_partition_locks) {
@@ -1945,7 +1945,7 @@ tpcc_worker::txn_payment()
     return {RC_TRUE};
 }
 
-class order_line_nop_callback : public abstract_ordered_index::scan_callback {
+class order_line_nop_callback : public ndb_ordered_index::scan_callback {
 public:
   order_line_nop_callback() : n(0) {}
   virtual bool invoke(
@@ -1981,10 +1981,10 @@ tpcc_worker::txn_order_status()
   //   num_txn_contexts : 4
   const uint64_t read_only_mask =
     sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  const abstract_db::TxnProfileHint hint =
+  const ndb_wrapper::TxnProfileHint hint =
     sysconf::enable_safesnap ?
-      abstract_db::HINT_TPCC_ORDER_STATUS_READ_ONLY :
-      abstract_db::HINT_TPCC_ORDER_STATUS;
+      ndb_wrapper::HINT_TPCC_ORDER_STATUS_READ_ONLY :
+      ndb_wrapper::HINT_TPCC_ORDER_STATUS;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
   scoped_str_arena s_arena(arena);
   // NB: since txn_order_status() is a RO txn, we assume that
@@ -2084,7 +2084,7 @@ tpcc_worker::txn_order_status()
     return {RC_TRUE};
 }
 
-class order_line_scan_callback : public abstract_ordered_index::scan_callback {
+class order_line_scan_callback : public ndb_ordered_index::scan_callback {
 public:
   order_line_scan_callback() : n(0) {}
   virtual bool invoke(
@@ -2127,10 +2127,10 @@ tpcc_worker::txn_stock_level()
   //   num_txn_contexts : 3
   const uint64_t read_only_mask =
     sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  const abstract_db::TxnProfileHint hint =
+  const ndb_wrapper::TxnProfileHint hint =
     sysconf::enable_safesnap ?
-      abstract_db::HINT_TPCC_STOCK_LEVEL_READ_ONLY :
-      abstract_db::HINT_TPCC_STOCK_LEVEL;
+      ndb_wrapper::HINT_TPCC_STOCK_LEVEL_READ_ONLY :
+      ndb_wrapper::HINT_TPCC_STOCK_LEVEL;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
   scoped_str_arena s_arena(arena);
   // NB: since txn_stock_level() is a RO txn, we assume that
@@ -2400,13 +2400,13 @@ private:
            strcmp("oorder_c_id_idx", name) == 0;
   }
 
-  static vector<abstract_ordered_index *>
-  OpenTablesForTablespace(abstract_db *db, const char *name, size_t expected_size)
+  static vector<ndb_ordered_index *>
+  OpenTablesForTablespace(ndb_wrapper *db, const char *name, size_t expected_size)
   {
     const bool is_read_only = IsTableReadOnly(name);
     const bool is_append_only = IsTableAppendOnly(name);
     const string s_name(name);
-    vector<abstract_ordered_index *> ret(NumWarehouses());
+    vector<ndb_ordered_index *> ret(NumWarehouses());
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= sysconf::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
@@ -2417,14 +2417,14 @@ private:
           const unsigned wstart = partid * nwhse_per_partition;
           const unsigned wend   = (partid + 1 == sysconf::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
-          abstract_ordered_index *idx =
+          ndb_ordered_index *idx =
             db->open_index(s_name + "_" + to_string(partid), expected_size, is_append_only);
           for (size_t i = wstart; i < wend; i++)
             ret[i] = idx;
         }
       }
     } else {
-      abstract_ordered_index *idx = db->open_index(s_name, expected_size, is_append_only);
+      ndb_ordered_index *idx = db->open_index(s_name, expected_size, is_append_only);
       for (size_t i = 0; i < NumWarehouses(); i++)
         ret[i] = idx;
     }
@@ -2432,7 +2432,7 @@ private:
   }
 
 public:
-  tpcc_bench_runner(abstract_db *db)
+  tpcc_bench_runner(ndb_wrapper *db)
     : bench_runner(db)
   {
   }
@@ -2536,11 +2536,11 @@ protected:
   }
 
 private:
-  map<string, vector<abstract_ordered_index *>> partitions;
+  map<string, vector<ndb_ordered_index *>> partitions;
 };
 
 void
-tpcc_do_test(abstract_db *db, int argc, char **argv)
+tpcc_do_test(ndb_wrapper *db, int argc, char **argv)
 {
   // parse options
   optind = 1;
