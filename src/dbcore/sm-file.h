@@ -57,7 +57,7 @@ struct sm_file_mgr {
     return fid_map[f]->pdest_array;
   }
 
-  static inline ndb_ordered_index *get_index(std::string& n) {
+  static inline ndb_ordered_index *get_index(const std::string& n) {
     return name_map[n]->index;
   }
 };

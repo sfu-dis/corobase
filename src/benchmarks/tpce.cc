@@ -4970,27 +4970,36 @@ class tpce_bench_runner : public bench_runner {
 				return true;
 			}
 
-		static vector<ndb_ordered_index *>
-			OpenTablesForTablespace(ndb_wrapper *db, const char *name, size_t expected_size)
-			{
-				const string s_name(name);
-				vector<ndb_ordered_index *> ret(NumPartitions());
-                ndb_ordered_index *idx = db->open_index(s_name, expected_size, false);
-				for (size_t i = 0; i < NumPartitions(); i++)
-					ret[i] = idx;
-				return ret;
-			}
+    static vector<ndb_ordered_index *>
+    OpenTablesForTablespace(ndb_wrapper *db, const char *name) {
+      const string s_name(name);
+      vector<ndb_ordered_index *> ret(NumPartitions());
+      ndb_ordered_index *idx = sm_file_mgr::get_index(s_name);
+      for (size_t i = 0; i < NumPartitions(); i++)
+        ret[i] = idx;
+      return ret;
+    }
+
+    static void RegisterTables(ndb_wrapper *db, const char *name) {
+      const string s_name(name);
+      vector<ndb_ordered_index *> ret(NumPartitions());
+      db->open_table(s_name);
+    }
 
 	public:
-		tpce_bench_runner(ndb_wrapper *db)
-			: bench_runner(db)
-		{
+    tpce_bench_runner(ndb_wrapper *db) : bench_runner(db) {
+#define OPEN_TABLESPACE_X(x) \
+      RegisterTables(db, #x);
+
+      TPCE_TABLE_LIST(OPEN_TABLESPACE_X);
+
+#undef OPEN_TABLESPACE_X
     }
 
     virtual void prepare(char *)
     {
 #define OPEN_TABLESPACE_X(x) \
-			partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));
+			partitions[#x] = OpenTablesForTablespace(db, #x);
 
 			TPCE_TABLE_LIST(OPEN_TABLESPACE_X);
 

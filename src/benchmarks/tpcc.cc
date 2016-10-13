@@ -2283,8 +2283,7 @@ private:
   }
 
   static vector<ndb_ordered_index *>
-  OpenTablesForTablespace(ndb_wrapper *db, const char *name, size_t expected_size)
-  {
+  OpenTablesForTablespace(ndb_wrapper *db, const char *name) {
     const bool is_read_only = IsTableReadOnly(name);
     const bool is_append_only = IsTableAppendOnly(name);
     const string s_name(name);
@@ -2292,7 +2291,7 @@ private:
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= sysconf::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
-          ret[i] = db->open_index(s_name + "_" + to_string(i), expected_size, is_append_only);
+          ret[i] = sm_file_mgr::get_index(s_name + "_" + to_string(i));
       } else {
         const unsigned nwhse_per_partition = NumWarehouses() / sysconf::worker_threads;
         for (size_t partid = 0; partid < sysconf::worker_threads; partid++) {
@@ -2300,29 +2299,55 @@ private:
           const unsigned wend   = (partid + 1 == sysconf::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
           ndb_ordered_index *idx =
-            db->open_index(s_name + "_" + to_string(partid), expected_size, is_append_only);
+            sm_file_mgr::get_index(s_name + "_" + to_string(partid));
           for (size_t i = wstart; i < wend; i++)
             ret[i] = idx;
         }
       }
     } else {
-      ndb_ordered_index *idx = db->open_index(s_name, expected_size, is_append_only);
+      ndb_ordered_index *idx = sm_file_mgr::get_index(s_name);
       for (size_t i = 0; i < NumWarehouses(); i++)
         ret[i] = idx;
     }
     return ret;
   }
 
+  static void RegisterTables(ndb_wrapper *db, const char *name) {
+    const bool is_read_only = IsTableReadOnly(name);
+    const string s_name(name);
+    if (g_enable_separate_tree_per_partition && !is_read_only) {
+      if (NumWarehouses() <= sysconf::worker_threads) {
+        for (size_t i = 0; i < NumWarehouses(); i++)
+          db->open_table(s_name + "_" + to_string(i));
+      } else {
+        const unsigned nwhse_per_partition = NumWarehouses() / sysconf::worker_threads;
+        for (size_t partid = 0; partid < sysconf::worker_threads; partid++) {
+          const unsigned wstart = partid * nwhse_per_partition;
+          const unsigned wend   = (partid + 1 == sysconf::worker_threads) ?
+            NumWarehouses() : (partid + 1) * nwhse_per_partition;
+            db->open_table(s_name + "_" + to_string(partid));
+        }
+      }
+    } else {
+      db->open_table(s_name);
+    }
+  }
+
 public:
-  tpcc_bench_runner(ndb_wrapper *db)
-    : bench_runner(db)
-  {
+  tpcc_bench_runner(ndb_wrapper *db) : bench_runner(db) {
+    // Register all tables with the engine
+#define OPEN_TABLESPACE_X(x) \
+    RegisterTables(db, #x);
+
+    TPCC_TABLE_LIST(OPEN_TABLESPACE_X);
+
+#undef OPEN_TABLESPACE_X
   }
 
   virtual void prepare(char *)
   {
 #define OPEN_TABLESPACE_X(x) \
-    partitions[#x] = OpenTablesForTablespace(db, #x, sizeof(x));
+    partitions[#x] = OpenTablesForTablespace(db, #x);
 
     TPCC_TABLE_LIST(OPEN_TABLESPACE_X);
 

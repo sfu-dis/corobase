@@ -49,14 +49,9 @@ ndb_wrapper::abort_txn(void *txn)
   t->~transaction();
 }
 
-ndb_ordered_index *
-ndb_wrapper::open_index(const std::string &name, size_t value_size_hint, bool mostly_append)
-{
-  auto *index = new ndb_ordered_index(name, value_size_hint, mostly_append);
-  // Give an invalid FID for now, either the redoer or loader
-  // will fill in a meaningful one
-  sm_file_mgr::name_map[name] = new sm_file_descriptor(0, name, index, nullptr);
-  return index;
+void
+ndb_wrapper::open_table(const std::string& name) {
+  sm_file_mgr::name_map[name] = new sm_file_descriptor(0, name, nullptr, nullptr);
 }
 
 void
@@ -188,7 +183,7 @@ std::map<std::string, uint64_t>
 ndb_ordered_index::clear()
 {
 #ifdef TXN_BTREE_DUMP_PURGE_STATS
-  std::cerr << "purging txn index: " << name << std::endl;
+  std::cerr << "purging txn index: " << btr.get_name() << std::endl;
 #endif
   return btr.unsafe_purge(true);
 }
