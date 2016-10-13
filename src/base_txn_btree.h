@@ -3,7 +3,6 @@
 #include "btree_choice.h"
 #include "dbcore/sm-file.h"
 #include "txn.h"
-#include "lockguard.h"
 #include "util.h"
 #include "ndb_type_traits.h"
 

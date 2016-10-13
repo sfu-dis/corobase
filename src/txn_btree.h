@@ -28,12 +28,6 @@ public:
   typedef varstr value_type;
 
 private:
-  static inline ALWAYS_INLINE varstr
-  to_string_type(const varstr &k)
-  {
-    return varstr((const char *) k.data(), k.size());
-  }
-
   static inline const varstr *
   stablize(transaction &t, const varstr &s)
   {
