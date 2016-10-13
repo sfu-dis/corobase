@@ -24,7 +24,6 @@
 #include "masstree_btree.h"
 #include "macros.h"
 #include "util.h"
-#include "spinlock.h"
 #include "static_vector.h"
 #include "prefetch.h"
 #include "tuple.h"

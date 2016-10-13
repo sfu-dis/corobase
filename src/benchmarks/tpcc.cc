@@ -19,7 +19,6 @@
 #include "../txn.h"
 #include "../macros.h"
 #include "../small_unordered_map.h"
-#include "../spinlock.h"
 
 #include "bench.h"
 #include "tpcc.h"
@@ -130,55 +129,8 @@ NumCustomersPerDistrict()
   return 3000;
 }
 
-// T must implement lock()/unlock(). Both must *not* throw exceptions
-template <typename T>
-class scoped_multilock {
-public:
-  inline scoped_multilock()
-    : did_lock(false)
-  {
-  }
-
-  inline ~scoped_multilock()
-  {
-    if (did_lock)
-      for (auto &t : locks)
-        t->unlock();
-  }
-
-  inline void
-  enq(T &t)
-  {
-    ALWAYS_ASSERT(!did_lock);
-    locks.emplace_back(&t);
-  }
-
-  inline void
-  multilock()
-  {
-    ALWAYS_ASSERT(!did_lock);
-    if (locks.size() > 1)
-      sort(locks.begin(), locks.end());
-#ifndef NDEBUG
-    if (set<T *>(locks.begin(), locks.end()).size() != locks.size()) {
-      for (auto &t : locks)
-        cerr << "lock: " << hexify(t) << endl;
-      ASSERT(false && "duplicate locks found");
-    }
-#endif
-    for (auto &t : locks)
-      t->lock();
-    did_lock = true;
-  }
-
-private:
-  bool did_lock;
-  typename util::vec<T *, 64>::type locks;
-};
-
 // configuration flags
 static int g_disable_xpartition_txn = 0;
-static int g_enable_partition_locks = 0;
 static int g_enable_separate_tree_per_partition = 0;
 static int g_new_order_remote_item_pct = 1;
 static int g_new_order_fast_id_gen = 0;
@@ -207,7 +159,6 @@ static double g_wh_spread = 0;
 // 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
 static unsigned g_txn_workload_mix[] = { 45, 43, 0, 4, 4, 4, 0, 0 }; // default TPC-C workload mix
 
-static aligned_padded_elem<spinlock> *g_partition_locks = nullptr;
 static aligned_padded_elem<atomic<uint64_t>> *g_district_ids = nullptr;
 
 // maps a wid => partition id
@@ -224,13 +175,6 @@ PartitionId(unsigned int wid)
   if (partid >= sysconf::worker_threads)
     return sysconf::worker_threads - 1;
   return partid;
-}
-
-static inline ALWAYS_INLINE spinlock &
-LockForPartition(unsigned int wid)
-{
-  ASSERT(g_enable_partition_locks);
-  return g_partition_locks[PartitionId(wid)].elem;
 }
 
 static inline atomic<uint64_t> &
@@ -1374,23 +1318,6 @@ tpcc_worker::txn_new_order()
   //   num_txn_contexts : 9
   void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_NEW_ORDER);
   scoped_str_arena s_arena(arena);
-  scoped_multilock<spinlock> mlock;
-  if (g_enable_partition_locks) {
-    if (allLocal) {
-      mlock.enq(LockForPartition(warehouse_id));
-    } else {
-      small_unordered_map<unsigned int, bool, 64> lockset;
-      mlock.enq(LockForPartition(warehouse_id));
-      lockset[PartitionId(warehouse_id)] = 1;
-      for (uint i = 0; i < numItems; i++) {
-        if (lockset.find(PartitionId(supplierWarehouseIDs[i])) == lockset.end()) {
-          mlock.enq(LockForPartition(supplierWarehouseIDs[i]));
-          lockset[PartitionId(supplierWarehouseIDs[i])] = 1;
-        }
-      }
-    }
-    mlock.multilock();
-  }
     const customer::key k_c(warehouse_id, districtID, customerID);
     customer::value v_c_temp;
     varstr sv_c_temp = str(Size(v_c_temp));
@@ -1689,13 +1616,6 @@ tpcc_worker::txn_credit_check()
 
 	void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_CREDIT_CHECK);
 	scoped_str_arena s_arena(arena);
-	scoped_multilock<spinlock> mlock;
-	if (g_enable_partition_locks) {
-		mlock.enq(LockForPartition(warehouse_id));
-		if (PartitionId(customerWarehouseID) != PartitionId(warehouse_id))
-			mlock.enq(LockForPartition(customerWarehouseID));
-		mlock.multilock();
-	}
 
 		// select * from customer with random C_ID
 		customer::key k_c;
@@ -1795,13 +1715,6 @@ tpcc_worker::txn_payment()
   //   num_txn_contexts : 5
   void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_PAYMENT);
   scoped_str_arena s_arena(arena);
-  scoped_multilock<spinlock> mlock;
-  if (g_enable_partition_locks) {
-    mlock.enq(LockForPartition(warehouse_id));
-    if (PartitionId(customerWarehouseID) != PartitionId(warehouse_id))
-      mlock.enq(LockForPartition(customerWarehouseID));
-    mlock.multilock();
-  }
 
     const warehouse::key k_w(warehouse_id);
     warehouse::value v_w_temp;
