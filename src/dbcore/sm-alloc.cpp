@@ -372,7 +372,7 @@ try_recycle:
 
         r_obj = (object *)r.offset();
         recycle_oid *r_oid = (recycle_oid *)r_obj->payload();
-        ASSERT(r_oid->oa);
+        ASSERT(r_oid->entry);
 
       start_over:
         fat_ptr head = *r_oid->entry;

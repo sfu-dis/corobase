@@ -3,8 +3,9 @@
 
 #include <map>
 
-#include "../util.h"
+#include "../benchmarks/ndb_wrapper.h"
 #include "../txn.h"
+#include "../util.h"
 
 #include "burt-hash.h"
 #include "sc-hash.h"
