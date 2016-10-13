@@ -35,7 +35,6 @@ int enable_parallel_loading = false;
 int slow_exit = 0;
 int retry_aborted_transaction = 0;
 int backoff_aborted_transaction = 0;
-int enable_chkpt = 0;
 
 std::vector<bench_worker*> bench_runner::workers;
 
@@ -247,7 +246,7 @@ bench_runner::run()
   map<string, size_t> table_sizes_before;
 
   // Start checkpointer after database is ready
-  if (enable_chkpt) {
+  if (sysconf::enable_chkpt) {
     ASSERT(chkptmgr);
     chkptmgr->start_chkpt_thread();
   }
@@ -368,7 +367,7 @@ bench_runner::run()
     workers[i]->~bench_worker();
   }
 
-  if (enable_chkpt)
+  if (sysconf::enable_chkpt)
       delete chkptmgr;
 
   if (verbose) {

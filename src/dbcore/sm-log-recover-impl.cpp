@@ -116,8 +116,10 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   std::string name(name_buf);
   // XXX(tzwang): no support for dynamically created tables for now
   ASSERT(sm_file_mgr::name_map.find(name) != sm_file_mgr::name_map.end());
-  ASSERT(sm_file_mgr::get_index(name));
+  ASSERT(!sm_file_mgr::get_index(name));
   sm_file_mgr::name_map[name]->fid = f;  // fill in the fid
+  // The benchmark should have registered the table with the engine
+  sm_file_mgr::name_map[name]->index = new ndb_ordered_index(name);
   ASSERT(not oidmgr->file_exists(f));
   oidmgr->recreate_file(f);
   ASSERT(sm_file_mgr::name_map[name]->index);
@@ -275,7 +277,7 @@ parallel_file_replay::redo_runner::my_work(char *) {
   if (himark)
     oidmgr->recreate_allocator(fid, himark);
 
-#if SEPARATE_INDEX_REBUILD
+#if SEPARATE_INDEX_REBUILD == 1
   owner->rebuild_index(owner->scanner, fid, fid_index, LSN{0x1ff}, LSN{~uint64_t{0}});
 #endif
 

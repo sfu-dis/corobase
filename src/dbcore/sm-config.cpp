@@ -32,6 +32,7 @@ int sysconf::group_commit_queue_length = 5000;
 sm_log_recover_impl *sysconf::recover_functor = nullptr;
 int sysconf::log_ship_by_rdma = 0;
 int sysconf::log_ship_sync_redo = 0;
+int sysconf::enable_chkpt = 0;
 
 uint32_t sysconf::max_threads_per_node = 0;
 bool sysconf::loading = true;
