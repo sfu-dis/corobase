@@ -176,33 +176,6 @@ private:
   typename util::vec<T *, 64>::type locks;
 };
 
-// like a lock_guard, but has the option of not acquiring
-template <typename T>
-class scoped_lock_guard {
-public:
-  inline scoped_lock_guard(T &l)
-    : l(&l)
-  {
-    this->l->lock();
-  }
-
-  inline scoped_lock_guard(T *l)
-    : l(l)
-  {
-    if (this->l)
-      this->l->lock();
-  }
-
-  inline ~scoped_lock_guard()
-  {
-    if (l)
-      l->unlock();
-  }
-
-private:
-  T *l;
-};
-
 // configuration flags
 static int g_disable_xpartition_txn = 0;
 static int g_enable_partition_locks = 0;
@@ -1569,8 +1542,6 @@ tpcc_worker::txn_delivery()
   //   num_txn_contexts : 4
   void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_DELIVERY);
   scoped_str_arena s_arena(arena);
-  scoped_lock_guard<spinlock> slock(
-      g_enable_partition_locks ? &LockForPartition(warehouse_id) : nullptr);
     for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
       const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
       const new_order::key k_no_1(warehouse_id, d, numeric_limits<int32_t>::max());
@@ -2331,8 +2302,6 @@ tpcc_worker::txn_microbench_random()
 	for (uint i = 0; i < g_microbench_rows; i++) {
 		const stock::key k_s(w, s);
 		ASSERT(cout << "rd " << w << " " << s << endl);
-		scoped_lock_guard<spinlock> slock(
-				g_enable_partition_locks ? &LockForPartition(w) : nullptr);
 		try_catch(tbl_stock(w)->get(txn, Encode(str(Size(k_s)), k_s), sv));
 
 		if (++s > NumItems()) {
@@ -2452,18 +2421,6 @@ public:
         open_tables[t.first + "_" + to_string(i)] = v[i];
     }
 
-    if (g_enable_partition_locks) {
-      static_assert(sizeof(aligned_padded_elem<spinlock>) == CACHELINE_SIZE, "xx");
-      void * const px = memalign(CACHELINE_SIZE, sizeof(aligned_padded_elem<spinlock>) * sysconf::worker_threads);
-      ALWAYS_ASSERT(px);
-      ALWAYS_ASSERT(reinterpret_cast<uintptr_t>(px) % CACHELINE_SIZE == 0);
-      g_partition_locks = reinterpret_cast<aligned_padded_elem<spinlock> *>(px);
-      for (size_t i = 0; i < sysconf::worker_threads; i++) {
-        new (&g_partition_locks[i]) aligned_padded_elem<spinlock>();
-        ALWAYS_ASSERT(!g_partition_locks[i].elem.is_locked());
-      }
-    }
-
     if (g_new_order_fast_id_gen) {
       void * const px =
         memalign(
@@ -2549,7 +2506,6 @@ tpcc_do_test(ndb_wrapper *db, int argc, char **argv)
     static struct option long_options[] =
     {
       {"disable-cross-partition-transactions" , no_argument       , &g_disable_xpartition_txn             , 1}   ,
-      {"enable-partition-locks"               , no_argument       , &g_enable_partition_locks             , 1}   ,
       {"enable-separate-tree-per-partition"   , no_argument       , &g_enable_separate_tree_per_partition , 1}   ,
       {"new-order-remote-item-pct"            , required_argument , 0                                     , 'r'} ,
       {"new-order-fast-id-gen"                , no_argument       , &g_new_order_fast_id_gen              , 1}   ,
@@ -2659,7 +2615,6 @@ tpcc_do_test(ndb_wrapper *db, int argc, char **argv)
     else
       cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << endl;
     cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn << endl;
-    cerr << "  partition_locks              : " << g_enable_partition_locks << endl;
     cerr << "  separate_tree_per_partition  : " << g_enable_separate_tree_per_partition << endl;
     cerr << "  new_order_remote_item_pct    : " << g_new_order_remote_item_pct << endl;
     cerr << "  new_order_fast_id_gen        : " << g_new_order_fast_id_gen << endl;
