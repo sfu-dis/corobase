@@ -84,7 +84,7 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, 
   ASSERT(align_up(len + sizeof(varstr)) == sz);
 
   // Construct the varkey (skip the varstr struct then it's data)
-  varkey key((uint8_t *)((char *)buf + sizeof(varstr)), len);
+  varstr key((uint8_t *)((char *)buf + sizeof(varstr)), len);
 
   //printf("key %s %s\n", (char *)key.data(), buf);
   ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, logrec->oid(), NULL, 0));
@@ -108,7 +108,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec, bool i
 
 ndb_ordered_index*
 sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
-  static char name_buf[256];  // No CC for this, don't run multiple recover_fid() threads
+  char name_buf[256];
   FID f = logrec->fid();
   auto sz = logrec->payload_size();
   ALWAYS_ASSERT(sz <= 256);  // 256 should be enough, revisit later if not
@@ -120,6 +120,7 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   sm_file_mgr::name_map[name]->fid = f;  // fill in the fid
   ASSERT(not oidmgr->file_exists(f));
   oidmgr->recreate_file(f);
+  ASSERT(sm_file_mgr::name_map[name]->index);
   sm_file_mgr::name_map[name]->index->set_oid_array(f);
   if (sm_file_mgr::fid_map.find(f) == sm_file_mgr::fid_map.end()) {
     // chkpt recovery might have did this

@@ -5,7 +5,6 @@
 #include "ndb_wrapper.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-file.h"
-#include "../varkey.h"
 #include "../macros.h"
 #include "../util.h"
 #include "../txn.h"

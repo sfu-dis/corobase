@@ -23,7 +23,6 @@
 #include "amd64.h"
 #include "btree_choice.h"
 #include "macros.h"
-#include "varkey.h"
 #include "util.h"
 #include "spinlock.h"
 #include "static_vector.h"
