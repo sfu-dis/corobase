@@ -1,5 +1,4 @@
 #include "macros.h"
-#include "amd64.h"
 #include "txn.h"
 #include "dbcore/sm-rep.h"
 #include "dbcore/serial.h"

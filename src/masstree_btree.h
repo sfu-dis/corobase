@@ -15,12 +15,9 @@
 #include <atomic>
 
 #include "log2.hh"
-#include "ndb_type_traits.h"
 #include "macros.h"
 #include "prefetch.h"
-#include "amd64.h"
 #include "util.h"
-#include "small_vector.h"
 #include "ownership_checker.h"
 
 #include "masstree/masstree_scan.hh"

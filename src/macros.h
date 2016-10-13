@@ -25,7 +25,6 @@
     char __XCONCAT(__padout, __COUNTER__)[0] __attribute__((aligned(CACHELINE_SIZE)))
 #define PACKED __attribute__((packed))
 
-#define NEVER_INLINE  __attribute__((noinline))
 #define ALWAYS_INLINE __attribute__((always_inline))
 #define UNUSED __attribute__((unused))
 
@@ -46,21 +45,7 @@
 //#define VERBOSE(expr) (expr)
 
 // tune away
-#define SMALL_SIZE_VEC       128
 #define SMALL_SIZE_MAP       64
-#define EXTRA_SMALL_SIZE_MAP 8
-
-//#define BACKOFF_SPINS_FACTOR 1000
-//#define BACKOFF_SPINS_FACTOR 100
-#define BACKOFF_SPINS_FACTOR 10
-
-// throw exception after the assert(), so that GCC knows
-// we'll never return
-#define NDB_UNIMPLEMENTED(what) \
-  do { \
-    ALWAYS_ASSERT(false); \
-    throw ::std::runtime_error(what); \
-  } while (0)
 
 #ifdef USE_BUILTIN_MEMFUNCS
 #define NDB_MEMCPY __builtin_memcpy
@@ -69,3 +54,5 @@
 #define NDB_MEMCPY memcpy
 #define NDB_MEMSET memset
 #endif
+
+#define NOP_PAUSE asm volatile("pause" : :)

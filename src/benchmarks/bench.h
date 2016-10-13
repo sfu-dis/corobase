@@ -332,6 +332,7 @@ public:
     : n(0), arena(arena), ignore_key(ignore_key)
   {
     static_assert(N > 0, "xx");
+    values.reserve(N);
   }
 
   virtual bool invoke(
@@ -358,7 +359,7 @@ public:
   }
 
   typedef std::pair<const varstr *, const varstr *> kv_pair;
-  typename util::vec<kv_pair, N>::type values;
+  typename std::vector<kv_pair> values;
 
 private:
   size_t n;

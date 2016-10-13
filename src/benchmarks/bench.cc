@@ -116,7 +116,7 @@ retry:
 							uint64_t spins = 1UL << backoff_shifts;
 							spins *= 100; // XXX: tuned pretty arbitrarily
 							while (spins) {
-								nop_pause();
+								NOP_PAUSE;
 								spins--;
 							}
 						}

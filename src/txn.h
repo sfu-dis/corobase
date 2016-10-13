@@ -12,7 +12,6 @@
 #include <utility>
 #include <stdexcept>
 #include <limits>
-#include <type_traits>
 #include <tuple>
 
 #include "dbcore/xid.h"
@@ -20,14 +19,11 @@
 #include "dbcore/sm-oid.h"
 #include "dbcore/sm-log.h"
 #include "dbcore/sm-rc.h"
-#include "amd64.h"
 #include "masstree_btree.h"
 #include "macros.h"
 #include "util.h"
-#include "static_vector.h"
 #include "prefetch.h"
 #include "tuple.h"
-#include "ndb_type_traits.h"
 #include "object.h"
 
 #include <sparsehash/dense_hash_map>

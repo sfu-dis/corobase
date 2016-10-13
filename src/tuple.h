@@ -1,7 +1,6 @@
 #ifndef _NDB_TUPLE_H_
 #define _NDB_TUPLE_H_
 
-#include "amd64.h"
 #include "macros.h"
 #include "util.h"
 

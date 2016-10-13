@@ -1,9 +1,6 @@
-#ifndef _SPINLOCK_H_
-#define _SPINLOCK_H_
-
+#pragma once
 #include <stdint.h>
 
-#include "amd64.h"
 #include "macros.h"
 #include "util.h"
 
@@ -21,7 +18,7 @@ public:
     // XXX: implement SPINLOCK_BACKOFF
     uint32_t v = value;
     while (v || !__sync_bool_compare_and_swap(&value, 0, 1)) {
-      nop_pause();
+      NOP_PAUSE;
       v = value;
     }
     COMPILER_MEMORY_FENCE;
@@ -51,5 +48,3 @@ public:
 private:
   volatile uint32_t value;
 };
-
-#endif /* _SPINLOCK_H_ */

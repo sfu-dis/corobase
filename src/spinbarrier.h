@@ -1,7 +1,6 @@
 #ifndef _SPINBARRIER_H_
 #define _SPINBARRIER_H_
 
-#include "amd64.h"
 #include "macros.h"
 #include "util.h"
 
@@ -43,7 +42,7 @@ public:
   wait_for()
   {
     while (n > 0)
-      nop_pause();
+      NOP_PAUSE;
   }
 
 private:

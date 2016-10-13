@@ -1,4 +1,5 @@
 #include "base_txn_btree.h"
+#include "masstree_btree.h"
 
 rc_t
 base_txn_btree::do_search(transaction &t, const varstr &k, value_reader &vr)
