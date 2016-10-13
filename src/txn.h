@@ -21,7 +21,7 @@
 #include "dbcore/sm-log.h"
 #include "dbcore/sm-rc.h"
 #include "amd64.h"
-#include "btree_choice.h"
+#include "masstree_btree.h"
 #include "macros.h"
 #include "util.h"
 #include "spinlock.h"
