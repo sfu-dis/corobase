@@ -377,7 +377,7 @@ sm_oid_mgr_impl::recreate_allocator(FID f, OID m)
     if (not m)
         return;
 
-    if (m < alloc->head.capacity_mark and m < alloc->head.hiwater_mark)
+    if (m <= alloc->head.capacity_mark and m <= alloc->head.hiwater_mark)
         return;
 
     // Set capacity_mark = hiwater_mark = m, the cache machinery
@@ -451,7 +451,11 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
     // Create an empty oidmgr, with initial internal files
     oidmgr = new sm_oid_mgr_impl{};
     oidmgr->dfd = dirent_iterator(sysconf::log_dir.c_str()).dup();
-    chkptmgr = new sm_chkpt_mgr(chkpt_start);
+    if(sysconf::enable_chkpt) {
+      chkptmgr = new sm_chkpt_mgr(chkpt_start);
+    } else {
+      chkptmgr = nullptr;
+    }
 
     if (not sm_log::need_recovery or chkpt_start.offset() == 0)
         return;
@@ -487,9 +491,14 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
         n = read(fd, &f, sizeof(FID));
 
         // Recover fid_map and recreate the empty file
-        ASSERT(sm_file_mgr::get_index(name));
+        ALWAYS_ASSERT(!sm_file_mgr::get_index(name));
+
+        // Benchmark code should have already registered the table with the engine
+        ALWAYS_ASSERT(sm_file_mgr::name_map[name]);
+
         sm_file_mgr::name_map[name]->fid = f;
-        sm_file_mgr::fid_map[f] = new sm_file_descriptor(f, name, sm_file_mgr::get_index(name), oidmgr->get_array(f));
+        sm_file_mgr::name_map[name]->index = new ndb_ordered_index(name);
+        sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
         ASSERT(not oidmgr->file_exists(f));
         oidmgr->recreate_file(f);
         printf("[Recovery.chkpt] FID=%d %s\n", f, name.c_str());
@@ -498,6 +507,10 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
         oid_array *oa = oidmgr->get_array(f);
         oa->ensure_size(oa->alloc_size(himark));
         oidmgr->recreate_allocator(f, himark);
+
+        sm_file_mgr::name_map[name]->main_array = oa;
+        ALWAYS_ASSERT(sm_file_mgr::get_index(name));
+        sm_file_mgr::get_index(name)->set_oid_array(f);
 
         // Initialize the pdest array
         if (sysconf::is_backup_srv()) {

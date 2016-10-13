@@ -20,6 +20,7 @@ public:
     static uint32_t max_threads_per_node;
     static bool loading;
 
+    static int enable_chkpt;
     static int log_buffer_mb;
     static int log_segment_mb;
     static std::string log_dir;
