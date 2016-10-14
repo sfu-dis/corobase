@@ -124,6 +124,7 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   oidmgr->recreate_file(f);
   ASSERT(sm_file_mgr::name_map[name]->index);
   sm_file_mgr::name_map[name]->index->set_oid_array(f);
+  sm_file_mgr::name_map[name]->main_array = oidmgr->get_array(f);
   if (sm_file_mgr::fid_map.find(f) == sm_file_mgr::fid_map.end()) {
     // chkpt recovery might have did this
     ASSERT(sm_file_mgr::name_map[name]->index);
