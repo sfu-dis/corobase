@@ -520,29 +520,34 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
 
         // Populate the OID array
         while (1) {
+            // Read the OID
             OID o = 0;
             n = read(fd, &o, sizeof(OID));
             if (o == himark)
                 break;
 
-            fat_ptr ptr = NULL_PTR;
-            n = read(fd, &ptr, sizeof(fat_ptr));
-            if (sysconf::eager_warm_up()) {
-                ptr = object::create_tuple_object(ptr, NULL_PTR, 0, lm);
-                ASSERT(ptr.asi_type() == 0);
-            }
-            else {
-                object *obj = new (MM::allocate(sizeof(object), 0)) object(ptr, NULL_PTR, 0);
-                ptr = fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
-                ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
-            }
-            oidmgr->oid_put_new(oa, o, ptr);
+            // Size code
+            uint8_t size_code = INVALID_SIZE_CODE;
+            n = read(fd, &size_code, sizeof(uint8_t));
+            ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
+            auto data_size = decode_size_aligned(size_code);
+
+            // Read the data: there will usually be read-ahead, so it's likely
+            // the data is already cached when we try to fetch the object header.
+            // XXX(tzwang): load everything in. Revisit if this takes too long.
+            object* obj = new (MM::allocate(data_size, 0)) object;
+            n = read(fd, obj, data_size);
+            ALWAYS_ASSERT(obj->_clsn.offset());
+            ALWAYS_ASSERT(obj->_clsn.offset() < chkpt_start.offset());
+            ALWAYS_ASSERT(obj->_pdest.offset());
+            ALWAYS_ASSERT(n == data_size);
+            oidmgr->oid_put_new(oa, o, fat_ptr::make((uintptr_t)obj, size_code, 0));
         }
     }
 }
 
 void
-sm_oid_mgr::take_chkpt(LSN cstart)
+sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
 {
     // Now the real work. The format of a chkpt file is:
     // [table 1 himark]
@@ -560,6 +565,7 @@ sm_oid_mgr::take_chkpt(LSN cstart)
     //
     // The table's himark denotes its start and end
 
+    uint64_t chkpt_size = 0;
     for (auto &fm : sm_file_mgr::fid_map) {
         auto* fd = fm.second;
         FID fid = fd->fid;
@@ -577,36 +583,61 @@ sm_oid_mgr::take_chkpt(LSN cstart)
         chkptmgr->write_buffer((void *)fd->name.c_str(), len);
         chkptmgr->write_buffer(&fd->fid, sizeof(FID));
 
-        // Now write the [OID, ptr] pairs
+        auto* oa = fm.second->main_array; 
+        ASSERT(oa);
+
+        // Now write the [OID, payload] pairs
         for (OID oid = 0; oid < himark; oid++) {
-            auto ptr = oid_get(fid, oid);
-        find_pdest:
-            if (not ptr.offset())
+            // FIXME(tzwang): figure out how this interact with GC/epoch
+            auto ptr = oid_get(oa, oid);
+        retry:
+            if (not ptr.offset()) {
                 continue;
-            object *obj = (object *)ptr.offset();
-            auto pdest = volatile_read(obj->_pdest);
-            // Three cases:
-            // 1. Tuple is in memory, not in storage (or doesn't have a valid
-            //    pdest yet). Skip and continue to look at an older version
-            //    which should be committed or nothing
-            // 2. Tuple is in memory and in storage (has a valid pdest)
-            // 3. Tuple is not in memory but in storage
-            //    For both 2 and 3, use the object's _pdest directly
-            if (pdest.asi_type() != fat_ptr::ASI_LOG or LSN::from_ptr(pdest) >= cstart) {
-                ptr = volatile_read(obj->_next);
-                goto find_pdest;
             }
 
-            ASSERT(pdest.offset() and pdest.asi_type() == fat_ptr::ASI_LOG);
+            if (ptr.asi_type() == fat_ptr::ASI_LOG) {
+                // In durable log, dig it out -- we must be trying to 
+                // chkpt a record that was recovered from the log but
+                // was never accessed so it must have an LSN < chkpt_start.
+                ASSERT(ptr.offset() < chkpt_start_lsn);
+                ptr = object::create_tuple_object(ptr, NULL_PTR, 0);
+                ASSERT(ptr.asi_type() == 0);
+            }
+
+            object *obj = (object *)ptr.offset();
+
+            fat_ptr clsn = volatile_read(obj->_clsn);
+            if (clsn.asi_type() != fat_ptr::ASI_LOG) {
+                ptr = volatile_read(obj->_next);
+                goto retry;
+            }
+
+            ASSERT(obj->_clsn.offset());
+            if (obj->_pdest.offset() == 0) {
+                // must be a delete, skip it
+                continue;
+            }
+
+            if (obj->_clsn.offset() >= chkpt_start_lsn) {
+                ptr = volatile_read(obj->_next);
+                goto retry;
+            }
+
             // Now write this out
-            // XXX (tzwang): perhaps we'll also need obj._next later?
             chkptmgr->write_buffer(&oid, sizeof(OID));
-            chkptmgr->write_buffer(&pdest, sizeof(fat_ptr));
+            uint8_t size_code = ptr.size_code();
+            ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
+            chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
+            auto data_size = decode_size_aligned(size_code);
+            ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
+            chkptmgr->write_buffer((char*)obj, data_size);
+            chkpt_size += (sizeof(OID) + sizeof(uint8_t) + data_size);
         }
         // Write himark as end of fid
         chkptmgr->write_buffer(&himark, sizeof(OID));
         std::cout << "[Checkpoint] FID(" << fd->fid << ") = "
-                  << fid << ", himark = " << himark << std::endl;
+                  << fid << ", himark = " << himark << 
+                  ", wrote " << chkpt_size << " bytes" << std::endl;
     }
 
     chkptmgr->sync_buffer();
@@ -884,11 +915,8 @@ sm_oid_mgr::ensure_tuple(fat_ptr *ptr, epoch_num epoch)
         return p;
     }
 
-    auto *obj = (object *)p.offset();
-
-    // obj->_pdest should point to some location in the log
-    ASSERT(obj->_pdest != NULL_PTR);
-    fat_ptr new_ptr = object::create_tuple_object(obj->_pdest, obj->_next, epoch);
+    // *ptr should point to some location in the log
+    fat_ptr new_ptr = object::create_tuple_object(p, NULL_PTR, epoch);
     ASSERT(new_ptr.offset());
 
     // Now new_ptr should point to some location in memory

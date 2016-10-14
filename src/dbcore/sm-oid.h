@@ -119,7 +119,7 @@ struct sm_oid_mgr {
        returns, but will only be reachable if the checkpoint
        transaction commits and its location is properly recorded.
      */
-    void take_chkpt(LSN cstart);
+    void take_chkpt(uint64_t chkpt_start_lsn);
 
     /* Create a new file and return its FID. If [needs_alloc]=true,
        the new file will be managed by an allocator and its FID can be

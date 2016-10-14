@@ -49,7 +49,7 @@ start:
     RCU::rcu_enter();
     auto cstart = logmgr->flush();
     prepare_file(cstart);
-    oidmgr->take_chkpt(cstart);
+    oidmgr->take_chkpt(cstart.offset());
     // FIXME (tzwang): originally we should put info about the chkpt
     // in a log record and then commit that sys transaction that's
     // responsible for doing chkpt. But that would interfere with
