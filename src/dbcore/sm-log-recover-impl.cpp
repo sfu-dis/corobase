@@ -7,23 +7,24 @@
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
 
-#define SEPARATE_INDEX_REBUILD 0
+#define SEPARATE_INDEX_REBUILD 1
 
 // The version-loading mechanism will only dig out the latest version as a result.
 fat_ptr
 sm_log_recover_impl::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec, fat_ptr next) {
   // Note: payload_size() includes the whole varstr
   // See do_tree_put's log_update call.
-  size_t sz = sizeof(object);
-  if (sysconf::eager_warm_up()) {
-    sz += (sizeof(dbtuple) + logrec->payload_size());
-    sz = align_up(sz);
+  if (not sysconf::eager_warm_up()) {
+    ASSERT(logrec->payload_ptr().asi_type() == fat_ptr::ASI_LOG);
+    return logrec->payload_ptr();
   }
 
-  object *obj = new (MM::allocate(sz, 0)) object(logrec->payload_ptr(), next, 0);
+  size_t sz = sizeof(object);
+  sz += (sizeof(dbtuple) + logrec->payload_size());
+  sz = align_up(sz);
 
-  if (not sysconf::eager_warm_up())
-    return fat_ptr::make(obj, INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG);
+  object *obj = new (MM::allocate(sz, 0)) object(logrec->payload_ptr(), next, 0);
+  obj->_clsn = logrec->payload_ptr();
 
   // Load tuple varstr from logrec
   dbtuple* tuple = (dbtuple *)obj->payload();
@@ -37,7 +38,6 @@ sm_log_recover_impl::recover_prepare_version(sm_log_scan_mgr::record_scan *logre
     tuple->size);
 
   ASSERT(obj->_next == next);
-  //obj->_clsn = get_impl(logrec)->start_lsn.to_log_ptr();
   obj->_clsn = logrec->payload_lsn().to_log_ptr();
   ASSERT(logrec->payload_lsn().offset() == logrec->payload_ptr().offset());
   ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
@@ -198,26 +198,22 @@ parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to
 
   // One hiwater_mark/capacity_mark per FID
   FID max_fid = 0;
-  static std::vector<struct redo_runner> redoers;
-  if (redoers.size() == 0) {
-    auto *scan = scanner->new_log_scan(start_lsn, sysconf::eager_warm_up());
-    for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
-      if (scan->type() != sm_log_scan_mgr::LOG_FID)
-        continue;
-      FID fid = scan->fid();
-      max_fid = std::max(fid, max_fid);
-      recover_fid(scan);
-    }
-    delete scan;
+  std::vector<struct redo_runner> redoers;
+  auto *scan = scanner->new_log_scan(start_lsn, sysconf::eager_warm_up());
+  for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
+    if (scan->type() != sm_log_scan_mgr::LOG_FID)
+      continue;
+    FID fid = scan->fid();
+    max_fid = std::max(fid, max_fid);
+    recover_fid(scan);
   }
+  delete scan;
 
-  if (redoers.size() == 0) {
-    for (auto &fm : sm_file_mgr::fid_map) {
-      sm_file_descriptor *fd = fm.second;
-      ASSERT(fd->fid);
-      max_fid = std::max(fd->fid, max_fid);
-      redoers.emplace_back(this, fd->fid, fd->index);
-    }
+  for (auto &fm : sm_file_mgr::fid_map) {
+    sm_file_descriptor *fd = fm.second;
+    ASSERT(fd->fid);
+    max_fid = std::max(fd->fid, max_fid);
+    redoers.emplace_back(this, fd->fid, fd->index);
   }
 
   // Fix internal files' marks

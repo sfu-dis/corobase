@@ -198,7 +198,7 @@ rc_t base_txn_btree::do_tree_put(
             // unless the record is tooooo large.
             const size_t sz = v->size();
             ASSERT(sz == v->size());
-            auto record_size = align_up(sz) + sizeof(varstr);
+            auto record_size = align_up(sz + sizeof(varstr));
             auto size_code = encode_size_aligned(record_size);
             ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
             // log the whole varstr so that recovery can figure out the real size
