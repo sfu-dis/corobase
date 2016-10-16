@@ -448,102 +448,107 @@ sm_oid_mgr::get_array(FID f)
 void
 sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
 {
-    // Create an empty oidmgr, with initial internal files
-    oidmgr = new sm_oid_mgr_impl{};
-    oidmgr->dfd = dirent_iterator(sysconf::log_dir.c_str()).dup();
-    if(sysconf::enable_chkpt) {
-      chkptmgr = new sm_chkpt_mgr(chkpt_start);
-    } else {
-      chkptmgr = nullptr;
+  // Create an empty oidmgr, with initial internal files
+  oidmgr = new sm_oid_mgr_impl{};
+  oidmgr->dfd = dirent_iterator(sysconf::log_dir.c_str()).dup();
+  if(sysconf::enable_chkpt) {
+    chkptmgr = new sm_chkpt_mgr(chkpt_start);
+  } else {
+    chkptmgr = nullptr;
+  }
+
+  if(sm_log::need_recovery and chkpt_start.offset()) {
+    recover_from_chkpt(chkpt_start, lm);
+  }
+}
+
+void
+sm_oid_mgr::recover_from_chkpt(LSN chkpt_start, sm_log_recover_mgr *lm) {
+  // Find the chkpt file and recover from there
+  char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
+  size_t n = os_snprintf(buf, sizeof(buf),
+                         CHKPT_DATA_FILE_NAME_FMT, chkpt_start._val);
+  printf("[Recovery.chkpt] %s\n", buf);
+  ASSERT(n < sizeof(buf));
+  int fd = os_openat(oidmgr->dfd, buf, O_RDONLY);
+
+  while (1) {
+    // Read himark
+    OID himark = 0;
+    n = read(fd, &himark, sizeof(OID));
+    if(not n) {  // EOF
+      break;
     }
 
-    if (not sm_log::need_recovery or chkpt_start.offset() == 0)
-        return;
+    ASSERT(n == sizeof(OID));
 
-    // Find the chkpt file and recover from there
-    char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
-    size_t n = os_snprintf(buf, sizeof(buf),
-                           CHKPT_DATA_FILE_NAME_FMT, chkpt_start._val);
-    printf("[Recovery.chkpt] %s\n", buf);
-    ASSERT(n < sizeof(buf));
-    int fd = os_openat(oidmgr->dfd, buf, O_RDONLY);
+    // Read the table's name
+    size_t len = 0;
+    n = read(fd, &len, sizeof(size_t));
+    THROW_IF(n != sizeof(size_t), illegal_argument,
+             "Error reading tabel name length");
+    char name_buf[256];
+    n = read(fd, name_buf, len);
+    std::string name(name_buf, len);
 
-    while (1) {
-        // Read himark
-        OID himark = 0;
-        n = read(fd, &himark, sizeof(OID));
-        if (not n)  // EOF
-            break;
+    // FID
+    FID f = 0;
+    n = read(fd, &f, sizeof(FID));
 
-        ASSERT(n == sizeof(OID));
+    // Recover fid_map and recreate the empty file
+    ALWAYS_ASSERT(!sm_file_mgr::get_index(name));
 
-        // Read the table's name
-        size_t len = 0;
-        n = read(fd, &len, sizeof(size_t));
-        THROW_IF(n != sizeof(size_t), illegal_argument,
-                 "Error reading tabel name length");
-        char name_buf[256];
-        n = read(fd, name_buf, len);
-        std::string name(name_buf, len);
+    // Benchmark code should have already registered the table with the engine
+    ALWAYS_ASSERT(sm_file_mgr::name_map[name]);
 
-        // FID
-        FID f = 0;
-        n = read(fd, &f, sizeof(FID));
+    sm_file_mgr::name_map[name]->fid = f;
+    sm_file_mgr::name_map[name]->index = new ndb_ordered_index(name);
+    sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
+    ASSERT(not oidmgr->file_exists(f));
+    oidmgr->recreate_file(f);
+    printf("[Recovery.chkpt] FID=%d %s\n", f, name.c_str());
 
-        // Recover fid_map and recreate the empty file
-        ALWAYS_ASSERT(!sm_file_mgr::get_index(name));
+    // Recover allocator status
+    oid_array *oa = oidmgr->get_array(f);
+    oa->ensure_size(oa->alloc_size(himark));
+    oidmgr->recreate_allocator(f, himark);
 
-        // Benchmark code should have already registered the table with the engine
-        ALWAYS_ASSERT(sm_file_mgr::name_map[name]);
+    sm_file_mgr::name_map[name]->main_array = oa;
+    ALWAYS_ASSERT(sm_file_mgr::get_index(name));
+    sm_file_mgr::get_index(name)->set_oid_array(f);
 
-        sm_file_mgr::name_map[name]->fid = f;
-        sm_file_mgr::name_map[name]->index = new ndb_ordered_index(name);
-        sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
-        ASSERT(not oidmgr->file_exists(f));
-        oidmgr->recreate_file(f);
-        printf("[Recovery.chkpt] FID=%d %s\n", f, name.c_str());
-
-        // Recover allocator status
-        oid_array *oa = oidmgr->get_array(f);
-        oa->ensure_size(oa->alloc_size(himark));
-        oidmgr->recreate_allocator(f, himark);
-
-        sm_file_mgr::name_map[name]->main_array = oa;
-        ALWAYS_ASSERT(sm_file_mgr::get_index(name));
-        sm_file_mgr::get_index(name)->set_oid_array(f);
-
-        // Initialize the pdest array
-        if (sysconf::is_backup_srv()) {
-            sm_file_mgr::get_file(f)->init_pdest_array();
-            std::cout << "Created pdest array for FID " << f << std::endl;
-        }
-
-        // Populate the OID array
-        while (1) {
-            // Read the OID
-            OID o = 0;
-            n = read(fd, &o, sizeof(OID));
-            if (o == himark)
-                break;
-
-            // Size code
-            uint8_t size_code = INVALID_SIZE_CODE;
-            n = read(fd, &size_code, sizeof(uint8_t));
-            ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
-            auto data_size = decode_size_aligned(size_code);
-
-            // Read the data: there will usually be read-ahead, so it's likely
-            // the data is already cached when we try to fetch the object header.
-            // XXX(tzwang): load everything in. Revisit if this takes too long.
-            object* obj = new (MM::allocate(data_size, 0)) object;
-            n = read(fd, obj, data_size);
-            ALWAYS_ASSERT(obj->_clsn.offset());
-            ALWAYS_ASSERT(obj->_clsn.offset() < chkpt_start.offset());
-            ALWAYS_ASSERT(obj->_pdest.offset());
-            ALWAYS_ASSERT(n == data_size);
-            oidmgr->oid_put_new(oa, o, fat_ptr::make((uintptr_t)obj, size_code, 0));
-        }
+    // Initialize the pdest array
+    if(sysconf::is_backup_srv()) {
+      sm_file_mgr::get_file(f)->init_pdest_array();
+      std::cout << "Created pdest array for FID " << f << std::endl;
     }
+
+    // Populate the OID array
+    while(1) {
+      // Read the OID
+      OID o = 0;
+      n = read(fd, &o, sizeof(OID));
+      if (o == himark)
+          break;
+
+      // Size code
+      uint8_t size_code = INVALID_SIZE_CODE;
+      n = read(fd, &size_code, sizeof(uint8_t));
+      ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
+      auto data_size = decode_size_aligned(size_code);
+
+      // Read the data: there will usually be read-ahead, so it's likely
+      // the data is already cached when we try to fetch the object header.
+      // XXX(tzwang): load everything in. Revisit if this takes too long.
+      object* obj = new (MM::allocate(data_size, 0)) object;
+      n = read(fd, obj, data_size);
+      ALWAYS_ASSERT(obj->_clsn.offset());
+      ALWAYS_ASSERT(obj->_clsn.offset() < chkpt_start.offset());
+      ALWAYS_ASSERT(obj->_pdest.offset());
+      ALWAYS_ASSERT(n == data_size);
+      oidmgr->oid_put_new(oa, o, fat_ptr::make((uintptr_t)obj, size_code, 0));
+    }
+  }
 }
 
 void

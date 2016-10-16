@@ -121,6 +121,8 @@ struct sm_oid_mgr {
      */
     void take_chkpt(uint64_t chkpt_start_lsn);
 
+    static void recover_from_chkpt(LSN chkpt_start, sm_log_recover_mgr *lm);
+
     /* Create a new file and return its FID. If [needs_alloc]=true,
        the new file will be managed by an allocator and its FID can be
        passed to alloc_oid(); otherwise, the file is either unmanaged
