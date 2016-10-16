@@ -388,7 +388,7 @@ sm_oid_mgr_impl::recreate_allocator(FID f, OID m)
     oid_array *oa = ptr;
     ASSERT(oa);
     oa->ensure_size(alloc->head.capacity_mark);
-    printf("[Recovery] recreate allocator %d, himark=%d\n", f, m);
+    LOG(INFO) << "[Recovery] recreate allocator " << f << ", himark=" << m;
 }
 
 void
@@ -468,7 +468,7 @@ sm_oid_mgr::recover_from_chkpt(LSN chkpt_start, sm_log_recover_mgr *lm) {
   char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
   size_t n = os_snprintf(buf, sizeof(buf),
                          CHKPT_DATA_FILE_NAME_FMT, chkpt_start._val);
-  printf("[Recovery.chkpt] %s\n", buf);
+  LOG(INFO) << "[CHKPT Recovery] " << buf;
   ASSERT(n < sizeof(buf));
   int fd = os_openat(oidmgr->dfd, buf, O_RDONLY);
 
@@ -506,7 +506,7 @@ sm_oid_mgr::recover_from_chkpt(LSN chkpt_start, sm_log_recover_mgr *lm) {
     sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
     ASSERT(not oidmgr->file_exists(f));
     oidmgr->recreate_file(f);
-    printf("[Recovery.chkpt] FID=%d %s\n", f, name.c_str());
+    LOG(INFO) << "[CHKPT Recovery] FID=" << f << "(" << name << ")";
 
     // Recover allocator status
     oid_array *oa = oidmgr->get_array(f);
