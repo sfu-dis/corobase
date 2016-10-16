@@ -22,9 +22,6 @@ static __thread transaction::read_set_t* tls_read_set;
 transaction::transaction(uint64_t flags, str_arena &sa)
   : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()])
 {
-#ifdef BTREE_LOCK_OWNERSHIP_CHECKING
-    concurrent_btree::NodeLockRegionBegin();
-#endif
 #ifdef PHANTOM_PROT
     absent_set.set_empty_key(NULL);    // google dense map
     absent_set.clear();
@@ -94,9 +91,6 @@ transaction::~transaction()
         RCU::rcu_exit();
 #else
     RCU::rcu_exit();
-#endif
-#ifdef BTREE_LOCK_OWNERSHIP_CHECKING
-    concurrent_btree::AssertAllNodeLocksReleased();
 #endif
 #if defined(SSN) || defined(SSI)
     if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))

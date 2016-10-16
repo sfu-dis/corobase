@@ -14,11 +14,9 @@
 #include <utility>
 #include <atomic>
 
-#include "log2.hh"
 #include "macros.h"
 #include "prefetch.h"
 #include "util.h"
-#include "ownership_checker.h"
 
 #include "masstree/masstree_scan.hh"
 #include "masstree/masstree_insert.hh"
@@ -181,33 +179,6 @@ class mbtree {
   };
 
   void invariant_checker() {} // stub for now
-
-#ifdef BTREE_LOCK_OWNERSHIP_CHECKING
-public:
-  static inline void
-  NodeLockRegionBegin()
-  {
-    // XXX: implement me
-    ALWAYS_ASSERT(false);
-    //ownership_checker<mbtree<P>, node_base_type>::NodeLockRegionBegin();
-  }
-  static inline void
-  AssertAllNodeLocksReleased()
-  {
-    // XXX: implement me
-    ALWAYS_ASSERT(false);
-    //ownership_checker<mbtree<P>, node_base_type>::AssertAllNodeLocksReleased();
-  }
-private:
-  static inline void
-  AddNodeToLockRegion(const node_base_type *n)
-  {
-    // XXX: implement me
-    ALWAYS_ASSERT(false);
-    //ownership_checker<mbtree<P>, node_base_type>::AddNodeToLockRegion(n);
-  }
-public:
-#endif
 
   mbtree() {
     threadinfo ti(0);
