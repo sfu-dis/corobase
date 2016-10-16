@@ -9,6 +9,8 @@
 #include <type_traits>
 #include <utility>
 
+#include <glog/logging.h>
+
 /* Low-level definitions that can be used anywhere. This file must be
    the root of any #include dependency tree it is part of.
  */
