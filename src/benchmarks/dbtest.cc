@@ -342,11 +342,6 @@ main(int argc, char **argv)
     cerr << "  tuple_prefetch          : no" << endl;
 #endif
 
-#ifdef BTREE_NODE_PREFETCH
-    cerr << "  btree_node_prefetch     : yes" << endl;
-#else
-    cerr << "  btree_node_prefetch     : no" << endl;
-#endif
 #if defined(SSN) || defined(SSI)
     cerr << "  SSN/SSI safe snapshot   : " << sysconf::enable_safesnap << endl;
 #endif

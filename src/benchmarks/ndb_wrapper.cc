@@ -182,9 +182,6 @@ ndb_ordered_index::remove(void *txn, varstr &&key)
 std::map<std::string, uint64_t>
 ndb_ordered_index::clear()
 {
-#ifdef TXN_BTREE_DUMP_PURGE_STATS
-  std::cerr << "purging txn index: " << btr.get_name() << std::endl;
-#endif
   return btr.unsafe_purge(true);
 }
 
