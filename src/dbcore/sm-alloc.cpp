@@ -148,8 +148,7 @@ void *allocate(size_t size, epoch_num e) {
             object *obj = (object *)ptr.offset();
             if (e < 4) {
               continue;  // Note we later will compare e - 4 and with obj's alloc epoch...
-            }
-            if (obj->_alloc_epoch <= e - 4 and decode_size_aligned(ptr.size_code()) == size) {
+            } else if (obj->_alloc_epoch <= e - 4 and decode_size_aligned(ptr.size_code()) == size) {
                 p = (void *)ptr.offset();
                 tls_unlinked_objects = obj->_next;
                 goto out;
