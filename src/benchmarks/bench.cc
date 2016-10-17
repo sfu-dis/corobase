@@ -224,6 +224,12 @@ bench_runner::run()
     volatile_write(MM::safesnap_lsn, logmgr->cur_lsn().offset());
     ALWAYS_ASSERT(MM::safesnap_lsn);
     RCU::rcu_exit();
+
+    // Take a chkpt now if we just loaded our database
+    if(sysconf::enable_chkpt) {
+      chkptmgr->do_chkpt();  // this is synchronous
+    }
+
     RCU::rcu_deregister();
   }
 
@@ -244,14 +250,14 @@ bench_runner::run()
 
   map<string, size_t> table_sizes_before;
 
+  // Persist the database
+  logmgr->flush();
+
   // Start checkpointer after database is ready
   if (sysconf::enable_chkpt) {
     ASSERT(chkptmgr);
     chkptmgr->start_chkpt_thread();
   }
-
-  // Persist the database
-  logmgr->flush();
 
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
