@@ -552,7 +552,7 @@ uint64_t
 sm_log_alloc_mgr::smallest_tls_lsn_offset()
 {
     uint64_t oldest_offset = cur_lsn_offset();
-    for (uint32_t i = 0; i < thread::_active_threads; i++) {
+    for (uint32_t i = 0; i < thread::next_thread_id; i++) {
         if (_tls_lsn_offset[i])
             oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
     }

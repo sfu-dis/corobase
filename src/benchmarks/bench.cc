@@ -225,7 +225,6 @@ bench_runner::run()
     ALWAYS_ASSERT(MM::safesnap_lsn);
     RCU::rcu_exit();
     RCU::rcu_deregister();
-    thread::reset_active_threads();
   }
 
   if (sysconf::num_backups) {
