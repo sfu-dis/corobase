@@ -40,6 +40,9 @@ split_ws(const string &s)
 int
 main(int argc, char **argv)
 {
+  google::InitGoogleLogging(argv[0]);
+  FLAGS_logtostderr = 1;
+
   ndb_wrapper *db = NULL;
   void (*test_fn)(ndb_wrapper *, int argc, char **argv) = NULL;
   string bench_type = "ycsb";
