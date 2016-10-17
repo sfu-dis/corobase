@@ -57,7 +57,7 @@ std::atomic<fat_ptr> recycle_oid_list(NULL_PTR);
 uint64_t gc_lsn = 0;
 
 uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
-uint64_t EPOCH_SIZE_COUNT = 200000;
+uint64_t EPOCH_SIZE_COUNT = 400000;
 
 // epoch_excl_begin_lsn belongs to the previous **ending** epoch, and we're
 // using it as the **begin** lsn of the new epoch.
@@ -341,6 +341,7 @@ try_recycle:
     uint64_t reclaimed_count = 0;
     uint64_t reclaimed_nbytes = 0;
     gc_trigger.wait(lock);
+start_over:
     fat_ptr r = recycle_oid_list.load();
     object *r_obj = (object *)r.offset();
 
@@ -370,7 +371,6 @@ try_recycle:
             break;
         }
 
-      start_over:
         r_obj = (object *)r.offset();
         recycle_oid *r_oid = (recycle_oid *)r_obj->payload();
         ASSERT(r_oid->entry);
@@ -423,17 +423,19 @@ try_recycle:
         // versions with LSNs 2 and 1.5. We need to keep the one with LSN=1.5
         // although its < gc_lsn; otherwise the tx using safesnap won't be
         // able to find any version available.
+        int i = 0;
         while (cur.offset()) {
             cur_obj = (object *)cur.offset();
             ASSERT(cur_obj);
             clsn = volatile_read(cur_obj->_clsn);
             if(clsn.asi_type () != fat_ptr::ASI_LOG) {
-              ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_XID);
+              ALWAYS_ASSERT(i == 0);
               goto start_over;
             }
             ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
             prev_next = &cur_obj->_next;
             cur = volatile_read(*prev_next);
+            ++i;
             if (LSN::from_ptr(clsn).offset() <= glsn)
                 break;
         }
