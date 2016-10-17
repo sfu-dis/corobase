@@ -118,7 +118,6 @@ namespace MM {
     }
 
     void epoch_exit(uint64_t s, epoch_num e);
-    void recycle(oid_array *oa, OID oid);
     void recycle(fat_ptr list_head, fat_ptr list_tail);
 };
 

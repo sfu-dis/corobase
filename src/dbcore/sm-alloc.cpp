@@ -21,7 +21,7 @@
  * Writers add updated OIDs in the form of <fid, oid> to the queue upon
  * commit, to the tail of the queue. A GC thread periodically consumes
  * queue nodes from the head of the queue and recycle old versions if
- * their clsn < trim_lsn. This way avoids scanning the whole OID array
+ * their clsn < gc_lsn. This way avoids scanning the whole OID array
  * which might be increasing quite fast. Amount of scanning is only
  * related to update footprint.
  */
@@ -37,10 +37,10 @@ void gc_daemon();
 std::atomic<fat_ptr> recycle_oid_list(NULL_PTR);
 
 // tzwang (2015-11-01):
-// trim_lsn is the LSN of the no-longer-needed versions, which is the end LSN
+// gc_lsn is the LSN of the no-longer-needed versions, which is the end LSN
 // of the epoch that most recently reclaimed (i.e., all **readers** are gone).
 // It corresponds to two epochs ago of the most recently reclaimed epoch (in
-// which all the **creators** are gone). Note that trim_lsn only records the
+// which all the **creators** are gone). Note that gc_lsn only records the
 // LSN when the *creator* of the versions left---not the *visitor* of those
 // versions. So consider the versions created in epoch N, we can have stragglers
 // up to at most epoch N+2; to start a new epoch N+3, N must be reclaimed. This
@@ -52,9 +52,9 @@ std::atomic<fat_ptr> recycle_oid_list(NULL_PTR);
 // This "begin LSN of any tx" translates to the current log LSN for normal
 // transactions, and the safesnap LSN for read-only transactions using a safe
 // snapshot. For simplicity, the daemon simply leave one version with LSN < the
-// trim_lsn available (so no need to figure out which safesnap lsn is the
+// gc_lsn available (so no need to figure out which safesnap lsn is the
 // appropriate one to rely on - it changes as the daemon does its work).
-uint64_t trim_lsn = 0;
+uint64_t gc_lsn = 0;
 
 uint64_t EPOCH_SIZE_NBYTES = 1 << 28;
 uint64_t EPOCH_SIZE_COUNT = 200000;
@@ -293,7 +293,7 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
         volatile_write(safesnap_lsn, std::max(safesnap_lsn, new_safesnap_lsn));
     }
     if (e >= 2) {
-        trim_lsn = epoch_reclaim_lsn[(e - 2) % 3];
+        gc_lsn = epoch_reclaim_lsn[(e - 2) % 3];
         epoch_reclaim_lsn[(e - 2) % 3] = 0;
         gc_trigger.notify_all();
     }
@@ -311,8 +311,8 @@ epoch_exit(uint64_t s, epoch_num e)
         // (it could also be set by somebody else who's also doing epoch_exit(),
         // but this is captured before new_epoch succeeds, so we're fine).
         // If instead, we do this in epoch_ended(), that cur_lsn captured
-        // actually belongs to the *new* epoch - not safe to trim based on
-        // this lsn. The real trim_lsn should be some lsn at the end of the
+        // actually belongs to the *new* epoch - not safe to gc based on
+        // this lsn. The real gc_lsn should be some lsn at the end of the
         // ending epoch, not some lsn after the next epoch.
         epoch_excl_begin_lsn[(e + 1) % 3] = s;
         if (mm_epochs.new_epoch_possible() and mm_epochs.new_epoch())
@@ -354,14 +354,14 @@ try_recycle:
     ASSERT(r != r_prev);
 
     while (1) {
-        // need to update tlsn each time, to make sure we can make
+        // need to update glsn each time, to make sure we can make
         // progress when diving deeper in the list: in general the
         // deeper we dive in it, the newer versions we will see;
-        // then we might never get out of the loop if the tlsn is
+        // then we might never get out of the loop if the glsn is
         // too old, unless we have a threshold of "examined # of
         // oids" or like here, update it at each iteration.
-        auto tlsn = volatile_read(trim_lsn);
-        if (tlsn == 0)
+        auto glsn = volatile_read(gc_lsn);
+        if (glsn == 0)
             break;
 
         if (r == NULL_PTR or
@@ -370,17 +370,17 @@ try_recycle:
             break;
         }
 
+      start_over:
         r_obj = (object *)r.offset();
         recycle_oid *r_oid = (recycle_oid *)r_obj->payload();
         ASSERT(r_oid->entry);
 
-      start_over:
         fat_ptr head = *r_oid->entry;
         auto r_next = r_obj->_next;
         ASSERT(r_next != r);
         object *cur_obj = (object *)head.offset();
         if (not cur_obj) {
-            // in case it's a delete... remove the oid as if we trimmed it
+            // in case it's a delete... remove the oid as if we GCed it
             deallocate(r);
             ASSERT(r_prev != NULL_PTR);
             object *r_prev_obj = (object *)r_prev.offset();
@@ -390,14 +390,16 @@ try_recycle:
         }
 
         // need to start from the first **committed** version, and start
-        // trimming after its next, because the head might be still being
+        // deleting after its next, because the head might be still being
         // modified (hence its _next field) and might be gone (tx abort).
         auto clsn = volatile_read(cur_obj->_clsn);
-        if (clsn.asi_type() == fat_ptr::ASI_XID)
+        if (clsn.asi_type() != fat_ptr::ASI_LOG)
             cur_obj = (object *)cur_obj->_next.offset();
 
+        ASSERT(cur_obj);
+
         // now cur_obj should be the fisrt committed version, continue
-        // to the version that can be safely trimmed (the version after
+        // to the version that can be safely recycled (the version after
         // cur_obj).
         fat_ptr cur = volatile_read(cur_obj->_next);
         fat_ptr *prev_next = &cur_obj->_next;
@@ -414,22 +416,23 @@ try_recycle:
         if (not cur.offset())
             trimmed = true;
 
-        // Fast forward to the **second** version < trim_lsn. Consider that we
-        // set safesnap lsn to 1.8, and trim_lsn to 1.6. Assume we have two
+        // Fast forward to the **second** version < gc_lsn. Consider that we
+        // set safesnap lsn to 1.8, and gc_lsn to 1.6. Assume we have two
         // versions with LSNs 2 and 1.5. We need to keep the one with LSN=1.5
-        // although its < trim_lsn; otherwise the tx using safesnap won't be
+        // although its < gc_lsn; otherwise the tx using safesnap won't be
         // able to find any version available.
         while (cur.offset()) {
             cur_obj = (object *)cur.offset();
             ASSERT(cur_obj);
             clsn = volatile_read(cur_obj->_clsn);
             if(clsn.asi_type () != fat_ptr::ASI_LOG) {
+              ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_XID);
               goto start_over;
             }
             ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
             prev_next = &cur_obj->_next;
             cur = volatile_read(*prev_next);
-            if (LSN::from_ptr(clsn).offset() <= tlsn)
+            if (LSN::from_ptr(clsn).offset() <= glsn)
                 break;
         }
 
@@ -438,11 +441,11 @@ try_recycle:
             ASSERT(cur_obj);
             clsn = volatile_read(cur_obj->_clsn);
             ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
-            if (LSN::from_ptr(clsn).offset() <= tlsn) {
+            if (LSN::from_ptr(clsn).offset() <= glsn) {
                 // no need to CAS here if we only have one gc thread
                 volatile_write(prev_next->_ptr, 0);
                 std::atomic_thread_fence(std::memory_order_release);
-                trimmed = true;
+                recycled = true;
                 while (cur.offset()) {
                     cur_obj = (object *)cur.offset();
                     reclaimed_nbytes += cur_obj->tuple()->size;
@@ -452,7 +455,7 @@ try_recycle:
                     ASSERT(size);
                     auto& sol = scavenged_object_lists[size];
                     if (not sol.put(cur)) {
-                        central_object_pool.put_object_list(sol, (++next_thread) % thread::_active_threads);
+                        central_object_pool.put_object_list(sol, (++next_thread) % thread::next_thread_id);
                         sol.head = sol.tail = NULL_PTR;
                         sol.nobjects = 0;
                         ALWAYS_ASSERT(sol.put(cur));
@@ -465,16 +468,16 @@ try_recycle:
             cur = volatile_read(*prev_next);
         }
 
-        if (trimmed) {
+        if (recycled) {
             // really recycled something, detach the node, but don't update r_prev
             ASSERT(r_prev != NULL_PTR);
-            deallocate(r);
             object *r_prev_obj = (object *)r_prev.offset();
             volatile_write(r_prev_obj->_next, r_next);
         }
         else {
             r_prev = r;
         }
+        deallocate(r);
         r = r_next;
     }
 #ifndef NDEBUG
