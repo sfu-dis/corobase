@@ -404,17 +404,19 @@ try_recycle:
         fat_ptr cur = volatile_read(cur_obj->_next);
         fat_ptr *prev_next = &cur_obj->_next;
 
-        bool trimmed = false;
+        bool recycled = false;
 
-        // the tx only recycle()s updated oids, so each chain we poke at
-        // here *should* have at least 2 *committed* versions. But note
-        // that say, two txs, can update the same OID, and they will
-        // both add the OID to this list - rmb we don't dedup the list,
-        // there might be duplicates; if we trimmed one entry already,
-        // the next time we'll probably see cur.offset() == 0. So just
-        // remove it, as if it were trimmed (again).
-        if (not cur.offset())
-            trimmed = true;
+        if (not cur.offset()) {
+          // the tx only recycle()s updated oids, so each chain we poke at
+          // here *should* have at least 1 *committed* version. But note
+          // that say, two txs, can update the same OID, and they will
+          // both add the OID to this list - rmb we don't dedup the list,
+          // there might be duplicates; if we recycled one entry already,
+          // the next time we'll probably see cur.offset() == 0. So just
+          // remove it, as if it were recycled, but don't add the objects
+          // to the tls unlinked list again (ie don't set recycled),
+          // otherwise the same object could appear in the free list twice.
+        }
 
         // Fast forward to the **second** version < gc_lsn. Consider that we
         // set safesnap lsn to 1.8, and gc_lsn to 1.6. Assume we have two
