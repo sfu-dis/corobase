@@ -21,6 +21,7 @@ public:
     static bool loading;
 
     static int enable_chkpt;
+    static uint64_t chkpt_interval;
     static int log_buffer_mb;
     static int log_segment_mb;
     static std::string log_dir;

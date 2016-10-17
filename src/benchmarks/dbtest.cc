@@ -75,7 +75,8 @@ main(int argc, char **argv)
       {"log-ship-by-rdma"           , no_argument       , &sysconf::log_ship_by_rdma , 1},
       {"log-ship-sync-redo"         , no_argument       , &sysconf::log_ship_sync_redo, 1},
       {"enable-chkpt"               , no_argument       , &sysconf::enable_chkpt     , 1} ,
-      {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1} ,
+      {"chkpt-interval"             , required_argument , 0                          , 'd'},
+      {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1},
       {"nvram-log-buffer"           , no_argument       , &sysconf::nvram_log_buffer , 1},
       {"group-commit"               , no_argument       , &sysconf::group_commit     , 1},
       {"group-commit-queue-length"  , required_argument , 0                          , 'j'},
@@ -99,7 +100,7 @@ main(int argc, char **argv)
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:g:a:i:j:",
+    int c = getopt_long(argc, argv, "b:s:t:B:f:r:n:o:m:l:e:u:w:x:p:m:g:a:i:j:d:",
                         long_options, &option_index);
     if (c == -1)
       break;
@@ -124,6 +125,10 @@ main(int argc, char **argv)
         std::cout << "Invalid parallel replay mode: " << replay_mode << "\n";
         abort();
       }
+      break;
+
+    case 'd':
+      sysconf::chkpt_interval = strtoul(optarg, NULL, 10);
       break;
 
     case 'p':
@@ -330,6 +335,9 @@ main(int argc, char **argv)
     cerr << "  log-ship-by-rdma: " << sysconf::log_ship_by_rdma << endl;
     cerr << "  log-ship-sync-redo: " << sysconf::log_ship_sync_redo << endl;
     cerr << "  enable-chkpt    : " << sysconf::enable_chkpt  << endl;
+    if(sysconf::enable_chkpt) {
+      cerr << "  chkpt-interval  : " << sysconf::chkpt_interval << endl;
+    }
     cerr << "  enable-gc       : " << sysconf::enable_gc     << endl;
     cerr << "  null-log-device : " << sysconf::null_log_device << endl;
     cerr << "  num-backups     : " << sysconf::num_backups   << endl;
