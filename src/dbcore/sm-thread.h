@@ -12,20 +12,16 @@
 
 namespace thread {
 
-extern uint32_t _active_threads;
+extern uint32_t next_thread_id;  // == total number of threads had so far - never decreases
 
 inline static uint32_t my_id() {
   static __thread uint32_t __id;
   static __thread bool initialized;
   if (not initialized) {
-      __id = __sync_fetch_and_add(&_active_threads, 1);
-      initialized = true;
+    __id = __sync_fetch_and_add(&next_thread_id, 1);
+    initialized = true;
   }
   return __id;
-}
-
-inline static void reset_active_threads() {
-  volatile_write(_active_threads, 0);
 }
 
 struct sm_thread {
