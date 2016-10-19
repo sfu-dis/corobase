@@ -137,7 +137,8 @@ protected:
   rc_t do_tree_put(transaction &t,
                    const varstr *k,
                    const varstr *v,
-                   bool expect_new);
+                   bool expect_new,
+                   bool upsert = true);
 
   concurrent_btree underlying_btree;
   std::string name;
