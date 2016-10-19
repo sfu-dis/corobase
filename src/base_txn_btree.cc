@@ -61,7 +61,8 @@ rc_t base_txn_btree::do_tree_put(
     transaction &t,
     const varstr *k,
     const varstr *v,
-    bool expect_new)
+    bool expect_new,
+    bool upsert)
 {
     ASSERT(k);
     ASSERT(!expect_new || v); // makes little sense to remove() a key you expect
@@ -69,12 +70,11 @@ rc_t base_txn_btree::do_tree_put(
                                  // for now [since this would indicate a suboptimality]
     t.ensure_active();
     if (expect_new) {
-        if (t.try_insert_new_tuple(&this->underlying_btree, k, v, this->fid))
-            return rc_t{RC_TRUE};
-        // FIXME(tzwang): May 12, 2016 keep this upsert behavior for now, aborting causes
-        // problem in recovery - even single-thread Payment in TPC-C aborts.
-        //else
-        //    return rc_t{RC_ABORT_INTERNAL};
+      if (t.try_insert_new_tuple(&this->underlying_btree, k, v, this->fid)) {
+        return rc_t{RC_TRUE};
+      } else if (!upsert) {
+        return rc_t{RC_ABORT_INTERNAL};
+      }
     }
 
     // do regular search
