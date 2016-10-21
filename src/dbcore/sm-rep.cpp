@@ -62,7 +62,7 @@ void primary_start_daemon() {
     backup_sockfds.push_back(backup_sockfd);
     // Got a new backup, send out my logs
     // TODO(tzwang): handle backup joining after primary started forward processing
-    dirent_iterator dir(sysconf::log_dir.c_str());
+    dirent_iterator dir(config::log_dir.c_str());
     int dfd = dir.dup();
 
     // tell backup how many files to expect
@@ -87,16 +87,16 @@ void primary_start_daemon() {
     // wait for ack from the backup
     tcp::expect_ack(backup_sockfd);
     //printf("[Primary] Backup received log\n");
-  } while (++sysconf::num_active_backups < sysconf::num_backups);
+  } while (++config::num_active_backups < config::num_backups);
 
-  if (sysconf::log_ship_by_rdma) {
+  if (config::log_ship_by_rdma) {
     delete primary_tcp_ctx;
     primary_init_rdma();
   }
 }
 
 void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
-  if (sysconf::log_ship_by_rdma) {
+  if (config::log_ship_by_rdma) {
     primary_ship_log_buffer_rdma(buf, size);
   } else {
     ASSERT(backup_sockfds.size());
@@ -107,8 +107,8 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
 }
 
 void start_as_primary() {
-  ALWAYS_ASSERT(not sysconf::is_backup_srv());
-  primary_tcp_ctx = new tcp::server_context(sysconf::primary_port, sysconf::num_backups);
+  ALWAYS_ASSERT(not config::is_backup_srv());
+  primary_tcp_ctx = new tcp::server_context(config::primary_port, config::num_backups);
   // Spawn a new thread to listen to incoming connections
   std::thread t(primary_start_daemon);
   t.detach();
@@ -133,16 +133,16 @@ void redo_daemon() {
 }
 
 void start_as_backup() {
-  ALWAYS_ASSERT(sysconf::is_backup_srv());
-  std::cout << "[Backup] Connecting to " << sysconf::primary_srv << ":"
-    << sysconf::primary_port << "\n";
+  ALWAYS_ASSERT(config::is_backup_srv());
+  std::cout << "[Backup] Connecting to " << config::primary_srv << ":"
+    << config::primary_port << "\n";
   tcp::client_context *cctx = new tcp::client_context(
-    sysconf::primary_srv, sysconf::primary_port);
+    config::primary_srv, config::primary_port);
 
   // Wait for the primary to ship the first part of the log so I can start "recovery"
   char buffer[4096];
   char fname[251];
-  dirent_iterator dir(sysconf::log_dir.c_str());
+  dirent_iterator dir(config::log_dir.c_str());
   int dfd = dir.dup();
 
   uint8_t nfiles = 0;
@@ -179,7 +179,7 @@ void start_as_backup() {
   tcp::send_ack(cctx->server_sockfd);
 
   std::cout << "[Backup] Received initial log records.\n";
-  if (sysconf::log_ship_by_rdma) {
+  if (config::log_ship_by_rdma) {
     std::thread t(backup_daemon_rdma, cctx);
     t.detach();
     // The daemon will delete cctx

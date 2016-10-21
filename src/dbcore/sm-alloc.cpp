@@ -76,20 +76,20 @@ static const uint64_t tls_node_memory_gb = 1;
 
 void
 prepare_node_memory() {
-    ALWAYS_ASSERT(sysconf::numa_nodes);
-    allocated_node_memory = (uint64_t *)malloc(sizeof(uint64_t) * sysconf::numa_nodes);
-    node_memory = (char **)malloc(sizeof(char *) * sysconf::numa_nodes);
+    ALWAYS_ASSERT(config::numa_nodes);
+    allocated_node_memory = (uint64_t *)malloc(sizeof(uint64_t) * config::numa_nodes);
+    node_memory = (char **)malloc(sizeof(char *) * config::numa_nodes);
     std::vector<std::future<void> > futures;
-    std::cout << "Will run and allocate on " << sysconf::numa_nodes << " nodes, "
-              << sysconf::node_memory_gb << "GB each\n";
-    for (int i = 0; i < sysconf::numa_nodes; i++) {
-        std::cout << "Allocating " << sysconf::node_memory_gb << "GB on node " << i << std::endl;
+    std::cout << "Will run and allocate on " << config::numa_nodes << " nodes, "
+              << config::node_memory_gb << "GB each\n";
+    for (int i = 0; i < config::numa_nodes; i++) {
+        std::cout << "Allocating " << config::node_memory_gb << "GB on node " << i << std::endl;
         auto f = [=]{
-            ALWAYS_ASSERT(sysconf::node_memory_gb);
+            ALWAYS_ASSERT(config::node_memory_gb);
             allocated_node_memory[i] = 0;
             numa_set_preferred(i);
             node_memory[i] = (char *)mmap(NULL,
-                sysconf::node_memory_gb * sysconf::GB,
+                config::node_memory_gb * config::GB,
                 PROT_READ | PROT_WRITE,
                 MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB | MAP_POPULATE,
                 -1,
@@ -97,7 +97,7 @@ prepare_node_memory() {
             THROW_IF(node_memory[i] == nullptr or node_memory[i] == MAP_FAILED,
                 os_error, errno, "Unable to allocate huge pages");
             ALWAYS_ASSERT(node_memory[i]);
-            std::cout << "Allocated " << sysconf::node_memory_gb << "GB on node " << i << std::endl;
+            std::cout << "Allocated " << config::node_memory_gb << "GB on node " << i << std::endl;
         };
         futures.push_back(std::async(std::launch::async, f));
     }
@@ -109,7 +109,7 @@ prepare_node_memory() {
 
 void global_init(void*)
 {
-    if (sysconf::enable_gc) {
+    if (config::enable_gc) {
         std::thread t(gc_daemon);
         t.detach();
     }
@@ -131,7 +131,7 @@ void *allocate(size_t size, epoch_num e) {
     //
     // Don't bother TLS if it's still loading
     /*
-    if (sysconf::loading) {
+    if (config::loading) {
         p = allocate_onnode(size);
         goto out;
     }
@@ -182,8 +182,8 @@ void *allocate(size_t size, epoch_num e) {
     // Have to use the vanilla bump allocator, hopefully later we reuse them
     static __thread char* tls_node_memory CACHE_ALIGNED;
     if (unlikely(not tls_node_memory) or
-        tls_allocated_node_memory + size >= tls_node_memory_gb * sysconf::GB) {
-        tls_node_memory = (char *)allocate_onnode(tls_node_memory_gb * sysconf::GB);
+        tls_allocated_node_memory + size >= tls_node_memory_gb * config::GB) {
+        tls_node_memory = (char *)allocate_onnode(tls_node_memory_gb * config::GB);
         tls_allocated_node_memory = 0;
     }
 
@@ -207,9 +207,9 @@ out:
 void* allocate_onnode(size_t size) {
     size = align_up(size);
     auto node = numa_node_of_cpu(sched_getcpu());
-    ALWAYS_ASSERT(node < sysconf::numa_nodes);
+    ALWAYS_ASSERT(node < config::numa_nodes);
     auto offset = __sync_fetch_and_add(&allocated_node_memory[node], size);
-    if (likely(offset + size <= sysconf::node_memory_gb * sysconf::GB)) {
+    if (likely(offset + size <= config::node_memory_gb * config::GB)) {
         return node_memory[node] + offset;
     }
     return NULL;
@@ -272,10 +272,10 @@ epoch_reclaimed(void *cookie, void *epoch_cookie)
     epoch_num e = *(epoch_num *)epoch_cookie;
     free(epoch_cookie);
     uint64_t my_begin_lsn = epoch_excl_begin_lsn[e % 3];
-    if (not sysconf::enable_gc or my_begin_lsn == 0)
+    if (not config::enable_gc or my_begin_lsn == 0)
         return;
     epoch_reclaim_lsn[e % 3] = my_begin_lsn;
-    if (sysconf::enable_safesnap) {
+    if (config::enable_safesnap) {
         // Make versions created during epoch N available for transactions
         // using safesnap. All transactions that created something in this
         // epoch has gone, so it's impossible for a reader using that

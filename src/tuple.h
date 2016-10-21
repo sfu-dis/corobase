@@ -123,7 +123,7 @@ public:
   }
   // XXX: for the writer who's updating this tuple only
   inline ALWAYS_INLINE void lockout_read_mostly_tx() {
-    if (sysconf::ssn_read_opt_enabled()) {
+    if (config::ssn_read_opt_enabled()) {
       if (not (volatile_read(preader) >> 7))
           __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
       ASSERT(volatile_read(preader) >> 7);
@@ -132,7 +132,7 @@ public:
 
   // XXX: for the writer who's updating this tuple only
   inline ALWAYS_INLINE void welcome_read_mostly_tx() {
-    if (sysconf::ssn_read_opt_enabled()) {
+    if (config::ssn_read_opt_enabled()) {
       if (volatile_read(preader) >> 7)
           __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
       ASSERT(not (volatile_read(preader) >> 7));

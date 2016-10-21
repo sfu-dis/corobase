@@ -33,7 +33,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   auto& logbuf = logmgr->get_logbuf();
 
   // Now safe to start the redo daemon with a valid durable_flushed_lsn
-  if (not sysconf::log_ship_sync_redo) {
+  if (not config::log_ship_sync_redo) {
     std::thread rt(redo_daemon);
     rt.detach();
   }
@@ -60,7 +60,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     //  << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
 
     // now got the batch of log records, persist them
-    if (sysconf::nvram_log_buffer) {
+    if (config::nvram_log_buffer) {
       logmgr->persist_log_buffer();
       logbuf.advance_writer(sid->buf_offset(end_lsn));
     } else {
@@ -70,13 +70,13 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
 
     tcp::send_ack(cctx->server_sockfd);
 
-    if (sysconf::log_ship_sync_redo) {
+    if (config::log_ship_sync_redo) {
       ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
       printf("[Backup] Rolling forward %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
       logmgr->redo_log(start_lsn, end_lsn);
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
-    if (sysconf::nvram_log_buffer)
+    if (config::nvram_log_buffer)
       logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
   }
 }

@@ -61,7 +61,7 @@ struct write_set_t {
   inline write_record_t& operator[](uint32_t idx) { return entries[idx]; }
 };
 
-extern write_set_t tls_write_set[sysconf::MAX_THREADS];
+extern write_set_t tls_write_set[config::MAX_THREADS];
 
 // forward decl
 class base_txn_btree;

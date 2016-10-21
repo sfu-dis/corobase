@@ -104,7 +104,7 @@ rc_t base_txn_btree::do_tree_put(
             if (volatile_read(prev->xstamp) >= t.xc->ct3 or not prev->readers_bitmap.is_empty(true)) {
                 // Read-only optimization: safe if T1 is read-only (so far) and T1's begin ts
                 // is before ct3.
-                if (sysconf::enable_ssi_read_only_opt) {
+                if (config::enable_ssi_read_only_opt) {
                     readers_bitmap_iterator readers_iter(&prev->readers_bitmap);
                     while (true) {
                         int32_t xid_idx = readers_iter.next(true);
@@ -183,7 +183,7 @@ rc_t base_txn_btree::do_tree_put(
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
             auto* oa = underlying_btree.get_oid_array();
-            t.add_to_write_set(&oa->get(oid)->ptr, sysconf::num_backups == 0 ? 0 : fid);
+            t.add_to_write_set(&oa->get(oid)->ptr, config::num_backups == 0 ? 0 : fid);
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);

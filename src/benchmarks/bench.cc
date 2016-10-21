@@ -85,7 +85,7 @@ retry:
         if (likely(not rc_is_abort(ret))) {
 					++ntxn_commits;
           std::get<0>(txn_counts[i])++;
-          if (sysconf::group_commit) {
+          if (config::group_commit) {
             logmgr->enqueue_committed_xct(worker_id, t.get_start());
           } else {
             latency_numer_us += t.lap();
@@ -133,15 +133,15 @@ retry:
 void
 bench_runner::create_files_task(char *)
 {
-  ALWAYS_ASSERT(sysconf::log_dir.size());
+  ALWAYS_ASSERT(config::log_dir.size());
   ALWAYS_ASSERT(not logmgr);
   ALWAYS_ASSERT(not oidmgr);
   RCU::rcu_enter();
-  logmgr = sm_log::new_log(sysconf::recover_functor, nullptr);
+  logmgr = sm_log::new_log(config::recover_functor, nullptr);
   ASSERT(oidmgr);
   RCU::rcu_exit();
 
-  if (not sm_log::need_recovery && not sysconf::is_backup_srv()) {
+  if (not sm_log::need_recovery && not config::is_backup_srv()) {
     // allocate an FID for each table
     for (auto &nm : sm_file_mgr::name_map) {
       auto fid = oidmgr->create_file(true);
@@ -157,7 +157,7 @@ bench_runner::create_files_task(char *)
       }
 
       // Initialize the pdest array
-      if (sysconf::is_backup_srv()) {
+      if (config::is_backup_srv()) {
           sm_file_mgr::get_file(fid)->init_pdest_array();
           std::cout << "[Backup] Created pdest array for FID " << fid << std::endl;
       }
@@ -193,7 +193,7 @@ bench_runner::run()
   thread::put_thread(runner_thread);
 
   // load data, unless we recover from logs or is a backup server (recover from shipped logs)
-  if (not sm_log::need_recovery && not sysconf::is_backup_srv()) {
+  if (not sm_log::need_recovery && not config::is_backup_srv()) {
     vector<bench_loader *> loaders = make_loaders();
     {
       scoped_timer t("dataloading", verbose);
@@ -226,26 +226,26 @@ bench_runner::run()
     RCU::rcu_exit();
 
     // Take a chkpt now if we just loaded our database
-    if(sysconf::enable_chkpt) {
+    if(config::enable_chkpt) {
       chkptmgr->do_chkpt();  // this is synchronous
     }
 
     RCU::rcu_deregister();
   }
 
-  if (sysconf::num_backups) {
-    std::cout << "[Primary] Expect " << sysconf::num_backups << " backups\n";
-    ALWAYS_ASSERT(not sysconf::is_backup_srv());
+  if (config::num_backups) {
+    std::cout << "[Primary] Expect " << config::num_backups << " backups\n";
+    ALWAYS_ASSERT(not config::is_backup_srv());
     rep::start_as_primary();
-    if (sysconf::wait_for_backups) {
-      while (volatile_read(sysconf::num_active_backups) != volatile_read(sysconf::num_backups)) {}
-      std::cout << "[Primary] " << sysconf::num_backups << " backups\n";
+    if (config::wait_for_backups) {
+      while (volatile_read(config::num_active_backups) != volatile_read(config::num_backups)) {}
+      std::cout << "[Primary] " << config::num_backups << " backups\n";
     }
-    while(volatile_read(sysconf::loading)) {}
-  } else if (sysconf::is_backup_srv()) {
+    while(volatile_read(config::loading)) {}
+  } else if (config::is_backup_srv()) {
     getchar();
   } else {
-    volatile_write(sysconf::loading, false);
+    volatile_write(config::loading, false);
   }
 
   map<string, size_t> table_sizes_before;
@@ -254,7 +254,7 @@ bench_runner::run()
   logmgr->flush();
 
   // Start checkpointer after database is ready
-  if (sysconf::enable_chkpt) {
+  if (config::enable_chkpt) {
     ASSERT(chkptmgr);
     chkptmgr->start_chkpt_thread();
   }
@@ -287,7 +287,7 @@ bench_runner::run()
       while (slept < runtime) {
         sleep(1);
         uint64_t sec_commits = 0, sec_aborts = 0;
-        for (size_t i = 0; i < sysconf::worker_threads; i++) {
+        for (size_t i = 0; i < config::worker_threads; i++) {
           sec_commits += workers[i]->get_ntxn_commits();
           sec_aborts += workers[i]->get_ntxn_aborts();
         }
@@ -309,7 +309,7 @@ bench_runner::run()
   logmgr->flush();
 
   __sync_synchronize();
-  for (size_t i = 0; i < sysconf::worker_threads; i++)
+  for (size_t i = 0; i < config::worker_threads; i++)
     workers[i]->join();
   const unsigned long elapsed_nosync = t_nosync.lap();
   size_t n_commits = 0;
@@ -322,7 +322,7 @@ bench_runner::run()
   size_t n_phantom_aborts = 0;
   size_t n_query_commits= 0;
   uint64_t latency_numer_us = 0;
-  for (size_t i = 0; i < sysconf::worker_threads; i++) {
+  for (size_t i = 0; i < config::worker_threads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
     n_int_aborts += workers[i]->get_ntxn_int_aborts();
@@ -372,7 +372,7 @@ bench_runner::run()
     workers[i]->~bench_worker();
   }
 
-  if (sysconf::enable_chkpt)
+  if (config::enable_chkpt)
       delete chkptmgr;
 
   if (verbose) {

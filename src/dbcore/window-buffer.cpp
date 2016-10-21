@@ -134,7 +134,7 @@ window_buffer::window_buffer(size_t bufsz, size_t start_offset)
     
 #else
     // step 1: create temporary file of the correct size
-    auto sfname = (sysconf::tmpfs_dir + std::string("/buffer-XXXXXX"));
+    auto sfname = (config::tmpfs_dir + std::string("/buffer-XXXXXX"));
     char *fname = (char *)sfname.c_str();
     int fd = mkstemp(fname);
     THROW_IF(fd < 0, os_error, errno, "Unable to create temp file");

@@ -30,7 +30,7 @@ struct readers_list {
      * 256 / 8 = 64 bytes = one cache line.
      */
     struct bitmap_t {
-        static const uint32_t CAPACITY = sysconf::MAX_THREADS;   // must be a multiple of 64
+        static const uint32_t CAPACITY = config::MAX_THREADS;   // must be a multiple of 64
         static const uint32_t ARRAY_SIZE = CAPACITY / 64;
         uint64_t array[ARRAY_SIZE];
 

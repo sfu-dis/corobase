@@ -67,6 +67,6 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   LSN start_lsn;
   LSN end_lsn;
 
-  parallel_oid_replay() : nredoers(sysconf::worker_threads) {}
+  parallel_oid_replay() : nredoers(config::worker_threads) {}
   virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from, LSN to);
 };

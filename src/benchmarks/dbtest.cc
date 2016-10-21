@@ -72,26 +72,26 @@ main(int argc, char **argv)
       {"log-buffer-mb"              , required_argument , 0                          , 'u'} ,
       {"recovery-warm-up"           , required_argument , 0                          , 'w'} ,
       {"log-ship-warm-up"           , required_argument , 0                          , 'i'} ,
-      {"log-ship-by-rdma"           , no_argument       , &sysconf::log_ship_by_rdma , 1},
-      {"log-ship-sync-redo"         , no_argument       , &sysconf::log_ship_sync_redo, 1},
-      {"enable-chkpt"               , no_argument       , &sysconf::enable_chkpt     , 1} ,
+      {"log-ship-by-rdma"           , no_argument       , &config::log_ship_by_rdma , 1},
+      {"log-ship-sync-redo"         , no_argument       , &config::log_ship_sync_redo, 1},
+      {"enable-chkpt"               , no_argument       , &config::enable_chkpt     , 1} ,
       {"chkpt-interval"             , required_argument , 0                          , 'd'},
-      {"null-log-device"            , no_argument       , &sysconf::null_log_device  , 1},
-      {"nvram-log-buffer"           , no_argument       , &sysconf::nvram_log_buffer , 1},
-      {"group-commit"               , no_argument       , &sysconf::group_commit     , 1},
+      {"null-log-device"            , no_argument       , &config::null_log_device  , 1},
+      {"nvram-log-buffer"           , no_argument       , &config::nvram_log_buffer , 1},
+      {"group-commit"               , no_argument       , &config::group_commit     , 1},
       {"group-commit-queue-length"  , required_argument , 0                          , 'j'},
       {"parallel-recovery-by"       , required_argument , 0                          , 'c'},
       {"node-memory-gb"             , required_argument , 0                          , 'p'},
-      {"enable-gc"                  , no_argument       , &sysconf::enable_gc        , 1},
+      {"enable-gc"                  , no_argument       , &config::enable_gc        , 1},
       {"tmpfs-dir"                  , required_argument , 0                          , 'm'},
       {"primary-addr"               , required_argument , 0                          , 'g'},
       {"primary-port"               , required_argument , 0                          , 'k'},
-      {"wait-for-backups"           , no_argument       , &sysconf::wait_for_backups , 1},
+      {"wait-for-backups"           , no_argument       , &config::wait_for_backups , 1},
       {"num-backups"                , required_argument , 0                          , 'a'},
 #if defined(SSI) || defined(SSN)
-      {"safesnap"                   , no_argument       , &sysconf::enable_safesnap  , 1},
+      {"safesnap"                   , no_argument       , &config::enable_safesnap  , 1},
 #ifdef SSI
-      {"ssi-read-only-opt"          , no_argument       , &sysconf::enable_ssi_read_only_opt, 1},
+      {"ssi-read-only-opt"          , no_argument       , &config::enable_ssi_read_only_opt, 1},
 #endif
 #ifdef SSN
       {"ssn-read-opt-threshold"     , required_argument , 0                          , 'h'},
@@ -112,15 +112,15 @@ main(int argc, char **argv)
       abort();
 
     case 'a':
-      sysconf::num_backups = strtoul(optarg, NULL, 10);
+      config::num_backups = strtoul(optarg, NULL, 10);
       break;
 
     case 'c':
       replay_mode = string(optarg);
       if (replay_mode == "oid") {
-        sysconf::recover_functor = new parallel_oid_replay;
+        config::recover_functor = new parallel_oid_replay;
       } else if (replay_mode == "file") {
-        sysconf::recover_functor = new parallel_file_replay;
+        config::recover_functor = new parallel_file_replay;
       } else {
         std::cout << "Invalid parallel replay mode: " << replay_mode << "\n";
         abort();
@@ -128,23 +128,23 @@ main(int argc, char **argv)
       break;
 
     case 'd':
-      sysconf::chkpt_interval = strtoul(optarg, NULL, 10);
+      config::chkpt_interval = strtoul(optarg, NULL, 10);
       break;
 
     case 'p':
-      sysconf::node_memory_gb = strtoul(optarg, NULL, 10);
+      config::node_memory_gb = strtoul(optarg, NULL, 10);
       break;
 
     case 'j':
-      sysconf::group_commit_queue_length = strtoul(optarg, NULL, 10);
+      config::group_commit_queue_length = strtoul(optarg, NULL, 10);
       break;
 
     case 'g':
-      sysconf::primary_srv = std::string(optarg);
+      config::primary_srv = std::string(optarg);
       break;
 
     case 'k':
-      sysconf::primary_port = std::string(optarg);
+      config::primary_port = std::string(optarg);
       break;
 
     case 'b':
@@ -156,13 +156,13 @@ main(int argc, char **argv)
       break;
 
     case 't':
-      sysconf::worker_threads = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(sysconf::worker_threads > 0);
+      config::worker_threads = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(config::worker_threads > 0);
       break;
 
 #ifdef SSN
     case 'h':
-      sysconf::ssn_read_opt_threshold = strtoul(optarg, NULL, 16);
+      config::ssn_read_opt_threshold = strtoul(optarg, NULL, 16);
       break;
 #endif
 
@@ -180,20 +180,20 @@ main(int argc, char **argv)
 
     case 'w':
       if (strcmp(optarg, "eager") == 0)
-        sysconf::recovery_warm_up_policy = sysconf::WARM_UP_EAGER;
+        config::recovery_warm_up_policy = config::WARM_UP_EAGER;
       else if (strcmp(optarg, "lazy") == 0)
-        sysconf::recovery_warm_up_policy = sysconf::WARM_UP_LAZY;
+        config::recovery_warm_up_policy = config::WARM_UP_LAZY;
       else
-        sysconf::recovery_warm_up_policy = sysconf::WARM_UP_NONE;
+        config::recovery_warm_up_policy = config::WARM_UP_NONE;
       break;
 
     case 'i':
       if (strcmp(optarg, "eager") == 0)
-        sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_EAGER;
+        config::log_ship_warm_up_policy = config::WARM_UP_EAGER;
       else if (strcmp(optarg, "lazy") == 0)
-        sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_LAZY;
+        config::log_ship_warm_up_policy = config::WARM_UP_LAZY;
       else
-        sysconf::log_ship_warm_up_policy = sysconf::WARM_UP_NONE;
+        config::log_ship_warm_up_policy = config::WARM_UP_NONE;
       break;
 
     case 'n':
@@ -209,21 +209,21 @@ main(int argc, char **argv)
       break;
 
     case 'l':
-      sysconf::log_dir = std::string(optarg);
+      config::log_dir = std::string(optarg);
       break;
 
     case 'm':
-      sysconf::tmpfs_dir = string(optarg);
+      config::tmpfs_dir = string(optarg);
       break;
 
     case 'e':
-      sysconf::log_segment_mb = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(sysconf::log_segment_mb);
+      config::log_segment_mb = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(config::log_segment_mb);
       break;
 
     case 'u':
-      sysconf::log_buffer_mb = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(sysconf::log_buffer_mb);
+      config::log_buffer_mb = strtoul(optarg, NULL, 10);
+      ALWAYS_ASSERT(config::log_buffer_mb);
       break;
 
     case '?':
@@ -245,12 +245,12 @@ main(int argc, char **argv)
     ALWAYS_ASSERT(false);
 
   // parallel replay by oid partitions by default
-  if (not sysconf::recover_functor) {
-    sysconf::recover_functor = new parallel_oid_replay;
+  if (not config::recover_functor) {
+    config::recover_functor = new parallel_oid_replay;
   }
 
-  sysconf::init();
-  if (sysconf::log_dir.empty()) {
+  config::init();
+  if (config::log_dir.empty()) {
     cerr << "[ERROR] no log dir specified" << endl;
     return 1;
   }
@@ -285,15 +285,15 @@ main(int argc, char **argv)
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
     cerr << "settings:"                                     << endl;
-    cerr << "  node-memory : " << sysconf::node_memory_gb << "GB" << endl;
+    cerr << "  node-memory : " << config::node_memory_gb << "GB" << endl;
     cerr << "  par-loading : " << enable_parallel_loading   << endl;
     cerr << "  slow-exit   : " << slow_exit                 << endl;
     cerr << "  retry-txns  : " << retry_aborted_transaction << endl;
     cerr << "  backoff-txns: " << backoff_aborted_transaction << endl;
     cerr << "  bench       : " << bench_type                << endl;
     cerr << "  scale       : " << scale_factor              << endl;
-    cerr << "  num-threads : " << sysconf::worker_threads   << endl;
-    cerr << "  numa-nodes  : " << sysconf::numa_nodes       << endl;
+    cerr << "  num-threads : " << config::worker_threads   << endl;
+    cerr << "  numa-nodes  : " << config::numa_nodes       << endl;
     cerr << "  txn-flags   : " << hexify(txn_flags)         << endl;
     if (run_mode == RUNMODE_TIME)
       cerr << "  runtime     : " << runtime                 << endl;
@@ -304,44 +304,44 @@ main(int argc, char **argv)
 #else
     cerr << "  var-encode  : no"                            << endl;
 #endif
-    cerr << "  group-commit: " << sysconf::group_commit     << endl;
-    cerr << "  commit-queue: " << sysconf::group_commit_queue_length << endl;
-    cerr << "  tmpfs-dir   : " << sysconf::tmpfs_dir        << endl;
-    cerr << "  log-dir     : " << sysconf::log_dir          << endl;
-    cerr << "  log-segment-mb: " << sysconf::log_segment_mb   << endl;
-    cerr << "  log-buffer-mb: " << sysconf::log_buffer_mb    << endl;
-    cerr << "  nvram-log-buffer: " << sysconf::nvram_log_buffer << endl;
+    cerr << "  group-commit: " << config::group_commit     << endl;
+    cerr << "  commit-queue: " << config::group_commit_queue_length << endl;
+    cerr << "  tmpfs-dir   : " << config::tmpfs_dir        << endl;
+    cerr << "  log-dir     : " << config::log_dir          << endl;
+    cerr << "  log-segment-mb: " << config::log_segment_mb   << endl;
+    cerr << "  log-buffer-mb: " << config::log_buffer_mb    << endl;
+    cerr << "  nvram-log-buffer: " << config::nvram_log_buffer << endl;
     cerr << "  recovery-warm-up: ";
-    if (sysconf::recovery_warm_up_policy == sysconf::WARM_UP_NONE)
+    if (config::recovery_warm_up_policy == config::WARM_UP_NONE)
       cerr << "none";
-    else if (sysconf::recovery_warm_up_policy == sysconf::WARM_UP_LAZY)
+    else if (config::recovery_warm_up_policy == config::WARM_UP_LAZY)
       cerr << "lazy";
     else {
-      ALWAYS_ASSERT(sysconf::recovery_warm_up_policy == sysconf::WARM_UP_EAGER);
+      ALWAYS_ASSERT(config::recovery_warm_up_policy == config::WARM_UP_EAGER);
       cerr << "eager";
     }
     cerr << endl;
     cerr << "  parallel-recover-by: " << replay_mode         << endl;
     cerr << "  log-ship-warm-up: ";
-    if (sysconf::log_ship_warm_up_policy == sysconf::WARM_UP_NONE)
+    if (config::log_ship_warm_up_policy == config::WARM_UP_NONE)
       cerr << "none";
-    else if (sysconf::log_ship_warm_up_policy == sysconf::WARM_UP_LAZY)
+    else if (config::log_ship_warm_up_policy == config::WARM_UP_LAZY)
       cerr << "lazy";
     else {
-      ALWAYS_ASSERT(sysconf::log_ship_warm_up_policy == sysconf::WARM_UP_EAGER);
+      ALWAYS_ASSERT(config::log_ship_warm_up_policy == config::WARM_UP_EAGER);
       cerr << "eager";
     }
     cerr << endl;
-    cerr << "  log-ship-by-rdma: " << sysconf::log_ship_by_rdma << endl;
-    cerr << "  log-ship-sync-redo: " << sysconf::log_ship_sync_redo << endl;
-    cerr << "  enable-chkpt    : " << sysconf::enable_chkpt  << endl;
-    if(sysconf::enable_chkpt) {
-      cerr << "  chkpt-interval  : " << sysconf::chkpt_interval << endl;
+    cerr << "  log-ship-by-rdma: " << config::log_ship_by_rdma << endl;
+    cerr << "  log-ship-sync-redo: " << config::log_ship_sync_redo << endl;
+    cerr << "  enable-chkpt    : " << config::enable_chkpt  << endl;
+    if(config::enable_chkpt) {
+      cerr << "  chkpt-interval  : " << config::chkpt_interval << endl;
     }
-    cerr << "  enable-gc       : " << sysconf::enable_gc     << endl;
-    cerr << "  null-log-device : " << sysconf::null_log_device << endl;
-    cerr << "  num-backups     : " << sysconf::num_backups   << endl;
-    cerr << "  wait-for-backups: " << sysconf::wait_for_backups << endl;
+    cerr << "  enable-gc       : " << config::enable_gc     << endl;
+    cerr << "  null-log-device : " << config::null_log_device << endl;
+    cerr << "  num-backups     : " << config::num_backups   << endl;
+    cerr << "  wait-for-backups: " << config::wait_for_backups << endl;
 
     cerr << "system properties:" << endl;
     cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize() << endl;
@@ -354,17 +354,17 @@ main(int argc, char **argv)
 #endif
 
 #if defined(SSN) || defined(SSI)
-    cerr << "  SSN/SSI safe snapshot   : " << sysconf::enable_safesnap << endl;
+    cerr << "  SSN/SSI safe snapshot   : " << config::enable_safesnap << endl;
 #endif
 #ifdef SSI
-    cerr << "  SSI read-only optimization: " << sysconf::enable_ssi_read_only_opt << endl;
+    cerr << "  SSI read-only optimization: " << config::enable_ssi_read_only_opt << endl;
 #endif
 #ifdef SSN
-    cerr << "  SSN read optimization threshold: 0x" << hex << sysconf::ssn_read_opt_threshold << dec << endl;
+    cerr << "  SSN read optimization threshold: 0x" << hex << config::ssn_read_opt_threshold << dec << endl;
 #endif
   }
 
-  if (sysconf::wait_for_backups and sysconf::num_backups == 0) {
+  if (config::wait_for_backups and config::num_backups == 0) {
     std::cout << "[Primary] no backups\n";
     abort();
   }
@@ -377,11 +377,11 @@ main(int argc, char **argv)
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
 
-  if (sysconf::is_backup_srv())
+  if (config::is_backup_srv())
     rep::start_as_backup();
 
   // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)
-  sysconf::sanity_check();
+  config::sanity_check();
   db = new ndb_wrapper();
   test_fn(db, argc, new_argv);
   delete db;

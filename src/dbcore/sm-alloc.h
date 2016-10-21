@@ -58,12 +58,12 @@ namespace MM {
         // Maps object size -> head of list of object lists which have the the same object size
         // Each thread has its own private pool, the GC thread replenishes these per-thread pools
         // in a round-robin manner. Threads are free to grab (multiple) objects from here.
-        dense_hash_map<size_t, object_list*> pool[sysconf::MAX_THREADS];
+        dense_hash_map<size_t, object_list*> pool[config::MAX_THREADS];
         std::mutex lock;
 
     public:
         object_pool() {
-          for (uint32_t i = 0; i < sysconf::MAX_THREADS; ++i) {
+          for (uint32_t i = 0; i < config::MAX_THREADS; ++i) {
             pool[i].set_empty_key(0);
           }
         }

@@ -144,7 +144,7 @@ struct sm_log_alloc_mgr {
         uint32_t end;
         sm_log_alloc_mgr *lm;
         commit_queue() : start(0), end(0), lm(nullptr) {
-            queue.reserve(sysconf::group_commit_queue_length);
+            queue.reserve(config::group_commit_queue_length);
             for (uint32_t i = 0; i < queue.capacity(); ++i) {
                 queue.emplace_back(0, 0);
             }

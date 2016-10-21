@@ -450,8 +450,8 @@ sm_oid_mgr::create(LSN chkpt_start, sm_log_recover_mgr *lm)
 {
   // Create an empty oidmgr, with initial internal files
   oidmgr = new sm_oid_mgr_impl{};
-  oidmgr->dfd = dirent_iterator(sysconf::log_dir.c_str()).dup();
-  if(sysconf::enable_chkpt) {
+  oidmgr->dfd = dirent_iterator(config::log_dir.c_str()).dup();
+  if(config::enable_chkpt) {
     chkptmgr = new sm_chkpt_mgr(chkpt_start);
   } else {
     chkptmgr = nullptr;
@@ -930,7 +930,7 @@ start_over:
                 ASSERT(owner == holder_xid);
 #if defined(RC) || defined(RC_SPIN)
 #ifdef SSN
-                if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
+                if (config::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
                     if (holder->end < visitor_xc->begin) {
                         return cur_obj->tuple();
                     }
@@ -960,7 +960,7 @@ start_over:
         else if (clsn.asi_type() == fat_ptr::ASI_LOG) {
 #if defined(RC) || defined(RC_SPIN)
 #if defined(SSN)
-            if (sysconf::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
+            if (config::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
                 if (LSN::from_ptr(clsn).offset() <= visitor_xc->begin) {
                     return cur_obj->tuple();
                 } else {

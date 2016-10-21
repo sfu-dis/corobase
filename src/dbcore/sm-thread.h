@@ -92,13 +92,13 @@ struct node_thread_pool {
     uint64_t b = volatile_read(bitmap);
     auto xor_pos = b ^ (~uint64_t{0});
     uint64_t pos = __builtin_ctzll(xor_pos);
-    if (pos == sysconf::max_threads_per_node) {
+    if (pos == config::max_threads_per_node) {
       return nullptr;
     }
     if (not __sync_bool_compare_and_swap(&bitmap, b, b | (1UL << pos))) {
       goto retry;
     }
-    ALWAYS_ASSERT(pos < sysconf::max_threads_per_node);
+    ALWAYS_ASSERT(pos < config::max_threads_per_node);
     //std::cout << "get_thread(): node " << threads[pos].node << ", " << pos << std::endl;
     return threads + pos;
   }
@@ -112,8 +112,8 @@ struct node_thread_pool {
   node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
     ALWAYS_ASSERT(!numa_run_on_node(node));
     threads = (sm_thread *)numa_alloc_onnode(
-      sizeof(sm_thread) * sysconf::max_threads_per_node, node);
-    for (uint core = 0; core < sysconf::max_threads_per_node; core++) {
+      sizeof(sm_thread) * config::max_threads_per_node, node);
+    for (uint core = 0; core < config::max_threads_per_node; core++) {
       new (threads + core) sm_thread(node, core);
     }
   }
@@ -122,8 +122,8 @@ struct node_thread_pool {
 extern node_thread_pool *thread_pools;
 
 inline void init() {
-  thread_pools = (node_thread_pool *)malloc(sizeof(node_thread_pool) * sysconf::numa_nodes);
-  for (uint16_t i = 0; i < sysconf::numa_nodes; i++) {
+  thread_pools = (node_thread_pool *)malloc(sizeof(node_thread_pool) * config::numa_nodes);
+  for (uint16_t i = 0; i < config::numa_nodes; i++) {
     new (thread_pools + i) node_thread_pool(i);
   }
 }
@@ -133,7 +133,7 @@ inline sm_thread *get_thread(uint16_t from) {
 }
 
 inline sm_thread *get_thread(/* don't care where */) {
-  for (uint16_t i = 0; i < sysconf::numa_nodes; i++) {
+  for (uint16_t i = 0; i < config::numa_nodes; i++) {
     auto* t = thread_pools[i].get_thread();
     if (t) {
       return t;

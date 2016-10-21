@@ -6,19 +6,19 @@ rdma::context *primary_rdma_ctx = nullptr;
 
 const static int kMessageSize = 8;
 char msgbuf[kMessageSize] CACHE_ALIGNED;
-uint64_t scratch_buf[sysconf::MAX_THREADS];
+uint64_t scratch_buf[config::MAX_THREADS];
 
 uint32_t msgbuf_index = -1;
 uint32_t logbuf_index = -1;
-uint64_t scratch_buf_index[sysconf::MAX_THREADS];  // for RDMA primary only
+uint64_t scratch_buf_index[config::MAX_THREADS];  // for RDMA primary only
 
 void primary_init_rdma() {
   auto& logbuf = logmgr->get_logbuf();
-  primary_rdma_ctx = new rdma::context(sysconf::primary_port, 1);
+  primary_rdma_ctx = new rdma::context(config::primary_port, 1);
   // Must register in the exact sequence below, matching the backup node's sequence
   logbuf_index = primary_rdma_ctx->register_memory(logbuf._data, logbuf.window_size() * 2);
   msgbuf_index = primary_rdma_ctx->register_memory(msgbuf, kMessageSize);
-  for (uint32_t i = 0; i < sysconf::worker_threads; ++i) {
+  for (uint32_t i = 0; i < config::worker_threads; ++i) {
     scratch_buf_index[i] = primary_rdma_ctx->register_memory((char*)&scratch_buf[i], sizeof(uint64_t));
   }
   primary_rdma_ctx->finish_init();
@@ -30,7 +30,7 @@ void primary_init_rdma() {
   char* mapping = (char*)malloc(msize);
   memset(mapping, 0, msize);
 
-  tcp::server_context stcp(sysconf::primary_port, 1);  // FIXME(tzwang): 1 client for now
+  tcp::server_context stcp(config::primary_port, 1);  // FIXME(tzwang): 1 client for now
   tcp::receive(stcp.expect_client(), mapping, msize);  // 1 client for now
   //tcp::send_ack(backup_sockfds[0]);
   std::cout << "[Primary] Received <FID, memory region index> mappings from standby" << std::endl;
@@ -41,7 +41,7 @@ void primary_init_rdma() {
     sm_file_mgr::fid_map[f]->pdest_array_mr_index = index;
     // std::cout << "[Primary] FID " << f << " pdest_array_mr_index=" << index << std::endl;
   }
-  volatile_write(sysconf::loading, false);
+  volatile_write(config::loading, false);
 }
 
 void backup_daemon_rdma(tcp::client_context* tcp_ctx) {
@@ -53,7 +53,7 @@ void backup_daemon_rdma(tcp::client_context* tcp_ctx) {
   // Wait for the main thread to create logmgr - it might run slower than me
   while (not volatile_read(logmgr)) {}
   auto& logbuf = logmgr->get_logbuf();
-  rdma::context *cctx = new rdma::context(sysconf::primary_srv, sysconf::primary_port, 1);
+  rdma::context *cctx = new rdma::context(config::primary_srv, config::primary_port, 1);
   logbuf_index = cctx->register_memory(logbuf._data, logbuf.window_size() * 2);
   msgbuf_index = cctx->register_memory(msgbuf, kMessageSize);
   // After created logmgr, we should have finished recovery as well,
@@ -84,7 +84,7 @@ void backup_daemon_rdma(tcp::client_context* tcp_ctx) {
   std::cout << "[Backup] RDMA initialized" << std::endl;
 
   // Send over the mapping
-  tcp::client_context ctcp(sysconf::primary_srv, sysconf::primary_port);
+  tcp::client_context ctcp(config::primary_srv, config::primary_port);
   int32_t ret = send(ctcp.server_sockfd, mapping, msize, 0);
   THROW_IF(ret != msize, os_error, ret, "Could not send <FID, memory region index> mappings to peer");
   //tcp::expect_ack(tcp_ctx->server_sockfd);
@@ -94,7 +94,7 @@ void backup_daemon_rdma(tcp::client_context* tcp_ctx) {
   DEFER(delete cctx);
 
   // Now safe to start the redo daemon with a valid durable_flushed_lsn
-  if (not sysconf::log_ship_sync_redo) {
+  if (not config::log_ship_sync_redo) {
     std::thread rt(redo_daemon);
     rt.detach();
   }
@@ -124,7 +124,7 @@ void backup_daemon_rdma(tcp::client_context* tcp_ctx) {
       << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
 
     // now we have the new durable lsn (end_lsn), persist the data we got
-    if (sysconf::nvram_log_buffer) {
+    if (config::nvram_log_buffer) {
       logmgr->persist_log_buffer();
       logbuf.advance_writer(sid->buf_offset(end_lsn));
     } else {
@@ -133,11 +133,11 @@ void backup_daemon_rdma(tcp::client_context* tcp_ctx) {
     }
 
     // roll forward
-    if (sysconf::log_ship_sync_redo) {
+    if (config::log_ship_sync_redo) {
       logmgr->redo_log(start_lsn, end_lsn);
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
-    if (sysconf::nvram_log_buffer) {
+    if (config::nvram_log_buffer) {
       logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
     }
   }
@@ -157,7 +157,7 @@ void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
 // Propogate OID array changes for the given write set entry to
 // backups; for RDMA-based log shipping only
 void update_pdest_on_backup_rdma(write_record_t* w) {
-    ASSERT(sysconf::log_ship_by_rdma);
+    ASSERT(config::log_ship_by_rdma);
     sm_file_descriptor* file_desc = sm_file_mgr::fid_map[w->fid];
     int32_t remote_index = file_desc->pdest_array_mr_index;
     ALWAYS_ASSERT(remote_index > 0);
@@ -172,7 +172,7 @@ void update_pdest_on_backup_rdma(write_record_t* w) {
     while (true) {
         // FIXME(tzwang): handle cases where the remote pdest array is too small
         ret._ptr = primary_rdma_ctx->rdma_compare_and_swap(
-          scratch_buf_index[thread::my_id() % sysconf::worker_threads], 0,
+          scratch_buf_index[thread::my_id() % config::worker_threads], 0,
           remote_index, offset, expected, obj->_pdest._ptr);
         if (ret._ptr == expected || ret.offset() > w->entry->offset()) {
             break;
