@@ -7,7 +7,7 @@
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
 
-#define SEPARATE_INDEX_REBUILD 1
+#define SEPARATE_INDEX_REBUILD 0
 
 // The version-loading mechanism will only dig out the latest version as a result.
 fat_ptr
@@ -52,7 +52,7 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec) {
   ASSERT(oidmgr->file_exists(f));
   oid_array *oa = get_impl(oidmgr)->get_array(f);
   oa->ensure_size(oa->alloc_size(o));
-  oidmgr->oid_put_new(f, o, ptr);
+  oidmgr->oid_put_new(f, o, ptr, nullptr);
   ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
   //printf("[Recovery] insert: FID=%d OID=%d\n", f, o);
 }
@@ -84,10 +84,14 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, 
   ASSERT(align_up(len + sizeof(varstr)) == sz);
 
   // Construct the varkey (skip the varstr struct then it's data)
-  varstr key((uint8_t *)((char *)buf + sizeof(varstr)), len);
+  varstr* key = (varstr*)MM::allocate(sizeof(varstr) + len, 0);
+  new (key) varstr((char *)key + sizeof(varstr), len);
+  key->copy_from((char *)buf + sizeof(varstr), len);
 
   //printf("key %s %s\n", (char *)key.data(), buf);
-  ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(key, logrec->oid(), NULL, 0));
+  ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(*key, logrec->oid(), NULL, 0));
+  oid_array *oa = get_impl(oidmgr)->get_array(logrec->fid());
+  oidmgr->oid_get_entry_ptr(oa, logrec->oid())->key = key;
 }
 
 void

@@ -202,13 +202,25 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
       std::cout << "Created pdest array for FID " << f << std::endl;
     }
 
-    // Populate the OID array
+    // Populate the OID array and index
+    auto* index = sm_file_mgr::get_index(name);
     while(1) {
       // Read the OID
       OID o = 0;
       n = read(fd, &o, sizeof(OID));
       if (o == himark)
           break;
+
+      // Key
+      uint32_t key_size;
+      n = read(fd, &key_size, sizeof(uint32_t));
+      ALWAYS_ASSERT(n == sizeof(uint32_t));
+      ALWAYS_ASSERT(key_size);
+      varstr* key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
+      new (key) varstr((char*)key + sizeof(varstr), key_size);
+      n = read(fd, (void*)key->p, key->l);
+      ALWAYS_ASSERT(n == key->l);
+      ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(*key, o, NULL, 0));
 
       // Size code
       uint8_t size_code = INVALID_SIZE_CODE;
@@ -225,7 +237,7 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
       ALWAYS_ASSERT(obj->_clsn.offset() < chkpt_start.offset());
       ALWAYS_ASSERT(obj->_pdest.offset());
       ALWAYS_ASSERT(n == data_size);
-      oidmgr->oid_put_new(oa, o, fat_ptr::make((uintptr_t)obj, size_code, 0));
+      oidmgr->oid_put_new(oa, o, fat_ptr::make((uintptr_t)obj, size_code, 0), key);
     }
   }
 }
