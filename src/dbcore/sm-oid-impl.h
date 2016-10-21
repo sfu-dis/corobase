@@ -33,7 +33,7 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
     }
     inline oid_array *get_array(FID f) {
         // TODO: allow allocators to be paged out
-        oid_array *oa = *files->get(f);
+        oid_array *oa = files->get(f)->ptr;
         THROW_IF(not oa, illegal_argument,
                  "No such file: %d", f);
         return oa;
@@ -46,10 +46,14 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
     }
     inline fat_ptr *oid_access(FID f, OID o) {
         auto *oa = get_array(f);
+        return &oa->get(o)->ptr;
+    }
+    inline oid_array::entry *oid_entry_access(FID f, OID o) {
+        auto *oa = get_array(f);
         return oa->get(o);
     }
     inline bool file_exists(FID f) {
-        oid_array *oa = *files->get(f);
+        oid_array *oa = files->get(f)->ptr;
         return oa != NULL;
     }
 
@@ -70,6 +74,7 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
 static_assert(oid_array::alloc_size()
               == oid_array::MAX_SIZE,
               "Go fix oid_array::MAX_ENTRIES");
+/*
 static_assert(oid_array::MAX_ENTRIES
               == sm_allocator::MAX_CAPACITY_MARK,
               "Go fix sm_allocator::MAX_CAPACITY_MARK");
@@ -80,6 +85,7 @@ static_assert(sm_allocator::max_alloc_size()
 static_assert(oid_array::alloc_size()
               <= (MAX_ENCODABLE_SIZE << SZCODE_ALIGN_BITS),
                   "Need a bigger alignment");
+*/
 
 static_assert(sm_oid_mgr::METADATA_FID == sm_oid_mgr_impl::METADATA_FID,
               "Go fix sm_oid_mgr::METADATA_FID");

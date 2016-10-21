@@ -26,9 +26,14 @@ static size_t const SZCODE_ALIGN_BITS = dynarray::page_bits();
    it occupies.
  */
 struct oid_array {
-    static size_t const MAX_SIZE = sizeof(fat_ptr) << 32;
-    static OID const MAX_ENTRIES = (size_t(1) << 32) - sizeof(dynarray)/sizeof(fat_ptr);
-    static size_t const ENTRIES_PER_PAGE = sizeof(fat_ptr) << SZCODE_ALIGN_BITS;
+    struct entry {
+        fat_ptr ptr;
+        varstr* key;
+        entry() : ptr(NULL_PTR), key(nullptr) {}
+    };
+    static size_t const MAX_SIZE = sizeof(entry) << 32;
+    static uint64_t const MAX_ENTRIES = (size_t(1) << 32) - sizeof(dynarray)/sizeof(entry);
+    static size_t const ENTRIES_PER_PAGE = (sizeof(fat_ptr) << SZCODE_ALIGN_BITS) / 2;
     
     /* How much space is required for an array with [n] entries?
      */
@@ -39,8 +44,7 @@ struct oid_array {
         return OFFSETOF(oid_array, _entries[n]);
     }
     
-    static
-    fat_ptr make();
+    static fat_ptr make();
 
     static
     dynarray make_oid_dynarray() {
@@ -74,10 +78,10 @@ struct oid_array {
        checking. The caller is responsible to use nentries() and
        ensure_size() as needed.
      */
-    fat_ptr *get(OID o) { return &_entries[o]; }
+    entry *get(OID o) { return &_entries[o]; }
 
     dynarray _backing_store;
-    fat_ptr _entries[];
+    entry _entries[];
 };
 
 struct sm_oid_mgr {
@@ -171,7 +175,7 @@ struct sm_oid_mgr {
        reference memory or disk (or be NULL).
      */
     void oid_put(FID f, OID o, fat_ptr p);
-    void oid_put_new(FID f, OID o, fat_ptr p);
+    void oid_put_new(FID f, OID o, fat_ptr p, varstr* k);
 
     /* Return a fat_ptr to the overwritten object (could be an in-flight version!) */
     fat_ptr oid_put_update(
@@ -188,7 +192,7 @@ struct sm_oid_mgr {
     fat_ptr ensure_tuple(fat_ptr *ptr, epoch_num e);
 
     inline fat_ptr* ensure_tuple(oid_array *oa, OID o, epoch_num e) {
-        fat_ptr *ptr = oa->get(o);
+        fat_ptr *ptr = &oa->get(o)->ptr;
         fat_ptr p = *ptr;
         if (p.asi_type() == fat_ptr::ASI_LOG)
             ensure_tuple(ptr, e);
@@ -237,7 +241,7 @@ struct sm_oid_mgr {
     }
 
     inline dbtuple* oid_get_latest_version(oid_array *oa, OID o) {
-        auto head_offset = oa->get(o)->offset();
+        auto head_offset = oa->get(o)->ptr.offset();
         if (head_offset)
             return (dbtuple *)((object *)head_offset)->payload();
         return NULL;
@@ -249,7 +253,7 @@ struct sm_oid_mgr {
         // because we unlink the overwritten dirty version in put,
         // essentially this function ditches the head directly.
         // Otherwise use the commented out old code.
-        oid_unlink(oa->get(o));
+        oid_unlink(&oa->get(o)->ptr);
     }
     inline void oid_unlink(fat_ptr* ptr) {
         object *head_obj = (object *)ptr->offset();
@@ -263,19 +267,21 @@ struct sm_oid_mgr {
         // here. Instead, the transaction does it in during commit or abort.
     }
 
-    inline void oid_put_new(oid_array *oa, OID o, fat_ptr p) {
-        auto *ptr = oa->get(o);
-        ASSERT(*ptr == NULL_PTR);
-        *ptr = p;
+    inline void oid_put_new(oid_array *oa, OID o, fat_ptr p, varstr* k) {
+        auto *entry= oa->get(o);
+        ASSERT(entry->ptr == NULL_PTR);
+        entry->ptr = p;
+        entry->key = k;
     }
 
     inline void oid_put(oid_array *oa, OID o, fat_ptr p) {
-        auto *ptr = oa->get(o);
+        auto *ptr = &oa->get(o)->ptr;
         *ptr = p;
     }
 
-    inline fat_ptr* oid_get_ptr(oid_array *oa, OID o) { return oa->get(o); }
-    inline fat_ptr oid_get(oid_array *oa, OID o) { return *oa->get(o); }
+    inline fat_ptr* oid_get_ptr(oid_array *oa, OID o) { return &oa->get(o)->ptr; }
+    inline fat_ptr oid_get(oid_array *oa, OID o) { return oa->get(o)->ptr; }
+    inline oid_array::entry* oid_get_entry_ptr(oid_array *oa, OID o) { return oa->get(o); }
 
     bool file_exists(FID f);
     void recreate_file(FID f);    // for recovery only

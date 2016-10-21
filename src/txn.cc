@@ -1083,7 +1083,10 @@ transaction::try_insert_new_tuple(
     ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
     tuple->get_object()->_clsn = xid.to_ptr();
     OID oid = oidmgr->alloc_oid(fid);
-    oidmgr->oid_put_new(btr->get_oid_array(), oid, new_head);
+    varstr* new_key = (varstr*)MM::allocate(sizeof(varstr) + key->size(), xc->begin_epoch);
+    new (new_key) varstr((char*)new_key + sizeof(varstr), 0);
+    new_key->copy_from(key);
+    oidmgr->oid_put_new(btr->get_oid_array(), oid, new_head, new_key);
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(*key, oid, tuple, xc, &ins_info))) {
         oidmgr->oid_unlink(btr->get_oid_array(), oid);
@@ -1133,7 +1136,7 @@ transaction::try_insert_new_tuple(
     // update write_set
     ASSERT(tuple->pvalue->size() == tuple->size);
     auto* oa = btr->get_oid_array();
-    add_to_write_set(oa->get(oid), sysconf::num_backups == 0 ? 0 : fid);
+    add_to_write_set(&oa->get(oid)->ptr, sysconf::num_backups == 0 ? 0 : fid);
     return true;
 }
 

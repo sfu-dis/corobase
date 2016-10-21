@@ -238,7 +238,7 @@ sm_oid_mgr_impl::sm_oid_mgr_impl()
     // TODO: DEFER deletion of these arrays if constructor throws
     fat_ptr ptr = oid_array::make();
     files = ptr;
-    *files->get(OBJARRAY_FID) = ptr;
+    files->get(OBJARRAY_FID)->ptr = ptr;
     ASSERT(oid_get(OBJARRAY_FID, OBJARRAY_FID) == ptr);
     oid_put(OBJARRAY_FID, ALLOCATOR_FID, oid_array::make());
     oid_put(OBJARRAY_FID, METADATA_FID, oid_array::make());
@@ -468,14 +468,14 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
     // Now the real work. The format of a chkpt file is:
     // [table 1 himark]
     // [table 1 name length, table 1 name, table 1 FID]
-    // [OID1, ptr for table 1]
-    // [OID2, ptr for table 1]
+    // [OID1, key, data]
+    // [OID2, key, data]
     // [table 1 himark]
     // ...
     // [table 2 himark]
     // [table 2 name length, table 2 name, table 2 FID]
-    // [OID1, ptr for table 2]
-    // [OID2, ptr for table 2]
+    // [OID1, key, data]
+    // [OID2, key, data]
     // [table 2 himark]
     // ...
     //
@@ -505,7 +505,8 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
         // Now write the [OID, payload] pairs
         for (OID oid = 0; oid < himark; oid++) {
             // FIXME(tzwang): figure out how this interact with GC/epoch
-            auto ptr = oid_get(oa, oid);
+            oid_array::entry *entry = oid_get_entry_ptr(oa, oid);
+            auto ptr = entry->ptr;
         retry:
             if (not ptr.offset()) {
                 continue;
@@ -539,8 +540,15 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
                 goto retry;
             }
 
-            // Now write this out
+            // Write OID
             chkptmgr->write_buffer(&oid, sizeof(OID));
+
+            // Key
+            ALWAYS_ASSERT(entry->key->l);
+            chkptmgr->write_buffer(&entry->key->l, sizeof(entry->key->l));
+            chkptmgr->write_buffer(entry->key->data(), entry->key->size());
+
+            // Tuple data
             uint8_t size_code = ptr.size_code();
             ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
             chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
@@ -667,16 +675,16 @@ sm_oid_mgr::oid_get_ptr(FID f, OID o)
 void
 sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p)
 {
-    auto *ptr = get_impl(this)->oid_access(f, o);
-    *ptr = p;
+    *get_impl(this)->oid_access(f, o) = p;
 }
 
 void
-sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p)
+sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p, varstr* k)
 {
-    auto *ptr = get_impl(this)->oid_access(f, o);
-    ASSERT(*ptr == NULL_PTR);
-    *ptr = p;
+    auto *entry= get_impl(this)->oid_entry_access(f, o);
+    ASSERT(entry->ptr == NULL_PTR);
+    entry->ptr = p;
+    entry->key = k;
 }
 
 fat_ptr
@@ -856,7 +864,7 @@ sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 {
 start_over:
     // must put start_over above this, because we'll update pp later
-    fat_ptr *pp = oa->get(o);
+    fat_ptr *pp = &oa->get(o)->ptr;
     fat_ptr ptr = *pp;
     while (1) {
         if (ptr.asi_type() != fat_ptr::ASI_LOG) {

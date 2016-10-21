@@ -51,6 +51,7 @@ public:
 
 class ndb_ordered_index {
     friend class sm_log_recover_impl;
+    friend class sm_chkpt_mgr;
 protected:
   typedef ndb_wrapper::ndbtxn ndbtxn;
 
