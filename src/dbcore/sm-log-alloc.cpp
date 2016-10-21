@@ -50,8 +50,8 @@ sm_log_alloc_mgr::get_tls_lsn_offset()
    forward processing before recovery completes. 
  */
 sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
-    : _lm(sysconf::null_log_device ? NULL : rf, rfn_arg)
-    , _logbuf(sysconf::log_buffer_mb * 1024 * 1024, get_starting_byte_offset(&_lm))
+    : _lm(config::null_log_device ? NULL : rf, rfn_arg)
+    , _logbuf(config::log_buffer_mb * 1024 * 1024, get_starting_byte_offset(&_lm))
     , _durable_flushed_lsn_offset(_lm.get_durable_mark().offset())
     , _write_daemon_state(0)
     , _waiting_for_durable(false)
@@ -60,10 +60,10 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     , _write_daemon_should_stop(false)
     , _lsn_offset(_lm.get_durable_mark().offset())
 {
-    _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * sysconf::MAX_THREADS);
-    memset(_tls_lsn_offset, 0, sizeof(uint64_t) * sysconf::MAX_THREADS);
-    _commit_queue = new commit_queue[sysconf::worker_threads];
-    for (uint32_t i = 0; i < sysconf::worker_threads; ++i) {
+    _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
+    memset(_tls_lsn_offset, 0, sizeof(uint64_t) * config::MAX_THREADS);
+    _commit_queue = new commit_queue[config::worker_threads];
+    for (uint32_t i = 0; i < config::worker_threads; ++i) {
         _commit_queue[i].lm = this;
     }
 
@@ -93,7 +93,7 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr()
 void
 sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id, uint64_t start_time)
 {
-    ALWAYS_ASSERT(worker_id < sysconf::worker_threads);
+    ALWAYS_ASSERT(worker_id < config::worker_threads);
     _commit_queue[worker_id].push_back(get_tls_lsn_offset(), start_time);
 }
 
@@ -102,10 +102,10 @@ sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn, uint64_t start_time)
 {
 retry:
     lock.lock();
-    if (start == (end + 1) % sysconf::group_commit_queue_length) {
+    if (start == (end + 1) % config::group_commit_queue_length) {
         // max_queue_length is too small?
         lock.unlock();
-        if (sysconf::nvram_log_buffer) {
+        if (config::nvram_log_buffer) {
             // just persist it, no need to flush to disk
             auto persist_lsn_offset = logmgr->persist_log_buffer();
             util::timer t;
@@ -118,14 +118,14 @@ retry:
     }
     volatile_write(queue[end].first, lsn);
     volatile_write(queue[end].second, start_time);
-    volatile_write(end, (end + 1) % sysconf::group_commit_queue_length);
+    volatile_write(end, (end + 1) % config::group_commit_queue_length);
     lock.unlock();
 }
 
 void
 sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto, uint64_t end_time)
 {
-    for (uint32_t i = 0; i < sysconf::worker_threads; i++) {
+    for (uint32_t i = 0; i < config::worker_threads; i++) {
         uint32_t to_dequeue = 0;
         _commit_queue[i].lock.lock();
         auto slot = volatile_read(_commit_queue[i].start);
@@ -140,11 +140,11 @@ sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto, uint64_t end_time)
             // Must do volatile_write here
             volatile_write(bench_runner::workers[i]->latency_numer_us, worker_latency + latency);
             ++to_dequeue;
-            slot = (slot + 1) % sysconf::group_commit_queue_length;
+            slot = (slot + 1) % config::group_commit_queue_length;
         }
         ALWAYS_ASSERT(_commit_queue[i].size() >= to_dequeue);
         volatile_write(_commit_queue[i].start,
-          (volatile_read(_commit_queue[i].start) + to_dequeue) % sysconf::group_commit_queue_length);
+          (volatile_read(_commit_queue[i].start) + to_dequeue) % config::group_commit_queue_length);
         _commit_queue[i].lock.unlock();
     }
 }
@@ -282,12 +282,12 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         auto *buf = logbuf.read_buf(durable_byte, nbytes);
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
         bool flushed = false;
-        if (sysconf::num_active_backups) {
+        if (config::num_active_backups) {
             auto end_lsn = durable_sid->make_lsn(new_offset);
             ASSERT(durable_sid->make_lsn(_durable_flushed_lsn_offset).segment() == end_lsn.segment());
             // Flush first if the logbuf is not backed by NVRAM
-            if (sysconf::loading or
-                (not sysconf::null_log_device and not sysconf::nvram_log_buffer)) {
+            if (config::loading or
+                (not config::null_log_device and not config::nvram_log_buffer)) {
                 uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
                 THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
                 flushed = true;
@@ -296,7 +296,7 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
             rep::primary_ship_log_buffer_all(buf, nbytes);
         }
 
-        if (not flushed and (not sysconf::null_log_device or sysconf::loading)) {
+        if (not flushed and (not config::null_log_device or config::loading)) {
             uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
             THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
         }
@@ -319,7 +319,7 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         // to see if the replicated database can still run benchmarks
         // after replayed logs shipped from the primary.
         if (_lsn_offset < _durable_flushed_lsn_offset) {
-          THROW_IF(not sysconf::is_backup_srv(), illegal_argument,
+          THROW_IF(not config::is_backup_srv(), illegal_argument,
             "Wrong cur_lsn_offset on primary node");
           _lsn_offset = _durable_flushed_lsn_offset;
         }
@@ -327,7 +327,7 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         if (update_dmark)
             _lm.update_durable_mark(durable_sid->make_lsn(_durable_flushed_lsn_offset));
 
-        if (sysconf::group_commit) {
+        if (config::group_commit) {
             util::timer t;
             dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
         }

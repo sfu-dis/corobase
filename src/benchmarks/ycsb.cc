@@ -31,7 +31,7 @@ void YcsbRecord::initialize_field(char *field) {
   memset(field, 'a', kFieldLength);
 }
 
-uint64_t local_key_counter[sysconf::MAX_THREADS];
+uint64_t local_key_counter[config::MAX_THREADS];
 
 uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
@@ -179,25 +179,25 @@ protected:
   void load() {
     ndb_ordered_index *tbl = open_tables.at("USERTABLE");
     std::vector<YcsbKey> keys;
-    uint64_t records_per_thread = g_initial_table_size / sysconf::worker_threads;
+    uint64_t records_per_thread = g_initial_table_size / config::worker_threads;
     bool spread = true;
     if (records_per_thread == 0) {
       // Let one thread load all the keys if we don't have at least one record per **worker** thread
       records_per_thread = g_initial_table_size;
       spread = false;
     } else {
-      g_initial_table_size = records_per_thread * sysconf::worker_threads;
+      g_initial_table_size = records_per_thread * config::worker_threads;
     }
 
     if (verbose) {
       cerr << "[INFO] requested for " << g_initial_table_size << " records, will load " 
-        << records_per_thread * sysconf::worker_threads << endl;
+        << records_per_thread * config::worker_threads << endl;
     }
 
     // insert an equal number of records on behalf of each worker
     YcsbKey key;
     uint64_t inserted = 0;
-    for (uint16_t worker_id = 0; worker_id < sysconf::worker_threads; worker_id++) {
+    for (uint16_t worker_id = 0; worker_id < config::worker_threads; worker_id++) {
       local_key_counter[worker_id] = 0;
       auto remaining_inserts = records_per_thread;
       uint32_t high = worker_id, low = 0;
@@ -258,7 +258,7 @@ protected:
   {
     fast_random r(8544290);
     vector<bench_worker *> ret;
-    for (size_t i = 0; i < sysconf::worker_threads; i++)
+    for (size_t i = 0; i < config::worker_threads; i++)
       ret.push_back(
         new ycsb_worker(
           i, r.next(), db, open_tables,

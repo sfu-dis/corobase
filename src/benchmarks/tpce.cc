@@ -326,7 +326,7 @@ class tpce_worker :
 				<< endl;
 		}
 
-        auto i = worker_id % sysconf::worker_threads;
+        auto i = worker_id % config::worker_threads;
         mee = mees[i];
         ALWAYS_ASSERT(i >= 0 and i < mees.size());
         MarketFeedInputBuffer = MarketFeedInputBuffers[i];
@@ -704,7 +704,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 	commit transaction
 */
 
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	std::vector<std::pair<varstr *, const varstr *>> brokers;
@@ -804,7 +804,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
 rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *pIn, TCustomerPositionFrame1Output *pOut)
 {
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	// Get c_id;
@@ -1140,7 +1140,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 
 rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMarketWatchFrame1Output *pOut)
 {
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	std::vector<inline_str_fixed<cSYMBOL_len>> stock_list_cursor;
@@ -1280,7 +1280,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 
 rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, TSecurityDetailFrame1Output *pOut)
 {
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	int64_t co_id;
@@ -1494,7 +1494,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
 {
 	int i;
 
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	pOut->num_found = 0;
@@ -1566,7 +1566,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTradeLookupFrame2Output *pOut)
 {
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
@@ -1645,7 +1645,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTradeLookupFrame3Output *pOut)
 {
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 	
 	const t_s_symb_index::key k_t_0( string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
@@ -1729,7 +1729,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTradeLookupFrame4Output *pOut)
 {
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate(), MIN_VAL(k_t_0.t_id) );
@@ -2762,7 +2762,7 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn, TTrade
 
 rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTradeStatusFrame1Output *pOut)
 {
-  auto read_only_mask = sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+  auto read_only_mask = config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
 
 	const t_ca_id_index::key k_t_0( pIn->acct_id, MIN_VAL(k_t_0.t_dts), MIN_VAL(k_t_0.t_id) );
@@ -5052,7 +5052,7 @@ class tpce_bench_runner : public bench_runner {
 				vector<bench_worker *> ret;
 				static bool const NO_PIN_WH = false;
 				if (NO_PIN_WH) {
-					for (size_t i = 0; i < sysconf::worker_threads; i++)
+					for (size_t i = 0; i < config::worker_threads; i++)
 						ret.push_back(
 								new tpce_worker(
 									i,
@@ -5060,8 +5060,8 @@ class tpce_bench_runner : public bench_runner {
 									&barrier_a, &barrier_b,
 									1, NumPartitions() + 1));
 				}
-				else if (NumPartitions() <= sysconf::worker_threads) {
-					for (size_t i = 0; i < sysconf::worker_threads; i++)
+				else if (NumPartitions() <= config::worker_threads) {
+					for (size_t i = 0; i < config::worker_threads; i++)
 						ret.push_back(
 								new tpce_worker(
 									i,
@@ -5070,9 +5070,9 @@ class tpce_bench_runner : public bench_runner {
 									(i % NumPartitions()) + 1, (i % NumPartitions()) + 2));
 				} else {
 					auto N = NumPartitions();
-					auto T = sysconf::worker_threads;
+					auto T = config::worker_threads;
 					// try this in python: [i*N//T for i in range(T+1)]
-					for (size_t i = 0; i < sysconf::worker_threads; i++) {
+					for (size_t i = 0; i < config::worker_threads; i++) {
 						const unsigned wstart = i*N/T;
 						const unsigned wend   = (i + 1)*N/T;
 						ret.push_back(
@@ -5180,7 +5180,7 @@ void tpce_do_test(ndb_wrapper *db, int argc, char **argv)
 
 	//Initialize Market side
 
-	for( unsigned int i = 0; i < sysconf::worker_threads; i++ )
+	for( unsigned int i = 0; i < config::worker_threads; i++ )
 	{
 		auto mf_buf= new MFBuffer();
 		auto tr_buf= new TRBuffer();

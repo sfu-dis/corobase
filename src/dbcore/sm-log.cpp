@@ -13,7 +13,7 @@ bool sm_log::need_recovery = false;
 uint64_t
 sm_log::persist_log_buffer()
 {
-    ALWAYS_ASSERT(sysconf::nvram_log_buffer);
+    ALWAYS_ASSERT(config::nvram_log_buffer);
     /** dummy. FIXME(tzwang) **/
     return get_impl(this)->_lm.smallest_tls_lsn_offset();
 }
@@ -88,15 +88,15 @@ sm_log *
 sm_log::new_log(sm_log_recover_impl *recover_functor, void *rarg)
 {
     need_recovery = false;
-    if (sysconf::null_log_device) {
-      dirent_iterator iter(sysconf::log_dir.c_str());
+    if (config::null_log_device) {
+      dirent_iterator iter(config::log_dir.c_str());
       for (char const *fname : iter) {
         if (strcmp(fname, ".") and strcmp(fname, ".."))
           os_unlinkat(iter.dup(), fname);
       }
     }
-    ALWAYS_ASSERT(sysconf::log_segment_mb);
-    ALWAYS_ASSERT(sysconf::log_buffer_mb);
+    ALWAYS_ASSERT(config::log_segment_mb);
+    ALWAYS_ASSERT(config::log_buffer_mb);
     return new sm_log_impl(recover_functor, rarg);
 }
 

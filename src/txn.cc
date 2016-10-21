@@ -14,7 +14,7 @@ using namespace TXN;
 
 // XXX(tzwang): TLS read and write sets to avoid malloc -
 // much faster especially under high contention
-write_set_t tls_write_set[sysconf::MAX_THREADS];
+write_set_t tls_write_set[config::MAX_THREADS];
 #if defined(SSN) || defined(SSI)
 static __thread transaction::read_set_t* tls_read_set;
 #endif
@@ -51,7 +51,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     // to take a look at the safesnap lsn.
 
     // Take a safe snapshot if read-only.
-    if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
+    if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
         ASSERT(MM::safesnap_lsn);
         xc->begin = volatile_read(MM::safesnap_lsn);
         log = NULL;
@@ -87,16 +87,16 @@ transaction::~transaction()
     // resolution means TXN_CMMTD, and TXN_ABRTD
     ASSERT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
 #if defined(SSN) || defined(SSI)
-    if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
+    if (not config::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         RCU::rcu_exit();
 #else
     RCU::rcu_exit();
 #endif
 #if defined(SSN) || defined(SSI)
-    if (not sysconf::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
+    if (not config::enable_safesnap or (not (flags & TXN_FLAG_READ_ONLY)))
         serial_deregister_tx(xid);
 #endif
-    if (sysconf::enable_safesnap and flags & TXN_FLAG_READ_ONLY)
+    if (config::enable_safesnap and flags & TXN_FLAG_READ_ONLY)
         MM::epoch_exit(0, xc->begin_epoch);
     else
         MM::epoch_exit(xc->end, xc->begin_epoch);
@@ -190,7 +190,7 @@ transaction::commit()
     // Safe snapshot optimization for read-only transactions:
     // Use the begin ts as cstamp if it's a read-only transaction
     // This is the same for both SSN and SSI.
-    if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
+    if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
         ASSERT(not log);
         ASSERT(write_set.size() == 0);
         xc->end = xc->begin;
@@ -236,7 +236,7 @@ transaction::parallel_ssn_commit()
     // that later we can fill tuple's sstamp as cstamp in case sstamp still
     // remained as the initial value.) Consider the extreme case where
     // old_version_threshold = 0: means no read set at all...
-    if (is_read_mostly() && sysconf::ssn_read_opt_enabled()) {
+    if (is_read_mostly() && config::ssn_read_opt_enabled()) {
         if (xc->sstamp.load(std::memory_order_acquire) == 0)
             xc->sstamp.store(cstamp, std::memory_order_release);
     } else {
@@ -334,7 +334,7 @@ transaction::parallel_ssn_commit()
                 // Again, successor_xc->sstamp might change any time (i.e., successor_xc
                 // might get reused because successor concludes), so must read-then-verify.
                 auto s = successor_xc->sstamp.load(
-                    (sysconf::ssn_read_opt_enabled() && is_read_mostly()) ?
+                    (config::ssn_read_opt_enabled() && is_read_mostly()) ?
                     std::memory_order_acquire : std::memory_order_relaxed);
                 if (not successor_xc->verify_owner(successor_xid)) {
                     goto try_get_successor;
@@ -401,7 +401,7 @@ transaction::parallel_ssn_commit()
                 // will spin on me b/c it'll commit after me, and it will also set xstamp after
                 // spinning on me, so I'll still be reading the xstamp that really belongs to
                 // the older reader - reduces false +ves.)
-                if (sysconf::ssn_read_opt_enabled() and overwritten_tuple->has_persistent_reader()) {
+                if (config::ssn_read_opt_enabled() and overwritten_tuple->has_persistent_reader()) {
                     // If somebody thought this was an old version, xstamp alone won't be accurate,
                     // should consult both tls read_mostly cstamp and xstamp (we consult xstamp in the
                     // end of the readers loop for each version later in one go), e.g., a read-mostly
@@ -440,7 +440,7 @@ transaction::parallel_ssn_commit()
                     // don't care... unless it's considered an old version by some reader.
                     // Still there's a chance to set its sstamp so that the reader will
                     // (implicitly) know my existence.
-                    if (sysconf::ssn_read_opt_enabled() and overwritten_tuple->has_persistent_reader()) {
+                    if (config::ssn_read_opt_enabled() and overwritten_tuple->has_persistent_reader()) {
                         // Only read-mostly transactions will mark the persistent_reader bit;
                         // if reader_xc isn't read-mostly, then it's definitely not him,
                         // consult last_read_mostly_cstamp.
@@ -481,7 +481,7 @@ transaction::parallel_ssn_commit()
                     }
                 } else {
                     ALWAYS_ASSERT(reader_end and reader_end < cstamp);
-                    if (sysconf::ssn_read_opt_enabled() and overwritten_tuple->has_persistent_reader()) {
+                    if (config::ssn_read_opt_enabled() and overwritten_tuple->has_persistent_reader()) {
                         // Some reader who thinks this tuple is old existed, in case reader_xc
                         // is read-mostly, spin on it and consult the read_mostly_cstamp. Note
                         // still we need to refresh and read xstamp outside the loop in case this
@@ -519,7 +519,7 @@ transaction::parallel_ssn_commit()
         }
     }
 
-    if (sysconf::ssn_read_opt_enabled() and is_read_mostly()) {
+    if (config::ssn_read_opt_enabled() and is_read_mostly()) {
         xc->finalize_sstamp();
     }
 
@@ -539,11 +539,11 @@ transaction::parallel_ssn_commit()
     // my real state (CMMTD or ABRTD)
     // XXX: one optimization might be setting this only when read some
     // old versions.
-    if (sysconf::ssn_read_opt_enabled() and is_read_mostly())
+    if (config::ssn_read_opt_enabled() and is_read_mostly())
         serial_stamp_last_committed_lsn(xc->end);
 
     uint64_t my_sstamp = 0;
-    if (sysconf::ssn_read_opt_enabled() and is_read_mostly()) {
+    if (config::ssn_read_opt_enabled() and is_read_mostly()) {
         my_sstamp = xc->sstamp.load(std::memory_order_acquire) & (~xid_context::sstamp_final_mark);
     } else {
         my_sstamp = xc->sstamp.load(std::memory_order_relaxed);
@@ -571,7 +571,7 @@ transaction::parallel_ssn_commit()
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn_ptr);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-        if (sysconf::enable_gc and tuple->next()) {
+        if (config::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one CAS per tx
             enqueue_recycle_oids(w);
         }
@@ -630,7 +630,7 @@ transaction::parallel_ssn_commit()
     }
 
     if (updated_oids_head != NULL_PTR) {
-        ASSERT(sysconf::enable_gc);
+        ASSERT(config::enable_gc);
         ASSERT(updated_oids_tail != NULL_PTR);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
@@ -928,7 +928,7 @@ transaction::parallel_ssi_commit()
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn_ptr);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-        if (sysconf::enable_gc and tuple->next()) {
+        if (config::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one XCHG per tx
             enqueue_recycle_oids(w);
         }
@@ -989,7 +989,7 @@ transaction::parallel_ssi_commit()
 
     // GC stuff, do it out of precommit
     if (updated_oids_head != NULL_PTR) {
-        ASSERT(sysconf::enable_gc);
+        ASSERT(config::enable_gc);
         ASSERT(updated_oids_tail != NULL_PTR);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
@@ -1025,7 +1025,7 @@ transaction::si_commit()
         tuple->do_write();
         tuple->get_object()->_clsn = clsn_ptr;
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-        if (sysconf::enable_gc and tuple->next()) {
+        if (config::enable_gc and tuple->next()) {
             // construct the (sub)list here so that we have only one XCHG per tx
             enqueue_recycle_oids(w);
         }
@@ -1035,7 +1035,7 @@ transaction::si_commit()
         ASSERT((pdest == NULL_PTR and not tuple->size) or
                (pdest.asi_type() == fat_ptr::ASI_LOG));
 #endif
-        if (sysconf::log_ship_by_rdma && sysconf::num_active_backups && !sysconf::is_backup_srv()) {
+        if (config::log_ship_by_rdma && config::num_active_backups && !config::is_backup_srv()) {
             rep::update_pdest_on_backup_rdma(&w);
         }
     }
@@ -1046,7 +1046,7 @@ transaction::si_commit()
     volatile_write(xc->state, TXN_CMMTD);
 
     if (updated_oids_head != NULL_PTR) {
-        ASSERT(sysconf::enable_gc);
+        ASSERT(config::enable_gc);
         ASSERT(updated_oids_tail != NULL_PTR);
         MM::recycle(updated_oids_head, updated_oids_tail);
     }
@@ -1136,7 +1136,7 @@ transaction::try_insert_new_tuple(
     // update write_set
     ASSERT(tuple->pvalue->size() == tuple->size);
     auto* oa = btr->get_oid_array();
-    add_to_write_set(&oa->get(oid)->ptr, sysconf::num_backups == 0 ? 0 : fid);
+    add_to_write_set(&oa->get(oid)->ptr, config::num_backups == 0 ? 0 : fid);
     return true;
 }
 
@@ -1152,7 +1152,7 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
 #if defined(SSI) || defined(SSN)
     if (not read_my_own) {
         rc_t rc = {RC_INVALID};
-        if (sysconf::enable_safesnap and (flags & TXN_FLAG_READ_ONLY))
+        if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY))
             rc = {RC_TRUE};
         else {
 #ifdef SSN
@@ -1266,7 +1266,7 @@ transaction::ssi_read(dbtuple *tuple)
     if (volatile_read(tuple->s2)) {
         // Read-only optimization: s2 is not a problem if we're read-only and
         // my begin ts is earlier than s2.
-        if (not sysconf::enable_ssi_read_only_opt or
+        if (not config::enable_ssi_read_only_opt or
             write_set.size() > 0 or
             xc->begin >= tuple->s2) {
             // sstamp will be valid too if s2 is valid

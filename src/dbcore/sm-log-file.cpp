@@ -286,7 +286,7 @@ void sm_log_file_mgr::_make_new_log() {
 
 sm_log_file_mgr::sm_log_file_mgr()
 {
-    set_segment_size(sysconf::log_segment_mb * sysconf::MB);
+    set_segment_size(config::log_segment_mb * config::MB);
 
     /* The code below does not close open segment file descriptors if
        anything goes wrong. There is no meaningful way to recover from
@@ -300,7 +300,7 @@ sm_log_file_mgr::sm_log_file_mgr()
     bool nxt_seg_found = false;
 
     std::vector<segment_id*> tmp;
-    dirent_iterator dir(sysconf::log_dir.c_str());
+    dirent_iterator dir(config::log_dir.c_str());
     dfd = dir.dup();
     for (char const *fname : dir) {
         switch(fname[0]) {

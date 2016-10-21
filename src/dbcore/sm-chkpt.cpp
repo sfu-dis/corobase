@@ -45,7 +45,7 @@ void sm_chkpt_mgr::daemon() {
   RCU::rcu_register();
   while(!volatile_read(_shutdown)) {
     std::unique_lock<std::mutex> lock(_daemon_mutex);
-    _daemon_cv.wait_for(lock, std::chrono::seconds(sysconf::chkpt_interval));
+    _daemon_cv.wait_for(lock, std::chrono::seconds(config::chkpt_interval));
     if(!volatile_read(_shutdown)) {
       do_chkpt();
     }
@@ -197,7 +197,7 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     sm_file_mgr::get_index(name)->set_oid_array(f);
 
     // Initialize the pdest array
-    if(sysconf::is_backup_srv()) {
+    if(config::is_backup_srv()) {
       sm_file_mgr::get_file(f)->init_pdest_array();
       std::cout << "Created pdest array for FID " << f << std::endl;
     }

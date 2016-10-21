@@ -167,13 +167,13 @@ PartitionId(unsigned int wid)
 {
   ASSERT(wid >= 1 && wid <= NumWarehouses());
   wid -= 1; // 0-idx
-  if (NumWarehouses() <= sysconf::worker_threads)
+  if (NumWarehouses() <= config::worker_threads)
     // more workers than partitions, so its easy
     return wid;
-  const unsigned nwhse_per_partition = NumWarehouses() / sysconf::worker_threads;
+  const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
   const unsigned partid = wid / nwhse_per_partition;
-  if (partid >= sysconf::worker_threads)
-    return sysconf::worker_threads - 1;
+  if (partid >= config::worker_threads)
+    return config::worker_threads - 1;
   return partid;
 }
 
@@ -1864,9 +1864,9 @@ tpcc_worker::txn_order_status()
   //   max_write_set_size : 0
   //   num_txn_contexts : 4
   const uint64_t read_only_mask =
-    sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+    config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   const ndb_wrapper::TxnProfileHint hint =
-    sysconf::enable_safesnap ?
+    config::enable_safesnap ?
       ndb_wrapper::HINT_TPCC_ORDER_STATUS_READ_ONLY :
       ndb_wrapper::HINT_TPCC_ORDER_STATUS;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
@@ -2010,9 +2010,9 @@ tpcc_worker::txn_stock_level()
   //   n_read_set_large_instances : 2
   //   num_txn_contexts : 3
   const uint64_t read_only_mask =
-    sysconf::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+    config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
   const ndb_wrapper::TxnProfileHint hint =
-    sysconf::enable_safesnap ?
+    config::enable_safesnap ?
       ndb_wrapper::HINT_TPCC_STOCK_LEVEL_READ_ONLY :
       ndb_wrapper::HINT_TPCC_STOCK_LEVEL;
   void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
@@ -2289,14 +2289,14 @@ private:
     const string s_name(name);
     vector<ndb_ordered_index *> ret(NumWarehouses());
     if (g_enable_separate_tree_per_partition && !is_read_only) {
-      if (NumWarehouses() <= sysconf::worker_threads) {
+      if (NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
           ret[i] = sm_file_mgr::get_index(s_name + "_" + to_string(i));
       } else {
-        const unsigned nwhse_per_partition = NumWarehouses() / sysconf::worker_threads;
-        for (size_t partid = 0; partid < sysconf::worker_threads; partid++) {
+        const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
+        for (size_t partid = 0; partid < config::worker_threads; partid++) {
           const unsigned wstart = partid * nwhse_per_partition;
-          const unsigned wend   = (partid + 1 == sysconf::worker_threads) ?
+          const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
           ndb_ordered_index *idx =
             sm_file_mgr::get_index(s_name + "_" + to_string(partid));
@@ -2316,14 +2316,14 @@ private:
     const bool is_read_only = IsTableReadOnly(name);
     const string s_name(name);
     if (g_enable_separate_tree_per_partition && !is_read_only) {
-      if (NumWarehouses() <= sysconf::worker_threads) {
+      if (NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
           db->open_table(s_name + "_" + to_string(i));
       } else {
-        const unsigned nwhse_per_partition = NumWarehouses() / sysconf::worker_threads;
-        for (size_t partid = 0; partid < sysconf::worker_threads; partid++) {
+        const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
+        for (size_t partid = 0; partid < config::worker_threads; partid++) {
           const unsigned wstart = partid * nwhse_per_partition;
-          const unsigned wend   = (partid + 1 == sysconf::worker_threads) ?
+          const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
             db->open_table(s_name + "_" + to_string(partid));
         }
@@ -2411,15 +2411,15 @@ protected:
   {
     fast_random r(23984543);
     vector<bench_worker *> ret;
-    if (NumWarehouses() <= sysconf::worker_threads) {
-      for (size_t i = 0; i < sysconf::worker_threads; i++)
+    if (NumWarehouses() <= config::worker_threads) {
+      for (size_t i = 0; i < config::worker_threads; i++)
         ret.push_back(new tpcc_worker(i, r.next(), db,
                                       open_tables, partitions,
                                       &barrier_a, &barrier_b,
                                       (i % NumWarehouses()) + 1));
     }
     else {
-      for (size_t i = 0; i < sysconf::worker_threads; i++) {
+      for (size_t i = 0; i < config::worker_threads; i++) {
         ret.push_back(
           new tpcc_worker(
             i,

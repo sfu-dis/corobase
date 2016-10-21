@@ -7,7 +7,7 @@
 
 class sm_log_recover_impl;
 
-class sysconf {
+class config {
 public:
     static uint32_t worker_threads;
     static int numa_nodes;
