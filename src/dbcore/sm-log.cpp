@@ -10,6 +10,12 @@ using namespace RCU;
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 
+LSN
+sm_log::get_chkpt_start()
+{
+    return get_impl(this)->_lm._lm.get_chkpt_start();
+}
+
 uint64_t
 sm_log::persist_log_buffer()
 {

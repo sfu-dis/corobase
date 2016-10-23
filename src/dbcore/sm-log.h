@@ -368,6 +368,7 @@ struct sm_log {
      */
     fat_ptr load_ext_pointer(fat_ptr ptr);
 
+    LSN get_chkpt_start();
     window_buffer &get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
     uint64_t persist_log_buffer();

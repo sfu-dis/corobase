@@ -9,22 +9,6 @@
 
 using namespace RCU;
 
-// segment, start offset, end offset
-#define SEGMENT_FILE_NAME_FMT "log-%08x-%012zx-%012zx"
-#define SEGMENT_FILE_NAME_BUFSZ sizeof("log-01234567-0123456789ab-0123456789ab")
-
-// start, end LSN
-#define CHKPT_FILE_NAME_FMT "chk-%016zx-%016zx"
-#define CHKPT_FILE_NAME_BUFSZ sizeof("chk-0123456789abcdef-0123456789abcdef")
-
-// LSN
-#define DURABLE_FILE_NAME_FMT "dur-%016zx"
-#define DURABLE_FILE_NAME_BUFSZ sizeof("dur-0123456789abcdef")
-
-// segment
-#define NXT_SEG_FILE_NAME_FMT "nxt-%08x"
-#define NXT_SEG_FILE_NAME_BUFSZ sizeof("nxt-01234567")
-
 #warning Crash durability is NOT fully guaranteed by this implementation
 /* ^^^
 
@@ -89,17 +73,6 @@ struct segment_file_name {
     segment_file_name(uint32_t segnum, uint64_t start, uint64_t end) {
         size_t n = os_snprintf(buf, sizeof(buf),
                                SEGMENT_FILE_NAME_FMT, segnum, start, end);
-        ASSERT(n < sizeof(buf));
-    }
-    operator char const *() { return buf; }
-    char const *operator*() { return buf; }
-};
-
-struct cmark_file_name {
-    char buf[CHKPT_FILE_NAME_BUFSZ];
-    cmark_file_name(LSN start, LSN end) {
-        size_t n = os_snprintf(buf, sizeof(buf),
-                               CHKPT_FILE_NAME_FMT, start._val, end._val);
         ASSERT(n < sizeof(buf));
     }
     operator char const *() { return buf; }
