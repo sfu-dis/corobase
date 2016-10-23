@@ -224,13 +224,21 @@ bench_runner::run()
     volatile_write(MM::safesnap_lsn, logmgr->cur_lsn().offset());
     ALWAYS_ASSERT(MM::safesnap_lsn);
     RCU::rcu_exit();
-
-    // Take a chkpt now if we just loaded our database
-    if(config::enable_chkpt) {
-      chkptmgr->do_chkpt();  // this is synchronous
-    }
-
     RCU::rcu_deregister();
+  }
+
+  // Persist the database
+  logmgr->flush();
+
+  // Start checkpointer after database is ready
+  if(config::enable_chkpt) {
+    ASSERT(chkptmgr);
+    chkptmgr->start_chkpt_thread();
+
+    if(not sm_log::need_recovery && not config::is_backup_srv()) {
+      // Take a chkpt now if we just loaded our database
+      chkptmgr->take(true);  // this is synchronous
+    }
   }
 
   if (config::num_backups) {
@@ -248,17 +256,6 @@ bench_runner::run()
     volatile_write(config::loading, false);
   }
 
-  map<string, size_t> table_sizes_before;
-
-  // Persist the database
-  logmgr->flush();
-
-  // Start checkpointer after database is ready
-  if (config::enable_chkpt) {
-    ASSERT(chkptmgr);
-    chkptmgr->start_chkpt_thread();
-  }
-
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (vector<bench_worker *>::const_iterator it = workers.begin();
@@ -266,6 +263,7 @@ bench_runner::run()
     (*it)->start();
 
   barrier_a.wait_for(); // wait for all threads to start up
+  map<string, size_t> table_sizes_before;
   if (verbose) {
     for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {

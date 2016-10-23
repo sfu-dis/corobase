@@ -47,13 +47,16 @@ void sm_chkpt_mgr::daemon() {
     std::unique_lock<std::mutex> lock(_daemon_mutex);
     _daemon_cv.wait_for(lock, std::chrono::seconds(config::chkpt_interval));
     if(!volatile_read(_shutdown)) {
-      do_chkpt();
+      if(__sync_bool_compare_and_swap(&_in_progress, false, true)) {
+        do_chkpt();
+      }
     }
   }
   RCU::rcu_deregister();
 }
 
 void sm_chkpt_mgr::do_chkpt() {
+  ASSERT(volatile_read(_in_progress));
   RCU::rcu_enter();
   auto cstart = logmgr->flush();
   prepare_file(cstart);
@@ -83,8 +86,13 @@ void sm_chkpt_mgr::do_chkpt() {
   _last_cstart = cstart;
   RCU::rcu_exit();
   LOG(INFO) << "[Checkpoint] marker: 0x" << std::hex << cstart.offset() << std::dec;
+
+  // TODO(tzwang): change next/pdest to point to the chkpt file if we're
+  // evicting tuples from main memory as the old logs will be scavenged.
   std::unique_lock<std::mutex> l(_wait_chkpt_mutex);
   _wait_chkpt_cv.notify_all();
+  volatile_write(_in_progress, false);
+  __sync_synchronize();
 }
 
 void

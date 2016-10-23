@@ -35,6 +35,7 @@ private:
     LSN                     _last_cstart;
     std::condition_variable _wait_chkpt_cv;
     std::mutex              _wait_chkpt_mutex;
+    bool                    _in_progress;
 
     void prepare_file(LSN cstart);
     void scavenge();
