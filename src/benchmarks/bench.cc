@@ -223,37 +223,37 @@ bench_runner::run()
     RCU::rcu_enter();
     volatile_write(MM::safesnap_lsn, logmgr->cur_lsn().offset());
     ALWAYS_ASSERT(MM::safesnap_lsn);
+
+    // Persist the database
+    logmgr->flush();
+    if(config::enable_chkpt) {
+      chkptmgr->do_chkpt();  // this is synchronous
+    }
+
     RCU::rcu_exit();
     RCU::rcu_deregister();
   }
 
-  // Persist the database
-  logmgr->flush();
-
   // Start checkpointer after database is ready
-  if(config::enable_chkpt) {
-    ASSERT(chkptmgr);
-    chkptmgr->start_chkpt_thread();
-
-    if(not sm_log::need_recovery && not config::is_backup_srv()) {
-      // Take a chkpt now if we just loaded our database
-      chkptmgr->take(true);  // this is synchronous
+  if(config::is_backup_srv()) {
+    getchar();
+  } else {
+    if (config::num_backups) {
+      std::cout << "[Primary] Expect " << config::num_backups << " backups\n";
+      ALWAYS_ASSERT(not config::is_backup_srv());
+      rep::start_as_primary();
+      if (config::wait_for_backups) {
+        while (volatile_read(config::num_active_backups) != volatile_read(config::num_backups)) {}
+        std::cout << "[Primary] " << config::num_backups << " backups\n";
+      }
+      while(volatile_read(config::loading)) {}
+    } else {
+      volatile_write(config::loading, false);
     }
   }
 
-  if (config::num_backups) {
-    std::cout << "[Primary] Expect " << config::num_backups << " backups\n";
-    ALWAYS_ASSERT(not config::is_backup_srv());
-    rep::start_as_primary();
-    if (config::wait_for_backups) {
-      while (volatile_read(config::num_active_backups) != volatile_read(config::num_backups)) {}
-      std::cout << "[Primary] " << config::num_backups << " backups\n";
-    }
-    while(volatile_read(config::loading)) {}
-  } else if (config::is_backup_srv()) {
-    getchar();
-  } else {
-    volatile_write(config::loading, false);
+  if(config::enable_chkpt) {
+    chkptmgr->start_chkpt_thread();
   }
 
   workers = make_workers();
