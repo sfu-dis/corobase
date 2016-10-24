@@ -47,18 +47,23 @@ void sm_chkpt_mgr::daemon() {
     std::unique_lock<std::mutex> lock(_daemon_mutex);
     _daemon_cv.wait_for(lock, std::chrono::seconds(config::chkpt_interval));
     if(!volatile_read(_shutdown)) {
-      if(__sync_bool_compare_and_swap(&_in_progress, false, true)) {
-        do_chkpt();
-      }
+      do_chkpt();
     }
   }
   RCU::rcu_deregister();
 }
 
 void sm_chkpt_mgr::do_chkpt() {
+  if(!__sync_bool_compare_and_swap(&_in_progress, false, true)) {
+    return;
+  }
   ASSERT(volatile_read(_in_progress));
   RCU::rcu_enter();
   auto cstart = logmgr->flush();
+  ASSERT(cstart >= _last_cstart);
+  if(_last_cstart == cstart) {
+    return;
+  }
   prepare_file(cstart);
   oidmgr->take_chkpt(cstart.offset());
   // FIXME (tzwang): originally we should put info about the chkpt
