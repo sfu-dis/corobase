@@ -85,7 +85,9 @@ struct fat_ptr {
 
        0x40...0x4f -- an XID encoded as a fat_ptr.
 
-       0x50...0x7f -- currently unused
+       0x50...0x5f -- pointer to some location in the chkpt file.
+
+       0x60...0x7f -- currently unused.
      */
     static uint64_t const VALUE_START_BIT = 16;
 
@@ -108,15 +110,17 @@ struct fat_ptr {
     static uint64_t const ASI_HEAP = 0x20;
     static uint64_t const ASI_EXT = 0x30;
     static uint64_t const ASI_XID = 0x40;
+    static uint64_t const ASI_CHK = 0x50;
 
     static uint64_t const ASI_LOG_FLAG = ASI_LOG << ASI_START_BIT;
     static uint64_t const ASI_HEAP_FLAG = ASI_HEAP << ASI_START_BIT;
     static uint64_t const ASI_EXT_FLAG = ASI_EXT << ASI_START_BIT;
     static uint64_t const ASI_XID_FLAG = ASI_XID << ASI_START_BIT;
+    static uint64_t const ASI_CHK_FLAG = ASI_CHK << ASI_START_BIT;
 
     static uint64_t const ASI_SEGMENT_MASK = 0x0f;
 
-    static_assert(not ((ASI_LOG|ASI_HEAP|ASI_EXT|ASI_XID) & ~ASI_MASK),
+    static_assert(not ((ASI_LOG|ASI_HEAP|ASI_EXT|ASI_XID|ASI_CHK) & ~ASI_MASK),
                   "Go fix ASI_MASK");
     static_assert(NUM_LOG_SEGMENTS == 16, "The constant above is out of sync");
     static_assert(FLAG_BITS >= 1 + 1 + NUM_LOG_SEGMENT_BITS, "Need more bits");

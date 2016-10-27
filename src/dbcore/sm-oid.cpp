@@ -29,7 +29,7 @@ struct thread_data {
        implementation can achieve 90% or higher occupancy for
        uniformly distributed FIDs.
      */
-    static size_t const NENTRIES = 64;
+    static size_t const NENTRIES = 4096;
     
     struct hasher : burt_hash {
         using burt_hash::burt_hash;
@@ -512,32 +512,27 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
                 continue;
             }
 
-            if (ptr.asi_type() == fat_ptr::ASI_LOG) {
-                // In durable log, dig it out -- we must be trying to 
-                // chkpt a record that was recovered from the log but
-                // was never accessed so it must have an LSN < chkpt_start.
-                ASSERT(ptr.offset() < chkpt_start_lsn);
-                ptr = object::create_tuple_object(ptr, NULL_PTR, 0);
-                ASSERT(ptr.asi_type() == 0);
-            }
-
             object *obj = (object *)ptr.offset();
+            if(ptr.asi_type() == 0) {
+              ALWAYS_ASSERT(ptr.asi_type() == 0);
+              fat_ptr clsn = volatile_read(obj->_clsn);
+              ASSERT(clsn.asi_type() != fat_ptr::ASI_CHK);
+              if (clsn.asi_type() != fat_ptr::ASI_LOG) {
+                  ptr = volatile_read(obj->_next);
+                  goto retry;
+              }
 
-            fat_ptr clsn = volatile_read(obj->_clsn);
-            if (clsn.asi_type() != fat_ptr::ASI_LOG) {
-                ptr = volatile_read(obj->_next);
-                goto retry;
-            }
+              ASSERT(obj->_clsn.offset());
+              ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
+              if (obj->_pdest.offset() == 0) {
+                  // must be a delete, skip it
+                  continue;
+              }
 
-            ASSERT(obj->_clsn.offset());
-            if (obj->_pdest.offset() == 0) {
-                // must be a delete, skip it
-                continue;
-            }
-
-            if (obj->_clsn.offset() >= chkpt_start_lsn) {
-                ptr = volatile_read(obj->_next);
-                goto retry;
+              if (obj->_clsn.offset() >= chkpt_start_lsn) {
+                  ptr = volatile_read(obj->_next);
+                  goto retry;
+              }
             }
 
             // Write OID
@@ -551,10 +546,29 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
             // Tuple data
             uint8_t size_code = ptr.size_code();
             ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
-            chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
             auto data_size = decode_size_aligned(size_code);
+            if(ptr.asi_type()) {
+              fat_ptr p = NULL_PTR;
+              if(ptr.asi_type() == fat_ptr::ASI_CHK) {
+                chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
+                obj = (object*)chkptmgr->advance_buffer(data_size);
+                p = object::load_durable_object(ptr, NULL_PTR, 0, obj);
+                ASSERT((uint64_t)obj == p.offset());
+              } else {
+                ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+                p = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
+                obj = (object*)p.offset();
+              }
+              size_code = p.size_code();
+            }
+            data_size = decode_size_aligned(size_code);
             ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
-            chkptmgr->write_buffer((char*)obj, data_size);
+            if(ptr.asi_type() != fat_ptr::ASI_CHK) {
+              chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
+              // It's already there if we're digging out a tuple from a previous chkpt
+              chkptmgr->write_buffer((char*)obj, data_size);
+              ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
+            }
             chkpt_size += (sizeof(OID) + sizeof(uint8_t) + data_size);
         }
         // Write himark as end of fid
@@ -563,7 +577,6 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
                   << fid << ", himark = " << himark << 
                   ", wrote " << chkpt_size << " bytes";
     }
-
     chkptmgr->sync_buffer();
 }
 
@@ -833,23 +846,25 @@ sm_oid_mgr::ensure_tuple(FID f, OID o, epoch_num e)
 fat_ptr
 sm_oid_mgr::ensure_tuple(fat_ptr *ptr, epoch_num epoch)
 {
-    fat_ptr p = *ptr;
-    if (p.asi_type() != fat_ptr::ASI_LOG) {
-        ASSERT(p.asi_type() == 0);
-        return p;
-    }
+  fat_ptr p = *ptr;
+  auto asi_type = p.asi_type();
+  if(asi_type == 0) {
+    // Main-memory tuple
+    return p;
+  }
+  ASSERT(asi_type == fat_ptr::ASI_LOG || asi_type == fat_ptr::ASI_CHK);
 
-    // *ptr should point to some location in the log
-    fat_ptr new_ptr = object::create_tuple_object(p, NULL_PTR, epoch);
-    ASSERT(new_ptr.offset());
+  // *ptr should point to some location in the log or chkpt file
+  fat_ptr new_ptr = object::load_durable_object(p, NULL_PTR, epoch, nullptr);
+  ASSERT(new_ptr.offset());
 
-    // Now new_ptr should point to some location in memory
-    if (not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
-        MM::deallocate(new_ptr);
-        // somebody might acted faster, no need to retry
-    }
-    // FIXME: handle ASI_HEAP and ASI_EXT too
-    return *ptr;
+  // Now new_ptr should point to some location in memory
+  if(not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
+    MM::deallocate(new_ptr);
+    // somebody might acted faster, no need to retry
+  }
+  // FIXME: handle ASI_HEAP and ASI_EXT too
+  return *ptr;
 }
 
 dbtuple*
@@ -867,10 +882,10 @@ start_over:
     fat_ptr *pp = &oa->get(o)->ptr;
     fat_ptr ptr = *pp;
     while (1) {
-        if (ptr.asi_type() != fat_ptr::ASI_LOG) {
-            ASSERT(ptr.asi_type() == 0);  // must be in memory
-        } else {
+        if(ptr.asi_type() == fat_ptr::ASI_LOG || ptr.asi_type() == fat_ptr::ASI_CHK) {
             ptr = ensure_tuple(pp, visitor_xc->begin_epoch);
+        } else {
+            ASSERT(ptr.asi_type() == 0);  // must be in memory
         }
 
         if (not ptr.offset())

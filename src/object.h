@@ -25,8 +25,8 @@ struct object {
 
   inline char* payload() { return (char*)((char*)this + sizeof(object)); }
   dbtuple *tuple() { return (dbtuple *)payload(); }
-  static fat_ptr create_tuple_object(
-    fat_ptr ptr, fat_ptr nxt, epoch_num epoch, sm_log_recover_mgr *lm = NULL);
+  static fat_ptr load_durable_object(
+    fat_ptr ptr, fat_ptr nxt, epoch_num epoch, object* obj, sm_log_recover_mgr *lm = NULL);
   static fat_ptr create_tuple_object(
     const varstr *tuple_value, bool do_write, epoch_num epoch);
 };
