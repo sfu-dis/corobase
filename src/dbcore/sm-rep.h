@@ -34,6 +34,7 @@ namespace rep {
 
 extern tcp::server_context* primary_tcp_ctx;
 extern std::vector<int> backup_sockfds;
+extern std::mutex backup_sockfds_mutex;
 
 struct backup_start_metadata {
   char chkpt_marker[CHKPT_FILE_NAME_BUFSZ];

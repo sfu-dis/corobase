@@ -15,7 +15,6 @@ void primary_daemon_tcp() {
 
 wait_for_backup:
   int backup_sockfd = primary_tcp_ctx->expect_client();
-  backup_sockfds.push_back(backup_sockfd);
 
   // Got a new backup, send out the latest chkpt (if any)
   // Scan the whole log dir, and send chkpt (if any) + the log that follows,
@@ -84,6 +83,11 @@ wait_for_backup:
 
   // Now send the log after chkpt
   send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn.offset());
+
+  // Make it visible to the shipping thread
+  backup_sockfds_mutex.lock();
+  backup_sockfds.push_back(backup_sockfd);
+  backup_sockfds_mutex.unlock();
   goto wait_for_backup;
 }
 
