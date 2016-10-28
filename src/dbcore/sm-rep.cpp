@@ -5,6 +5,7 @@ namespace rep {
 // for primary server only
 tcp::server_context *primary_tcp_ctx = nullptr;
 std::vector<int> backup_sockfds;
+std::mutex backup_sockfds_mutex;
 
 void start_as_primary() {
   ALWAYS_ASSERT(not config::is_backup_srv());
@@ -17,6 +18,7 @@ void start_as_primary() {
 }
 
 void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
+  backup_sockfds_mutex.lock();
   if (config::log_ship_by_rdma) {
     primary_ship_log_buffer_rdma(buf, size);
   } else {
@@ -25,6 +27,7 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
       primary_ship_log_buffer_tcp(fd, buf, size);
     }
   }
+  backup_sockfds_mutex.unlock();
 }
 
 void redo_daemon() {
