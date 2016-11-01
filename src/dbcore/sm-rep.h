@@ -32,7 +32,6 @@ struct write_record_t;
 
 namespace rep {
 
-extern tcp::server_context* primary_tcp_ctx;
 extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
 

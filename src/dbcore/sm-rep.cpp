@@ -3,17 +3,16 @@
 
 namespace rep {
 // for primary server only
-tcp::server_context *primary_tcp_ctx = nullptr;
 std::vector<int> backup_sockfds;
 std::mutex backup_sockfds_mutex;
 
 void start_as_primary() {
   ALWAYS_ASSERT(not config::is_backup_srv());
-  if(!config::log_ship_by_rdma) {
+  if(config::log_ship_by_rdma) {
+    // TODO
+  } else {
     std::thread t(primary_daemon_tcp);
     t.detach();
-  } else {
-    // TODO
   }
 }
 
