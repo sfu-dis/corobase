@@ -6,15 +6,14 @@
 #include "../benchmarks/ndb_wrapper.h"
 
 namespace rep {
-
 // A daemon that runs on the primary for bringing up backups by shipping
 // the latest chkpt (if any) + the log that follows.
 void primary_daemon_tcp() {
   ALWAYS_ASSERT(logmgr);
-  primary_tcp_ctx = new tcp::server_context(config::primary_port, config::num_backups);
+  tcp::server_context primary_tcp_ctx(config::primary_port, config::num_backups);
 
 wait_for_backup:
-  int backup_sockfd = primary_tcp_ctx->expect_client();
+  int backup_sockfd = primary_tcp_ctx.expect_client();
 
   // Got a new backup, send out the latest chkpt (if any)
   // Scan the whole log dir, and send chkpt (if any) + the log that follows,
@@ -26,7 +25,15 @@ wait_for_backup:
       ++nlogfiles;
     }
   }
-  auto* md = allocate_backup_start_metadata(nlogfiles);
+  backup_start_metadata* md = nullptr;
+  if(!md || md->num_log_files < nlogfiles) {
+    if(md) {
+      free(md);
+    }
+    md = allocate_backup_start_metadata(nlogfiles);
+  } else {
+    new (md) backup_start_metadata;
+  }
   int chkpt_fd = -1;
   LSN chkpt_start_lsn = INVALID_LSN, chkpt_end_lsn_unused = INVALID_LSN;
   int dfd = dir.dup();
@@ -84,9 +91,13 @@ wait_for_backup:
   // Now send the log after chkpt
   send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn.offset());
 
-  // Make it visible to the shipping thread
+  // Wait for the backup to notify me that it persisted the logs
+  tcp::expect_ack(backup_sockfd);
+
+  // Surely backup is alive and ready after we got ack'ed, make it visible to the shipping thread
   backup_sockfds_mutex.lock();
   backup_sockfds.push_back(backup_sockfd);
+  ++config::num_active_backups;
   backup_sockfds_mutex.unlock();
   goto wait_for_backup;
 }
@@ -120,10 +131,8 @@ void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, uint64_t
 void start_as_backup_tcp() {
   ALWAYS_ASSERT(config::is_backup_srv());
 
-  LOG(INFO) << "[Backup] Primary address: " << config::primary_srv << ":" <<
-    config::primary_port;
-  tcp::client_context *cctx = new tcp::client_context(
-    config::primary_srv, config::primary_port);
+  LOG(INFO) << "[Backup] Primary: " << config::primary_srv << ":" << config::primary_port;
+  tcp::client_context *cctx = new tcp::client_context(config::primary_srv, config::primary_port);
 
   // Expect the primary to send metadata, the header first
   backup_start_metadata md;
@@ -149,7 +158,7 @@ void start_as_backup_tcp() {
   }
 
   static const uint64_t kBufSize = 512 * 1024 * 1024;
-  static char buf[kBufSize];
+  char buf[kBufSize];
   if(md.chkpt_size > 0) {
     char canary_unused;
     LSN chkpt_start_lsn = INVALID_LSN, chkpt_end_lsn_unused = INVALID_LSN;
@@ -166,8 +175,8 @@ void start_as_backup_tcp() {
         recv(cctx->server_sockfd, buf, std::min(kBufSize, md.chkpt_size), 0);
       md.chkpt_size -= received_bytes;
       os_write(chkpt_fd, buf, received_bytes);
-      os_fsync(chkpt_fd);
     }
+    os_fsync(chkpt_fd);
     os_close(chkpt_fd);
   }
 
@@ -187,9 +196,13 @@ void start_as_backup_tcp() {
         file_size -= received_bytes;
         os_write(log_fd, buf, received_bytes);
       }
+      os_fsync(log_fd);
       os_close(log_fd);
     }
   }
+
+  // Done with receiving files and they should all be persisted, now ack the primary
+  tcp::send_ack(cctx->server_sockfd);
   LOG(INFO) << "[Backup] Receved log file.";
 }
 
