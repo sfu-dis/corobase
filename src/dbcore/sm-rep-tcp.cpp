@@ -204,19 +204,17 @@ void start_as_backup_tcp() {
   // Done with receiving files and they should all be persisted, now ack the primary
   tcp::send_ack(cctx->server_sockfd);
   LOG(INFO) << "[Backup] Receved log file.";
+  std::thread t(backup_daemon_tcp, cctx);
+  t.detach();
 }
 
 // Send the log buffer to backups
-void primary_ship_log_buffer_tcp(
-  int backup_sockfd, const char* buf, uint32_t size) {
+void primary_ship_log_buffer_tcp(int backup_sockfd, const char* buf, uint32_t size) {
   ALWAYS_ASSERT(size);
   size_t nbytes = send(backup_sockfd, (char *)&size, sizeof(uint32_t), 0);
   THROW_IF(nbytes != sizeof(uint32_t), log_file_error, "Incomplete log shipping (header)");
-  //printf("[Primary] Will send %u bytes\n", size);
   nbytes = send(backup_sockfd, buf, size, 0);
   THROW_IF(nbytes != size, log_file_error, "Incomplete log shipping (data)");
-  //printf("[Primary] Sent %u bytes\n", size);
-  // expect an ack message
   // XXX(tzwang): do this in flush()?
   tcp::expect_ack(backup_sockfd);
 }
