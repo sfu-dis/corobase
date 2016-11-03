@@ -7,6 +7,8 @@ namespace thread {
 
 uint32_t next_thread_id = 0;
 node_thread_pool *thread_pools = nullptr;
+__thread uint32_t thread_id;
+__thread bool thread_initialized;
 
 void sm_thread::idle_task() {
   ALWAYS_ASSERT(!numa_run_on_node(node));
