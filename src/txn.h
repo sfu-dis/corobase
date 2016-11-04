@@ -170,12 +170,10 @@ protected:
     volatile_write(xc->state, TXN_ACTIVE);
     ASSERT(state() == TXN_ACTIVE);
   }
-#ifdef PHANTOM_PROT
   // the absent set is a mapping from (btree_node -> version_number).
   struct absent_record_t { uint64_t version; };
   typedef dense_hash_map<const concurrent_btree::node_opaque_t*, absent_record_t> absent_set_map;
   absent_set_map absent_set;
-#endif
 
 public:
 
@@ -193,10 +191,7 @@ public:
   rc_t si_commit();
 #endif
 
-#ifdef PHANTOM_PROT
   bool check_phantom();
-#endif
-
   void abort_impl();
 
 protected:
@@ -212,10 +207,7 @@ protected:
   rc_t
   do_tuple_read(dbtuple *tuple, value_reader &value_reader);
 
-#ifdef PHANTOM_PROT
-  rc_t
-  do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
-#endif
+  rc_t do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 
 public:
   // expected public overrides

@@ -20,10 +20,10 @@ static __thread transaction::read_set_t* tls_read_set;
 transaction::transaction(uint64_t flags, str_arena &sa)
   : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()])
 {
-#ifdef PHANTOM_PROT
-    absent_set.set_empty_key(NULL);    // google dense map
-    absent_set.clear();
-#endif
+    if(config::phantom_prot) {
+      absent_set.set_empty_key(NULL);    // google dense map
+      absent_set.clear();
+    }
     write_set.clear();
 #if defined(SSN) || defined(SSI)
     if (unlikely(not tls_read_set)) {
@@ -523,10 +523,9 @@ transaction::parallel_ssn_commit()
     if (not ssn_check_exclusion(xc))
         return rc_t{RC_ABORT_SERIAL};
 
-#ifdef PHANTOM_PROT
-    if (not check_phantom())
-        return rc_t{RC_ABORT_PHANTOM};
-#endif
+    if(config::phantom_prot && !check_phantom()) {
+      return rc_t{RC_ABORT_PHANTOM};
+    }
 
     // ok, can really commit if we reach here
     log->commit(NULL);
@@ -887,10 +886,9 @@ transaction::parallel_ssi_commit()
         }
     }
 
-#ifdef PHANTOM_PROT
-    if (not check_phantom())
-        return rc_t{RC_ABORT_PHANTOM};
-#endif
+    if(config::phantom_prot && !check_phantom()) {
+      return rc_t{RC_ABORT_PHANTOM};
+    }
 
     // survived!
     log->commit(NULL);
@@ -980,10 +978,9 @@ transaction::si_commit()
     if (xc->end == 0)
         return rc_t{RC_ABORT_INTERNAL};
 
-#ifdef PHANTOM_PROT
-    if (not check_phantom())
-        return rc_t{RC_ABORT_PHANTOM};
-#endif
+    if(config::phantom_prot && !check_phantom()) {
+      return rc_t{RC_ABORT_PHANTOM};
+    }
 
     log->commit(NULL);    // will populate log block
 
@@ -1018,7 +1015,6 @@ transaction::si_commit()
 }
 #endif
 
-#ifdef PHANTOM_PROT
 // returns true if btree versions have changed, ie there's phantom
 bool
 transaction::check_phantom()
@@ -1030,7 +1026,6 @@ transaction::check_phantom()
     }
     return true;
 }
-#endif
 
 bool
 transaction::try_insert_new_tuple(
@@ -1056,23 +1051,21 @@ transaction::try_insert_new_tuple(
         return false;
     }
 
-#ifdef PHANTOM_PROT
-    // update node #s
-    ASSERT(ins_info.node);
-    if (!absent_set.empty()) {
-        auto it = absent_set.find(ins_info.node);
-        if (it != absent_set.end()) {
-            if (unlikely(it->second.version != ins_info.old_version)) {
-                // important: unlink the version, otherwise we risk leaving a dead
-                // version at chain head -> infinite loop or segfault...
-                oidmgr->oid_unlink(btr->get_oid_array(), oid);
-                return false;
-            }
-            // otherwise, bump the version
-            it->second.version = ins_info.new_version;
+    if(config::phantom_prot && !absent_set.empty()) {
+      // update node #s
+      ASSERT(ins_info.node);
+      auto it = absent_set.find(ins_info.node);
+      if (it != absent_set.end()) {
+        if (unlikely(it->second.version != ins_info.old_version)) {
+          // important: unlink the version, otherwise we risk leaving a dead
+          // version at chain head -> infinite loop or segfault...
+          oidmgr->oid_unlink(btr->get_oid_array(), oid);
+          return false;
         }
+        // otherwise, bump the version
+        it->second.version = ins_info.new_version;
+      }
     }
-#endif
 
     // insert to log
     ASSERT(log);
@@ -1145,11 +1138,11 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
     return {RC_TRUE};
 }
 
-#ifdef PHANTOM_PROT
 rc_t
 transaction::do_node_read(
     const typename concurrent_btree::node_opaque_t *n, uint64_t v)
 {
+    ALWAYS_ASSERT(config::phantom_prot);
     ASSERT(n);
     auto it = absent_set.find(n);
     if (it == absent_set.end())
@@ -1158,7 +1151,6 @@ transaction::do_node_read(
         return rc_t{RC_ABORT_PHANTOM};
     return rc_t{RC_TRUE};
 }
-#endif
 
 #ifdef SSN
 rc_t

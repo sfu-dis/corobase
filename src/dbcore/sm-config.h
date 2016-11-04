@@ -31,6 +31,7 @@ public:
     static int group_commit_queue_length;  // how much to reserve
     static sm_log_recover_impl *recover_functor;
     static uint64_t node_memory_gb;
+    static int phantom_prot;
 
     // Warm-up policy when recovering from a chkpt or the log.
     // Set by --recovery-warm-up=[lazy/eager/whatever].

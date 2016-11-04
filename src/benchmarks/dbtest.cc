@@ -88,6 +88,7 @@ main(int argc, char **argv)
       {"primary-port"               , required_argument , 0                          , 'k'},
       {"wait-for-backups"           , no_argument       , &config::wait_for_backups , 1},
       {"num-backups"                , required_argument , 0                          , 'a'},
+      {"phantom-prot"               , no_argument       , &config::phantom_prot     , 1},
 #if defined(SSI) || defined(SSN)
       {"safesnap"                   , no_argument       , &config::enable_safesnap  , 1},
 #ifdef SSI
@@ -277,11 +278,6 @@ main(int argc, char **argv)
 #else
     printf("System: SI\n");
 #endif
-#ifdef PHANTOM_PROT
-    printf("Phantom protection: on\n");
-#else
-    printf("Phantom protection: off\n");
-#endif
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
     cerr << "settings:"                                     << endl;
@@ -304,6 +300,7 @@ main(int argc, char **argv)
 #else
     cerr << "  var-encode  : no"                            << endl;
 #endif
+    cerr << "  phantom-prot: " << config::phantom_prot     << endl;
     cerr << "  group-commit: " << config::group_commit     << endl;
     cerr << "  commit-queue: " << config::group_commit_queue_length << endl;
     cerr << "  tmpfs-dir   : " << config::tmpfs_dir        << endl;

@@ -34,6 +34,7 @@ int config::log_ship_by_rdma = 0;
 int config::log_ship_sync_redo = 0;
 int config::enable_chkpt = 0;
 uint64_t config::chkpt_interval = 5;
+int config::phantom_prot = 0;
 
 uint32_t config::max_threads_per_node = 0;
 bool config::loading = true;

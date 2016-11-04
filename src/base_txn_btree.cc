@@ -15,15 +15,14 @@ base_txn_btree::do_search(transaction &t, const varstr &k, value_reader &vr)
     OID oid;
     concurrent_btree::versioned_node_t sinfo;
     const bool found = this->underlying_btree.search(*key_str, oid, tuple, t.xc, &sinfo);
-    if (found)
+    if (found) {
         return t.do_tuple_read(tuple, vr);
-#ifdef PHANTOM_PROT
-    else {
+    } else if(config::phantom_prot) {
         rc_t rc = t.do_node_read(sinfo.first, sinfo.second);
-        if (rc_is_abort(rc))
+        if (rc_is_abort(rc)) {
             return rc;
+        }
     }
-#endif
     return rc_t{RC_FALSE};
 }
 
@@ -222,15 +221,17 @@ base_txn_btree
     VERBOSE(std::cerr << "on_resp_node(): <node=0x" << util::hexify(intptr_t(n))
                << ", version=" << version << ">" << std::endl);
     VERBOSE(std::cerr << "  " << concurrent_btree::NodeStringify(n) << std::endl);
-#ifdef PHANTOM_PROT
+    if(config::phantom_prot) {
 #ifdef SSN
-    if (t->flags & transaction::TXN_FLAG_READ_ONLY)
+      if(t->flags & transaction::TXN_FLAG_READ_ONLY) {
         return;
+      }
 #endif
-    rc_t rc = t->do_node_read(n, version);
-    if (rc_is_abort(rc))
+      rc_t rc = t->do_node_read(n, version);
+      if(rc_is_abort(rc)) {
         caller_callback->return_code = rc;
-#endif
+      }
+    }
 }
 
 bool

@@ -200,7 +200,9 @@ struct sm_oid_mgr {
     }
 
     inline void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
-#if defined(PHANTOM_PROT) && (defined(SSI) || defined(SSN))
+      if(!config::phantom_prot) {
+        return;
+      }
       /*
        * tzwang (May 05, 2016): Preventing phantom:
        * Consider an example:
@@ -236,8 +238,6 @@ struct sm_oid_mgr {
       visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
       // TODO(tzwang): do early SSN check here
 #endif  // SSI/SSN
-#else
-#endif
     }
 
     inline dbtuple* oid_get_latest_version(oid_array *oa, OID o) {
