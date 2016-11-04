@@ -384,7 +384,7 @@ main(int argc, char **argv)
     }
   }
 
-  // Must have everything in CONF ready by this point (ndb-wrapper's ctor will use them)
+  // Must have everything in config ready by this point (ndb-wrapper's ctor will use them)
   config::sanity_check();
   db = new ndb_wrapper();
   test_fn(db, argc, new_argv);
