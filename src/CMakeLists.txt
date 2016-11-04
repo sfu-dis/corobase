@@ -48,35 +48,25 @@ get_property(TMP_ALL_ERMIA_SRC GLOBAL PROPERTY ALL_ERMIA_SRC)
 add_executable(ermia_SI ${TMP_ALL_ERMIA_SRC})
 target_link_libraries(ermia_SI ${LINK_FLAGS})
 
-# RC+SSN+PP
-add_executable(ermia_RC_SSN_ESC_PP ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_RC_SSN_ESC_PP PROPERTIES COMPILE_FLAGS "-DRC -DSSN -DEARLY_SSN_CHECK -DPHANTOM_PROT")
-target_link_libraries(ermia_RC_SSN_ESC_PP ${LINK_FLAGS})
+# RC+SSN
+add_executable(ermia_RC_SSN_ESC ${TMP_ALL_ERMIA_SRC})
+set_target_properties(ermia_RC_SSN_ESC PROPERTIES COMPILE_FLAGS "-DRC -DSSN -DEARLY_SSN_CHECK")
+target_link_libraries(ermia_RC_SSN_ESC ${LINK_FLAGS})
 
-# RC_SPIN+SSN+PP
-add_executable(ermia_RC_SPIN_SSN_ESC_PP ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_RC_SPIN_SSN_ESC_PP PROPERTIES COMPILE_FLAGS "-DRC_SPIN -DSSN -DEARLY_SSN_CHECK -DPHANTOM_PROT")
-target_link_libraries(ermia_RC_SPIN_SSN_ESC_PP ${LINK_FLAGS})
+# RC_SPIN+SSN
+add_executable(ermia_RC_SPIN_SSN_ESC ${TMP_ALL_ERMIA_SRC})
+set_target_properties(ermia_RC_SPIN_SSN_ESC PROPERTIES COMPILE_FLAGS "-DRC_SPIN -DSSN -DEARLY_SSN_CHECK")
+target_link_libraries(ermia_RC_SPIN_SSN_ESC ${LINK_FLAGS})
 
-# SI+SSN+EARLY_CHECK+PP
-add_executable(ermia_SI_SSN_ESC_PP ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_SI_SSN_ESC_PP PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DPHANTOM_PROT")
-target_link_libraries(ermia_SI_SSN_ESC_PP ${LINK_FLAGS})
-
-# SSI+PP
-add_executable(ermia_SSI_PP ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_SSI_PP PROPERTIES COMPILE_FLAGS "-DSSI -DPHANTOM_PROT")
-target_link_libraries(ermia_SSI_PP ${LINK_FLAGS})
-
-# SSI without PP
-add_executable(ermia_SSI ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
-target_link_libraries(ermia_SSI ${LINK_FLAGS})
-
-# SI+SSN+EARLY_CHECK without PP
+# SI+SSN+EARLY_CHECK
 add_executable(ermia_SI_SSN_ESC ${TMP_ALL_ERMIA_SRC})
 set_target_properties(ermia_SI_SSN_ESC PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 target_link_libraries(ermia_SI_SSN_ESC ${LINK_FLAGS})
+
+# SSI
+add_executable(ermia_SSI ${TMP_ALL_ERMIA_SRC})
+set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
+target_link_libraries(ermia_SSI ${LINK_FLAGS})
 
 # run script
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
