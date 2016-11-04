@@ -10,8 +10,6 @@
 #include <vector>
 #include <utility>
 
-using namespace TXN;
-
 // XXX(tzwang): TLS read and write sets to avoid malloc -
 // much faster especially under high contention
 write_set_t tls_write_set[config::MAX_THREADS];
@@ -35,7 +33,6 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     read_set = tls_read_set;
     read_set->clear();
 #endif
-    updated_oids_head = updated_oids_tail = NULL_PTR;
     xid = TXN::xid_alloc();
     xc = xid_get_context(xid);
     xc->begin_epoch = MM::epoch_enter();
@@ -571,10 +568,6 @@ transaction::parallel_ssn_commit()
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn_ptr);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-        if (config::enable_gc and tuple->next()) {
-            // construct the (sub)list here so that we have only one CAS per tx
-            enqueue_recycle_oids(w);
-        }
     }
 
     // This state change means:
@@ -628,13 +621,6 @@ transaction::parallel_ssn_commit()
         // xstamp that was set by some earlier reader.
         serial_deregister_reader_tx(&r->readers_bitmap);
     }
-
-    if (updated_oids_head != NULL_PTR) {
-        ASSERT(config::enable_gc);
-        ASSERT(updated_oids_tail != NULL_PTR);
-        MM::recycle(updated_oids_head, updated_oids_tail);
-    }
-
     return rc_t{RC_TRUE};
 }
 #elif defined(SSI)
@@ -928,10 +914,6 @@ transaction::parallel_ssi_commit()
         volatile_write(tuple->xstamp, cstamp);
         volatile_write(tuple->get_object()->_clsn, clsn_ptr);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-        if (config::enable_gc and tuple->next()) {
-            // construct the (sub)list here so that we have only one XCHG per tx
-            enqueue_recycle_oids(w);
-        }
     }
 
     // NOTE: make sure this happens after populating log block,
@@ -986,14 +968,6 @@ transaction::parallel_ssi_commit()
         // see the xstamp if it didn't find the bit in the bitmap is set.
         serial_deregister_reader_tx(&r->readers_bitmap);
     }
-
-    // GC stuff, do it out of precommit
-    if (updated_oids_head != NULL_PTR) {
-        ASSERT(config::enable_gc);
-        ASSERT(updated_oids_tail != NULL_PTR);
-        MM::recycle(updated_oids_head, updated_oids_tail);
-    }
-
     return rc_t{RC_TRUE};
 }
 #else
@@ -1025,10 +999,6 @@ transaction::si_commit()
         tuple->do_write();
         tuple->get_object()->_clsn = clsn_ptr;
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_LOG);
-        if (config::enable_gc and tuple->next()) {
-            // construct the (sub)list here so that we have only one XCHG per tx
-            enqueue_recycle_oids(w);
-        }
 #ifndef NDEBUG
         object *obj = tuple->get_object();
         fat_ptr pdest = volatile_read(obj->_pdest);
@@ -1044,13 +1014,6 @@ transaction::si_commit()
     // otherwise readers will see inconsistent data!
     // This is where (committed) tuple data are made visible to readers
     volatile_write(xc->state, TXN_CMMTD);
-
-    if (updated_oids_head != NULL_PTR) {
-        ASSERT(config::enable_gc);
-        ASSERT(updated_oids_tail != NULL_PTR);
-        MM::recycle(updated_oids_head, updated_oids_tail);
-    }
-
     return rc_t{RC_TRUE};
 }
 #endif

@@ -821,6 +821,11 @@ install:
     else {
         volatile_write(new_object->_next, head);
         if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_obj_ptr->_ptr)) {
+            // Succeeded installing a new version, now only I can modify the
+            // chain, try recycle some objects
+            if(config::enable_gc) {
+              MM::gc_version_chain(ptr);
+            }
             return head;
         }
     }
