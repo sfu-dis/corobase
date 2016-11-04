@@ -12,7 +12,7 @@
 #include <utility>
 #include <stdexcept>
 #include <limits>
-#include <tuple>
+#include <unordered_set>
 
 #include "dbcore/xid.h"
 #include "dbcore/sm-config.h"
@@ -217,26 +217,6 @@ protected:
   do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 #endif
 
-  inline void enqueue_recycle_oids(write_record_t &w) {
-    size_t size = sizeof(recycle_oid) + sizeof(object);
-    const size_t size_code = encode_size_aligned(size);
-    object *objr = (object *)MM::allocate(size, 0);
-    new (objr) object();
-    recycle_oid *r = (recycle_oid *)objr->payload();
-    new (r) recycle_oid(w.entry);
-    fat_ptr myptr = fat_ptr::make(objr, size_code);
-    ASSERT(objr->_next == NULL_PTR);
-    if (updated_oids_head == NULL_PTR) {
-        updated_oids_head = updated_oids_tail = myptr;
-    } else {
-        object *tail_obj = (object *)updated_oids_tail.offset();
-        ASSERT(tail_obj->_next == NULL_PTR);
-        tail_obj->_next = myptr;
-        updated_oids_tail = myptr;
-        ASSERT(((object *)updated_oids_tail.offset())->_next == NULL_PTR);
-    }
-  }
-
 public:
   // expected public overrides
 
@@ -246,13 +226,7 @@ public:
     return *sa;
   }
 
-  inline uint64_t
-  get_flags() const
-  {
-    return flags;
-  }
-
-  void add_to_write_set(fat_ptr* entry, FID fid) {
+  inline void add_to_write_set(fat_ptr* entry, FID fid) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto& w = write_set[i];
@@ -273,7 +247,5 @@ protected:
 #if defined(SSN) || defined(SSI)
   read_set_t* read_set;
 #endif
-  fat_ptr updated_oids_head;
-  fat_ptr updated_oids_tail;
 };
 #endif /* _NDB_TXN_H_ */
