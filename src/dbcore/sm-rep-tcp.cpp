@@ -12,28 +12,27 @@ void primary_daemon_tcp() {
   ALWAYS_ASSERT(logmgr);
   tcp::server_context primary_tcp_ctx(config::primary_port, config::num_backups);
 
+  backup_start_metadata* md = nullptr;
 wait_for_backup:
   int backup_sockfd = primary_tcp_ctx.expect_client();
 
   // Got a new backup, send out the latest chkpt (if any)
   // Scan the whole log dir, and send chkpt (if any) + the log that follows,
   // or all the logs if a chkpt doesn't exist.
-  uint8_t nlogfiles = 0;
+  uint64_t nlogfiles = 0;
   dirent_iterator dir(config::log_dir.c_str());
   for(char const *fname : dir) {
     if(fname[0] == 'l') {
       ++nlogfiles;
     }
   }
-  backup_start_metadata* md = nullptr;
   if(!md || md->num_log_files < nlogfiles) {
     if(md) {
       free(md);
     }
     md = allocate_backup_start_metadata(nlogfiles);
-  } else {
-    new (md) backup_start_metadata;
   }
+  new (md) backup_start_metadata;
   int chkpt_fd = -1;
   LSN chkpt_start_lsn = INVALID_LSN, chkpt_end_lsn_unused = INVALID_LSN;
   int dfd = dir.dup();
@@ -74,7 +73,6 @@ wait_for_backup:
       LOG(FATAL) << "Unrecognized file name";
     }
   }
-  
   auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
   ALWAYS_ASSERT(sent_bytes == md->size());
 

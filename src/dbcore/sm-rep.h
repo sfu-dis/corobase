@@ -68,8 +68,10 @@ struct backup_start_metadata {
 };
 
 inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles) {
-  backup_start_metadata *md = (backup_start_metadata*)malloc(sizeof(backup_start_metadata)) +
-    nlogfiles * SEGMENT_FILE_NAME_BUFSZ;
+  uint32_t size = sizeof(backup_start_metadata) +
+    nlogfiles * (SEGMENT_FILE_NAME_BUFSZ + sizeof(uint64_t));
+  backup_start_metadata *md = (backup_start_metadata*)malloc(size);
+  return md;
 }
 
 // Common functions
