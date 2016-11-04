@@ -431,6 +431,19 @@ epoch_mgr::thread_enter()
         goto retry;
     }
 
+    // FIXME(tzwang): 20161104: Like previous mentioned, we might be
+    // flagged as a straggler when entering epoch. This happens especially
+    // when the epoch size is small and I've observed cases where after
+    // being flagged as a straggler, no one can advance epoch and everyone
+    // is stuck in the same epoch, although they can still enter and exit.
+    // Not sure why yet, but as a tentative fix, retry here if noticed the
+    // entering thread itself is flagged as a straggler.
+    if(self->straggler) {
+        volatile_write(self->end, tmp2);
+        straggler_check(this, self, tmp2);
+        goto retry;
+    }
+
     /* All done! */
     __sync_synchronize();
     return tmp;
