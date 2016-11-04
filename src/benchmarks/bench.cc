@@ -255,8 +255,12 @@ bench_runner::run()
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (vector<bench_worker *>::const_iterator it = workers.begin();
-       it != workers.end(); ++it)
+       it != workers.end(); ++it) {
+    while(!(*it)->is_impersonated()) {
+      (*it)->try_impersonate();
+    }
     (*it)->start();
+  }
 
   barrier_a.wait_for(); // wait for all threads to start up
   map<string, size_t> table_sizes_before;
