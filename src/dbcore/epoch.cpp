@@ -145,8 +145,7 @@ straggler_check(epoch_mgr *em, epoch_mgr::thread_state *self, epoch_mgr::epoch_n
            as a straggler. Or maybe not. Wait for the epoch change
            to complete before continuing.
         */
-        em->mutex.lock();
-        em->mutex.unlock();
+        CRITICAL_SECTION(cs, em->mutex);
     }
 
     if (volatile_read(self->straggler)) {
@@ -167,8 +166,7 @@ epoch_mgr::new_epoch()
     bool reclaim_directly = false;
     XDEFER_IF(reclaim_directly, global_quiesce(this));
     
-    mutex.lock();
-    DEFER(mutex.unlock());
+    CRITICAL_SECTION(cs, mutex);
     if (not state->ready_for_safe_point) 
         return false;
 
@@ -263,8 +261,7 @@ epoch_mgr::thread_init()
     ASSERT(not self->end);
     ASSERT(not self->straggler);
 
-    mutex.lock();
-    DEFER(mutex.unlock());
+    CRITICAL_SECTION(cs, mutex);
 
     // first time?
     if (not state) {
@@ -317,8 +314,7 @@ epoch_mgr::thread_fini()
     XDEFER_IF(active_cookie, cb.epoch_reclaimed(cb.cookie, active_cookie));
     XDEFER_IF(cooling_cookie, cb.epoch_reclaimed(cb.cookie, cooling_cookie));
     
-    mutex.lock();
-    DEFER(mutex.unlock());
+    CRITICAL_SECTION(cs, mutex);
 
     cb.thread_deregistered(cb.cookie, self->cookie);
     self->cookie = NULL;

@@ -32,7 +32,7 @@ namespace MM {
 uint64_t gc_lsn CACHE_ALIGNED;
 
 static const uint64_t EPOCH_SIZE_NBYTES = 1 << 24;
-static const uint64_t EPOCH_SIZE_COUNT = 200;
+static const uint64_t EPOCH_SIZE_COUNT = 3000;
 
 // epoch_excl_begin_lsn belongs to the previous **ending** epoch, and we're
 // using it as the **begin** lsn of the new epoch.

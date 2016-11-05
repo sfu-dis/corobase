@@ -43,105 +43,98 @@
 #define CRITICAL_SECTION(name, lock) critical_section name(lock)
 
 struct mcs_lock {
-    struct qnode;
-    struct qnode {
-        qnode* _next;
-        int _waiting;
-	int _padding;
-        //      qnode() : _next(NULL), _waiting(false) { }
-	qnode volatile* vthis() { return this; }
-    };
-    struct ext_qnode {
-      qnode _node;
-      operator qnode*() { return &_node; }
-        mcs_lock* _held;
-    };
+  struct qnode {
+    qnode* _next;
+    int _waiting;
+    int _padding;
+    // qnode() : _next(NULL), _waiting(false) { }
+    qnode volatile* vthis() { return this; }
+  };
+  struct ext_qnode {
+    qnode _node;
+    operator qnode*() { return &_node; }
+    mcs_lock* _held;
+  };
 #define MCS_EXT_QNODE_INITIALIZER {{0,false,0},0}
-    qnode* volatile _tail;
-    mcs_lock() : _tail(0) { }
+  qnode* volatile _tail = 0;
+  constexpr mcs_lock() : _tail(0) {}
 
-    /* This spinning occurs whenever there are critical sections ahead
-       of us.
-
-       CC mangles this as __1cImcs_lockPspin_on_waiting6Mpon0AFqnode__v_
-    */
-    void spin_on_waiting(qnode* me); // no-inline.cpp
+  /* This spinning occurs whenever there are critical sections ahead of us.
+     CC mangles this as __1cImcs_lockPspin_on_waiting6Mpon0AFqnode__v_
+  */
+  void spin_on_waiting(qnode* me); // no-inline.cpp
     
-    /* Only acquire the lock if it is free...
-     */
-    bool attempt(ext_qnode* me) {
-        if(attempt((qnode*) me)) {
-            me->_held = this;
-            return true;
-        }
-        return false;
+  /* Only acquire the lock if it is free... */
+  inline bool attempt(ext_qnode* me) {
+    if(attempt((qnode*) me)) {
+      me->_held = this;
+      return true;
     }
-    bool attempt(qnode* me) {
-        me->_next = 0;
-        me->_waiting = true;
-		__sync_synchronize();
-        qnode* pred = (qnode*) __sync_val_compare_and_swap(&_tail, 0, (void*) me);
-        // lock held?
-        if(pred)
-            return false;
-		__sync_synchronize();
-        return true;
-    }
-    // return true if the lock was free
-    void* acquire(ext_qnode* me) {
-        me->_held = this;
-        return acquire((qnode*) me);
-    }
-    void* acquire(qnode* me) {
-	return __unsafe_end_acquire(me, __unsafe_begin_acquire(me));
-    }
+    return false;
+  }
+  inline bool attempt(qnode* me) {
+    me->_next = 0;
+    me->_waiting = true;
+    __sync_synchronize();
+    qnode* pred = (qnode*) __sync_val_compare_and_swap(&_tail, 0, (void*) me);
+    // lock held?
+    if(pred)
+      return false;
+    __sync_synchronize();
+    return true;
+  }
+  // return true if the lock was free
+  inline void* acquire(ext_qnode* me) {
+    me->_held = this;
+    return acquire((qnode*) me);
+  }
+  inline void* acquire(qnode* me) {
+    return __unsafe_end_acquire(me, __unsafe_begin_acquire(me));
+  }
 
-    qnode* __unsafe_begin_acquire(qnode* me) {
-        me->_next = 0;
-        me->_waiting = true;
-		__sync_synchronize();
-        qnode* pred = (qnode*) __sync_lock_test_and_set(&_tail, (void*) me);
-        if(pred) {
-            pred->_next = me;
-        }
-	return pred;
+  inline qnode* __unsafe_begin_acquire(qnode* me) {
+    me->_next = 0;
+    me->_waiting = true;
+    __sync_synchronize();
+    qnode* pred = (qnode*) __sync_lock_test_and_set(&_tail, (void*) me);
+    if(pred) {
+        pred->_next = me;
     }
-    void* __unsafe_end_acquire(qnode* me, qnode* pred) {
-        if(pred) {
-            spin_on_waiting(me);
-        }
-		__sync_synchronize();
-        return (void*) pred;
+    return pred;
+  }
+  inline void* __unsafe_end_acquire(qnode* me, qnode* pred) {
+    if(pred) {
+      spin_on_waiting(me);
     }
+    __sync_synchronize();
+    return (void*) pred;
+  }
     
-    /* This spinning only occurs when we are at _tail and catch a
-       thread trying to enqueue itself.
+  /* This spinning only occurs when we are at _tail and catch a
+     thread trying to enqueue itself.
 
-       CC mangles this as __1cImcs_lockMspin_on_next6Mpon0AFqnode__3_
-    */
-    qnode* spin_on_next(qnode* me); // no-inline.cpp
+     CC mangles this as __1cImcs_lockMspin_on_next6Mpon0AFqnode__3_
+  */
+  qnode* spin_on_next(qnode* me); // no-inline.cpp
     
-    void release(ext_qnode *me) { 
-      //w_assert1(is_mine(me));
-        me->_held = 0; release((qnode*) me); 
+  inline void release(ext_qnode *me) { 
+    me->_held = 0; release((qnode*) me); 
+  }
+  inline void release(ext_qnode &me) { release(&me); }
+  inline void release(qnode &me) { release(&me); }
+  inline void release(qnode* me) {
+    __sync_synchronize();
+    qnode* next;
+    if(!(next=me->_next)) {
+      if(me == _tail && me == (qnode*)
+      __sync_val_compare_and_swap((char ** volatile)&_tail, (void*) me, 0))
+      return;
+      next = spin_on_next(me);
     }
-    void release(ext_qnode &me) { release(&me); }
-    void release(qnode &me) { release(&me); }
-    void release(qnode* me) {
-      //w_assert1(is_mine(me));
-		__sync_synchronize();
-
-        qnode* next;
-        if(!(next=me->_next)) {
-            if(me == _tail && me == (qnode*)
-					__sync_val_compare_and_swap((char ** volatile)&_tail, (void*) me, 0))
-            return;
-            next = spin_on_next(me);
-        }
-        next->_waiting = false;
-    }
+    next->_waiting = false;
+  }
   //bool is_mine(qnode* me) { return me->_held == this; }
-    bool is_mine(ext_qnode* me) { return me->_held == this; }
+  inline bool is_mine(ext_qnode* me) { return me->_held == this; }
 };
 
 
