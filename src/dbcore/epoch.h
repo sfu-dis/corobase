@@ -1,6 +1,7 @@
 // -*- mode:c++ -*-
 #pragma once
 
+#include "mcs_lock.h"
 #include "sm-common.h"
 
 #include <type_traits>
@@ -151,5 +152,5 @@ struct epoch_mgr {
     
     private_state *state = 0;
     callbacks cb;
-    os_mutex_pod mutex = os_mutex_pod::static_init();
+    mcs_lock mutex;
 };
