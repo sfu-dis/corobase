@@ -272,6 +272,9 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
            that we know the correct value to use. The only exception
            is when we read and replay the log buffer directly.
          */
+        // Write a small chunk (but still should be large enough to utilize
+        // good sequential write speed) each time so we can free buffer space quickly
+        new_byte = std::min(new_byte, durable_byte + 16 * 1024 * 1024);
         uint64_t nbytes = new_byte - durable_byte;
         if (logbuf.available_to_read() < nbytes)
             logbuf.advance_writer(new_byte);
