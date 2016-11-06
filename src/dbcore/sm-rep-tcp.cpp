@@ -156,7 +156,7 @@ void start_as_backup_tcp() {
   }
 
   static const uint64_t kBufSize = 512 * 1024 * 1024;
-  char buf[kBufSize];
+  static char buf[kBufSize];
   if(md.chkpt_size > 0) {
     char canary_unused;
     LSN chkpt_start_lsn = INVALID_LSN, chkpt_end_lsn_unused = INVALID_LSN;
