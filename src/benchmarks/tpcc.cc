@@ -106,7 +106,7 @@ class table_scanner: public ndb_ordered_index::scan_callback {
 static inline ALWAYS_INLINE size_t
 NumWarehouses()
 {
-  return (size_t) scale_factor;
+  return (size_t) config::benchmark_scale_factor;
 }
 
 // config constants
@@ -640,7 +640,7 @@ protected:
   load()
   {
 	  string obj_buf;
-	  void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	  void *txn = db->new_txn(0, arena, txn_buf());
 	  uint i;
 	  for (i = 0; i < 62; i++) {
 		  const nation::key k(nations[i].id);
@@ -672,7 +672,7 @@ protected:
   load()
   {
 	  string obj_buf;
-	  void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	  void *txn = db->new_txn(0, arena, txn_buf());
 	  for (uint i = 0; i < 5; i++) {
 		  const region::key k(i);
 		  region::value v;
@@ -703,7 +703,7 @@ protected:
   {
 	  string obj_buf;
 	  for (uint i = 0; i < 10000; i++) {
-		  void *txn = db->new_txn(txn_flags, arena, txn_buf());
+		  void *txn = db->new_txn(0, arena, txn_buf());
 		  const supplier::key k(i);
 		  supplier::value v;
 
@@ -740,7 +740,7 @@ protected:
   load()
   {
     string obj_buf;
-    void *txn = db->new_txn(txn_flags, arena, txn_buf());
+    void *txn = db->new_txn(0, arena, txn_buf());
     uint64_t warehouse_total_sz = 0, n_warehouses = 0;
       vector<warehouse::value> warehouses;
       for (uint i = 1; i <= NumWarehouses(); i++) {
@@ -773,7 +773,7 @@ protected:
       }
       try_verify_strict(db->commit_txn(txn));
       arena.reset();
-      txn = db->new_txn(txn_flags, arena, txn_buf());
+      txn = db->new_txn(0, arena, txn_buf());
       for (uint i = 1; i <= NumWarehouses(); i++) {
         const warehouse::key k(i);
         warehouse::value warehouse_temp;
@@ -791,7 +791,7 @@ protected:
       for (uint i = 1; i <= NumItems(); i++)
 			  supp_stock_map[ w*i % 10000 ].push_back( std::make_pair(w,i) );
 
-    if (verbose) {
+    if(config::verbose) {
       cerr << "[INFO] finished loading warehouse" << endl;
       cerr << "[INFO]   * average warehouse record length: "
            << (double(warehouse_total_sz)/double(n_warehouses)) << " bytes" << endl;
@@ -815,7 +815,7 @@ protected:
   {
     string obj_buf;
     const ssize_t bsize = db->txn_max_batch_size();
-    void *txn = db->new_txn(txn_flags, arena, txn_buf());
+    void *txn = db->new_txn(0, arena, txn_buf());
     uint64_t total_sz = 0;
       for (uint i = 1; i <= NumItems(); i++) {
         // items don't "belong" to a certain warehouse, so no pinning
@@ -843,12 +843,12 @@ protected:
 
         if (bsize != -1 && !(i % bsize)) {
           try_verify_strict(db->commit_txn(txn));
-          txn = db->new_txn(txn_flags, arena, txn_buf());
+          txn = db->new_txn(0, arena, txn_buf());
           arena.reset();
         }
       }
       try_verify_strict(db->commit_txn(txn));
-    if (verbose) {
+    if(config::verbose) {
       cerr << "[INFO] finished loading item" << endl;
       cerr << "[INFO]   * average item record length: "
            << (double(total_sz)/double(NumItems())) << " bytes" << endl;
@@ -891,7 +891,7 @@ protected:
       for(size_t i=0; i < NumItems(); ) {
         size_t iend = std::min(i+batchsize, NumItems());
         scoped_str_arena s_arena(arena);
-        void * const txn = db->new_txn(txn_flags, arena, txn_buf());
+        void * const txn = db->new_txn(0, arena, txn_buf());
           for (uint j=i+1; j <= iend; j++) {
             const stock::key k(w, j);
             const stock_data::key k_data(w, j);
@@ -936,7 +936,7 @@ protected:
         i = iend;
       }
     }
-    if (verbose) {
+    if(config::verbose) {
       if (warehouse_id == -1) {
         cerr << "[INFO] finished loading stock" << endl;
         cerr << "[INFO]   * average stock record length: "
@@ -968,7 +968,7 @@ protected:
     string obj_buf;
 
     const ssize_t bsize = db->txn_max_batch_size();
-    void *txn = db->new_txn(txn_flags, arena, txn_buf());
+    void *txn = db->new_txn(0, arena, txn_buf());
     uint64_t district_total_sz = 0, n_districts = 0;
       uint cnt = 0;
       for (uint w = 1; w <= NumWarehouses(); w++) {
@@ -994,13 +994,13 @@ protected:
 
           if (bsize != -1 && !((cnt + 1) % bsize)) {
             try_verify_strict(db->commit_txn(txn));
-            txn = db->new_txn(txn_flags, arena, txn_buf());
+            txn = db->new_txn(0, arena, txn_buf());
             arena.reset();
           }
         }
       }
       try_verify_strict(db->commit_txn(txn));
-    if (verbose) {
+    if(config::verbose) {
       cerr << "[INFO] finished loading district" << endl;
       cerr << "[INFO]   * average district record length: "
            << (double(district_total_sz)/double(n_districts)) << " bytes" << endl;
@@ -1047,7 +1047,7 @@ protected:
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         for (uint batch = 0; batch < nbatches;) {
           scoped_str_arena s_arena(arena);
-          void * const txn = db->new_txn(txn_flags, arena, txn_buf());
+          void * const txn = db->new_txn(0, arena, txn_buf());
           const size_t cstart = batch * batchsize;
           const size_t cend = std::min((batch + 1) * batchsize, NumCustomersPerDistrict());
             for (uint cidx0 = cstart; cidx0 < cend; cidx0++) {
@@ -1117,7 +1117,7 @@ protected:
         }
       }
     }
-    if (verbose) {
+    if(config::verbose) {
       if (warehouse_id == -1) {
         cerr << "[INFO] finished loading customer" << endl;
         cerr << "[INFO]   * average customer record length: "
@@ -1183,7 +1183,7 @@ protected:
         }
         for (uint c = 1; c <= NumCustomersPerDistrict();) {
           scoped_str_arena s_arena(arena);
-          void * const txn = db->new_txn(txn_flags, arena, txn_buf());
+          void * const txn = db->new_txn(0, arena, txn_buf());
             const oorder::key k_oo(w, d, c);
 
             oorder::value v_oo;
@@ -1249,7 +1249,7 @@ protected:
       }
     }
 
-    if (verbose) {
+    if(config::verbose) {
       if (warehouse_id == -1) {
         cerr << "[INFO] finished loading order" << endl;
         cerr << "[INFO]   * average order_line record length: "
@@ -1316,7 +1316,7 @@ tpcc_worker::txn_new_order()
   //   max_read_set_size : 15
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
-  void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_NEW_ORDER);
+  void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_NEW_ORDER);
   scoped_str_arena s_arena(arena);
     const customer::key k_c(warehouse_id, districtID, customerID);
     customer::value v_c_temp;
@@ -1467,7 +1467,7 @@ tpcc_worker::txn_delivery()
   //   max_read_set_size : 133
   //   max_write_set_size : 133
   //   num_txn_contexts : 4
-  void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_DELIVERY);
+  void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_DELIVERY);
   scoped_str_arena s_arena(arena);
     for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
       const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
@@ -1614,7 +1614,7 @@ tpcc_worker::txn_credit_check()
 	}
 	ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
-	void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_CREDIT_CHECK);
+	void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_CREDIT_CHECK);
 	scoped_str_arena s_arena(arena);
 
 		// select * from customer with random C_ID
@@ -1713,7 +1713,7 @@ tpcc_worker::txn_payment()
   //   max_read_set_size : 71
   //   max_write_set_size : 1
   //   num_txn_contexts : 5
-  void *txn = db->new_txn(txn_flags, arena, txn_buf(), ndb_wrapper::HINT_TPCC_PAYMENT);
+  void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_PAYMENT);
   scoped_str_arena s_arena(arena);
 
     const warehouse::key k_w(warehouse_id);
@@ -1869,7 +1869,7 @@ tpcc_worker::txn_order_status()
     config::enable_safesnap ?
       ndb_wrapper::HINT_TPCC_ORDER_STATUS_READ_ONLY :
       ndb_wrapper::HINT_TPCC_ORDER_STATUS;
-  void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
+  void *txn = db->new_txn(read_only_mask, arena, txn_buf(), hint);
   scoped_str_arena s_arena(arena);
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -2015,7 +2015,7 @@ tpcc_worker::txn_stock_level()
     config::enable_safesnap ?
       ndb_wrapper::HINT_TPCC_STOCK_LEVEL_READ_ONLY :
       ndb_wrapper::HINT_TPCC_STOCK_LEVEL;
-  void *txn = db->new_txn(txn_flags | read_only_mask, arena, txn_buf(), hint);
+  void *txn = db->new_txn(read_only_mask, arena, txn_buf(), hint);
   scoped_str_arena s_arena(arena);
   // NB: since txn_stock_level() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -2068,7 +2068,7 @@ tpcc_worker::txn_stock_level()
 rc_t
 tpcc_worker::txn_query2()
 {
-	void *txn = db->new_txn(txn_flags | transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
+	void *txn = db->new_txn(transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 
 	static __thread table_scanner r_scanner(&arena);
@@ -2200,7 +2200,7 @@ tpcc_worker::txn_query2()
 rc_t
 tpcc_worker::txn_microbench_random()
 {
-	void *txn = db->new_txn(txn_flags, arena, txn_buf());
+	void *txn = db->new_txn(0, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 	uint start_w = 0, start_s = 0;
 	ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);
@@ -2381,7 +2381,7 @@ protected:
     ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
     ret.push_back(new tpcc_supplier_loader(51271928, db, open_tables, partitions));
     ret.push_back(new tpcc_item_loader(235443, db, open_tables, partitions));
-    if (enable_parallel_loading) {
+    if(config::parallel_loading) {
       fast_random r(89785943);
       for (uint i = 1; i <= NumWarehouses(); i++)
         ret.push_back(new tpcc_stock_loader(r.next(), db, open_tables, partitions, i));
@@ -2389,14 +2389,14 @@ protected:
       ret.push_back(new tpcc_stock_loader(89785943, db, open_tables, partitions, -1));
     }
     ret.push_back(new tpcc_district_loader(129856349, db, open_tables, partitions));
-    if (enable_parallel_loading) {
+    if(config::parallel_loading) {
       fast_random r(923587856425);
       for (uint i = 1; i <= NumWarehouses(); i++)
         ret.push_back(new tpcc_customer_loader(r.next(), db, open_tables, partitions, i));
     } else {
       ret.push_back(new tpcc_customer_loader(923587856425, db, open_tables, partitions, -1));
     }
-    if (enable_parallel_loading) {
+    if(config::parallel_loading) {
       fast_random r(2343352);
       for (uint i = 1; i <= NumWarehouses(); i++)
         ret.push_back(new tpcc_order_loader(r.next(), db, open_tables, partitions, i));
@@ -2542,7 +2542,7 @@ tpcc_do_test(ndb_wrapper *db, int argc, char **argv)
     ALWAYS_ASSERT(tpcc_worker::cold_whs.size() + tpcc_worker::hot_whs.size() == NumWarehouses());
   }
 
-  if (verbose) {
+  if(config::verbose) {
     cerr << "tpcc settings:" << endl;
     if (g_wh_temperature) {
       cerr << "  hot whs for 80% accesses     :";

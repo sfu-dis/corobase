@@ -6,7 +6,13 @@
 #include "sm-thread.h"
 #include <iostream>
 
+bool config::verbose = true;
 uint32_t config::worker_threads = 0;
+uint32_t config::benchmark_seconds = 30;
+uint32_t config::benchmark_scale_factor = 1;
+bool config::parallel_loading = false;
+bool config::retry_aborted_transactions = 0;
+int config::backoff_aborted_transactions = 0;
 int config::numa_nodes = 0;
 int config::enable_gc = 0;
 std::string config::tmpfs_dir("/tmpfs");

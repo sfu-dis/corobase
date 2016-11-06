@@ -189,7 +189,7 @@ protected:
       g_initial_table_size = records_per_thread * config::worker_threads;
     }
 
-    if (verbose) {
+    if(config::verbose) {
       cerr << "[INFO] requested for " << g_initial_table_size << " records, will load " 
         << records_per_thread * config::worker_threads << endl;
     }
@@ -228,7 +228,7 @@ protected:
       try_verify_strict(db->commit_txn(txn));
     }
 
-    if (verbose)
+    if(config::verbose)
       cerr << "[INFO] loaded " << inserted << " kyes in USERTABLE" << endl;
   }
 };
@@ -341,7 +341,7 @@ ycsb_do_test(ndb_wrapper *db, int argc, char **argv)
 
   ALWAYS_ASSERT(g_initial_table_size);
 
-  if (verbose) {
+  if(config::verbose) {
     cerr << "ycsb settings:" << endl
          << "  workload:                   " << g_workload << endl
          << "  initial user table size:    " << g_initial_table_size << endl

@@ -25,16 +25,6 @@ using namespace std;
 using namespace util;
 
 volatile bool running = true;
-int verbose = 0;
-uint64_t txn_flags = 0;
-double scale_factor = 1.0;
-uint64_t runtime = 30;
-uint64_t ops_per_worker = 0;
-int run_mode = RUNMODE_TIME;
-int enable_parallel_loading = false;
-int slow_exit = 0;
-int retry_aborted_transaction = 0;
-int backoff_aborted_transaction = 0;
 
 std::vector<bench_worker*> bench_runner::workers;
 
@@ -73,61 +63,61 @@ bench_worker::my_work(char *)
 	txn_counts.resize(workload.size());
 	barrier_a->count_down();
 	barrier_b->wait_for();
-	while (running && (run_mode != RUNMODE_OPS || ntxn_commits < ops_per_worker)) {
-		double d = r.next_uniform();
-		for (size_t i = 0; i < workload.size(); i++) {
-			if ((i + 1) == workload.size() || d < workload[i].frequency) {
+  while(running) {
+    double d = r.next_uniform();
+    for (size_t i = 0; i < workload.size(); i++) {
+      if ((i + 1) == workload.size() || d < workload[i].frequency) {
 retry:
-				timer t;
-				const unsigned long old_seed = r.get_seed();
-				const auto ret = workload[i].fn(this);
+        timer t;
+        const unsigned long old_seed = r.get_seed();
+        const auto ret = workload[i].fn(this);
 
-        if (likely(not rc_is_abort(ret))) {
-					++ntxn_commits;
+        if(!rc_is_abort(ret)) {
+          ++ntxn_commits;
           std::get<0>(txn_counts[i])++;
           if (config::group_commit) {
             logmgr->enqueue_committed_xct(worker_id, t.get_start());
           } else {
             latency_numer_us += t.lap();
           }
-					backoff_shifts >>= 1;
-				} else {
-					++ntxn_aborts;
-                    std::get<1>(txn_counts[i])++;
-                    if (ret._val == RC_ABORT_USER) {
-                        std::get<3>(txn_counts[i])++;
-                    } else {
-                        std::get<2>(txn_counts[i])++;
-                    }
-                    switch (ret._val) {
-                        case RC_ABORT_SERIAL: inc_ntxn_serial_aborts(); break;
-                        case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;
-                        case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;
-                        case RC_ABORT_INTERNAL: inc_ntxn_int_aborts(); break;
-                        case RC_ABORT_PHANTOM: inc_ntxn_phantom_aborts(); break;
-                        case RC_ABORT_USER: inc_ntxn_user_aborts(); break;
-                        default: ALWAYS_ASSERT(false);
-                    }
-                    if (retry_aborted_transaction && not rc_is_user_abort(ret) && running) {
-						if (backoff_aborted_transaction) {
-							if (backoff_shifts < 63)
-								backoff_shifts++;
-							uint64_t spins = 1UL << backoff_shifts;
-							spins *= 100; // XXX: tuned pretty arbitrarily
-							while (spins) {
-								NOP_PAUSE;
-								spins--;
-							}
-						}
-						r.set_seed(old_seed);
-						goto retry;
-					}
-				}
-				break;
-			}
-			d -= workload[i].frequency;
-		}
-	}
+          backoff_shifts >>= 1;
+        } else {
+          ++ntxn_aborts;
+          std::get<1>(txn_counts[i])++;
+          if(ret._val == RC_ABORT_USER) {
+            std::get<3>(txn_counts[i])++;
+          } else {
+            std::get<2>(txn_counts[i])++;
+          }
+          switch(ret._val) {
+            case RC_ABORT_SERIAL: inc_ntxn_serial_aborts(); break;
+            case RC_ABORT_SI_CONFLICT: inc_ntxn_si_aborts(); break;
+            case RC_ABORT_RW_CONFLICT: inc_ntxn_rw_aborts(); break;
+            case RC_ABORT_INTERNAL: inc_ntxn_int_aborts(); break;
+            case RC_ABORT_PHANTOM: inc_ntxn_phantom_aborts(); break;
+            case RC_ABORT_USER: inc_ntxn_user_aborts(); break;
+            default: ALWAYS_ASSERT(false);
+          }
+          if(config::retry_aborted_transactions && !rc_is_user_abort(ret) && running) {
+            if(config::backoff_aborted_transactions) {
+              if (backoff_shifts < 63)
+                backoff_shifts++;
+              uint64_t spins = 1UL << backoff_shifts;
+              spins *= 100; // XXX: tuned pretty arbitrarily
+              while (spins) {
+                NOP_PAUSE;
+                spins--;
+              }
+            }
+            r.set_seed(old_seed);
+            goto retry;
+          }
+        }
+        break;
+      }
+      d -= workload[i].frequency;
+    }
+  }
 }
 
 void
@@ -196,7 +186,7 @@ bench_runner::run()
   if (not sm_log::need_recovery && not config::is_backup_srv()) {
     vector<bench_loader *> loaders = make_loaders();
     {
-      scoped_timer t("dataloading", verbose);
+      scoped_timer t("dataloading", config::verbose);
       uint32_t done = 0;
     process:
       for (uint i = 0; i < loaders.size(); i++) {
@@ -264,7 +254,7 @@ bench_runner::run()
 
   barrier_a.wait_for(); // wait for all threads to start up
   map<string, size_t> table_sizes_before;
-  if (verbose) {
+  if(config::verbose) {
     for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->size();
@@ -277,31 +267,24 @@ bench_runner::run()
   barrier_b.count_down(); // bombs away!
 
   // Print some results every second
-  if (run_mode == RUNMODE_TIME) {
-    if (verbose) {
-      uint64_t slept = 0;
-      uint64_t last_commits = 0, last_aborts = 0;
-      printf("[Throughput] Sec,Commits,Aborts\n");
-      while (slept < runtime) {
-        sleep(1);
-        uint64_t sec_commits = 0, sec_aborts = 0;
-        for (size_t i = 0; i < config::worker_threads; i++) {
-          sec_commits += workers[i]->get_ntxn_commits();
-          sec_aborts += workers[i]->get_ntxn_aborts();
-        }
-        sec_commits -= last_commits;
-        sec_aborts -= last_aborts;
-        last_commits += sec_commits;
-        last_aborts += sec_aborts;
-        printf("[Throughput] %lu,%lu,%lu\n", slept+1, sec_commits, sec_aborts);
-        slept++;
-      };
+  uint64_t slept = 0;
+  uint64_t last_commits = 0, last_aborts = 0;
+  printf("[Throughput] Sec,Commits,Aborts\n");
+  while(slept < config::benchmark_seconds) {
+    sleep(1);
+    uint64_t sec_commits = 0, sec_aborts = 0;
+    for (size_t i = 0; i < config::worker_threads; i++) {
+      sec_commits += workers[i]->get_ntxn_commits();
+      sec_aborts += workers[i]->get_ntxn_aborts();
     }
-    else {
-      sleep(runtime);
-    }
-    running = false;
+    sec_commits -= last_commits;
+    sec_aborts -= last_aborts;
+    last_commits += sec_commits;
+    last_aborts += sec_aborts;
+    printf("[Throughput] %lu,%lu,%lu\n", slept+1, sec_commits, sec_aborts);
+    slept++;
   }
+  running = false;
 
   // Persist whatever still left in the log buffer
   logmgr->flush();
@@ -373,7 +356,7 @@ bench_runner::run()
   if (config::enable_chkpt)
       delete chkptmgr;
 
-  if (verbose) {
+  if(config::verbose) {
     cerr << "--- table statistics ---" << endl;
     for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
@@ -451,22 +434,6 @@ bench_runner::run()
          << std::get<3>(c.second) / (double)elapsed_sec << " user aborts/s\n";
   }
   cout.flush();
-
-  if (!slow_exit)
-    return;
-
-  map<string, uint64_t> agg_stats;
-  for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
-       it != open_tables.end(); ++it) {
-    map_agg(agg_stats, it->second->clear());
-    delete it->second;
-  }
-  if (verbose) {
-    for (auto &p : agg_stats)
-      cerr << p.first << " : " << p.second << endl;
-
-  }
-  open_tables.clear();
 }
 
 template <typename K, typename V>
