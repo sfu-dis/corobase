@@ -614,11 +614,10 @@ _Unwind_Reason_Code rcu_backtrace_callback(_Unwind_Context *ctx, void*) {
 }
 
 void rcu_unwind(char const *msg) {
-    rcu_epochs.mutex.lock();
+    CRITICAL_SECTION(cs, rcu_epochs.mutex);
     fprintf(stderr, "%s:", msg);
     _Unwind_Backtrace(rcu_backtrace_callback, 0);
     fprintf(stderr, "\n");
-    rcu_epochs.mutex.unlock();
 }
 #endif
 #endif
