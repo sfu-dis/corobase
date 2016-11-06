@@ -7,6 +7,8 @@
 #include <utility>
 #include <string>
 
+#include <gflags/gflags.h>
+
 #include "ndb_wrapper.h"
 #include "../macros.h"
 #include "../util.h"
@@ -39,16 +41,6 @@ enum {
 
 // benchmark global variables
 extern volatile bool running;
-extern int verbose;
-extern uint64_t txn_flags;
-extern double scale_factor;
-extern uint64_t runtime;
-extern uint64_t ops_per_worker;
-extern int run_mode;
-extern int enable_parallel_loading;
-extern int slow_exit;
-extern int retry_aborted_transaction;
-extern int backoff_aborted_transaction;
 
 template <typename T> static std::vector<T>
 unique_filter(const std::vector<T> &v)
@@ -70,7 +62,7 @@ public:
     : sm_runner(), r(seed), db(db), open_tables(open_tables)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
-    txn_obj_buf.resize(db->sizeof_txn_object(txn_flags));
+    txn_obj_buf.resize(db->sizeof_txn_object());
     // don't try_instantiate() here; do it when we start to load. The way we reuse
     // threads relies on this fact (see bench_runner::run()).
   }
@@ -129,7 +121,7 @@ public:
       ntxn_query_commits(0)
   {
     txn_obj_buf.reserve(str_arena::MinStrReserveLength);
-    txn_obj_buf.resize(db->sizeof_txn_object(txn_flags));
+    txn_obj_buf.resize(db->sizeof_txn_object());
     try_impersonate();
   }
 

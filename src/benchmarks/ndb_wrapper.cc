@@ -10,12 +10,6 @@
 #include "../txn.h"
 #include "../tuple.h"
 
-size_t
-ndb_wrapper::sizeof_txn_object(uint64_t txn_flags) const
-{
-  return sizeof(transaction);
-}
-
 void *
 ndb_wrapper::new_txn(
     uint64_t txn_flags,

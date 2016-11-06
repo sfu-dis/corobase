@@ -9,6 +9,12 @@ class sm_log_recover_impl;
 
 class config {
 public:
+    static bool verbose;
+    static uint32_t benchmark_seconds;
+    static uint32_t benchmark_scale_factor;
+    static bool parallel_loading;
+    static bool retry_aborted_transactions;
+    static int backoff_aborted_transactions;
     static uint32_t worker_threads;
     static int numa_nodes;
     static const uint32_t MAX_THREADS = 256;

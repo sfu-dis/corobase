@@ -36,7 +36,7 @@ public:
   ndb_wrapper() {}
   ~ndb_wrapper() {}
 
-  size_t sizeof_txn_object(uint64_t txn_flags) const;
+  inline size_t sizeof_txn_object() const { return sizeof(transaction); }
   void *new_txn(uint64_t txn_flags, str_arena &arena, void *buf,
     TxnProfileHint hint = HINT_DEFAULT);
   rc_t commit_txn(void *txn);
