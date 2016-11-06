@@ -15,9 +15,7 @@ class sm_chkpt_mgr {
 public:
   sm_chkpt_mgr(LSN chkpt_begin) :
     _shutdown(false), _buf_pos(0), _dur_pos(0),
-    _fd(-1), _last_cstart(chkpt_begin), _base_chkpt_lsn(chkpt_begin) {
-    ALWAYS_ASSERT(not mlock(_buffer, kBufferSize));
-  }
+    _fd(-1), _last_cstart(chkpt_begin), _base_chkpt_lsn(chkpt_begin) {}
 
   ~sm_chkpt_mgr() {
     volatile_write(_shutdown, true);
