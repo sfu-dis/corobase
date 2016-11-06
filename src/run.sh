@@ -29,7 +29,7 @@ if [[ "$bench" != "tpce" && "$bench" != "ycsb" && "$bench" != "tpcc" ]]; then
 fi
 
 options="$1 -verbose $6 -benchmark $bench -threads $threads -scale_factor $sf -seconds $runtime \
-  -log_dir $LOGDIR -log_buffer_mb=512 -log_segment_mb=8192 -parallel_loading"
+  -log_data_dir $LOGDIR -log_buffer_mb=512 -log_segment_mb=8192 -parallel_loading"
 echo $options
 if [ "$bench" == "tpcc" ]; then
   btype=${workload:4:1}
