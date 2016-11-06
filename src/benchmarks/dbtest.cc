@@ -48,9 +48,24 @@ DEFINE_bool(log_ship_sync_redo, false, "Redo synchronously during log shipping."
 DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
 DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
+DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
+
+// Group (pipelined) commit related settings. The daemon will flush the log buffer
+// when the following happens, whichever is earlier:
+// 1. queue is full; 2. the log buffer is half full; 3. after [timeout] seconds.
+// Note: max_mb_per_log_io controls how much to flush **per I/O**
+// (i.e., per pwrite call). Each flush consists of multiple I/Os and will flush
+// the whole log buffer. Setting max_mb_per_log_io to a value smaller than the
+// amount of data to flush makes each I/O shorter, hence faster to free up space
+// for incoming threads so they won't block frequently waiting for long I/O
+// operations. But this value cannot be too small, making the write random and
+// defeting the purpose of group commit.
 DEFINE_bool(group_commit, false, "Whether to enable group commit.");
 DEFINE_uint64(group_commit_queue_length, 5000, "Group commit queue length");
-DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
+DEFINE_uint64(group_commit_timeout, 5, "Group commit flush interval (in seconds).");
+DEFINE_uint64(max_mb_per_log_io, 16,
+  "How much to flush form the log buffer during each log flush.");
+
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
 DEFINE_string(tmpfs_dir, "/dev/shm", "Path to a tmpfs location. Used by log buffer.");
@@ -108,6 +123,8 @@ main(int argc, char **argv)
   config::null_log_device = FLAGS_null_log_device;
   config::group_commit = FLAGS_group_commit;
   config::group_commit_queue_length = FLAGS_group_commit_queue_length;
+  config::max_mb_per_log_io = FLAGS_max_mb_per_log_io;
+  config::group_commit_timeout = FLAGS_group_commit_timeout;
 
   config::enable_chkpt = FLAGS_enable_chkpt;
   config::chkpt_interval = FLAGS_chkpt_interval;

@@ -43,6 +43,10 @@ void sm_chkpt_mgr::do_chkpt() {
   }
   ASSERT(volatile_read(_in_progress));
   RCU::rcu_enter();
+  // Flush before taking the chkpt: after the flush it's guaranteed
+  // that all logs before cstart is durable, no holes possible.
+  // The chkpt thread only takes versions created before cstart,
+  // making the chkpt essentially consistent.
   auto cstart = logmgr->flush();
   ASSERT(cstart >= _last_cstart);
   if(_last_cstart == cstart) {
