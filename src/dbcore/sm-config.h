@@ -34,7 +34,9 @@ public:
     static int null_log_device;
     static int nvram_log_buffer;
     static int group_commit;
+    static int group_commit_timeout;
     static int group_commit_queue_length;  // how much to reserve
+    static int max_mb_per_log_io;
     static sm_log_recover_impl *recover_functor;
     static uint64_t node_memory_gb;
     static int phantom_prot;
