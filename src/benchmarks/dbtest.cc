@@ -80,7 +80,7 @@ DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 DEFINE_bool(safesnap, false, "Whether to use the safe snapshot (for SSI and SSN only).");
 #endif
 #ifdef SSN
-DEFINE_string(ssn_read_opt_threshold, 0xffffffffffffffff, "Threshold for SSN's read optimization."
+DEFINE_string(ssn_read_opt_threshold, "0xFFFFFFFFFFFFFFFF", "Threshold for SSN's read optimization."
   "0 - don't track reads at all;"
   "0xFFFFFFFFFFFFFFFF - track all reads.");
 #endif
@@ -172,7 +172,7 @@ main(int argc, char **argv)
   config::enable_ssi_read_only_opt = FLAGS_ssi_read_only_opt;
 #endif
 #ifdef SSN
-  config::ssn_read_opt_threshold = strtoul(FLAGS_ssn_read_opt_threshold);
+  config::ssn_read_opt_threshold = strtoul(FLAGS_ssn_read_opt_threshold.c_str(), nullptr, 16);
 #endif
 
   config::init();
