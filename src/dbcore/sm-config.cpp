@@ -33,7 +33,6 @@ uint64_t config::node_memory_gb = 12;
 int config::recovery_warm_up_policy = config::WARM_UP_NONE;
 int config::log_ship_warm_up_policy = config::WARM_UP_NONE;
 int config::nvram_log_buffer = 0;
-int config::max_mb_per_log_io = 16;
 int config::group_commit = 0;
 int config::group_commit_queue_length = 5000;
 int config::group_commit_timeout = 5;
