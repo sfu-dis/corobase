@@ -466,14 +466,17 @@ void
 sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
 {
     // Now the real work. The format of a chkpt file is:
-    // [table 1 himark]
-    // [table 1 name length, table 1 name, table 1 FID]
+    // [number of tables]
+    // [table 1 name length, table 1 name, table 1 FID, table 1 himark]
+    // [table 2 name length, table 2 name, table 2 FID, table 2 himark]
+    // ...
+    //
+    // [table 1 himark, table 1 FID]
     // [OID1, key, data]
     // [OID2, key, data]
     // [table 1 himark]
     // ...
-    // [table 2 himark]
-    // [table 2 name length, table 2 name, table 2 FID]
+    // [table 2 himark, table 2 FID]
     // [OID1, key, data]
     // [OID2, key, data]
     // [table 2 himark]
@@ -481,7 +484,30 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
     //
     // The table's himark denotes its start and end
 
+    // Write the number of tables
+    // TODO(tzwang): handle dynamically created tables
     uint64_t chkpt_size = 0;
+    uint32_t ntables = sm_file_mgr::fid_map.size();
+    chkptmgr->write_buffer(&ntables, sizeof(uint32_t));
+    chkpt_size += sizeof(uint32_t);
+
+    // Write details about each table
+    for(auto& fm : sm_file_mgr::fid_map) {
+      auto* fd = fm.second;
+      size_t len = fd->name.length();
+      auto *alloc = get_impl(this)->get_allocator(fd->fid);
+      OID himark = alloc->head.hiwater_mark;
+
+      // [Name length, name, FID, himark]
+      chkptmgr->write_buffer(&len, sizeof(size_t));
+      chkptmgr->write_buffer((void *)fd->name.c_str(), len);
+      chkptmgr->write_buffer(&fd->fid, sizeof(FID));
+      chkptmgr->write_buffer(&himark, sizeof(OID));
+      chkpt_size += (sizeof(size_t) + len + sizeof(FID) + sizeof(OID));
+    }
+    LOG(INFO) << "[Checkpoint] header size: " << chkpt_size;
+
+    // Write tuples for each table
     for (auto &fm : sm_file_mgr::fid_map) {
         auto* fd = fm.second;
         FID fid = fd->fid;
@@ -493,16 +519,14 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
         // Write the himark to denote a table start
         chkptmgr->write_buffer(&himark, sizeof(OID));
 
-        // [Name length, name, FID]
-        size_t len = fd->name.length();
-        chkptmgr->write_buffer(&len, sizeof(size_t));
-        chkptmgr->write_buffer((void *)fd->name.c_str(), len);
-        chkptmgr->write_buffer(&fd->fid, sizeof(FID));
+        // Write the FID to note which table these OIDs to follow belongs to
+        chkptmgr->write_buffer(&fid, sizeof(FID));
 
         auto* oa = fm.second->main_array; 
         ASSERT(oa);
 
         // Now write the [OID, payload] pairs
+        uint64_t nrecords = 0;
         for (OID oid = 0; oid < himark; oid++) {
             // FIXME(tzwang): figure out how this interact with GC/epoch
             oid_array::entry *entry = oid_get_entry_ptr(oa, oid);
@@ -529,18 +553,20 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
                   continue;
               }
 
-              if (obj->_clsn.offset() >= chkpt_start_lsn) {
+              if (obj->_clsn.offset() > chkpt_start_lsn) {
                   ptr = volatile_read(obj->_next);
                   goto retry;
               }
             }
 
+            nrecords++;
             // Write OID
             chkptmgr->write_buffer(&oid, sizeof(OID));
 
             // Key
             ALWAYS_ASSERT(entry->key->l);
-            chkptmgr->write_buffer(&entry->key->l, sizeof(entry->key->l));
+            ALWAYS_ASSERT(entry->key->p);
+            chkptmgr->write_buffer(&entry->key->l, sizeof(uint32_t));
             chkptmgr->write_buffer(entry->key->data(), entry->key->size());
 
             // Tuple data
@@ -555,7 +581,7 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
                 p = object::load_durable_object(ptr, NULL_PTR, 0, obj);
                 ASSERT((uint64_t)obj == p.offset());
               } else {
-                ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+                ALWAYS_ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
                 p = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
                 obj = (object*)p.offset();
               }
@@ -567,15 +593,16 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
               chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
               // It's already there if we're digging out a tuple from a previous chkpt
               chkptmgr->write_buffer((char*)obj, data_size);
+              ALWAYS_ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
               ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
             }
             chkpt_size += (sizeof(OID) + sizeof(uint8_t) + data_size);
         }
         // Write himark as end of fid
         chkptmgr->write_buffer(&himark, sizeof(OID));
-        LOG(INFO) << "[Checkpoint] FID(" << fd->fid << ") = "
+        LOG(INFO) << "[Checkpoint] "<< fd->name << " (" << fd->fid << ") = "
                   << fid << ", himark = " << himark << 
-                  ", wrote " << chkpt_size << " bytes";
+                  ", wrote " << chkpt_size << " bytes, " << nrecords << " records";
     }
     chkptmgr->sync_buffer();
 }

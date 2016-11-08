@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include "sm-chkpt.h"
 #include "sm-file.h"
+#include "sm-thread.h"
 
 #include "../benchmarks/ndb_wrapper.h"
 
@@ -13,6 +14,8 @@ sm_chkpt_mgr *chkptmgr;
 // to somewhere in the chkpt, it must be in this base chkpt.
 // TODO(tzwang): implement tuple eviction (anti-caching like).
 int sm_chkpt_mgr::base_chkpt_fd= -1;
+
+uint32_t sm_chkpt_mgr::num_recovery_threads = 1;
 
 void
 sm_chkpt_mgr::take(bool wait) {
@@ -131,30 +134,111 @@ sm_chkpt_mgr::write_buffer(void *p, size_t s)
     }
 }
 
+void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t start_offset) {
+  int fd = os_openat(oidmgr->dfd, chkpt_name, O_RDONLY);
+  lseek(fd, start_offset, SEEK_SET);
+  DEFER(close(fd));
+
+  uint64_t nbytes = start_offset;
+  while (1) {
+    // Read himark
+    OID himark = 0;
+    uint64_t n = read(fd, &himark, sizeof(OID));
+    if(n == 0) {
+      break;
+    }
+    ALWAYS_ASSERT(n == sizeof(OID));
+    nbytes += n;
+
+    // FID
+    FID f = 0;
+    n = read(fd, &f, sizeof(FID));
+    ALWAYS_ASSERT(n == sizeof(FID));
+    nbytes += n;
+
+    // Benchmark code should have already registered the table with the engine
+    ALWAYS_ASSERT(sm_file_mgr::fid_map[f]);
+    ASSERT(oidmgr->file_exists(f));
+
+    // Recover allocator status
+    oid_array *oa = oidmgr->get_array(f);
+
+    // Populate the OID array and index
+    auto* index = sm_file_mgr::get_index(f);
+    ALWAYS_ASSERT(index);
+    while(1) {
+      // Read the OID
+      OID o = 0;
+      n = read(fd, &o, sizeof(OID));
+      nbytes += n;
+      if (o == himark)
+          break;
+
+      // Key
+      uint32_t key_size = 0;
+      n = read(fd, &key_size, sizeof(uint32_t));
+
+      nbytes += n;
+      ALWAYS_ASSERT(n == sizeof(uint32_t));
+      ALWAYS_ASSERT(key_size);
+      varstr* key = nullptr;
+      if(o % num_recovery_threads == oid_partition) {
+        key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
+        new (key) varstr((char*)key + sizeof(varstr), key_size);
+        n = read(fd, (void*)key->p, key->l);
+        ALWAYS_ASSERT(n == key->l);
+        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(*key, o, NULL, 0));
+      } else {
+        lseek(fd, key_size, SEEK_CUR);
+      }
+      nbytes += key_size;
+
+      // Size code
+      uint8_t size_code = INVALID_SIZE_CODE;
+      n = read(fd, &size_code, sizeof(uint8_t));
+      ALWAYS_ASSERT(n == sizeof(uint8_t));
+      nbytes += n;
+      ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
+      auto data_size = decode_size_aligned(size_code);
+      if(o % num_recovery_threads == oid_partition) {
+        fat_ptr ptr = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
+        if(config::eager_warm_up()) {
+          ptr = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
+          ASSERT(ptr.offset());
+          ASSERT(ptr.asi_type() == 0);
+        }
+        // load_durable_object uses the base_chkpt_fd, which is different, so lseek anyway.
+        oidmgr->oid_put_new(oa, o, ptr, key);
+      }
+      lseek(fd, data_size, SEEK_CUR);
+      nbytes += data_size;
+    }
+  }
+}
+
 void
 sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
   util::scoped_timer t("chkpt_recovery");
+  num_recovery_threads = config::worker_threads;
   // Find the chkpt file and recover from there
   char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
-  size_t n = os_snprintf(buf, sizeof(buf),
+  uint64_t n = os_snprintf(buf, sizeof(buf),
                          CHKPT_DATA_FILE_NAME_FMT, chkpt_start._val);
   LOG(INFO) << "[CHKPT Recovery] " << buf;
   ASSERT(n < sizeof(buf));
   ALWAYS_ASSERT(base_chkpt_fd == -1);
   base_chkpt_fd = os_openat(oidmgr->dfd, buf, O_RDONLY);
 
-  uint64_t nbytes = 0;
-  while (1) {
-    // Read himark
-    OID himark = 0;
-    n = read(base_chkpt_fd, &himark, sizeof(OID));
-    if(not n) {  // EOF
-      break;
-    }
-    nbytes += n;
+  // Recover files first from the chkpt header
+  uint32_t nfiles = 0;
+  n = read(base_chkpt_fd, &nfiles, sizeof(uint32_t));
+  ALWAYS_ASSERT(nfiles);
+  ALWAYS_ASSERT(n == sizeof(uint32_t));
+  LOG(INFO) << nfiles << " tables";
+  uint64_t nbytes = n;
 
-    ASSERT(n == sizeof(OID));
-
+  for(uint32_t i = 0; i < nfiles; ++i) {
+    // Format: [table name length, table name, table FID, table himark]
     // Read the table's name
     size_t len = 0;
     n = read(base_chkpt_fd, &len, sizeof(size_t));
@@ -169,6 +253,11 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     // FID
     FID f = 0;
     n = read(base_chkpt_fd, &f, sizeof(FID));
+    nbytes += n;
+
+    // High mark
+    OID himark = 0;
+    n = read(base_chkpt_fd, &himark, sizeof(OID));
     nbytes += n;
 
     // Recover fid_map and recreate the empty file
@@ -198,48 +287,21 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
       sm_file_mgr::get_file(f)->init_pdest_array();
       std::cout << "Created pdest array for FID " << f << std::endl;
     }
-
-    // Populate the OID array and index
-    auto* index = sm_file_mgr::get_index(name);
-    while(1) {
-      // Read the OID
-      OID o = 0;
-      n = read(base_chkpt_fd, &o, sizeof(OID));
-      nbytes += n;
-      if (o == himark)
-          break;
-
-      // Key
-      uint32_t key_size;
-      n = read(base_chkpt_fd, &key_size, sizeof(uint32_t));
-      nbytes += n;
-      ALWAYS_ASSERT(n == sizeof(uint32_t));
-      ALWAYS_ASSERT(key_size);
-      varstr* key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
-      new (key) varstr((char*)key + sizeof(varstr), key_size);
-      n = read(base_chkpt_fd, (void*)key->p, key->l);
-      nbytes += n;
-      ALWAYS_ASSERT(n == key->l);
-      index->btr.underlying_btree.insert_if_absent(*key, o, NULL, 0);
-
-      // Size code
-      uint8_t size_code = INVALID_SIZE_CODE;
-      n = read(base_chkpt_fd, &size_code, sizeof(uint8_t));
-      nbytes += n;
-      ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
-      auto data_size = decode_size_aligned(size_code);
-      auto ptr = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
-      if(config::eager_warm_up()) {
-        object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
-        nbytes += data_size;
-      } else {
-        // Point to the chkpt file in the OID array entry
-        ptr = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
-        lseek(base_chkpt_fd, data_size, SEEK_CUR);
-        nbytes += data_size;
-      }
-      oidmgr->oid_put_new(oa, o, ptr, key);
-    }
   }
+
+  // Get many threads to do it in parallel
+  std::vector<thread::sm_thread*> workers;
+  for(uint32_t i = 0; i < num_recovery_threads; ++i) {
+    auto* t = thread::get_thread();
+    thread::sm_thread::task_t task = std::bind(&do_recovery, buf, i, nbytes);
+    t->start_task(task);
+    workers.push_back(t);
+  }
+
+  for(auto& w : workers) {
+    w->join();
+    thread::put_thread(w);
+  }
+  LOG(INFO) << "[Checkpoint] recovered";
 }
 
