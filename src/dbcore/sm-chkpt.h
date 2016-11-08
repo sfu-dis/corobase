@@ -53,6 +53,7 @@ public:
   }
 
   static int base_chkpt_fd;
+  static uint32_t num_recovery_threads;
 
 private:
   static const size_t kBufferSize = 512 * 1024 * 1024;
@@ -70,9 +71,11 @@ private:
   std::condition_variable _wait_chkpt_cv;
   std::mutex              _wait_chkpt_mutex;
   bool                    _in_progress;
+  uint32_t                _num_recovery_threads;
 
   void prepare_file(LSN cstart);
   void scavenge();
+  static void do_recovery(char* chkpt_name, OID oid_partition, uint64_t start_offset);
 };
 
 extern sm_chkpt_mgr *chkptmgr;
