@@ -7,8 +7,6 @@
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
 
-#define SEPARATE_INDEX_REBUILD 0
-
 // The version-loading mechanism will only dig out the latest version as a result.
 fat_ptr
 sm_log_recover_impl::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec, fat_ptr next) {
@@ -58,7 +56,6 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec) {
 
 void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) {
-  ASSERT(SEPARATE_INDEX_REBUILD == 0);
   // No need if the chkpt recovery already picked up this tuple
   auto* oa = sm_file_mgr::get_file(logrec->fid())->main_array;
   if(oa->get(logrec->oid())->key == nullptr) {
@@ -148,25 +145,6 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   return sm_file_mgr::get_index(name);
 }
 
-void
-sm_log_recover_impl::rebuild_index(
-  sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index, LSN start_lsn, LSN end_lsn) {
-  ALWAYS_ASSERT(SEPARATE_INDEX_REBUILD);
-  uint64_t count = 0;
-  RCU::rcu_enter();
-  auto *scan = scanner->new_log_scan(start_lsn, true);
-  for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
-    if (scan->type() != sm_log_scan_mgr::LOG_INSERT_INDEX or scan->fid() != fid)
-      continue;
-    // Below ASSERT has to go as the object might be already deleted
-    //ASSERT(oidmgr->oid_get(fid, scan->oid()).offset());
-    recover_index_insert(scan, index);
-    count++;
-  }
-  delete scan;
-  RCU::rcu_exit();
-}
-
 /* The main recovery function of parallel_file_replay.
  *
  * Without checkpointing, recovery starts with an empty, new oidmgr, and then
@@ -186,11 +164,6 @@ sm_log_recover_impl::rebuild_index(
  *
  * Note that alloc_oid hasn't been used so far, and the caching structures
  * should all be empty.
- *
- * The SEPARATE_INDEX_REBUILD macro defines whether we insert into indexs while
- * redoing LOG_INSERT. If so, there is no need for another pass of scanning the
- * log to rebuild indexes (rebuild_index()). Otherwise a second scan then starts
- * (again from the beginning of the log) to rebuild indexes.
  */
 void
 parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to) {
@@ -278,13 +251,9 @@ parallel_file_replay::redo_runner::my_work(char *) {
   // Note: indexes currently don't use an OID array for themselves
   // (ie for tree nodes) so it's safe to do this any time as long
   // as it's before starting to process new transactions.
-  if (himark)
+  if (himark) {
     oidmgr->recreate_allocator(fid, himark);
-
-#if SEPARATE_INDEX_REBUILD == 1
-  owner->rebuild_index(owner->scanner, fid, fid_index, LSN{0x1ff}, LSN{~uint64_t{0}});
-#endif
-
+  }
   done = true;
   __sync_synchronize();
 }
@@ -317,9 +286,7 @@ parallel_file_replay::redo_runner::redo_file() {
       break;
     case sm_log_scan_mgr::LOG_INSERT_INDEX:
       iicount++;
-#if SEPARATE_INDEX_REBUILD == 0
       owner->recover_index_insert(scan);
-#endif
       break;
     case sm_log_scan_mgr::LOG_INSERT:
       icount++;
@@ -453,9 +420,7 @@ parallel_oid_replay::redo_runner::redo_partition() {
       break;
     case sm_log_scan_mgr::LOG_INSERT_INDEX:
       iicount++;
-#if SEPARATE_INDEX_REBUILD == 0
       owner->recover_index_insert(scan);
-#endif
       break;
     case sm_log_scan_mgr::LOG_INSERT:
       icount++;
