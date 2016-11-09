@@ -600,9 +600,8 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
         }
         // Write himark as end of fid
         chkptmgr->write_buffer(&himark, sizeof(OID));
-        LOG(INFO) << "[Checkpoint] "<< fd->name << " (" << fd->fid << ") = "
-                  << fid << ", himark = " << himark << 
-                  ", wrote " << chkpt_size << " bytes, " << nrecords << " records";
+        LOG(INFO) << "[Checkpoint] "<< fd->name << " (" << fd->fid << ") himark="
+          << himark << ", wrote " << chkpt_size << " bytes, " << nrecords << " records";
     }
     chkptmgr->sync_buffer();
 }
@@ -722,7 +721,7 @@ void
 sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p, varstr* k)
 {
     auto *entry= get_impl(this)->oid_entry_access(f, o);
-    ASSERT(entry->ptr == NULL_PTR);
+    ALWAYS_ASSERT(entry->ptr == NULL_PTR);
     entry->ptr = p;
     entry->key = k;
 }

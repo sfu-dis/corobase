@@ -293,6 +293,7 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
   std::vector<thread::sm_thread*> workers;
   for(uint32_t i = 0; i < num_recovery_threads; ++i) {
     auto* t = thread::get_thread();
+    ALWAYS_ASSERT(t);
     thread::sm_thread::task_t task = std::bind(&do_recovery, buf, i, nbytes);
     t->start_task(task);
     workers.push_back(t);
