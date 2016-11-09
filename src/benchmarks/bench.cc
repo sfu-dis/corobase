@@ -123,14 +123,6 @@ retry:
 void
 bench_runner::create_files_task(char *)
 {
-  ALWAYS_ASSERT(config::log_dir.size());
-  ALWAYS_ASSERT(not logmgr);
-  ALWAYS_ASSERT(not oidmgr);
-  RCU::rcu_enter();
-  logmgr = sm_log::new_log(config::recover_functor, nullptr);
-  ASSERT(oidmgr);
-  RCU::rcu_exit();
-
   if (not sm_log::need_recovery && not config::is_backup_srv()) {
     // allocate an FID for each table
     for (auto &nm : sm_file_mgr::name_map) {
@@ -168,8 +160,20 @@ bench_runner::run()
 {
   // Now we should already have a list of registered tables in sm_file_mgr::name_map,
   // but all the index, oid_array fileds are empty; only the table name is available.
+  // Create the logmgr here, instead of in an sm-thread: recovery might want to utilize
+  // all the worker_threads specified in config.
+  RCU::rcu_register();
+  ALWAYS_ASSERT(config::log_dir.size());
+  ALWAYS_ASSERT(not logmgr);
+  ALWAYS_ASSERT(not oidmgr);
+  RCU::rcu_enter();
+  logmgr = sm_log::new_log(config::recover_functor, nullptr);
+  ASSERT(oidmgr);
+  RCU::rcu_exit();
 
-  // Get a thread to create the logmgr, index and FIDs backing each table
+  // Get a thread to create the index and FIDs backing each table
+  // Note: this will insert to the log and therefore affect min_flush_lsn,
+  // so must be done in an sm-thread.
   auto* runner_thread = thread::get_thread();
   thread::sm_thread::task_t runner_task = std::bind(&bench_runner::create_files_task, this, std::placeholders::_1);
   runner_thread->start_task(runner_task);
@@ -209,7 +213,6 @@ bench_runner::run()
         }
       }
     }
-    RCU::rcu_register();
     RCU::rcu_enter();
     volatile_write(MM::safesnap_lsn, logmgr->cur_lsn().offset());
     ALWAYS_ASSERT(MM::safesnap_lsn);
@@ -219,10 +222,9 @@ bench_runner::run()
     if(config::enable_chkpt) {
       chkptmgr->do_chkpt();  // this is synchronous
     }
-
     RCU::rcu_exit();
-    RCU::rcu_deregister();
   }
+  RCU::rcu_deregister();
   volatile_write(config::loading, false);
 
   // Start checkpointer after database is ready
