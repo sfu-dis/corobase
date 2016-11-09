@@ -528,7 +528,8 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
         // Now write the [OID, payload] pairs
         uint64_t nrecords = 0;
         for (OID oid = 0; oid < himark; oid++) {
-            // FIXME(tzwang): figure out how this interact with GC/epoch
+            // Checkpoints need not be consistent: grab the latest committed
+            // version and leave.
             oid_array::entry *entry = oid_get_entry_ptr(oa, oid);
             auto ptr = entry->ptr;
         retry:
@@ -551,11 +552,6 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
               if (obj->_pdest.offset() == 0) {
                   // must be a delete, skip it
                   continue;
-              }
-
-              if (obj->_clsn.offset() > chkpt_start_lsn) {
-                  ptr = volatile_read(obj->_next);
-                  goto retry;
               }
             }
 
@@ -724,6 +720,17 @@ sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p, varstr* k)
     ALWAYS_ASSERT(entry->ptr == NULL_PTR);
     entry->ptr = p;
     entry->key = k;
+}
+
+void
+sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p, varstr* k)
+{
+  auto *entry= get_impl(this)->oid_entry_access(f, o);
+  if(entry->ptr == NULL_PTR) {
+    ALWAYS_ASSERT(!entry->key);
+    entry->ptr = p;
+    entry->key = k;
+  }
 }
 
 fat_ptr

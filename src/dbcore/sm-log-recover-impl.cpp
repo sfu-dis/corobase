@@ -52,15 +52,18 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec) {
   ASSERT(oidmgr->file_exists(f));
   oid_array *oa = get_impl(oidmgr)->get_array(f);
   oa->ensure_size(oa->alloc_size(o));
-  oidmgr->oid_put_new(f, o, ptr, nullptr);
-  ASSERT(ptr.offset() and oidmgr->oid_get(f, o).offset() == ptr.offset());
-  //printf("[Recovery] insert: FID=%d OID=%d\n", f, o);
+  // The chkpt recovery process might have picked up this tuple already
+  oidmgr->oid_put_new_if_absent(f, o, ptr, nullptr);
 }
 
 void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) {
   ASSERT(SEPARATE_INDEX_REBUILD == 0);
-  recover_index_insert(logrec, sm_file_mgr::get_index(logrec->fid()));
+  // No need if the chkpt recovery already picked up this tuple
+  auto* oa = sm_file_mgr::get_file(logrec->fid())->main_array;
+  if(oa->get(logrec->oid())->key == nullptr) {
+    recover_index_insert(logrec, sm_file_mgr::get_index(logrec->fid()));
+  }
 }
 
 void
