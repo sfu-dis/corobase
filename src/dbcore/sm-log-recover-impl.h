@@ -19,7 +19,6 @@ struct sm_log_recover_impl {
   ndb_ordered_index *recover_fid(sm_log_scan_mgr::record_scan *logrec);
   void recover_index_insert(
       sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index);
-  void rebuild_index(sm_log_scan_mgr *scanner, FID fid, ndb_ordered_index *index, LSN from, LSN to);
 
   // The main recovery function; the inheriting class should implement this
   // The implementation shall replay the log from position [from] until [to],
