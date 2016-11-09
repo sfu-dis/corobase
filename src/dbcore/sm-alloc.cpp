@@ -6,6 +6,7 @@
 #include <future>
 
 #include "sm-alloc.h"
+#include "sm-chkpt.h"
 #include "sm-common.h"
 #include "../txn.h"
 
@@ -118,13 +119,20 @@ void gc_version_chain(fat_ptr* oid_entry) {
     }
     ptr = cur_obj->_next;
     prev_next = &cur_obj->_next;
-    // Fast forward to the **second** version < gc_lsn. Consider that we set safesnap
-    // lsn to 1.8, and gc_lsn to 1.6. Assume we have two versions with LSNs 2 and 1.5.
-    // We need to keep the one with LSN=1.5 although its < gc_lsn; otherwise the tx
-    // using safesnap won't be able to find any version available.
-    // No need to CAS here if we only have one gc thread
+    // If the chkpt needs to be a consistent one, must make sure not to GC a version
+    // that might be needed by chkpt:
+    // uint64_t glsn = std::min(logmgr->durable_flushed_lsn().offset(), volatile_read(gc_lsn));
+    // This makes the GC thread has to traverse longer in the chain, unless
+    // with small log buffers or frequent log flush, which is bad for disk performance.
+    // For good performance, we use inconsistent chkpt which grabs the latest committed
+    // version directly. Log replay after the chkpt-start lsn is necessary for correctness.
     uint64_t glsn = volatile_read(gc_lsn);
     if(LSN::from_ptr(clsn).offset() <= glsn && ptr._ptr) {
+      // Fast forward to the **second** version < gc_lsn. Consider that we set safesnap
+      // lsn to 1.8, and gc_lsn to 1.6. Assume we have two versions with LSNs 2 and 1.5.
+      // We need to keep the one with LSN=1.5 although its < gc_lsn; otherwise the tx
+      // using safesnap won't be able to find any version available.
+      //
       // We only traverse and GC a version chain when an update transaction successfully
       // installed a version. So at any time there will be only one guy possibly doing
       // this for a version chain - just blind write. If we're traversing at other times,
