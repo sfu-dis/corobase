@@ -62,7 +62,7 @@ DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
 DEFINE_string(tmpfs_dir, "/dev/shm", "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(parallel_recovery_by, "oid", "Parallelize recovery by OID (oid) or table (file).");
 DEFINE_string(primary_host, "", "Hostname of the primary server. For backups only.");
-DEFINE_string(primary_port, "", "Port of the primary server for log shipping. For backups only.");
+DEFINE_string(primary_port, "10000", "Port of the primary server for log shipping. For backups only.");
 DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
 DEFINE_bool(wait_for_backups, true,
   "Whether to wait for backups to become online before starting transactions.");
