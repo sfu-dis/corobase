@@ -64,21 +64,6 @@ using namespace RCU;
 */
 static size_t const LOG_SEGMENT_ALIGN = 1024;
 
-struct segment_file_name {
-    char buf[SEGMENT_FILE_NAME_BUFSZ];
-    segment_file_name(segment_id *sid)
-        : segment_file_name(sid->segnum, sid->start_offset, sid->end_offset)
-    {
-    }
-    segment_file_name(uint32_t segnum, uint64_t start, uint64_t end) {
-        size_t n = os_snprintf(buf, sizeof(buf),
-                               SEGMENT_FILE_NAME_FMT, segnum, start, end);
-        ASSERT(n < sizeof(buf));
-    }
-    operator char const *() { return buf; }
-    char const *operator*() { return buf; }
-};
-
 struct dmark_file_name {
     char buf[CHKPT_FILE_NAME_BUFSZ];
     dmark_file_name(LSN start) {
