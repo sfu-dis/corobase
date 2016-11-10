@@ -78,7 +78,9 @@ wait_for_backup:
       int ret = fstat(log_fd, &st);
       os_close(log_fd);
       ASSERT(st.st_size);
-      md->add_log_segment(seg, start, end, st.st_size - chkpt_start_lsn.offset());
+      uint64_t size = st.st_size - chkpt_start_lsn.offset();
+      md->add_log_segment(seg, start, end, size);
+      LOG(INFO) << "Will ship segment " << seg << ", " << size << " bytes";
     } else if(l == 'c' || l == 'o' || l == '.') {
       // Nothing to do or already handled
     } else {
