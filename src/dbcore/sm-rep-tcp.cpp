@@ -34,20 +34,13 @@ wait_for_backup:
   }
   new (md) backup_start_metadata;
   int chkpt_fd = -1;
-  LSN chkpt_start_lsn = INVALID_LSN, chkpt_end_lsn_unused = INVALID_LSN;
+  LSN chkpt_start_lsn = INVALID_LSN;
   int dfd = dir.dup();
-  for (char const *fname : dir) {
-    // Must send dur-xxxx, chk-xxxx, nxt-xxxx anyway
+  // Find chkpt first
+  for(char const *fname : dir) {
     char l = fname[0];
     if(l == 'c') {
-      // chkpt marker
       memcpy(md->chkpt_marker, fname, CHKPT_FILE_NAME_BUFSZ);
-    } else if(l == 'd') {
-      // durable lsn marker
-      memcpy(md->durable_marker, fname, DURABLE_FILE_NAME_BUFSZ);
-    } else if(l == 'n') {
-      // nxt segment
-      memcpy(md->nxt_marker, fname, NXT_SEG_FILE_NAME_BUFSZ);
     } else if(l == 'o') {
       // chkpt file
       ALWAYS_ASSERT(config::enable_chkpt);
@@ -58,17 +51,36 @@ wait_for_backup:
       ASSERT(st.st_size);
       md->chkpt_size = st.st_size;
       char canary_unused;
-      int n = sscanf(fname, CHKPT_FILE_NAME_FMT "%c",
-                     &chkpt_start_lsn._val, &chkpt_end_lsn_unused._val, &canary_unused);
+      int n = sscanf(fname, CHKPT_DATA_FILE_NAME_FMT "%c",
+                     &chkpt_start_lsn._val, &canary_unused);
+      ALWAYS_ASSERT(chkpt_start_lsn != INVALID_LSN);
+    }
+  }
+  LOG(INFO) << "[Primary] Will ship checkpoint taken at 0x"
+    << std::hex << chkpt_start_lsn.offset() << std::dec;
+  dfd = dir.dup();
+  for (char const *fname : dir) {
+    // Must send dur-xxxx, chk-xxxx, nxt-xxxx anyway
+    char l = fname[0];
+    if(l == 'd') {
+      // durable lsn marker
+      memcpy(md->durable_marker, fname, DURABLE_FILE_NAME_BUFSZ);
+    } else if(l == 'n') {
+      // nxt segment
+      memcpy(md->nxt_marker, fname, NXT_SEG_FILE_NAME_BUFSZ);
     } else if(l == 'l') {
+      uint64_t start = 0, end = 0;
+      unsigned int seg;
+      char canary_unused;
+      int n = sscanf(fname, SEGMENT_FILE_NAME_FMT "%c", &seg, &start, &end, &canary_unused);
       struct stat st;
       int log_fd = os_openat(dfd, fname, O_RDONLY);
       int ret = fstat(log_fd, &st);
-      ASSERT(st.st_size);
       os_close(log_fd);
-      md->add_log_file(fname, st.st_size);
-    } else if(l == '.') {
-      // Nothing to do
+      ASSERT(st.st_size);
+      md->add_log_segment(seg, start, end, st.st_size - chkpt_start_lsn.offset());
+    } else if(l == 'c' || l == 'o' || l == '.') {
+      // Nothing to do or already handled
     } else {
       LOG(FATAL) << "Unrecognized file name";
     }
@@ -76,6 +88,8 @@ wait_for_backup:
   auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
   ALWAYS_ASSERT(sent_bytes == md->size());
 
+  // TODO(tzwang): support log-only bootstrap
+  ALWAYS_ASSERT(chkpt_fd != -1);
   if(chkpt_fd != -1) {
     while(md->chkpt_size > 0) {
       off_t offset = 0;
@@ -87,7 +101,7 @@ wait_for_backup:
   }
 
   // Now send the log after chkpt
-  send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn.offset());
+  send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn);
 
   // Wait for the backup to notify me that it persisted the logs
   tcp::expect_ack(backup_sockfd);
@@ -100,26 +114,28 @@ wait_for_backup:
   goto wait_for_backup;
 }
 
-void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, uint64_t chkpt_start) {
+void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkpt_start) {
   dirent_iterator dir(config::log_dir.c_str());
   int dfd = dir.dup();
-  for(uint64_t i = 0; i < md->num_log_files; ++i) {
+  for(uint32_t i = 0; i < md->num_log_files; ++i) {
     uint32_t segnum = 0;
     uint64_t start_offset = 0, end_offset = 0; 
     char canary_unused;
-    int n = sscanf(md->get_log_file(i), SEGMENT_FILE_NAME_FMT "%c",
+    backup_start_metadata::log_segment* ls = md->get_log_segment(i);
+    int n = sscanf(ls->file_name.buf, SEGMENT_FILE_NAME_FMT "%c",
                    &segnum, &start_offset, &end_offset, &canary_unused);
     ALWAYS_ASSERT(n == 3);
-    if(end_offset >= chkpt_start) {
-      int log_fd = os_openat(dfd, md->get_log_file(i), O_RDONLY);
-      struct stat st;
-      int ret = fstat(log_fd, &st);
-      ASSERT(st.st_size);
-      while(st.st_size) {
-        off_t offset = 0;
-        auto sent_bytes = sendfile(backup_fd, log_fd, &offset, st.st_size);
+    uint32_t to_send = ls->size;
+    if(to_send) {
+      // Ship only the part after chkpt start
+      auto* seg = logmgr->get_offset_segment(start_offset);
+      off_t file_off = start_offset - seg->start_offset;
+      int log_fd = os_openat(dfd, ls->file_name.buf, O_RDONLY);
+      lseek(log_fd, file_off, SEEK_SET);
+      while(to_send) {
+        auto sent_bytes = sendfile(backup_fd, log_fd, &file_off, to_send);
         ALWAYS_ASSERT(sent_bytes);
-        st.st_size -= sent_bytes;
+        file_off += sent_bytes;
       }
       os_close(log_fd);
     }
@@ -133,75 +149,76 @@ void start_as_backup_tcp() {
   tcp::client_context *cctx = new tcp::client_context(config::primary_srv, config::primary_port);
 
   // Expect the primary to send metadata, the header first
-  backup_start_metadata md;
-  tcp::receive(cctx->server_sockfd, (char*)&md, sizeof(md));
-  LOG(INFO) << "[Backup] Recevie chkpt " << md.chkpt_marker << " " << md.chkpt_size << " bytes";
+  const int kNumPreAllocFiles = 10;
+  backup_start_metadata* md = allocate_backup_start_metadata(kNumPreAllocFiles);
+  tcp::receive(cctx->server_sockfd, (char*)md, sizeof(*md));
+  LOG(INFO) << "[Backup] Receive chkpt " << md->chkpt_marker << " " << md->chkpt_size << " bytes";
+  if(md->num_log_files > kNumPreAllocFiles) {
+    auto* d = md;
+    md = allocate_backup_start_metadata(d->num_log_files);
+    memcpy(md, d, sizeof(*d));
+    free(d);
+  }
 
   // Write the marker files
   dirent_iterator dir(config::log_dir.c_str());
   int dfd = dir.dup();
-  int marker_fd = os_openat(dfd, md.chkpt_marker, O_CREAT|O_WRONLY);
+  int marker_fd = os_openat(dfd, md->chkpt_marker, O_CREAT|O_WRONLY);
   os_close(marker_fd);
-  marker_fd = os_openat(dfd, md.durable_marker, O_CREAT|O_WRONLY);
+  marker_fd = os_openat(dfd, md->durable_marker, O_CREAT|O_WRONLY);
   os_close(marker_fd);
-  marker_fd = os_openat(dfd, md.nxt_marker, O_CREAT|O_WRONLY);
+  marker_fd = os_openat(dfd, md->nxt_marker, O_CREAT|O_WRONLY);
   os_close(marker_fd);
 
   // Get log file names
-  char* log_file_names = nullptr;
-  if(md.num_log_files > 0) {
-    uint32_t s = md.size() - sizeof(md);
-    log_file_names = (char*)malloc(s);
-    tcp::receive(cctx->server_sockfd, log_file_names, s);
+  if(md->num_log_files > 0) {
+    uint64_t s = md->size() - sizeof(*md);
+    tcp::receive(cctx->server_sockfd, (char*)&md->segments[0], s);
   }
 
   static const uint64_t kBufSize = 512 * 1024 * 1024;
   static char buf[kBufSize];
-  if(md.chkpt_size > 0) {
+  if(md->chkpt_size > 0) {
     char canary_unused;
-    LSN chkpt_start_lsn = INVALID_LSN, chkpt_end_lsn_unused = INVALID_LSN;
-    int n = sscanf(md.chkpt_marker, CHKPT_FILE_NAME_FMT "%c",
-                   &chkpt_start_lsn._val, &chkpt_end_lsn_unused._val, &canary_unused);
+    uint64_t chkpt_start = 0, chkpt_end_unused;
+    int n = sscanf(md->chkpt_marker, CHKPT_FILE_NAME_FMT "%c",
+                   &chkpt_start, &chkpt_end_unused, &canary_unused);
     static char chkpt_fname[CHKPT_DATA_FILE_NAME_BUFSZ];
     n = os_snprintf(chkpt_fname, sizeof(chkpt_fname),
-                           CHKPT_DATA_FILE_NAME_FMT, chkpt_start_lsn._val);
+                           CHKPT_DATA_FILE_NAME_FMT, chkpt_start);
     int chkpt_fd = os_openat(dfd, chkpt_fname, O_CREAT|O_WRONLY);
-    LOG(INFO) << "[Backup] Chkpt file " << chkpt_fname;
+    LOG(INFO) << "[Backup] Checkpoint " << chkpt_fname;
 
-    while(md.chkpt_size > 0) {
+    while(md->chkpt_size > 0) {
       uint64_t received_bytes =
-        recv(cctx->server_sockfd, buf, std::min(kBufSize, md.chkpt_size), 0);
-      md.chkpt_size -= received_bytes;
+        recv(cctx->server_sockfd, buf, std::min(kBufSize, md->chkpt_size), 0);
+      md->chkpt_size -= received_bytes;
       os_write(chkpt_fd, buf, received_bytes);
     }
     os_fsync(chkpt_fd);
     os_close(chkpt_fd);
   }
 
-  LOG(INFO) << "[Backup] Receved checkpoint file.";
+  LOG(INFO) << "[Backup] Received checkpoint file.";
 
   // Now receive the log files
-  if(md.num_log_files > 0) {
-    for(uint64_t i = 0; i < md.num_log_files; ++i) {
-      uint64_t file_size = *(uint64_t*)(log_file_names +
-                           (SEGMENT_FILE_NAME_BUFSZ + sizeof(uint64_t)) * i +
-                           SEGMENT_FILE_NAME_BUFSZ);
-      char* fname = log_file_names + (SEGMENT_FILE_NAME_BUFSZ + sizeof(uint64_t)) * i;
-      int log_fd = os_openat(dfd, fname, O_CREAT|O_WRONLY);
-      ALWAYS_ASSERT(log_fd > 0);
-      while(file_size > 0) {
-        uint64_t received_bytes = recv(cctx->server_sockfd, buf, std::min(file_size, kBufSize), 0);
-        file_size -= received_bytes;
-        os_write(log_fd, buf, received_bytes);
-      }
-      os_fsync(log_fd);
-      os_close(log_fd);
+  for(uint64_t i = 0; i < md->num_log_files; ++i) {
+    backup_start_metadata::log_segment* ls = md->get_log_segment(i);
+    uint64_t file_size = ls->size;
+    int log_fd = os_openat(dfd, ls->file_name.buf, O_CREAT|O_WRONLY);
+    ALWAYS_ASSERT(log_fd > 0);
+    while(file_size > 0) {
+      uint64_t received_bytes = recv(cctx->server_sockfd, buf, std::min(file_size, kBufSize), 0);
+      file_size -= received_bytes;
+      os_write(log_fd, buf, received_bytes);
     }
+    os_fsync(log_fd);
+    os_close(log_fd);
   }
 
   // Done with receiving files and they should all be persisted, now ack the primary
   tcp::send_ack(cctx->server_sockfd);
-  LOG(INFO) << "[Backup] Receved log file.";
+  LOG(INFO) << "[Backup] Received log file.";
   std::thread t(backup_daemon_tcp, cctx);
   t.detach();
 }

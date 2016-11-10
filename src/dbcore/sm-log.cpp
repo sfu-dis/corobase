@@ -10,6 +10,11 @@ using namespace RCU;
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 
+segment_id*
+sm_log::get_offset_segment(uint64_t off) {
+  return get_impl(this)->_lm._lm.get_offset_segment(off);
+}
+
 LSN
 sm_log::get_chkpt_start()
 {

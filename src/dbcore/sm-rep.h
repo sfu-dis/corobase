@@ -24,9 +24,7 @@
 
 #include "sm-chkpt.h"
 #include "sm-config.h"
-#include "sm-file.h"
 #include "sm-log.h"
-#include "sm-log-offset.h"
 
 struct write_record_t;
 
@@ -36,40 +34,44 @@ extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
 
 struct backup_start_metadata {
+  struct log_segment {
+    segment_file_name file_name;
+    uint64_t size;
+  };
   char chkpt_marker[CHKPT_FILE_NAME_BUFSZ];
   char durable_marker[DURABLE_FILE_NAME_BUFSZ];
   char nxt_marker[NXT_SEG_FILE_NAME_BUFSZ];
   uint64_t chkpt_size;
   uint64_t log_size;
   uint64_t num_log_files;
-  // What follows is a list of <log file name, file size> pairs
+  log_segment segments[0];  // must be the last one
 
   backup_start_metadata() :
     chkpt_size(0)
     , log_size(0)
     , num_log_files(0) {}
 
-  inline void add_log_file(char const* fname, uint64_t size) {
-    memcpy((char*)this + sizeof(*this) +
-           (SEGMENT_FILE_NAME_BUFSZ + sizeof(uint64_t)) * num_log_files,
-           fname, SEGMENT_FILE_NAME_BUFSZ);
-    memcpy((char*)this + sizeof(*this) +
-           (SEGMENT_FILE_NAME_BUFSZ + sizeof(uint64_t)) * num_log_files + SEGMENT_FILE_NAME_BUFSZ,
-           (char*)&size, sizeof(size));
+  inline void add_log_segment(
+    unsigned int segment, uint64_t start_offset, uint64_t end_offset, uint64_t size) {
+    // The filename; start_offset should already be adjusted according to chkpt_start
+    // so we only ship the part needed
+    new (&(segments[num_log_files].file_name)) segment_file_name(segment, start_offset, end_offset);
+
+    // The real size we're going to send
+    segments[num_log_files].size = size;
     ++num_log_files;
     log_size += size;
   }
   inline uint64_t size() {
-    return sizeof(*this) + (SEGMENT_FILE_NAME_BUFSZ + sizeof(uint64_t))* num_log_files;
+    return sizeof(*this) + sizeof(log_segment) * num_log_files;
   }
-  inline char* get_log_file(uint32_t idx) {
-    return (char*)this + sizeof(*this) + (sizeof(uint64_t) + SEGMENT_FILE_NAME_BUFSZ) * idx;
+  inline log_segment* get_log_segment(uint32_t idx) {
+    return &segments[idx];
   }
 };
 
 inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles) {
-  uint32_t size = sizeof(backup_start_metadata) +
-    nlogfiles * (SEGMENT_FILE_NAME_BUFSZ + sizeof(uint64_t));
+  uint32_t size = sizeof(backup_start_metadata) + nlogfiles * sizeof(backup_start_metadata::log_segment);
   backup_start_metadata *md = (backup_start_metadata*)malloc(size);
   return md;
 }
@@ -93,7 +95,7 @@ void update_pdest_on_backup_rdma(write_record_t* w);
 void start_as_backup_tcp();
 void backup_daemon_tcp(tcp::client_context *cctx);
 void primary_daemon_tcp();
-void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, uint64_t chkpt_start);
+void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkpt_start);
 
 /* Send a chunk of log records (still in memory log buffer) to a backup via TCP.
  */
