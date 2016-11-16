@@ -119,6 +119,7 @@ main(int argc, char **argv)
   config::enable_chkpt = FLAGS_enable_chkpt;
   config::chkpt_interval = FLAGS_chkpt_interval;
 
+  config::parallel_loading = FLAGS_parallel_loading;
   config::enable_gc = FLAGS_enable_gc;
   config::nvram_log_buffer = FLAGS_nvram_log_buffer;
   if(FLAGS_parallel_recovery_by == "oid") {
