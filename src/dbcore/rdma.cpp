@@ -242,7 +242,7 @@ void context::rdma_write(
   poll_send_cq();
 }
 
-void context::rdma_write(
+void context::rdma_write_imm(
   uint32_t local_index, uint64_t local_offset,
   uint32_t remote_index, uint64_t remote_offset,
   uint64_t size, uint32_t imm_data) {

@@ -51,7 +51,6 @@ sm_log_alloc_mgr::get_tls_lsn_offset()
  */
 sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     : _lm(config::null_log_device ? NULL : rf, rfn_arg)
-    , _logbuf(config::log_buffer_mb * 1024 * 1024, get_starting_byte_offset(&_lm))
     , _durable_flushed_lsn_offset(_lm.get_durable_mark().offset())
     , _write_daemon_state(0)
     , _waiting_for_durable(false)
@@ -60,6 +59,10 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     , _write_daemon_should_stop(false)
     , _lsn_offset(_lm.get_durable_mark().offset())
 {
+    // (Re-)Initialize the log buffer with correct starting byte offset
+    // RDMA needs the space to be allocated before we create the logmgr
+    _logbuf = sm_log::logbuf;
+    new(_logbuf) window_buffer(config::log_buffer_mb * config::MB, get_starting_byte_offset(&_lm));
     _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
     memset(_tls_lsn_offset, 0, sizeof(uint64_t) * config::MAX_THREADS);
     _commit_queue = new commit_queue[config::worker_threads];
@@ -474,7 +477,7 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
     }
 
  grab_buffer:
-    char *buf = _logbuf.write_buf(sid->buf_offset(lsn), tmp_nbytes);
+    char *buf = _logbuf->write_buf(sid->buf_offset(lsn), tmp_nbytes);
     if (not buf) {
         /* Unavailable write buffer space is due to unconsumed reads,
            which in turn are really just due to non-durable
@@ -516,7 +519,7 @@ sm_log_alloc_mgr::release(log_allocation *x)
     // Otherwise we might lose committed work.
     set_tls_lsn_offset(x->block->next_lsn().offset());
     rcu_free(x);
-    bool should_kick = cur_lsn_offset() - dur_flushed_lsn_offset() >= _logbuf.window_size() / 2;
+    bool should_kick = cur_lsn_offset() - dur_flushed_lsn_offset() >= _logbuf->window_size() / 2;
 
     /* Hopefully the log daemon is already awake, but be ready to give
        it a kick if need be.
@@ -582,7 +585,7 @@ sm_log_alloc_mgr::_log_write_daemon()
     for (;;) {
         auto cur_offset = cur_lsn_offset();
         auto new_dlsn_offset = smallest_tls_lsn_offset();
-        auto *durable_sid = flush_log_buffer(_logbuf, new_dlsn_offset);
+        auto *durable_sid = flush_log_buffer(*_logbuf, new_dlsn_offset);
 
         rcu_exit();
 

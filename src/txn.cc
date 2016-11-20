@@ -1002,9 +1002,11 @@ transaction::si_commit()
         ASSERT((pdest == NULL_PTR and not tuple->size) or
                (pdest.asi_type() == fat_ptr::ASI_LOG));
 #endif
+        /*
         if (config::log_ship_by_rdma && config::num_active_backups && !config::is_backup_srv()) {
             rep::update_pdest_on_backup_rdma(&w);
         }
+        */
     }
 
     // NOTE: make sure this happens after populating log block,

@@ -68,6 +68,18 @@ struct backup_start_metadata {
   inline log_segment* get_log_segment(uint32_t idx) {
     return &segments[idx];
   }
+  void persist_marker_files() {
+    ALWAYS_ASSERT(config::is_backup_srv());
+    // Write the marker files
+    dirent_iterator dir(config::log_dir.c_str());
+    int dfd = dir.dup();
+    int marker_fd = os_openat(dfd, chkpt_marker, O_CREAT|O_WRONLY);
+    os_close(marker_fd);
+    marker_fd = os_openat(dfd, durable_marker, O_CREAT|O_WRONLY);
+    os_close(marker_fd);
+    marker_fd = os_openat(dfd, nxt_marker, O_CREAT|O_WRONLY);
+    os_close(marker_fd);
+  }
 };
 
 inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles) {
@@ -80,16 +92,20 @@ inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles)
 void start_as_primary();
 void primary_ship_log_buffer_all(const char *buf, uint32_t size);
 void redo_daemon();
+backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_lsn);
 
 /* RDMA message states, for log shipping using RDMA only */
 static const uint64_t RDMA_READY_TO_RECEIVE = 1UL;
 static const uint64_t RDMA_WAITING = 2UL;
 
 // RDMA-specific functions
+void primary_daemon_rdma();
+void start_as_backup_rdma();
+void backup_daemon_rdam();
 void primary_init_rdma();
-void backup_daemon_rdma(tcp::client_context* tcp_ctx);
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size);
 void update_pdest_on_backup_rdma(write_record_t* w);
+void send_log_files_after_rdma(backup_start_metadata* md, LSN chkpt_start);
 
 // TCP-specific functions
 void start_as_backup_tcp();

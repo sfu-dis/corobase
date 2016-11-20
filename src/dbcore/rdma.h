@@ -153,7 +153,7 @@ public:
     uint32_t remote_index, uint64_t remote_offset, uint64_t size);
 
   /* Same as rdma_write() above, but with immediate data [imm_data] */
-  void rdma_write(
+  void rdma_write_imm(
     uint32_t local_index, uint64_t local_offset,
     uint32_t remote_index, uint64_t remote_offset,
     uint64_t size, uint32_t imm_data);
