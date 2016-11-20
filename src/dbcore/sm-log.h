@@ -311,6 +311,9 @@ typedef void sm_log_recover_function(void *arg, sm_log_scan_mgr *scanner,
 struct sm_log {
     static bool need_recovery;
 
+    // RDMA needs the space to be allocated before we create the logmgr
+    static window_buffer* logbuf;
+
     void update_chkpt_mark(LSN cstart, LSN cend);
     LSN flush();
     void set_tls_lsn_offset(uint64_t offset);
@@ -322,6 +325,9 @@ struct sm_log {
      */
     static
     sm_log *new_log(sm_log_recover_impl *recover_functor, void *rarg);
+
+    static
+    void allocate_log_buffer();
 
     /* Return a pointer to the log's scan manager.
 
@@ -370,7 +376,7 @@ struct sm_log {
 
     segment_id* get_offset_segment(uint64_t off);
     LSN get_chkpt_start();
-    window_buffer &get_logbuf();
+    window_buffer *get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
     uint64_t persist_log_buffer();
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);

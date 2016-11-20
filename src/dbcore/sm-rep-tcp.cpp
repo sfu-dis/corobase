@@ -7,86 +7,20 @@
 
 namespace rep {
 // A daemon that runs on the primary for bringing up backups by shipping
-// the latest chkpt (if any) + the log that follows.
+// the latest chkpt (if any) + the log that follows (if any).
 void primary_daemon_tcp() {
   ALWAYS_ASSERT(logmgr);
   tcp::server_context primary_tcp_ctx(config::primary_port, config::num_backups);
 
-  backup_start_metadata* md = nullptr;
 wait_for_backup:
   int backup_sockfd = primary_tcp_ctx.expect_client();
 
   // Got a new backup, send out the latest chkpt (if any)
   // Scan the whole log dir, and send chkpt (if any) + the log that follows,
   // or all the logs if a chkpt doesn't exist.
-  uint64_t nlogfiles = 0;
-  dirent_iterator dir(config::log_dir.c_str());
-  for(char const *fname : dir) {
-    if(fname[0] == 'l') {
-      ++nlogfiles;
-    }
-  }
-  if(!md || md->num_log_files < nlogfiles) {
-    if(md) {
-      free(md);
-    }
-    md = allocate_backup_start_metadata(nlogfiles);
-  }
-  new (md) backup_start_metadata;
   int chkpt_fd = -1;
   LSN chkpt_start_lsn = INVALID_LSN;
-  int dfd = dir.dup();
-  // Find chkpt first
-  for(char const *fname : dir) {
-    char l = fname[0];
-    if(l == 'c') {
-      memcpy(md->chkpt_marker, fname, CHKPT_FILE_NAME_BUFSZ);
-    } else if(l == 'o') {
-      // chkpt file
-      ALWAYS_ASSERT(config::enable_chkpt);
-      struct stat st;
-      chkpt_fd = os_openat(dfd, fname, O_RDONLY);
-      int ret = fstat(chkpt_fd, &st);
-      THROW_IF(ret != 0, log_file_error, "Error fstat");
-      ASSERT(st.st_size);
-      md->chkpt_size = st.st_size;
-      char canary_unused;
-      int n = sscanf(fname, CHKPT_DATA_FILE_NAME_FMT "%c",
-                     &chkpt_start_lsn._val, &canary_unused);
-      ALWAYS_ASSERT(chkpt_start_lsn != INVALID_LSN);
-    }
-  }
-  LOG(INFO) << "[Primary] Will ship checkpoint taken at 0x"
-    << std::hex << chkpt_start_lsn.offset() << std::dec;
-  dfd = dir.dup();
-  for (char const *fname : dir) {
-    // Must send dur-xxxx, chk-xxxx, nxt-xxxx anyway
-    char l = fname[0];
-    if(l == 'd') {
-      // durable lsn marker
-      memcpy(md->durable_marker, fname, DURABLE_FILE_NAME_BUFSZ);
-    } else if(l == 'n') {
-      // nxt segment
-      memcpy(md->nxt_marker, fname, NXT_SEG_FILE_NAME_BUFSZ);
-    } else if(l == 'l') {
-      uint64_t start = 0, end = 0;
-      unsigned int seg;
-      char canary_unused;
-      int n = sscanf(fname, SEGMENT_FILE_NAME_FMT "%c", &seg, &start, &end, &canary_unused);
-      struct stat st;
-      int log_fd = os_openat(dfd, fname, O_RDONLY);
-      int ret = fstat(log_fd, &st);
-      os_close(log_fd);
-      ASSERT(st.st_size);
-      uint64_t size = st.st_size - chkpt_start_lsn.offset();
-      md->add_log_segment(seg, start, end, size);
-      LOG(INFO) << "Will ship segment " << seg << ", " << size << " bytes";
-    } else if(l == 'c' || l == 'o' || l == '.') {
-      // Nothing to do or already handled
-    } else {
-      LOG(FATAL) << "Unrecognized file name";
-    }
-  }
+  backup_start_metadata* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
   auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
   ALWAYS_ASSERT(sent_bytes == md->size());
 
@@ -161,16 +95,7 @@ void start_as_backup_tcp() {
     memcpy(md, d, sizeof(*d));
     free(d);
   }
-
-  // Write the marker files
-  dirent_iterator dir(config::log_dir.c_str());
-  int dfd = dir.dup();
-  int marker_fd = os_openat(dfd, md->chkpt_marker, O_CREAT|O_WRONLY);
-  os_close(marker_fd);
-  marker_fd = os_openat(dfd, md->durable_marker, O_CREAT|O_WRONLY);
-  os_close(marker_fd);
-  marker_fd = os_openat(dfd, md->nxt_marker, O_CREAT|O_WRONLY);
-  os_close(marker_fd);
+  md->persist_marker_files();
 
   // Get log file names
   if(md->num_log_files > 0) {
@@ -181,6 +106,8 @@ void start_as_backup_tcp() {
   static const uint64_t kBufSize = 512 * 1024 * 1024;
   static char buf[kBufSize];
   if(md->chkpt_size > 0) {
+    dirent_iterator dir(config::log_dir.c_str());
+    int dfd = dir.dup();
     char canary_unused;
     uint64_t chkpt_start = 0, chkpt_end_unused;
     int n = sscanf(md->chkpt_marker, CHKPT_FILE_NAME_FMT "%c",
@@ -204,6 +131,8 @@ void start_as_backup_tcp() {
   LOG(INFO) << "[Backup] Received checkpoint file.";
 
   // Now receive the log files
+  dirent_iterator dir(config::log_dir.c_str());
+  int dfd = dir.dup();
   for(uint64_t i = 0; i < md->num_log_files; ++i) {
     backup_start_metadata::log_segment* ls = md->get_log_segment(i);
     uint64_t file_size = ls->size;
@@ -247,7 +176,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   uint32_t size = 0;
   // Wait for the main thread to create logmgr - it might run slower than me
   while (not volatile_read(logmgr)) {}
-  auto& logbuf = logmgr->get_logbuf();
+  auto* logbuf = logmgr->get_logbuf();
 
   // Now safe to start the redo daemon with a valid durable_flushed_lsn
   if (not config::log_ship_sync_redo) {
@@ -270,7 +199,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
 
     // expect the real log data
     //std::cout << "[Backup] Will receive " << size << " bytes\n";
-    char *buf = logbuf.write_buf(sid->buf_offset(start_lsn), size);
+    char *buf = logbuf->write_buf(sid->buf_offset(start_lsn), size);
     ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
     tcp::receive(cctx->server_sockfd, buf, size);
     //std::cout << "[Backup] Recieved " << size << " bytes ("
@@ -279,9 +208,9 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     // now got the batch of log records, persist them
     if (config::nvram_log_buffer) {
       logmgr->persist_log_buffer();
-      logbuf.advance_writer(sid->buf_offset(end_lsn));
+      logbuf->advance_writer(sid->buf_offset(end_lsn));
     } else {
-      logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
+      logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
       ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
     }
 
@@ -294,7 +223,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
     if (config::nvram_log_buffer)
-      logmgr->flush_log_buffer(logbuf, end_lsn_offset, true);
+      logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
   }
 }
 

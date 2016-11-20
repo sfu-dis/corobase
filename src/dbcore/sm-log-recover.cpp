@@ -108,12 +108,12 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
         if (config::is_backup_srv() and config::nvram_log_buffer and
             logmgr and x >= logmgr ->durable_flushed_lsn()) {
             // we should be scanning and replaying the log at a backup node
-            auto& logbuf = logmgr->get_logbuf();
+            auto* logbuf = logmgr->get_logbuf();
             // the caller should have called advance_writer(end_lsn) already
-            nbytes = std::min(nbytes, logbuf.read_end() - sid->buf_offset(x));
+            nbytes = std::min(nbytes, logbuf->read_end() - sid->buf_offset(x));
             if (nbytes) {
                 ALWAYS_ASSERT(nbytes);
-                _cur_block = (log_block *)logbuf.read_buf(sid->buf_offset(x), nbytes);
+                _cur_block = (log_block *)logbuf->read_buf(sid->buf_offset(x), nbytes);
             }
             return nbytes;
         } else {

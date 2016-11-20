@@ -80,7 +80,7 @@ struct sm_log_alloc_mgr {
     void dequeue_committed_xcts(uint64_t up_to, uint64_t end_time);
 
     sm_log_recover_mgr _lm;
-    window_buffer _logbuf;
+    window_buffer* _logbuf;
     uint64_t _durable_flushed_lsn_offset;
 
     pthread_t _write_daemon_tid;

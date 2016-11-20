@@ -9,6 +9,12 @@ using namespace RCU;
 
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
+window_buffer* sm_log::logbuf = nullptr;
+
+void
+sm_log::allocate_log_buffer() {
+  logbuf = new window_buffer(config::log_buffer_mb * config::MB);
+}
 
 segment_id*
 sm_log::get_offset_segment(uint64_t off) {
@@ -41,7 +47,7 @@ sm_log::get_tls_lsn_offset()
     return get_impl(this)->_lm.get_tls_lsn_offset();
 }
 
-window_buffer&
+window_buffer*
 sm_log::get_logbuf()
 {
     return get_impl(this)->_lm._logbuf;
