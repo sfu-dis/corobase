@@ -225,7 +225,7 @@ void backup_daemon_rdam() {
     rt.detach();
   }
 
-  LOG(INFO) << "[Backup] Start to wait for logs from primary (" << log_buf_ridx <")";
+  LOG(INFO) << "[Backup] Start to wait for logs from primary (" << log_buf_ridx << ")";
   auto* logbuf = logmgr->get_logbuf();
   while (1) {
     set_ready_message();
