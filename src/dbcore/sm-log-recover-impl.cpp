@@ -393,7 +393,7 @@ process:
 
 void
 parallel_oid_replay::redo_runner::redo_partition() {
-  util::scoped_timer t("redo_partition");
+  //util::scoped_timer t("redo_partition");
   RCU::rcu_enter();
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
   auto *scan = owner->scanner->new_log_scan(owner->start_lsn, config::eager_warm_up());

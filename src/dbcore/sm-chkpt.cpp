@@ -139,22 +139,44 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
   lseek(fd, start_offset, SEEK_SET);
   DEFER(close(fd));
 
+  static const uint32_t kBufferSize = 256 * config::MB;
+  char* buffer = (char*)malloc(kBufferSize);
+  DEFER(free(buffer));
+
   uint64_t nbytes = start_offset;
-  while (1) {
-    // Read himark
-    OID himark = 0;
-    uint64_t n = read(fd, &himark, sizeof(OID));
-    if(n == 0) {
+
+  // Get a large chunk each time
+  uint64_t file_offset = start_offset;
+  uint64_t buf_offset = 0;
+  uint64_t cur_buffer_size = read(fd, buffer, kBufferSize);
+  while(true) {
+    auto read_buffer = [&] (uint32_t size) {
+      if(buf_offset + size > cur_buffer_size) {
+        file_offset += buf_offset;
+        lseek(fd, file_offset , SEEK_SET);
+        cur_buffer_size = read(fd, buffer, kBufferSize);
+        if(cur_buffer_size == 0) {
+          return (char*)nullptr;
+        }
+        buf_offset = 0;
+      }
+      uint64_t roff = buf_offset;
+      buf_offset += size;
+      return &buffer[roff];
+    };
+
+    // Extract himark
+    OID* himark_ptr = (OID*)read_buffer(sizeof(OID));
+    if(!himark_ptr) {
       break;
     }
-    ALWAYS_ASSERT(n == sizeof(OID));
-    nbytes += n;
+    OID himark = *himark_ptr;
+    nbytes += sizeof(OID);
 
     // FID
-    FID f = 0;
-    n = read(fd, &f, sizeof(FID));
-    ALWAYS_ASSERT(n == sizeof(FID));
-    nbytes += n;
+    FID f = *(FID*)read_buffer(sizeof(FID));
+    ALWAYS_ASSERT(f);
+    nbytes += sizeof(FID);
 
     // Benchmark code should have already registered the table with the engine
     ALWAYS_ASSERT(sm_file_mgr::fid_map[f]);
@@ -168,36 +190,31 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
     ALWAYS_ASSERT(index);
     while(1) {
       // Read the OID
-      OID o = 0;
-      n = read(fd, &o, sizeof(OID));
-      nbytes += n;
+      OID o = *(OID*)read_buffer(sizeof(OID));
+      nbytes += sizeof(OID);
       if (o == himark)
           break;
 
       // Key
-      uint32_t key_size = 0;
-      n = read(fd, &key_size, sizeof(uint32_t));
-
-      nbytes += n;
-      ALWAYS_ASSERT(n == sizeof(uint32_t));
+      uint32_t key_size = *(uint32_t*)read_buffer(sizeof(uint32_t));
+      nbytes += sizeof(uint32_t);
       ALWAYS_ASSERT(key_size);
+
       varstr* key = nullptr;
       if(o % num_recovery_threads == oid_partition) {
         key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
         new (key) varstr((char*)key + sizeof(varstr), key_size);
-        n = read(fd, (void*)key->p, key->l);
-        ALWAYS_ASSERT(n == key->l);
+        memcpy((void*)key->p, read_buffer(key->l), key->l);
         ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(*key, o, NULL, 0));
       } else {
-        lseek(fd, key_size, SEEK_CUR);
+        read_buffer(key_size);
+        //lseek(fd, key_size, SEEK_CUR);
       }
       nbytes += key_size;
 
       // Size code
-      uint8_t size_code = INVALID_SIZE_CODE;
-      n = read(fd, &size_code, sizeof(uint8_t));
-      ALWAYS_ASSERT(n == sizeof(uint8_t));
-      nbytes += n;
+      uint8_t size_code = *(uint8_t*)read_buffer(sizeof(uint8_t));
+      nbytes += sizeof(uint8_t);
       ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
       auto data_size = decode_size_aligned(size_code);
       if(o % num_recovery_threads == oid_partition) {
@@ -210,7 +227,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
         // load_durable_object uses the base_chkpt_fd, which is different, so lseek anyway.
         oidmgr->oid_put_new(oa, o, ptr, key);
       }
-      lseek(fd, data_size, SEEK_CUR);
+      read_buffer(data_size);//(fd, data_size, SEEK_CUR);
       nbytes += data_size;
     }
   }
