@@ -376,11 +376,12 @@ struct sm_log {
 
     segment_id* get_offset_segment(uint64_t off);
     LSN get_chkpt_start();
-    window_buffer *get_logbuf();
+    static window_buffer *get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
     uint64_t persist_log_buffer();
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
     void redo_log(LSN start_lsn, LSN end_lsn);
+    void recover();
     void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
 
     virtual ~sm_log() { }

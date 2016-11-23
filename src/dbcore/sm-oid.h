@@ -92,8 +92,7 @@ struct sm_oid_mgr {
      */
     static FID const METADATA_FID = 2;
 
-    /* Create a new OID manager, recovering its state from
-       [chkpt_tx_scan].
+    /* Create a new OID manager.
        
        NOTE: the scan must be positioned at the first record of the
        checkpoint transaction (or the location where the record would
@@ -116,7 +115,7 @@ struct sm_oid_mgr {
        amount of data to ship for replication (no need to ship chkpts,
        the backup can have its own chkpts).
      */
-    static void create(LSN chkpt_start, sm_log_recover_mgr *lm);
+    static void create();
 
     /* Record a snapshot of the OID manager's state as part of a
        checkpoint. The data will be durable by the time this function

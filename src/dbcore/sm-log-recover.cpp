@@ -1,3 +1,4 @@
+#include "sm-chkpt.h"
 #include "sm-log-recover.h"
 #include "sm-log-recover-impl.h"
 #include "sm-log-impl.h"
@@ -29,13 +30,22 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
         update_durable_mark(dlsn);
     
     auto *sid = get_segment(dlsn.segment());
-    truncate_after(sid->segnum, dlsn.offset());
+    if(!config::is_backup_srv()) {
+      truncate_after(sid->segnum, dlsn.offset());
+    }
+}
 
-    sm_oid_mgr::create(get_chkpt_start(), this);
-    ASSERT(oidmgr);
-
-    if (rf and sm_log::need_recovery)
-        redo_log(get_chkpt_start(), LSN{~uint64_t{0}});  // till end of log
+void
+sm_log_recover_mgr::recover() {
+  if(!sm_log::need_recovery) {
+    LOG(INFO) << "No need for recovery";
+    return;
+  }
+  LSN chkpt_lsn = get_chkpt_start();
+  if(chkpt_lsn.offset()) {
+    sm_chkpt_mgr::recover(chkpt_lsn, this);
+  }
+  redo_log(chkpt_lsn, LSN{~uint64_t{0}});  // till end of log
 }
 
 void

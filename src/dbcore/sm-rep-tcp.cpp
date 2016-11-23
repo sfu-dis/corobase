@@ -179,10 +179,10 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   auto* logbuf = logmgr->get_logbuf();
 
   // Now safe to start the redo daemon with a valid durable_flushed_lsn
-  if (not config::log_ship_sync_redo) {
-    std::thread rt(redo_daemon);
-    rt.detach();
-  }
+  //if (not config::log_ship_sync_redo) {
+  //  std::thread rt(redo_daemon);
+  //  rt.detach();
+  //}
 
   while (1) {
     // expect an integer indicating data size
@@ -202,8 +202,8 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     char *buf = logbuf->write_buf(sid->buf_offset(start_lsn), size);
     ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
     tcp::receive(cctx->server_sockfd, buf, size);
-    //std::cout << "[Backup] Recieved " << size << " bytes ("
-    //  << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
+    std::cout << "[Backup] Recieved " << size << " bytes ("
+      << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
 
     // now got the batch of log records, persist them
     if (config::nvram_log_buffer) {
@@ -217,10 +217,10 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     tcp::send_ack(cctx->server_sockfd);
 
     if (config::log_ship_sync_redo) {
-      ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
-      printf("[Backup] Rolling forward %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
-      logmgr->redo_log(start_lsn, end_lsn);
-      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    //  ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
+    //  printf("[Backup] Rolling forward %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    //  logmgr->redo_log(start_lsn, end_lsn);
+    //  printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
     if (config::nvram_log_buffer)
       logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);

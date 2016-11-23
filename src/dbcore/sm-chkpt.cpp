@@ -246,36 +246,53 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
   ALWAYS_ASSERT(base_chkpt_fd == -1);
   base_chkpt_fd = os_openat(oidmgr->dfd, buf, O_RDONLY);
 
+  // Read a large chunk each time (hopefully we only need it once for the header)
+  static const uint32_t kBufferSize = 4 * config::MB;
+  char* buffer = (char*)malloc(kBufferSize);
+  DEFER(free(buffer));
+
+  uint64_t file_offset = 0;
+  uint64_t buf_offset = 0;
+  uint64_t cur_buffer_size = read(base_chkpt_fd, buffer, kBufferSize);
+
+  auto read_buffer = [&] (uint32_t size) {
+    if(buf_offset + size > cur_buffer_size) {
+      file_offset += buf_offset;
+      lseek(base_chkpt_fd, file_offset , SEEK_SET);
+      cur_buffer_size = read(base_chkpt_fd, buffer, kBufferSize);
+      if(cur_buffer_size == 0) {
+        return (char*)nullptr;
+      }
+      buf_offset = 0;
+    }
+    uint64_t roff = buf_offset;
+    buf_offset += size;
+    return &buffer[roff];
+  };
+
   // Recover files first from the chkpt header
-  uint32_t nfiles = 0;
-  n = read(base_chkpt_fd, &nfiles, sizeof(uint32_t));
+  uint32_t nfiles = *(uint32_t*)read_buffer(sizeof(uint32_t));
   ALWAYS_ASSERT(nfiles);
-  ALWAYS_ASSERT(n == sizeof(uint32_t));
   LOG(INFO) << nfiles << " tables";
-  uint64_t nbytes = n;
+  uint64_t nbytes = sizeof(uint32_t);
 
   for(uint32_t i = 0; i < nfiles; ++i) {
     // Format: [table name length, table name, table FID, table himark]
     // Read the table's name
-    size_t len = 0;
-    n = read(base_chkpt_fd, &len, sizeof(size_t));
-    nbytes += n;
-    THROW_IF(n != sizeof(size_t), illegal_argument,
-             "Error reading tabel name length");
+    size_t len = *(size_t*)read_buffer(sizeof(size_t));;
+    nbytes += sizeof(size_t);
     char name_buf[256];
-    n = read(base_chkpt_fd, name_buf, len);
-    nbytes += n;
+    memcpy(name_buf, read_buffer(len), len);
+    nbytes += len;
     std::string name(name_buf, len);
 
     // FID
-    FID f = 0;
-    n = read(base_chkpt_fd, &f, sizeof(FID));
-    nbytes += n;
+    FID f = *(FID*)read_buffer(sizeof(FID));;
+    nbytes += sizeof(FID);
 
     // High mark
-    OID himark = 0;
-    n = read(base_chkpt_fd, &himark, sizeof(OID));
-    nbytes += n;
+    OID himark = *(OID*)read_buffer(sizeof(OID));
+    nbytes += sizeof(FID);
 
     // Recover fid_map and recreate the empty file
     ALWAYS_ASSERT(!sm_file_mgr::get_index(name));
