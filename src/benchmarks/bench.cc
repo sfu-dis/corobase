@@ -123,35 +123,34 @@ retry:
 void
 bench_runner::create_files_task(char *)
 {
-  if (not sm_log::need_recovery && not config::is_backup_srv()) {
-    // allocate an FID for each table
-    for (auto &nm : sm_file_mgr::name_map) {
-      auto fid = oidmgr->create_file(true);
-      nm.second->fid = fid;
-      ALWAYS_ASSERT(!nm.second->index);
-      nm.second->index = new ndb_ordered_index(nm.first);
-      nm.second->index->set_oid_array(fid);
-      nm.second->main_array = oidmgr->get_array(fid);
+  ALWAYS_ASSERT(!sm_log::need_recovery && !config::is_backup_srv());
+  // allocate an FID for each table
+  for (auto &nm : sm_file_mgr::name_map) {
+    auto fid = oidmgr->create_file(true);
+    nm.second->fid = fid;
+    ALWAYS_ASSERT(!nm.second->index);
+    nm.second->index = new ndb_ordered_index(nm.first);
+    nm.second->index->set_oid_array(fid);
+    nm.second->main_array = oidmgr->get_array(fid);
 
-      // Initialize the fid_map entries
-      if (sm_file_mgr::fid_map[nm.second->fid] != nm.second) {
-        sm_file_mgr::fid_map[nm.second->fid] = nm.second;
-      }
-
-      // Initialize the pdest array
-      if (config::is_backup_srv()) {
-          sm_file_mgr::get_file(fid)->init_pdest_array();
-          std::cout << "[Backup] Created pdest array for FID " << fid << std::endl;
-      }
-
-      // log [table name, FID]
-      ASSERT(logmgr);
-      RCU::rcu_enter();
-      sm_tx_log *log = logmgr->new_tx_log();
-      log->log_fid(fid, nm.second->name);
-      log->commit(NULL);
-      RCU::rcu_exit();
+    // Initialize the fid_map entries
+    if (sm_file_mgr::fid_map[nm.second->fid] != nm.second) {
+      sm_file_mgr::fid_map[nm.second->fid] = nm.second;
     }
+
+    // Initialize the pdest array
+    if (config::is_backup_srv()) {
+        sm_file_mgr::get_file(fid)->init_pdest_array();
+        std::cout << "[Backup] Created pdest array for FID " << fid << std::endl;
+    }
+
+    // log [table name, FID]
+    ASSERT(logmgr);
+    RCU::rcu_enter();
+    sm_tx_log *log = logmgr->new_tx_log();
+    log->log_fid(fid, nm.second->name);
+    log->commit(NULL);
+    RCU::rcu_exit();
   }
 }
 
@@ -167,17 +166,37 @@ bench_runner::run()
   ALWAYS_ASSERT(not logmgr);
   ALWAYS_ASSERT(not oidmgr);
   RCU::rcu_enter();
+
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
-  ASSERT(oidmgr);
+  ALWAYS_ASSERT(logmgr);
+
+  sm_oid_mgr::create();
+  ALWAYS_ASSERT(oidmgr);
+
+  LSN chkpt_lsn = logmgr->get_chkpt_start();
+  if(config::enable_chkpt) {
+    chkptmgr = new sm_chkpt_mgr(chkpt_lsn);
+  } else {
+    chkptmgr = nullptr;
+  }
+
+  // The backup will want to recover in another thread
+  if(sm_log::need_recovery && !config::is_backup_srv()) {
+    logmgr->recover();
+  }
+
   RCU::rcu_exit();
 
-  // Get a thread to create the index and FIDs backing each table
-  // Note: this will insert to the log and therefore affect min_flush_lsn,
-  // so must be done in an sm-thread.
   auto* runner_thread = thread::get_thread();
-  thread::sm_thread::task_t runner_task = std::bind(&bench_runner::create_files_task, this, std::placeholders::_1);
-  runner_thread->start_task(runner_task);
-  runner_thread->join();
+  thread::sm_thread::task_t runner_task;
+  if(!sm_log::need_recovery && !config::is_backup_srv()) {
+    // Get a thread to create the index and FIDs backing each table
+    // Note: this will insert to the log and therefore affect min_flush_lsn,
+    // so must be done in an sm-thread.
+    runner_task = std::bind(&bench_runner::create_files_task, this, std::placeholders::_1);
+    runner_thread->start_task(runner_task);
+    runner_thread->join();
+  }
 
   // Get a thread to use benchmark-provided prepare(), which gathers information about
   // index pointers created by create_file_task.

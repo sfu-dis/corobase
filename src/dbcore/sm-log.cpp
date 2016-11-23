@@ -50,13 +50,19 @@ sm_log::get_tls_lsn_offset()
 window_buffer*
 sm_log::get_logbuf()
 {
-    return get_impl(this)->_lm._logbuf;
+    return sm_log::logbuf;
 }
 
 void
 sm_log::redo_log(LSN start_lsn, LSN end_lsn)
 {
     get_impl(this)->_lm._lm.redo_log(start_lsn, end_lsn);
+}
+
+void
+sm_log::recover()
+{
+    get_impl(this)->_lm._lm.recover();
 }
 
 segment_id*

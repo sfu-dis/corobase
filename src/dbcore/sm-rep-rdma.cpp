@@ -204,8 +204,13 @@ void start_as_backup_rdma() {
   // Done with receiving files and they should all be persisted
   set_ready_message();
   LOG(INFO) << "[Backup] Received log file.";
+
+  // Start a daemon to receive and persist future log records
   std::thread t(backup_daemon_rdam);
   t.detach();
+
+  // Now we proceed to recovery
+  logmgr->recover();
 }
 
 void backup_daemon_rdam() {
@@ -220,12 +225,12 @@ void backup_daemon_rdam() {
   // Wait for the main thread to create logmgr - it might run slower than me
   while (not volatile_read(logmgr)) {}
   // Now safe to start the redo daemon with a valid durable_flushed_lsn
-  if (not config::log_ship_sync_redo) {
-    std::thread rt(redo_daemon);
-    rt.detach();
-  }
+  //if (not config::log_ship_sync_redo) {
+  //  std::thread rt(redo_daemon);
+  //  rt.detach();
+  //}
 
-  LOG(INFO) << "[Backup] Start to wait for logs from primary (" << log_buf_ridx << ")";
+  LOG(INFO) << "[Backup] Start to wait for logs from primary (" << log_buf_ridx <<")";
   auto* logbuf = logmgr->get_logbuf();
   while (1) {
     set_ready_message();
@@ -258,12 +263,12 @@ void backup_daemon_rdam() {
     set_ready_message();
 
     if (config::log_ship_sync_redo) {
-      ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
-      logmgr->redo_log(start_lsn, end_lsn);
-      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+      //ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
+      //logmgr->redo_log(start_lsn, end_lsn);
+      //printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
     if (config::nvram_log_buffer) {
-      logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
+      //logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
     }
   }
 }
