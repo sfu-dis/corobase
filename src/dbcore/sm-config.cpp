@@ -15,7 +15,7 @@ bool config::retry_aborted_transactions = 0;
 int config::backoff_aborted_transactions = 0;
 int config::numa_nodes = 0;
 int config::enable_gc = 0;
-std::string config::tmpfs_dir("/tmpfs");
+std::string config::tmpfs_dir("/dev/shm");
 int config::enable_safesnap = 0;
 int config::enable_ssi_read_only_opt = 0;
 uint64_t config::ssn_read_opt_threshold = config::SSN_READ_OPT_DISABLED;
