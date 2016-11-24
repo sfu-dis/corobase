@@ -19,7 +19,7 @@ static uint32_t daemon_buffer_ridx = -1;
 const static int kMessageSize = 8;
 static char msg_buf[kMessageSize] CACHE_ALIGNED;
 
-void wait_for_backup() {
+void rdma_wait_for_backup() {
   ALWAYS_ASSERT(!config::is_backup_srv());
   while(true) {
     uint64_t m = volatile_read(*(uint64_t *)primary_rdma_ctx->get_memory_region(msg_buf_ridx));
@@ -29,6 +29,10 @@ void wait_for_backup() {
       break;
     }
   }
+}
+
+void primary_rdma_poll_send_cq() {
+  primary_rdma_ctx->poll_send_cq();
 }
 
 void set_ready_message() {
@@ -49,7 +53,7 @@ void primary_daemon_rdma() {
   // XXX(tzawng): Assuming the backup is also resitering in the same order
   msg_buf_ridx = primary_rdma_ctx->register_memory(msg_buf, kMessageSize);
   daemon_buffer_ridx = primary_rdma_ctx->register_memory(daemon_buffer, kDaemonBufferSize);
-  auto* logbuf = logmgr->get_logbuf();
+  auto* logbuf = sm_log::get_logbuf();
   log_buf_ridx = primary_rdma_ctx->register_memory(logbuf->_data, logbuf->window_size() * 2);
   primary_rdma_ctx->finish_init();
   LOG(INFO) << "[Primary] RDMA initialized (" << daemon_buffer_ridx << ")";
@@ -59,7 +63,7 @@ void primary_daemon_rdma() {
   auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
   ALWAYS_ASSERT(chkpt_fd != -1);
   // Wait for the 'go' signal from the peer
-  wait_for_backup();
+  rdma_wait_for_backup();
 
   // Now can really send something, metadata first, header must fit in the buffer
   ALWAYS_ASSERT(md->size() < kDaemonBufferSize);
@@ -71,7 +75,7 @@ void primary_daemon_rdma() {
     ALWAYS_ASSERT(buf_offset <= kDaemonBufferSize);
     if(buf_offset == kDaemonBufferSize) {
       // Full, wait for the backup to finish processing this
-      wait_for_backup();
+      rdma_wait_for_backup();
       buf_offset = 0;
     }
     uint64_t n = read(chkpt_fd, daemon_buffer + buf_offset,
@@ -81,7 +85,7 @@ void primary_daemon_rdma() {
     // Write it out, then wait
     primary_rdma_ctx->rdma_write_imm(daemon_buffer_ridx, 0, daemon_buffer_ridx, 0, buf_offset + n, buf_offset + n);
     buf_offset = 0;
-    wait_for_backup();
+    rdma_wait_for_backup();
   }
   os_close(chkpt_fd);
 
@@ -113,7 +117,7 @@ void send_log_files_after_rdma(backup_start_metadata* md, LSN chkpt_start) {
         ALWAYS_ASSERT(n);
         primary_rdma_ctx->rdma_write_imm(daemon_buffer_ridx, 0, daemon_buffer_ridx, 0, 0, n);
         to_send -= n;
-        wait_for_backup();
+        rdma_wait_for_backup();
       }
       os_close(log_fd);
     }
@@ -125,7 +129,9 @@ void start_as_backup_rdma() {
   backup_rdma_ctx = new rdma::context(config::primary_srv, config::primary_port, 1);
   msg_buf_ridx = backup_rdma_ctx->register_memory(msg_buf, kMessageSize);
   daemon_buffer_ridx = backup_rdma_ctx->register_memory(daemon_buffer, kDaemonBufferSize);
-  log_buf_ridx = backup_rdma_ctx->register_memory(sm_log::logbuf->_data, sm_log::logbuf->window_size() * 2);
+  LOG(INFO) << "addr=" << (uint64_t)sm_log::logbuf->_data;
+  log_buf_ridx = backup_rdma_ctx->register_memory(
+                 sm_log::logbuf->_data, sm_log::logbuf->window_size() * 2);
   backup_rdma_ctx->finish_init();
   LOG(INFO) << "[Backup] RDMA initialized (" << daemon_buffer_ridx << ")";
 
@@ -209,55 +215,55 @@ void start_as_backup_rdma() {
   std::thread t(backup_daemon_rdam);
   t.detach();
 
+  logmgr = sm_log::new_log(config::recover_functor, nullptr);
+  sm_oid_mgr::create();
   // Now we proceed to recovery
-  logmgr->recover();
+  ALWAYS_ASSERT(oidmgr);
+  //logmgr->recover();
 }
 
 void backup_daemon_rdam() {
+  while(!volatile_read(logmgr)) { /** spin **/ }
   rcu_register();
   rcu_enter();
   DEFER(rcu_exit());
   DEFER(rcu_deregister());
   DEFER(delete backup_rdma_ctx);
 
-  // Listen to incoming log records from the primary
   uint32_t size = 0;
-  // Wait for the main thread to create logmgr - it might run slower than me
-  while (not volatile_read(logmgr)) {}
-  // Now safe to start the redo daemon with a valid durable_flushed_lsn
   //if (not config::log_ship_sync_redo) {
   //  std::thread rt(redo_daemon);
   //  rt.detach();
   //}
 
   LOG(INFO) << "[Backup] Start to wait for logs from primary (" << log_buf_ridx <<")";
-  auto* logbuf = logmgr->get_logbuf();
+  auto* logbuf = sm_log::get_logbuf();
   while (1) {
-    set_ready_message();
-
     // post an RR to get the data and its size embedded as an immediate
     size = backup_rdma_ctx->receive_rdma_with_imm();
     THROW_IF(not size, illegal_argument, "Invalid data size");
 
     // now we should already have data sitting in the buffer, but we need
     // to use the data size we got to calculate a new durable lsn first.
-    LSN start_lsn =  logmgr->durable_flushed_lsn();
+    LSN start_lsn = logmgr->durable_flushed_lsn();
     uint64_t end_lsn_offset = start_lsn.offset() + size;
     segment_id *sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
     ALWAYS_ASSERT(sid);
     LSN end_lsn = sid->make_lsn(end_lsn_offset);
     ASSERT(end_lsn_offset == end_lsn.offset());
 
-    LOG(INFO) << "[Backup] Recieved " << size << " bytes ("
-      << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")";
+#ifndef NDEBUG
+    LOG(INFO) << "[Backup] Received " << size << " bytes ("
+      << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
+#endif
 
     // now got the batch of log records, persist them
     if (config::nvram_log_buffer) {
       logmgr->persist_log_buffer();
-      logbuf->advance_writer(sid->buf_offset(end_lsn));
+      logbuf->advance_writer(sid->buf_offset(end_lsn_offset));
     } else {
       logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
-      ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
+      ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
     }
 
     set_ready_message();
@@ -276,10 +282,9 @@ void backup_daemon_rdam() {
 // Support only one peer for now
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
   ALWAYS_ASSERT(size);
-  // wait for the "go" signal
-  wait_for_backup();
   uint64_t offset = buf - primary_rdma_ctx->get_memory_region(log_buf_ridx);
-  primary_rdma_ctx->rdma_write_imm(log_buf_ridx, offset, log_buf_ridx, offset, size, size);
+  ASSERT(offset + size <= sm_log::get_logbuf()->window_size() * 2);
+  primary_rdma_ctx->rdma_write_imm(log_buf_ridx, offset, log_buf_ridx, offset, size, size, false);
 }
 
 }  // namespace rep

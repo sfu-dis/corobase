@@ -59,10 +59,9 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     , _write_daemon_should_stop(false)
     , _lsn_offset(_lm.get_durable_mark().offset())
 {
-    // (Re-)Initialize the log buffer with correct starting byte offset
-    // RDMA needs the space to be allocated before we create the logmgr
-    _logbuf = sm_log::logbuf;
-    new(_logbuf) window_buffer(config::log_buffer_mb * config::MB, get_starting_byte_offset(&_lm));
+  _logbuf = sm_log::get_logbuf();
+  _logbuf->_head = _logbuf->_tail = get_starting_byte_offset(&_lm);
+  if(!config::is_backup_srv()) {
     _tls_lsn_offset = (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
     memset(_tls_lsn_offset, 0, sizeof(uint64_t) * config::MAX_THREADS);
     _commit_queue = new commit_queue[config::worker_threads];
@@ -77,6 +76,7 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     int err = pthread_create(&_write_daemon_tid, NULL,
                              &log_write_daemon_thunk, this);
     THROW_IF(err, os_error, err, "Unable to start log writer daemon thread");
+  }
 }
 
 sm_log_alloc_mgr::~sm_log_alloc_mgr()
@@ -286,6 +286,7 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         auto *buf = logbuf.read_buf(durable_byte, nbytes);
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
         bool flushed = false;
+        bool shipped = false;
         if(config::num_active_backups) {
           auto end_lsn = durable_sid->make_lsn(new_offset);
           ASSERT(durable_sid->make_lsn(_durable_flushed_lsn_offset).segment() == end_lsn.segment());
@@ -297,11 +298,18 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
           }
           ASSERT(end_lsn.offset() - _durable_flushed_lsn_offset == nbytes);
           rep::primary_ship_log_buffer_all(buf, nbytes);
+          shipped = true;
         }
 
         if(!flushed && (!config::null_log_device || config::loading)) {
           uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
           THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
+        }
+
+        if(shipped && config::log_ship_by_rdma) {
+          // Now we need to poll to make sure the RDMA write finished
+          rep::primary_rdma_poll_send_cq();
+          rep::rdma_wait_for_backup();  // wait for the backup to persist
         }
 
         // After this the buffer space will become available for consumption

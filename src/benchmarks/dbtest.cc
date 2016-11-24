@@ -249,16 +249,6 @@ main(int argc, char **argv)
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
 
-  sm_log::allocate_log_buffer();
-
-  if(config::is_backup_srv()) {
-    if(config::log_ship_by_rdma) {
-      rep::start_as_backup_rdma();
-    } else{
-      rep::start_as_backup_tcp();
-    }
-  }
-
   // Must have everything in config ready by this point (ndb-wrapper's ctor will use them)
   config::sanity_check();
   ndb_wrapper *db = NULL;

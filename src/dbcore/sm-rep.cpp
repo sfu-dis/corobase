@@ -20,6 +20,7 @@ void start_as_primary() {
 void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
   backup_sockfds_mutex.lock();
   if (config::log_ship_by_rdma) {
+    // This is async - returns immediately. Caller should poll/wait for ack.
     primary_ship_log_buffer_rdma(buf, size);
   } else {
     ASSERT(backup_sockfds.size());

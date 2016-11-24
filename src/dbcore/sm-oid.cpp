@@ -388,7 +388,9 @@ sm_oid_mgr_impl::recreate_allocator(FID f, OID m)
     oid_array *oa = ptr;
     ASSERT(oa);
     oa->ensure_size(alloc->head.capacity_mark);
+#ifndef NDEBUG
     LOG(INFO) << "[Recovery] recreate allocator " << f << ", himark=" << m;
+#endif
 }
 
 void
