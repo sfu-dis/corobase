@@ -167,10 +167,19 @@ bench_runner::run()
   ALWAYS_ASSERT(not oidmgr);
   RCU::rcu_enter();
 
-  logmgr = sm_log::new_log(config::recover_functor, nullptr);
-  ALWAYS_ASSERT(logmgr);
+  sm_log::allocate_log_buffer();
 
-  sm_oid_mgr::create();
+  if(config::is_backup_srv()) {
+    if(config::log_ship_by_rdma) {
+      rep::start_as_backup_rdma();
+    } else{
+      rep::start_as_backup_tcp();
+    }
+  } else {
+    logmgr = sm_log::new_log(config::recover_functor, nullptr);
+    sm_oid_mgr::create();
+  }
+  ALWAYS_ASSERT(logmgr);
   ALWAYS_ASSERT(oidmgr);
 
   LSN chkpt_lsn = logmgr->get_chkpt_start();

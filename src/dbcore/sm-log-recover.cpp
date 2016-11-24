@@ -37,7 +37,7 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
 
 void
 sm_log_recover_mgr::recover() {
-  if(!sm_log::need_recovery) {
+  if(!sm_log::need_recovery && !config::is_backup_srv()) {
     LOG(INFO) << "No need for recovery";
     return;
   }

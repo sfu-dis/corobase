@@ -120,9 +120,9 @@ private:
 
   void init(const char *server);
   inline bool is_server() { return server_name.length() == 0; }
-  void poll_send_cq();
 
 public:
+  void poll_send_cq();
   context(std::string& server, std::string& port, int ib_port) :
     pd(nullptr), port(port), ib_port(ib_port),
     local_connection(nullptr), remote_connection(nullptr) {
@@ -156,7 +156,7 @@ public:
   void rdma_write_imm(
     uint32_t local_index, uint64_t local_offset,
     uint32_t remote_index, uint64_t remote_offset,
-    uint64_t size, uint32_t imm_data);
+    uint64_t size, uint32_t imm_data, bool sync = true);
 
   /* Read [size] of bytes placed at the [remote_index] buffer with [remote_offset]
    * into [local_index] buffer with [local_offset]. */

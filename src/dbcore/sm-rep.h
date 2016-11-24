@@ -106,6 +106,8 @@ void primary_init_rdma();
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size);
 void update_pdest_on_backup_rdma(write_record_t* w);
 void send_log_files_after_rdma(backup_start_metadata* md, LSN chkpt_start);
+void rdma_wait_for_backup();
+void primary_rdma_poll_send_cq();
 
 // TCP-specific functions
 void start_as_backup_tcp();

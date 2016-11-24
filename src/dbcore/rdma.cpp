@@ -245,7 +245,7 @@ void context::rdma_write(
 void context::rdma_write_imm(
   uint32_t local_index, uint64_t local_offset,
   uint32_t remote_index, uint64_t remote_offset,
-  uint64_t size, uint32_t imm_data) {
+  uint64_t size, uint32_t imm_data, bool sync) {
   auto* mem_region = mem_regions[local_index];
   struct ibv_sge sge_list;
   memset(&sge_list, 0, sizeof(sge_list));
@@ -268,7 +268,9 @@ void context::rdma_write_imm(
   struct ibv_send_wr *bad_wr = nullptr;
   int ret = ibv_post_send(qp, &wr, &bad_wr);
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
-  poll_send_cq();
+  if(sync) {
+    poll_send_cq();
+  }
 }
 
 void context::rdma_read(
