@@ -31,8 +31,8 @@ public:
     static int log_buffer_mb;
     static int log_segment_mb;
     static std::string log_dir;
-    static int null_log_device;
-    static int nvram_log_buffer;
+    static bool null_log_device;
+    static bool nvram_log_buffer;
     static int group_commit;
     static int group_commit_timeout;
     static int group_commit_queue_length;  // how much to reserve
@@ -77,7 +77,7 @@ public:
     static std::string primary_srv;
     static std::string primary_port;
     static int log_ship_warm_up_policy;
-    static int log_ship_by_rdma;
+    static bool log_ship_by_rdma;
     static int log_ship_sync_redo;
 
     inline static bool is_backup_srv() {
