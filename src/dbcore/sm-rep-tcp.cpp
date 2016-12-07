@@ -27,8 +27,8 @@ wait_for_backup:
   // TODO(tzwang): support log-only bootstrap
   ALWAYS_ASSERT(chkpt_fd != -1);
   if(chkpt_fd != -1) {
+    off_t offset = 0;
     while(md->chkpt_size > 0) {
-      off_t offset = 0;
       sent_bytes = sendfile(backup_sockfd, chkpt_fd, &offset, md->chkpt_size);
       ALWAYS_ASSERT(sent_bytes);
       md->chkpt_size -= sent_bytes;
@@ -71,7 +71,6 @@ void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkp
       while(to_send) {
         auto sent_bytes = sendfile(backup_fd, log_fd, &file_off, to_send);
         ALWAYS_ASSERT(sent_bytes);
-        file_off += sent_bytes;
       }
       os_close(log_fd);
     }
@@ -147,17 +146,25 @@ void start_as_backup_tcp() {
     os_close(log_fd);
   }
 
+  logmgr = sm_log::new_log(config::recover_functor, nullptr);
+  sm_oid_mgr::create();
+
+  if(recover_first) {
+    ALWAYS_ASSERT(oidmgr);
+    logmgr->recover();
+  }
+
   // Done with receiving files and they should all be persisted, now ack the primary
   tcp::send_ack(cctx->server_sockfd);
   LOG(INFO) << "[Backup] Received log file.";
   std::thread t(backup_daemon_tcp, cctx);
   t.detach();
 
-  logmgr = sm_log::new_log(config::recover_functor, nullptr);
-  sm_oid_mgr::create();
-  // Now we proceed to recovery
-  ALWAYS_ASSERT(oidmgr);
-  //logmgr->recover();
+  if(!recover_first) {
+    // Now we proceed to recovery
+    ALWAYS_ASSERT(oidmgr);
+    logmgr->recover();
+  }
 }
 
 // Send the log buffer to backups
@@ -222,10 +229,8 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     tcp::send_ack(cctx->server_sockfd);
 
     if (config::log_ship_sync_redo) {
-    //  ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
-    //  printf("[Backup] Rolling forward %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
-    //  logmgr->redo_log(start_lsn, end_lsn);
-    //  printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+      logmgr->redo_log(start_lsn, end_lsn);
+      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
     if (config::nvram_log_buffer)
       logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);

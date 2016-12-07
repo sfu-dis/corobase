@@ -208,7 +208,14 @@ void start_as_backup_rdma() {
     os_close(log_fd);
   }
 
-  // Done with receiving files and they should all be persisted
+  logmgr = sm_log::new_log(config::recover_functor, nullptr);
+  sm_oid_mgr::create();
+
+  if(recover_first) {
+    ALWAYS_ASSERT(oidmgr);
+    logmgr->recover();
+  }
+
   set_message(kRdmaReadyToReceive);
   LOG(INFO) << "[Backup] Received log file.";
 
@@ -216,11 +223,11 @@ void start_as_backup_rdma() {
   std::thread t(backup_daemon_rdam);
   t.detach();
 
-  logmgr = sm_log::new_log(config::recover_functor, nullptr);
-  sm_oid_mgr::create();
-  // Now we proceed to recovery
-  ALWAYS_ASSERT(oidmgr);
-  //logmgr->recover();
+  if(!recover_first) {
+    // Now we proceed to recovery
+    ALWAYS_ASSERT(oidmgr);
+    logmgr->recover();
+  }
 }
 
 void backup_daemon_rdam() {
@@ -263,9 +270,10 @@ void backup_daemon_rdam() {
     ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
 
     if (config::log_ship_sync_redo) {
-      //ALWAYS_ASSERT(end_lsn == logmgr->durable_flushed_lsn());
-      //logmgr->redo_log(start_lsn, end_lsn);
-      //printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+      auto dlsn = logmgr->durable_flushed_lsn();
+      ALWAYS_ASSERT(dlsn.offset() == end_lsn_offset);
+      //logmgr->redo_log(start_lsn, dlsn);
+      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
   }
 }

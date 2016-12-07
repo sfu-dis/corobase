@@ -288,13 +288,11 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         bool flushed = false;
         bool shipped = false;
         if(!config::null_log_device) {
-          auto end_lsn = durable_sid->make_lsn(new_offset);
-          ASSERT(durable_sid->make_lsn(_durable_flushed_lsn_offset).segment() == end_lsn.segment());
           // Flush first before shipping (if enabled)
           uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
           THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
           if(config::num_active_backups && !config::loading) {
-            ASSERT(end_lsn.offset() - _durable_flushed_lsn_offset == nbytes);
+            ASSERT(new_offset - _durable_flushed_lsn_offset == nbytes);
             rep::primary_ship_log_buffer_all(buf, nbytes);
             if(config::log_ship_by_rdma) {
               // Now we need to poll to make sure the RDMA write finished

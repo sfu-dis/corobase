@@ -2,6 +2,10 @@
 #include "../benchmarks/ndb_wrapper.h"
 
 namespace rep {
+
+bool recover_first = true;
+uint64_t cur_lsn_offset = 0;
+
 // for primary server only
 std::vector<int> backup_sockfds;
 std::mutex backup_sockfds_mutex;
