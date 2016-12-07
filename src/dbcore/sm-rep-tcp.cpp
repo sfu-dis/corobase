@@ -152,6 +152,12 @@ void start_as_backup_tcp() {
   LOG(INFO) << "[Backup] Received log file.";
   std::thread t(backup_daemon_tcp, cctx);
   t.detach();
+
+  logmgr = sm_log::new_log(config::recover_functor, nullptr);
+  sm_oid_mgr::create();
+  // Now we proceed to recovery
+  ALWAYS_ASSERT(oidmgr);
+  //logmgr->recover();
 }
 
 // Send the log buffer to backups
@@ -207,8 +213,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
 
     // now got the batch of log records, persist them
     if (config::nvram_log_buffer) {
-      logmgr->persist_log_buffer();
-      logbuf->advance_writer(sid->buf_offset(end_lsn));
+      logmgr->persist_nvram_log_buffer(*logbuf, end_lsn_offset);
     } else {
       logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
       ASSERT(logmgr->durable_flushed_lsn() == end_lsn);

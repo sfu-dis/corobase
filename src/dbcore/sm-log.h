@@ -378,7 +378,7 @@ struct sm_log {
     LSN get_chkpt_start();
     static window_buffer *get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
-    uint64_t persist_log_buffer();
+    void persist_nvram_log_buffer(window_buffer& logbuf, int32_t size);
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
     void redo_log(LSN start_lsn, LSN end_lsn);
     void recover();
