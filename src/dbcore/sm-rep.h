@@ -30,6 +30,9 @@ struct write_record_t;
 
 namespace rep {
 
+extern const uint64_t kRdmaWaiting;
+extern const uint64_t kRdmaReadyToReceive;
+
 extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
 
@@ -106,8 +109,10 @@ void primary_init_rdma();
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size);
 void update_pdest_on_backup_rdma(write_record_t* w);
 void send_log_files_after_rdma(backup_start_metadata* md, LSN chkpt_start);
-void rdma_wait_for_backup();
+void rdma_wait_for_message(uint64_t msg, bool reset = true);
+void set_message(uint64_t msg);
 void primary_rdma_poll_send_cq();
+//void primary_persist_remote_nvram(const char* buf, uint32_t size);
 
 // TCP-specific functions
 void start_as_backup_tcp();

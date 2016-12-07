@@ -122,6 +122,9 @@ main(int argc, char **argv)
   config::parallel_loading = FLAGS_parallel_loading;
   config::enable_gc = FLAGS_enable_gc;
   config::nvram_log_buffer = FLAGS_nvram_log_buffer;
+  if(config::nvram_log_buffer) {
+    LOG(FATAL) << "Not supported: nvram_log_buffer";
+  }
   if(FLAGS_parallel_recovery_by == "oid") {
     config::recover_functor = new parallel_oid_replay;
   } else if(FLAGS_parallel_recovery_by == "file") {
@@ -251,6 +254,7 @@ main(int argc, char **argv)
 
   // Must have everything in config ready by this point (ndb-wrapper's ctor will use them)
   config::sanity_check();
+  config::calibrate_spin_cycles();
   ndb_wrapper *db = NULL;
   db = new ndb_wrapper();
   void (*test_fn)(ndb_wrapper *, int argc, char **argv) = NULL;

@@ -27,12 +27,11 @@ sm_log::get_chkpt_start()
     return get_impl(this)->_lm._lm.get_chkpt_start();
 }
 
-uint64_t
-sm_log::persist_log_buffer()
+void
+sm_log::persist_nvram_log_buffer(window_buffer& logbuf, int32_t size)
 {
-    ALWAYS_ASSERT(config::nvram_log_buffer);
-    /** dummy. FIXME(tzwang) **/
-    return get_impl(this)->_lm.smallest_tls_lsn_offset();
+    return;
+    //get_impl(this)->_lm.persist_nvram_log_buffer(logbuf, size);
 }
 
 void

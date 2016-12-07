@@ -110,9 +110,9 @@ retry:
         lock.unlock();
         if (config::nvram_log_buffer) {
             // just persist it, no need to flush to disk
-            auto persist_lsn_offset = logmgr->persist_log_buffer();
-            util::timer t;
-            lm->dequeue_committed_xcts(persist_lsn_offset, t.get_start());
+            //auto persist_lsn_offset = logmgr->persist_log_buffer();
+            //util::timer t;
+            //lm->dequeue_committed_xcts(persist_lsn_offset, t.get_start());
         }
         else {
             logmgr->flush();
@@ -287,29 +287,22 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
         bool flushed = false;
         bool shipped = false;
-        if(config::num_active_backups) {
+        if(!config::null_log_device) {
           auto end_lsn = durable_sid->make_lsn(new_offset);
           ASSERT(durable_sid->make_lsn(_durable_flushed_lsn_offset).segment() == end_lsn.segment());
-          // Flush first if the logbuf is not backed by NVRAM
-          if(config::loading || (!config::null_log_device && !config::nvram_log_buffer)) {
-            uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
-            THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
-            flushed = true;
-          }
-          ASSERT(end_lsn.offset() - _durable_flushed_lsn_offset == nbytes);
-          rep::primary_ship_log_buffer_all(buf, nbytes);
-          shipped = true;
-        }
-
-        if(!flushed && (!config::null_log_device || config::loading)) {
+          // Flush first before shipping (if enabled)
           uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
           THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
-        }
-
-        if(shipped && config::log_ship_by_rdma) {
-          // Now we need to poll to make sure the RDMA write finished
-          rep::primary_rdma_poll_send_cq();
-          rep::rdma_wait_for_backup();  // wait for the backup to persist
+          if(config::num_active_backups && !config::loading) {
+            ASSERT(end_lsn.offset() - _durable_flushed_lsn_offset == nbytes);
+            rep::primary_ship_log_buffer_all(buf, nbytes);
+            if(config::log_ship_by_rdma) {
+              // Now we need to poll to make sure the RDMA write finished
+              rep::primary_rdma_poll_send_cq();
+              // wait for the backup to persist
+              rep::rdma_wait_for_message(rep::kRdmaReadyToReceive);
+            }
+          }
         }
 
         // After this the buffer space will become available for consumption

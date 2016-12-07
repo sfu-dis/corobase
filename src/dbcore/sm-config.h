@@ -1,4 +1,5 @@
 #pragma once
+#include <x86intrin.h>
 #include <iostream>
 #include <string>
 #include <numa.h>
@@ -80,6 +81,8 @@ public:
     static bool log_ship_by_rdma;
     static int log_ship_sync_redo;
 
+    static uint64_t write_bytes_per_cycle;
+
     inline static bool is_backup_srv() {
         return primary_srv.size();
     }
@@ -100,5 +103,15 @@ public:
     static void sanity_check();
     static inline bool ssn_read_opt_enabled() {
         return ssn_read_opt_threshold < SSN_READ_OPT_DISABLED;
+    }
+
+    static inline void calibrate_spin_cycles() {
+      char test_arr[CACHELINE_SIZE];
+      unsigned int unused = 0;
+      uint64_t start  = __rdtscp(&unused);
+      _mm_clflush(test_arr);
+      uint64_t end = __rdtscp(&unused);
+      write_bytes_per_cycle = (double)CACHELINE_SIZE / (end - start);
+      LOG(INFO) << write_bytes_per_cycle << " bytes per cycle";
     }
 };
