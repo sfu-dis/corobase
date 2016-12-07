@@ -32,6 +32,7 @@ namespace rep {
 
 extern const uint64_t kRdmaWaiting;
 extern const uint64_t kRdmaReadyToReceive;
+extern bool recover_first;
 
 extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
