@@ -146,9 +146,9 @@ enum log_record_type : uint8_t {
      */
     LOG_FAT_SKIP = LOG_SKIP | LOG_FLAG_HAS_PAYLOAD, 
 
-    /* A chkpt record
+    /* A key for an update.
      */
-    LOG_CHKPT = LOG_FLAG_HAS_PAYLOAD | 0x8,
+    LOG_UPDATE_KEY = LOG_FLAG_HAS_PAYLOAD | 0x8,
 
     /* Records the creation of an FID with a given table name
      */

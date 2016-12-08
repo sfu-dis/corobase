@@ -101,13 +101,46 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec, bool i
   ASSERT(oidmgr->file_exists(f));
   auto head_ptr = oidmgr->oid_get(f, o);
   fat_ptr ptr = NULL_PTR;
-  if (not is_delete)
+  if(!is_delete) {
     ptr = recover_prepare_version(logrec, head_ptr);
+  }
   oidmgr->oid_put(f, o, ptr);
   ASSERT(oidmgr->oid_get(f, o).offset() == ptr.offset());
   // this has to go if on-demand loading is enabled
   //ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
   //printf("[Recovery] update: FID=%d OID=%d\n", f, o);
+}
+
+void
+sm_log_recover_impl::recover_update_key(sm_log_scan_mgr::record_scan* logrec) {
+  // Used when emulating the case where we didn't have OID arrays - must update tree leaf nodes
+  auto* index = sm_file_mgr::get_index(logrec->fid());
+  ASSERT(index);
+  auto sz = logrec->payload_size();
+  static __thread char *buf;
+  static __thread uint64_t buf_size;
+  if (unlikely(not buf)) {
+    buf = (char *)MM::allocate(sz, 0);
+    buf_size = align_up(sz);
+  } else if (unlikely(buf_size < sz)) {
+    MM::deallocate(fat_ptr::make(buf, encode_size_aligned(buf_size)));
+    buf = (char *)MM::allocate(sz, 0);
+    buf_size = sz;
+  }
+  logrec->load_object(buf, sz);
+
+  // Extract the real key length (don't use varstr.data()!)
+  size_t len = ((varstr *)buf)->size();
+  ASSERT(align_up(len + sizeof(varstr)) == sz);
+
+  // Construct the varkey (skip the varstr struct then it's data)
+  varstr* key = (varstr*)MM::allocate(sizeof(varstr) + len, 0);
+  new (key) varstr((char *)key + sizeof(varstr), len);
+  key->copy_from((char *)buf + sizeof(varstr), len);
+
+  OID old_oid = 0;
+  index->btr.underlying_btree.insert(*key, logrec->oid(), nullptr, &old_oid, nullptr);
+  ALWAYS_ASSERT(old_oid == logrec->oid());
 }
 
 ndb_ordered_index*
@@ -280,6 +313,10 @@ parallel_file_replay::redo_runner::redo_file() {
       owner->recover_update(scan);
       size += scan->payload_size();
       break;
+    case sm_log_scan_mgr::LOG_UPDATE_KEY:
+      owner->recover_update_key(scan);
+      size += scan->payload_size();
+      break;
     case sm_log_scan_mgr::LOG_DELETE:
       dcount++;
       owner->recover_update(scan, true);
@@ -292,8 +329,6 @@ parallel_file_replay::redo_runner::redo_file() {
       icount++;
       owner->recover_insert(scan);
       size += scan->payload_size();
-      break;
-    case sm_log_scan_mgr::LOG_CHKPT:
       break;
     case sm_log_scan_mgr::LOG_FID:
       // The main recover function should have already did this
@@ -408,6 +443,10 @@ parallel_oid_replay::redo_runner::redo_partition() {
     max_oid[fid] = std::max(max_oid[fid], oid);
 
     switch (scan->type()) {
+    case sm_log_scan_mgr::LOG_UPDATE_KEY:
+      owner->recover_update_key(scan);
+      size += scan->payload_size();
+      break;
     case sm_log_scan_mgr::LOG_UPDATE:
     case sm_log_scan_mgr::LOG_RELOCATE:
       ucount++;
@@ -426,8 +465,6 @@ parallel_oid_replay::redo_runner::redo_partition() {
       icount++;
       owner->recover_insert(scan);
       size += scan->payload_size();
-      break;
-    case sm_log_scan_mgr::LOG_CHKPT:
       break;
     case sm_log_scan_mgr::LOG_FID:
       // The main recover function should have already did this

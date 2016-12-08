@@ -58,6 +58,7 @@ struct sm_tx_log {
        assumed to already have been allocated.
      */
     void log_update(FID f, OID o, fat_ptr p, int abits, fat_ptr *pdest);
+    void log_update_key(FID f, OID o, fat_ptr p, int abits);
 
     /* Record a change in a record's on-disk location, to the address
        indicated. The OID remains the same and the data for the new
@@ -138,7 +139,7 @@ struct sm_log_scan_mgr {
     static size_t const NO_PAYLOAD = -1;
     
     enum record_type { LOG_INSERT, LOG_INSERT_INDEX, LOG_UPDATE,
-                       LOG_RELOCATE, LOG_DELETE, LOG_CHKPT, LOG_FID };
+                       LOG_RELOCATE, LOG_DELETE, LOG_UPDATE_KEY, LOG_FID };
 
     /* A cursor for iterating over log records, whether those of a single
        transaction or all which follow some arbitrary starting point.

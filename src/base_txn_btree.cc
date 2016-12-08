@@ -202,6 +202,12 @@ rc_t base_txn_btree::do_tree_put(
             ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
             // log the whole varstr so that recovery can figure out the real size
             // of the tuple, instead of using the decoded (larger-than-real) size.
+            if(config::log_key_for_update) {
+              auto key_size = align_up(k->size() + sizeof(varstr));
+              auto key_size_code = encode_size_aligned(key_size);
+              t.log->log_update(this->fid, oid, fat_ptr::make((void *)k, key_size_code),
+                                DEFAULT_ALIGNMENT_BITS, nullptr);
+            }
             t.log->log_update(this->fid, oid, fat_ptr::make((void *)v, size_code),
                               DEFAULT_ALIGNMENT_BITS, &tuple->get_object()->_pdest);
         }

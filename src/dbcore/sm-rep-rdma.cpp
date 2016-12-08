@@ -272,7 +272,7 @@ void backup_daemon_rdam() {
     if (config::log_ship_sync_redo) {
       auto dlsn = logmgr->durable_flushed_lsn();
       ALWAYS_ASSERT(dlsn.offset() == end_lsn_offset);
-      //logmgr->redo_log(start_lsn, dlsn);
+      logmgr->redo_log(start_lsn, dlsn);
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
   }
