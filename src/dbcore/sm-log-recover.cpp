@@ -325,15 +325,14 @@ get_type(log_record_type tp)
     case LOG_UPDATE:
     case LOG_UPDATE_EXT:
         return sm_log_scan_mgr::LOG_UPDATE;
+    case LOG_UPDATE_KEY:
+        return sm_log_scan_mgr::LOG_UPDATE_KEY;
 
     case LOG_DELETE:
         return sm_log_scan_mgr::LOG_DELETE;
 
     case LOG_RELOCATE:
         return sm_log_scan_mgr::LOG_RELOCATE;
-
-    case LOG_CHKPT:
-        return sm_log_scan_mgr::LOG_CHKPT;
 
     case LOG_FID:
         return sm_log_scan_mgr::LOG_FID;

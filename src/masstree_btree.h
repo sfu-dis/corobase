@@ -358,8 +358,7 @@ class mbtree {
    * is written into old_v
    */
   inline bool
-  insert(const key_type &k, dbtuple * v, xid_context *xc,
-         value_type *old_v = NULL,
+  insert(const key_type &k, OID o, xid_context *xc, value_type *old_oid = NULL,
          insert_info_t *insert_info = NULL);
 
   /**
@@ -564,18 +563,17 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple* &v, xid_contex
 }
 
 template <typename P>
-inline bool mbtree<P>::insert(const key_type &k, dbtuple * v, xid_context *xc,
-                              value_type *old_v,
-                              insert_info_t *insert_info)
+inline bool mbtree<P>::insert(const key_type &k, OID o, xid_context *xc,
+                              value_type *old_oid, insert_info_t *insert_info)
 {
   threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
   bool found = lp.find_insert(ti);
   if (!found)
     ti.advance_timestamp(lp.node_timestamp());
-  if (found && old_v)
-    *old_v = lp.value();
-  lp.value() = v;
+  if (found && old_oid)
+    *old_oid = lp.value();
+  lp.value() = o;
   if (insert_info) {
     insert_info->node = lp.node();
     insert_info->old_version = lp.previous_full_version_value();

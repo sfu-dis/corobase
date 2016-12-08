@@ -45,6 +45,9 @@ DEFINE_string(log_ship_warm_up, "none", "Method to load tuples for log shipping:
   "eager - load everything to memory after received log.");
 DEFINE_bool(log_ship_by_rdma, false, "Whether to use RDMA for log shipping.");
 DEFINE_bool(log_ship_sync_redo, false, "Redo synchronously during log shipping.");
+DEFINE_bool(log_ship_full_redo, false, "Whether to repeat index update during redo."
+  "For experimenting with the benefit/cost of having indirection arrays only.");
+DEFINE_bool(log_key_for_update, false, "Whether to store the key in update log records.");
 DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
 DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
@@ -145,8 +148,10 @@ main(int argc, char **argv)
 
   config::primary_srv = FLAGS_primary_host;
   config::primary_port = FLAGS_primary_port;
+  config::log_key_for_update = FLAGS_log_key_for_update;
   config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
   config::log_ship_sync_redo = FLAGS_log_ship_sync_redo;
+  config::log_ship_full_redo = FLAGS_log_ship_full_redo;
   config::num_backups = FLAGS_num_backups;
   config::wait_for_backups = FLAGS_wait_for_backups;
   if(FLAGS_log_ship_warm_up == "none" ) {
@@ -215,6 +220,8 @@ main(int argc, char **argv)
   cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
   cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << endl;
   cerr << "  log-ship-sync-redo: " << config::log_ship_sync_redo << endl;
+  cerr << "  log-ship-full-redo: " << config::log_ship_full_redo << endl;
+  cerr << "  log-key-for-update: " << config::log_key_for_update << endl;
   cerr << "  enable-chkpt      : " << config::enable_chkpt << endl;
   if(config::enable_chkpt) {
     cerr << "  chkpt-interval  : " << config::chkpt_interval << endl;

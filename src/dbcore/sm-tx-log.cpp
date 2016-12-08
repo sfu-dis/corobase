@@ -45,6 +45,11 @@ sm_tx_log::log_update(FID f, OID o, fat_ptr ptr, int abits, fat_ptr *pdest) {
 }
 
 void
+sm_tx_log::log_update_key(FID f, OID o, fat_ptr ptr, int abits) {
+    get_log_impl(this)->add_payload_request(LOG_UPDATE_KEY, f, o, ptr, abits, nullptr);
+}
+
+void
 sm_tx_log::log_fid(FID f, const std::string &name)
 {
     auto size = align_up(name.length()) + 1;

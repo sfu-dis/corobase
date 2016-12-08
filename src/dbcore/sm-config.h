@@ -78,8 +78,10 @@ public:
     static std::string primary_srv;
     static std::string primary_port;
     static int log_ship_warm_up_policy;
+    static bool log_ship_full_redo;
     static bool log_ship_by_rdma;
-    static int log_ship_sync_redo;
+    static bool log_ship_sync_redo;
+    static bool log_key_for_update;
 
     static uint64_t write_bytes_per_cycle;
 

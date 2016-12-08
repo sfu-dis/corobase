@@ -13,6 +13,7 @@ struct sm_log_recover_impl {
   void recover_insert(sm_log_scan_mgr::record_scan *logrec);
   void recover_index_insert(sm_log_scan_mgr::record_scan *logrec);
   void recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete = false);
+  void recover_update_key(sm_log_scan_mgr::record_scan* logrec);
   fat_ptr recover_prepare_version(
                               sm_log_scan_mgr::record_scan *logrec,
                               fat_ptr next);
