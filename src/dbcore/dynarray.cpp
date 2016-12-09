@@ -170,7 +170,7 @@ dynarray::ensure_size(size_t min_size)
 {
     min_size = align_up(min_size, page_size());
     if(size() < min_size) 
-	resize(min_size);
+	resize(min_size * 2);
 }
 
 void
