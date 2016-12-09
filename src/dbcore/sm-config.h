@@ -34,7 +34,7 @@ public:
     static std::string log_dir;
     static bool null_log_device;
     static bool nvram_log_buffer;
-    static int group_commit;
+    static bool group_commit;
     static int group_commit_timeout;
     static int group_commit_queue_length;  // how much to reserve
     static int max_mb_per_log_io;

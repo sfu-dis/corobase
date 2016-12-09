@@ -57,7 +57,7 @@ DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
 // when the following happens, whichever is earlier:
 // 1. queue is full; 2. the log buffer is half full; 3. after [timeout] seconds.
 DEFINE_bool(group_commit, false, "Whether to enable group commit.");
-DEFINE_uint64(group_commit_queue_length, 5000, "Group commit queue length");
+DEFINE_uint64(group_commit_queue_length, 25000, "Group commit queue length");
 DEFINE_uint64(group_commit_timeout, 5, "Group commit flush interval (in seconds).");
 
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
