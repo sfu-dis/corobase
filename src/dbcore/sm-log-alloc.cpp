@@ -285,8 +285,6 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         // perform the write
         auto *buf = logbuf.read_buf(durable_byte, nbytes);
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
-        bool flushed = false;
-        bool shipped = false;
         if(!config::null_log_device) {
           if(config::num_active_backups) {
             // Ship it first, this is async for RDMA
