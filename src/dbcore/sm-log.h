@@ -381,6 +381,7 @@ struct sm_log {
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
     void persist_nvram_log_buffer(window_buffer& logbuf, int32_t size);
     segment_id *flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
+    segment_id* get_segment(uint32_t segnum);
     void redo_log(LSN start_lsn, LSN end_lsn);
     void recover();
     void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);

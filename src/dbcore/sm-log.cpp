@@ -21,6 +21,11 @@ sm_log::get_offset_segment(uint64_t off) {
   return get_impl(this)->_lm._lm.get_offset_segment(off);
 }
 
+segment_id*
+sm_log::get_segment(uint32_t segnum) {
+  return get_impl(this)->_lm._lm.get_segment(segnum);
+}
+
 LSN
 sm_log::get_chkpt_start()
 {
