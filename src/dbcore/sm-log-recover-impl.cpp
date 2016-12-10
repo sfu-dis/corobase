@@ -431,7 +431,11 @@ parallel_oid_replay::redo_runner::redo_partition() {
   //util::scoped_timer t("redo_partition");
   RCU::rcu_enter();
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
-  auto *scan = owner->scanner->new_log_scan(owner->start_lsn, config::eager_warm_up());
+  bool fetch_payloads = config::eager_warm_up();
+  if(config::is_backup_srv() && config::log_ship_sync_redo) {
+    fetch_payloads = true;
+  }
+  auto *scan = owner->scanner->new_log_scan(owner->start_lsn, fetch_payloads);
   static __thread std::unordered_map<FID, OID> max_oid;
 
   for (; scan->valid() and scan->payload_lsn() < owner->end_lsn; scan->next()) {

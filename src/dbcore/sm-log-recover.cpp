@@ -115,8 +115,8 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
     auto pread = [&](size_t nbytes, uint64_t i)->size_t {
         uint64_t offset = sid->offset(x);
         // See if it's stepping into the log buffer
-        if (config::is_backup_srv() and config::nvram_log_buffer and
-            logmgr and x >= logmgr ->durable_flushed_lsn()) {
+        if(logmgr && x >= logmgr ->durable_flushed_lsn()) {
+            ALWAYS_ASSERT(config::is_backup_srv());
             // we should be scanning and replaying the log at a backup node
             auto* logbuf = logmgr->get_logbuf();
             // the caller should have called advance_writer(end_lsn) already
@@ -240,6 +240,7 @@ sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr, int align_
     ASSERT(sid);
     ASSERT(ptr.offset() >= sid->start_offset);
     size_t m = os_pread(sid->fd, buf, nbytes, ptr.offset() - sid->start_offset);
+    ALWAYS_ASSERT(m == nbytes);
     THROW_IF(m != nbytes, log_file_error,
              "Unable to read full object (%zd bytes needed, %zd read)",
              nbytes, m);

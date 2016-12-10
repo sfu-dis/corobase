@@ -259,22 +259,30 @@ void backup_daemon_rdam() {
     // to use the data size we got to calculate a new durable lsn first.
     segment_id *sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
     ALWAYS_ASSERT(sid);
+    if(sid->end_offset < end_lsn_offset + MIN_LOG_BLOCK_SIZE) {
+      sid = logmgr->get_segment((sid->segnum+1) % NUM_LOG_SEGMENTS);
+    }
+    LSN end_lsn = sid->make_lsn(end_lsn_offset);
 
 #ifndef NDEBUG
     LOG(INFO) << "[Backup] Received " << size << " bytes ("
       << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
 #endif
 
+    if (config::log_ship_sync_redo) {
+      auto dlsn = logmgr->durable_flushed_lsn();
+      ALWAYS_ASSERT(dlsn.offset() < end_lsn_offset);
+        if(logbuf->available_to_read() < size) {
+          logbuf->advance_writer(start_lsn.offset() + size);
+        }
+      logmgr->redo_log(start_lsn, end_lsn);
+      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    }
+
     // Now persist the log records in storage
     logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
     ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
-
-    if (config::log_ship_sync_redo) {
-      auto dlsn = logmgr->durable_flushed_lsn();
-      ALWAYS_ASSERT(dlsn.offset() == end_lsn_offset);
-      logmgr->redo_log(start_lsn, dlsn);
-      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
-    }
+    // FIXME(tzwang): now advance cur_lsn so that readers can really use the new data
   }
 }
 
