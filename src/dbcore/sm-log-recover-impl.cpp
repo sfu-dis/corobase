@@ -65,18 +65,14 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) 
 
 void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index) {
+  static const uint32_t kBufferSize = 128 * config::MB;
   ASSERT(index);
-  auto sz = logrec->payload_size();
+  auto sz = align_up(logrec->payload_size());
   static __thread char *buf;
-  static __thread uint64_t buf_size;
   if (unlikely(not buf)) {
-    buf = (char *)MM::allocate(sz, 0);
-    buf_size = align_up(sz);
-  } else if (unlikely(buf_size < sz)) {
-    MM::deallocate(fat_ptr::make(buf, encode_size_aligned(buf_size)));
-    buf = (char *)MM::allocate(sz, 0);
-    buf_size = sz;
+    buf = (char *)malloc(kBufferSize);
   }
+  ALWAYS_ASSERT(sz < kBufferSize);
   logrec->load_object(buf, sz);
 
   // Extract the real key length (don't use varstr.data()!)
