@@ -78,6 +78,7 @@ void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkp
 }
 
 void start_as_backup_tcp() {
+  memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(config::is_backup_srv());
 
   LOG(INFO) << "[Backup] Primary: " << config::primary_srv << ":" << config::primary_port;

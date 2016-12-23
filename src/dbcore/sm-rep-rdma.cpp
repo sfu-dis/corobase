@@ -7,13 +7,14 @@ rdma::context* backup_rdma_ctx = nullptr;
 
 uint32_t msg_buf_ridx = -1;
 uint32_t log_buf_ridx = -1;
-const uint64_t kRdmaWaiting = 0x1;
-const uint64_t kRdmaReadyToReceive = 0x4;
+uint32_t log_buf_partition_bounds_ridx = -1;
 
 // Get myself a dedicated memory buffer for reading in chkpt and log files
 static const uint64_t kDaemonBufferSize = 512 * config::MB;
 static char daemon_buffer[kDaemonBufferSize];
 static uint32_t daemon_buffer_ridx = -1;
+
+const static uint32_t kRdmaImmNewSeg = 1U << 31;
 
 // For control flow...
 const static int kMessageSize = 8;
@@ -33,8 +34,8 @@ void rdma_wait_for_message(uint64_t msg, bool reset) {
   }
 }
 
-void primary_rdma_poll_send_cq() {
-  primary_rdma_ctx->poll_send_cq();
+void primary_rdma_poll_send_cq(uint64_t nops) {
+  primary_rdma_ctx->poll_send_cq(nops);
 }
 
 void set_message(uint64_t msg) {
@@ -57,6 +58,8 @@ void primary_daemon_rdma() {
   daemon_buffer_ridx = primary_rdma_ctx->register_memory(daemon_buffer, kDaemonBufferSize);
   auto* logbuf = sm_log::get_logbuf();
   log_buf_ridx = primary_rdma_ctx->register_memory(logbuf->_data, logbuf->window_size() * 2);
+  log_buf_partition_bounds_ridx = primary_rdma_ctx->register_memory(
+    (char*)logbuf_partition_bounds, sizeof(uint64_t) * kMaxLogBufferPartitions);
   primary_rdma_ctx->finish_init();
   LOG(INFO) << "[Primary] RDMA initialized (" << daemon_buffer_ridx << ")";
 
@@ -127,12 +130,15 @@ void send_log_files_after_rdma(backup_start_metadata* md, LSN chkpt_start) {
 }
 
 void start_as_backup_rdma() {
+  memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(config::is_backup_srv());
   backup_rdma_ctx = new rdma::context(config::primary_srv, config::primary_port, 1);
   msg_buf_ridx = backup_rdma_ctx->register_memory(msg_buf, kMessageSize);
   daemon_buffer_ridx = backup_rdma_ctx->register_memory(daemon_buffer, kDaemonBufferSize);
   log_buf_ridx = backup_rdma_ctx->register_memory(
                  sm_log::logbuf->_data, sm_log::logbuf->window_size() * 2);
+  log_buf_partition_bounds_ridx = backup_rdma_ctx->register_memory(
+    (char*)logbuf_partition_bounds, sizeof(uint64_t) * kMaxLogBufferPartitions);
   backup_rdma_ctx->finish_init();
   LOG(INFO) << "[Backup] RDMA initialized (" << daemon_buffer_ridx << ")";
 
@@ -244,55 +250,119 @@ void backup_daemon_rdam() {
 
   LOG(INFO) << "[Backup] Start to wait for logs from primary (" << log_buf_ridx <<")";
   auto* logbuf = sm_log::get_logbuf();
+  LSN start_lsn = logmgr->durable_flushed_lsn();
   while (1) {
     rcu_enter();
     DEFER(rcu_exit());
     set_message(kRdmaReadyToReceive);
-    // post an RR to get the data and its size embedded as an immediate
-    size = backup_rdma_ctx->receive_rdma_with_imm();
+    // Post an RR to get the log buffer partition bounds
+    // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
+    // the peer sends data).
+    auto bounds_array_size = backup_rdma_ctx->receive_rdma_with_imm();
+    ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * kMaxLogBufferPartitions);
+
+#ifndef NDEBUG
+    for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+      uint64_t s = 0;
+      if(i > 0) {
+        s = (logbuf_partition_bounds[i] >> 16) - (logbuf_partition_bounds[i-1] >> 16);
+      }
+      LOG(INFO) << "Logbuf partition: " << i << " " << std::hex
+                << logbuf_partition_bounds[i] << std::dec << " " << s;
+    }
+#endif
+
+    // post an RR to get the data and the chunk's begin LSN embedded as an the wr_id
+    uint32_t imm = 0;
+    size = backup_rdma_ctx->receive_rdma_with_imm(&imm);
     THROW_IF(not size, illegal_argument, "Invalid data size");
 
-    LSN start_lsn = logmgr->durable_flushed_lsn();
+    segment_id *sid = logmgr->get_segment(start_lsn.segment());
+    if(imm & kRdmaImmNewSeg) {
+      // Extract the segment's start offset (off of the segment's raw, theoreticall start offset)
+      start_lsn = LSN::make(
+        config::log_segment_mb * config::MB * start_lsn.segment() + (imm & ~kRdmaImmNewSeg),
+        start_lsn.segment() + 1);
+    }
     uint64_t end_lsn_offset = start_lsn.offset() + size;
+    sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
 
     // now we should already have data sitting in the buffer, but we need
     // to use the data size we got to calculate a new durable lsn first.
-    segment_id *sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
-    ALWAYS_ASSERT(sid);
-    if(sid->end_offset < end_lsn_offset + MIN_LOG_BLOCK_SIZE) {
-      sid = logmgr->get_segment((sid->segnum+1) % NUM_LOG_SEGMENTS);
-    }
-    LSN end_lsn = sid->make_lsn(end_lsn_offset);
+    ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
+    ALWAYS_ASSERT(sid && sid->segnum == start_lsn.segment());
+    if(imm & kRdmaImmNewSeg) {
+      // Fix the start and end offsets for the new segment
+      sid->start_offset = start_lsn.offset();
+      sid->end_offset = sid->start_offset + config::log_segment_mb * config::MB;
 
-#ifndef NDEBUG
-    LOG(INFO) << "[Backup] Received " << size << " bytes ("
+      // Now we're ready to create the file with correct file name
+      logmgr->create_segment_file(sid);
+      ALWAYS_ASSERT(sid->start_offset == start_lsn.offset());
+      ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
+    }
+    DLOG(INFO) << "Assigned " << std::hex << start_lsn.offset() << "-" << end_lsn_offset
+      << " to " << std::dec << sid->segnum << " " << std::hex
+      << sid->start_offset << " " << sid->byte_offset << std::dec;
+    ALWAYS_ASSERT(sid);
+    LSN end_lsn = LSN::make(end_lsn_offset, start_lsn.segment());
+
+    DLOG(INFO) << "[Backup] Received " << size << " bytes ("
       << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
-#endif
+
+    // TODO(tzwang): persist and ack Persisted msg here
 
     if (config::log_ship_sync_redo) {
-      auto dlsn = logmgr->durable_flushed_lsn();
-      ALWAYS_ASSERT(dlsn.offset() < end_lsn_offset);
-        if(logbuf->available_to_read() < size) {
-          logbuf->advance_writer(start_lsn.offset() + size);
-        }
-      logmgr->redo_log(start_lsn, end_lsn);
+      if(logbuf->available_to_read() < size) {
+        uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
+        logbuf->advance_writer(new_byte);
+      }
+      ALWAYS_ASSERT(logbuf->available_to_read() >= size);
+      //logmgr->redo_log(start_lsn, end_lsn);
+      logmgr->redo_logbuf(start_lsn, end_lsn);
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
 
     // Now persist the log records in storage
     logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
+    set_message(kRdmaPersisted);
     ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
     // FIXME(tzwang): now advance cur_lsn so that readers can really use the new data
+    
+    // Next iteration
+    start_lsn = end_lsn;
   }
 }
 
 // Support only one peer for now
-void primary_ship_log_buffer_rdma(const char *buf, uint32_t size) {
+void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
+                                  bool new_seg, uint64_t new_seg_start_offset) {
+#ifndef NDEBUG
+  for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+    LOG(INFO) << "RDMA write logbuf bounds: " << i << " " << logbuf_partition_bounds[i];
+  }
+#endif
+  rdma_wait_for_message(kRdmaReadyToReceive);
+
+  // Send buffer partition boundary information first
+  primary_rdma_ctx->rdma_write_imm(log_buf_partition_bounds_ridx, 0, 
+                                   log_buf_partition_bounds_ridx, 0,
+                                   sizeof(uint64_t) * kMaxLogBufferPartitions,
+                                   sizeof(uint64_t) * kMaxLogBufferPartitions,
+                                   false /* async */);
+
   ALWAYS_ASSERT(size);
   uint64_t offset = buf - primary_rdma_ctx->get_memory_region(log_buf_ridx);
   ASSERT(offset + size <= sm_log::get_logbuf()->window_size() * 2);
+#ifndef NDEBUG
+  if(new_seg) {
+    LOG(INFO) << "new segment start offset=" << std::hex << new_seg_start_offset << std::dec;
+  }
+#endif
+  ALWAYS_ASSERT(new_seg_start_offset <= ~kRdmaImmNewSeg);
+  uint32_t imm = new_seg ? kRdmaImmNewSeg | (uint32_t)new_seg_start_offset : 0;
   primary_rdma_ctx->rdma_write_imm(log_buf_ridx, offset,
-    log_buf_ridx, offset, size, size, false /* async */);
+    log_buf_ridx, offset, size, imm, false /* async */);
 }
 
 }  // namespace rep

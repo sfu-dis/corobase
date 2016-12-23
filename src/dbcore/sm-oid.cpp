@@ -724,6 +724,43 @@ sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p, varstr* k)
   }
 }
 
+void
+sm_oid_mgr::oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset)
+{
+  auto *entry= get_impl(this)->oid_entry_access(f, o);
+  uint64_t expected = -1;
+  bool do_it = false;;
+  if(entry->ptr == NULL_PTR) {
+    expected = 0;
+    do_it = true;
+  } else {
+    expected = entry->ptr._ptr;
+    if(entry->ptr.asi_type() == 0) {
+      // Must go into the object to see its lsn
+      object* obj = (object*)entry->ptr.offset();
+      if(obj->_clsn.offset() < lsn_offset) {
+        do_it = true;
+      }
+    } else if(entry->ptr.asi_type() == fat_ptr::ASI_LOG) {
+      // Good, directly comparable
+      if(entry->ptr.offset() < lsn_offset) {
+        do_it = true;
+      }
+    } else {
+      // Must be in chkpt file
+      ALWAYS_ASSERT(entry->ptr.asi_type() == fat_ptr::ASI_CHK);
+      // TODO(tzwang): for now we force eager_warmup for chkpt recovery...
+      LOG(FATAL) << "Can't handle ASI_CHK";
+    }
+  }
+
+  if(do_it && __sync_bool_compare_and_swap(&entry->ptr._ptr, expected, p._ptr)) {
+    if(expected == 0) {
+      entry->key = k;
+    }
+  }
+}
+
 fat_ptr
 sm_oid_mgr::oid_put_update(FID f,
                            OID o,

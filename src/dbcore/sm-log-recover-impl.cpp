@@ -6,6 +6,7 @@
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
+#include "sm-rep.h"
 
 // The version-loading mechanism will only dig out the latest version as a result.
 fat_ptr
@@ -43,7 +44,7 @@ sm_log_recover_impl::recover_prepare_version(sm_log_scan_mgr::record_scan *logre
 }
 
 void
-sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec) {
+sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool latest) {
   FID f = logrec->fid();
   OID o = logrec->oid();
   fat_ptr ptr = recover_prepare_version(logrec, NULL_PTR);
@@ -51,7 +52,11 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec) {
   oid_array *oa = get_impl(oidmgr)->get_array(f);
   oa->ensure_size(oa->alloc_size(o));
   // The chkpt recovery process might have picked up this tuple already
-  oidmgr->oid_put_new_if_absent(f, o, ptr, nullptr);
+  if(latest) {
+    oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset());
+  } else {
+    oidmgr->oid_put_new_if_absent(f, o, ptr, nullptr);
+  }
 }
 
 void
@@ -79,19 +84,24 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, 
   size_t len = ((varstr *)buf)->size();
   ASSERT(align_up(len + sizeof(varstr)) == sz);
 
+  oid_array *oa = get_impl(oidmgr)->get_array(logrec->fid());
+  if(volatile_read(oidmgr->oid_get_entry_ptr(oa, logrec->oid())->key)) {
+    return;
+  }
+
   // Construct the varkey (skip the varstr struct then it's data)
   varstr* key = (varstr*)MM::allocate(sizeof(varstr) + len, 0);
   new (key) varstr((char *)key + sizeof(varstr), len);
   key->copy_from((char *)buf + sizeof(varstr), len);
 
-  //printf("key %s %s\n", (char *)key.data(), buf);
-  ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(*key, logrec->oid(), NULL, 0));
-  oid_array *oa = get_impl(oidmgr)->get_array(logrec->fid());
-  oidmgr->oid_get_entry_ptr(oa, logrec->oid())->key = key;
+  if(index->btr.underlying_btree.insert_if_absent(*key, logrec->oid(), NULL, 0)) {
+    __sync_bool_compare_and_swap(&oidmgr->oid_get_entry_ptr(oa, logrec->oid())->key, nullptr, key);
+  }
 }
 
 void
-sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete) {
+sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
+                                    bool is_delete, bool latest) {
   FID f = logrec->fid();
   OID o = logrec->oid();
   ASSERT(oidmgr->file_exists(f));
@@ -100,11 +110,11 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec, bool i
   if(!is_delete) {
     ptr = recover_prepare_version(logrec, head_ptr);
   }
-  oidmgr->oid_put(f, o, ptr);
-  ASSERT(oidmgr->oid_get(f, o).offset() == ptr.offset());
-  // this has to go if on-demand loading is enabled
-  //ASSERT(((object *)oidmgr->oid_get(f, o).offset())->_next == head_ptr);
-  //printf("[Recovery] update: FID=%d OID=%d\n", f, o);
+  if(latest) {
+    oidmgr->oid_put(f, o, ptr);
+  } else {
+    oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset());
+  }
 }
 
 void
@@ -306,7 +316,7 @@ parallel_file_replay::redo_runner::redo_file() {
     case sm_log_scan_mgr::LOG_UPDATE:
     case sm_log_scan_mgr::LOG_RELOCATE:
       ucount++;
-      owner->recover_update(scan);
+      owner->recover_update(scan, false, false);
       size += scan->payload_size();
       break;
     case sm_log_scan_mgr::LOG_UPDATE_KEY:
@@ -315,7 +325,7 @@ parallel_file_replay::redo_runner::redo_file() {
       break;
     case sm_log_scan_mgr::LOG_DELETE:
       dcount++;
-      owner->recover_update(scan, true);
+      owner->recover_update(scan, true, false);
       break;
     case sm_log_scan_mgr::LOG_INSERT_INDEX:
       iicount++;
@@ -432,6 +442,7 @@ parallel_oid_replay::redo_runner::redo_partition() {
   if(config::is_backup_srv() && config::log_ship_sync_redo) {
     fetch_payloads = true;
   }
+  ALWAYS_ASSERT(owner->start_lsn.segment() >= 1);
   auto *scan = owner->scanner->new_log_scan(owner->start_lsn, fetch_payloads);
   static __thread std::unordered_map<FID, OID> max_oid;
 
@@ -451,12 +462,12 @@ parallel_oid_replay::redo_runner::redo_partition() {
     case sm_log_scan_mgr::LOG_UPDATE:
     case sm_log_scan_mgr::LOG_RELOCATE:
       ucount++;
-      owner->recover_update(scan);
+      owner->recover_update(scan, false, false);
       size += scan->payload_size();
       break;
     case sm_log_scan_mgr::LOG_DELETE:
       dcount++;
-      owner->recover_update(scan, true);
+      owner->recover_update(scan, true, false);
       break;
     case sm_log_scan_mgr::LOG_INSERT_INDEX:
       iicount++;
@@ -491,6 +502,163 @@ parallel_oid_replay::redo_runner::redo_partition() {
 void
 parallel_oid_replay::redo_runner::my_work(char *) {
   redo_partition();
+  done = true;
+  __sync_synchronize();
+}
+
+void
+parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to) {
+  util::scoped_timer t("parallel_offset_replay");
+  scanner = s;
+
+  RCU::rcu_enter();
+  // Look for new table creations after the chkpt
+  // Use one redo thread per new table found
+  // XXX(tzwang): no support for dynamically created tables for now
+  // XXX(tzwang): 20161212: So far this is for log shipping only, so no support
+  // for recovering table FIDs.
+
+  if(redoers.size() == 0) {
+    for (uint32_t i = 0; i < nredoers; ++i) {
+      redoers.emplace_back(this, INVALID_LSN, INVALID_LSN);
+    }
+  }
+
+  uint32_t done = 0;
+  uint64_t logbuf_part = -1;
+  LSN partition_start = from;
+
+  // Figure out which index to start with
+  uint64_t min_offset = ~uint64_t{0};
+  for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+    uint64_t off = rep::logbuf_partition_bounds[i];
+    if(off < min_offset && off > from.offset()) {
+      min_offset = off;
+      logbuf_part = i;
+    }
+  }
+  if(logbuf_part == -1) {
+    // Too small, a single thread is enough
+    auto& r = redoers[0];
+    bool v = r.try_impersonate();
+    ALWAYS_ASSERT(v);
+    r.start_lsn = from;
+    r.end_lsn = to;
+    __sync_synchronize();
+    r.start();
+    r.join();
+    r.done = false;
+  } else {
+    uint32_t examined_parts = 0;
+
+    bool all_dispatched = false;
+    for (auto &r : redoers) {
+      // Assign a log buffer partition
+      if(examined_parts++ >= config::logbuf_partitions) {
+        break;
+      }
+      uint32_t idx = logbuf_part % config::logbuf_partitions;
+      ++logbuf_part;
+      LSN partition_end = LSN{ rep::logbuf_partition_bounds[idx] };
+      if(!partition_end.offset() || partition_end.offset() > to.offset()) {
+        partition_end = to;
+        all_dispatched = true;
+      }
+
+      if(partition_end.offset() && partition_end.offset() > partition_start.offset()) {
+        r.start_lsn = partition_start;
+        r.end_lsn = partition_end;
+
+        DLOG(INFO) << "start=" << std::hex << partition_start.offset() 
+          << " end=" << partition_end.offset() << std::dec;
+        partition_start = partition_end;  // for next thread
+        __sync_synchronize();
+        ALWAYS_ASSERT(!r.is_impersonated());
+        auto v = r.try_impersonate();
+        ALWAYS_ASSERT(v);
+        r.start();
+        if(all_dispatched) {
+          break;
+        }
+      }
+    }
+
+    for (auto &r : redoers) {
+      if(r.is_impersonated()) {
+        r.join();
+        ++done;
+        r.done = false;
+      }
+    }
+  }
+}
+
+void
+parallel_offset_replay::redo_runner::redo_logbuf_partition() {
+  //util::scoped_timer t("redo_partition");
+  RCU::rcu_enter();
+  uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
+  bool fetch_payloads = config::eager_warm_up();
+  if(config::is_backup_srv() && config::log_ship_sync_redo) {
+    fetch_payloads = true;
+  }
+  auto *scan = owner->scanner->new_log_scan(start_lsn, fetch_payloads);
+  static __thread std::unordered_map<FID, OID> max_oid;
+
+  for (; scan->valid() and scan->payload_lsn() >= start_lsn && scan->payload_lsn() < end_lsn; scan->next()) {
+    ALWAYS_ASSERT(scan->payload_lsn() >= start_lsn);
+    ALWAYS_ASSERT(scan->payload_lsn().segment() >= 1);
+    auto oid = scan->oid();
+    auto fid = scan->fid();
+    max_oid[fid] = std::max(max_oid[fid], oid);
+
+    switch (scan->type()) {
+    case sm_log_scan_mgr::LOG_UPDATE_KEY:
+      owner->recover_update_key(scan);
+      size += scan->payload_size();
+      break;
+    case sm_log_scan_mgr::LOG_UPDATE:
+    case sm_log_scan_mgr::LOG_RELOCATE:
+      ucount++;
+      owner->recover_update(scan, false, true);
+      size += scan->payload_size();
+      break;
+    case sm_log_scan_mgr::LOG_DELETE:
+      dcount++;
+      owner->recover_update(scan, true, true);
+      break;
+    case sm_log_scan_mgr::LOG_INSERT_INDEX:
+      iicount++;
+      owner->recover_index_insert(scan);
+      break;
+    case sm_log_scan_mgr::LOG_INSERT:
+      icount++;
+      owner->recover_insert(scan, true);
+      size += scan->payload_size();
+      break;
+    case sm_log_scan_mgr::LOG_FID:
+      // The main recover function should have already did this
+      ASSERT(oidmgr->file_exists(scan->fid()));
+      break;
+    default:
+      DIE("unreachable");
+    }
+  }
+  ASSERT(icount == iicount);
+  DLOG(INFO) << "[Recovery.log] 0x" << start_lsn.offset() << "-" << end_lsn.offset()
+    << " inserts/updates/deletes/size: " << std::dec << icount << "/"
+    << ucount << "/" << dcount << "/" << size;
+
+  for (auto &m : max_oid) {
+    oidmgr->recreate_allocator(m.first, m.second);
+  }
+
+  delete scan;
+  RCU::rcu_exit();
+}
+void
+parallel_offset_replay::redo_runner::my_work(char *) {
+  redo_logbuf_partition();
   done = true;
   __sync_synchronize();
 }

@@ -69,6 +69,12 @@ sm_log::redo_log(LSN start_lsn, LSN end_lsn)
 }
 
 void
+sm_log::redo_logbuf(LSN start_lsn, LSN end_lsn)
+{
+    get_impl(this)->_lm._lm.redo_logbuf(start_lsn, end_lsn);
+}
+
+void
 sm_log::recover()
 {
     get_impl(this)->_lm._lm.recover();
