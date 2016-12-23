@@ -75,17 +75,18 @@ struct dmark_file_name {
     char const *operator*() { return buf; }
 };
 
-struct nxt_seg_file_name {
-    char buf[NXT_SEG_FILE_NAME_BUFSZ];
-    nxt_seg_file_name(uint32_t segnum) {
-        size_t n = os_snprintf(buf, sizeof(buf),
-                               NXT_SEG_FILE_NAME_FMT, segnum);
-        ASSERT(n < sizeof(buf));
-    }
-    operator char const *() { return buf; }
-    char const *operator*() { return buf; }
-};
+void
+sm_log_file_mgr::create_segment_file(segment_id *sid) {
+  ALWAYS_ASSERT(config::is_backup_srv());
+  nxt_seg_file_name oldname(sid->segnum);
+  segment_file_name newname(sid);
+  os_renameat(dfd, oldname, dfd, newname);
+  os_fsync(dfd);
 
+  nxt_seg_file_name sname(sid->segnum + 1);
+  uint64_t fd = os_openat(dfd, sname, O_CREAT|O_EXCL|O_RDONLY);
+  nxt_segment_fd = (fd << 32) | (sid->segnum + 1);
+}
 
 segment_id *
 sm_log_file_mgr::_oldest_segment() {

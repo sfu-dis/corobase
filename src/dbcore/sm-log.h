@@ -385,6 +385,7 @@ struct sm_log {
     void redo_log(LSN start_lsn, LSN end_lsn);
     void recover();
     void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
+    void create_segment_file(segment_id *sid);
 
     virtual ~sm_log() { }
 

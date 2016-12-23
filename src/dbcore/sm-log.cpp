@@ -12,6 +12,11 @@ bool sm_log::need_recovery = false;
 window_buffer* sm_log::logbuf = nullptr;
 
 void
+sm_log::create_segment_file(segment_id *sid) {
+  get_impl(this)->_lm._lm.create_segment_file(sid);
+}
+
+void
 sm_log::allocate_log_buffer() {
   logbuf = new window_buffer(config::log_buffer_mb * config::MB);
 }

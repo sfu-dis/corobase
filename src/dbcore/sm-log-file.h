@@ -22,6 +22,17 @@
 
 #include <deque>
 
+struct nxt_seg_file_name {
+    char buf[NXT_SEG_FILE_NAME_BUFSZ];
+    nxt_seg_file_name(uint32_t segnum) {
+        size_t n = os_snprintf(buf, sizeof(buf),
+                               NXT_SEG_FILE_NAME_FMT, segnum);
+        ASSERT(n < sizeof(buf));
+    }
+    operator char const *() { return buf; }
+    char const *operator*() { return buf; }
+};
+
 struct cmark_file_name {
     char buf[CHKPT_FILE_NAME_BUFSZ];
     cmark_file_name(LSN start, LSN end) {
@@ -120,6 +131,8 @@ struct sm_log_file_mgr {
     };
 
     sm_log_file_mgr();
+
+    void create_segment_file(segment_id *sid);
 
     /* Change the segment size.
 
