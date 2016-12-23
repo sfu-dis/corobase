@@ -335,8 +335,9 @@ parallel_file_replay::redo_runner::redo_file() {
     }
   }
   ASSERT(icount == iicount);
-  printf("[Recovery.log] FID %d - inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n",
-    fid, icount, ucount, dcount, size);
+  DLOG(INFO) << "[Recovery.log] FID " << fid
+    << " - inserts/updates/deletes/size: "
+    << icount << "/" << ucount << "/" << dcount << "/" << size;
 
   delete scan;
   RCU::rcu_exit();
@@ -475,8 +476,9 @@ parallel_oid_replay::redo_runner::redo_partition() {
     }
   }
   ASSERT(icount == iicount);
-  printf("[Recovery.log] OID partition %d - inserts/updates/deletes/size: %lu/%lu/%lu/%lu\n",
-    oid_partition, icount, ucount, dcount, size);
+  DLOG(INFO) << "[Recovery.log] OID partition " << oid_partition
+    << " - inserts/updates/deletes/size: "
+    << icount << "/" << ucount << "/" << dcount << "/" << size;
 
   for (auto &m : max_oid) {
     oidmgr->recreate_allocator(m.first, m.second);
