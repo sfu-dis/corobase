@@ -9,7 +9,7 @@
 
 namespace rdma {
 
-static const uint64_t kPollOps = 1;
+static const uint64_t kPollOps = 64;
 
 void context::init(const char *server) {
   if (server) {
@@ -195,23 +195,22 @@ void context::exchange_ib_connection_info(int peer_sockfd) {
   tcp::receive(peer_sockfd, (char *)remote_connection, sizeof(ib_connection));
 }
 
-void context::poll_send_cq() {
-  static uint64_t __thread nops;
-  nops++;
-
-  if (nops >= kPollOps) {
-    struct ibv_wc wc[kPollOps];
-    memset(wc, 0, sizeof(struct ibv_wc) * kPollOps);
+void context::poll_send_cq(uint64_t nops) {
+  struct ibv_wc wc[kPollOps];
+  uint64_t to_poll = nops;
+  while(to_poll) {
+    uint64_t batch = std::min(kPollOps, to_poll);
+    memset(wc, 0, sizeof(struct ibv_wc) * batch);
     int n = 0;
     do {
-      n = ibv_poll_cq(send_cq, kPollOps, wc);
+      n = ibv_poll_cq(send_cq, batch, wc);
     } while (n == 0);
     for (int i = 0; i < n; ++i) {
       ALWAYS_ASSERT(wc[i].status == IBV_WC_SUCCESS);
       THROW_IF(wc[i].status != IBV_WC_SUCCESS, os_error, wc[i].status, "Failed wc status");
     }
-    ALWAYS_ASSERT(n <= kPollOps);
-    nops -= n;
+    ALWAYS_ASSERT(n <= batch);
+    to_poll -= batch;
   }
 }
 
@@ -350,10 +349,10 @@ uint64_t context::rdma_compare_and_swap(
 
 /*
  * Post a receive work request to wait for an RDMA write with
- * immediate from the peer. Returns the immediate, the caller
+ * immediate from the peer. Returns data size, the caller
  * should know where to find the data as the result of RDMA write.
  */
-uint32_t context::receive_rdma_with_imm() {
+uint32_t context::receive_rdma_with_imm(uint32_t* imm) {
   struct ibv_recv_wr wr, *bad_wr = nullptr;
   memset(&wr, 0, sizeof(wr));
   wr.wr_id = RDMA_WRID;
@@ -366,6 +365,7 @@ uint32_t context::receive_rdma_with_imm() {
   while (true) {
     memset(&wc, 0, sizeof(wc));
     int n = ibv_poll_cq(recv_cq, 1, &wc);
+    ALWAYS_ASSERT(n == 0 || n == 1);
     if (n > 0) {
       if (wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
         break;
@@ -377,7 +377,10 @@ uint32_t context::receive_rdma_with_imm() {
   }
   //while (not (ibv_poll_cq(cq, 1, &wc) and wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM)) {}
   THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status, "Failed wc status");
-  return ntohl(wc.imm_data);
+  if(imm) {
+    *imm = ntohl(wc.imm_data);
+  }
+  return wc.byte_len;
 }
 
 ib_connection::ib_connection(struct context *ctx) {
