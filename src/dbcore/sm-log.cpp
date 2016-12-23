@@ -77,7 +77,9 @@ sm_log::recover()
 segment_id*
 sm_log::assign_segment(uint64_t lsn_begin, uint64_t lsn_end)
 {
-    return get_impl(this)->_lm._lm.assign_segment(lsn_begin, lsn_end).sid;
+    auto rval = get_impl(this)->_lm._lm.assign_segment(lsn_begin, lsn_end);
+    ALWAYS_ASSERT(rval.full_size);
+    return rval.sid;
 }
 
 segment_id *
@@ -193,6 +195,11 @@ sm_log::durable_flushed_lsn()
     auto *sid = log->_lm.get_offset_segment(offset);
     ASSERT(sid);
     return sid->make_lsn(offset);
+}
+
+uint64_t
+sm_log::durable_flushed_lsn_offset() {
+  return get_impl(this)->_lm.dur_flushed_lsn_offset();
 }
 
 void

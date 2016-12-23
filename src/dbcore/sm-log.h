@@ -386,6 +386,7 @@ struct sm_log {
     void recover();
     void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
     void create_segment_file(segment_id *sid);
+    uint64_t durable_flushed_lsn_offset();
 
     virtual ~sm_log() { }
 
