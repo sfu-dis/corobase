@@ -6,11 +6,14 @@ namespace rep {
 bool recover_first = true;
 uint64_t cur_lsn_offset = 0;
 
+uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
+
 // for primary server only
 std::vector<int> backup_sockfds;
 std::mutex backup_sockfds_mutex;
 
 void start_as_primary() {
+  memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(not config::is_backup_srv());
   if(config::log_ship_by_rdma) {
     std::thread t(primary_daemon_rdma);
@@ -21,11 +24,12 @@ void start_as_primary() {
   }
 }
 
-void primary_ship_log_buffer_all(const char *buf, uint32_t size) {
+void primary_ship_log_buffer_all(const char *buf, uint32_t size,
+                                 bool new_seg, uint64_t new_seg_start_offset) {
   backup_sockfds_mutex.lock();
   if (config::log_ship_by_rdma) {
     // This is async - returns immediately. Caller should poll/wait for ack.
-    primary_ship_log_buffer_rdma(buf, size);
+    primary_ship_log_buffer_rdma(buf, size, new_seg, new_seg_start_offset);
   } else {
     ASSERT(backup_sockfds.size());
     for (int &fd : backup_sockfds) {

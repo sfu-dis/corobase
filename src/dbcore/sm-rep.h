@@ -30,9 +30,13 @@ struct write_record_t;
 
 namespace rep {
 
-extern const uint64_t kRdmaWaiting;
-extern const uint64_t kRdmaReadyToReceive;
+const uint64_t kRdmaWaiting = 0x1;
+const uint64_t kRdmaReadyToReceive = 0x2;
+const uint64_t kRdmaPersisted = 0x4;
 extern bool recover_first;
+
+const uint32_t kMaxLogBufferPartitions = 64;
+extern uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];
 
 extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
@@ -94,7 +98,8 @@ inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles)
 
 // Common functions
 void start_as_primary();
-void primary_ship_log_buffer_all(const char *buf, uint32_t size);
+void primary_ship_log_buffer_all(const char *buf, uint32_t size,
+                                 bool new_seg, uint64_t new_seg_start_offset);
 void redo_daemon();
 backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_lsn);
 
@@ -103,12 +108,13 @@ void primary_daemon_rdma();
 void start_as_backup_rdma();
 void backup_daemon_rdam();
 void primary_init_rdma();
-void primary_ship_log_buffer_rdma(const char *buf, uint32_t size);
+void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
+                                  bool new_seg, uint64_t new_seg_start_offset);
 void update_pdest_on_backup_rdma(write_record_t* w);
 void send_log_files_after_rdma(backup_start_metadata* md, LSN chkpt_start);
 void rdma_wait_for_message(uint64_t msg, bool reset = true);
 void set_message(uint64_t msg);
-void primary_rdma_poll_send_cq();
+void primary_rdma_poll_send_cq(uint64_t nops);
 //void primary_persist_remote_nvram(const char* buf, uint32_t size);
 
 // TCP-specific functions

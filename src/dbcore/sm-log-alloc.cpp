@@ -59,6 +59,8 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
     , _write_daemon_should_stop(false)
     , _lsn_offset(_lm.get_durable_mark().offset())
 {
+  _logbuf_partition_size = config::log_buffer_mb * config::MB / config::logbuf_partitions;
+  ALWAYS_ASSERT(config::log_buffer_mb * config::MB % config::logbuf_partitions == 0);
   _logbuf = sm_log::get_logbuf();
   _logbuf->_head = _logbuf->_tail = get_starting_byte_offset(&_lm);
   if(!config::is_backup_srv()) {
@@ -217,10 +219,30 @@ sm_log_alloc_mgr::flush()
 segment_id *
 sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
 {
+  /* The primary ships log records at log buffer flush boundaries, and log flushing
+   * respects segment boundaries. Threads trying to carve out a range of LSN offset
+   * also need to respect segment boundaries, boundary-crossing threads will try again
+   * after realizing the current segment isn't enough to hold the requested range, 
+   * hence we might have daed zones that don't correspond to any valid range.
+   *
+   * When shipping log records, we never ship across buffer boundaries or segments.
+   * The backup always receives a chunk of the log guaranteed to reside in a single
+   * segment, but the range might extend into the dead zone. So we might have a durable
+   * LSN in the dead zone on the backup, which is fine as we skip it during redo.
+   */
+retry:
     LSN dlsn = _lm.get_durable_mark();
     ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
     ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
     auto *durable_sid = _lm.get_segment(dlsn.segment());
+    if(_durable_flushed_lsn_offset >= durable_sid->end_offset) {
+      // Crossing a dead zone, update the durable mark by hand
+      ALWAYS_ASSERT(config::is_backup_srv());
+      durable_sid = _lm.get_segment(dlsn.segment() + 1);
+      _durable_flushed_lsn_offset = durable_sid->start_offset;
+      _lm.update_durable_mark(LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
+      goto retry;
+    }
     uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
     int active_fd = _lm.open_for_write(durable_sid);
     DEFER(os_close(active_fd));
@@ -240,12 +262,18 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
        Once we know the offset, we can look up the corresponding
        segment to obtain an LSN.
      */
+    bool new_seg = false;
     while (_durable_flushed_lsn_offset < new_dlsn_offset) {
         segment_id *new_sid;
         uint64_t new_offset;
         uint64_t new_byte;
 
-        if (durable_sid->end_offset < new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+        if(config::is_backup_srv()) {
+          new_sid = durable_sid;
+          new_offset = new_dlsn_offset;
+          new_byte = durable_sid->byte_offset + (new_dlsn_offset - durable_sid->start_offset);
+        } else {
+          if (durable_sid->end_offset < new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
             /* Watch out for segment boundaries!
 
                The true end of a segment is somewhere in the last
@@ -259,11 +287,11 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
             ASSERT(new_sid);
             new_offset = new_sid->start_offset;
             new_byte = new_sid->byte_offset;
-        }
-        else {
+          } else {
             new_sid = durable_sid;
             new_offset = new_dlsn_offset;
             new_byte = new_sid->buf_offset(new_dlsn_offset);
+          }
         }
 
         ASSERT(durable_byte == logbuf.read_begin());
@@ -286,19 +314,33 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         auto *buf = logbuf.read_buf(durable_byte, nbytes);
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
         if(!config::null_log_device) {
-          if(config::num_active_backups) {
+          if(config::num_active_backups && !config::loading) {
             // Ship it first, this is async for RDMA
-            rep::primary_ship_log_buffer_all(buf, nbytes);
+            // Embed the segment's real begin_offset as the immediate:
+            // Note that we have 32-bit immmediates only, so we only store the offset
+            // off the base segment size boundaries. e.g., for the second segment
+            // (segment 2) and with a segment size of 4GB: we'd encode:
+            // begin_offset - (2-1) * 4GB. This number won't usually go beyond 32-bit;
+            // the backup when received the immediate will extract and recalculate
+            // the correct segment begin/end offsets.
+            DLOG(INFO) << "Will ship " << std::hex << _durable_flushed_lsn_offset
+              << " " << new_offset << " " << durable_sid->byte_offset << std::dec;
+            rep::primary_ship_log_buffer_all(buf, nbytes, new_seg,
+              new_seg ?
+                durable_sid->start_offset - (durable_sid->segnum-1) * config::log_segment_mb * config::MB : 0);
+            if(new_seg) {
+              new_seg = false;
+            }
           }
           uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
           THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
           if(config::num_active_backups && !config::loading) {
-            ASSERT(new_offset - _durable_flushed_lsn_offset == nbytes);
             if(config::log_ship_by_rdma) {
               // Now we need to poll to make sure the RDMA write finished
-              rep::primary_rdma_poll_send_cq();
-              // wait for the backup to persist
-              rep::rdma_wait_for_message(rep::kRdmaReadyToReceive);
+              // One for the log buffer partition bounds, the other for data
+              rep::primary_rdma_poll_send_cq(2);
+              // Wait for the backup to persist (it might act fast and set ReadyToReceive too)
+              rep::rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
             }
           }
         }
@@ -310,6 +352,8 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         if(new_sid != durable_sid) {
           os_close(active_fd);
           active_fd = _lm.open_for_write(new_sid);
+          ASSERT(!new_seg);
+          new_seg = true;
         }
 
         // update values for next round
@@ -328,7 +372,12 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
         }
 
         if(update_dmark) {
-          _lm.update_durable_mark(durable_sid->make_lsn(_durable_flushed_lsn_offset));
+          // Have to use LSN::make (instead of durable_sid->make_lsn which checks
+          // lsn offset ownership): If we're on a backup server, then this new durable
+          // lsn offset might end up in the deadzone which isn't contained by any sid,
+          // because we ship at log buffer flush boundaries (no info for the next segment
+          // until the next shipping).
+          _lm.update_durable_mark(LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
         }
 
         if(config::group_commit) {
@@ -455,7 +504,19 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
     }
     
     LSN lsn = sid->make_lsn(lsn_offset);
-    
+
+    // If adding my payload, we're crossing a log buffer partition boundary,
+    // make sure the flusher knows about this location (for log shipping).
+    if(!config::loading && config::num_active_backups) {
+      uint64_t start_partition = (lsn_offset / _logbuf_partition_size) % config::logbuf_partitions;
+      uint64_t next_partition = (next_lsn_offset / _logbuf_partition_size) % config::logbuf_partitions;
+      if(start_partition != next_partition) {
+        ALWAYS_ASSERT((start_partition + 1) % config::logbuf_partitions == next_partition);
+        volatile_write(rep::logbuf_partition_bounds[start_partition], rval.next_lsn._val);
+        DLOG(INFO) << "Log buffer partition: " << start_partition << " " << std::hex << next_lsn_offset << std::dec;
+      }
+    }
+
     /* Step #3: claim buffer space (wait if it's not yet available).
 
        Save copies of the request parameters in case our block went

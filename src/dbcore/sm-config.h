@@ -31,6 +31,7 @@ public:
     static uint64_t chkpt_interval;
     static int log_buffer_mb;
     static int log_segment_mb;
+    static uint32_t logbuf_partitions;
     static std::string log_dir;
     static bool null_log_device;
     static bool nvram_log_buffer;

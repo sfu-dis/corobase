@@ -47,6 +47,7 @@ DEFINE_bool(log_ship_by_rdma, false, "Whether to use RDMA for log shipping.");
 DEFINE_bool(log_ship_sync_redo, false, "Redo synchronously during log shipping.");
 DEFINE_bool(log_ship_full_redo, false, "Whether to repeat index update during redo."
   "For experimenting with the benefit/cost of having indirection arrays only.");
+DEFINE_uint64(log_ship_buffer_partitions, 16, "How many log buffer partitions/concurrent replay threads?");
 DEFINE_bool(log_key_for_update, false, "Whether to store the key in update log records.");
 DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
@@ -114,6 +115,10 @@ main(int argc, char **argv)
   config::log_dir = FLAGS_log_data_dir;
   config::log_segment_mb = FLAGS_log_segment_mb;
   config::log_buffer_mb = FLAGS_log_buffer_mb;
+  config::logbuf_partitions = FLAGS_log_ship_buffer_partitions;
+  if(config::logbuf_partitions > rep::kMaxLogBufferPartitions) {
+    LOG(FATAL) << "Too many log buffer partitions: max " << rep::kMaxLogBufferPartitions;
+  }
   config::null_log_device = FLAGS_null_log_device;
   config::group_commit = FLAGS_group_commit;
   config::group_commit_queue_length = FLAGS_group_commit_queue_length;

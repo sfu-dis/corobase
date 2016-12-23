@@ -133,6 +133,7 @@ struct sm_log_alloc_mgr {
     // log buffer to take more transactions.
     uint64_t *_tls_lsn_offset;
     uint64_t _lsn_offset CACHE_ALIGNED;
+    uint64_t _logbuf_partition_size;
 
     // One queue per worker thread to account latency under group commit
     // The flusher dequeues all entries from these vectors up to flushed_durable_lsn 

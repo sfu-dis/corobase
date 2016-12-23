@@ -13,6 +13,7 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     : sm_log_offset_mgr()
     , scanner(new sm_log_scan_mgr_impl{this})
     , recover_functor(rf)
+    , logbuf_redo_functor(nullptr)
     , recover_functor_arg(rf_arg)
 {
     LSN dlsn = get_durable_mark();
@@ -33,6 +34,9 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     if(!config::is_backup_srv()) {
       truncate_after(sid->segnum, dlsn.offset());
     }
+    if(config::is_backup_srv()) {
+      logbuf_redo_functor = new parallel_offset_replay;
+    }
 }
 
 void
@@ -52,6 +56,10 @@ void
 sm_log_recover_mgr::redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn)
 {
     (*recover_functor)(recover_functor_arg, scanner, chkpt_start_lsn, chkpt_end_lsn);
+}
+
+void sm_log_recover_mgr::redo_logbuf(LSN start, LSN end) {
+  (*logbuf_redo_functor)(nullptr, scanner, start, end);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr()
@@ -115,16 +123,17 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
     auto pread = [&](size_t nbytes, uint64_t i)->size_t {
         uint64_t offset = sid->offset(x);
         // See if it's stepping into the log buffer
-        if(logmgr && x >= logmgr ->durable_flushed_lsn()) {
+        if(logmgr && x.offset() >= logmgr->durable_flushed_lsn_offset()) {
             ALWAYS_ASSERT(config::is_backup_srv());
             // we should be scanning and replaying the log at a backup node
             auto* logbuf = logmgr->get_logbuf();
             // the caller should have called advance_writer(end_lsn) already
-            nbytes = std::min(nbytes, logbuf->read_end() - sid->buf_offset(x));
-            if (nbytes) {
-                ALWAYS_ASSERT(nbytes);
-                _cur_block = (log_block *)logbuf->read_buf(sid->buf_offset(x), nbytes);
+            if(logbuf->read_end() <= sid->buf_offset(x)) {
+                return 0;
             }
+            nbytes = std::min(nbytes, logbuf->read_end() - sid->buf_offset(x));
+            ALWAYS_ASSERT(nbytes);
+            _cur_block = (log_block *)logbuf->read_buf(sid->buf_offset(x), nbytes);
             return nbytes;
         } else {
             // otherwise we're recovering from disk, assuming the possibly NVRAM
