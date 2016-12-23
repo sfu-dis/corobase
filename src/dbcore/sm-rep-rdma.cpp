@@ -52,7 +52,7 @@ void primary_daemon_rdma() {
   // for our only peer.
   primary_rdma_ctx = new rdma::context(config::primary_port, 1);
 
-  // XXX(tzawng): Assuming the backup is also resitering in the same order
+  // XXX(tzawng): Assuming the backup is also registering in the same order
   msg_buf_ridx = primary_rdma_ctx->register_memory(msg_buf, kMessageSize);
   daemon_buffer_ridx = primary_rdma_ctx->register_memory(daemon_buffer, kDaemonBufferSize);
   auto* logbuf = sm_log::get_logbuf();
