@@ -98,10 +98,6 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size);
 void redo_daemon();
 backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_lsn);
 
-/* RDMA message states, for log shipping using RDMA only */
-static const uint64_t RDMA_READY_TO_RECEIVE = 1UL;
-static const uint64_t RDMA_WAITING = 2UL;
-
 // RDMA-specific functions
 void primary_daemon_rdma();
 void start_as_backup_rdma();

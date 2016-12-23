@@ -122,7 +122,7 @@ private:
   inline bool is_server() { return server_name.length() == 0; }
 
 public:
-  void poll_send_cq();
+  void poll_send_cq(uint64_t nops = 1);
   context(std::string& server, std::string& port, int ib_port) :
     pd(nullptr), port(port), ib_port(ib_port),
     local_connection(nullptr), remote_connection(nullptr) {
@@ -178,7 +178,7 @@ public:
   /* Post a receive request to "receive" data sent by rdma_write with immediate from the peer.
    * Returns the immediate, the caller should know where to look for the data.
    */
-  uint32_t receive_rdma_with_imm();
+  uint32_t receive_rdma_with_imm(uint32_t *imm = nullptr);
 };
 
 struct ib_connection {
