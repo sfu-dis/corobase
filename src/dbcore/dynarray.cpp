@@ -24,6 +24,7 @@
 #include "dynarray.h"
 
 #include "sm-common.h"
+#include "sm-config.h"
 
 #include <cerrno>
 
@@ -168,9 +169,10 @@ dynarray::resize(size_t new_size)
 void
 dynarray::ensure_size(size_t min_size)
 {
-    min_size = align_up(min_size, page_size());
-    if(size() < min_size) 
-	resize(min_size * 2);
+  min_size = align_up(min_size, page_size());
+  if(size() < min_size) {
+    resize(min_size + 128 * config::MB);
+  }
 }
 
 void

@@ -48,7 +48,7 @@ struct oid_array {
 
     static
     dynarray make_oid_dynarray() {
-        return dynarray(oid_array::alloc_size(), 1024*1024*128);
+        return dynarray(oid_array::alloc_size(), 128 * config::MB);
     }
 
     static
@@ -63,7 +63,9 @@ struct oid_array {
 
     /* Return the number of entries this OID array currently holds.
      */
-    size_t nentries();
+    inline size_t nentries() {
+      return _backing_store.size() / sizeof(entry);
+    }
 
     /* Make sure the backing store holds at least [n] entries.
      */
@@ -177,6 +179,7 @@ struct sm_oid_mgr {
     void oid_put_new(FID f, OID o, fat_ptr p, varstr* k);
     void oid_put_new_if_absent(FID f, OID o, fat_ptr p, varstr* k);
     void oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
+    void oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
 
     /* Return a fat_ptr to the overwritten object (could be an in-flight version!) */
     fat_ptr oid_put_update(

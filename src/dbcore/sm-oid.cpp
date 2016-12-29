@@ -228,7 +228,7 @@ void
 oid_array::ensure_size(size_t n) {
     _backing_store.ensure_size(OFFSETOF(oid_array, _entries[n]));
 }
-                                        
+
 sm_oid_mgr_impl::sm_oid_mgr_impl()
 {
     /* Bootstrap the OBJARRAY, which contains everything (including
@@ -727,7 +727,12 @@ sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p, varstr* k)
 void
 sm_oid_mgr::oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset)
 {
-  auto *entry= get_impl(this)->oid_entry_access(f, o);
+  oid_put_latest(get_impl(this)->get_array(f), o, p, k, lsn_offset);
+}
+
+void
+sm_oid_mgr::oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset) {
+  auto* entry = oa->get(o);
   uint64_t expected = -1;
   bool do_it = false;;
   if(entry->ptr == NULL_PTR) {
@@ -748,9 +753,11 @@ sm_oid_mgr::oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offs
       }
     } else {
       // Must be in chkpt file
+      // TODO(tzwang): so far we don't chkpt on the backup, so it's safe to
+      // just overwrite (a CAS is needed still) because if it remains to be
+      // ASI_CHK then it's truely not touched by query threads.
       ALWAYS_ASSERT(entry->ptr.asi_type() == fat_ptr::ASI_CHK);
-      // TODO(tzwang): for now we force eager_warmup for chkpt recovery...
-      LOG(FATAL) << "Can't handle ASI_CHK";
+      do_it = true;
     }
   }
 

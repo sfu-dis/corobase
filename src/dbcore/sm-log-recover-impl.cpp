@@ -50,7 +50,7 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
   fat_ptr ptr = recover_prepare_version(logrec, NULL_PTR);
   ASSERT(oidmgr->file_exists(f));
   oid_array *oa = get_impl(oidmgr)->get_array(f);
-  oa->ensure_size(oa->alloc_size(o));
+  oa->ensure_size(o);
   // The chkpt recovery process might have picked up this tuple already
   if(latest) {
     oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset());
@@ -105,15 +105,18 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   FID f = logrec->fid();
   OID o = logrec->oid();
   ASSERT(oidmgr->file_exists(f));
-  auto head_ptr = oidmgr->oid_get(f, o);
+
+  auto* oa = sm_file_mgr::get_file(f)->main_array;
+  fat_ptr head_ptr = oa->get(o)->ptr;
+
   fat_ptr ptr = NULL_PTR;
   if(!is_delete) {
     ptr = recover_prepare_version(logrec, head_ptr);
   }
   if(latest) {
-    oidmgr->oid_put(f, o, ptr);
+    oidmgr->oid_put(oa, o, ptr);
   } else {
-    oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset());
+    oidmgr->oid_put_latest(oa, o, ptr, nullptr, logrec->payload_lsn().offset());
   }
 }
 
@@ -603,14 +606,12 @@ parallel_offset_replay::redo_runner::redo_logbuf_partition() {
     fetch_payloads = true;
   }
   auto *scan = owner->scanner->new_log_scan(start_lsn, fetch_payloads);
-  static __thread std::unordered_map<FID, OID> max_oid;
 
   for (; scan->valid() and scan->payload_lsn() >= start_lsn && scan->payload_lsn() < end_lsn; scan->next()) {
     ALWAYS_ASSERT(scan->payload_lsn() >= start_lsn);
     ALWAYS_ASSERT(scan->payload_lsn().segment() >= 1);
     auto oid = scan->oid();
     auto fid = scan->fid();
-    max_oid[fid] = std::max(max_oid[fid], oid);
 
     switch (scan->type()) {
     case sm_log_scan_mgr::LOG_UPDATE_KEY:
@@ -649,10 +650,11 @@ parallel_offset_replay::redo_runner::redo_logbuf_partition() {
     << " inserts/updates/deletes/size: " << std::dec << icount << "/"
     << ucount << "/" << dcount << "/" << size;
 
-  for (auto &m : max_oid) {
-    oidmgr->recreate_allocator(m.first, m.second);
-  }
-
+  // Normally we'd also recreate_allocator here; for log shipping
+  // redo this takes ~10% of total cycles (need to take a lock etc),
+  // and backups don't take writes until take-over, so we do it when
+  // taking over as new primary only.
+  // TODO(tzwang): record the maximum OID to use during take-over.
   delete scan;
   RCU::rcu_exit();
 }

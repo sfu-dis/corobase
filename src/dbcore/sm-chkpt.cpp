@@ -219,7 +219,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
       auto data_size = decode_size_aligned(size_code);
       if(o % num_recovery_threads == oid_partition) {
         fat_ptr ptr = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
-        if(config::eager_warm_up() || config::is_backup_srv()) {
+        if(config::eager_warm_up()) {
           ptr = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
           ASSERT(ptr.offset());
           ASSERT(ptr.asi_type() == 0);
