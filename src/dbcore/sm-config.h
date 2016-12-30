@@ -91,15 +91,13 @@ public:
     }
 
     inline static bool eager_warm_up() {
-        return loading ?
-            recovery_warm_up_policy == WARM_UP_EAGER :
-            log_ship_warm_up_policy == WARM_UP_EAGER;
+      return recovery_warm_up_policy == WARM_UP_EAGER |
+             log_ship_warm_up_policy == WARM_UP_EAGER;
     }
 
     inline static bool lazy_warm_up() {
-        return loading ?
-            recovery_warm_up_policy == WARM_UP_LAZY :
-            log_ship_warm_up_policy == WARM_UP_LAZY;
+      return recovery_warm_up_policy == WARM_UP_LAZY |
+             log_ship_warm_up_policy == WARM_UP_LAZY;
     }
 
     static void init();

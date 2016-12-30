@@ -591,7 +591,7 @@ sm_log_file_mgr::create_segment(segment_id *sid)
             // Put the segment in the array - basically just for backup to continously
             // redo logs received which could generate new segments.
             volatile_write(segments[sid->segnum % NUM_LOG_SEGMENTS], sid);
-            LOG(INFO) << "Created segment " << sid->segnum << " fd=" << sid->fd << " "
+            DLOG(INFO) << "Created segment " << sid->segnum << " fd=" << sid->fd << " "
               << sid->start_offset;
             return true;
         }
