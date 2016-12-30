@@ -119,11 +119,13 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
             return;
     }
 
+    bool read_from_logbuf = logmgr && x.offset() >= logmgr->durable_flushed_lsn_offset();
+
     // helper function... pread may not read everything in one call
     auto pread = [&](size_t nbytes, uint64_t i)->size_t {
         uint64_t offset = sid->offset(x);
         // See if it's stepping into the log buffer
-        if(logmgr && x.offset() >= logmgr->durable_flushed_lsn_offset()) {
+        if(read_from_logbuf) {
             ALWAYS_ASSERT(config::is_backup_srv());
             // we should be scanning and replaying the log at a backup node
             auto* logbuf = logmgr->get_logbuf();
@@ -182,7 +184,7 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
         }
     }
 
-    if (_fetch_payloads) {
+    if (!read_from_logbuf && _fetch_payloads) {
         uint64_t bsize = (char *)_cur_block->payload_end() - (char *)_cur_block;
         if (bsize > MAX_BLOCK_SIZE)
             return; // corrupt ==> truncate
