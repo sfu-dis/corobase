@@ -46,6 +46,10 @@ public:
 
   inline bool operator>(const varstr &that) const { return !operator<=(that); }
 
+  inline int compare(const varstr &that) const {
+    return memcmp(data(), that.data(), std::min(size(), that.size()));
+  }
+
   inline uint64_t slice() const {
     uint64_t ret = 0;
     uint8_t *rp = (uint8_t *) &ret;
