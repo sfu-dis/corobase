@@ -4973,26 +4973,69 @@ class tpce_bench_runner : public bench_runner {
     OpenTablesForTablespace(ndb_wrapper *db, const char *name) {
       const string s_name(name);
       vector<ndb_ordered_index *> ret(NumPartitions());
-      ndb_ordered_index *idx = sm_file_mgr::get_index(s_name);
+      ndb_ordered_index *idx = sm_index_mgr::get_index(s_name);
       for (size_t i = 0; i < NumPartitions(); i++)
         ret[i] = idx;
       return ret;
     }
 
-    static void RegisterTables(ndb_wrapper *db, const char *name) {
+    static void RegisterTable(ndb_wrapper *db, const char *name,
+                              const char* primary_idx_name = nullptr) {
       const string s_name(name);
       vector<ndb_ordered_index *> ret(NumPartitions());
-      db->open_table(s_name);
+      if(primary_idx_name) {
+        sm_index_mgr::new_secondary_index(std::string(name), std::string(primary_idx_name));
+      } else {
+        sm_index_mgr::new_primary_index(std::string(name));
+      }
     }
 
 	public:
     tpce_bench_runner(ndb_wrapper *db) : bench_runner(db) {
-#define OPEN_TABLESPACE_X(x) \
-      RegisterTables(db, #x);
-
-      TPCE_TABLE_LIST(OPEN_TABLESPACE_X);
-
-#undef OPEN_TABLESPACE_X
+      RegisterTable(db, "charge");
+      RegisterTable(db, "commission_rate");
+      RegisterTable(db, "exchange");
+      RegisterTable(db, "industry");
+      RegisterTable(db, "in_name_index", "industry");
+      RegisterTable(db, "in_sc_id_index", "industry");
+      RegisterTable(db, "sector");
+      RegisterTable(db, "status_type)");
+      RegisterTable(db, "tax_rate");
+      RegisterTable(db, "trade_type");
+      RegisterTable(db, "zip_code");
+      RegisterTable(db, "address");
+      RegisterTable(db, "customers");
+      RegisterTable(db, "c_tax_id_index", "customers");
+      RegisterTable(db, "assets_history");
+      RegisterTable(db, "customer_account");
+      RegisterTable(db, "ca_id_index", "customer_account");
+      RegisterTable(db, "account_permission");
+      RegisterTable(db, "customer_taxrate");
+      RegisterTable(db, "watch_list");
+      RegisterTable(db, "watch_item");
+      RegisterTable(db, "company");
+      RegisterTable(db, "co_in_id_index", "company");
+      RegisterTable(db, "co_name_index", "company");
+      RegisterTable(db, "company_competitor");
+      RegisterTable(db, "daily_market");
+      RegisterTable(db, "financial");
+      RegisterTable(db, "last_trade");
+      RegisterTable(db, "news_item");
+      RegisterTable(db, "news_xref");
+      RegisterTable(db, "security");
+      RegisterTable(db, "security_index", "security");
+      RegisterTable(db, "trade");
+      RegisterTable(db, "t_ca_id_index", "trade");
+      RegisterTable(db, "t_s_symb_index", "trade");
+      RegisterTable(db, "trade_request");
+      RegisterTable(db, "trade_history");
+      RegisterTable(db, "settlement");
+      RegisterTable(db, "cash_transaction");
+      RegisterTable(db, "broker");
+      RegisterTable(db, "b_name_index", "broker");
+      RegisterTable(db, "holding_history");
+      RegisterTable(db, "holding_summary");
+      RegisterTable(db, "holding");
     }
 
     virtual void prepare(char *)

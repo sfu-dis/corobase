@@ -1,7 +1,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include "sm-chkpt.h"
-#include "sm-file.h"
+#include "sm-index.h"
 #include "sm-thread.h"
 
 #include "../benchmarks/ndb_wrapper.h"
@@ -179,14 +179,14 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
     nbytes += sizeof(FID);
 
     // Benchmark code should have already registered the table with the engine
-    ALWAYS_ASSERT(sm_file_mgr::fid_map[f]);
+    ALWAYS_ASSERT(sm_index_mgr::fid_map[f]);
     ASSERT(oidmgr->file_exists(f));
 
     // Recover allocator status
     oid_array *oa = oidmgr->get_array(f);
 
     // Populate the OID array and index
-    auto* index = sm_file_mgr::get_index(f);
+    auto* index = sm_index_mgr::get_index(f);
     ALWAYS_ASSERT(index);
     while(1) {
       // Read the OID
@@ -295,14 +295,14 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     nbytes += sizeof(FID);
 
     // Recover fid_map and recreate the empty file
-    ALWAYS_ASSERT(!sm_file_mgr::get_index(name));
+    ALWAYS_ASSERT(!sm_index_mgr::get_index(name));
 
     // Benchmark code should have already registered the table with the engine
-    ALWAYS_ASSERT(sm_file_mgr::name_map[name]);
+    ALWAYS_ASSERT(sm_index_mgr::name_map[name]);
 
-    sm_file_mgr::name_map[name]->fid = f;
-    sm_file_mgr::name_map[name]->index = new ndb_ordered_index(name);
-    sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
+    sm_index_mgr::name_map[name]->fid = f;
+    sm_index_mgr::name_map[name]->index = new ndb_ordered_index(name);
+    sm_index_mgr::fid_map[f] = sm_index_mgr::name_map[name];
     ASSERT(not oidmgr->file_exists(f));
     oidmgr->recreate_file(f);
     LOG(INFO) << "[CHKPT Recovery] FID=" << f << "(" << name << ")";
@@ -312,9 +312,9 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     oa->ensure_size(oa->alloc_size(himark));
     oidmgr->recreate_allocator(f, himark);
 
-    sm_file_mgr::name_map[name]->array = oa;
-    ALWAYS_ASSERT(sm_file_mgr::get_index(name));
-    sm_file_mgr::get_index(name)->set_oid_array(f);
+    sm_index_mgr::name_map[name]->array = oa;
+    ALWAYS_ASSERT(sm_index_mgr::get_index(name));
+    sm_index_mgr::get_index(name)->set_oid_array(f);
   }
   LOG(INFO) << "[Checkpoint] Prepared files";
 

@@ -2291,7 +2291,7 @@ private:
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
-          ret[i] = sm_file_mgr::get_index(s_name + "_" + to_string(i));
+          ret[i] = sm_index_mgr::get_index(s_name + "_" + to_string(i));
       } else {
         const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
         for (size_t partid = 0; partid < config::worker_threads; partid++) {
@@ -2299,49 +2299,76 @@ private:
           const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
           ndb_ordered_index *idx =
-            sm_file_mgr::get_index(s_name + "_" + to_string(partid));
+            sm_index_mgr::get_index(s_name + "_" + to_string(partid));
           for (size_t i = wstart; i < wend; i++)
             ret[i] = idx;
         }
       }
     } else {
-      ndb_ordered_index *idx = sm_file_mgr::get_index(s_name);
+      ndb_ordered_index *idx = sm_index_mgr::get_index(s_name);
       for (size_t i = 0; i < NumWarehouses(); i++)
         ret[i] = idx;
     }
     return ret;
   }
 
-  static void RegisterTables(ndb_wrapper *db, const char *name) {
+  static void RegisterTable(ndb_wrapper *db, const char *name,
+                            const char *primary_idx_name = nullptr) {
     const bool is_read_only = IsTableReadOnly(name);
     const string s_name(name);
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= config::worker_threads) {
-        for (size_t i = 0; i < NumWarehouses(); i++)
-          db->open_table(s_name + "_" + to_string(i));
+        for (size_t i = 0; i < NumWarehouses(); i++) {
+          if(primary_idx_name) {
+            const string s_primary_name(primary_idx_name);
+            sm_index_mgr::new_secondary_index(s_name + "_" + to_string(i),
+                                              s_primary_name + "_" + to_string(i));
+          } else {
+            sm_index_mgr::new_primary_index(s_name + "_" + to_string(i));
+          }
+        }
       } else {
         const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
         for (size_t partid = 0; partid < config::worker_threads; partid++) {
           const unsigned wstart = partid * nwhse_per_partition;
           const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
-            db->open_table(s_name + "_" + to_string(partid));
+          if(primary_idx_name) {
+            const string s_primary_name(primary_idx_name);
+            sm_index_mgr::new_secondary_index(s_name + "_" + to_string(partid),
+                                              s_primary_name + "_" + to_string(partid));
+          } else {
+            sm_index_mgr::new_primary_index(s_name + "_" + to_string(partid));
+          }
         }
       }
     } else {
-      db->open_table(s_name);
+      if(primary_idx_name) {
+        sm_index_mgr::new_secondary_index(s_name, std::string(primary_idx_name));
+      } else {
+        sm_index_mgr::new_primary_index(s_name);
+      }
     }
   }
 
 public:
   tpcc_bench_runner(ndb_wrapper *db) : bench_runner(db) {
     // Register all tables with the engine
-#define OPEN_TABLESPACE_X(x) \
-    RegisterTables(db, #x);
-
-    TPCC_TABLE_LIST(OPEN_TABLESPACE_X);
-
-#undef OPEN_TABLESPACE_X
+    RegisterTable(db, "customer");
+    RegisterTable(db, "customer_name_idx", "customer");
+    RegisterTable(db, "district");
+    RegisterTable(db, "history");
+    RegisterTable(db, "item");
+    RegisterTable(db, "new_order");
+    RegisterTable(db, "oorder");
+    RegisterTable(db, "oorder_c_id_idx", "oorder");
+    RegisterTable(db, "order_line");
+    RegisterTable(db, "stock");
+    RegisterTable(db, "stock_data");
+    RegisterTable(db, "nation");
+    RegisterTable(db, "region");
+    RegisterTable(db, "supplier");
+    RegisterTable(db, "warehouse");
   }
 
   virtual void prepare(char *)

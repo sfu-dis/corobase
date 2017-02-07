@@ -236,12 +236,12 @@ protected:
 class ycsb_bench_runner : public bench_runner {
 public:
   ycsb_bench_runner(ndb_wrapper *db) : bench_runner(db) {
-    db->open_table("USERTABLE");
+    sm_index_mgr::new_primary_index("USERTABLE");
   }
 
   virtual void prepare(char *)
   {
-    open_tables["USERTABLE"] = sm_file_mgr::get_index("USERTABLE");
+    open_tables["USERTABLE"] = sm_index_mgr::get_index("USERTABLE");
   }
 
 protected:

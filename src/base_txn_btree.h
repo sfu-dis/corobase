@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dbcore/sm-file.h"
+#include "dbcore/sm-index.h"
 #include "util.h"
 
 #include <string>

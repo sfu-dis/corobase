@@ -16,7 +16,7 @@
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-chkpt.h"
 #include "../dbcore/sm-config.h"
-#include "../dbcore/sm-file.h"
+#include "../dbcore/sm-index.h"
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
@@ -124,8 +124,12 @@ void
 bench_runner::create_files_task(char *)
 {
   ALWAYS_ASSERT(!sm_log::need_recovery && !config::is_backup_srv());
-  // allocate an FID for each table
-  for (auto &nm : sm_file_mgr::name_map) {
+  // Allocate an FID for each primary index, set 2nd indexes to use
+  // the primary index's FID
+  for (auto &nm : sm_index_mgr::name_map) {
+    if(!nm.second->is_primary_idx()) {
+      continue;
+    }
     auto fid = oidmgr->create_file(true);
     nm.second->fid = fid;
     ALWAYS_ASSERT(!nm.second->index);
@@ -134,13 +138,8 @@ bench_runner::create_files_task(char *)
     nm.second->array = oidmgr->get_array(fid);
 
     // Initialize the fid_map entries
-    if (sm_file_mgr::fid_map[nm.second->fid] != nm.second) {
-      sm_file_mgr::fid_map[nm.second->fid] = nm.second;
-    }
-
-    // Initialize the pdest array
-    if (config::is_backup_srv()) {
-        std::cout << "[Backup] Created pdest array for FID " << fid << std::endl;
+    if (sm_index_mgr::fid_map[nm.second->fid] != nm.second) {
+      sm_index_mgr::fid_map[nm.second->fid] = nm.second;
     }
 
     // log [table name, FID]
@@ -151,12 +150,27 @@ bench_runner::create_files_task(char *)
     log->commit(NULL);
     RCU::rcu_exit();
   }
+
+  // Now all primary indexes have valid FIDs, handle secondary indexes
+  for (auto &nm : sm_index_mgr::name_map) {
+    if(nm.second->is_primary_idx()) {
+      continue;
+    }
+    FID fid = sm_index_mgr::get_fid(nm.second->primary_idx_name);
+    ALWAYS_ASSERT(fid);
+    nm.second->fid = fid;
+    ALWAYS_ASSERT(!nm.second->index);
+    nm.second->index = new ndb_ordered_index(nm.first);
+    nm.second->index->set_oid_array(fid);
+    nm.second->array = oidmgr->get_array(fid);
+    ALWAYS_ASSERT(sm_index_mgr::fid_map[nm.second->fid] = nm.second);
+  }
 }
 
 void
 bench_runner::run()
 {
-  // Now we should already have a list of registered tables in sm_file_mgr::name_map,
+  // Now we should already have a list of registered tables in sm_index_mgr::name_map,
   // but all the index, oid_array fileds are empty; only the table name is available.
   // Create the logmgr here, instead of in an sm-thread: recovery might want to utilize
   // all the worker_threads specified in config.
