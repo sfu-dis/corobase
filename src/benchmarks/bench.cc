@@ -131,7 +131,7 @@ bench_runner::create_files_task(char *)
     ALWAYS_ASSERT(!nm.second->index);
     nm.second->index = new ndb_ordered_index(nm.first);
     nm.second->index->set_oid_array(fid);
-    nm.second->main_array = oidmgr->get_array(fid);
+    nm.second->array = oidmgr->get_array(fid);
 
     // Initialize the fid_map entries
     if (sm_file_mgr::fid_map[nm.second->fid] != nm.second) {
@@ -140,7 +140,6 @@ bench_runner::create_files_task(char *)
 
     // Initialize the pdest array
     if (config::is_backup_srv()) {
-        sm_file_mgr::get_file(fid)->init_pdest_array();
         std::cout << "[Backup] Created pdest array for FID " << fid << std::endl;
     }
 

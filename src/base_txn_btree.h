@@ -45,15 +45,6 @@ public:
     return underlying_btree.get_oid_array();
   }
 
-  inline void set_pdest_array(FID f) {
-    underlying_btree.set_pdest_array(sm_file_mgr::get_pdest_array(f));
-    ALWAYS_ASSERT(get_pdest_array());
-  }
-
-  inline oid_array* get_pdest_array() {
-    return underlying_btree.get_pdest_array();
-  }
-
   inline size_t
   size_estimate() const
   {
