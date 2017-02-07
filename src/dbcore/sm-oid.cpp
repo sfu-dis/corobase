@@ -12,7 +12,7 @@
 #include "sm-alloc.h"
 #include "sm-chkpt.h"
 #include "sm-config.h"
-#include "sm-file.h"
+#include "sm-index.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid-impl.h"
 
@@ -478,12 +478,12 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
     // Write the number of tables
     // TODO(tzwang): handle dynamically created tables
     uint64_t chkpt_size = 0;
-    uint32_t ntables = sm_file_mgr::fid_map.size();
+    uint32_t ntables = sm_index_mgr::fid_map.size();
     chkptmgr->write_buffer(&ntables, sizeof(uint32_t));
     chkpt_size += sizeof(uint32_t);
 
     // Write details about each table
-    for(auto& fm : sm_file_mgr::fid_map) {
+    for(auto& fm : sm_index_mgr::fid_map) {
       auto* fd = fm.second;
       size_t len = fd->name.length();
       auto *alloc = get_impl(this)->get_allocator(fd->fid);
@@ -499,7 +499,7 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
     LOG(INFO) << "[Checkpoint] header size: " << chkpt_size;
 
     // Write tuples for each table
-    for (auto &fm : sm_file_mgr::fid_map) {
+    for (auto &fm : sm_index_mgr::fid_map) {
         auto* fd = fm.second;
         FID fid = fd->fid;
         // Find the high watermark of this file and dump its
@@ -614,7 +614,7 @@ sm_oid_mgr::warm_up()
     {
         util::scoped_timer t("data warm-up");
         // Go over each OID entry and ensure_tuple there
-        for (auto &fm : sm_file_mgr::fid_map) {
+        for (auto &fm : sm_index_mgr::fid_map) {
             auto* fd = fm.second;
             auto *alloc = oidmgr->get_allocator(fd->fid);
             OID himark = alloc->head.hiwater_mark;

@@ -41,8 +41,6 @@ public:
     TxnProfileHint hint = HINT_DEFAULT);
   rc_t commit_txn(void *txn);
   void abort_txn(void *txn);
-  void open_table(const std::string& name);
-
   void close_index(ndb_ordered_index *idx);
 
   inline counter_map get_txn_counters(void *txn) const { return counter_map(); }

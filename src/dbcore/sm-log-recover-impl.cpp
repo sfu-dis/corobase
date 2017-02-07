@@ -1,7 +1,7 @@
 #include "../benchmarks/ndb_wrapper.h"
 #include "../txn_btree.h"
 #include "../util.h"
-#include "sm-file.h"
+#include "sm-index.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
@@ -63,7 +63,7 @@ void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) {
   // No need if the chkpt recovery already picked up this tuple
   FID fid = logrec->fid();
-  auto* fd = sm_file_mgr::get_file(fid);
+  auto* fd = sm_index_mgr::get_file(fid);
   auto* oa = fd->array;
   if(oa->get(logrec->oid())->ptr == NULL_PTR) {
     recover_index_insert(logrec, fd->index);
@@ -124,7 +124,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   OID o = logrec->oid();
   ASSERT(oidmgr->file_exists(f));
 
-  auto* oa = sm_file_mgr::get_file(f)->array;
+  auto* oa = sm_index_mgr::get_file(f)->array;
   fat_ptr head_ptr = oa->get(o)->ptr;
 
   fat_ptr ptr = NULL_PTR;
@@ -141,7 +141,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
 void
 sm_log_recover_impl::recover_update_key(sm_log_scan_mgr::record_scan* logrec) {
   // Used when emulating the case where we didn't have OID arrays - must update tree leaf nodes
-  auto* index = sm_file_mgr::get_index(logrec->fid());
+  auto* index = sm_index_mgr::get_index(logrec->fid());
   ASSERT(index);
   static const uint32_t kBufferSize = 128 * config::MB;
   auto sz = align_up(logrec->payload_size());
@@ -182,24 +182,24 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   logrec->load_object(name_buf, sz);
   std::string name(name_buf);
   // XXX(tzwang): no support for dynamically created tables for now
-  ASSERT(sm_file_mgr::name_map.find(name) != sm_file_mgr::name_map.end());
-  ASSERT(!sm_file_mgr::get_index(name));
-  sm_file_mgr::name_map[name]->fid = f;  // fill in the fid
+  ASSERT(sm_index_mgr::name_map.find(name) != sm_index_mgr::name_map.end());
+  ASSERT(!sm_index_mgr::get_index(name));
+  sm_index_mgr::name_map[name]->fid = f;  // fill in the fid
   // The benchmark should have registered the table with the engine
-  sm_file_mgr::name_map[name]->index = new ndb_ordered_index(name);
+  sm_index_mgr::name_map[name]->index = new ndb_ordered_index(name);
   ASSERT(not oidmgr->file_exists(f));
   oidmgr->recreate_file(f);
-  ASSERT(sm_file_mgr::name_map[name]->index);
-  sm_file_mgr::name_map[name]->index->set_oid_array(f);
-  sm_file_mgr::name_map[name]->array = oidmgr->get_array(f);
-  if (sm_file_mgr::fid_map.find(f) == sm_file_mgr::fid_map.end()) {
+  ASSERT(sm_index_mgr::name_map[name]->index);
+  sm_index_mgr::name_map[name]->index->set_oid_array(f);
+  sm_index_mgr::name_map[name]->array = oidmgr->get_array(f);
+  if (sm_index_mgr::fid_map.find(f) == sm_index_mgr::fid_map.end()) {
     // chkpt recovery might have did this
-    ASSERT(sm_file_mgr::name_map[name]->index);
-    sm_file_mgr::fid_map[f] = sm_file_mgr::name_map[name];
+    ASSERT(sm_index_mgr::name_map[name]->index);
+    sm_index_mgr::fid_map[f] = sm_index_mgr::name_map[name];
   }
 
   printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
-  return sm_file_mgr::get_index(name);
+  return sm_index_mgr::get_index(name);
 }
 
 /* The main recovery function of parallel_file_replay.
@@ -247,8 +247,8 @@ parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to
   }
   delete scan;
 
-  for (auto &fm : sm_file_mgr::fid_map) {
-    sm_file_descriptor *fd = fm.second;
+  for (auto &fm : sm_index_mgr::fid_map) {
+    sm_index_descriptor *fd = fm.second;
     ASSERT(fd->fid);
     max_fid = std::max(fd->fid, max_fid);
     redoers.emplace_back(this, fd->fid, fd->index);

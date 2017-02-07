@@ -1,6 +1,6 @@
 #include <sys/stat.h>
 
-#include "sm-file.h"
+#include "sm-index.h"
 #include "sm-log-file.h"
 #include "sm-rep.h"
 #include "../benchmarks/ndb_wrapper.h"

@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "ndb_wrapper.h"
 #include "../dbcore/rcu.h"
-#include "../dbcore/sm-file.h"
+#include "../dbcore/sm-index.h"
 #include "../macros.h"
 #include "../util.h"
 #include "../txn.h"
@@ -41,11 +41,6 @@ ndb_wrapper::abort_txn(void *txn)
   auto t = (transaction *)&p->buf[0];
   t->abort_impl();
   t->~transaction();
-}
-
-void
-ndb_wrapper::open_table(const std::string& name) {
-  sm_file_mgr::name_map[name] = new sm_file_descriptor(0, name, nullptr, nullptr);
 }
 
 void
