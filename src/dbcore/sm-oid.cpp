@@ -513,7 +513,7 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
         // Write the FID to note which table these OIDs to follow belongs to
         chkptmgr->write_buffer(&fid, sizeof(FID));
 
-        auto* oa = fm.second->main_array; 
+        auto* oa = fm.second->array;
         ASSERT(oa);
 
         // Now write the [OID, payload] pairs

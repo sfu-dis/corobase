@@ -64,7 +64,7 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) 
   // No need if the chkpt recovery already picked up this tuple
   FID fid = logrec->fid();
   auto* fd = sm_file_mgr::get_file(fid);
-  auto* oa = fd->main_array;
+  auto* oa = fd->array;
   if(oa->get(logrec->oid())->ptr == NULL_PTR) {
     recover_index_insert(logrec, fd->index);
   }
@@ -124,7 +124,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   OID o = logrec->oid();
   ASSERT(oidmgr->file_exists(f));
 
-  auto* oa = sm_file_mgr::get_file(f)->main_array;
+  auto* oa = sm_file_mgr::get_file(f)->array;
   fat_ptr head_ptr = oa->get(o)->ptr;
 
   fat_ptr ptr = NULL_PTR;
@@ -191,7 +191,7 @@ sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
   oidmgr->recreate_file(f);
   ASSERT(sm_file_mgr::name_map[name]->index);
   sm_file_mgr::name_map[name]->index->set_oid_array(f);
-  sm_file_mgr::name_map[name]->main_array = oidmgr->get_array(f);
+  sm_file_mgr::name_map[name]->array = oidmgr->get_array(f);
   if (sm_file_mgr::fid_map.find(f) == sm_file_mgr::fid_map.end()) {
     // chkpt recovery might have did this
     ASSERT(sm_file_mgr::name_map[name]->index);

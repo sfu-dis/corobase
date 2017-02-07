@@ -312,17 +312,9 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     oa->ensure_size(oa->alloc_size(himark));
     oidmgr->recreate_allocator(f, himark);
 
-    sm_file_mgr::name_map[name]->main_array = oa;
+    sm_file_mgr::name_map[name]->array = oa;
     ALWAYS_ASSERT(sm_file_mgr::get_index(name));
     sm_file_mgr::get_index(name)->set_oid_array(f);
-
-    // Initialize the pdest array
-    /*
-    if(config::is_backup_srv() && config::log_ship_by_rdma) {
-      sm_file_mgr::get_file(f)->init_pdest_array();
-      std::cout << "Created pdest array for FID " << f << std::endl;
-    }
-    */
   }
   LOG(INFO) << "[Checkpoint] Prepared files";
 
