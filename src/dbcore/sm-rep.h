@@ -30,6 +30,8 @@ struct write_record_t;
 
 namespace rep {
 
+class RdmaNode;
+
 const uint64_t kRdmaWaiting = 0x1;
 const uint64_t kRdmaReadyToReceive = 0x2;
 const uint64_t kRdmaPersisted = 0x4;
@@ -106,15 +108,12 @@ backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_ls
 // RDMA-specific functions
 void primary_daemon_rdma();
 void start_as_backup_rdma();
-void backup_daemon_rdam();
 void primary_init_rdma();
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
                                   bool new_seg, uint64_t new_seg_start_offset);
-void update_pdest_on_backup_rdma(write_record_t* w);
-void send_log_files_after_rdma(backup_start_metadata* md, LSN chkpt_start);
-void rdma_wait_for_message(uint64_t msg, bool reset = true);
-void set_message(uint64_t msg);
+void send_log_files_after_rdma(RdmaNode* node, backup_start_metadata* md, LSN chkpt_start);
 void primary_rdma_poll_send_cq(uint64_t nops);
+void primary_rdma_wait_for_message(uint64_t msg, bool reset);
 //void primary_persist_remote_nvram(const char* buf, uint32_t size);
 
 // TCP-specific functions
