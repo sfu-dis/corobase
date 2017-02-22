@@ -340,7 +340,7 @@ retry:
               // One for the log buffer partition bounds, the other for data
               rep::primary_rdma_poll_send_cq(2);
               // Wait for the backup to persist (it might act fast and set ReadyToReceive too)
-              rep::rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+              rep::primary_rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
             }
           }
         }
