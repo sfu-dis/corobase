@@ -203,7 +203,8 @@ xid_context::set_sstamp(uint64_t s) {
             }
         } while((ss == 0 || ss > s) && !std::atomic_compare_exchange_strong(&sstamp, &ss, s));
     } else {
-        sstamp.store(s, std::memory_order_relaxed);
+        sstamp.store(
+          std::min(sstamp.load(std::memory_order_relaxed), s), std::memory_order_relaxed);
     }
     return true;
 }
