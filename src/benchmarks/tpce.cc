@@ -4999,7 +4999,7 @@ class tpce_bench_runner : public bench_runner {
       RegisterTable(db, "in_name_index", "industry");
       RegisterTable(db, "in_sc_id_index", "industry");
       RegisterTable(db, "sector");
-      RegisterTable(db, "status_type)");
+      RegisterTable(db, "status_type");
       RegisterTable(db, "tax_rate");
       RegisterTable(db, "trade_type");
       RegisterTable(db, "zip_code");
