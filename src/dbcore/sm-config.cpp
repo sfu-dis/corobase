@@ -44,7 +44,7 @@ bool config::log_ship_sync_redo = false;
 bool config::log_key_for_update = false;
 int config::enable_chkpt = 0;
 uint64_t config::chkpt_interval = 5;
-int config::phantom_prot = 0;
+bool config::phantom_prot = 0;
 
 uint32_t config::max_threads_per_node = 0;
 bool config::loading = true;

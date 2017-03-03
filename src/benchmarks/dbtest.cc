@@ -110,6 +110,7 @@ main(int argc, char **argv)
   config::worker_threads = FLAGS_threads;
   config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
   config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
+  config::phantom_prot = FLAGS_phantom_prot;
 
   config::tmpfs_dir = FLAGS_tmpfs_dir;
   config::log_dir = FLAGS_log_data_dir;
