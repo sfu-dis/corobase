@@ -1043,9 +1043,15 @@ transaction::try_insert_new_tuple(
     ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
     tuple->get_object()->_clsn = xid.to_ptr();
     OID oid = oidmgr->alloc_oid(fid);
-    varstr* new_key = (varstr*)MM::allocate(sizeof(varstr) + key->size(), xc->begin_epoch);
-    new (new_key) varstr((char*)new_key + sizeof(varstr), 0);
-    new_key->copy_from(key);
+    varstr* new_key = nullptr;
+    if(config::enable_chkpt) {
+      // XXX(tzwang): only need to install this key if we need chkpt; not a
+      // realistic setting here to not generate it, the purpose of skipping
+      // this is solely for benchmarking CC.
+      new_key = (varstr*)MM::allocate(sizeof(varstr) + key->size(), xc->begin_epoch);
+      new (new_key) varstr((char*)new_key + sizeof(varstr), 0);
+      new_key->copy_from(key);
+    }
     oidmgr->oid_put_new(btr->get_oid_array(), oid, new_head, new_key);
     typename concurrent_btree::insert_info_t ins_info;
     if (unlikely(!btr->insert_if_absent(*key, oid, tuple, xc, &ins_info))) {
