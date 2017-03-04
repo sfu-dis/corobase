@@ -30,6 +30,12 @@ public:
     return memcmp(data(), that.data(), size()) == 0;
   }
 
+  inline varstr& operator=(const varstr& other) {
+    p = other.p;
+    l = other.l;
+    return *this;
+  }
+
   inline bool operator!=(const varstr &that) const { return !operator==(that); }
 
   inline bool operator<(const varstr &that) const {

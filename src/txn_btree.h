@@ -48,14 +48,14 @@ public:
   }
 
   inline rc_t put(transaction &t, const varstr &k, const varstr &v) {
-    return this->do_tree_put(t, stablize(t, k), stablize(t, v), false);
+    return this->do_tree_put(t, &k, &v, false);
   }
 
   inline rc_t insert(transaction &t, const varstr &k, const varstr &v) {
-    return this->do_tree_put(t, stablize(t, k), stablize(t, v), true);
+    return this->do_tree_put(t, &k, &v, true);
   }
 
   inline rc_t remove(transaction &t, const varstr &k) {
-    return this->do_tree_put(t, stablize(t, k), nullptr, false);
+    return this->do_tree_put(t, &k, nullptr, false);
   }
 };

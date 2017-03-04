@@ -609,12 +609,7 @@ class tpce_worker :
   void* txn;
   const uint partition_id_start;
   const uint partition_id_end;
-
-  // some scratch buffer space
-  varstr obj_key0;
-  varstr obj_key1;
   varstr obj_v;
-
   CMEE* mee; // thread-local MEE
   MFBuffer* MarketFeedInputBuffer;
   TRBuffer* TradeResultInputBuffer;
@@ -661,7 +656,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
     const b_name_index::key k_b_0(string(pIn->broker_list[i]), MIN_VAL(k_b_0.b_id));
     const b_name_index::key k_b_1(string(pIn->broker_list[i]), MAX_VAL(k_b_1.b_id));
     table_scanner b_scanner(&arena);
-    try_catch(tbl_b_name_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_b_0)), k_b_0), &Encode(obj_key1=str(sizeof(k_b_1)), k_b_1), b_scanner, &arena));
+    try_catch(tbl_b_name_index(1)->scan(txn, Encode(str(sizeof(k_b_0)), k_b_0), &Encode(str(sizeof(k_b_1)), k_b_1), b_scanner, &arena));
     if(not b_scanner.output.size())
       continue;
 
@@ -675,7 +670,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
   const sector::key k_sc_0(pIn->sector_name, string(cSC_ID_len, (char)0));
   const sector::key k_sc_1(pIn->sector_name, string(cSC_ID_len, (char)255));
   table_scanner sc_scanner(&arena);
-  try_catch(tbl_sector(1)->scan(txn, Encode(obj_key0=str(sizeof(k_sc_0)), k_sc_0), &Encode(obj_key1=str(sizeof(k_sc_1)), k_sc_1), sc_scanner, &arena));
+  try_catch(tbl_sector(1)->scan(txn, Encode(str(sizeof(k_sc_0)), k_sc_0), &Encode(str(sizeof(k_sc_1)), k_sc_1), sc_scanner, &arena));
   ALWAYS_ASSERT(sc_scanner.output.size() == 1);
   for(auto &r_sc: sc_scanner.output) {
     sector::key k_sc_temp;
@@ -685,7 +680,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
     const in_sc_id_index::key k_in_0(k_sc->sc_id, string(cIN_ID_len, (char)0));
     const in_sc_id_index::key k_in_1(k_sc->sc_id, string(cIN_ID_len, (char)255));
     table_scanner in_scanner(&arena);
-    try_catch(tbl_in_sc_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_in_0)), k_in_0), &Encode(obj_key1=str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
+    try_catch(tbl_in_sc_id_index(1)->scan(txn, Encode(str(sizeof(k_in_0)), k_in_0), &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
     ALWAYS_ASSERT(in_scanner.output.size());
 
     for(auto &r_in: in_scanner.output) {
@@ -696,7 +691,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
       const co_in_id_index::key k_in_0(k_in->in_id, MIN_VAL(k_in_0.co_id));
       const co_in_id_index::key k_in_1(k_in->in_id, MAX_VAL(k_in_1.co_id));
       table_scanner co_scanner(&arena);
-      try_catch(tbl_co_in_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_in_0)), k_in_0), &Encode(obj_key1=str(sizeof(k_in_1)), k_in_1), co_scanner, &arena));
+      try_catch(tbl_co_in_id_index(1)->scan(txn, Encode(str(sizeof(k_in_0)), k_in_0), &Encode(str(sizeof(k_in_1)), k_in_1), co_scanner, &arena));
       ALWAYS_ASSERT(co_scanner.output.size());
       for(auto &r_co : co_scanner.output) {
         co_in_id_index::key k_co_temp;
@@ -706,7 +701,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
         const security_index::key k_s_0(k_co->co_id, string(cS_ISSUE_len, (char)0), string(cSYMBOL_len, (char)0));
         const security_index::key k_s_1(k_co->co_id, string(cS_ISSUE_len, (char)255), string(cSYMBOL_len, (char)255));
         table_scanner s_scanner(&arena);
-        try_catch(tbl_security_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_s_0)), k_s_0), &Encode(obj_key1=str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
+        try_catch(tbl_security_index(1)->scan(txn, Encode(str(sizeof(k_s_0)), k_s_0), &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
         ALWAYS_ASSERT(s_scanner.output.size());
         for(auto &r_s : s_scanner.output) {
           security_index::key k_s_temp;
@@ -722,7 +717,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
             const trade_request::key k_tr_0(k_s->s_symb, k_b_idx->b_id, MIN_VAL(k_tr_0.tr_t_id));
             const trade_request::key k_tr_1(k_s->s_symb, k_b_idx->b_id, MAX_VAL(k_tr_1.tr_t_id));
             table_scanner tr_scanner(&arena);
-            try_catch(tbl_trade_request(1)->scan(txn, Encode(obj_key0=str(sizeof(k_tr_0)), k_tr_0), &Encode(obj_key1=str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
+            try_catch(tbl_trade_request(1)->scan(txn, Encode(str(sizeof(k_tr_0)), k_tr_0), &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
             //ALWAYS_ASSERT(tr_scanner.output.size()); // XXX. If there's no previous trade, this can happen
 
             for(auto &r_tr : tr_scanner.output) {
@@ -756,7 +751,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
   if(pIn->cust_id)
     pOut->cust_id = pIn->cust_id;
   else {
-    try_catch(tbl_c_tax_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_c_0)), k_c_0), &Encode(obj_key1=str(sizeof(k_c_1)), k_c_1), c_scanner, &arena));
+    try_catch(tbl_c_tax_id_index(1)->scan(txn, Encode(str(sizeof(k_c_0)), k_c_0), &Encode(str(sizeof(k_c_1)), k_c_1), c_scanner, &arena));
     // XXX. input generator's tax_id doesn't exist.  ???
     if(not c_scanner.output.size()) {
       db->abort_txn(txn);
@@ -771,8 +766,8 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
   // probe Customers
   const customers::key k_c(pOut->cust_id);
   customers::value v_c_temp;
-  try_verify_strict(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
-  const customers::value *v_c = Decode(obj_v,v_c_temp);
+  try_verify_strict(tbl_customers(1)->get(txn, Encode(str(sizeof(k_c)), k_c), obj_v = str(sizeof(v_c_temp))));
+  const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   memcpy(pOut->c_st_id, v_c->c_st_id.data(), v_c->c_st_id.size());
   memcpy(pOut->c_l_name, v_c->c_l_name.data(), v_c->c_l_name.size());
@@ -802,7 +797,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
   const ca_id_index::key k_ca_0(pOut->cust_id, MIN_VAL(k_ca_0.ca_id));
   const ca_id_index::key k_ca_1(pOut->cust_id, MAX_VAL(k_ca_1.ca_id));
   table_scanner ca_scanner(&arena);
-  try_catch(tbl_ca_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_ca_0)), k_ca_0), &Encode(obj_key1=str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
+  try_catch(tbl_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_ca_0)), k_ca_0), &Encode(str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
   ALWAYS_ASSERT(ca_scanner.output.size());
 
   for(auto& r_ca : ca_scanner.output) {
@@ -815,7 +810,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
     const holding_summary::key k_hs_0(k_ca->ca_id, string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(k_ca->ca_id, string(cSYMBOL_len, (char)255));
     table_scanner hs_scanner(&arena);
-    try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
+    try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
     //ALWAYS_ASSERT(hs_scanner.output.size());  // left-outer join. S table could be empty.
 
     auto asset = 0;
@@ -828,8 +823,8 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
       // LastTrade probe & equi-join
       const last_trade::key k_lt(k_hs->hs_s_symb);
       last_trade::value v_lt_temp;
-      try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
-      const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+      try_verify_relax(tbl_last_trade(1)->get(txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
+      const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
       asset += v_hs->hs_qty * v_lt->lt_price;
     }
@@ -852,12 +847,11 @@ rc_t tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
     return {RC_ABORT_USER};
   }
 
-
   // Trade scan and collect 10 TID
   const t_ca_id_index::key k_t_0(pIn->acct_id, MIN_VAL(k_t_0.t_dts), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, MAX_VAL(k_t_0.t_dts), MAX_VAL(k_t_0.t_id));
   table_scanner t_scanner(&arena);
-  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
+  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   std::vector<std::pair<varstr *, const varstr *>> tids;
@@ -878,7 +872,7 @@ rc_t tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
     const trade_history::key k_th_0(k_t->t_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(k_t->t_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
     table_scanner th_scanner(&arena);
-    try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
+    try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
     for(auto &r_th : th_scanner.output) {
@@ -888,8 +882,8 @@ rc_t tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
 
       status_type::key k_st(k_th->th_st_id);
       status_type::value v_st_temp;
-      try_verify_relax(tbl_status_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_st)), k_st), obj_v=str(sizeof(v_st_temp))));
-      const status_type::value *v_st = Decode(obj_v,v_st_temp);
+      try_verify_relax(tbl_status_type(1)->get(txn, Encode(str(sizeof(k_st)), k_st), obj_v = str(sizeof(v_st_temp))));
+      const status_type::value *v_st = Decode(obj_v, v_st_temp);
 
       // TODO. order by and grab 30 rows
       pOut->trade_id[pOut->hist_len] = k_t->t_id;
@@ -899,11 +893,10 @@ rc_t tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
       memcpy(pOut->trade_status[pOut->hist_len], v_st->st_name.data(), v_st->st_name.size());
 
       pOut->hist_len++;
-      if(pOut->hist_len >= max_hist_len)
+      if(pOut->hist_len >= max_hist_len) {
         goto commit;
-
+      }
     }
-
   }
 commit:
   try_catch(db->commit_txn(txn));
@@ -942,20 +935,20 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 
     last_trade::key k_lt(ticker.symbol);
     last_trade::value v_lt_temp;
-    try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
-    const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+    try_verify_relax(tbl_last_trade(1)->get(txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
+    const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
     last_trade::value v_lt_new(*v_lt);
     v_lt_new.lt_dts = now_dts;
     v_lt_new.lt_price = v_lt->lt_price + ticker.price_quote;
     v_lt_new.lt_vol = ticker.price_quote;
-    try_catch(tbl_last_trade(1)->put(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), Encode(obj_v=str(sizeof(v_lt_new)), v_lt_new)));
+    try_catch(tbl_last_trade(1)->put(txn, Encode(str(sizeof(k_lt)), k_lt), Encode(str(sizeof(v_lt_new)), v_lt_new)));
 
     pOut->num_updated++;
 
     const trade_request::key k_tr_0(string(ticker.symbol),  MIN_VAL(k_tr_0.tr_b_id), MIN_VAL(k_tr_0.tr_t_id));
     const trade_request::key k_tr_1(string(ticker.symbol),  MAX_VAL(k_tr_1.tr_b_id), MAX_VAL(k_tr_1.tr_t_id));
     table_scanner tr_scanner(&arena);
-    try_catch(tbl_trade_request(1)->scan(txn, Encode(obj_key0=str(sizeof(k_tr_0)), k_tr_0), &Encode(obj_key1=str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
+    try_catch(tbl_trade_request(1)->scan(txn, Encode(str(sizeof(k_tr_0)), k_tr_0), &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
     //ALWAYS_ASSERT(tr_scanner.output.size());  // XXX. If there's no previous trade, this can happen. Higher initial trading days would enlarge this scan set
 
     std::vector<std::pair<varstr *, const varstr *>> request_list_cursor;
@@ -983,12 +976,12 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 
       const trade::key k_t(req_trade_id);
       trade::value v_t_temp;
-      try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
-      const trade::value *v_t = Decode(obj_v,v_t_temp);
+      try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+      const trade::value *v_t = Decode(obj_v, v_t_temp);
       trade::value v_t_new(*v_t);
       v_t_new.t_dts = now_dts;
       v_t_new.t_st_id = string(type.status_submitted);
-      try_catch(tbl_trade(1)->put(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), Encode(obj_v=str(sizeof(v_t_new)), v_t_new)));
+      try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
 
       // DTS field is updated. cascading update(actually insert after remove, because dts is included in PK)
       t_ca_id_index::key k_t_idx1;
@@ -996,7 +989,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
       k_t_idx1.t_ca_id = v_t->t_ca_id;
       k_t_idx1.t_dts = v_t->t_dts;
       k_t_idx1.t_id = k_t.t_id;
-      try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1)));
+      try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1)));
 
       k_t_idx1.t_ca_id = v_t_new.t_ca_id;
       k_t_idx1.t_dts = v_t_new.t_dts;
@@ -1010,14 +1003,14 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
       v_t_idx1.t_exec_name = v_t_new.t_exec_name ;
       v_t_idx1.t_trade_price = v_t_new.t_trade_price ;
       v_t_idx1.t_chrg = v_t_new.t_chrg ;
-      try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1), Encode(obj_v=str(sizeof(v_t_idx1)), v_t_idx1)));
+      try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
 
       t_s_symb_index::key k_t_idx2;
       t_s_symb_index::value v_t_idx2;
       k_t_idx2.t_s_symb = v_t->t_s_symb;
       k_t_idx2.t_dts = v_t->t_dts;
       k_t_idx2.t_id = k_t.t_id;
-      try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2)));
+      try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2)));
       k_t_idx2.t_s_symb = v_t_new.t_s_symb ;
       k_t_idx2.t_dts = v_t_new.t_dts;
       k_t_idx2.t_id = k_t.t_id;
@@ -1028,17 +1021,17 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
       v_t_idx2.t_qty = v_t_new.t_qty ;
       v_t_idx2.t_exec_name = v_t_new.t_exec_name ;
       v_t_idx2.t_trade_price = v_t_new.t_trade_price ;
-      try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
+      try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
 
       trade_request::key k_tr_new(*k_tr);
-      try_verify_relax(tbl_trade_request(1)->remove(txn, Encode(obj_key0=str(sizeof(k_tr_new)), k_tr_new)));
+      try_verify_relax(tbl_trade_request(1)->remove(txn, Encode(str(sizeof(k_tr_new)), k_tr_new)));
 
       trade_history::key k_th;
       trade_history::value v_th;
       k_th.th_t_id = req_trade_id;
       k_th.th_dts = now_dts;
       k_th.th_st_id = string(type.status_submitted);
-      try_catch(tbl_trade_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_th)), k_th), Encode(obj_v=str(sizeof(v_th)), v_th)));
+      try_catch(tbl_trade_history(1)->insert(txn, Encode(str(sizeof(k_th)), k_th), Encode(str(sizeof(v_th)), v_th)));
 
       TTradeRequest request;
       memset(&request, 0, sizeof(request));
@@ -1071,7 +1064,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
     const watch_list::key k_wl_0(pIn->c_id, MIN_VAL(k_wl_0.wl_id));
     const watch_list::key k_wl_1(pIn->c_id, MAX_VAL(k_wl_1.wl_id));
     table_scanner wl_scanner(&arena);
-    try_catch(tbl_watch_list(1)->scan(txn, Encode(obj_key0=str(sizeof(k_wl_0)), k_wl_0), &Encode(obj_key1=str(sizeof(k_wl_1)), k_wl_1), wl_scanner, &arena));
+    try_catch(tbl_watch_list(1)->scan(txn, Encode(str(sizeof(k_wl_0)), k_wl_0), &Encode(str(sizeof(k_wl_1)), k_wl_1), wl_scanner, &arena));
     ALWAYS_ASSERT(wl_scanner.output.size());
 
     for(auto &r_wl: wl_scanner.output) {
@@ -1081,7 +1074,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
       const watch_item::key k_wi_0(k_wl->wl_id, string(cSYMBOL_len, (char)0));
       const watch_item::key k_wi_1(k_wl->wl_id, string(cSYMBOL_len, (char)255));
       table_scanner wi_scanner(&arena);
-      try_catch(tbl_watch_item(1)->scan(txn, Encode(obj_key0=str(sizeof(k_wi_0)), k_wi_0), &Encode(obj_key1=str(sizeof(k_wi_1)), k_wi_1), wi_scanner, &arena));
+      try_catch(tbl_watch_item(1)->scan(txn, Encode(str(sizeof(k_wi_0)), k_wi_0), &Encode(str(sizeof(k_wi_1)), k_wi_1), wi_scanner, &arena));
       ALWAYS_ASSERT(wi_scanner.output.size());
       for(auto &r_wi : wi_scanner.output) {
         watch_item::key k_wi_temp;
@@ -1094,19 +1087,19 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
     const in_name_index::key k_in_0(string(pIn->industry_name), string(cIN_ID_len, (char)0));
     const in_name_index::key k_in_1(string(pIn->industry_name), string(cIN_ID_len, (char)255));
     table_scanner in_scanner(&arena);
-    try_catch(tbl_in_name_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_in_0)), k_in_0), &Encode(obj_key1=str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
+    try_catch(tbl_in_name_index(1)->scan(txn, Encode(str(sizeof(k_in_0)), k_in_0), &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
     ALWAYS_ASSERT(in_scanner.output.size());
 
     const company::key k_co_0(pIn->starting_co_id);
     const company::key k_co_1(pIn->ending_co_id);
     table_scanner co_scanner(&arena);
-    try_catch(tbl_company(1)->scan(txn, Encode(obj_key0=str(sizeof(k_co_0)), k_co_0), &Encode(obj_key1=str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
+    try_catch(tbl_company(1)->scan(txn, Encode(str(sizeof(k_co_0)), k_co_0), &Encode(str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
     ALWAYS_ASSERT(co_scanner.output.size());
 
     const security::key k_s_0(string(cSYMBOL_len, (char)0));
     const security::key k_s_1(string(cSYMBOL_len, (char)255));
     table_scanner s_scanner(&arena);
-    try_catch(tbl_security(1)->scan(txn, Encode(obj_key0=str(sizeof(k_s_0)), k_s_0), &Encode(obj_key1=str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
+    try_catch(tbl_security(1)->scan(txn, Encode(str(sizeof(k_s_0)), k_s_0), &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
     ALWAYS_ASSERT(s_scanner.output.size());
 
     for(auto &r_in : in_scanner.output) {
@@ -1138,7 +1131,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
     const holding_summary::key k_hs_0(pIn->acct_id, string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(pIn->acct_id, string(cSYMBOL_len, (char)255));
     table_scanner hs_scanner(&arena);
-    try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
+    try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
 
     for(auto& r_hs : hs_scanner.output) {
       holding_summary::key k_hs_temp;
@@ -1155,18 +1148,18 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
   for(auto &s : stock_list_cursor) {
     const last_trade::key k_lt(s);
     last_trade::value v_lt_temp;
-    try_catch(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
-    const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+    try_catch(tbl_last_trade(1)->get(txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
+    const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
     const security::key k_s(s);
     security::value v_s_temp;
-    try_catch(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
-    const security::value *v_s = Decode(obj_v,v_s_temp);
+    try_catch(tbl_security(1)->get(txn, Encode(str(sizeof(k_s)), k_s), obj_v = str(sizeof(v_s_temp))));
+    const security::value *v_s = Decode(obj_v, v_s_temp);
 
     const daily_market::key k_dm(s, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_day).GetDate());
     daily_market::value v_dm_temp;
-    try_catch(tbl_daily_market(1)->get(txn, Encode(obj_key0=str(sizeof(k_dm)), k_dm), obj_v=str(sizeof(v_dm_temp))));
-    const daily_market::value *v_dm = Decode(obj_v,v_dm_temp);
+    try_catch(tbl_daily_market(1)->get(txn, Encode(str(sizeof(k_dm)), k_dm), obj_v = str(sizeof(v_dm_temp))));
+    const daily_market::value *v_dm = Decode(obj_v, v_dm_temp);
 
     auto s_num_out = v_s->s_num_out;
     auto old_price = v_dm->dm_close;
@@ -1193,39 +1186,39 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
   const security::key k_s(string(pIn->symbol));
   security::value v_s_temp;
-  try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
-  const security::value *v_s = Decode(obj_v,v_s_temp);
+  try_verify_relax(tbl_security(1)->get(txn, Encode(str(sizeof(k_s)), k_s), obj_v = str(sizeof(v_s_temp))));
+  const security::value *v_s = Decode(obj_v, v_s_temp);
   co_id = v_s->s_co_id;
 
   const company::key k_co(co_id);
   company::value v_co_temp;
-  try_verify_relax(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co)), k_co), obj_v=str(sizeof(v_co_temp))));
-  const company::value *v_co = Decode(obj_v,v_co_temp);
+  try_verify_relax(tbl_company(1)->get(txn, Encode(str(sizeof(k_co)), k_co), obj_v = str(sizeof(v_co_temp))));
+  const company::value *v_co = Decode(obj_v, v_co_temp);
 
   const address::key k_ca(v_co->co_ad_id);
   address::value v_ca_temp;
-  try_verify_relax(tbl_address(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
-  const address::value *v_ca = Decode(obj_v,v_ca_temp);
+  try_verify_relax(tbl_address(1)->get(txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
+  const address::value *v_ca = Decode(obj_v, v_ca_temp);
 
   const zip_code::key k_zca(v_ca->ad_zc_code);
   zip_code::value v_zca_temp;
-  try_verify_relax(tbl_zip_code(1)->get(txn, Encode(obj_key0=str(sizeof(k_zca)), k_zca), obj_v=str(sizeof(v_zca_temp))));
-  const zip_code::value *v_zca = Decode(obj_v,v_zca_temp);
+  try_verify_relax(tbl_zip_code(1)->get(txn, Encode(str(sizeof(k_zca)), k_zca), obj_v = str(sizeof(v_zca_temp))));
+  const zip_code::value *v_zca = Decode(obj_v, v_zca_temp);
 
   const exchange::key k_ex(v_s->s_ex_id);
   exchange::value v_ex_temp;
-  try_verify_relax(tbl_exchange(1)->get(txn, Encode(obj_key0=str(sizeof(k_ex)), k_ex), obj_v=str(sizeof(v_ex_temp))));
-  const exchange::value *v_ex = Decode(obj_v,v_ex_temp);
+  try_verify_relax(tbl_exchange(1)->get(txn, Encode(str(sizeof(k_ex)), k_ex), obj_v = str(sizeof(v_ex_temp))));
+  const exchange::value *v_ex = Decode(obj_v, v_ex_temp);
 
   const address::key k_ea(v_ex->ex_ad_id);
   address::value v_ea_temp;
-  try_verify_relax(tbl_address(1)->get(txn, Encode(obj_key0=str(sizeof(k_ea)), k_ea), obj_v=str(sizeof(v_ea_temp))));
-  const address::value *v_ea = Decode(obj_v,v_ea_temp);
+  try_verify_relax(tbl_address(1)->get(txn, Encode(str(sizeof(k_ea)), k_ea), obj_v = str(sizeof(v_ea_temp))));
+  const address::value *v_ea = Decode(obj_v, v_ea_temp);
 
   const zip_code::key k_zea(v_ea->ad_zc_code);
   zip_code::value v_zea_temp;
-  try_verify_relax(tbl_zip_code(1)->get(txn, Encode(obj_key0=str(sizeof(k_zea)), k_zea), obj_v=str(sizeof(v_zea_temp))));
-  const zip_code::value *v_zea = Decode(obj_v,v_zea_temp);
+  try_verify_relax(tbl_zip_code(1)->get(txn, Encode(str(sizeof(k_zea)), k_zea), obj_v = str(sizeof(v_zea_temp))));
+  const zip_code::value *v_zea = Decode(obj_v, v_zea_temp);
 
   memcpy(pOut->s_name,  v_s->s_name.data(), v_s->s_name.size());
   pOut->num_out = v_s->s_num_out;
@@ -1266,7 +1259,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
   const company_competitor::key k_cp_0(co_id, MIN_VAL(k_cp_0.cp_comp_co_id), string(cIN_ID_len, (char)0));
   const company_competitor::key k_cp_1(co_id, MAX_VAL(k_cp_1.cp_comp_co_id), string(cIN_ID_len, (char)255));
   table_scanner cp_scanner(&arena);
-  try_catch(tbl_company_competitor(1)->scan(txn, Encode(obj_key0=str(sizeof(k_cp_0)), k_cp_0), &Encode(obj_key1=str(sizeof(k_cp_1)), k_cp_1), cp_scanner, &arena));
+  try_catch(tbl_company_competitor(1)->scan(txn, Encode(str(sizeof(k_cp_0)), k_cp_0), &Encode(str(sizeof(k_cp_1)), k_cp_1), cp_scanner, &arena));
   ALWAYS_ASSERT(cp_scanner.output.size());
 
   for(auto i = 0; i < max_comp_len; i++) {
@@ -1276,13 +1269,13 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
     const company::key k_co3(k_cp->cp_comp_co_id);
     company::value v_co3_temp;
-    try_verify_relax(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co3)), k_co3), obj_v=str(sizeof(v_co3_temp))));
-    const company::value *v_co3 = Decode(obj_v,v_co3_temp);
+    try_verify_relax(tbl_company(1)->get(txn, Encode(str(sizeof(k_co3)), k_co3), obj_v = str(sizeof(v_co3_temp))));
+    const company::value *v_co3 = Decode(obj_v, v_co3_temp);
 
     const industry::key k_in(k_cp->cp_in_id);
     industry::value v_in_temp;
-    try_verify_relax(tbl_industry(1)->get(txn, Encode(obj_key0=str(sizeof(k_in)), k_in), obj_v=str(sizeof(v_in_temp))));
-    const industry::value *v_in = Decode(obj_v,v_in_temp);
+    try_verify_relax(tbl_industry(1)->get(txn, Encode(str(sizeof(k_in)), k_in), obj_v = str(sizeof(v_in_temp))));
+    const industry::value *v_in = Decode(obj_v, v_in_temp);
 
     memcpy(pOut->cp_co_name[i], v_co3->co_name.data(), v_co3->co_name.size());
     memcpy(pOut->cp_in_name[i], v_in->in_name.data(), v_in->in_name.size());
@@ -1291,7 +1284,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
   const financial::key k_fi_0(co_id, MIN_VAL(k_fi_0.fi_year), MIN_VAL(k_fi_0.fi_qtr));
   const financial::key k_fi_1(co_id, MAX_VAL(k_fi_1.fi_year), MAX_VAL(k_fi_1.fi_qtr));
   table_scanner fi_scanner(&arena);
-  try_catch(tbl_financial(1)->scan(txn, Encode(obj_key0=str(sizeof(k_fi_0)), k_fi_0), &Encode(obj_key1=str(sizeof(k_fi_1)), k_fi_1), fi_scanner, &arena));
+  try_catch(tbl_financial(1)->scan(txn, Encode(str(sizeof(k_fi_0)), k_fi_0), &Encode(str(sizeof(k_fi_1)), k_fi_1), fi_scanner, &arena));
   ALWAYS_ASSERT(fi_scanner.output.size());
   for(uint64_t i = 0; i < max_fin_len; i++) {
     auto &r_fi = fi_scanner.output[i];
@@ -1322,7 +1315,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
   const daily_market::key k_dm_0(string(pIn->symbol),CDateTime((TIMESTAMP_STRUCT*)&pIn->start_day).GetDate());
   const daily_market::key k_dm_1(string(pIn->symbol),MAX_VAL(k_dm_1.dm_date));
   table_scanner dm_scanner(&arena);
-  try_catch(tbl_daily_market(1)->scan(txn, Encode(obj_key0=str(sizeof(k_dm_0)), k_dm_0), &Encode(obj_key1=str(sizeof(k_dm_1)), k_dm_1), dm_scanner, &arena));
+  try_catch(tbl_daily_market(1)->scan(txn, Encode(str(sizeof(k_dm_0)), k_dm_0), &Encode(str(sizeof(k_dm_1)), k_dm_1), dm_scanner, &arena));
   ALWAYS_ASSERT(dm_scanner.output.size());
   for(size_t i=0; i < (size_t)pIn->max_rows_to_return and i< dm_scanner.output.size(); i++) {
     auto &r_dm = dm_scanner.output[i];
@@ -1344,8 +1337,8 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
   const last_trade::key k_lt(string(pIn->symbol));
   last_trade::value v_lt_temp;
-  try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
-  const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+  try_verify_relax(tbl_last_trade(1)->get(txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
+  const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
   pOut->last_price = v_lt->lt_price;
   pOut->last_open = v_lt->lt_open_price;
@@ -1354,7 +1347,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
   const news_xref::key k_nx_0(co_id, MIN_VAL(k_nx_0.nx_ni_id));
   const news_xref::key k_nx_1(co_id, MAX_VAL(k_nx_0.nx_ni_id));
   table_scanner nx_scanner(&arena);
-  try_catch(tbl_news_xref(1)->scan(txn, Encode(obj_key0=str(sizeof(k_nx_0)), k_nx_0), &Encode(obj_key1=str(sizeof(k_nx_1)), k_nx_1), nx_scanner, &arena));
+  try_catch(tbl_news_xref(1)->scan(txn, Encode(str(sizeof(k_nx_0)), k_nx_0), &Encode(str(sizeof(k_nx_1)), k_nx_1), nx_scanner, &arena));
   ALWAYS_ASSERT(nx_scanner.output.size());
 
   for(int i = 0; i < max_news_len; i++) {
@@ -1364,8 +1357,8 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
     const news_item::key k_ni(k_nx->nx_ni_id);
     news_item::value v_ni_temp;
-    try_verify_relax(tbl_news_item(1)->get(txn, Encode(obj_key0=str(sizeof(k_ni)), k_ni), obj_v=str(sizeof(v_ni_temp))));
-    const news_item::value *v_ni = Decode(obj_v,v_ni_temp);
+    try_verify_relax(tbl_news_item(1)->get(txn, Encode(str(sizeof(k_ni)), k_ni), obj_v = str(sizeof(v_ni_temp))));
+    const news_item::value *v_ni = Decode(obj_v, v_ni_temp);
 
     if(pIn->access_lob_flag) {
       memcpy(pOut->news[i].item, v_ni->ni_item.data(), v_ni->ni_item.size());
@@ -1399,13 +1392,13 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
   for(i = 0; i < pIn->max_trades; i++) {
     const trade::key k_t(pIn->trade_id[i]);
     trade::value v_t_temp;
-    try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
-    const trade::value *v_t = Decode(obj_v,v_t_temp);
+    try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+    const trade::value *v_t = Decode(obj_v, v_t_temp);
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
-    const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
+    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
+    const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     pOut->trade_info[i].bid_price = v_t->t_bid_price;
     memcpy(pOut->trade_info[i].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
@@ -1417,8 +1410,8 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
 
     const settlement::key k_se(pIn->trade_id[i]);
     settlement::value v_se_temp;
-    try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
-    const settlement::value *v_se = Decode(obj_v,v_se_temp);
+    try_verify_relax(tbl_settlement(1)->get(txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
+    const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
     CDateTime(v_se->se_cash_due_date).GetTimeStamp(&pOut->trade_info[i].settlement_cash_due_date);
@@ -1427,8 +1420,8 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
     if(pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pIn->trade_id[i]);
       cash_transaction::value v_ct_temp;
-      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
-      const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
+      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(str(sizeof(k_ct)), k_ct), obj_v = str(sizeof(v_ct_temp))));
+      const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
       CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
@@ -1439,7 +1432,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
     const trade_history::key k_th_0(pIn->trade_id[i], string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pIn->trade_id[i], string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
     table_scanner th_scanner(&arena);
-    try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
+    try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
     int th_cursor= 0;
@@ -1466,7 +1459,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
   const t_ca_id_index::key k_t_0(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id));
   table_scanner t_scanner(&arena);
-  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
+  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   auto num_found = 0;
@@ -1491,8 +1484,8 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
   for(auto i = 0; i < num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
-    const settlement::value *v_se = Decode(obj_v,v_se_temp);
+    try_verify_relax(tbl_settlement(1)->get(txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
+    const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
     CDateTime(v_se->se_cash_due_date).GetTimeStamp(&pOut->trade_info[i].settlement_cash_due_date);
@@ -1501,8 +1494,8 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
     if(pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
-      const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
+      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(str(sizeof(k_ct)), k_ct), obj_v = str(sizeof(v_ct_temp))));
+      const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
       CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
@@ -1512,7 +1505,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
     table_scanner th_scanner(&arena);
-    try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
+    try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
     int th_cursor= 0;
@@ -1540,7 +1533,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
   const t_s_symb_index::key k_t_0(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_s_symb_index::key k_t_1(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id));
   table_scanner t_scanner(&arena);
-  try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
+  try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   auto num_found = 0;
@@ -1570,8 +1563,8 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
   for(int i = 0; i < num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
-    const settlement::value *v_se = Decode(obj_v,v_se_temp);
+    try_verify_relax(tbl_settlement(1)->get(txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
+    const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
     CDateTime(v_se->se_cash_due_date).GetTimeStamp(&pOut->trade_info[i].settlement_cash_due_date);
@@ -1580,8 +1573,8 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
     if(pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
-      const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
+      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(str(sizeof(k_ct)), k_ct), obj_v = str(sizeof(v_ct_temp))));
+      const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
       CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
@@ -1591,7 +1584,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
     table_scanner th_scanner(&arena);
-    try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
+    try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
     // TODO. order by
@@ -1619,7 +1612,7 @@ rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTrade
   const t_ca_id_index::key k_t_0(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id));
   table_scanner t_scanner(&arena);
-  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
+  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   if(not t_scanner.output.size()) {  // XXX. can happen? or something is wrong?
     pOut->num_trades_found = 0;
     db->abort_txn(txn);
@@ -1639,7 +1632,7 @@ rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTrade
   const holding_history::key k_hh_0(pOut->trade_id, MIN_VAL(k_hh_0.hh_h_t_id));
   const holding_history::key k_hh_1(pOut->trade_id, MAX_VAL(k_hh_1.hh_h_t_id));
   table_scanner hh_scanner(&arena);
-  try_catch(tbl_holding_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hh_0)), k_hh_0), &Encode(obj_key1=str(sizeof(k_hh_1)), k_hh_1), hh_scanner, &arena));
+  try_catch(tbl_holding_history(1)->scan(txn, Encode(str(sizeof(k_hh_0)), k_hh_0), &Encode(str(sizeof(k_hh_1)), k_hh_1), hh_scanner, &arena));
   ALWAYS_ASSERT(hh_scanner.output.size());  // possible case. no holding for the customer
 
   auto hh_cursor = 0;
@@ -1671,8 +1664,8 @@ rc_t tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn, TTradeOr
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
-  const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
+  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
+  const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
 
   memcpy(pOut->acct_name, v_ca->ca_name.data(), v_ca->ca_name.size());
   pOut->broker_id = v_ca->ca_b_id;
@@ -1682,8 +1675,8 @@ rc_t tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn, TTradeOr
 
   const customers::key k_c(pOut->cust_id);
   customers::value v_c_temp;
-  try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
-  const customers::value *v_c = Decode(obj_v,v_c_temp);
+  try_verify_relax(tbl_customers(1)->get(txn, Encode(str(sizeof(k_c)), k_c), obj_v = str(sizeof(v_c_temp))));
+  const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   memcpy(pOut->cust_f_name, v_c->c_f_name.data(), v_c->c_f_name.size());
   memcpy(pOut->cust_l_name, v_c->c_l_name.data(), v_c->c_l_name.size());
@@ -1692,8 +1685,8 @@ rc_t tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn, TTradeOr
 
   const broker::key k_b(pOut->broker_id);
   broker::value v_b_temp;
-  try_verify_relax(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
-  const broker::value *v_b = Decode(obj_v,v_b_temp);
+  try_verify_relax(tbl_broker(1)->get(txn, Encode(str(sizeof(k_b)), k_b), obj_v = str(sizeof(v_b_temp))));
+  const broker::value *v_b = Decode(obj_v, v_b_temp);
   memcpy(pOut->broker_name, v_b->b_name.data(), v_b->b_name.size());
 
   return {RC_TRUE};
@@ -1705,9 +1698,9 @@ rc_t tpce_worker::DoTradeOrderFrame2(const TTradeOrderFrame2Input *pIn, TTradeOr
   const account_permission::key k_ap(pIn->acct_id, string(pIn->exec_tax_id));
   account_permission::value v_ap_temp;
   rc_t ret;
-  try_catch(ret = tbl_account_permission(1)->get(txn, Encode(obj_key0=str(sizeof(k_ap)), k_ap), obj_v=str(sizeof(v_ap_temp))));
+  try_catch(ret = tbl_account_permission(1)->get(txn, Encode(str(sizeof(k_ap)), k_ap), obj_v = str(sizeof(v_ap_temp))));
   if(ret._val == RC_TRUE) {
-    const account_permission::value *v_ap = Decode(obj_v,v_ap_temp);
+    const account_permission::value *v_ap = Decode(obj_v, v_ap_temp);
     if(v_ap->ap_f_name == string(pIn->exec_f_name) and v_ap->ap_l_name == string(pIn->exec_l_name)) {
       memcpy(pOut->ap_acl, v_ap->ap_acl.data(), v_ap->ap_acl.size());
       return {RC_TRUE};
@@ -1728,7 +1721,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
     const co_name_index::key k_co_0(string(pIn->co_name), MIN_VAL(k_co_0.co_id));
     const co_name_index::key k_co_1(string(pIn->co_name), MAX_VAL(k_co_1.co_id));
     table_scanner co_scanner(&arena);
-    try_catch(tbl_co_name_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_co_0)), k_co_0), &Encode(obj_key1=str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
+    try_catch(tbl_co_name_index(1)->scan(txn, Encode(str(sizeof(k_co_0)), k_co_0), &Encode(str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
     ALWAYS_ASSERT(co_scanner.output.size());
 
     co_name_index::key k_co_temp;
@@ -1740,7 +1733,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
     const security_index::key k_s_0(co_id, pIn->issue, string(cSYMBOL_len, (char)0));
     const security_index::key k_s_1(co_id, pIn->issue, string(cSYMBOL_len, (char)255));
     table_scanner s_scanner(&arena);
-    try_catch(tbl_security_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_s_0)), k_s_0), &Encode(obj_key1=str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
+    try_catch(tbl_security_index(1)->scan(txn, Encode(str(sizeof(k_s_0)), k_s_0), &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
     ALWAYS_ASSERT(s_scanner.output.size());
     for(auto &r_s : s_scanner.output) {
       security_index::key k_s_temp;
@@ -1759,8 +1752,8 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
     memcpy(pOut->symbol, pIn->symbol, cSYMBOL_len);
     const security::key k_s(string(pIn->symbol));
     security::value v_s_temp;
-    try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
-    const security::value *v_s = Decode(obj_v,v_s_temp);
+    try_verify_relax(tbl_security(1)->get(txn, Encode(str(sizeof(k_s)), k_s), obj_v = str(sizeof(v_s_temp))));
+    const security::value *v_s = Decode(obj_v, v_s_temp);
 
     co_id = v_s->s_co_id;
     memcpy(exch_id, v_s->s_ex_id.data(), v_s->s_ex_id.size());
@@ -1768,21 +1761,21 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
     const company::key k_co(co_id);
     company::value v_co_temp;
-    try_verify_relax(tbl_company(1)->get(txn, Encode(obj_key0=str(sizeof(k_co)), k_co), obj_v=str(sizeof(v_co_temp))));
-    const company::value *v_co = Decode(obj_v,v_co_temp);
+    try_verify_relax(tbl_company(1)->get(txn, Encode(str(sizeof(k_co)), k_co), obj_v = str(sizeof(v_co_temp))));
+    const company::value *v_co = Decode(obj_v, v_co_temp);
     memcpy(pOut->co_name, v_co->co_name.data(), v_co->co_name.size());
   }
   const last_trade::key k_lt(string(pOut->symbol));
   last_trade::value v_lt_temp;
-  try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
-  const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+  try_verify_relax(tbl_last_trade(1)->get(txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
+  const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
   pOut->market_price = v_lt->lt_price;
 
   const trade_type::key k_tt(pIn->trade_type_id);
   trade_type::value v_tt_temp;
-  try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
-  const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
+  try_verify_relax(tbl_trade_type(1)->get(txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
+  const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
   pOut->type_is_market = v_tt->tt_is_mrkt;
   pOut->type_is_sell = v_tt->tt_is_sell;
@@ -1802,9 +1795,9 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
   const holding_summary::key k_hs(pIn->acct_id, string(pOut->symbol));
   holding_summary::value v_hs_temp;
   rc_t ret;
-  try_catch(ret = tbl_holding_summary(1)->get(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs), obj_v=str(sizeof(v_hs_temp))));
+  try_catch(ret = tbl_holding_summary(1)->get(txn, Encode(str(sizeof(k_hs)), k_hs), obj_v = str(sizeof(v_hs_temp))));
   if(ret._val == RC_TRUE) {
-    const holding_summary::value *v_hs = Decode(obj_v,v_hs_temp);
+    const holding_summary::value *v_hs = Decode(obj_v, v_hs_temp);
     hs_qty = v_hs->hs_qty;
   }
 
@@ -1814,7 +1807,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
       const holding::key k_h_0(pIn->acct_id, string(pOut->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pOut->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
       table_scanner h_scanner(&arena);
-      try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+      try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
       //ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
       for(auto &r_h : h_scanner.output) {
@@ -1852,7 +1845,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
       const holding::key k_h_0(pIn->acct_id, string(pOut->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pOut->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
       table_scanner h_scanner(&arena);
-      try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+      try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
       //ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
       for(auto &r_h : h_scanner.output) {
@@ -1892,7 +1885,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
     const customer_taxrate::key k_cx_1(pIn->cust_id, string(cTX_ID_len, (char)255));
 
     table_scanner cx_scanner(&arena);
-    try_catch(tbl_customer_taxrate(1)->scan(txn, Encode(obj_key0=str(sizeof(k_cx_0)), k_cx_0), &Encode(obj_key1=str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
+    try_catch(tbl_customer_taxrate(1)->scan(txn, Encode(str(sizeof(k_cx_0)), k_cx_0), &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
     ALWAYS_ASSERT(cx_scanner.output.size());
 
     auto tax_rates = 0.0;
@@ -1902,8 +1895,8 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
       const tax_rate::key k_tx(k_cx->cx_tx_id);
       tax_rate::value v_tx_temp;
-      try_verify_relax(tbl_tax_rate(1)->get(txn, Encode(obj_key0=str(sizeof(k_tx)), k_tx), obj_v=str(sizeof(v_tx_temp))));
-      const tax_rate::value *v_tx = Decode(obj_v,v_tx_temp);
+      try_verify_relax(tbl_tax_rate(1)->get(txn, Encode(str(sizeof(k_tx)), k_tx), obj_v = str(sizeof(v_tx_temp))));
+      const tax_rate::value *v_tx = Decode(obj_v, v_tx_temp);
 
       tax_rates += v_tx->tx_rate;
     }
@@ -1914,7 +1907,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
   const commission_rate::key k_cr_1(pIn->cust_tier, string(pIn->trade_type_id), string(exch_id), pIn->trade_qty);
 
   table_scanner cr_scanner(&arena);
-  try_catch(tbl_commission_rate(1)->scan(txn, Encode(obj_key0=str(sizeof(k_cr_0)), k_cr_0), &Encode(obj_key1=str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
+  try_catch(tbl_commission_rate(1)->scan(txn, Encode(str(sizeof(k_cr_0)), k_cr_0), &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
   ALWAYS_ASSERT(cr_scanner.output.size());
 
   for(auto &r_cr : cr_scanner.output) {
@@ -1930,8 +1923,8 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
   const charge::key k_ch(pIn->trade_type_id, pIn->cust_tier);
   charge::value v_ch_temp;
-  try_verify_relax(tbl_charge(1)->get(txn, Encode(obj_key0=str(sizeof(k_ch)), k_ch), obj_v=str(sizeof(v_ch_temp))));
-  const charge::value *v_ch = Decode(obj_v,v_ch_temp);
+  try_verify_relax(tbl_charge(1)->get(txn, Encode(str(sizeof(k_ch)), k_ch), obj_v = str(sizeof(v_ch_temp))));
+  const charge::value *v_ch = Decode(obj_v, v_ch_temp);
   pOut->charge_amount = v_ch->ch_chrg;
 
 
@@ -1942,14 +1935,14 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
   if(pIn->type_is_margin) {
     const customer_account::key k_ca(pIn->acct_id);
     customer_account::value v_ca_temp;
-    try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
-    const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
+    try_verify_relax(tbl_customer_account(1)->get(txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
+    const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
     acct_bal = v_ca->ca_bal;
 
     const holding_summary::key k_hs_0(pIn->acct_id, string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(pIn->acct_id, string(cSYMBOL_len, (char)255));
     table_scanner hs_scanner(&arena);
-    try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
+    try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
     //ALWAYS_ASSERT(hs_scanner.output.size());  // XXX. allowed?
 
     for(auto &r_hs : hs_scanner.output) {
@@ -1960,8 +1953,8 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
       const last_trade::key k_lt(k_hs->hs_s_symb);
       last_trade::value v_lt_temp;
-      try_verify_relax(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
-      const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+      try_verify_relax(tbl_last_trade(1)->get(txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
+      const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
       hold_assets += v_hs->hs_qty * v_lt->lt_price;
 
@@ -2000,7 +1993,7 @@ rc_t tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
   v_t.t_comm = pIn->comm_amount;
   v_t.t_tax = 0;
   v_t.t_lifo = pIn->is_lifo;
-  try_catch(tbl_trade(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), Encode(obj_v=str(sizeof(v_t)), v_t)));
+  try_catch(tbl_trade(1)->insert(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t)), v_t)));
 
   t_ca_id_index::key k_t_idx1;
   t_ca_id_index::value v_t_idx1;
@@ -2016,7 +2009,7 @@ rc_t tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
   v_t_idx1.t_exec_name = v_t.t_exec_name ;
   v_t_idx1.t_trade_price = v_t.t_trade_price ;
   v_t_idx1.t_chrg = v_t.t_chrg ;
-  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1), Encode(obj_v=str(sizeof(v_t_idx1)), v_t_idx1)));
+  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
 
   t_s_symb_index::key k_t_idx2;
   t_s_symb_index::value v_t_idx2;
@@ -2030,7 +2023,7 @@ rc_t tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
   v_t_idx2.t_qty = v_t.t_qty ;
   v_t_idx2.t_exec_name = v_t.t_exec_name ;
   v_t_idx2.t_trade_price = v_t.t_trade_price ;
-  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
+  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
 
   if(not pIn->type_is_market) {
     trade_request::key k_tr;
@@ -2042,7 +2035,7 @@ rc_t tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
     v_tr.tr_tt_id = string(pIn->trade_type_id);
     v_tr.tr_qty = pIn->trade_qty;
     v_tr.tr_bid_price = pIn->requested_price;
-    try_catch(tbl_trade_request(1)->insert(txn, Encode(obj_key0=str(sizeof(k_tr)), k_tr), Encode(obj_v=str(sizeof(v_tr)), v_tr)));
+    try_catch(tbl_trade_request(1)->insert(txn, Encode(str(sizeof(k_tr)), k_tr), Encode(str(sizeof(v_tr)), v_tr)));
   }
 
   trade_history::key k_th;
@@ -2052,7 +2045,7 @@ rc_t tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
   k_th.th_dts = now_dts;
   k_th.th_st_id = string(pIn->status_id);
 
-  try_catch(tbl_trade_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_th)), k_th), Encode(obj_v=str(sizeof(v_th)), v_th)));
+  try_catch(tbl_trade_history(1)->insert(txn, Encode(str(sizeof(k_th)), k_th), Encode(str(sizeof(v_th)), v_th)));
   return {RC_TRUE};
 }
 
@@ -2072,8 +2065,8 @@ rc_t tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTrade
 
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
-  try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
-  const trade::value *v_t = Decode(obj_v,v_t_temp);
+  try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+  const trade::value *v_t = Decode(obj_v, v_t_temp);
   pOut->acct_id = v_t->t_ca_id;
   memcpy(pOut->type_id, v_t->t_tt_id.data(), v_t->t_tt_id.size());
   memcpy(pOut->symbol, v_t->t_s_symb.data(), v_t->t_s_symb.size());
@@ -2085,8 +2078,8 @@ rc_t tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTrade
 
   const trade_type::key k_tt(pOut->type_id);
   trade_type::value v_tt_temp;
-  try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
-  const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
+  try_verify_relax(tbl_trade_type(1)->get(txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
+  const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
   memcpy(pOut->type_name, v_tt->tt_name.data(), v_tt->tt_name.size());
   pOut->type_is_sell = v_tt->tt_is_sell;
   pOut->type_is_market = v_tt->tt_is_mrkt;
@@ -2095,9 +2088,9 @@ rc_t tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn, TTrade
   const holding_summary::key k_hs(pOut->acct_id, string(pOut->symbol));
   holding_summary::value v_hs_temp;
   rc_t ret;
-  try_catch(ret = tbl_holding_summary(1)->get(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs), obj_v=str(sizeof(v_hs_temp))));
+  try_catch(ret = tbl_holding_summary(1)->get(txn, Encode(str(sizeof(k_hs)), k_hs), obj_v = str(sizeof(v_hs_temp))));
   if(ret._val == RC_TRUE) {
-    const holding_summary::value *v_hs = Decode(obj_v,v_hs_temp);
+    const holding_summary::value *v_hs = Decode(obj_v, v_hs_temp);
     pOut->hs_qty = v_hs->hs_qty;
   }
   return {RC_TRUE};
@@ -2117,8 +2110,8 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
-  const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
+  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
+  const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
   pOut->broker_id = v_ca->ca_b_id;
   pOut->cust_id = v_ca->ca_c_id;
   pOut->tax_status = v_ca->ca_tax_st;
@@ -2130,7 +2123,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       k_hs.hs_ca_id = pIn->acct_id;
       k_hs.hs_s_symb = string(pIn->symbol);
       v_hs.hs_qty = -1 * pIn->trade_qty;
-      try_catch(tbl_holding_summary(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs), Encode(obj_v=str(sizeof(v_hs)), v_hs)));
+      try_catch(tbl_holding_summary(1)->insert(txn, Encode(str(sizeof(k_hs)), k_hs), Encode(str(sizeof(v_hs)), v_hs)));
     }
 
     else {
@@ -2140,7 +2133,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
         k_hs.hs_ca_id = pIn->acct_id;
         k_hs.hs_s_symb = string(pIn->symbol);
         v_hs.hs_qty = pIn->hs_qty - pIn->trade_qty;
-        try_catch(tbl_holding_summary(1)->put(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs), Encode(obj_v=str(sizeof(v_hs)), v_hs)));
+        try_catch(tbl_holding_summary(1)->put(txn, Encode(str(sizeof(k_hs)), k_hs), Encode(str(sizeof(v_hs)), v_hs)));
       }
     }
 
@@ -2148,7 +2141,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
       table_scanner h_scanner(&arena);
-      try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+      try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
 
       if(pIn->is_lifo) {
         reverse(h_scanner.output.begin(), h_scanner.output.end());
@@ -2173,13 +2166,13 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
           k_hh.hh_h_t_id = hold_id;
           v_hh.hh_before_qty = hold_qty;
           v_hh.hh_after_qty = hold_qty - needed_qty;
-          try_catch(tbl_holding_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hh)), k_hh), Encode(obj_v=str(sizeof(v_hh)), v_hh)));
+          try_catch(tbl_holding_history(1)->insert(txn, Encode(str(sizeof(k_hh)), k_hh), Encode(str(sizeof(v_hh)), v_hh)));
 
           // update with current holding cursor. use the same key
           holding::key k_h_new(*k_h);
           holding::value v_h_new(*v_h);
           v_h_new.h_qty = hold_qty - needed_qty;
-          try_catch(tbl_holding(1)->put(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new), Encode(obj_v=str(sizeof(v_h_new)), v_h_new)));
+          try_catch(tbl_holding(1)->put(txn, Encode(str(sizeof(k_h_new)), k_h_new), Encode(str(sizeof(v_h_new)), v_h_new)));
 
           buy_value += needed_qty * hold_price;
           sell_value += needed_qty * pIn->trade_price;
@@ -2191,10 +2184,10 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
           k_hh.hh_h_t_id = hold_id;
           v_hh.hh_before_qty = hold_qty;
           v_hh.hh_after_qty = 0;
-          try_catch(tbl_holding_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hh)), k_hh), Encode(obj_v=str(sizeof(v_hh)), v_hh)));
+          try_catch(tbl_holding_history(1)->insert(txn, Encode(str(sizeof(k_hh)), k_hh), Encode(str(sizeof(v_hh)), v_hh)));
 
           holding::key k_h_new(*k_h);
-          try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+          try_catch(tbl_holding(1)->remove(txn, Encode(str(sizeof(k_h_new)), k_h_new)));
 
           buy_value += hold_qty * hold_price;
           sell_value += hold_qty * pIn->trade_price;
@@ -2211,7 +2204,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       k_hh.hh_h_t_id = pIn->trade_id;
       v_hh.hh_before_qty = 0;
       v_hh.hh_after_qty = -1 * needed_qty;
-      try_catch(tbl_holding_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hh)), k_hh), Encode(obj_v=str(sizeof(v_hh)), v_hh)));
+      try_catch(tbl_holding_history(1)->insert(txn, Encode(str(sizeof(k_hh)), k_hh), Encode(str(sizeof(v_hh)), v_hh)));
 
       holding::key k_h;
       holding::value v_h;
@@ -2221,27 +2214,27 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       k_h.h_t_id = pIn->trade_id;
       v_h.h_price = pIn->trade_price;
       v_h.h_qty = -1 * needed_qty;
-      try_catch(tbl_holding(1)->insert(txn, Encode(obj_key0=str(sizeof(k_h)), k_h), Encode(obj_v=str(sizeof(v_h)), v_h)));
+      try_catch(tbl_holding(1)->insert(txn, Encode(str(sizeof(k_h)), k_h), Encode(str(sizeof(v_h)), v_h)));
 
     } else {
       if(pIn->hs_qty == pIn->trade_qty) {
         holding_summary::key k_hs;
         k_hs.hs_ca_id = pIn->acct_id;
         k_hs.hs_s_symb = string(pIn->symbol);
-        try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
+        try_catch(tbl_holding_summary(1)->remove(txn, Encode(str(sizeof(k_hs)), k_hs)));
 
         // Cascade delete for FK integrity
         const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
         const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
         table_scanner h_scanner(&arena);
-        try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+        try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
 
         for(auto& r_h : h_scanner.output) {
           holding::key k_h_temp;
           const holding::key* k_h = Decode(*r_h.first, k_h_temp);
 
           holding::key k_h_new(*k_h);
-          try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+          try_catch(tbl_holding(1)->remove(txn, Encode(str(sizeof(k_h_new)), k_h_new)));
         }
 
       }
@@ -2255,7 +2248,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       k_hs.hs_ca_id = pIn->acct_id;
       k_hs.hs_s_symb = string(pIn->symbol);
       v_hs.hs_qty =  pIn->trade_qty;
-      try_catch(tbl_holding_summary(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs), Encode(obj_v=str(sizeof(v_hs)), v_hs)));
+      try_catch(tbl_holding_summary(1)->insert(txn, Encode(str(sizeof(k_hs)), k_hs), Encode(str(sizeof(v_hs)), v_hs)));
 
     } else if (-1*pIn->hs_qty != pIn->trade_qty) {
       // HS update
@@ -2264,14 +2257,14 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       k_hs.hs_ca_id = pIn->acct_id;
       k_hs.hs_s_symb = string(pIn->symbol);
       v_hs.hs_qty  = pIn->trade_qty + pIn->hs_qty;
-      try_catch(tbl_holding_summary(1)->put(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs), Encode(obj_v=str(sizeof(v_hs)), v_hs)));
+      try_catch(tbl_holding_summary(1)->put(txn, Encode(str(sizeof(k_hs)), k_hs), Encode(str(sizeof(v_hs)), v_hs)));
     }
 
     if(pIn->hs_qty < 0) {
       const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
       table_scanner h_scanner(&arena);
-      try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+      try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
       //ALWAYS_ASSERT(h_scanner.output.size());  // XXX. guessing could be empty
 
       if(pIn->is_lifo) {
@@ -2300,13 +2293,13 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
           k_hh.hh_h_t_id  = hold_id;
           v_hh.hh_before_qty = hold_qty;
           v_hh.hh_after_qty = hold_qty + needed_qty;
-          try_catch(tbl_holding_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hh)), k_hh), Encode(obj_v=str(sizeof(v_hh)), v_hh)));
+          try_catch(tbl_holding_history(1)->insert(txn, Encode(str(sizeof(k_hh)), k_hh), Encode(str(sizeof(v_hh)), v_hh)));
 
           // update with current holding cursor. use the same key
           holding::key k_h_new(*k_h);
           holding::value v_h_new(*v_h);
           v_h_new.h_qty= hold_qty + needed_qty;
-          try_catch(tbl_holding(1)->put(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new), Encode(obj_v=str(sizeof(v_h_new)), v_h_new)));
+          try_catch(tbl_holding(1)->put(txn, Encode(str(sizeof(k_h_new)), k_h_new), Encode(str(sizeof(v_h_new)), v_h_new)));
 
           sell_value += needed_qty * hold_price;
           buy_value += needed_qty * pIn->trade_price;
@@ -2319,11 +2312,11 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
           k_hh.hh_h_t_id  = hold_id;
           v_hh.hh_before_qty = hold_qty;
           v_hh.hh_after_qty = 0;
-          try_catch(tbl_holding_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hh)), k_hh), Encode(obj_v=str(sizeof(v_hh)), v_hh)));
+          try_catch(tbl_holding_history(1)->insert(txn, Encode(str(sizeof(k_hh)), k_hh), Encode(str(sizeof(v_hh)), v_hh)));
 
           // H delete
           holding::key k_h_new(*k_h);
-          try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+          try_catch(tbl_holding(1)->remove(txn, Encode(str(sizeof(k_h_new)), k_h_new)));
 
           hold_qty *= -1;
           sell_value += hold_qty * hold_price;
@@ -2339,7 +2332,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       k_hh.hh_h_t_id  = pIn->trade_id;
       v_hh.hh_before_qty = 0;
       v_hh.hh_after_qty = needed_qty;
-      try_catch(tbl_holding_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_hh)), k_hh), Encode(obj_v=str(sizeof(v_hh)), v_hh)));
+      try_catch(tbl_holding_history(1)->insert(txn, Encode(str(sizeof(k_hh)), k_hh), Encode(str(sizeof(v_hh)), v_hh)));
 
       holding::key k_h;
       holding::value v_h;
@@ -2349,25 +2342,25 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       k_h.h_t_id  = pIn->trade_id;
       v_h.h_price = pIn->trade_price;
       v_h.h_qty  = needed_qty;
-      try_catch(tbl_holding(1)->insert(txn, Encode(obj_key0=str(sizeof(k_h)), k_h), Encode(obj_v=str(sizeof(v_h)), v_h)));
+      try_catch(tbl_holding(1)->insert(txn, Encode(str(sizeof(k_h)), k_h), Encode(str(sizeof(v_h)), v_h)));
     } else if (-1*pIn->hs_qty == pIn->trade_qty) {
       holding_summary::key k_hs;
       k_hs.hs_ca_id = pIn->acct_id;
       k_hs.hs_s_symb = string(pIn->symbol);
-      try_catch(tbl_holding_summary(1)->remove(txn, Encode(obj_key0=str(sizeof(k_hs)), k_hs)));
+      try_catch(tbl_holding_summary(1)->remove(txn, Encode(str(sizeof(k_hs)), k_hs)));
 
       // Cascade delete for FK integrity
       const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
       table_scanner h_scanner(&arena);
-      try_catch(tbl_holding(1)->scan(txn, Encode(obj_key0=str(sizeof(k_h_0)), k_h_0), &Encode(obj_key1=str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
+      try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
 
       for(auto& r_h : h_scanner.output) {
         holding::key k_h_temp;
         const holding::key* k_h = Decode(*r_h.first, k_h_temp);
 
         holding::key k_h_new(*k_h);
-        try_catch(tbl_holding(1)->remove(txn, Encode(obj_key0=str(sizeof(k_h_new)), k_h_new)));
+        try_catch(tbl_holding(1)->remove(txn, Encode(str(sizeof(k_h_new)), k_h_new)));
       }
     }
   }
@@ -2379,7 +2372,7 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTrade
   const customer_taxrate::key k_cx_0(pIn->cust_id, string(cTX_ID_len, (char)0));
   const customer_taxrate::key k_cx_1(pIn->cust_id, string(cTX_ID_len, (char)255));
   table_scanner cx_scanner(&arena);
-  try_catch(tbl_customer_taxrate(1)->scan(txn, Encode(obj_key0=str(sizeof(k_cx_0)), k_cx_0), &Encode(obj_key1=str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
+  try_catch(tbl_customer_taxrate(1)->scan(txn, Encode(str(sizeof(k_cx_0)), k_cx_0), &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
   ALWAYS_ASSERT(cx_scanner.output.size());
 
   double tax_rates = 0.0;
@@ -2390,8 +2383,8 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTrade
 
     const tax_rate::key k_tx(k_cx->cx_tx_id);
     tax_rate::value v_tx_temp;
-    try_verify_relax(tbl_tax_rate(1)->get(txn, Encode(obj_key0=str(sizeof(k_tx)), k_tx), obj_v=str(sizeof(v_tx_temp))));
-    const tax_rate::value *v_tx = Decode(obj_v,v_tx_temp);
+    try_verify_relax(tbl_tax_rate(1)->get(txn, Encode(str(sizeof(k_tx)), k_tx), obj_v = str(sizeof(v_tx_temp))));
+    const tax_rate::value *v_tx = Decode(obj_v, v_tx_temp);
 
     tax_rates += v_tx->tx_rate;
   }
@@ -2400,12 +2393,12 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTrade
 
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
-  try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
-  const trade::value *v_t = Decode(obj_v,v_t_temp);
+  try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+  const trade::value *v_t = Decode(obj_v, v_t_temp);
   trade::value v_t_new(*v_t);
   v_t_new.t_tax = pOut->tax_amount;  // secondary indices don't have t_tax field. no need for cascading update
 
-  try_catch(tbl_trade(1)->put(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), Encode(obj_v=str(sizeof(v_t_new)), v_t_new)));
+  try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
 
   return {RC_TRUE};
 }
@@ -2415,20 +2408,20 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn, TTrade
 
   const security::key k_s(string(pIn->symbol));
   security::value v_s_temp;
-  try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
-  const security::value *v_s = Decode(obj_v,v_s_temp);
+  try_verify_relax(tbl_security(1)->get(txn, Encode(str(sizeof(k_s)), k_s), obj_v = str(sizeof(v_s_temp))));
+  const security::value *v_s = Decode(obj_v, v_s_temp);
   memcpy(pOut->s_name, v_s->s_name.data(), v_s->s_name.size());
 
   const customers::key k_c(pIn->cust_id);
   customers::value v_c_temp;
-  try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
-  const customers::value *v_c = Decode(obj_v,v_c_temp);
+  try_verify_relax(tbl_customers(1)->get(txn, Encode(str(sizeof(k_c)), k_c), obj_v = str(sizeof(v_c_temp))));
+  const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   const commission_rate::key k_cr_0(v_c->c_tier, string(pIn->type_id), v_s->s_ex_id, 0);
   const commission_rate::key k_cr_1(v_c->c_tier, string(pIn->type_id), v_s->s_ex_id, pIn->trade_qty);
 
   table_scanner cr_scanner(&arena);
-  try_catch(tbl_commission_rate(1)->scan(txn, Encode(obj_key0=str(sizeof(k_cr_0)), k_cr_0), &Encode(obj_key1=str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
+  try_catch(tbl_commission_rate(1)->scan(txn, Encode(str(sizeof(k_cr_0)), k_cr_0), &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
   ALWAYS_ASSERT(cr_scanner.output.size());
 
   for(auto &r_cr : cr_scanner.output) {
@@ -2446,14 +2439,14 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn, TTrade
 rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
-  try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
-  const trade::value *v_t = Decode(obj_v,v_t_temp);
+  try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+  const trade::value *v_t = Decode(obj_v, v_t_temp);
   trade::value v_t_new(*v_t);
   v_t_new.t_comm = pIn->comm_amount;
   v_t_new.t_dts = CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate();
   v_t_new.t_st_id = string(pIn->st_completed_id);
   v_t_new.t_trade_price = pIn->trade_price;
-  try_catch(tbl_trade(1)->put(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), Encode(obj_v=str(sizeof(v_t_new)), v_t_new)));
+  try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
 
   // DTS field is updated. cascading update(actually insert after remove, because dts is included in PK)
   t_ca_id_index::key k_t_idx1;
@@ -2461,7 +2454,7 @@ rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   k_t_idx1.t_ca_id  = v_t->t_ca_id;
   k_t_idx1.t_dts = v_t->t_dts;
   k_t_idx1.t_id = k_t.t_id;
-  try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1)));
+  try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1)));
   k_t_idx1.t_ca_id  = v_t_new.t_ca_id;
   k_t_idx1.t_dts = v_t_new.t_dts;
   k_t_idx1.t_id = k_t.t_id;
@@ -2474,14 +2467,14 @@ rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   v_t_idx1.t_exec_name = v_t_new.t_exec_name ;
   v_t_idx1.t_trade_price = v_t_new.t_trade_price ;
   v_t_idx1.t_chrg  = v_t_new.t_chrg ;
-  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1), Encode(obj_v=str(sizeof(v_t_idx1)), v_t_idx1)));
+  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
 
   t_s_symb_index::key k_t_idx2;
   t_s_symb_index::value v_t_idx2;
   k_t_idx2.t_s_symb  = v_t->t_s_symb;
   k_t_idx2.t_dts = v_t->t_dts;
   k_t_idx2.t_id = k_t.t_id;
-  try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2)));
+  try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2)));
   k_t_idx2.t_s_symb  = v_t_new.t_s_symb ;
   k_t_idx2.t_dts = v_t_new.t_dts;
   k_t_idx2.t_id = k_t.t_id;
@@ -2492,23 +2485,23 @@ rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   v_t_idx2.t_qty = v_t_new.t_qty ;
   v_t_idx2.t_exec_name = v_t_new.t_exec_name ;
   v_t_idx2.t_trade_price = v_t_new.t_trade_price ;
-  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
+  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
 
   trade_history::key k_th;
   trade_history::value v_th;
   k_th.th_t_id = pIn->trade_id;
   k_th.th_dts = CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate();
   k_th.th_st_id = string(pIn->st_completed_id);
-  try_catch(tbl_trade_history(1)->insert(txn, Encode(obj_key0=str(sizeof(k_th)), k_th), Encode(obj_v=str(sizeof(v_th)), v_th)));
+  try_catch(tbl_trade_history(1)->insert(txn, Encode(str(sizeof(k_th)), k_th), Encode(str(sizeof(v_th)), v_th)));
 
   const broker::key k_b(pIn->broker_id);
   broker::value v_b_temp;
-  try_verify_relax(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
-  const broker::value *v_b = Decode(obj_v,v_b_temp);
+  try_verify_relax(tbl_broker(1)->get(txn, Encode(str(sizeof(k_b)), k_b), obj_v = str(sizeof(v_b_temp))));
+  const broker::value *v_b = Decode(obj_v, v_b_temp);
   broker::value v_b_new(*v_b);
   v_b_new.b_comm_total += pIn->comm_amount;
   v_b_new.b_num_trades += 1;
-  try_catch(tbl_broker(1)->put(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), Encode(obj_v=str(sizeof(v_b_new)), v_b_new)));
+  try_catch(tbl_broker(1)->put(txn, Encode(str(sizeof(k_b)), k_b), Encode(str(sizeof(v_b_new)), v_b_new)));
   return {RC_TRUE};
 }
 
@@ -2526,23 +2519,23 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn, TTrade
   v_se.se_cash_type = cash_type;
   v_se.se_cash_due_date = CDateTime((TIMESTAMP_STRUCT*)&pIn->due_date).GetDate();
   v_se.se_amt = pIn->se_amount;
-  try_catch(tbl_settlement(1)->insert(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), Encode(obj_v=str(sizeof(v_se)), v_se)));
+  try_catch(tbl_settlement(1)->insert(txn, Encode(str(sizeof(k_se)), k_se), Encode(str(sizeof(v_se)), v_se)));
 
   if(pIn->trade_is_cash) {
     const customer_account::key k_ca(pIn->acct_id);
     customer_account::value v_ca_temp;
-    try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
-    const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
+    try_verify_relax(tbl_customer_account(1)->get(txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
+    const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
     customer_account::value v_ca_new(*v_ca);
     v_ca_new.ca_bal += pIn->se_amount;
-    try_catch(tbl_customer_account(1)->put(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), Encode(obj_v=str(sizeof(v_ca_new)), v_ca_new)));
+    try_catch(tbl_customer_account(1)->put(txn, Encode(str(sizeof(k_ca)), k_ca), Encode(str(sizeof(v_ca_new)), v_ca_new)));
 
     ca_id_index::key k_idx_ca;
     ca_id_index::value v_idx_ca;
     k_idx_ca.ca_id = k_ca.ca_id;
     k_idx_ca.ca_c_id = v_ca_new.ca_c_id;
     v_idx_ca.ca_bal = v_ca_new.ca_bal;
-    try_catch(tbl_ca_id_index(1)->put(txn, Encode(obj_key0=str(sizeof(k_idx_ca)), k_idx_ca), Encode(obj_v=str(sizeof(v_idx_ca)), v_idx_ca)));
+    try_catch(tbl_ca_id_index(1)->put(txn, Encode(str(sizeof(k_idx_ca)), k_idx_ca), Encode(str(sizeof(v_idx_ca)), v_idx_ca)));
 
     cash_transaction::key k_ct;
     cash_transaction::value v_ct;
@@ -2550,13 +2543,13 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn, TTrade
     v_ct.ct_dts = CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate();
     v_ct.ct_amt = pIn->se_amount;
     v_ct.ct_name = string(pIn->type_name) + " " + to_string(pIn->trade_qty) + " shares of " + string(pIn->s_name);
-    try_catch(tbl_cash_transaction(1)->insert(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), Encode(obj_v=str(sizeof(v_ct)), v_ct)));
+    try_catch(tbl_cash_transaction(1)->insert(txn, Encode(str(sizeof(k_ct)), k_ct), Encode(str(sizeof(v_ct)), v_ct)));
   }
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
-  const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
+  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
+  const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
   pOut->acct_bal = v_ca->ca_bal;
 
   try_catch(db->commit_txn(txn));
@@ -2570,7 +2563,7 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTrade
   const t_ca_id_index::key k_t_0(pIn->acct_id, MIN_VAL(k_t_0.t_dts), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id));
   table_scanner t_scanner(&arena);
-  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
+  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   int t_cursor = 0;
@@ -2582,23 +2575,23 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTrade
 
     const status_type::key k_st(v_t->t_st_id);
     status_type::value v_st_temp;
-    try_verify_relax(tbl_status_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_st)), k_st), obj_v=str(sizeof(v_st_temp))));
-    const status_type::value *v_st = Decode(obj_v,v_st_temp);
+    try_verify_relax(tbl_status_type(1)->get(txn, Encode(str(sizeof(k_st)), k_st), obj_v = str(sizeof(v_st_temp))));
+    const status_type::value *v_st = Decode(obj_v, v_st_temp);
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
-    const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
+    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
+    const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     const security::key k_s(v_t->t_s_symb);
     security::value v_s_temp;
-    try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
-    const security::value *v_s = Decode(obj_v,v_s_temp);
+    try_verify_relax(tbl_security(1)->get(txn, Encode(str(sizeof(k_s)), k_s), obj_v = str(sizeof(v_s_temp))));
+    const security::value *v_s = Decode(obj_v, v_s_temp);
 
     const exchange::key k_ex(v_s->s_ex_id);
     exchange::value v_ex_temp;
-    try_verify_relax(tbl_exchange(1)->get(txn, Encode(obj_key0=str(sizeof(k_ex)), k_ex), obj_v=str(sizeof(v_ex_temp))));
-    const exchange::value *v_ex = Decode(obj_v,v_ex_temp);
+    try_verify_relax(tbl_exchange(1)->get(txn, Encode(str(sizeof(k_ex)), k_ex), obj_v = str(sizeof(v_ex_temp))));
+    const exchange::value *v_ex = Decode(obj_v, v_ex_temp);
 
     pOut->trade_id[t_cursor] = k_t->t_id;
     CDateTime(k_t->t_dts).GetTimeStamp(&pOut->trade_dts[t_cursor]);
@@ -2620,18 +2613,18 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTrade
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(obj_key0=str(sizeof(k_ca)), k_ca), obj_v=str(sizeof(v_ca_temp))));
-  const customer_account::value *v_ca = Decode(obj_v,v_ca_temp);
+  try_verify_relax(tbl_customer_account(1)->get(txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
+  const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
 
   const customers::key k_c(v_ca->ca_c_id);
   customers::value v_c_temp;
-  try_verify_relax(tbl_customers(1)->get(txn, Encode(obj_key0=str(sizeof(k_c)), k_c), obj_v=str(sizeof(v_c_temp))));
-  const customers::value *v_c = Decode(obj_v,v_c_temp);
+  try_verify_relax(tbl_customers(1)->get(txn, Encode(str(sizeof(k_c)), k_c), obj_v = str(sizeof(v_c_temp))));
+  const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   const broker::key k_b(v_ca->ca_b_id);
   broker::value v_b_temp;
-  try_verify_relax(tbl_broker(1)->get(txn, Encode(obj_key0=str(sizeof(k_b)), k_b), obj_v=str(sizeof(v_b_temp))));
-  const broker::value *v_b = Decode(obj_v,v_b_temp);
+  try_verify_relax(tbl_broker(1)->get(txn, Encode(str(sizeof(k_b)), k_b), obj_v = str(sizeof(v_b_temp))));
+  const broker::value *v_b = Decode(obj_v, v_b_temp);
 
   memcpy(pOut->cust_f_name, v_c->c_f_name.data(), v_c->c_f_name.size());
   memcpy(pOut->cust_l_name, v_c->c_l_name.data(), v_c->c_l_name.size());
@@ -2648,14 +2641,14 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
   for(auto i = 0; i < pIn->max_trades; i++) {
     const trade::key k_t(pIn->trade_id[i]);
     trade::value v_t_temp;
-    try_verify_relax(tbl_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), obj_v=str(sizeof(v_t_temp))));
-    const trade::value *v_t = Decode(obj_v,v_t_temp);
+    try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+    const trade::value *v_t = Decode(obj_v, v_t_temp);
     pOut->num_found++;
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
-    const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
+    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
+    const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     pOut->trade_info[i].bid_price = v_t->t_bid_price;
     pOut->trade_info[i].is_cash = v_t->t_is_cash;
@@ -2674,7 +2667,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
 
       trade::value v_t_new(*v_t);
       v_t_new.t_exec_name = temp_exec_name;
-      try_catch(tbl_trade(1)->put(txn, Encode(obj_key0=str(sizeof(k_t)), k_t), Encode(obj_v=str(sizeof(v_t_new)), v_t_new)));
+      try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
       t_ca_id_index::key k_t_idx1;
       t_ca_id_index::value v_t_idx1;
       k_t_idx1.t_ca_id  = v_t_new.t_ca_id;
@@ -2689,7 +2682,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
       v_t_idx1.t_exec_name = v_t_new.t_exec_name ;
       v_t_idx1.t_trade_price = v_t_new.t_trade_price ;
       v_t_idx1.t_chrg  = v_t_new.t_chrg ;
-      try_catch(tbl_t_ca_id_index(1)->put(txn, Encode(obj_key0=str(sizeof(k_t_idx1)), k_t_idx1), Encode(obj_v=str(sizeof(v_t_idx1)), v_t_idx1)));
+      try_catch(tbl_t_ca_id_index(1)->put(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
 
       t_s_symb_index::key k_t_idx2;
       t_s_symb_index::value v_t_idx2;
@@ -2703,7 +2696,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
       v_t_idx2.t_qty = v_t_new.t_qty ;
       v_t_idx2.t_exec_name = v_t_new.t_exec_name ;
       v_t_idx2.t_trade_price = v_t_new.t_trade_price ;
-      try_catch(tbl_t_s_symb_index(1)->put(txn, Encode(obj_key0=str(sizeof(k_t_idx2)), k_t_idx2), Encode(obj_v=str(sizeof(v_t_idx2)), v_t_idx2)));
+      try_catch(tbl_t_s_symb_index(1)->put(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
 
       pOut->num_updated++;
       memcpy(pOut->trade_info[i].exec_name, temp_exec_name.data(), temp_exec_name.size());
@@ -2713,8 +2706,8 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
 
     const settlement::key k_se(pIn->trade_id[i]);
     settlement::value v_se_temp;
-    try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
-    const settlement::value *v_se = Decode(obj_v,v_se_temp);
+    try_verify_relax(tbl_settlement(1)->get(txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
+    const settlement::value *v_se = Decode(obj_v, v_se_temp);
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
     CDateTime(v_se->se_cash_due_date).GetTimeStamp(&pOut->trade_info[i].settlement_cash_due_date);
     memcpy(pOut->trade_info[i].settlement_cash_type, v_se->se_cash_type.data(), v_se->se_cash_type.size());
@@ -2722,8 +2715,8 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
     if(pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pIn->trade_id[i]);
       cash_transaction::value v_ct_temp;
-      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
-      const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
+      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(str(sizeof(k_ct)), k_ct), obj_v = str(sizeof(v_ct_temp))));
+      const cash_transaction::value *v_ct = Decode(obj_v,  v_ct_temp);
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
       CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
       memcpy(pOut->trade_info[i].cash_transaction_name, v_ct->ct_name.data(), v_ct->ct_name.size());
@@ -2732,7 +2725,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
     const trade_history::key k_th_0(pIn->trade_id[i], string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pIn->trade_id[i], string(cST_ID_len, (char)255), MIN_VAL(k_th_0.th_dts));
     table_scanner th_scanner(&arena);
-    try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
+    try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
     for(size_t th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -2756,7 +2749,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
   const t_ca_id_index::key k_t_0(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_0.t_id));
   table_scanner t_scanner(&arena);
-  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
+  try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   for(size_t i = 0; i < (size_t)pIn->max_trades and i < t_scanner.output.size(); i++) {
@@ -2779,8 +2772,8 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
   for(int i = 0; i < pOut->num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
-    const settlement::value *v_se = Decode(obj_v,v_se_temp);
+    try_verify_relax(tbl_settlement(1)->get(txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
+    const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     if(pOut->num_updated < pIn->max_updates) {
       settlement::value v_se_new(*v_se);
@@ -2796,7 +2789,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
         else
           v_se_new.se_cash_type =  "Margin Account";
       }
-      try_catch(tbl_settlement(1)->put(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), Encode(obj_v=str(sizeof(v_se_new)), v_se_new)));
+      try_catch(tbl_settlement(1)->put(txn, Encode(str(sizeof(k_se)), k_se), Encode(str(sizeof(v_se_new)), v_se_new)));
 
       pOut->num_updated++;
     }
@@ -2808,8 +2801,8 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
     if(pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
-      const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
+      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(str(sizeof(k_ct)), k_ct), obj_v = str(sizeof(v_ct_temp))));
+      const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
       CDateTime(v_ct->ct_dts).GetTimeStamp(&pOut->trade_info[i].cash_transaction_dts);
       memcpy(pOut->trade_info[i].cash_transaction_name, v_ct->ct_name.data(), v_ct->ct_name.size());
@@ -2818,7 +2811,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_0.th_dts));
     table_scanner th_scanner(&arena);
-    try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
+    try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
     for(size_t th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -2842,7 +2835,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
   const t_s_symb_index::key k_t_0(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_s_symb_index::key k_t_1(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_0.t_id));
   table_scanner t_scanner(&arena);
-  try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(obj_key0=str(sizeof(k_t_0)), k_t_0), &Encode(obj_key1=str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
+  try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());  // XXX. short innitial trading day can make this case happening?
 
   for(size_t i = 0; i < (size_t)pIn->max_trades and i < t_scanner.output.size() ; i++) {
@@ -2855,13 +2848,13 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(obj_key0=str(sizeof(k_tt)), k_tt), obj_v=str(sizeof(v_tt_temp))));
-    const trade_type::value *v_tt = Decode(obj_v,v_tt_temp);
+    try_verify_relax(tbl_trade_type(1)->get(txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
+    const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     const security::key k_s(k_t->t_s_symb);
     security::value v_s_temp;
-    try_verify_relax(tbl_security(1)->get(txn, Encode(obj_key0=str(sizeof(k_s)), k_s), obj_v=str(sizeof(v_s_temp))));
-    const security::value *v_s = Decode(obj_v,v_s_temp);
+    try_verify_relax(tbl_security(1)->get(txn, Encode(str(sizeof(k_s)), k_s), obj_v = str(sizeof(v_s_temp))));
+    const security::value *v_s = Decode(obj_v, v_s_temp);
 
     /*
        acct_id[]    = T_CA_ID,
@@ -2893,13 +2886,13 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
   for(int i = 0; i < pOut->num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    try_verify_relax(tbl_settlement(1)->get(txn, Encode(obj_key0=str(sizeof(k_se)), k_se), obj_v=str(sizeof(v_se_temp))));
+    try_verify_relax(tbl_settlement(1)->get(txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
 
     if(pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), obj_v=str(sizeof(v_ct_temp))));
-      const cash_transaction::value *v_ct = Decode(obj_v,v_ct_temp);
+      try_verify_relax(tbl_cash_transaction(1)->get(txn, Encode(str(sizeof(k_ct)), k_ct), obj_v = str(sizeof(v_ct_temp))));
+      const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       if(pOut->num_updated < pIn->max_updates) {
         string temp_ct_name = v_ct->ct_name.str();
@@ -2919,7 +2912,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
         cash_transaction::value v_ct_new(*v_ct);
         v_ct_new.ct_name = temp_ct_name;
 
-        try_catch(tbl_cash_transaction(1)->put(txn, Encode(obj_key0=str(sizeof(k_ct)), k_ct), Encode(obj_v=str(sizeof(v_ct_new)), v_ct_new)));
+        try_catch(tbl_cash_transaction(1)->put(txn, Encode(str(sizeof(k_ct)), k_ct), Encode(str(sizeof(v_ct_new)), v_ct_new)));
         pOut->num_updated++;
 
         memcpy(pOut->trade_info[i].cash_transaction_name, v_ct_new.ct_name.data(), v_ct_new.ct_name.size());
@@ -2934,7 +2927,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_0.th_dts));
     table_scanner th_scanner(&arena);
-    try_catch(tbl_trade_history(1)->scan(txn, Encode(obj_key0=str(sizeof(k_th_0)), k_th_0), &Encode(obj_key1=str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
+    try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
     for(size_t th_cursor = 0; th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -2962,7 +2955,7 @@ rc_t tpce_worker::DoLongQueryFrame1() {
   const customer_account::key k_ca_0(start_pos);
   const customer_account::key k_ca_1(end_pos);
   table_scanner ca_scanner(&arena);
-  try_catch(tbl_customer_account(1)->scan(txn, Encode(obj_key0=str(sizeof(k_ca_0)), k_ca_0), &Encode(obj_key1=str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
+  try_catch(tbl_customer_account(1)->scan(txn, Encode(str(sizeof(k_ca_0)), k_ca_0), &Encode(str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
   ALWAYS_ASSERT(ca_scanner.output.size());
 
   auto asset = 0;
@@ -2974,7 +2967,7 @@ rc_t tpce_worker::DoLongQueryFrame1() {
     const holding_summary::key k_hs_1(k_ca->ca_id, string(cSYMBOL_len, (char)255));
     static __thread table_scanner hs_scanner(&arena);
     hs_scanner.output.clear();
-    try_catch(tbl_holding_summary(1)->scan(txn, Encode(obj_key0=str(sizeof(k_hs_0)), k_hs_0), &Encode(obj_key1=str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
+    try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
 
     for(auto& r_hs : hs_scanner.output) {
       holding_summary::key k_hs_temp;
@@ -2985,8 +2978,8 @@ rc_t tpce_worker::DoLongQueryFrame1() {
       // LastTrade probe & equi-join
       const last_trade::key k_lt(k_hs->hs_s_symb);
       last_trade::value v_lt_temp;
-      try_catch(tbl_last_trade(1)->get(txn, Encode(obj_key0=str(sizeof(k_lt)), k_lt), obj_v=str(sizeof(v_lt_temp))));
-      const last_trade::value *v_lt = Decode(obj_v,v_lt_temp);
+      try_catch(tbl_last_trade(1)->get(txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
+      const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
       asset += v_hs->hs_qty * v_lt->lt_price;
     }
