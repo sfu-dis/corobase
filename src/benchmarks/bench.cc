@@ -271,18 +271,20 @@ bench_runner::run()
   // Start checkpointer after database is ready
   if(config::is_backup_srv()) {
     getchar();
-  } else if(config::num_backups) {
-    std::cout << "[Primary] Expect " << config::num_backups << " backups\n";
-    ALWAYS_ASSERT(not config::is_backup_srv());
-    rep::start_as_primary();
-    if (config::wait_for_backups) {
-      while (volatile_read(config::num_active_backups) != volatile_read(config::num_backups)) {}
-      std::cout << "[Primary] " << config::num_backups << " backups\n";
+  } else {
+    if(config::num_backups) {
+      std::cout << "[Primary] Expect " << config::num_backups << " backups\n";
+      ALWAYS_ASSERT(not config::is_backup_srv());
+      rep::start_as_primary();
+      if (config::wait_for_backups) {
+        while (volatile_read(config::num_active_backups) != volatile_read(config::num_backups)) {}
+        std::cout << "[Primary] " << config::num_backups << " backups\n";
+      }
     }
-  }
 
-  if(config::enable_chkpt) {
-    chkptmgr->start_chkpt_thread();
+    if(config::enable_chkpt) {
+      chkptmgr->start_chkpt_thread();
+    }
   }
 
   workers = make_workers();
