@@ -27,10 +27,10 @@ public:
     static uint32_t max_threads_per_node;
     static bool loading;
 
-    static int enable_chkpt;
+    static bool enable_chkpt;
     static uint64_t chkpt_interval;
-    static int log_buffer_mb;
-    static int log_segment_mb;
+    static uint64_t log_buffer_mb;
+    static uint64_t log_segment_mb;
     static uint32_t logbuf_partitions;
     static std::string log_dir;
     static bool null_log_device;
