@@ -51,12 +51,12 @@ sm_tx_log::log_update_key(FID f, OID o, fat_ptr ptr, int abits) {
 void
 sm_tx_log::log_fid(FID f, const std::string &name)
 {
-    auto size = align_up(name.length()) + 1;
+    auto size = align_up(name.length() + 1);
     auto size_code = encode_size_aligned(size);
     char *buf = (char *)malloc(size);
     memset(buf, '\0', size);
-    memcpy(buf, (char *)name.c_str(), size-1);
-    ASSERT(buf[size-1] == '\0');
+    memcpy(buf, (char *)name.c_str(), name.length());
+    ASSERT(buf[name.length()] == '\0');
     // only use the logrec's fid field, payload is name
     get_log_impl(this)->add_payload_request(LOG_FID, f, 0,
                             fat_ptr::make(buf, size_code),
