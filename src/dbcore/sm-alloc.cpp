@@ -31,6 +31,7 @@ namespace MM {
 // gc_lsn available (so no need to figure out which safesnap lsn is the
 // appropriate one to rely on - it changes as the daemon does its work).
 uint64_t gc_lsn CACHE_ALIGNED;
+epoch_num gc_epoch CACHE_ALIGNED;
 
 static const uint64_t EPOCH_SIZE_NBYTES = 1 << 24;
 static const uint64_t EPOCH_SIZE_COUNT = 2000;
@@ -224,6 +225,7 @@ void deallocate(fat_ptr p) {
 // epoch mgr callbacks
 void global_init(void*) {
   volatile_write(gc_lsn, 0);
+  volatile_write(gc_epoch, 0);
 }
 
 epoch_mgr::tls_storage* get_tls(void*) {
@@ -282,6 +284,7 @@ void epoch_reclaimed(void *cookie, void *epoch_cookie) {
   }
   if(e >= 2) {
     volatile_write(gc_lsn, epoch_reclaim_lsn[(e - 2) % 3]);
+    volatile_write(gc_epoch, e - 2);
     epoch_reclaim_lsn[(e - 2) % 3] = 0;
   }
 }

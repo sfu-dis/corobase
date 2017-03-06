@@ -47,6 +47,8 @@ typedef epoch_mgr::epoch_num epoch_num;
 namespace MM {
 void gc_version_chain(fat_ptr* oid_entry);
 
+extern epoch_num gc_epoch;
+
 // A hashtab storing recycled (freed) objects by size. No CC.
 class TlsFreeObjectPool {
 private:
@@ -64,11 +66,21 @@ public:
   inline fat_ptr Get(uint16_t size_code) {
     if(pool_.find(size_code) != pool_.end()) {
       auto* set = pool_[size_code];
+      uint32_t tries = 10;
       for(auto& p : *set) {
         if(p) {
           fat_ptr ret_ptr{p};
-          set->erase(p);
-          return ret_ptr;
+          object *obj = (object*)ret_ptr.offset();
+          if(obj->_alloc_epoch < gc_epoch) {
+            set->erase(p);
+            return ret_ptr;
+          }
+          // XXX(tzwang): try a few times, too slow to look at all candidates.
+          // Tune it if memory space is a concern.
+          // TODO(tzwang): make this a list, consume from one end, add at another.
+          if(--tries == 0) {
+            return NULL_PTR;
+          }
         }
       }
     }
