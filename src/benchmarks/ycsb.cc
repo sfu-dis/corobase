@@ -131,7 +131,7 @@ public:
   }
 
   rc_t txn_rmw() {
-    void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
+    transaction *txn = db->new_txn(0, arena, txn_buf());
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto& key = build_rmw_key(worker_id);
@@ -222,7 +222,7 @@ protected:
       YcsbRecord r('a');
       varstr k((char *)&key.data_, sizeof(key));
       varstr v(r.data_, sizeof(r));
-      void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_DEFAULT);
+      transaction *txn = db->new_txn(0, arena, txn_buf());
       arena.reset();
       try_verify_strict(tbl->insert(txn, k, v));
       try_verify_strict(db->commit_txn(txn));

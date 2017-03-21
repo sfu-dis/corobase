@@ -640,7 +640,7 @@ protected:
   load()
   {
 	  string obj_buf;
-	  void *txn = db->new_txn(0, arena, txn_buf());
+	  transaction *txn = db->new_txn(0, arena, txn_buf());
 	  uint i;
 	  for (i = 0; i < 62; i++) {
 		  const nation::key k(nations[i].id);
@@ -672,7 +672,7 @@ protected:
   load()
   {
 	  string obj_buf;
-	  void *txn = db->new_txn(0, arena, txn_buf());
+	  transaction *txn = db->new_txn(0, arena, txn_buf());
 	  for (uint i = 0; i < 5; i++) {
 		  const region::key k(i);
 		  region::value v;
@@ -703,7 +703,7 @@ protected:
   {
 	  string obj_buf;
 	  for (uint i = 0; i < 10000; i++) {
-		  void *txn = db->new_txn(0, arena, txn_buf());
+		  transaction *txn = db->new_txn(0, arena, txn_buf());
 		  const supplier::key k(i);
 		  supplier::value v;
 
@@ -740,7 +740,7 @@ protected:
   load()
   {
     string obj_buf;
-    void *txn = db->new_txn(0, arena, txn_buf());
+    transaction *txn = db->new_txn(0, arena, txn_buf());
     uint64_t warehouse_total_sz = 0, n_warehouses = 0;
       vector<warehouse::value> warehouses;
       for (uint i = 1; i <= NumWarehouses(); i++) {
@@ -815,7 +815,7 @@ protected:
   {
     string obj_buf;
     const ssize_t bsize = db->txn_max_batch_size();
-    void *txn = db->new_txn(0, arena, txn_buf());
+    transaction *txn = db->new_txn(0, arena, txn_buf());
     uint64_t total_sz = 0;
       for (uint i = 1; i <= NumItems(); i++) {
         // items don't "belong" to a certain warehouse, so no pinning
@@ -891,7 +891,7 @@ protected:
       for(size_t i=0; i < NumItems(); ) {
         size_t iend = std::min(i+batchsize, NumItems());
         scoped_str_arena s_arena(arena);
-        void * const txn = db->new_txn(0, arena, txn_buf());
+        transaction * const txn = db->new_txn(0, arena, txn_buf());
           for (uint j=i+1; j <= iend; j++) {
             const stock::key k(w, j);
             const stock_data::key k_data(w, j);
@@ -968,7 +968,7 @@ protected:
     string obj_buf;
 
     const ssize_t bsize = db->txn_max_batch_size();
-    void *txn = db->new_txn(0, arena, txn_buf());
+    transaction *txn = db->new_txn(0, arena, txn_buf());
     uint64_t district_total_sz = 0, n_districts = 0;
       uint cnt = 0;
       for (uint w = 1; w <= NumWarehouses(); w++) {
@@ -1047,7 +1047,7 @@ protected:
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         for (uint batch = 0; batch < nbatches;) {
           scoped_str_arena s_arena(arena);
-          void * const txn = db->new_txn(0, arena, txn_buf());
+          transaction * const txn = db->new_txn(0, arena, txn_buf());
           const size_t cstart = batch * batchsize;
           const size_t cend = std::min((batch + 1) * batchsize, NumCustomersPerDistrict());
             for (uint cidx0 = cstart; cidx0 < cend; cidx0++) {
@@ -1183,7 +1183,7 @@ protected:
         }
         for (uint c = 1; c <= NumCustomersPerDistrict();) {
           scoped_str_arena s_arena(arena);
-          void * const txn = db->new_txn(0, arena, txn_buf());
+          transaction * const txn = db->new_txn(0, arena, txn_buf());
             const oorder::key k_oo(w, d, c);
 
             oorder::value v_oo;
@@ -1316,7 +1316,7 @@ tpcc_worker::txn_new_order()
   //   max_read_set_size : 15
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
-  void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_NEW_ORDER);
+  transaction *txn = db->new_txn(0, arena, txn_buf());
   scoped_str_arena s_arena(arena);
     const customer::key k_c(warehouse_id, districtID, customerID);
     customer::value v_c_temp;
@@ -1467,7 +1467,7 @@ tpcc_worker::txn_delivery()
   //   max_read_set_size : 133
   //   max_write_set_size : 133
   //   num_txn_contexts : 4
-  void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_DELIVERY);
+  transaction *txn = db->new_txn(0, arena, txn_buf());
   scoped_str_arena s_arena(arena);
     for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
       const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
@@ -1614,7 +1614,7 @@ tpcc_worker::txn_credit_check()
 	}
 	ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
-	void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_CREDIT_CHECK);
+	transaction *txn = db->new_txn(0, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 
 		// select * from customer with random C_ID
@@ -1713,7 +1713,7 @@ tpcc_worker::txn_payment()
   //   max_read_set_size : 71
   //   max_write_set_size : 1
   //   num_txn_contexts : 5
-  void *txn = db->new_txn(0, arena, txn_buf(), ndb_wrapper::HINT_TPCC_PAYMENT);
+  transaction *txn = db->new_txn(0, arena, txn_buf());
   scoped_str_arena s_arena(arena);
 
     const warehouse::key k_w(warehouse_id);
@@ -1865,11 +1865,7 @@ tpcc_worker::txn_order_status()
   //   num_txn_contexts : 4
   const uint64_t read_only_mask =
     config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  const ndb_wrapper::TxnProfileHint hint =
-    config::enable_safesnap ?
-      ndb_wrapper::HINT_TPCC_ORDER_STATUS_READ_ONLY :
-      ndb_wrapper::HINT_TPCC_ORDER_STATUS;
-  void *txn = db->new_txn(read_only_mask, arena, txn_buf(), hint);
+  transaction *txn = db->new_txn(read_only_mask, arena, txn_buf());
   scoped_str_arena s_arena(arena);
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -2011,11 +2007,7 @@ tpcc_worker::txn_stock_level()
   //   num_txn_contexts : 3
   const uint64_t read_only_mask =
     config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
-  const ndb_wrapper::TxnProfileHint hint =
-    config::enable_safesnap ?
-      ndb_wrapper::HINT_TPCC_STOCK_LEVEL_READ_ONLY :
-      ndb_wrapper::HINT_TPCC_STOCK_LEVEL;
-  void *txn = db->new_txn(read_only_mask, arena, txn_buf(), hint);
+  transaction *txn = db->new_txn(read_only_mask, arena, txn_buf());
   scoped_str_arena s_arena(arena);
   // NB: since txn_stock_level() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
@@ -2068,7 +2060,7 @@ tpcc_worker::txn_stock_level()
 rc_t
 tpcc_worker::txn_query2()
 {
-	void *txn = db->new_txn(transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
+	transaction *txn = db->new_txn(transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 
 	static __thread table_scanner r_scanner(&arena);
@@ -2200,7 +2192,7 @@ tpcc_worker::txn_query2()
 rc_t
 tpcc_worker::txn_microbench_random()
 {
-	void *txn = db->new_txn(0, arena, txn_buf());
+	transaction *txn = db->new_txn(0, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 	uint start_w = 0, start_s = 0;
 	ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);

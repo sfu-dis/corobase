@@ -10,16 +10,12 @@
 #include <vector>
 #include <utility>
 
-// XXX(tzwang): TLS read and write sets to avoid malloc -
-// much faster especially under high contention
-write_set_t tls_write_set[config::MAX_THREADS];
 #if defined(SSN) || defined(SSI)
 static __thread transaction::read_set_t* tls_read_set;
 #endif
 
 transaction::transaction(uint64_t flags, str_arena &sa)
-  : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()])
-{
+  : flags(flags), sa(&sa) {
     if(config::phantom_prot) {
       absent_set.set_empty_key(NULL);    // google dense map
       absent_set.clear();
@@ -80,6 +76,9 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 
 transaction::~transaction()
 {
+    if(!xc) {  // Perhaps only went through the default ctor
+      return;
+    }
     // transaction shouldn't fall out of scope w/o resolution
     // resolution means TXN_CMMTD, and TXN_ABRTD
     ASSERT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
@@ -98,6 +97,7 @@ transaction::~transaction()
     else
         MM::epoch_exit(xc->end, xc->begin_epoch);
     xid_free(xid);    // must do this after epoch_exit, which uses xc.end
+    xc = nullptr;
 }
 
 void
