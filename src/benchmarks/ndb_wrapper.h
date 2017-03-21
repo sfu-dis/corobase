@@ -6,30 +6,6 @@
 
 class ndb_wrapper {
 public:
-  enum TxnProfileHint {
-    HINT_DEFAULT,
-
-    // ycsb profiles
-    HINT_KV_GET_PUT, // KV workloads over a single key
-    HINT_KV_RMW, // get/put over a single key
-    HINT_KV_SCAN, // KV scan workloads (~100 keys)
-
-    // tpcc profiles
-    HINT_TPCC_NEW_ORDER,
-    HINT_TPCC_PAYMENT,
-    HINT_TPCC_CREDIT_CHECK,
-    HINT_TPCC_DELIVERY,
-    HINT_TPCC_ORDER_STATUS,
-    HINT_TPCC_ORDER_STATUS_READ_ONLY,
-    HINT_TPCC_STOCK_LEVEL,
-    HINT_TPCC_STOCK_LEVEL_READ_ONLY,
-  };
-
-  struct ndbtxn {
-    TxnProfileHint hint;
-    char buf[0];
-  } PACKED;
-
   typedef std::map<std::string, uint64_t> counter_map;
   typedef std::map<std::string, counter_map> txn_counter_map;
 
@@ -37,21 +13,18 @@ public:
   ~ndb_wrapper() {}
 
   inline size_t sizeof_txn_object() const { return sizeof(transaction); }
-  void *new_txn(uint64_t txn_flags, str_arena &arena, void *buf,
-    TxnProfileHint hint = HINT_DEFAULT);
-  rc_t commit_txn(void *txn);
-  void abort_txn(void *txn);
+  transaction *new_txn(uint64_t flags, str_arena &arena, transaction *buf);
+  rc_t commit_txn(transaction *t);
+  void abort_txn(transaction *t);
   void close_index(ndb_ordered_index *idx);
 
-  inline counter_map get_txn_counters(void *txn) const { return counter_map(); }
+  inline counter_map get_txn_counters(transaction *txn) const { return counter_map(); }
   inline ssize_t txn_max_batch_size() const { return 100; }
 };
 
 class ndb_ordered_index {
     friend class sm_log_recover_impl;
     friend class sm_chkpt_mgr;
-protected:
-  typedef ndb_wrapper::ndbtxn ndbtxn;
 
 public:
   ndb_ordered_index(const std::string &name) : btr(name) {}
@@ -75,7 +48,7 @@ public:
    * the memory associated with key. Returns true if found, false otherwise
    */
   rc_t get(
-      void *txn,
+      transaction *txn,
       const varstr &key,
       varstr &value, size_t max_bytes_read = std::string::npos);
 
@@ -93,14 +66,8 @@ public:
    * returned is guaranteed to be valid memory until the key associated with
    * value is overriden.
    */
-  rc_t put(
-      void *txn,
-      const varstr &key,
-      const varstr &value);
-  rc_t put(
-      void *txn,
-      varstr &&key,
-      varstr &&value);
+  rc_t put(transaction *t, const varstr &key, const varstr &value);
+  rc_t put(transaction *t, varstr &&key, varstr &&value);
 
   /**
    * Insert a key of length keylen.
@@ -110,45 +77,27 @@ public:
    *
    * Default implementation calls put(). See put() for meaning of return value.
    */
-  rc_t
-  insert(void *txn,
-         const varstr &key,
-         const varstr &value);
-  rc_t
-  insert(void *txn,
-         varstr &&key,
-         varstr &&value);
+  rc_t insert(transaction *t, const varstr &key, const varstr &value);
+  rc_t insert(transaction *t, varstr &&key, varstr &&value);
   /**
    * Search [start_key, *end_key) if end_key is not null, otherwise
    * search [start_key, +infty)
    */
-  rc_t scan(
-      void *txn,
-      const varstr &start_key,
-      const varstr *end_key,
-      scan_callback &callback,
-      str_arena *arena);
+  rc_t scan(transaction *t, const varstr &start_key, const varstr *end_key,
+            scan_callback &callback, str_arena *arena);
   /**
    * Search (*end_key, start_key] if end_key is not null, otherwise
    * search (-infty, start_key] (starting at start_key and traversing
    * backwards)
    */
-  rc_t rscan(
-      void *txn,
-      const varstr &start_key,
-      const varstr *end_key,
-      scan_callback &callback,
-      str_arena *arena);
+  rc_t rscan(transaction *t, const varstr &start_key, const varstr *end_key,
+             scan_callback &callback, str_arena *arena);
 
   /**
    * Default implementation calls put() with NULL (zero-length) value
    */
-  rc_t remove(
-      void *txn,
-      const varstr &key);
-  rc_t remove(
-      void *txn,
-      varstr &&key);
+  rc_t remove(transaction *t, const varstr &key);
+  rc_t remove(transaction *t, varstr &&key);
 
   /**
    * Only an estimate, not transactional!

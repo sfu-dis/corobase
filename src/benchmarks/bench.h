@@ -61,8 +61,6 @@ public:
                const std::map<std::string, ndb_ordered_index *> &open_tables)
     : sm_runner(), r(seed), db(db), open_tables(open_tables)
   {
-    txn_obj_buf.reserve(str_arena::MinStrReserveLength);
-    txn_obj_buf.resize(db->sizeof_txn_object());
     // don't try_instantiate() here; do it when we start to load. The way we reuse
     // threads relies on this fact (see bench_runner::run()).
   }
@@ -81,14 +79,14 @@ private:
   }
 
 protected:
-  inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
+  inline transaction *txn_buf() { return &txn_obj_buf; }
 
   virtual void load() = 0;
 
   util::fast_random r;
   ndb_wrapper *const db;
   std::map<std::string, ndb_ordered_index *> open_tables;
-  std::string txn_obj_buf;
+  transaction txn_obj_buf;
   str_arena arena;
 };
 
@@ -120,8 +118,6 @@ public:
       ntxn_phantom_aborts(0),
       ntxn_query_commits(0)
   {
-    txn_obj_buf.reserve(str_arena::MinStrReserveLength);
-    txn_obj_buf.resize(db->sizeof_txn_object());
     try_impersonate();
   }
 
@@ -185,7 +181,7 @@ private:
 
 protected:
 
-  inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
+  inline transaction *txn_buf() { return &txn_obj_buf; }
 
   unsigned int worker_id;
   util::fast_random r;
@@ -220,7 +216,7 @@ protected:
 
   std::vector<tx_stat> txn_counts; // commits and aborts breakdown
 
-  std::string txn_obj_buf;
+  transaction txn_obj_buf;
   str_arena arena;
 };
 

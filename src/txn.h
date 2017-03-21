@@ -61,8 +61,6 @@ struct write_set_t {
   inline write_record_t& operator[](uint32_t idx) { return entries[idx]; }
 };
 
-extern write_set_t tls_write_set[config::MAX_THREADS];
-
 // forward decl
 class base_txn_btree;
 
@@ -176,8 +174,8 @@ protected:
   absent_set_map absent_set;
 
 public:
-
   transaction(uint64_t flags, str_arena &sa);
+  transaction() : flags(0), sa(nullptr), xc(nullptr) {}
   ~transaction();
 
   rc_t commit();
@@ -235,7 +233,7 @@ protected:
   xid_context *xc;
   sm_tx_log* log;
   str_arena *sa;
-  write_set_t& write_set;
+  write_set_t write_set;
 #if defined(SSN) || defined(SSI)
   read_set_t* read_set;
 #endif
