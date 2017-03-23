@@ -3,6 +3,7 @@
 #include "../benchmarks/ndb_wrapper.h"
 
 namespace rep {
+struct RdmaNode* self_rdma_node = nullptr;
 std::vector<struct RdmaNode*> nodes;
 std::mutex nodes_lock;
 
@@ -102,11 +103,11 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
   }
 }
 
-void backup_daemon_rdam(RdmaNode* self) {
+void backup_daemon_rdam() {
   while(!volatile_read(logmgr)) { /** spin **/ }
   rcu_register();
   DEFER(rcu_deregister());
-  DEFER(delete self);
+  DEFER(delete self_rdma_node);
 
   uint32_t size = 0;
   //if (not config::log_ship_sync_redo) {
@@ -120,11 +121,11 @@ void backup_daemon_rdam(RdmaNode* self) {
   while (1) {
     rcu_enter();
     DEFER(rcu_exit());
-    self->SetMessageAsBackup(kRdmaReadyToReceive);
+    self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
     // Post an RR to get the log buffer partition bounds
     // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
     // the peer sends data).
-    auto bounds_array_size = self->ReceiveImm();
+    auto bounds_array_size = self_rdma_node->ReceiveImm();
     ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * kMaxLogBufferPartitions);
 
 #ifndef NDEBUG
@@ -140,7 +141,7 @@ void backup_daemon_rdam(RdmaNode* self) {
 
     // post an RR to get the data and the chunk's begin LSN embedded as an the wr_id
     uint32_t imm = 0;
-    size = self->ReceiveImm(&imm);
+    size = self_rdma_node->ReceiveImm(&imm);
     THROW_IF(not size, illegal_argument, "Invalid data size");
 
     segment_id *sid = logmgr->get_segment(start_lsn.segment());
@@ -191,7 +192,7 @@ void backup_daemon_rdam(RdmaNode* self) {
 
     // Now persist the log records in storage
     logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
-    self->SetMessageAsBackup(kRdmaPersisted);
+    self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
     ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
     // FIXME(tzwang): now advance cur_lsn so that readers can really use the new data
     
@@ -203,17 +204,17 @@ void backup_daemon_rdam(RdmaNode* self) {
 void start_as_backup_rdma() {
   memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(config::is_backup_srv());
-  RdmaNode* rn = new RdmaNode(false);
+  self_rdma_node = new RdmaNode(false);
 
   // Tell the primary to start
-  rn->SetMessageAsBackup(kRdmaReadyToReceive);
+  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
 
   // Let data come
-  uint64_t to_process = rn->ReceiveImm();
+  uint64_t to_process = self_rdma_node->ReceiveImm();
   ALWAYS_ASSERT(to_process);
 
   // Process the header first
-  char* buf = rn->GetDaemonBuffer();
+  char* buf = self_rdma_node->GetDaemonBuffer();
   // Get a copy of md to preserve the log file names
   backup_start_metadata* md = (backup_start_metadata*)buf;
   backup_start_metadata* d = (backup_start_metadata*)malloc(md->size());
@@ -248,8 +249,8 @@ void start_as_backup_rdma() {
     // More coming in the buffer
     while(md->chkpt_size > 0) {
       // Let the primary know to begin the next round
-      rn->SetMessageAsBackup(kRdmaReadyToReceive);
-      uint64_t to_write = rn->ReceiveImm();
+      self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
+      uint64_t to_write = self_rdma_node->ReceiveImm();
       os_write(chkpt_fd, buf, std::min(md->chkpt_size, to_write));
       md->chkpt_size -= to_write;
     }
@@ -267,8 +268,8 @@ void start_as_backup_rdma() {
     int log_fd = os_openat(dfd, ls->file_name.buf, O_CREAT|O_WRONLY);
     ALWAYS_ASSERT(log_fd > 0);
     while(file_size > 0) {
-      rn->SetMessageAsBackup(kRdmaReadyToReceive);
-      uint64_t received_bytes = rn->ReceiveImm();
+      self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
+      uint64_t received_bytes = self_rdma_node->ReceiveImm();
       ALWAYS_ASSERT(received_bytes);
       file_size -= received_bytes;
       os_write(log_fd, buf, received_bytes);
@@ -277,19 +278,26 @@ void start_as_backup_rdma() {
     os_close(log_fd);
   }
 
+  // Extract system config and set them before new_log
+  config::benchmark_scale_factor = md->system_config.scale_factor;
+  config::log_segment_mb = md->system_config.log_segment_mb;
+  config::logbuf_partitions = config::logbuf_partitions;
+
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
+  LOG(INFO) << "[Backup] Received log file.";
+}
 
+void backup_start_replication_rdma() {
   if(recover_first) {
     ALWAYS_ASSERT(oidmgr);
     logmgr->recover();
   }
 
-  rn->SetMessageAsBackup(kRdmaReadyToReceive);
-  LOG(INFO) << "[Backup] Received log file.";
+  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
 
   // Start a daemon to receive and persist future log records
-  std::thread t(backup_daemon_rdam, rn);
+  std::thread t(backup_daemon_rdam);
   t.detach();
 
   if(!recover_first) {

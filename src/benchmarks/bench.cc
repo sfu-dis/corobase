@@ -155,25 +155,23 @@ bench_runner::create_files_task(char *)
 void
 bench_runner::run()
 {
-  // Now we should already have a list of registered tables in IndexDescriptor::name_map,
-  // but all the index, oid_array fileds are empty; only the table name is available.
-  // Create the logmgr here, instead of in an sm-thread: recovery might want to utilize
-  // all the worker_threads specified in config.
-  RCU::rcu_register();
-  ALWAYS_ASSERT(config::log_dir.size());
-  ALWAYS_ASSERT(not logmgr);
-  ALWAYS_ASSERT(not oidmgr);
-  RCU::rcu_enter();
-
-  sm_log::allocate_log_buffer();
-
   if(config::is_backup_srv()) {
     if(config::log_ship_by_rdma) {
-      rep::start_as_backup_rdma();
+      rep::backup_start_replication_rdma();
     } else{
       rep::start_as_backup_tcp();
     }
   } else {
+    // Now we should already have a list of registered tables in IndexDescriptor::name_map,
+    // but all the index, oid_array fileds are empty; only the table name is available.
+    // Create the logmgr here, instead of in an sm-thread: recovery might want to utilize
+    // all the worker_threads specified in config.
+    RCU::rcu_register();
+    ALWAYS_ASSERT(config::log_dir.size());
+    ALWAYS_ASSERT(not logmgr);
+    ALWAYS_ASSERT(not oidmgr);
+    RCU::rcu_enter();
+    sm_log::allocate_log_buffer();
     logmgr = sm_log::new_log(config::recover_functor, nullptr);
     sm_oid_mgr::create();
   }

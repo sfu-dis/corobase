@@ -67,7 +67,7 @@ config::init() {
 }
 
 void config::sanity_check() {
-    ALWAYS_ASSERT(recover_functor);
+    ALWAYS_ASSERT(recover_functor || is_backup_srv());
     ALWAYS_ASSERT(numa_nodes);
     ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
 }
