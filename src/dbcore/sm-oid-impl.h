@@ -33,7 +33,7 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
     }
     inline oid_array *get_array(FID f) {
         // TODO: allow allocators to be paged out
-        oid_array *oa = files->get(f)->ptr;
+        oid_array *oa = (oid_array*)files->get(f)->offset();
         THROW_IF(not oa, illegal_argument,
                  "No such file: %d", f);
         return oa;
@@ -45,16 +45,10 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
         mutexen[f % MUTEX_COUNT].unlock();
     }
     inline fat_ptr *oid_access(FID f, OID o) {
-        auto *oa = get_array(f);
-        return &oa->get(o)->ptr;
-    }
-    inline oid_array::entry *oid_entry_access(FID f, OID o) {
-        auto *oa = get_array(f);
-        return oa->get(o);
+        return get_array(f)->get(o);
     }
     inline bool file_exists(FID f) {
-        oid_array *oa = files->get(f)->ptr;
-        return oa != NULL;
+        return files->get(f)->offset();
     }
 
     void recreate_file(FID f);    // for recovery only

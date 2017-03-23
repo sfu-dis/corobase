@@ -64,7 +64,6 @@ DEFINE_uint64(group_commit_timeout, 5, "Group commit flush interval (in seconds)
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
 DEFINE_string(tmpfs_dir, "/dev/shm", "Path to a tmpfs location. Used by log buffer.");
-DEFINE_string(parallel_recovery_by, "oid", "Parallelize recovery by OID (oid) or table (file).");
 DEFINE_string(primary_host, "", "Hostname of the primary server. For backups only.");
 DEFINE_string(primary_port, "10000", "Port of the primary server for log shipping. For backups only.");
 DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
@@ -134,13 +133,7 @@ main(int argc, char **argv)
   if(config::nvram_log_buffer) {
     LOG(FATAL) << "Not supported: nvram_log_buffer";
   }
-  if(FLAGS_parallel_recovery_by == "oid") {
-    config::recover_functor = new parallel_oid_replay;
-  } else if(FLAGS_parallel_recovery_by == "file") {
-    config::recover_functor = new parallel_file_replay;
-  } else {
-    LOG(FATAL) << "Invalid parallel replay mode: " << FLAGS_parallel_recovery_by;
-  }
+  config::recover_functor = new parallel_oid_replay;
 
   if(FLAGS_recovery_warm_up == "none" ) {
     config::recovery_warm_up_policy = config::WARM_UP_NONE;
@@ -222,7 +215,6 @@ main(int argc, char **argv)
   cerr << "  commit-queue      : " << config::group_commit_queue_length << endl;
   cerr << "  tmpfs-dir         : " << config::tmpfs_dir << endl;
   cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << endl;
-  cerr << "  parallel-recovery : " << FLAGS_parallel_recovery_by << endl;
   cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
   cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << endl;
   cerr << "  log-ship-sync-redo: " << config::log_ship_sync_redo << endl;

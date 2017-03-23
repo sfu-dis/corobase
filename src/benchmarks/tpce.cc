@@ -76,17 +76,21 @@ TaxrateBuffer taxrateBuffer (325);
 ZipCodeBuffer zipCodeBuffer (14850);
 
 // Utils
-class table_scanner: public ndb_ordered_index::scan_callback {
+class table_scanner: public OrderedIndex::scan_callback {
  public:
   table_scanner(str_arena* arena) : _arena(arena) {}
   virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
     varstr * const k = _arena->next(keylen);
     ASSERT(k);
     k->copy_from(keyp, keylen);
-    output.emplace_back(k, &value);
+
+    varstr *v = _arena->next(0);
+    v->p = value.p;
+    v->l = value.l;
+    output.emplace_back(k, v);
     return true;
   }
-  std::vector<std::pair<varstr *, const varstr *>> output;
+  std::vector<std::pair<varstr*, varstr*>> output;
   str_arena* _arena;
 };
 
@@ -170,7 +174,7 @@ class tpce_worker_mixin : private _dummy {
   , tbl_ ## name ## _vec(partitions.at(#name))
 
  public:
-  tpce_worker_mixin(const map<string, vector<ndb_ordered_index *>> &partitions) :
+  tpce_worker_mixin(const map<string, vector<OrderedIndex *>> &partitions) :
     _dummy() // so hacky...
     TPCE_TABLE_LIST(DEFN_TBL_INIT_X) {
   }
@@ -181,9 +185,9 @@ class tpce_worker_mixin : private _dummy {
 
 #define DEFN_TBL_ACCESSOR_X(name) \
   private:  \
-        vector<ndb_ordered_index *> tbl_ ## name ## _vec; \
+        vector<OrderedIndex *> tbl_ ## name ## _vec; \
   protected: \
-         inline ALWAYS_INLINE ndb_ordered_index * \
+         inline ALWAYS_INLINE OrderedIndex * \
     tbl_ ## name (unsigned int pid) \
     { \
       return tbl_ ## name ## _vec[pid - 1]; \
@@ -288,8 +292,8 @@ class tpce_worker :
   // resp for [partition_id_start, partition_id_end)
   tpce_worker(unsigned int worker_id,
               unsigned long seed, ndb_wrapper *db,
-              const map<string, ndb_ordered_index *> &open_tables,
-              const map<string, vector<ndb_ordered_index *>> &partitions,
+              const map<string, OrderedIndex *> &open_tables,
+              const map<string, vector<OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint partition_id_start, uint partition_id_end)
     : bench_worker(worker_id, seed, db,
@@ -3010,8 +3014,8 @@ class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_charge_loader(unsigned long seed,
                      ndb_wrapper *db,
-                     const map<string, ndb_ordered_index *> &open_tables,
-                     const map<string, vector<ndb_ordered_index *>> &partitions,
+                     const map<string, OrderedIndex *> &open_tables,
+                     const map<string, vector<OrderedIndex *>> &partitions,
                      ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3063,8 +3067,8 @@ class tpce_commission_rate_loader : public bench_loader, public tpce_worker_mixi
  public:
   tpce_commission_rate_loader(unsigned long seed,
                               ndb_wrapper *db,
-                              const map<string, ndb_ordered_index *> &open_tables,
-                              const map<string, vector<ndb_ordered_index *>> &partitions,
+                              const map<string, OrderedIndex *> &open_tables,
+                              const map<string, vector<OrderedIndex *>> &partitions,
                               ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3117,8 +3121,8 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_exchange_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions)
@@ -3165,8 +3169,8 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_industry_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3228,8 +3232,8 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_sector_loader(unsigned long seed,
                      ndb_wrapper *db,
-                     const map<string, ndb_ordered_index *> &open_tables,
-                     const map<string, vector<ndb_ordered_index *>> &partitions,
+                     const map<string, OrderedIndex *> &open_tables,
+                     const map<string, vector<OrderedIndex *>> &partitions,
                      ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3284,8 +3288,8 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_status_type_loader(unsigned long seed,
                           ndb_wrapper *db,
-                          const map<string, ndb_ordered_index *> &open_tables,
-                          const map<string, vector<ndb_ordered_index *>> &partitions,
+                          const map<string, OrderedIndex *> &open_tables,
+                          const map<string, vector<OrderedIndex *>> &partitions,
                           ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3339,8 +3343,8 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_tax_rate_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3395,8 +3399,8 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_trade_type_loader(unsigned long seed,
                          ndb_wrapper *db,
-                         const map<string, ndb_ordered_index *> &open_tables,
-                         const map<string, vector<ndb_ordered_index *>> &partitions,
+                         const map<string, OrderedIndex *> &open_tables,
+                         const map<string, vector<OrderedIndex *>> &partitions,
                          ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3452,8 +3456,8 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_zip_code_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3504,8 +3508,8 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_address_loader(unsigned long seed,
                       ndb_wrapper *db,
-                      const map<string, ndb_ordered_index *> &open_tables,
-                      const map<string, vector<ndb_ordered_index *>> &partitions,
+                      const map<string, OrderedIndex *> &open_tables,
+                      const map<string, vector<OrderedIndex *>> &partitions,
                       ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3562,8 +3566,8 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_customer_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3646,8 +3650,8 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_ca_and_ap_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3746,8 +3750,8 @@ class tpce_customer_taxrate_loader : public bench_loader, public tpce_worker_mix
  public:
   tpce_customer_taxrate_loader(unsigned long seed,
                                ndb_wrapper *db,
-                               const map<string, ndb_ordered_index *> &open_tables,
-                               const map<string, vector<ndb_ordered_index *>> &partitions,
+                               const map<string, OrderedIndex *> &open_tables,
+                               const map<string, vector<OrderedIndex *>> &partitions,
                                ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3805,8 +3809,8 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_wl_and_wi_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3884,8 +3888,8 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_company_loader(unsigned long seed,
                       ndb_wrapper *db,
-                      const map<string, ndb_ordered_index *> &open_tables,
-                      const map<string, vector<ndb_ordered_index *>> &partitions,
+                      const map<string, OrderedIndex *> &open_tables,
+                      const map<string, vector<OrderedIndex *>> &partitions,
                       ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3957,8 +3961,8 @@ class tpce_company_competitor_loader : public bench_loader, public tpce_worker_m
  public:
   tpce_company_competitor_loader(unsigned long seed,
                                  ndb_wrapper *db,
-                                 const map<string, ndb_ordered_index *> &open_tables,
-                                 const map<string, vector<ndb_ordered_index *>> &partitions,
+                                 const map<string, OrderedIndex *> &open_tables,
+                                 const map<string, vector<OrderedIndex *>> &partitions,
                                  ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4014,8 +4018,8 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_daily_market_loader(unsigned long seed,
                            ndb_wrapper *db,
-                           const map<string, ndb_ordered_index *> &open_tables,
-                           const map<string, vector<ndb_ordered_index *>> &partitions,
+                           const map<string, OrderedIndex *> &open_tables,
+                           const map<string, vector<OrderedIndex *>> &partitions,
                            ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4073,8 +4077,8 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_financial_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4141,8 +4145,8 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_last_trade_loader(unsigned long seed,
                          ndb_wrapper *db,
-                         const map<string, ndb_ordered_index *> &open_tables,
-                         const map<string, vector<ndb_ordered_index *>> &partitions,
+                         const map<string, OrderedIndex *> &open_tables,
+                         const map<string, vector<OrderedIndex *>> &partitions,
                          ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4199,8 +4203,8 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_ni_and_nx_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4283,8 +4287,8 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_security_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4359,8 +4363,8 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_growing_loader(unsigned long seed,
                       ndb_wrapper *db,
-                      const map<string, ndb_ordered_index *> &open_tables,
-                      const map<string, vector<ndb_ordered_index *>> &partitions,
+                      const map<string, OrderedIndex *> &open_tables,
+                      const map<string, vector<OrderedIndex *>> &partitions,
                       ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4690,11 +4694,11 @@ class tpce_bench_runner : public bench_runner {
     return true;
   }
 
-  static vector<ndb_ordered_index *>
+  static vector<OrderedIndex *>
   OpenTablesForTablespace(ndb_wrapper *db, const char *name) {
     const string s_name(name);
-    vector<ndb_ordered_index *> ret(NumPartitions());
-    ndb_ordered_index *idx = sm_index_mgr::get_index(s_name);
+    vector<OrderedIndex *> ret(NumPartitions());
+    OrderedIndex *idx = IndexDescriptor::GetIndex(s_name);
     for (size_t i = 0; i < NumPartitions(); i++)
       ret[i] = idx;
     return ret;
@@ -4703,12 +4707,8 @@ class tpce_bench_runner : public bench_runner {
   static void RegisterTable(ndb_wrapper *db, const char *name,
                             const char* primary_idx_name = nullptr) {
     const string s_name(name);
-    vector<ndb_ordered_index *> ret(NumPartitions());
-    if(primary_idx_name) {
-      sm_index_mgr::new_secondary_index(std::string(name), std::string(primary_idx_name));
-    } else {
-      sm_index_mgr::new_primary_index(std::string(name));
-    }
+    vector<OrderedIndex *> ret(NumPartitions());
+    IndexDescriptor::New(std::string(name), primary_idx_name);
   }
 
  public:
@@ -4845,7 +4845,7 @@ class tpce_bench_runner : public bench_runner {
   }
 
  private:
-  map<string, vector<ndb_ordered_index *>> partitions;
+  map<string, vector<OrderedIndex *>> partitions;
 };
 
 

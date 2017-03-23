@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../benchmarks/ordered_index.h"
 #include "sm-config.h"
 #include "sm-thread.h"
 #include "sm-log-recover.h"
@@ -17,9 +18,9 @@ struct sm_log_recover_impl {
   fat_ptr recover_prepare_version(
                               sm_log_scan_mgr::record_scan *logrec,
                               fat_ptr next);
-  ndb_ordered_index *recover_fid(sm_log_scan_mgr::record_scan *logrec);
+  OrderedIndex *recover_fid(sm_log_scan_mgr::record_scan *logrec);
   void recover_index_insert(
-      sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index);
+      sm_log_scan_mgr::record_scan *logrec, OrderedIndex* index);
 
   // The main recovery function; the inheriting class should implement this
   // The implementation shall replay the log from position [from] until [to],
@@ -27,26 +28,6 @@ struct sm_log_recover_impl {
   // Recovery at startup however can give [from]=chkpt_begin, and [to]=+inf
   // to replay the whole log.
   virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from, LSN to) = 0;
-};
-
-struct parallel_file_replay : public sm_log_recover_impl {
-  struct redo_runner : public thread::sm_runner {
-    parallel_file_replay *owner;
-    FID fid;
-    ndb_ordered_index *fid_index;
-    bool done;
-
-    redo_runner(parallel_file_replay *o, FID f, ndb_ordered_index *i) : 
-      thread::sm_runner(), owner(o), fid(f), fid_index(i), done(false) {}
-    virtual void my_work(char *);
-    FID redo_file();
-  };
-
-  sm_log_scan_mgr *scanner;
-  LSN start_lsn;
-  LSN end_lsn;
-
-  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from, LSN to);
 };
 
 struct parallel_oid_replay : public sm_log_recover_impl {

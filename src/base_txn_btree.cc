@@ -1,22 +1,20 @@
 #include "base_txn_btree.h"
 #include "masstree_btree.h"
+#include "txn.h"
+
+write_set_t tls_write_set[config::MAX_THREADS];
 
 rc_t
-base_txn_btree::do_search(transaction &t, const varstr &k, value_reader &vr)
-{
+base_txn_btree::do_search(transaction &t, const varstr &k, varstr *out_v) {
     t.ensure_active();
-
-    key_writer key_writer(&k);
-    const varstr * const key_str =
-    key_writer.fully_materialize(true, t.string_allocator());
 
     // search the underlying btree to map k=>(btree_node|tuple)
     dbtuple * tuple{};
     OID oid;
     concurrent_btree::versioned_node_t sinfo;
-    const bool found = this->underlying_btree.search(*key_str, oid, tuple, t.xc, &sinfo);
+    bool found = this->underlying_btree.search(k, oid, tuple, t.xc, &sinfo);
     if (found) {
-        return t.do_tuple_read(tuple, vr);
+        return t.do_tuple_read(tuple, out_v);
     } else if(config::phantom_prot) {
         rc_t rc = t.do_node_read(sinfo.first, sinfo.second);
         if (rc_is_abort(rc)) {
@@ -29,8 +27,6 @@ base_txn_btree::do_search(transaction &t, const varstr &k, value_reader &vr)
 std::map<std::string, uint64_t>
 base_txn_btree::unsafe_purge(bool dump_stats)
 {
-    ALWAYS_ASSERT(!been_destructed);
-    been_destructed = true;
     purge_tree_walker w;
     underlying_btree.tree_walk(w);
     underlying_btree.clear();
@@ -56,20 +52,15 @@ base_txn_btree::purge_tree_walker::on_node_failure()
     spec_values.clear();
 }
 
-rc_t base_txn_btree::do_tree_put(
-    transaction &t,
-    const varstr *k,
-    const varstr *v,
-    bool expect_new,
-    bool upsert)
-{
+rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, const varstr *v,
+                                 bool expect_new, bool upsert, OID* inserted_oid) {
     ASSERT(k);
     ASSERT(!expect_new || v); // makes little sense to remove() a key you expect
                                  // to not be present, so we assert this doesn't happen
                                  // for now [since this would indicate a suboptimality]
     t.ensure_active();
     if (expect_new) {
-      if (t.try_insert_new_tuple(&this->underlying_btree, k, v, this->fid)) {
+      if(t.try_insert_new_tuple(&this->underlying_btree, k, v, inserted_oid)) {
         return rc_t{RC_TRUE};
       } else if (!upsert) {
         return rc_t{RC_ABORT_INTERNAL};
@@ -82,10 +73,13 @@ rc_t base_txn_btree::do_tree_put(
     if (!this->underlying_btree.search(*k, oid, bv, t.xc))
         return rc_t{RC_ABORT_INTERNAL};
 
+    auto* id = this->descriptor;
+    oid_array* tuple_array = id->GetTupleArray();
+    FID tuple_fid = id->GetTupleFid();
+
     // first *updater* wins
     fat_ptr new_obj_ptr = NULL_PTR;
-    fat_ptr prev_obj_ptr = oidmgr->oid_put_update(
-      this->underlying_btree.get_oid_array(), oid, v, t.xc, &new_obj_ptr);
+    fat_ptr prev_obj_ptr = oidmgr->oid_put_update(tuple_array, oid, v, t.xc, &new_obj_ptr);
     dbtuple *tuple = ((object *)new_obj_ptr.offset())->tuple();
     ASSERT(tuple);
 
@@ -130,14 +124,14 @@ rc_t base_txn_btree::do_tree_put(
 
                         // we're safe if the reader is read-only (so far) and started after ct3
                         if (reader_xc->xct->write_set.size() > 0 and reader_begin <= t.xc->ct3) {
-                            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid);
+                            oidmgr->oid_unlink(tuple_array, oid);
                             return {RC_ABORT_SERIAL};
                         }
                     }
                 }
                 else {
-                    oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid);
-                    return {RC_ABORT_SERIAL};
+                  oidmgr->oid_unlink(tuple_array, oid);
+                  return {RC_ABORT_SERIAL};
                 }
             }
         }
@@ -157,7 +151,7 @@ rc_t base_txn_btree::do_tree_put(
         if (not ssn_check_exclusion(t.xc)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set)
-            oidmgr->oid_unlink(this->underlying_btree.get_oid_array(), oid);
+            oidmgr->oid_unlink(tuple_array, oid);
             return rc_t{RC_ABORT_SERIAL};
         }
 #endif
@@ -181,17 +175,17 @@ rc_t base_txn_btree::do_tree_put(
 #if defined(SSI) || defined(SSN)
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
-            auto* oa = underlying_btree.get_oid_array();
-            t.add_to_write_set(&oa->get(oid)->ptr, config::num_backups == 0 ? 0 : fid);
+            t.add_to_write_set(tuple_array->get(oid), config::num_backups == 0 ? 0 : tuple_fid);
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
         ASSERT(tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
-        ASSERT(oidmgr->oid_get_version(fid, oid, t.xc) == tuple);
+        ASSERT(oidmgr->oid_get_version(tuple_fid, oid, t.xc) == tuple);
         ASSERT(t.log);
-        if (not v)
-            t.log->log_delete(this->fid, oid);
-        else {
+        if (not v) {
+            t.log->log_delete(tuple_fid, oid);
+            // FIXME(tzwang): mark deleted in all 2nd indexes as well?
+        } else {
             ASSERT(v);
             // the logmgr only assignspointers, instead of doing memcpy here,
             // unless the record is tooooo large.
@@ -205,10 +199,10 @@ rc_t base_txn_btree::do_tree_put(
             if(config::log_key_for_update) {
               auto key_size = align_up(k->size() + sizeof(varstr));
               auto key_size_code = encode_size_aligned(key_size);
-              t.log->log_update(this->fid, oid, fat_ptr::make((void *)k, key_size_code),
+              t.log->log_update(tuple_fid, oid, fat_ptr::make((void *)k, key_size_code),
                                 DEFAULT_ALIGNMENT_BITS, nullptr);
             }
-            t.log->log_update(this->fid, oid, fat_ptr::make((void *)v, size_code),
+            t.log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
                               DEFAULT_ALIGNMENT_BITS, &tuple->get_object()->_pdest);
         }
         return rc_t{RC_TRUE};
@@ -253,9 +247,10 @@ base_txn_btree
                       << " from <node=0x" << util::hexify(n)
                       << ", version=" << version << ">" << std::endl
                       << "  " << *((dbtuple *) v) << std::endl);
-    caller_callback->return_code = t->do_tuple_read(v, *vr);
+    varstr vv;
+    caller_callback->return_code = t->do_tuple_read(v, &vv);
     if (caller_callback->return_code._val == RC_TRUE)
-        return caller_callback->invoke((*kr)(k), vr->results());
+        return caller_callback->invoke((*kr)(k), vv);
     else if (rc_is_abort(caller_callback->return_code))
         return false;   // don't continue the read if the tx should abort
                         // ^^^^^ note: see masstree_scan.hh, whose scan() calls
@@ -265,14 +260,10 @@ base_txn_btree
 }
 
 void
-base_txn_btree::do_search_range_call(
-    transaction &t,
-    const varstr &lower,
-    const varstr *upper,
-    search_range_callback &callback,
-    key_reader &key_reader,
-    value_reader &value_reader)
-{
+base_txn_btree::do_search_range_call(transaction &t, const varstr &lower,
+                                     const varstr *upper,
+                                     search_range_callback &callback,
+                                     key_reader &key_reader) {
     t.ensure_active();
     if (upper)
         VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
@@ -283,56 +274,36 @@ base_txn_btree::do_search_range_call(
                      << ")::search_range_call [" << util::hexify(lower)
                      << ", +inf)" << std::endl);
 
-    key_writer lower_key_writer(&lower);
-    const varstr * const lower_str =
-        lower_key_writer.fully_materialize(true, t.string_allocator());
-
-    key_writer upper_key_writer(upper);
-    const varstr * const upper_str =
-        upper_key_writer.fully_materialize(true, t.string_allocator());
-
-    if (unlikely(upper_str && *upper_str <= *lower_str))
+    if (unlikely(upper && *upper <= lower))
         return;
 
-    txn_search_range_callback c(&t, &callback, &key_reader, &value_reader);
+    txn_search_range_callback c(&t, &callback, &key_reader);
 
     varstr uppervk;
-    if (upper_str)
-        uppervk = *upper_str;
+    if (upper)
+        uppervk = *upper;
     this->underlying_btree.search_range_call(
-        *lower_str, upper_str ? &uppervk : nullptr,
+        lower, upper ? &uppervk : nullptr,
         c, t.xc);
 }
 
 void
-base_txn_btree::do_rsearch_range_call(
-    transaction &t,
-    const varstr &upper,
-    const varstr *lower,
-    search_range_callback &callback,
-    key_reader &key_reader,
-    value_reader &value_reader)
-{
+base_txn_btree::do_rsearch_range_call(transaction &t,
+                                      const varstr &upper,
+                                      const varstr *lower,
+                                      search_range_callback &callback,
+                                      key_reader &key_reader) {
     t.ensure_active();
-
-    key_writer lower_key_writer(lower);
-    const varstr * const lower_str =
-        lower_key_writer.fully_materialize(true, t.string_allocator());
-
-    key_writer upper_key_writer(&upper);
-    const varstr * const upper_str =
-        upper_key_writer.fully_materialize(true, t.string_allocator());
-
-    if (unlikely(lower_str && *upper_str <= *lower_str))
+    if (unlikely(lower && upper <= *lower))
         return;
 
-    txn_search_range_callback c(&t, &callback, &key_reader, &value_reader);
+    txn_search_range_callback c(&t, &callback, &key_reader);
 
     varstr lowervk;
-    if (lower_str)
-        lowervk = *lower_str;
+    if (lower)
+        lowervk = *lower;
     this->underlying_btree.rsearch_range_call(
-        *upper_str, lower_str ? &lowervk : nullptr,
+        upper, lower ? &lowervk : nullptr,
         c, t.xc);
 }
 

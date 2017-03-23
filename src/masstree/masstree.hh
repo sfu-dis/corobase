@@ -19,11 +19,12 @@
 #include "str.hh"
 #include "ksearch.hh"
 
+#include "../dbcore/sm-alloc.h"
+#include "../dbcore/sm-index.h"
 #include "../dbcore/sm-oid.h"
 #include "../tuple.h"
 #include "../dbcore/xid.h"
 #include "../macros.h"
-#include "../dbcore/sm-alloc.h"
 
 namespace Masstree {
 using lcdf::Str;
@@ -86,16 +87,12 @@ class basic_table {
     template <typename F>
     inline int modify_insert(Str key, F& f, threadinfo& ti);
 
-    inline void set_oid_array(oid_array *oa) { oid_array_ = oa; }
-    inline oid_array* get_oid_array() const { return oid_array_; }
-
     inline void print(FILE* f = 0, int indent = 0) const;
+    inline void set_tuple_array(oid_array* oa) { tuple_array_ = oa; }
 
   private:
     node_type* root_;
-
-    // For convenience...no need to take another lookup for the table
-    oid_array *oid_array_;
+    oid_array* tuple_array_;
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,

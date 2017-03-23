@@ -124,53 +124,38 @@ void
 bench_runner::create_files_task(char *)
 {
   ALWAYS_ASSERT(!sm_log::need_recovery && !config::is_backup_srv());
-  // Allocate an FID for each primary index, set 2nd indexes to use
-  // the primary index's FID
-  for (auto &nm : sm_index_mgr::name_map) {
-    if(!nm.second->is_primary_idx()) {
+  // Allocate an FID for each index, set 2nd indexes to use
+  // the primary index's record FID/array
+  ASSERT(logmgr);
+  RCU::rcu_enter();
+  sm_tx_log *log = logmgr->new_tx_log();
+
+  for(auto &nm : IndexDescriptor::name_map) {
+    if(!nm.second->IsPrimary()) {
       continue;
     }
-    auto fid = oidmgr->create_file(true);
-    nm.second->fid = fid;
-    ALWAYS_ASSERT(!nm.second->index);
-    nm.second->index = new ndb_ordered_index(nm.first);
-    nm.second->index->set_oid_array(fid);
-    nm.second->array = oidmgr->get_array(fid);
-
-    // Initialize the fid_map entries
-    if (sm_index_mgr::fid_map[nm.second->fid] != nm.second) {
-      sm_index_mgr::fid_map[nm.second->fid] = nm.second;
-    }
-
-    // log [table name, FID]
-    ASSERT(logmgr);
-    RCU::rcu_enter();
-    sm_tx_log *log = logmgr->new_tx_log();
-    log->log_fid(fid, nm.second->name);
-    log->commit(NULL);
-    RCU::rcu_exit();
+    nm.second->Initialize();
+    log->log_index(nm.second->GetTupleFid(), nm.second->GetKeyFid(), nm.second->GetName());
   }
 
   // Now all primary indexes have valid FIDs, handle secondary indexes
-  for (auto &nm : sm_index_mgr::name_map) {
-    if(nm.second->is_primary_idx()) {
+  for (auto &nm : IndexDescriptor::name_map) {
+    if(nm.second->IsPrimary()) {
       continue;
     }
-    FID fid = sm_index_mgr::get_fid(nm.second->primary_idx_name);
-    ALWAYS_ASSERT(fid);
-    nm.second->fid = fid;
-    ALWAYS_ASSERT(!nm.second->index);
-    nm.second->index = new ndb_ordered_index(nm.first);
-    nm.second->index->set_oid_array(fid);
-    nm.second->array = oidmgr->get_array(fid);
-    ALWAYS_ASSERT(sm_index_mgr::fid_map[nm.second->fid] = nm.second);
+    nm.second->Initialize();
+    // Note: using the same primary's FID here; recovery must know detect this
+    log->log_index(nm.second->GetTupleFid(), nm.second->GetKeyFid(), nm.second->GetName());
   }
+
+  log->commit(nullptr);
+  RCU::rcu_exit();
 }
 
 void
 bench_runner::run()
 {
-  // Now we should already have a list of registered tables in sm_index_mgr::name_map,
+  // Now we should already have a list of registered tables in IndexDescriptor::name_map,
   // but all the index, oid_array fileds are empty; only the table name is available.
   // Create the logmgr here, instead of in an sm-thread: recovery might want to utilize
   // all the worker_threads specified in config.
@@ -300,7 +285,7 @@ bench_runner::run()
   barrier_a.wait_for(); // wait for all threads to start up
   map<string, size_t> table_sizes_before;
   if(config::verbose) {
-    for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
+    for (map<string, OrderedIndex*>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->size();
       cerr << "table " << it->first << " size " << s << endl;
@@ -403,7 +388,7 @@ bench_runner::run()
 
   if(config::verbose) {
     cerr << "--- table statistics ---" << endl;
-    for (map<string, ndb_ordered_index *>::iterator it = open_tables.begin();
+    for (map<string, OrderedIndex*>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->size();
       const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);

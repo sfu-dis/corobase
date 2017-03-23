@@ -1,5 +1,4 @@
 #include "../benchmarks/ndb_wrapper.h"
-#include "../txn_btree.h"
 #include "../util.h"
 #include "sm-index.h"
 #include "sm-log-recover-impl.h"
@@ -55,7 +54,7 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
   if(latest) {
     oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset());
   } else {
-    oidmgr->oid_put_new_if_absent(f, o, ptr, nullptr);
+    oidmgr->oid_put_new_if_absent(f, o, ptr);
   }
 }
 
@@ -63,15 +62,15 @@ void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) {
   // No need if the chkpt recovery already picked up this tuple
   FID fid = logrec->fid();
-  auto* fd = sm_index_mgr::get_file(fid);
-  auto* oa = fd->array;
-  if(oa->get(logrec->oid())->ptr == NULL_PTR) {
-    recover_index_insert(logrec, fd->index);
+  IndexDescriptor* id = IndexDescriptor::Get(fid);
+  if(oidmgr->oid_get(id->GetKeyArray(), logrec->oid()).offset() == 0) {
+    recover_index_insert(logrec, id->GetIndex());
   }
 }
 
 void
-sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, ndb_ordered_index *index) {
+sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec,
+                                          OrderedIndex* index) {
   static const uint32_t kBufferSize = 128 * config::MB;
   ASSERT(index);
   auto sz = align_up(logrec->payload_size());
@@ -97,14 +96,13 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, 
   size_t len = ((varstr *)payload_buf)->size();
   ASSERT(align_up(len + sizeof(varstr)) == sz);
 
-  oid_array *oa = get_impl(oidmgr)->get_array(logrec->fid());
-  if(!config::is_backup_srv() &&
-    volatile_read(oidmgr->oid_get_entry_ptr(oa, logrec->oid())->key)) {
+  oid_array *ka = get_impl(oidmgr)->get_array(logrec->fid());
+  if(!config::is_backup_srv() && volatile_read(*ka->get(logrec->oid())) != NULL_PTR) {
     return;
   }
 
   varstr payload_key((char*)payload_buf + sizeof(varstr), len);
-  if(index->btr.underlying_btree.insert_if_absent(payload_key, logrec->oid(), NULL, 0)) {
+  if(index->tree_.underlying_btree.insert_if_absent(payload_key, logrec->oid(), NULL)) {
     // Don't add the key on backup - on backup chkpt will traverse OID arrays
     if(!config::is_backup_srv()) {
       // Construct the varkey to be inserted in the oid array
@@ -112,7 +110,7 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec, 
       varstr* key = (varstr*)MM::allocate(sizeof(varstr) + len, 0);
       new (key) varstr((char *)key + sizeof(varstr), len);
       key->copy_from((char *)payload_buf + sizeof(varstr), len);
-      volatile_write(oidmgr->oid_get_entry_ptr(oa, logrec->oid())->key, key);
+      volatile_write(*ka->get(logrec->oid()), fat_ptr::make((void*)key, INVALID_SIZE_CODE));
     }
   }
 }
@@ -124,8 +122,8 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   OID o = logrec->oid();
   ASSERT(oidmgr->file_exists(f));
 
-  auto* oa = sm_index_mgr::get_file(f)->array;
-  fat_ptr head_ptr = oa->get(o)->ptr;
+  auto* oa = IndexDescriptor::Get(f)->GetTupleArray();
+  fat_ptr head_ptr = *oa->get(o);
 
   fat_ptr ptr = NULL_PTR;
   if(!is_delete) {
@@ -140,6 +138,9 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
 
 void
 sm_log_recover_impl::recover_update_key(sm_log_scan_mgr::record_scan* logrec) {
+  return;
+  // Disabled for now, fix later
+#if 0
   // Used when emulating the case where we didn't have OID arrays - must update tree leaf nodes
   auto* index = sm_index_mgr::get_index(logrec->fid());
   ASSERT(index);
@@ -171,205 +172,24 @@ sm_log_recover_impl::recover_update_key(sm_log_scan_mgr::record_scan* logrec) {
   OID old_oid = 0;
   index->btr.underlying_btree.insert(key, logrec->oid(), nullptr, &old_oid, nullptr);
   ASSERT(old_oid == logrec->oid());
+#endif
 }
 
-ndb_ordered_index*
-sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
-  char name_buf[256];
-  FID f = logrec->fid();
+OrderedIndex* sm_log_recover_impl::recover_fid(sm_log_scan_mgr::record_scan *logrec) {
+  // XXX(tzwang): no support for dynamically created tables for now
+  char buf[256];
   auto sz = logrec->payload_size();
   ALWAYS_ASSERT(sz <= 256);  // 256 should be enough, revisit later if not
-  logrec->load_object(name_buf, sz);
-  std::string name(name_buf);
-  // XXX(tzwang): no support for dynamically created tables for now
-  ASSERT(sm_index_mgr::name_map.find(name) != sm_index_mgr::name_map.end());
-  ASSERT(!sm_index_mgr::get_index(name));
-  sm_index_mgr::name_map[name]->fid = f;  // fill in the fid
+  logrec->load_object(buf, sz);
+  FID key_fid = *(FID*)buf;
+  std::string name(buf + sizeof(FID));
+
   // The benchmark should have registered the table with the engine
-  sm_index_mgr::name_map[name]->index = new ndb_ordered_index(name);
-  ASSERT(not oidmgr->file_exists(f));
-  oidmgr->recreate_file(f);
-  ASSERT(sm_index_mgr::name_map[name]->index);
-  sm_index_mgr::name_map[name]->index->set_oid_array(f);
-  sm_index_mgr::name_map[name]->array = oidmgr->get_array(f);
-  if (sm_index_mgr::fid_map.find(f) == sm_index_mgr::fid_map.end()) {
-    // chkpt recovery might have did this
-    ASSERT(sm_index_mgr::name_map[name]->index);
-    sm_index_mgr::fid_map[f] = sm_index_mgr::name_map[name];
-  }
-
-  printf("[Recovery: log] FID(%s) = %d\n", name_buf, f);
-  return sm_index_mgr::get_index(name);
-}
-
-/* The main recovery function of parallel_file_replay.
- *
- * Without checkpointing, recovery starts with an empty, new oidmgr, and then
- * scans the log to insert/update **versions**.
- *
- * FIDs/OIDs met during the above scan are blindly inserted to corresponding
- * object arrays, without touching the allocator (thru ensure_size and
- * oid_getput interfaces).
- *
- * The above scan also figures out the <FID, table name> pairs for all tables to
- * rebuild their indexes. The max OID is also gathered for each FID, including
- * the internal files (OBJARRAY_FID etc.) to recover allocator status.
- *
- * After the above scan, an allocator is made for each FID with its hiwater_mark
- * and capacity_mark updated to the FID's max OID+64. This allows the oidmgr to
- * allocate new OIDs > max OID.
- *
- * Note that alloc_oid hasn't been used so far, and the caching structures
- * should all be empty.
- */
-void
-parallel_file_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to) {
-  scanner = s;
-  start_lsn = from;
-  end_lsn = to;
-
-  RCU::rcu_enter();
-  // Look for new table creations after the chkpt
-  // Use one redo thread per new table found
-  // XXX(tzwang): no support for dynamically created tables for now
-  // TODO(tzwang): figure out how this interacts with chkpt
-
-  // One hiwater_mark/capacity_mark per FID
-  FID max_fid = 0;
-  std::vector<struct redo_runner> redoers;
-  auto *scan = scanner->new_log_scan(start_lsn, config::eager_warm_up());
-  for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
-    if (scan->type() != sm_log_scan_mgr::LOG_FID)
-      continue;
-    FID fid = scan->fid();
-    max_fid = std::max(fid, max_fid);
-    recover_fid(scan);
-  }
-  delete scan;
-
-  for (auto &fm : sm_index_mgr::fid_map) {
-    sm_index_descriptor *fd = fm.second;
-    ASSERT(fd->fid);
-    max_fid = std::max(fd->fid, max_fid);
-    redoers.emplace_back(this, fd->fid, fd->index);
-  }
-
-  // Fix internal files' marks
-  oidmgr->recreate_allocator(sm_oid_mgr_impl::OBJARRAY_FID, max_fid);
-  oidmgr->recreate_allocator(sm_oid_mgr_impl::ALLOCATOR_FID, max_fid);
-  //oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
-
-  uint32_t done = 0;
-process:
-  for (auto &r : redoers) {
-    // Scan the rest of the log
-    if (not r.done and not r.is_impersonated() and r.try_impersonate()) {
-      r.start();
-    }
-  }
-
-  // Loop over existing redoers to scavenge and reuse available threads
-  while (done < redoers.size()) {
-    for (auto &r : redoers) {
-      if (r.is_impersonated() and r.try_join()) {
-        if (++done < redoers.size()) {
-          goto process;
-        }
-        else {
-          break;
-        }
-      }
-    }
-  }
-
-  // Reset redoer states for backup servers to reuse
-  for (auto &r : redoers) {
-    r.done = false;
-  }
-
-  // WARNING: DO NOT TAKE CHKPT UNTIL WE REPLAYED ALL INDEXES!
-  // Otherwise we migth lose some FIDs/OIDs created before the chkpt.
-  //
-  // For easier measurement (like "how long does it take to bring the
-  // system back to fully memory-resident after recovery), we spawn the
-  // warm-up thread after rebuilding indexes as well.
-  if (config::lazy_warm_up()) {
-    oidmgr->start_warm_up();
-  }
-
-  std::cout << "[Recovery] done\n";
-}
-
-void
-parallel_file_replay::redo_runner::my_work(char *) {
-  auto himark = redo_file();
-
-  // Now recover allocator status
-  // Note: indexes currently don't use an OID array for themselves
-  // (ie for tree nodes) so it's safe to do this any time as long
-  // as it's before starting to process new transactions.
-  if (himark) {
-    oidmgr->recreate_allocator(fid, himark);
-  }
-  done = true;
-  __sync_synchronize();
-}
-
-FID
-parallel_file_replay::redo_runner::redo_file() {
-  ASSERT(oidmgr->file_exists(fid));
-  RCU::rcu_enter();
-  OID himark = 0;
-  uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
-  auto *scan = owner->scanner->new_log_scan(owner->start_lsn, config::eager_warm_up());
-  for (; scan->valid() and scan->payload_lsn() < owner->end_lsn; scan->next()) {
-    auto f = scan->fid();
-    if (f != fid)
-      continue;
-    auto o = scan->oid();
-    if (himark < o)
-      himark = o;
-
-    switch (scan->type()) {
-    case sm_log_scan_mgr::LOG_UPDATE:
-    case sm_log_scan_mgr::LOG_RELOCATE:
-      ucount++;
-      owner->recover_update(scan, false, false);
-      size += scan->payload_size();
-      break;
-    case sm_log_scan_mgr::LOG_UPDATE_KEY:
-      owner->recover_update_key(scan);
-      size += scan->payload_size();
-      break;
-    case sm_log_scan_mgr::LOG_DELETE:
-      dcount++;
-      owner->recover_update(scan, true, false);
-      break;
-    case sm_log_scan_mgr::LOG_INSERT_INDEX:
-      iicount++;
-      owner->recover_index_insert(scan);
-      break;
-    case sm_log_scan_mgr::LOG_INSERT:
-      icount++;
-      owner->recover_insert(scan);
-      size += scan->payload_size();
-      break;
-    case sm_log_scan_mgr::LOG_FID:
-      // The main recover function should have already did this
-      ASSERT(oidmgr->file_exists(fid));
-      break;
-    default:
-      DIE("unreachable");
-    }
-  }
-  ASSERT(icount == iicount);
-  DLOG(INFO) << "[Recovery.log] FID " << fid
-    << " - inserts/updates/deletes/size: "
-    << icount << "/" << ucount << "/" << dcount << "/" << size;
-
-  delete scan;
-  RCU::rcu_exit();
-  return himark;
+  ALWAYS_ASSERT(IndexDescriptor::NameExists(name));
+  FID tuple_fid = logrec->fid();
+  IndexDescriptor::Get(name)->Recover(tuple_fid, key_fid);
+  LOG(INFO) << "[Recovery] " << name << "(" << tuple_fid << ", " << key_fid << ")";
+  return IndexDescriptor::GetIndex(name);
 }
 
 void
@@ -447,8 +267,6 @@ process:
   if (config::lazy_warm_up()) {
     oidmgr->start_warm_up();
   }
-
-  //std::cout << "[Recovery] done\n";
 }
 
 void
@@ -502,7 +320,7 @@ parallel_oid_replay::redo_runner::redo_partition() {
       DIE("unreachable");
     }
   }
-  ASSERT(icount == iicount);
+  ASSERT(icount <= iicount);  // No insert log record for 2nd index
   DLOG(INFO) << "[Recovery.log] OID partition " << oid_partition
     << " - inserts/updates/deletes/size: "
     << icount << "/" << ucount << "/" << dcount << "/" << size;
