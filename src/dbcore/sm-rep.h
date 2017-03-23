@@ -48,6 +48,15 @@ struct backup_start_metadata {
     segment_file_name file_name;
     uint64_t size;
   };
+
+  // Send over system config too, e.g, log buffer size.
+  struct backup_config {
+    uint32_t scale_factor;
+    uint64_t log_segment_mb;
+    uint32_t logbuf_partitions;
+  };
+
+  struct backup_config system_config;
   char chkpt_marker[CHKPT_FILE_NAME_BUFSZ];
   char durable_marker[DURABLE_FILE_NAME_BUFSZ];
   char nxt_marker[NXT_SEG_FILE_NAME_BUFSZ];
@@ -59,7 +68,11 @@ struct backup_start_metadata {
   backup_start_metadata() :
     chkpt_size(0)
     , log_size(0)
-    , num_log_files(0) {}
+    , num_log_files(0) {
+    system_config.scale_factor = config::benchmark_scale_factor;
+    system_config.log_segment_mb = config::log_segment_mb;
+    system_config.logbuf_partitions = config::logbuf_partitions;
+  }
 
   inline void add_log_segment(
     unsigned int segment, uint64_t start_offset, uint64_t end_offset, uint64_t size) {
@@ -108,6 +121,7 @@ backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_ls
 // RDMA-specific functions
 void primary_daemon_rdma();
 void start_as_backup_rdma();
+void backup_start_replication_rdma();
 void primary_init_rdma();
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
                                   bool new_seg, uint64_t new_seg_start_offset);

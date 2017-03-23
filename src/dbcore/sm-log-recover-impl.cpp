@@ -477,7 +477,7 @@ parallel_offset_replay::redo_runner::redo_logbuf_partition() {
       DIE("unreachable");
     }
   }
-  ASSERT(icount == iicount);
+  ASSERT(icount <= iicount);
   DLOG(INFO) << "[Recovery.log] 0x" << start_lsn.offset() << "-" << end_lsn.offset()
     << " inserts/updates/deletes/size: " << std::dec << icount << "/"
     << ucount << "/" << dcount << "/" << size;

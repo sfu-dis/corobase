@@ -41,7 +41,7 @@ class RdmaNode {
     memset(msg_buf_, 0, kMessageSize);
     memset(daemon_buf_, 0, kDaemonBufferSize);
 
-    // XXX(tzawng): Assuming the backup is also registering in the same order
+    // XXX(tzawng): Assuming the primary and backup register in the same order
     msg_buf_ridx_ = context_->register_memory(msg_buf_, kMessageSize);
     daemon_buf_ridx_ = context_->register_memory(daemon_buf_, kDaemonBufferSize);
 
@@ -51,8 +51,7 @@ class RdmaNode {
       (char*)rep::logbuf_partition_bounds, sizeof(uint64_t) * kMaxLogBufferPartitions);
 
     context_->finish_init();
-    // TODO: send over the indexes to client
-    LOG(INFO) << "RDMA initialized (" << daemon_buf_ridx_ << ")";
+    LOG(INFO) << "RDMA initialized";
   }
 
   ~RdmaNode() { delete context_; }
