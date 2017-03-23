@@ -166,7 +166,7 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
     sm_log_recover_impl *logbuf_redo_functor;
     void *recover_functor_arg;
 
-    void redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn);
+    void redo_log(LSN start_lsn, LSN end_lsn);
     // For log shipping only
     void redo_logbuf(LSN start, LSN end);
     void recover();

@@ -72,9 +72,9 @@ struct sm_tx_log {
     */
     void log_delete(FID f, OID o);
 
-    /* Record the creation of a table with FID and name
+    /* Record the creation of a index with tuple/key FIDs and name
      */
-    void log_fid(FID f, const std::string &name);
+    void log_index(FID tuple_fid, FID key_fid, const std::string &name);
 
     /* Return this transaction's commit LSN, or INVALID_LSN if the
        transaction has not entered pre-commit yet.

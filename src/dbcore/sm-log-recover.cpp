@@ -49,13 +49,11 @@ sm_log_recover_mgr::recover() {
   if(chkpt_lsn.offset()) {
     sm_chkpt_mgr::recover(chkpt_lsn, this);
   }
-  redo_log(chkpt_lsn, LSN{~uint64_t{0}});  // till end of log
+  redo_log(chkpt_lsn, get_durable_mark());  // till end of log
 }
 
-void
-sm_log_recover_mgr::redo_log(LSN chkpt_start_lsn, LSN chkpt_end_lsn)
-{
-    (*recover_functor)(recover_functor_arg, scanner, chkpt_start_lsn, chkpt_end_lsn);
+void sm_log_recover_mgr::redo_log(LSN start_lsn, LSN end_lsn) {
+    (*recover_functor)(recover_functor_arg, scanner, start_lsn, end_lsn);
 }
 
 void sm_log_recover_mgr::redo_logbuf(LSN start, LSN end) {
@@ -119,7 +117,7 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
             return;
     }
 
-    bool read_from_logbuf = logmgr && x.offset() >= logmgr->durable_flushed_lsn_offset();
+    bool read_from_logbuf = logmgr && x.offset() > logmgr->durable_flushed_lsn_offset();
 
     // helper function... pread may not read everything in one call
     auto pread = [&](size_t nbytes, uint64_t i)->size_t {
