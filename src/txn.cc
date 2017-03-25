@@ -1153,18 +1153,11 @@ transaction::do_tuple_read(dbtuple *tuple, varstr *out_v) {
 #endif
 
     // do the actual tuple read
-    dbtuple::ReadStatus stat;
-    {
-        stat = tuple->do_read(out_v, !read_my_own);
-
-        if (unlikely(stat == dbtuple::READ_FAILED))
-            return rc_t{RC_ABORT_INTERNAL};
-    }
+    dbtuple::ReadStatus stat = tuple->do_read(out_v, !read_my_own);
     ASSERT(stat == dbtuple::READ_EMPTY || stat == dbtuple::READ_RECORD);
     if (stat == dbtuple::READ_EMPTY) {
         return rc_t{RC_FALSE};
     }
-
     return {RC_TRUE};
 }
 
