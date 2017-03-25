@@ -68,7 +68,6 @@ public:
   ~dbtuple() {}
 
   enum ReadStatus {
-    READ_FAILED,
     READ_EMPTY,
     READ_RECORD,
   };
