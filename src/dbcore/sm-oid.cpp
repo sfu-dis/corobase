@@ -238,7 +238,7 @@ sm_oid_mgr_impl::sm_oid_mgr_impl()
     // TODO: DEFER deletion of these arrays if constructor throws
     fat_ptr ptr = oid_array::make();
     files = ptr;
-    files->get(OBJARRAY_FID)->ptr = ptr;
+    *files->get(OBJARRAY_FID) = ptr;
     ASSERT(oid_get(OBJARRAY_FID, OBJARRAY_FID) == ptr);
     oid_put(OBJARRAY_FID, ALLOCATOR_FID, oid_array::make());
     oid_put(OBJARRAY_FID, METADATA_FID, oid_array::make());
@@ -323,10 +323,13 @@ sm_oid_mgr_impl::create_file(bool needs_alloc)
 void
 sm_oid_mgr_impl::recreate_file(FID f)
 {
-    ASSERT(not file_exists(f));
+    if(file_exists(f)) {
+      LOG(FATAL) << "File already exists. Is this a secondary index?";
+    }
     auto ptr = oid_array::make();
     oid_put(OBJARRAY_FID, f, ptr);
     ASSERT(file_exists(f));
+    DLOG(INFO) << "[Recovery] recreate file " << f;
     // Allocator doesn't exist for now, need to call
     // recreate_allocator(f) later after we figured
     // out the high watermark by scanning the log.
@@ -457,72 +460,92 @@ void
 sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
 {
     // Now the real work. The format of a chkpt file is:
-    // [number of tables]
-    // [table 1 name length, table 1 name, table 1 FID, table 1 himark]
-    // [table 2 name length, table 2 name, table 2 FID, table 2 himark]
+    // [number of indexes]
+    // [primary index 1 name length, name, tuple/key FID, himark]
+    // [primary index 2 name length, name, tuple/key FID, himark]
+    // ...
+    // [2nd index 1 name length, name, FID, himark]
+    // [2nd index 2 name length, name, FID, himark]
     // ...
     //
-    // [table 1 himark, table 1 FID]
-    // [OID1, key, data]
-    // [OID2, key, data]
-    // [table 1 himark]
+    // [index 1 himark]
+    // [index 1 tuple_fid, key_fid]
+    // [OID1, key and/or data]
+    // [OID2, key and/or data]
+    // [index 1 himark]
     // ...
-    // [table 2 himark, table 2 FID]
-    // [OID1, key, data]
-    // [OID2, key, data]
-    // [table 2 himark]
+    // same thing for index 2
     // ...
-    //
-    // The table's himark denotes its start and end
 
-    // Write the number of tables
-    // TODO(tzwang): handle dynamically created tables
+    // Write the number of indexes 
+    // TODO(tzwang): handle dynamically created tables/indexes
     uint64_t chkpt_size = 0;
-    uint32_t ntables = sm_index_mgr::fid_map.size();
-    chkptmgr->write_buffer(&ntables, sizeof(uint32_t));
+    uint32_t num_idx = IndexDescriptor::NumIndexes();
+    chkptmgr->write_buffer(&num_idx, sizeof(uint32_t));
     chkpt_size += sizeof(uint32_t);
 
-    // Write details about each table
-    for(auto& fm : sm_index_mgr::fid_map) {
-      auto* fd = fm.second;
-      size_t len = fd->name.length();
-      auto *alloc = get_impl(this)->get_allocator(fd->fid);
+    // Write details about each primary index, then secondary index
+    // so that during recovery we have primary indexes first and then
+    // 2nd indexes can refer to the FID of the corresponding primary.
+    bool handling_2nd = false;
+iterate_index:
+    for(auto& fm : IndexDescriptor::name_map) {
+      IndexDescriptor* id = fm.second;
+      if(!((id->IsPrimary() && !handling_2nd) || !id->IsPrimary() && handling_2nd)) {
+        continue;
+      }
+      size_t len = id->GetName().length();
+      FID tuple_fid = id->GetTupleFid();
+      FID key_fid = id->GetKeyFid();
+      auto *alloc = get_impl(this)->get_allocator(tuple_fid);
       OID himark = alloc->head.hiwater_mark;
 
-      // [Name length, name, FID, himark]
+      // [Name length, name, tuple/key FID, himark]
       chkptmgr->write_buffer(&len, sizeof(size_t));
-      chkptmgr->write_buffer((void *)fd->name.c_str(), len);
-      chkptmgr->write_buffer(&fd->fid, sizeof(FID));
+      chkptmgr->write_buffer((void *)id->GetName().c_str(), len);
+      chkptmgr->write_buffer(&tuple_fid, sizeof(FID));
+      chkptmgr->write_buffer(&key_fid, sizeof(FID));
       chkptmgr->write_buffer(&himark, sizeof(OID));
       chkpt_size += (sizeof(size_t) + len + sizeof(FID) + sizeof(OID));
     }
+    if(!handling_2nd) {
+      handling_2nd = true;
+      goto iterate_index;
+    }
     LOG(INFO) << "[Checkpoint] header size: " << chkpt_size;
 
-    // Write tuples for each table
-    for (auto &fm : sm_index_mgr::fid_map) {
-        auto* fd = fm.second;
-        FID fid = fd->fid;
+    // Write keys and/or tuples for each index, primary first
+    for(auto& fm : IndexDescriptor::name_map) {
+        IndexDescriptor* id = fm.second;
+        FID tuple_fid = id->GetTupleFid();
         // Find the high watermark of this file and dump its
         // backing store up to the size of the high watermark
-        auto *alloc = get_impl(this)->get_allocator(fid);
+        auto *alloc = get_impl(this)->get_allocator(tuple_fid);
         OID himark = alloc->head.hiwater_mark;
 
-        // Write the himark to denote a table start
+        // Write himark
         chkptmgr->write_buffer(&himark, sizeof(OID));
 
-        // Write the FID to note which table these OIDs to follow belongs to
-        chkptmgr->write_buffer(&fid, sizeof(FID));
+        // Write the tuple FID to note which table these OIDs to follow belongs to
+        chkptmgr->write_buffer(&tuple_fid, sizeof(FID));
 
-        auto* oa = fm.second->array;
+        // Key FID
+        FID key_fid = id->GetKeyFid();
+        chkptmgr->write_buffer(&key_fid, sizeof(FID));
+
+        auto* oa = fm.second->GetTupleArray();
+        auto* ka = fm.second->GetKeyArray();
         ASSERT(oa);
+        ASSERT(ka);
 
-        // Now write the [OID, payload] pairs
+        // Now write the [OID, payload] pairs. Record both OID and keys for
+        // primary indexes; keys only for 2nd indexes.
         uint64_t nrecords = 0;
+        bool is_primary = id->IsPrimary();
         for (OID oid = 0; oid < himark; oid++) {
             // Checkpoints need not be consistent: grab the latest committed
             // version and leave.
-            oid_array::entry *entry = oid_get_entry_ptr(oa, oid);
-            auto ptr = entry->ptr;
+            fat_ptr ptr = oid_get(oa, oid);
         retry:
             if (not ptr.offset()) {
                 continue;
@@ -551,44 +574,50 @@ sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
             chkptmgr->write_buffer(&oid, sizeof(OID));
 
             // Key
-            ALWAYS_ASSERT(entry->key->l);
-            ALWAYS_ASSERT(entry->key->p);
-            chkptmgr->write_buffer(&entry->key->l, sizeof(uint32_t));
-            chkptmgr->write_buffer(entry->key->data(), entry->key->size());
+            fat_ptr key_ptr = oid_get(ka, oid);
+            varstr* key = (varstr*)key_ptr.offset();
+            ALWAYS_ASSERT(key);
+            ALWAYS_ASSERT(key->l);
+            ALWAYS_ASSERT(key->p);
+            chkptmgr->write_buffer(&key->l, sizeof(uint32_t));
+            chkptmgr->write_buffer(key->data(), key->size());
 
-            // Tuple data
-            uint8_t size_code = ptr.size_code();
-            ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
-            auto data_size = decode_size_aligned(size_code);
-            if(ptr.asi_type()) {
-              fat_ptr p = NULL_PTR;
-              if(ptr.asi_type() == fat_ptr::ASI_CHK) {
-                chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
-                obj = (object*)chkptmgr->advance_buffer(data_size);
-                p = object::load_durable_object(ptr, NULL_PTR, 0, obj);
-                ASSERT((uint64_t)obj == p.offset());
-              } else {
-                ALWAYS_ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
-                p = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
-                obj = (object*)p.offset();
+            // Tuple data if it's the primary index
+            if(fm.second->IsPrimary()) {
+              uint8_t size_code = ptr.size_code();
+              ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
+              auto data_size = decode_size_aligned(size_code);
+              if(ptr.asi_type()) {
+                fat_ptr p = NULL_PTR;
+                if(ptr.asi_type() == fat_ptr::ASI_CHK) {
+                  chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
+                  obj = (object*)chkptmgr->advance_buffer(data_size);
+                  p = object::load_durable_object(ptr, NULL_PTR, 0, obj);
+                  ASSERT((uint64_t)obj == p.offset());
+                } else {
+                  ALWAYS_ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+                  p = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
+                  obj = (object*)p.offset();
+                }
+                size_code = p.size_code();
               }
-              size_code = p.size_code();
-            }
-            data_size = decode_size_aligned(size_code);
-            ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
-            if(ptr.asi_type() != fat_ptr::ASI_CHK) {
-              chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
-              // It's already there if we're digging out a tuple from a previous chkpt
-              chkptmgr->write_buffer((char*)obj, data_size);
-              ALWAYS_ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
+              data_size = decode_size_aligned(size_code);
               ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
+              if(ptr.asi_type() != fat_ptr::ASI_CHK) {
+                chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
+                // It's already there if we're digging out a tuple from a previous chkpt
+                chkptmgr->write_buffer((char*)obj, data_size);
+                ALWAYS_ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
+                ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
+              }
+              chkpt_size += (sizeof(OID) + sizeof(uint8_t) + data_size);
             }
-            chkpt_size += (sizeof(OID) + sizeof(uint8_t) + data_size);
         }
-        // Write himark as end of fid
+        // Write himark to denote end
         chkptmgr->write_buffer(&himark, sizeof(OID));
-        LOG(INFO) << "[Checkpoint] "<< fd->name << " (" << fd->fid << ") himark="
-          << himark << ", wrote " << chkpt_size << " bytes, " << nrecords << " records";
+        LOG(INFO) << "[Checkpoint] "<< id->GetName() << " (" << tuple_fid << ", "
+          << key_fid << ") himark=" << himark << ", wrote " << chkpt_size
+          << " bytes, " << nrecords << " records";
     }
     chkptmgr->sync_buffer();
 }
@@ -609,16 +638,18 @@ sm_oid_mgr::start_warm_up()
 void
 sm_oid_mgr::warm_up()
 {
+  // REVISIT
     ASSERT(oidmgr);
     std::cout << "[Warm-up] Started\n";
     {
         util::scoped_timer t("data warm-up");
         // Go over each OID entry and ensure_tuple there
-        for (auto &fm : sm_index_mgr::fid_map) {
-            auto* fd = fm.second;
-            auto *alloc = oidmgr->get_allocator(fd->fid);
+        for (auto &fm : IndexDescriptor::fid_map) {
+            auto* id = fm.second;
+            auto *alloc = oidmgr->get_allocator(id->GetTupleFid());
             OID himark = alloc->head.hiwater_mark;
-            oid_array *oa = oidmgr->get_array(fd->fid);
+            FID fid = fm.first;
+            oid_array *oa = oidmgr->get_array(fid);
             for (OID oid = 0; oid < himark; oid++)
                 oidmgr->ensure_tuple(oa, oid, 0);
         }
@@ -705,22 +736,19 @@ sm_oid_mgr::oid_put(FID f, OID o, fat_ptr p)
 }
 
 void
-sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p, varstr* k)
+sm_oid_mgr::oid_put_new(FID f, OID o, fat_ptr p)
 {
-    auto *entry= get_impl(this)->oid_entry_access(f, o);
-    ALWAYS_ASSERT(entry->ptr == NULL_PTR);
-    entry->ptr = p;
-    entry->key = k;
+    auto *entry = get_impl(this)->oid_access(f, o);
+    ALWAYS_ASSERT(*entry == NULL_PTR);
+    *entry = p;
 }
 
 void
-sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p, varstr* k)
+sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p)
 {
-  auto *entry= get_impl(this)->oid_entry_access(f, o);
-  if(entry->ptr == NULL_PTR) {
-    ALWAYS_ASSERT(!entry->key);
-    entry->ptr = p;
-    entry->key = k;
+  auto *entry = get_impl(this)->oid_access(f, o);
+  if(*entry == NULL_PTR) {
+    *entry = p;
   }
 }
 
@@ -735,20 +763,20 @@ sm_oid_mgr::oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t 
   auto* entry = oa->get(o);
   uint64_t expected = -1;
   bool do_it = false;;
-  if(entry->ptr == NULL_PTR) {
+  if(*entry == NULL_PTR) {
     expected = 0;
     do_it = true;
   } else {
-    expected = entry->ptr._ptr;
-    if(entry->ptr.asi_type() == 0) {
+    expected = entry->_ptr;
+    if(entry->asi_type() == 0) {
       // Must go into the object to see its lsn
-      object* obj = (object*)entry->ptr.offset();
+      object* obj = (object*)entry->offset();
       if(obj->_clsn.offset() < lsn_offset) {
         do_it = true;
       }
-    } else if(entry->ptr.asi_type() == fat_ptr::ASI_LOG) {
+    } else if(entry->asi_type() == fat_ptr::ASI_LOG) {
       // Good, directly comparable
-      if(entry->ptr.offset() < lsn_offset) {
+      if(entry->offset() < lsn_offset) {
         do_it = true;
       }
     } else {
@@ -756,16 +784,17 @@ sm_oid_mgr::oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t 
       // TODO(tzwang): so far we don't chkpt on the backup, so it's safe to
       // just overwrite (a CAS is needed still) because if it remains to be
       // ASI_CHK then it's truely not touched by query threads.
-      ALWAYS_ASSERT(entry->ptr.asi_type() == fat_ptr::ASI_CHK);
+      ALWAYS_ASSERT(entry->asi_type() == fat_ptr::ASI_CHK);
       do_it = true;
     }
   }
 
-  if(do_it && __sync_bool_compare_and_swap(&entry->ptr._ptr, expected, p._ptr)) {
-    if(expected == 0) {
-      entry->key = k;
-    }
-  }
+// REVISIT
+//  if(do_it && __sync_bool_compare_and_swap(&entry->_ptr, expected, p._ptr)) {
+//    if(expected == 0) {
+//      entry->key = k;
+//    }
+//  }
 }
 
 fat_ptr
@@ -952,8 +981,8 @@ sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
 {
 start_over:
     // must put start_over above this, because we'll update pp later
-    fat_ptr *pp = &oa->get(o)->ptr;
-    fat_ptr ptr = *pp;
+    fat_ptr *pp = oa->get(o);
+    fat_ptr ptr = volatile_read(*pp);
     while (1) {
         if(ptr.asi_type() == fat_ptr::ASI_LOG || ptr.asi_type() == fat_ptr::ASI_CHK) {
             ptr = ensure_tuple(pp, visitor_xc->begin_epoch);

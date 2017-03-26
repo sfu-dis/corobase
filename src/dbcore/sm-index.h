@@ -1,58 +1,69 @@
 #pragma once
 
 #include <string>
-#include "../txn.h"
+//#include "../txn.h"
 #include "sm-common.h"
 #include "sm-oid.h"
 
-// Maintains a mapping among FID, table name, and index pointer
-struct sm_index_descriptor {
-  FID fid;
-  std::string name;
-  std::string primary_idx_name;  // only set if this is a secondary index
-  ndb_ordered_index *index;
-  oid_array* array;
+class OrderedIndex;
 
-  sm_index_descriptor() : 
-    fid(0), name(""), primary_idx_name(""), index(nullptr), array(nullptr) {}
-  sm_index_descriptor(FID f, std::string n, std::string pn,
-                      ndb_ordered_index *i, oid_array* oa) :
-    fid(f), name(n), primary_idx_name(pn), index(i), array(oa) {}
+class IndexDescriptor {
+public:
+  static std::unordered_map<std::string, IndexDescriptor*> name_map;
+  static std::unordered_map<FID, IndexDescriptor*> fid_map;
 
-  inline bool is_primary_idx() { return primary_idx_name.size() == 0; }
-};
-
-// WARNING: No CC, the user should know what to do.
-struct sm_index_mgr {
-  static std::unordered_map<std::string, sm_index_descriptor*> name_map;
-  static std::unordered_map<FID, sm_index_descriptor*> fid_map;
-
-  static inline sm_index_descriptor* get_file(FID f) {
-    return fid_map[f];
+  static inline bool NameExists(std::string name) {
+    return name_map.find(name) != name_map.end();
+  }
+  static inline bool FidExists(FID fid) {
+    return fid_map.find(fid) != fid_map.end();
+  }
+  static inline IndexDescriptor* Get(std::string name) {
+    return name_map[name];
+  }
+  static inline IndexDescriptor* Get(FID fid) {
+    return fid_map[fid];
+  }
+  static inline OrderedIndex* GetIndex(const std::string& name) {
+    return name_map[name]->GetIndex();
+  }
+  static inline OrderedIndex* GetIndex(FID fid) {
+    return fid_map[fid]->GetIndex();
+  }
+  static inline void New(std::string name, const char* primary = nullptr) {
+    if(primary) {
+      std::string p(primary);
+      name_map[name] = new IndexDescriptor(name, p);
+    } else {
+      name_map[name] = new IndexDescriptor(name);
+    }
+  }
+  static inline uint32_t NumIndexes() {
+    return name_map.size();
   }
 
-  static inline sm_index_descriptor* get_file(std::string& n) {
-    return name_map[n];
-  }
+private:
+  std::string name_;
+  std::string primary_name_;  // Null for primary index
+  OrderedIndex* index_;
 
-  static inline ndb_ordered_index *get_index(FID f) {
-    return fid_map[f]->index;
-  }
+  FID tuple_fid_;
+  oid_array* tuple_array_;
 
-  static inline ndb_ordered_index *get_index(const std::string& n) {
-    return name_map[n]->index;
-  }
+  FID key_fid_;
+  oid_array* key_array_;
 
-  static inline FID get_fid(std::string& n) {
-    return name_map[n]->fid;
-  }
+public:
+  IndexDescriptor(std::string& name);
+  IndexDescriptor(std::string& name, std::string& primary_name);
 
-  static inline void new_primary_index(const std::string& name) {
-    name_map[name] = new sm_index_descriptor(0, name, "", nullptr, nullptr);
-  }
-
-  static inline void new_secondary_index(const std::string& name,
-                                         const std::string& primary_idx_name) {
-    name_map[name] = new sm_index_descriptor(0, name, primary_idx_name, nullptr, nullptr);
-  }
+  void Initialize();
+  void Recover(FID tuple_fid, FID key_fid, OID himark = 0);
+  inline bool IsPrimary() { return primary_name_.size() == 0; }
+  inline std::string& GetName() { return name_; }
+  inline OrderedIndex* GetIndex() { return index_; }
+  inline FID GetTupleFid() { return tuple_fid_; }
+  inline FID GetKeyFid() { return key_fid_; }
+  inline oid_array* GetTupleArray() { return tuple_array_; }
+  inline oid_array* GetKeyArray() { return key_array_; }
 };

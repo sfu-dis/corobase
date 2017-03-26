@@ -83,9 +83,9 @@ const Nation nations[]={
 
 const char* regions[]={"AFRICA","AMERICA","ASIA","EUROPE", "MIDDLE EAST"};
 
-class table_scanner: public ndb_ordered_index::scan_callback {
+class tpcc_table_scanner: public OrderedIndex::scan_callback {
 	public:
-		table_scanner( str_arena* arena) : _arena(arena) {}
+		tpcc_table_scanner( str_arena* arena) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
 		{
 			varstr * const k = _arena->next(keylen);
@@ -197,14 +197,12 @@ struct checker {
   // these sanity checks are just a few simple checks to make sure
   // the data is not entirely corrupted
 
-  static inline ALWAYS_INLINE void
-  SanityCheckCustomer(const customer::key *k, const customer::value *v)
-  {
+  static inline ALWAYS_INLINE void SanityCheckCustomer(const customer::key *k, const customer::value *v) {
+    ASSERT(v->c_credit == "BC" || v->c_credit == "GC");
+    ASSERT(v->c_middle == "OE");
     ASSERT(k->c_w_id >= 1 && static_cast<size_t>(k->c_w_id) <= NumWarehouses());
     ASSERT(k->c_d_id >= 1 && static_cast<size_t>(k->c_d_id) <= NumDistrictsPerWarehouse());
     ASSERT(k->c_id >= 1 && static_cast<size_t>(k->c_id) <= NumCustomersPerDistrict());
-    ASSERT(v->c_credit == "BC" || v->c_credit == "GC");
-    ASSERT(v->c_middle == "OE");
   }
 
   static inline ALWAYS_INLINE void
@@ -277,7 +275,7 @@ class tpcc_worker_mixin : private _dummy {
   , tbl_ ## name ## _vec(partitions.at(#name))
 
 public:
-  tpcc_worker_mixin(const map<string, vector<ndb_ordered_index *>> &partitions) :
+  tpcc_worker_mixin(const map<string, vector<OrderedIndex*>> &partitions) :
     _dummy() // so hacky...
     TPCC_TABLE_LIST(DEFN_TBL_INIT_X)
   {
@@ -290,9 +288,9 @@ protected:
 
 #define DEFN_TBL_ACCESSOR_X(name) \
 private:  \
-  vector<ndb_ordered_index *> tbl_ ## name ## _vec; \
+  vector<OrderedIndex*> tbl_ ## name ## _vec; \
 protected: \
-  inline ALWAYS_INLINE ndb_ordered_index * \
+  inline ALWAYS_INLINE OrderedIndex* \
   tbl_ ## name (unsigned int wid) \
   { \
     ASSERT(wid >= 1 && wid <= NumWarehouses()); \
@@ -469,8 +467,8 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
 public:
   tpcc_worker(unsigned int worker_id,
               unsigned long seed, ndb_wrapper *db,
-              const map<string, ndb_ordered_index *> &open_tables,
-              const map<string, vector<ndb_ordered_index *>> &partitions,
+              const map<string, OrderedIndex*> &open_tables,
+              const map<string, vector<OrderedIndex*>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint home_warehouse_id)
     : bench_worker(worker_id, seed, db,
@@ -629,8 +627,8 @@ class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_nation_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions)
+                        const map<string, OrderedIndex*> &open_tables,
+                        const map<string, vector<OrderedIndex*>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -661,8 +659,8 @@ class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_region_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions)
+                        const map<string, OrderedIndex*> &open_tables,
+                        const map<string, vector<OrderedIndex*>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -691,8 +689,8 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_supplier_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions)
+                        const map<string, OrderedIndex*> &open_tables,
+                        const map<string, vector<OrderedIndex*>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -729,8 +727,8 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_warehouse_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions)
+                        const map<string, OrderedIndex*> &open_tables,
+                        const map<string, vector<OrderedIndex*>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -803,8 +801,8 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_item_loader(unsigned long seed,
                    ndb_wrapper *db,
-                   const map<string, ndb_ordered_index *> &open_tables,
-                   const map<string, vector<ndb_ordered_index *>> &partitions)
+                   const map<string, OrderedIndex*> &open_tables,
+                   const map<string, vector<OrderedIndex*>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -860,8 +858,8 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_stock_loader(unsigned long seed,
                     ndb_wrapper *db,
-                    const map<string, ndb_ordered_index *> &open_tables,
-                    const map<string, vector<ndb_ordered_index *>> &partitions,
+                    const map<string, OrderedIndex*> &open_tables,
+                    const map<string, vector<OrderedIndex*>> &partitions,
                     ssize_t warehouse_id)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions),
@@ -955,8 +953,8 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_district_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions)
+                       const map<string, OrderedIndex*> &open_tables,
+                       const map<string, vector<OrderedIndex*>> &partitions)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions)
   {}
@@ -1012,8 +1010,8 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_customer_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex*> &open_tables,
+                       const map<string, vector<OrderedIndex*>> &partitions,
                        ssize_t warehouse_id)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions),
@@ -1055,6 +1053,7 @@ protected:
               const customer::key k(w, d, c);
 
               customer::value v;
+              v.c_id = c;  // Put the c_id here in the tuple, needed by order-status later
               v.c_discount = (float) (RandomNumber(r, 1, 5000) / 10000.0);
               if (RandomNumber(r, 1, 100) <= 10)
                 v.c_credit.assign("BC");
@@ -1087,16 +1086,16 @@ protected:
               checker::SanityCheckCustomer(&k, &v);
               const size_t sz = Size(v);
               total_sz += sz;
-              try_verify_strict(tbl_customer(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v)));
+              OID c_oid = 0;  // Get the OID and put in customer_name_idx later
+              try_verify_strict(tbl_customer(w)->insert(txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid));
 
               // customer name index
               const customer_name_idx::key k_idx(k.c_w_id, k.c_d_id, v.c_last.str(true), v.c_first.str(true));
-              const customer_name_idx::value v_idx(k.c_id);
 
               // index structure is:
-              // (c_w_id, c_d_id, c_last, c_first) -> (c_id)
+              // (c_w_id, c_d_id, c_last, c_first) -> OID
 
-              try_verify_strict(tbl_customer_name_idx(w)->insert(txn, Encode(str(Size(k_idx)), k_idx), Encode(str(Size(v_idx)), v_idx)));
+              try_verify_strict(tbl_customer_name_idx(w)->insert(txn, Encode(str(Size(k_idx)), k_idx), c_oid));
 
               history::key k_hist;
               k_hist.h_c_id = c;
@@ -1137,8 +1136,8 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 public:
   tpcc_order_loader(unsigned long seed,
                     ndb_wrapper *db,
-                    const map<string, ndb_ordered_index *> &open_tables,
-                    const map<string, vector<ndb_ordered_index *>> &partitions,
+                    const map<string, OrderedIndex*> &open_tables,
+                    const map<string, vector<OrderedIndex*>> &partitions,
                     ssize_t warehouse_id)
     : bench_loader(seed, db, open_tables),
       tpcc_worker_mixin(partitions),
@@ -1200,12 +1199,11 @@ protected:
             const size_t sz = Size(v_oo);
             oorder_total_sz += sz;
             n_oorders++;
-            try_verify_strict(tbl_oorder(w)->insert(txn, Encode(str(Size(k_oo)), k_oo), Encode(str(sz), v_oo)));
+            OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+            try_verify_strict(tbl_oorder(w)->insert(txn, Encode(str(Size(k_oo)), k_oo), Encode(str(sz), v_oo), &v_oo_oid));
 
             const oorder_c_id_idx::key k_oo_idx(k_oo.o_w_id, k_oo.o_d_id, v_oo.o_c_id, k_oo.o_id);
-            const oorder_c_id_idx::value v_oo_idx(0);
-
-            try_verify_strict(tbl_oorder_c_id_idx(w)->insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), Encode(str(Size(v_oo_idx)), v_oo_idx)));
+            try_verify_strict(tbl_oorder_c_id_idx(w)->insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
 
             if (c >= 2101) {
               const new_order::key k_no(w, d, c);
@@ -1362,12 +1360,12 @@ tpcc_worker::txn_new_order()
     v_oo.o_entry_d = GetCurrentTimeMillis();
 
     const size_t oorder_sz = Size(v_oo);
-    try_catch(tbl_oorder(warehouse_id)->insert(txn, Encode(str(Size(k_oo)), k_oo), Encode(str(oorder_sz), v_oo)));
+    OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+    try_catch(tbl_oorder(warehouse_id)->insert(txn, Encode(str(Size(k_oo)), k_oo),
+                                               Encode(str(oorder_sz), v_oo), &v_oo_oid));
 
     const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
-    const oorder_c_id_idx::value v_oo_idx(0);
-
-    try_catch(tbl_oorder_c_id_idx(warehouse_id)->insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), Encode(str(Size(v_oo_idx)), v_oo_idx)));
+    try_catch(tbl_oorder_c_id_idx(warehouse_id)->insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
 
     for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
       const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
@@ -1415,7 +1413,7 @@ tpcc_worker::txn_new_order()
     return {RC_TRUE};
 }
 
-class new_order_scan_callback : public ndb_ordered_index::scan_callback {
+class new_order_scan_callback : public OrderedIndex::scan_callback {
 public:
   new_order_scan_callback() : k_no(0) {}
   virtual bool invoke(
@@ -1440,6 +1438,59 @@ public:
 private:
   new_order::key k_no_temp;
   const new_order::key *k_no;
+};
+
+// explicitly copies keys, because btree::search_range_call() interally
+// re-uses a single string to pass keys (so using standard string assignment
+// will force a re-allocation b/c of shared ref-counting)
+//
+// this isn't done for values, because all values are read-only in a multi-version
+// system. varstrs for values only point to the real data in the database, but
+// still we need to allocate a varstr header for each value. Internally it's
+// just a varstr in the stack.
+template <size_t N>
+class static_limit_callback : public OrderedIndex::scan_callback {
+public:
+  // XXX: push ignore_key into lower layer
+  static_limit_callback(str_arena *arena, bool ignore_key)
+    : n(0), arena(arena), ignore_key(ignore_key)
+  {
+    static_assert(N > 0, "xx");
+    values.reserve(N);
+  }
+
+  virtual bool invoke(
+      const char *keyp, size_t keylen,
+      const varstr &value)
+  {
+    ASSERT(n < N);
+    varstr *pv = arena->next(0); // header only
+    pv->p = value.p;
+    pv->l = value.l;
+    if (ignore_key) {
+      values.emplace_back(nullptr, pv);
+    } else {
+      varstr * const s_px = arena->next(keylen);
+      ASSERT(s_px);
+      s_px->copy_from(keyp, keylen);
+      values.emplace_back(s_px, pv);
+    }
+    return ++n < N;
+  }
+
+  inline size_t
+  size() const
+  {
+    return values.size();
+  }
+
+  typedef std::pair<const varstr *, const varstr *> kv_pair;
+  typename std::vector<kv_pair> values;
+
+private:
+  size_t n;
+  str_arena *arena;
+  bool ignore_key;
 };
 
 rc_t
@@ -1543,7 +1594,7 @@ tpcc_worker::txn_delivery()
     return {RC_TRUE};
 }
 
-class credit_check_order_scan_callback : public ndb_ordered_index::scan_callback {
+class credit_check_order_scan_callback : public OrderedIndex::scan_callback {
 	public:
 		credit_check_order_scan_callback( str_arena* arena ) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
@@ -1558,7 +1609,7 @@ class credit_check_order_scan_callback : public ndb_ordered_index::scan_callback
 		str_arena* _arena;
 };
 
-class credit_check_order_line_scan_callback : public ndb_ordered_index::scan_callback {
+class credit_check_order_line_scan_callback : public OrderedIndex::scan_callback {
 	public:
 		credit_check_order_line_scan_callback( str_arena* arena ) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
@@ -1627,7 +1678,7 @@ tpcc_worker::txn_credit_check()
 		k_c.c_id = customerID;
 		try_verify_relax(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
 		const customer::value* v_c = Decode(sv_c_temp, v_c_temp);
-		checker::SanityCheckCustomer(&k_c, v_c);
+    checker::SanityCheckCustomer(&k_c, v_c);
 
 		// scan order
 		//		c_w_id = :w_id;
@@ -1771,15 +1822,10 @@ tpcc_worker::txn_payment()
       if (c.size() % 2 == 0)
         index--;
 
-      customer_name_idx::value v_c_idx_temp;
-      const customer_name_idx::value *v_c_idx = Decode(*c.values[index].second, v_c_idx_temp);
-
+      Decode(*c.values[index].second, v_c);
       k_c.c_w_id = customerWarehouseID;
       k_c.c_d_id = customerDistrictID;
-      k_c.c_id = v_c_idx->c_id;
-      try_verify_relax(tbl_customer(customerWarehouseID)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
-      Decode(sv_c, v_c);
-
+      k_c.c_id = v_c.c_id;
     } else {
       // cust by ID
       const uint customerID = GetCustomerId(r);
@@ -1829,7 +1875,7 @@ tpcc_worker::txn_payment()
     return {RC_TRUE};
 }
 
-class order_line_nop_callback : public ndb_ordered_index::scan_callback {
+class order_line_nop_callback : public OrderedIndex::scan_callback {
 public:
   order_line_nop_callback() : n(0) {}
   virtual bool invoke(
@@ -1848,6 +1894,33 @@ public:
     return true;
   }
   size_t n;
+};
+
+class latest_key_callback : public OrderedIndex::scan_callback {
+public:
+  latest_key_callback(varstr &k, int32_t limit = -1)
+    : limit(limit), n(0), k(&k)
+  {
+    ALWAYS_ASSERT(limit == -1 || limit > 0);
+  }
+
+  virtual bool invoke(
+      const char *keyp, size_t keylen,
+      const varstr &value)
+  {
+    ASSERT(limit == -1 || n < limit);
+    k->copy_from(keyp, keylen);
+    ++n;
+    return (limit == -1) || (n < limit);
+  }
+
+  inline size_t size() const { return n; }
+  inline varstr &kstr() { return *k; }
+
+private:
+  int32_t limit;
+  int32_t n;
+  varstr *k;
 };
 
 rc_t
@@ -1903,15 +1976,10 @@ tpcc_worker::txn_order_status()
       if (c.size() % 2 == 0)
         index--;
 
-      customer_name_idx::value v_c_idx_temp;
-      const customer_name_idx::value *v_c_idx = Decode(*c.values[index].second, v_c_idx_temp);
-
+      Decode(*c.values[index].second, v_c);
       k_c.c_w_id = warehouse_id;
       k_c.c_d_id = districtID;
-      k_c.c_id = v_c_idx->c_id;
-      try_verify_relax(tbl_customer(warehouse_id)->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
-      Decode(sv_c, v_c);
-
+      k_c.c_id = v_c.c_id;
     } else {
       // cust by ID
       const uint customerID = GetCustomerId(r);
@@ -1964,7 +2032,7 @@ tpcc_worker::txn_order_status()
     return {RC_TRUE};
 }
 
-class order_line_scan_callback : public ndb_ordered_index::scan_callback {
+class order_line_scan_callback : public OrderedIndex::scan_callback {
 public:
   order_line_scan_callback() : n(0) {}
   virtual bool invoke(
@@ -2033,17 +2101,11 @@ tpcc_worker::txn_stock_level()
     {
       small_unordered_map<uint, bool, 512> s_i_ids_distinct;
       for (auto &p : c.s_i_ids) {
-
-        const size_t nbytesread = serializer<int16_t, true>::max_nbytes();
-
         const stock::key k_s(warehouse_id, p.first);
         stock::value v_s;
         varstr sv_s = str(Size(v_s));
         ASSERT(p.first >= 1 && p.first <= NumItems());
-        {
-          try_verify_relax(tbl_stock(warehouse_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s, nbytesread));
-        }
-        ASSERT(sv_s.size() <= nbytesread);
+        try_verify_relax(tbl_stock(warehouse_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s));
         const uint8_t *ptr = (const uint8_t *) sv_s.data();
         int16_t i16tmp;
         ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
@@ -2063,14 +2125,14 @@ tpcc_worker::txn_query2()
 	transaction *txn = db->new_txn(transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 
-	static __thread table_scanner r_scanner(&arena);
+	static __thread tpcc_table_scanner r_scanner(&arena);
 	r_scanner.clear();
 	const region::key k_r_0( 0 );
 	const region::key k_r_1( 5 );
 	try_catch(tbl_region(1)->scan(txn, Encode(str(sizeof(k_r_0)), k_r_0), &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner, s_arena.get()));
 	ALWAYS_ASSERT( r_scanner.output.size() == 5);
 
-	static __thread table_scanner n_scanner(&arena);
+	static __thread tpcc_table_scanner n_scanner(&arena);
 	n_scanner.clear();
 	const nation::key k_n_0( 0 );
 	const nation::key k_n_1( numeric_limits<int32_t>::max() );
@@ -2274,30 +2336,30 @@ private:
            strcmp("oorder_c_id_idx", name) == 0;
   }
 
-  static vector<ndb_ordered_index *>
+  static vector<OrderedIndex*>
   OpenTablesForTablespace(ndb_wrapper *db, const char *name) {
     const bool is_read_only = IsTableReadOnly(name);
     const bool is_append_only = IsTableAppendOnly(name);
     const string s_name(name);
-    vector<ndb_ordered_index *> ret(NumWarehouses());
+    vector<OrderedIndex*> ret(NumWarehouses());
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
-          ret[i] = sm_index_mgr::get_index(s_name + "_" + to_string(i));
+          ret[i] = IndexDescriptor::GetIndex(s_name + "_" + to_string(i));
       } else {
         const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
         for (size_t partid = 0; partid < config::worker_threads; partid++) {
           const unsigned wstart = partid * nwhse_per_partition;
           const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
-          ndb_ordered_index *idx =
-            sm_index_mgr::get_index(s_name + "_" + to_string(partid));
+          OrderedIndex *idx =
+            IndexDescriptor::GetIndex(s_name + "_" + to_string(partid));
           for (size_t i = wstart; i < wend; i++)
             ret[i] = idx;
         }
       }
     } else {
-      ndb_ordered_index *idx = sm_index_mgr::get_index(s_name);
+      OrderedIndex *idx = IndexDescriptor::GetIndex(s_name);
       for (size_t i = 0; i < NumWarehouses(); i++)
         ret[i] = idx;
     }
@@ -2307,17 +2369,15 @@ private:
   static void RegisterTable(ndb_wrapper *db, const char *name,
                             const char *primary_idx_name = nullptr) {
     const bool is_read_only = IsTableReadOnly(name);
-    const string s_name(name);
+    string s_name(name);
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
+          string s_primary_name("");
           if(primary_idx_name) {
-            const string s_primary_name(primary_idx_name);
-            sm_index_mgr::new_secondary_index(s_name + "_" + to_string(i),
-                                              s_primary_name + "_" + to_string(i));
-          } else {
-            sm_index_mgr::new_primary_index(s_name + "_" + to_string(i));
+            s_primary_name = std::string(primary_idx_name) + "_" + to_string(i);
           }
+          IndexDescriptor::New(s_name + "_" + to_string(i), s_primary_name.c_str());
         }
       } else {
         const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
@@ -2325,21 +2385,19 @@ private:
           const unsigned wstart = partid * nwhse_per_partition;
           const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
+          string s_primary_name("");
           if(primary_idx_name) {
-            const string s_primary_name(primary_idx_name);
-            sm_index_mgr::new_secondary_index(s_name + "_" + to_string(partid),
-                                              s_primary_name + "_" + to_string(partid));
-          } else {
-            sm_index_mgr::new_primary_index(s_name + "_" + to_string(partid));
+            s_primary_name = string(primary_idx_name) + "_" + to_string(partid);
           }
+          IndexDescriptor::New(s_name + string("_") + to_string(partid), s_primary_name.c_str());
         }
       }
     } else {
+      string s_primary_name("");
       if(primary_idx_name) {
-        sm_index_mgr::new_secondary_index(s_name, std::string(primary_idx_name));
-      } else {
-        sm_index_mgr::new_primary_index(s_name);
+        s_primary_name = std::string(primary_idx_name);
       }
+      IndexDescriptor::New(s_name, s_primary_name.c_str());
     }
   }
 
@@ -2450,7 +2508,7 @@ protected:
   }
 
 private:
-  map<string, vector<ndb_ordered_index *>> partitions;
+  map<string, vector<OrderedIndex*>> partitions;
 };
 
 void

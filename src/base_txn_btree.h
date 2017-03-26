@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dbcore/sm-index.h"
+#include "masstree_btree.h"
 #include "util.h"
 
 #include <string>
@@ -24,25 +25,13 @@ public:
     virtual bool invoke(const keystring_type &k, const varstr &v) = 0;
   };
 
-  base_txn_btree(const std::string &name = "<unknown>") :
-    name(name), fid(0), been_destructed(false) {}
+  base_txn_btree(IndexDescriptor* id) : descriptor(id) {}
+
+  void set_arrays(IndexDescriptor* id) { underlying_btree.set_arrays(id); }
 
   ~base_txn_btree()
   {
-    if (!been_destructed)
-      unsafe_purge(false);
-  }
-
-  inline std::string& get_name() { return name; }
-
-  inline void set_oid_array(FID f)
-  {
-    fid = f;
-    underlying_btree.set_oid_array(oidmgr->get_array(f));
-  }
-
-  inline oid_array* get_oid_array() {
-    return underlying_btree.get_oid_array();
+    unsafe_purge(false);
   }
 
   inline size_t
@@ -65,30 +54,13 @@ public:
    */
   std::map<std::string, uint64_t> unsafe_purge(bool dump_stats = false);
 
-private:
-
-  struct purge_tree_walker : public concurrent_btree::tree_walk_callback {
-    virtual void on_node_begin(const typename concurrent_btree::node_opaque_t *n);
-    virtual void on_node_success();
-    virtual void on_node_failure();
-
-  private:
-    std::vector< std::pair<typename concurrent_btree::value_type, bool> > spec_values;
-  };
-
-protected:
-
-  // readers are placed here so they can be shared amongst
-  // derived implementations
-
+public:
   struct txn_search_range_callback : public concurrent_btree::low_level_search_range_callback {
     constexpr txn_search_range_callback(
           transaction *t,
           search_range_callback *caller_callback,
-          key_reader *key_reader,
-          value_reader *value_reader)
-      : t(t), caller_callback(caller_callback),
-        kr(key_reader), vr(value_reader) {}
+          key_reader *key_reader)
+      : t(t), caller_callback(caller_callback), kr(key_reader) {}
 
     virtual void on_resp_node(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
     virtual bool invoke(const concurrent_btree *btr_ptr,
@@ -99,41 +71,34 @@ protected:
     transaction *const t;
     search_range_callback *const caller_callback;
     key_reader *const kr;
-    value_reader *const vr;
   };
 
-  rc_t
-  do_search(transaction &t, const varstr &k, value_reader &value_reader);
+  rc_t do_search(transaction &t, const varstr &k, varstr *out_v, OID* out_oid);
 
-  void
-  do_search_range_call(transaction &t,
-                       const varstr &lower,
-                       const varstr *upper,
-                       search_range_callback &callback,
-                       key_reader &key_reader,
-                       value_reader &value_reader);
+  void do_search_range_call(transaction &t, const varstr &lower, const varstr *upper,
+                            search_range_callback &callback, key_reader &key_reader);
 
-  void
-  do_rsearch_range_call(transaction &t,
-                        const varstr &upper,
-                        const varstr *lower,
-                        search_range_callback &callback,
-                        key_reader &key_reader,
-                        value_reader &value_reader);
+  void do_rsearch_range_call(transaction &t, const varstr &upper, const varstr *lower,
+                             search_range_callback &callback, key_reader &key_reader);
 
   // expect_new indicates if we expect the record to not exist in the tree-
   // is just a hint that affects perf, not correctness. remove is put with nullptr
   // as value.
   //
   // NOTE: both key and value are expected to be stable values already
-  rc_t do_tree_put(transaction &t,
-                   const varstr *k,
-                   const varstr *v,
-                   bool expect_new,
-                   bool upsert = true);
+  rc_t do_tree_put(transaction &t, const varstr *k, const varstr *v,
+                   bool expect_new, bool upsert, OID* inserted_oid);
 
+private:
   concurrent_btree underlying_btree;
-  std::string name;
-  FID fid;
-  bool been_destructed;
+  IndexDescriptor* descriptor;
+
+  struct purge_tree_walker : public concurrent_btree::tree_walk_callback {
+    virtual void on_node_begin(const typename concurrent_btree::node_opaque_t *n);
+    virtual void on_node_success();
+    virtual void on_node_failure();
+
+  private:
+    std::vector< std::pair<typename concurrent_btree::value_type, bool> > spec_values;
+  };
 };

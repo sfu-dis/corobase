@@ -76,17 +76,21 @@ TaxrateBuffer taxrateBuffer (325);
 ZipCodeBuffer zipCodeBuffer (14850);
 
 // Utils
-class table_scanner: public ndb_ordered_index::scan_callback {
+class tpce_table_scanner: public OrderedIndex::scan_callback {
  public:
-  table_scanner(str_arena* arena) : _arena(arena) {}
+  tpce_table_scanner(str_arena* arena) : _arena(arena) {}
   virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
     varstr * const k = _arena->next(keylen);
     ASSERT(k);
     k->copy_from(keyp, keylen);
-    output.emplace_back(k, &value);
+
+    varstr *v = _arena->next(0);
+    v->p = value.p;
+    v->l = value.l;
+    output.emplace_back(k, v);
     return true;
   }
-  std::vector<std::pair<varstr *, const varstr *>> output;
+  std::vector<std::pair<varstr*, varstr*> > output;
   str_arena* _arena;
 };
 
@@ -170,7 +174,7 @@ class tpce_worker_mixin : private _dummy {
   , tbl_ ## name ## _vec(partitions.at(#name))
 
  public:
-  tpce_worker_mixin(const map<string, vector<ndb_ordered_index *>> &partitions) :
+  tpce_worker_mixin(const map<string, vector<OrderedIndex *>> &partitions) :
     _dummy() // so hacky...
     TPCE_TABLE_LIST(DEFN_TBL_INIT_X) {
   }
@@ -181,9 +185,9 @@ class tpce_worker_mixin : private _dummy {
 
 #define DEFN_TBL_ACCESSOR_X(name) \
   private:  \
-        vector<ndb_ordered_index *> tbl_ ## name ## _vec; \
+        vector<OrderedIndex *> tbl_ ## name ## _vec; \
   protected: \
-         inline ALWAYS_INLINE ndb_ordered_index * \
+         inline ALWAYS_INLINE OrderedIndex * \
     tbl_ ## name (unsigned int pid) \
     { \
       return tbl_ ## name ## _vec[pid - 1]; \
@@ -288,8 +292,8 @@ class tpce_worker :
   // resp for [partition_id_start, partition_id_end)
   tpce_worker(unsigned int worker_id,
               unsigned long seed, ndb_wrapper *db,
-              const map<string, ndb_ordered_index *> &open_tables,
-              const map<string, vector<ndb_ordered_index *>> &partitions,
+              const map<string, OrderedIndex *> &open_tables,
+              const map<string, vector<OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint partition_id_start, uint partition_id_end)
     : bench_worker(worker_id, seed, db,
@@ -655,7 +659,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
   for(auto i = 0; i < max_broker_list_len and pIn->broker_list[i] ; i++) {
     const b_name_index::key k_b_0(string(pIn->broker_list[i]), MIN_VAL(k_b_0.b_id));
     const b_name_index::key k_b_1(string(pIn->broker_list[i]), MAX_VAL(k_b_1.b_id));
-    table_scanner b_scanner(&arena);
+    tpce_table_scanner b_scanner(&arena);
     try_catch(tbl_b_name_index(1)->scan(txn, Encode(str(sizeof(k_b_0)), k_b_0), &Encode(str(sizeof(k_b_1)), k_b_1), b_scanner, &arena));
     if(not b_scanner.output.size())
       continue;
@@ -669,7 +673,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
   const sector::key k_sc_0(pIn->sector_name, string(cSC_ID_len, (char)0));
   const sector::key k_sc_1(pIn->sector_name, string(cSC_ID_len, (char)255));
-  table_scanner sc_scanner(&arena);
+  tpce_table_scanner sc_scanner(&arena);
   try_catch(tbl_sector(1)->scan(txn, Encode(str(sizeof(k_sc_0)), k_sc_0), &Encode(str(sizeof(k_sc_1)), k_sc_1), sc_scanner, &arena));
   ALWAYS_ASSERT(sc_scanner.output.size() == 1);
   for(auto &r_sc: sc_scanner.output) {
@@ -679,7 +683,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
     // in_sc_id_index scan
     const in_sc_id_index::key k_in_0(k_sc->sc_id, string(cIN_ID_len, (char)0));
     const in_sc_id_index::key k_in_1(k_sc->sc_id, string(cIN_ID_len, (char)255));
-    table_scanner in_scanner(&arena);
+    tpce_table_scanner in_scanner(&arena);
     try_catch(tbl_in_sc_id_index(1)->scan(txn, Encode(str(sizeof(k_in_0)), k_in_0), &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
     ALWAYS_ASSERT(in_scanner.output.size());
 
@@ -690,7 +694,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
       // co_in_id_index scan
       const co_in_id_index::key k_in_0(k_in->in_id, MIN_VAL(k_in_0.co_id));
       const co_in_id_index::key k_in_1(k_in->in_id, MAX_VAL(k_in_1.co_id));
-      table_scanner co_scanner(&arena);
+      tpce_table_scanner co_scanner(&arena);
       try_catch(tbl_co_in_id_index(1)->scan(txn, Encode(str(sizeof(k_in_0)), k_in_0), &Encode(str(sizeof(k_in_1)), k_in_1), co_scanner, &arena));
       ALWAYS_ASSERT(co_scanner.output.size());
       for(auto &r_co : co_scanner.output) {
@@ -700,7 +704,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
         // security_index scan
         const security_index::key k_s_0(k_co->co_id, string(cS_ISSUE_len, (char)0), string(cSYMBOL_len, (char)0));
         const security_index::key k_s_1(k_co->co_id, string(cS_ISSUE_len, (char)255), string(cSYMBOL_len, (char)255));
-        table_scanner s_scanner(&arena);
+        tpce_table_scanner s_scanner(&arena);
         try_catch(tbl_security_index(1)->scan(txn, Encode(str(sizeof(k_s_0)), k_s_0), &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
         ALWAYS_ASSERT(s_scanner.output.size());
         for(auto &r_s : s_scanner.output) {
@@ -716,7 +720,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn, TBro
 
             const trade_request::key k_tr_0(k_s->s_symb, k_b_idx->b_id, MIN_VAL(k_tr_0.tr_t_id));
             const trade_request::key k_tr_1(k_s->s_symb, k_b_idx->b_id, MAX_VAL(k_tr_1.tr_t_id));
-            table_scanner tr_scanner(&arena);
+            tpce_table_scanner tr_scanner(&arena);
             try_catch(tbl_trade_request(1)->scan(txn, Encode(str(sizeof(k_tr_0)), k_tr_0), &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
             //ALWAYS_ASSERT(tr_scanner.output.size()); // XXX. If there's no previous trade, this can happen
 
@@ -746,7 +750,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
   // Get c_id;
   const c_tax_id_index::key k_c_0(pIn->tax_id, MIN_VAL(k_c_0.c_id));
   const c_tax_id_index::key k_c_1(pIn->tax_id, MAX_VAL(k_c_1.c_id));
-  table_scanner c_scanner(&arena);
+  tpce_table_scanner c_scanner(&arena);
 
   if(pIn->cust_id)
     pOut->cust_id = pIn->cust_id;
@@ -796,20 +800,20 @@ rc_t tpce_worker::DoCustomerPositionFrame1(const TCustomerPositionFrame1Input *p
   // CustomerAccount scan
   const ca_id_index::key k_ca_0(pOut->cust_id, MIN_VAL(k_ca_0.ca_id));
   const ca_id_index::key k_ca_1(pOut->cust_id, MAX_VAL(k_ca_1.ca_id));
-  table_scanner ca_scanner(&arena);
+  tpce_table_scanner ca_scanner(&arena);
   try_catch(tbl_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_ca_0)), k_ca_0), &Encode(str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
   ALWAYS_ASSERT(ca_scanner.output.size());
 
   for(auto& r_ca : ca_scanner.output) {
     ca_id_index::key k_ca_temp;
-    ca_id_index::value v_ca_temp;
+    customer_account::value v_ca_temp;
     const ca_id_index::key* k_ca = Decode(*r_ca.first, k_ca_temp);
-    const ca_id_index::value* v_ca = Decode(*r_ca.second, v_ca_temp);
+    const customer_account::value* v_ca = Decode(*r_ca.second, v_ca_temp);
 
     // HoldingSummary scan
     const holding_summary::key k_hs_0(k_ca->ca_id, string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(k_ca->ca_id, string(cSYMBOL_len, (char)255));
-    table_scanner hs_scanner(&arena);
+    tpce_table_scanner hs_scanner(&arena);
     try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
     //ALWAYS_ASSERT(hs_scanner.output.size());  // left-outer join. S table could be empty.
 
@@ -850,12 +854,23 @@ rc_t tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
   // Trade scan and collect 10 TID
   const t_ca_id_index::key k_t_0(pIn->acct_id, MIN_VAL(k_t_0.t_dts), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, MAX_VAL(k_t_0.t_dts), MAX_VAL(k_t_0.t_id));
-  table_scanner t_scanner(&arena);
+  tpce_table_scanner t_scanner(&arena);
   try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   std::vector<std::pair<varstr *, const varstr *>> tids;
   for(auto &r_t : t_scanner.output) {
+    t_ca_id_index::key k_t_temp;
+    trade::value v_t_temp;
+    const t_ca_id_index::key* k_t = Decode(*r_t.first, k_t_temp);
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
+
+    // DTS could be changed, invalidating the key in 2nd index (t_s_symb_index),
+    // e.g., by MarketFeed. Skip if it doesn't match the one stored in the main record.
+    if(v_t->t_dts != k_t->t_dts) {
+      continue;
+    }
+
     tids.push_back(r_t);
     if(tids.size() >= 10)
       break;
@@ -864,14 +879,14 @@ rc_t tpce_worker::DoCustomerPositionFrame2(const TCustomerPositionFrame2Input *p
 
   for(auto &r_t : tids) {
     t_ca_id_index::key k_t_temp;
-    t_ca_id_index::value v_t_temp;
+    trade::value v_t_temp;
     const t_ca_id_index::key* k_t = Decode(*r_t.first, k_t_temp);
-    const t_ca_id_index::value* v_t = Decode(*r_t.second, v_t_temp);
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
 
     // Join
     const trade_history::key k_th_0(k_t->t_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(k_t->t_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
-    table_scanner th_scanner(&arena);
+    tpce_table_scanner th_scanner(&arena);
     try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
@@ -947,7 +962,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 
     const trade_request::key k_tr_0(string(ticker.symbol),  MIN_VAL(k_tr_0.tr_b_id), MIN_VAL(k_tr_0.tr_t_id));
     const trade_request::key k_tr_1(string(ticker.symbol),  MAX_VAL(k_tr_1.tr_b_id), MAX_VAL(k_tr_1.tr_t_id));
-    table_scanner tr_scanner(&arena);
+    tpce_table_scanner tr_scanner(&arena);
     try_catch(tbl_trade_request(1)->scan(txn, Encode(str(sizeof(k_tr_0)), k_tr_0), &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
     //ALWAYS_ASSERT(tr_scanner.output.size());  // XXX. If there's no previous trade, this can happen. Higher initial trading days would enlarge this scan set
 
@@ -976,52 +991,33 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn, TMarketF
 
       const trade::key k_t(req_trade_id);
       trade::value v_t_temp;
-      try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+      OID t_oid = 0;
+      try_verify_relax(tbl_trade(1)->get(txn,
+        Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp)), &t_oid));
       const trade::value *v_t = Decode(obj_v, v_t_temp);
-      trade::value v_t_new(*v_t);
+      trade::value v_t_new;
+      memcpy(&v_t_new, v_t, sizeof(trade::value));
       v_t_new.t_dts = now_dts;
       v_t_new.t_st_id = string(type.status_submitted);
       try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
 
-      // DTS field is updated. cascading update(actually insert after remove, because dts is included in PK)
+      // DTS field is updated - invalidating the key in 2nd indexes.
+      // Insert with new keys with updated DTS. Reads/scans of 2nd indexes
+      // must verify that the key matches the corresponding DTS field in
+      // the trade record.
       t_ca_id_index::key k_t_idx1;
-      t_ca_id_index::value v_t_idx1;
-      k_t_idx1.t_ca_id = v_t->t_ca_id;
-      k_t_idx1.t_dts = v_t->t_dts;
-      k_t_idx1.t_id = k_t.t_id;
-      try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1)));
-
       k_t_idx1.t_ca_id = v_t_new.t_ca_id;
       k_t_idx1.t_dts = v_t_new.t_dts;
       k_t_idx1.t_id = k_t.t_id;
-      v_t_idx1.t_st_id = v_t_new.t_st_id ;
-      v_t_idx1.t_tt_id = v_t_new.t_tt_id ;
-      v_t_idx1.t_is_cash = v_t_new.t_is_cash ;
-      v_t_idx1.t_s_symb = v_t_new.t_s_symb ;
-      v_t_idx1.t_qty = v_t_new.t_qty ;
-      v_t_idx1.t_bid_price = v_t_new.t_bid_price ;
-      v_t_idx1.t_exec_name = v_t_new.t_exec_name ;
-      v_t_idx1.t_trade_price = v_t_new.t_trade_price ;
-      v_t_idx1.t_chrg = v_t_new.t_chrg ;
-      try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
+      try_catch(tbl_t_ca_id_index(1)->insert(txn,
+        Encode(str(sizeof(k_t_idx1)), k_t_idx1), t_oid));
 
       t_s_symb_index::key k_t_idx2;
-      t_s_symb_index::value v_t_idx2;
-      k_t_idx2.t_s_symb = v_t->t_s_symb;
-      k_t_idx2.t_dts = v_t->t_dts;
-      k_t_idx2.t_id = k_t.t_id;
-      try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2)));
       k_t_idx2.t_s_symb = v_t_new.t_s_symb ;
       k_t_idx2.t_dts = v_t_new.t_dts;
       k_t_idx2.t_id = k_t.t_id;
-      v_t_idx2.t_ca_id = v_t_new.t_ca_id;
-      v_t_idx2.t_st_id = v_t_new.t_st_id ;
-      v_t_idx2.t_tt_id = v_t_new.t_tt_id ;
-      v_t_idx2.t_is_cash = v_t_new.t_is_cash ;
-      v_t_idx2.t_qty = v_t_new.t_qty ;
-      v_t_idx2.t_exec_name = v_t_new.t_exec_name ;
-      v_t_idx2.t_trade_price = v_t_new.t_trade_price ;
-      try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
+      try_catch(tbl_t_s_symb_index(1)->insert(txn,
+        Encode(str(sizeof(k_t_idx2)), k_t_idx2), t_oid));
 
       trade_request::key k_tr_new(*k_tr);
       try_verify_relax(tbl_trade_request(1)->remove(txn, Encode(str(sizeof(k_tr_new)), k_tr_new)));
@@ -1063,7 +1059,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
   if(pIn->c_id) {
     const watch_list::key k_wl_0(pIn->c_id, MIN_VAL(k_wl_0.wl_id));
     const watch_list::key k_wl_1(pIn->c_id, MAX_VAL(k_wl_1.wl_id));
-    table_scanner wl_scanner(&arena);
+    tpce_table_scanner wl_scanner(&arena);
     try_catch(tbl_watch_list(1)->scan(txn, Encode(str(sizeof(k_wl_0)), k_wl_0), &Encode(str(sizeof(k_wl_1)), k_wl_1), wl_scanner, &arena));
     ALWAYS_ASSERT(wl_scanner.output.size());
 
@@ -1073,7 +1069,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
 
       const watch_item::key k_wi_0(k_wl->wl_id, string(cSYMBOL_len, (char)0));
       const watch_item::key k_wi_1(k_wl->wl_id, string(cSYMBOL_len, (char)255));
-      table_scanner wi_scanner(&arena);
+      tpce_table_scanner wi_scanner(&arena);
       try_catch(tbl_watch_item(1)->scan(txn, Encode(str(sizeof(k_wi_0)), k_wi_0), &Encode(str(sizeof(k_wi_1)), k_wi_1), wi_scanner, &arena));
       ALWAYS_ASSERT(wi_scanner.output.size());
       for(auto &r_wi : wi_scanner.output) {
@@ -1086,19 +1082,19 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
   } else if (pIn->industry_name[0]) {
     const in_name_index::key k_in_0(string(pIn->industry_name), string(cIN_ID_len, (char)0));
     const in_name_index::key k_in_1(string(pIn->industry_name), string(cIN_ID_len, (char)255));
-    table_scanner in_scanner(&arena);
+    tpce_table_scanner in_scanner(&arena);
     try_catch(tbl_in_name_index(1)->scan(txn, Encode(str(sizeof(k_in_0)), k_in_0), &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
     ALWAYS_ASSERT(in_scanner.output.size());
 
     const company::key k_co_0(pIn->starting_co_id);
     const company::key k_co_1(pIn->ending_co_id);
-    table_scanner co_scanner(&arena);
+    tpce_table_scanner co_scanner(&arena);
     try_catch(tbl_company(1)->scan(txn, Encode(str(sizeof(k_co_0)), k_co_0), &Encode(str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
     ALWAYS_ASSERT(co_scanner.output.size());
 
     const security::key k_s_0(string(cSYMBOL_len, (char)0));
     const security::key k_s_1(string(cSYMBOL_len, (char)255));
-    table_scanner s_scanner(&arena);
+    tpce_table_scanner s_scanner(&arena);
     try_catch(tbl_security(1)->scan(txn, Encode(str(sizeof(k_s_0)), k_s_0), &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
     ALWAYS_ASSERT(s_scanner.output.size());
 
@@ -1130,7 +1126,7 @@ rc_t tpce_worker::DoMarketWatchFrame1 (const TMarketWatchFrame1Input *pIn, TMark
   } else if(pIn->acct_id) {
     const holding_summary::key k_hs_0(pIn->acct_id, string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(pIn->acct_id, string(cSYMBOL_len, (char)255));
-    table_scanner hs_scanner(&arena);
+    tpce_table_scanner hs_scanner(&arena);
     try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
 
     for(auto& r_hs : hs_scanner.output) {
@@ -1258,7 +1254,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
   const company_competitor::key k_cp_0(co_id, MIN_VAL(k_cp_0.cp_comp_co_id), string(cIN_ID_len, (char)0));
   const company_competitor::key k_cp_1(co_id, MAX_VAL(k_cp_1.cp_comp_co_id), string(cIN_ID_len, (char)255));
-  table_scanner cp_scanner(&arena);
+  tpce_table_scanner cp_scanner(&arena);
   try_catch(tbl_company_competitor(1)->scan(txn, Encode(str(sizeof(k_cp_0)), k_cp_0), &Encode(str(sizeof(k_cp_1)), k_cp_1), cp_scanner, &arena));
   ALWAYS_ASSERT(cp_scanner.output.size());
 
@@ -1283,7 +1279,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
   const financial::key k_fi_0(co_id, MIN_VAL(k_fi_0.fi_year), MIN_VAL(k_fi_0.fi_qtr));
   const financial::key k_fi_1(co_id, MAX_VAL(k_fi_1.fi_year), MAX_VAL(k_fi_1.fi_qtr));
-  table_scanner fi_scanner(&arena);
+  tpce_table_scanner fi_scanner(&arena);
   try_catch(tbl_financial(1)->scan(txn, Encode(str(sizeof(k_fi_0)), k_fi_0), &Encode(str(sizeof(k_fi_1)), k_fi_1), fi_scanner, &arena));
   ALWAYS_ASSERT(fi_scanner.output.size());
   for(uint64_t i = 0; i < max_fin_len; i++) {
@@ -1314,7 +1310,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
   const daily_market::key k_dm_0(string(pIn->symbol),CDateTime((TIMESTAMP_STRUCT*)&pIn->start_day).GetDate());
   const daily_market::key k_dm_1(string(pIn->symbol),MAX_VAL(k_dm_1.dm_date));
-  table_scanner dm_scanner(&arena);
+  tpce_table_scanner dm_scanner(&arena);
   try_catch(tbl_daily_market(1)->scan(txn, Encode(str(sizeof(k_dm_0)), k_dm_0), &Encode(str(sizeof(k_dm_1)), k_dm_1), dm_scanner, &arena));
   ALWAYS_ASSERT(dm_scanner.output.size());
   for(size_t i=0; i < (size_t)pIn->max_rows_to_return and i< dm_scanner.output.size(); i++) {
@@ -1346,7 +1342,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn, 
 
   const news_xref::key k_nx_0(co_id, MIN_VAL(k_nx_0.nx_ni_id));
   const news_xref::key k_nx_1(co_id, MAX_VAL(k_nx_0.nx_ni_id));
-  table_scanner nx_scanner(&arena);
+  tpce_table_scanner nx_scanner(&arena);
   try_catch(tbl_news_xref(1)->scan(txn, Encode(str(sizeof(k_nx_0)), k_nx_0), &Encode(str(sizeof(k_nx_1)), k_nx_1), nx_scanner, &arena));
   ALWAYS_ASSERT(nx_scanner.output.size());
 
@@ -1431,7 +1427,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn, TTrade
     // Scan
     const trade_history::key k_th_0(pIn->trade_id[i], string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pIn->trade_id[i], string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
-    table_scanner th_scanner(&arena);
+    tpce_table_scanner th_scanner(&arena);
     try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
@@ -1458,7 +1454,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
 
   const t_ca_id_index::key k_t_0(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id));
-  table_scanner t_scanner(&arena);
+  tpce_table_scanner t_scanner(&arena);
   try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
@@ -1466,10 +1462,17 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
   for(auto &r_t : t_scanner.output) {
     if(num_found >= pIn->max_trades)
       break;
+
     t_ca_id_index::key k_t_temp;
-    t_ca_id_index::value v_t_temp;
+    trade::value v_t_temp;
     const t_ca_id_index::key* k_t = Decode(*r_t.first, k_t_temp);
-    const t_ca_id_index::value* v_t = Decode(*r_t.second, v_t_temp);
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
+
+    // DTS could be changed, invalidating the key in 2nd index (t_s_symb_index),
+    // e.g., by MarketFeed. Skip if it doesn't match the one stored in the main record.
+    if(v_t->t_dts != k_t->t_dts) {
+      continue;
+    }
 
     pOut->trade_info[num_found].bid_price = v_t->t_bid_price;
     memcpy(pOut->trade_info[num_found].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
@@ -1504,7 +1507,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn, TTrade
 
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
-    table_scanner th_scanner(&arena);
+    tpce_table_scanner th_scanner(&arena);
     try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
@@ -1532,7 +1535,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
 
   const t_s_symb_index::key k_t_0(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_s_symb_index::key k_t_1(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_1.t_id));
-  table_scanner t_scanner(&arena);
+  tpce_table_scanner t_scanner(&arena);
   try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
@@ -1541,10 +1544,15 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
     if(num_found >= pIn->max_trades)
       break;
     t_s_symb_index::key k_t_temp;
-    t_s_symb_index::value v_t_temp;
+    trade::value v_t_temp;
     const t_s_symb_index::key* k_t = Decode(*r_t.first, k_t_temp);
-    const t_s_symb_index::value* v_t = Decode(*r_t.second, v_t_temp);
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
 
+    // DTS could be changed, invalidating the key in 2nd index (t_s_symb_index),
+    // e.g., by MarketFeed. Skip if it doesn't match the one stored in the main record.
+    if(v_t->t_dts != k_t->t_dts) {
+      continue;
+    }
 
     pOut->trade_info[num_found].acct_id = v_t->t_ca_id;
     memcpy(pOut->trade_info[num_found].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
@@ -1583,7 +1591,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn, TTrade
 
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_1.th_dts));
-    table_scanner th_scanner(&arena);
+    tpce_table_scanner th_scanner(&arena);
     try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
@@ -1611,7 +1619,7 @@ rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTrade
 
   const t_ca_id_index::key k_t_0(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id));
-  table_scanner t_scanner(&arena);
+  tpce_table_scanner t_scanner(&arena);
   try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   if(not t_scanner.output.size()) {  // XXX. can happen? or something is wrong?
     pOut->num_trades_found = 0;
@@ -1619,19 +1627,35 @@ rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn, TTrade
     return {RC_ABORT_USER};
   }
 
+  bool found = false;
   for(auto &r_t : t_scanner.output) {
     t_ca_id_index::key k_t_temp;
     const t_ca_id_index::key* k_t = Decode(*r_t.first, k_t_temp);
+    trade::value v_t_temp;
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
+
+    // DTS could be changed, invalidating the key in 2nd index (t_s_symb_index),
+    // e.g., by MarketFeed. Skip if it doesn't match the one stored in the main record.
+    if(v_t->t_dts != k_t->t_dts) {
+      continue;
+    }
 
     pOut->trade_id = k_t->t_id;
+    found = true;
     break;
   }
+  if(!found) {
+    pOut->num_trades_found = 0;
+    db->abort_txn(txn);
+    return {RC_ABORT_USER};
+  }
+
   pOut->num_trades_found = 1;
 
   // XXX. holding_history PK isn't unique. combine T_ID and row ID.
   const holding_history::key k_hh_0(pOut->trade_id, MIN_VAL(k_hh_0.hh_h_t_id));
   const holding_history::key k_hh_1(pOut->trade_id, MAX_VAL(k_hh_1.hh_h_t_id));
-  table_scanner hh_scanner(&arena);
+  tpce_table_scanner hh_scanner(&arena);
   try_catch(tbl_holding_history(1)->scan(txn, Encode(str(sizeof(k_hh_0)), k_hh_0), &Encode(str(sizeof(k_hh_1)), k_hh_1), hh_scanner, &arena));
   ALWAYS_ASSERT(hh_scanner.output.size());  // possible case. no holding for the customer
 
@@ -1720,7 +1744,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
   if(not pIn->symbol[0]) {
     const co_name_index::key k_co_0(string(pIn->co_name), MIN_VAL(k_co_0.co_id));
     const co_name_index::key k_co_1(string(pIn->co_name), MAX_VAL(k_co_1.co_id));
-    table_scanner co_scanner(&arena);
+    tpce_table_scanner co_scanner(&arena);
     try_catch(tbl_co_name_index(1)->scan(txn, Encode(str(sizeof(k_co_0)), k_co_0), &Encode(str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
     ALWAYS_ASSERT(co_scanner.output.size());
 
@@ -1732,14 +1756,14 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
     const security_index::key k_s_0(co_id, pIn->issue, string(cSYMBOL_len, (char)0));
     const security_index::key k_s_1(co_id, pIn->issue, string(cSYMBOL_len, (char)255));
-    table_scanner s_scanner(&arena);
+    tpce_table_scanner s_scanner(&arena);
     try_catch(tbl_security_index(1)->scan(txn, Encode(str(sizeof(k_s_0)), k_s_0), &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
     ALWAYS_ASSERT(s_scanner.output.size());
     for(auto &r_s : s_scanner.output) {
       security_index::key k_s_temp;
-      security_index::value v_s_temp;
+      security::value v_s_temp;
       const security_index::key* k_s = Decode(*r_s.first, k_s_temp);
-      const security_index::value* v_s = Decode(*r_s.second, v_s_temp);
+      const security::value* v_s = Decode(*r_s.second, v_s_temp);
 
       memcpy(exch_id, v_s->s_ex_id.data(), v_s->s_ex_id.size());
       memcpy(pOut->s_name, v_s->s_name.data(), v_s->s_name.size());
@@ -1806,7 +1830,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
       vector<pair<int32_t, double>> hold_list;
       const holding::key k_h_0(pIn->acct_id, string(pOut->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pOut->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
-      table_scanner h_scanner(&arena);
+      tpce_table_scanner h_scanner(&arena);
       try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
       //ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
@@ -1844,7 +1868,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
       vector<pair<int32_t, double>> hold_list;
       const holding::key k_h_0(pIn->acct_id, string(pOut->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pOut->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
-      table_scanner h_scanner(&arena);
+      tpce_table_scanner h_scanner(&arena);
       try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
       //ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
@@ -1884,7 +1908,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
     const customer_taxrate::key k_cx_0(pIn->cust_id, string(cTX_ID_len, (char)0));
     const customer_taxrate::key k_cx_1(pIn->cust_id, string(cTX_ID_len, (char)255));
 
-    table_scanner cx_scanner(&arena);
+    tpce_table_scanner cx_scanner(&arena);
     try_catch(tbl_customer_taxrate(1)->scan(txn, Encode(str(sizeof(k_cx_0)), k_cx_0), &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
     ALWAYS_ASSERT(cx_scanner.output.size());
 
@@ -1906,7 +1930,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
   const commission_rate::key k_cr_0(pIn->cust_tier, string(pIn->trade_type_id), string(exch_id), 0);
   const commission_rate::key k_cr_1(pIn->cust_tier, string(pIn->trade_type_id), string(exch_id), pIn->trade_qty);
 
-  table_scanner cr_scanner(&arena);
+  tpce_table_scanner cr_scanner(&arena);
   try_catch(tbl_commission_rate(1)->scan(txn, Encode(str(sizeof(k_cr_0)), k_cr_0), &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
   ALWAYS_ASSERT(cr_scanner.output.size());
 
@@ -1941,7 +1965,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn, TTradeOr
 
     const holding_summary::key k_hs_0(pIn->acct_id, string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(pIn->acct_id, string(cSYMBOL_len, (char)255));
-    table_scanner hs_scanner(&arena);
+    tpce_table_scanner hs_scanner(&arena);
     try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
     //ALWAYS_ASSERT(hs_scanner.output.size());  // XXX. allowed?
 
@@ -1993,37 +2017,21 @@ rc_t tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn, TTradeOr
   v_t.t_comm = pIn->comm_amount;
   v_t.t_tax = 0;
   v_t.t_lifo = pIn->is_lifo;
-  try_catch(tbl_trade(1)->insert(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t)), v_t)));
+  OID t_oid = 0;
+  try_catch(tbl_trade(1)->insert(txn,
+    Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t)), v_t), &t_oid));
 
   t_ca_id_index::key k_t_idx1;
-  t_ca_id_index::value v_t_idx1;
   k_t_idx1.t_ca_id = v_t.t_ca_id;
   k_t_idx1.t_dts = v_t.t_dts;
   k_t_idx1.t_id = k_t.t_id;
-  v_t_idx1.t_st_id = v_t.t_st_id ;
-  v_t_idx1.t_tt_id = v_t.t_tt_id ;
-  v_t_idx1.t_is_cash = v_t.t_is_cash ;
-  v_t_idx1.t_s_symb = v_t.t_s_symb ;
-  v_t_idx1.t_qty = v_t.t_qty ;
-  v_t_idx1.t_bid_price = v_t.t_bid_price ;
-  v_t_idx1.t_exec_name = v_t.t_exec_name ;
-  v_t_idx1.t_trade_price = v_t.t_trade_price ;
-  v_t_idx1.t_chrg = v_t.t_chrg ;
-  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
+  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), t_oid));
 
   t_s_symb_index::key k_t_idx2;
-  t_s_symb_index::value v_t_idx2;
   k_t_idx2.t_s_symb = v_t.t_s_symb ;
   k_t_idx2.t_dts = v_t.t_dts;
   k_t_idx2.t_id = k_t.t_id;
-  v_t_idx2.t_ca_id = v_t.t_ca_id;
-  v_t_idx2.t_st_id = v_t.t_st_id ;
-  v_t_idx2.t_tt_id = v_t.t_tt_id ;
-  v_t_idx2.t_is_cash = v_t.t_is_cash ;
-  v_t_idx2.t_qty = v_t.t_qty ;
-  v_t_idx2.t_exec_name = v_t.t_exec_name ;
-  v_t_idx2.t_trade_price = v_t.t_trade_price ;
-  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
+  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), t_oid));
 
   if(not pIn->type_is_market) {
     trade_request::key k_tr;
@@ -2140,7 +2148,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
     if(pIn->hs_qty > 0) {
       const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
-      table_scanner h_scanner(&arena);
+      tpce_table_scanner h_scanner(&arena);
       try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
 
       if(pIn->is_lifo) {
@@ -2226,7 +2234,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
         // Cascade delete for FK integrity
         const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
         const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
-        table_scanner h_scanner(&arena);
+        tpce_table_scanner h_scanner(&arena);
         try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
 
         for(auto& r_h : h_scanner.output) {
@@ -2263,7 +2271,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
     if(pIn->hs_qty < 0) {
       const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
-      table_scanner h_scanner(&arena);
+      tpce_table_scanner h_scanner(&arena);
       try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
       //ALWAYS_ASSERT(h_scanner.output.size());  // XXX. guessing could be empty
 
@@ -2352,7 +2360,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn, TTrade
       // Cascade delete for FK integrity
       const holding::key k_h_0(pIn->acct_id, string(pIn->symbol), MIN_VAL(k_h_0.h_dts), MIN_VAL(k_h_0.h_t_id));
       const holding::key k_h_1(pIn->acct_id, string(pIn->symbol), MAX_VAL(k_h_0.h_dts), MAX_VAL(k_h_0.h_t_id));
-      table_scanner h_scanner(&arena);
+      tpce_table_scanner h_scanner(&arena);
       try_catch(tbl_holding(1)->scan(txn, Encode(str(sizeof(k_h_0)), k_h_0), &Encode(str(sizeof(k_h_1)), k_h_1), h_scanner, &arena));
 
       for(auto& r_h : h_scanner.output) {
@@ -2371,7 +2379,7 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTrade
 
   const customer_taxrate::key k_cx_0(pIn->cust_id, string(cTX_ID_len, (char)0));
   const customer_taxrate::key k_cx_1(pIn->cust_id, string(cTX_ID_len, (char)255));
-  table_scanner cx_scanner(&arena);
+  tpce_table_scanner cx_scanner(&arena);
   try_catch(tbl_customer_taxrate(1)->scan(txn, Encode(str(sizeof(k_cx_0)), k_cx_0), &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
   ALWAYS_ASSERT(cx_scanner.output.size());
 
@@ -2395,7 +2403,8 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn, TTrade
   trade::value v_t_temp;
   try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
   const trade::value *v_t = Decode(obj_v, v_t_temp);
-  trade::value v_t_new(*v_t);
+  trade::value v_t_new;
+  memcpy(&v_t_new, v_t, sizeof(trade::value));
   v_t_new.t_tax = pOut->tax_amount;  // secondary indices don't have t_tax field. no need for cascading update
 
   try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
@@ -2420,7 +2429,7 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn, TTrade
   const commission_rate::key k_cr_0(v_c->c_tier, string(pIn->type_id), v_s->s_ex_id, 0);
   const commission_rate::key k_cr_1(v_c->c_tier, string(pIn->type_id), v_s->s_ex_id, pIn->trade_qty);
 
-  table_scanner cr_scanner(&arena);
+  tpce_table_scanner cr_scanner(&arena);
   try_catch(tbl_commission_rate(1)->scan(txn, Encode(str(sizeof(k_cr_0)), k_cr_0), &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
   ALWAYS_ASSERT(cr_scanner.output.size());
 
@@ -2439,53 +2448,33 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn, TTrade
 rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
-  try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp))));
+  OID t_oid = 0;
+  try_verify_relax(tbl_trade(1)->get(txn,
+    Encode(str(sizeof(k_t)), k_t), obj_v = str(sizeof(v_t_temp)), &t_oid));
   const trade::value *v_t = Decode(obj_v, v_t_temp);
-  trade::value v_t_new(*v_t);
+  trade::value v_t_new;
+  memcpy(&v_t_new, v_t, sizeof(trade::value));
   v_t_new.t_comm = pIn->comm_amount;
   v_t_new.t_dts = CDateTime((TIMESTAMP_STRUCT*)&pIn->trade_dts).GetDate();
   v_t_new.t_st_id = string(pIn->st_completed_id);
   v_t_new.t_trade_price = pIn->trade_price;
   try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
 
-  // DTS field is updated. cascading update(actually insert after remove, because dts is included in PK)
+  // DTS field is updated - invalidating the key in 2nd indexes.
+  // Insert with new keys with updated DTS. Reads/scans of 2nd indexes
+  // must verify that the key matches the corresponding DTS field in
+  // the trade record.
   t_ca_id_index::key k_t_idx1;
-  t_ca_id_index::value v_t_idx1;
-  k_t_idx1.t_ca_id  = v_t->t_ca_id;
-  k_t_idx1.t_dts = v_t->t_dts;
-  k_t_idx1.t_id = k_t.t_id;
-  try_verify_relax(tbl_t_ca_id_index(1)->remove(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1)));
   k_t_idx1.t_ca_id  = v_t_new.t_ca_id;
   k_t_idx1.t_dts = v_t_new.t_dts;
   k_t_idx1.t_id = k_t.t_id;
-  v_t_idx1.t_st_id  = v_t_new.t_st_id ;
-  v_t_idx1.t_tt_id  = v_t_new.t_tt_id ;
-  v_t_idx1.t_is_cash  = v_t_new.t_is_cash ;
-  v_t_idx1.t_s_symb  = v_t_new.t_s_symb ;
-  v_t_idx1.t_qty = v_t_new.t_qty ;
-  v_t_idx1.t_bid_price = v_t_new.t_bid_price ;
-  v_t_idx1.t_exec_name = v_t_new.t_exec_name ;
-  v_t_idx1.t_trade_price = v_t_new.t_trade_price ;
-  v_t_idx1.t_chrg  = v_t_new.t_chrg ;
-  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
+  try_catch(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), t_oid));
 
   t_s_symb_index::key k_t_idx2;
-  t_s_symb_index::value v_t_idx2;
-  k_t_idx2.t_s_symb  = v_t->t_s_symb;
-  k_t_idx2.t_dts = v_t->t_dts;
-  k_t_idx2.t_id = k_t.t_id;
-  try_verify_relax(tbl_t_s_symb_index(1)->remove(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2)));
   k_t_idx2.t_s_symb  = v_t_new.t_s_symb ;
   k_t_idx2.t_dts = v_t_new.t_dts;
   k_t_idx2.t_id = k_t.t_id;
-  v_t_idx2.t_ca_id  = v_t_new.t_ca_id;
-  v_t_idx2.t_st_id  = v_t_new.t_st_id ;
-  v_t_idx2.t_tt_id  = v_t_new.t_tt_id ;
-  v_t_idx2.t_is_cash  = v_t_new.t_is_cash ;
-  v_t_idx2.t_qty = v_t_new.t_qty ;
-  v_t_idx2.t_exec_name = v_t_new.t_exec_name ;
-  v_t_idx2.t_trade_price = v_t_new.t_trade_price ;
-  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
+  try_catch(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), t_oid));
 
   trade_history::key k_th;
   trade_history::value v_th;
@@ -2530,13 +2519,6 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn, TTrade
     v_ca_new.ca_bal += pIn->se_amount;
     try_catch(tbl_customer_account(1)->put(txn, Encode(str(sizeof(k_ca)), k_ca), Encode(str(sizeof(v_ca_new)), v_ca_new)));
 
-    ca_id_index::key k_idx_ca;
-    ca_id_index::value v_idx_ca;
-    k_idx_ca.ca_id = k_ca.ca_id;
-    k_idx_ca.ca_c_id = v_ca_new.ca_c_id;
-    v_idx_ca.ca_bal = v_ca_new.ca_bal;
-    try_catch(tbl_ca_id_index(1)->put(txn, Encode(str(sizeof(k_idx_ca)), k_idx_ca), Encode(str(sizeof(v_idx_ca)), v_idx_ca)));
-
     cash_transaction::key k_ct;
     cash_transaction::value v_ct;
     k_ct.ct_t_id = pIn->trade_id;
@@ -2562,16 +2544,22 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn, TTrade
 
   const t_ca_id_index::key k_t_0(pIn->acct_id, MIN_VAL(k_t_0.t_dts), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, MAX_VAL(k_t_1.t_dts), MAX_VAL(k_t_1.t_id));
-  table_scanner t_scanner(&arena);
+  tpce_table_scanner t_scanner(&arena);
   try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   int t_cursor = 0;
   for(auto &r_t : t_scanner.output) {
     t_ca_id_index::key k_t_temp;
-    t_ca_id_index::value v_t_temp;
+    trade::value v_t_temp;
     const t_ca_id_index::key* k_t = Decode(*r_t.first, k_t_temp);
-    const t_ca_id_index::value* v_t = Decode(*r_t.second, v_t_temp);
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
+
+    // DTS could be changed, invalidating the key in 2nd index (t_s_symb_index),
+    // e.g., by MarketFeed. Skip if it doesn't match the one stored in the main record.
+    if(v_t->t_dts != k_t->t_dts) {
+      continue;
+    }
 
     const status_type::key k_st(v_t->t_st_id);
     status_type::value v_st_temp;
@@ -2665,38 +2653,11 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
         temp_exec_name.replace(index, 3, " X ");
       }
 
-      trade::value v_t_new(*v_t);
+      trade::value v_t_new;
+      memcpy(&v_t_new, v_t, sizeof(trade::value));
       v_t_new.t_exec_name = temp_exec_name;
       try_catch(tbl_trade(1)->put(txn, Encode(str(sizeof(k_t)), k_t), Encode(str(sizeof(v_t_new)), v_t_new)));
-      t_ca_id_index::key k_t_idx1;
-      t_ca_id_index::value v_t_idx1;
-      k_t_idx1.t_ca_id  = v_t_new.t_ca_id;
-      k_t_idx1.t_dts = v_t_new.t_dts;
-      k_t_idx1.t_id = k_t.t_id;
-      v_t_idx1.t_st_id  = v_t_new.t_st_id ;
-      v_t_idx1.t_tt_id  = v_t_new.t_tt_id ;
-      v_t_idx1.t_is_cash  = v_t_new.t_is_cash ;
-      v_t_idx1.t_s_symb  = v_t_new.t_s_symb ;
-      v_t_idx1.t_qty = v_t_new.t_qty ;
-      v_t_idx1.t_bid_price = v_t_new.t_bid_price ;
-      v_t_idx1.t_exec_name = v_t_new.t_exec_name ;
-      v_t_idx1.t_trade_price = v_t_new.t_trade_price ;
-      v_t_idx1.t_chrg  = v_t_new.t_chrg ;
-      try_catch(tbl_t_ca_id_index(1)->put(txn, Encode(str(sizeof(k_t_idx1)), k_t_idx1), Encode(str(sizeof(v_t_idx1)), v_t_idx1)));
-
-      t_s_symb_index::key k_t_idx2;
-      t_s_symb_index::value v_t_idx2;
-      k_t_idx2.t_s_symb  = v_t_new.t_s_symb ;
-      k_t_idx2.t_dts = v_t_new.t_dts;
-      k_t_idx2.t_id = k_t.t_id;
-      v_t_idx2.t_ca_id  = v_t_new.t_ca_id;
-      v_t_idx2.t_st_id  = v_t_new.t_st_id ;
-      v_t_idx2.t_tt_id  = v_t_new.t_tt_id ;
-      v_t_idx2.t_is_cash  = v_t_new.t_is_cash ;
-      v_t_idx2.t_qty = v_t_new.t_qty ;
-      v_t_idx2.t_exec_name = v_t_new.t_exec_name ;
-      v_t_idx2.t_trade_price = v_t_new.t_trade_price ;
-      try_catch(tbl_t_s_symb_index(1)->put(txn, Encode(str(sizeof(k_t_idx2)), k_t_idx2), Encode(str(sizeof(v_t_idx2)), v_t_idx2)));
+      // Nothing changes in 2nd indexes, we're done
 
       pOut->num_updated++;
       memcpy(pOut->trade_info[i].exec_name, temp_exec_name.data(), temp_exec_name.size());
@@ -2724,7 +2685,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn, TTrade
 
     const trade_history::key k_th_0(pIn->trade_id[i], string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pIn->trade_id[i], string(cST_ID_len, (char)255), MIN_VAL(k_th_0.th_dts));
-    table_scanner th_scanner(&arena);
+    tpce_table_scanner th_scanner(&arena);
     try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
@@ -2748,16 +2709,22 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
 
   const t_ca_id_index::key k_t_0(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_ca_id_index::key k_t_1(pIn->acct_id, CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_0.t_id));
-  table_scanner t_scanner(&arena);
+  tpce_table_scanner t_scanner(&arena);
   try_catch(tbl_t_ca_id_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
   for(size_t i = 0; i < (size_t)pIn->max_trades and i < t_scanner.output.size(); i++) {
     auto &r_t = t_scanner.output[i];
     t_ca_id_index::key k_t_temp;
-    t_ca_id_index::value v_t_temp;
+    trade::value v_t_temp;
     const t_ca_id_index::key* k_t = Decode(*r_t.first, k_t_temp);
-    const t_ca_id_index::value* v_t = Decode(*r_t.second, v_t_temp);
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
+
+    // DTS could be changed, invalidating the key in 2nd index (t_s_symb_index),
+    // e.g., by MarketFeed. Skip if it doesn't match the one stored in the main record.
+    if(v_t->t_dts != k_t->t_dts) {
+      continue;
+    }
 
     pOut->trade_info[i].bid_price = v_t->t_bid_price;
     memcpy(pOut->trade_info[i].exec_name, v_t->t_exec_name.data(), v_t->t_exec_name.size());
@@ -2810,7 +2777,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn, TTrade
 
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_0.th_dts));
-    table_scanner th_scanner(&arena);
+    tpce_table_scanner th_scanner(&arena);
     try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
@@ -2834,17 +2801,22 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
 
   const t_s_symb_index::key k_t_0(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->start_trade_dts).GetDate(), MIN_VAL(k_t_0.t_id));
   const t_s_symb_index::key k_t_1(string(pIn->symbol), CDateTime((TIMESTAMP_STRUCT*)&pIn->end_trade_dts).GetDate(), MAX_VAL(k_t_0.t_id));
-  table_scanner t_scanner(&arena);
+  tpce_table_scanner t_scanner(&arena);
   try_catch(tbl_t_s_symb_index(1)->scan(txn, Encode(str(sizeof(k_t_0)), k_t_0), &Encode(str(sizeof(k_t_1)), k_t_1), t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());  // XXX. short innitial trading day can make this case happening?
 
   for(size_t i = 0; i < (size_t)pIn->max_trades and i < t_scanner.output.size() ; i++) {
     auto &r_t = t_scanner.output[i];
     t_s_symb_index::key k_t_temp;
-    t_s_symb_index::value v_t_temp;
+    trade::value v_t_temp;
     const t_s_symb_index::key* k_t = Decode(*r_t.first, k_t_temp);
-    const t_s_symb_index::value* v_t = Decode(*r_t.second, v_t_temp);
+    const trade::value* v_t = Decode(*r_t.second, v_t_temp);
 
+    // DTS could be changed, invalidating the key in 2nd index (t_s_symb_index),
+    // e.g., by MarketFeed. Skip if it doesn't match the one stored in the main record.
+    if(v_t->t_dts != k_t->t_dts) {
+      continue;
+    }
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
@@ -2926,7 +2898,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn, TTrade
 
     const trade_history::key k_th_0(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)0), MIN_VAL(k_th_0.th_dts));
     const trade_history::key k_th_1(pOut->trade_info[i].trade_id, string(cST_ID_len, (char)255), MAX_VAL(k_th_0.th_dts));
-    table_scanner th_scanner(&arena);
+    tpce_table_scanner th_scanner(&arena);
     try_catch(tbl_trade_history(1)->scan(txn, Encode(str(sizeof(k_th_0)), k_th_0), &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
     ALWAYS_ASSERT(th_scanner.output.size());
 
@@ -2954,7 +2926,7 @@ rc_t tpce_worker::DoLongQueryFrame1() {
 
   const customer_account::key k_ca_0(start_pos);
   const customer_account::key k_ca_1(end_pos);
-  table_scanner ca_scanner(&arena);
+  tpce_table_scanner ca_scanner(&arena);
   try_catch(tbl_customer_account(1)->scan(txn, Encode(str(sizeof(k_ca_0)), k_ca_0), &Encode(str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
   ALWAYS_ASSERT(ca_scanner.output.size());
 
@@ -2965,7 +2937,7 @@ rc_t tpce_worker::DoLongQueryFrame1() {
 
     const holding_summary::key k_hs_0(k_ca->ca_id, string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(k_ca->ca_id, string(cSYMBOL_len, (char)255));
-    static __thread table_scanner hs_scanner(&arena);
+    static __thread tpce_table_scanner hs_scanner(&arena);
     hs_scanner.output.clear();
     try_catch(tbl_holding_summary(1)->scan(txn, Encode(str(sizeof(k_hs_0)), k_hs_0), &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
 
@@ -3010,8 +2982,8 @@ class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_charge_loader(unsigned long seed,
                      ndb_wrapper *db,
-                     const map<string, ndb_ordered_index *> &open_tables,
-                     const map<string, vector<ndb_ordered_index *>> &partitions,
+                     const map<string, OrderedIndex *> &open_tables,
+                     const map<string, vector<OrderedIndex *>> &partitions,
                      ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3063,8 +3035,8 @@ class tpce_commission_rate_loader : public bench_loader, public tpce_worker_mixi
  public:
   tpce_commission_rate_loader(unsigned long seed,
                               ndb_wrapper *db,
-                              const map<string, ndb_ordered_index *> &open_tables,
-                              const map<string, vector<ndb_ordered_index *>> &partitions,
+                              const map<string, OrderedIndex *> &open_tables,
+                              const map<string, vector<OrderedIndex *>> &partitions,
                               ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3117,8 +3089,8 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_exchange_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions)
@@ -3165,8 +3137,8 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_industry_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3193,11 +3165,7 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
       industry::key k_in;
       industry::value v_in;
       in_name_index::key k_in_idx1;
-      in_name_index::value v_in_idx1;
       in_sc_id_index::key k_in_idx2;
-      in_sc_id_index::value v_in_idx2;
-
-
 
       k_in.in_id = string(record->IN_ID);
       v_in.in_name = string(record->IN_NAME);
@@ -3210,9 +3178,13 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
       k_in_idx2.in_id = string(record->IN_ID);
 
       transaction *txn = db->new_txn(0, arena, txn_buf());
-      try_verify_strict(tbl_industry(1)->insert(txn, Encode(str(sizeof(k_in)), k_in), Encode(str(sizeof(v_in)), v_in)));
-      try_verify_strict(tbl_in_name_index(1)->insert(txn, Encode(str(sizeof(k_in_idx1)), k_in_idx1), Encode(str(sizeof(v_in_idx1)), v_in_idx1)));
-      try_verify_strict(tbl_in_sc_id_index(1)->insert(txn, Encode(str(sizeof(k_in_idx2)), k_in_idx2), Encode(str(sizeof(v_in_idx2)), v_in_idx2)));
+      OID i_oid = 0;
+      try_verify_strict(tbl_industry(1)->insert(txn,
+        Encode(str(sizeof(k_in)), k_in), Encode(str(sizeof(v_in)), v_in), &i_oid));
+      try_verify_strict(tbl_in_name_index(1)->insert(txn,
+        Encode(str(sizeof(k_in_idx1)), k_in_idx1), i_oid));
+      try_verify_strict(tbl_in_sc_id_index(1)->insert(txn,
+        Encode(str(sizeof(k_in_idx2)), k_in_idx2), i_oid));
       try_verify_strict(db->commit_txn(txn));
       arena.reset();
     }
@@ -3228,8 +3200,8 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_sector_loader(unsigned long seed,
                      ndb_wrapper *db,
-                     const map<string, ndb_ordered_index *> &open_tables,
-                     const map<string, vector<ndb_ordered_index *>> &partitions,
+                     const map<string, OrderedIndex *> &open_tables,
+                     const map<string, vector<OrderedIndex *>> &partitions,
                      ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3284,8 +3256,8 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_status_type_loader(unsigned long seed,
                           ndb_wrapper *db,
-                          const map<string, ndb_ordered_index *> &open_tables,
-                          const map<string, vector<ndb_ordered_index *>> &partitions,
+                          const map<string, OrderedIndex *> &open_tables,
+                          const map<string, vector<OrderedIndex *>> &partitions,
                           ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3339,8 +3311,8 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_tax_rate_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3395,8 +3367,8 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_trade_type_loader(unsigned long seed,
                          ndb_wrapper *db,
-                         const map<string, ndb_ordered_index *> &open_tables,
-                         const map<string, vector<ndb_ordered_index *>> &partitions,
+                         const map<string, OrderedIndex *> &open_tables,
+                         const map<string, vector<OrderedIndex *>> &partitions,
                          ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3452,8 +3424,8 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_zip_code_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3504,8 +3476,8 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_address_loader(unsigned long seed,
                       ndb_wrapper *db,
-                      const map<string, ndb_ordered_index *> &open_tables,
-                      const map<string, vector<ndb_ordered_index *>> &partitions,
+                      const map<string, OrderedIndex *> &open_tables,
+                      const map<string, vector<OrderedIndex *>> &partitions,
                       ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3562,8 +3534,8 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_customer_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3622,14 +3594,16 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
         v.c_email_2 = string(record->C_EMAIL_2);
 
         c_tax_id_index::key k_idx_tax_id;
-        c_tax_id_index::value v_idx_tax_id;
 
         k_idx_tax_id.c_id = record->C_ID;
         k_idx_tax_id.c_tax_id = string(record->C_TAX_ID);
 
         transaction *txn = db->new_txn(0, arena, txn_buf());
-        try_verify_strict(tbl_customers(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
-        try_verify_strict(tbl_c_tax_id_index(1)->insert(txn, Encode(str(sizeof(k_idx_tax_id)), k_idx_tax_id), Encode(str(sizeof(v_idx_tax_id)), v_idx_tax_id)));
+        OID c_oid = 0;
+        try_verify_strict(tbl_customers(1)->insert(txn,
+          Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &c_oid));
+        try_verify_strict(tbl_c_tax_id_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx_tax_id)), k_idx_tax_id), c_oid));
         try_verify_strict(db->commit_txn(txn));
         arena.reset();
       }
@@ -3646,8 +3620,8 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_ca_and_ap_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3685,17 +3659,13 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
         customer_account::key k;
         customer_account::value v;
         ca_id_index::key k_idx1;
-        ca_id_index::value v_idx1;
-
-
-
-        k.ca_id  = record->CA_ID;
 
         if(likely(record->CA_ID > max_ca_id))
           max_ca_id = record->CA_ID;
         if(unlikely(record->CA_ID < min_ca_id))
           min_ca_id = record->CA_ID;
 
+        k.ca_id  = record->CA_ID;
         v.ca_b_id = record->CA_B_ID;
         v.ca_c_id = record->CA_C_ID;
         v.ca_name = string(record->CA_NAME);
@@ -3704,12 +3674,13 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
 
         k_idx1.ca_id = record->CA_ID;
         k_idx1.ca_c_id = record->CA_C_ID;
-        v_idx1.ca_bal= record->CA_BAL;
 
         transaction *txn = db->new_txn(0, arena, txn_buf());
-        try_verify_strict(tbl_customer_account(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
-
-        try_verify_strict(tbl_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_idx1)), k_idx1), Encode(str(sizeof(v_idx1)), v_idx1)));
+        OID ca_oid = 0;
+        try_verify_strict(tbl_customer_account(1)->insert(txn,
+          Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &ca_oid));
+        try_verify_strict(tbl_ca_id_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx1)), k_idx1), ca_oid));
         try_verify_strict(db->commit_txn(txn));
         arena.reset();
       }
@@ -3746,8 +3717,8 @@ class tpce_customer_taxrate_loader : public bench_loader, public tpce_worker_mix
  public:
   tpce_customer_taxrate_loader(unsigned long seed,
                                ndb_wrapper *db,
-                               const map<string, ndb_ordered_index *> &open_tables,
-                               const map<string, vector<ndb_ordered_index *>> &partitions,
+                               const map<string, OrderedIndex *> &open_tables,
+                               const map<string, vector<OrderedIndex *>> &partitions,
                                ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3805,8 +3776,8 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_wl_and_wi_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3884,8 +3855,8 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_company_loader(unsigned long seed,
                       ndb_wrapper *db,
-                      const map<string, ndb_ordered_index *> &open_tables,
-                      const map<string, vector<ndb_ordered_index *>> &partitions,
+                      const map<string, OrderedIndex *> &open_tables,
+                      const map<string, vector<OrderedIndex *>> &partitions,
                       ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -3916,11 +3887,7 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
         company::key k;
         company::value v;
         co_name_index::key k_idx1;
-        co_name_index::value v_idx1;
         co_in_id_index::key k_idx2;
-        co_in_id_index::value v_idx2;
-
-
 
         k.co_id = record->CO_ID;
         v.co_st_id = string(record->CO_ST_ID);
@@ -3938,9 +3905,13 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
         k_idx2.co_id= record->CO_ID;
 
         transaction *txn = db->new_txn(0, arena, txn_buf());
-        try_verify_strict(tbl_company(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
-        try_verify_strict(tbl_co_name_index(1)->insert(txn, Encode(str(sizeof(k_idx1)), k_idx1), Encode(str(sizeof(v_idx1)), v_idx1)));
-        try_verify_strict(tbl_co_in_id_index(1)->insert(txn, Encode(str(sizeof(k_idx2)), k_idx2), Encode(str(sizeof(v_idx2)), v_idx2)));
+        OID c_oid;
+        try_verify_strict(tbl_company(1)->insert(txn,
+          Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &c_oid));
+        try_verify_strict(tbl_co_name_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx1)), k_idx1), c_oid));
+        try_verify_strict(tbl_co_in_id_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx2)), k_idx2), c_oid));
         try_verify_strict(db->commit_txn(txn));
         arena.reset();
       }
@@ -3957,8 +3928,8 @@ class tpce_company_competitor_loader : public bench_loader, public tpce_worker_m
  public:
   tpce_company_competitor_loader(unsigned long seed,
                                  ndb_wrapper *db,
-                                 const map<string, ndb_ordered_index *> &open_tables,
-                                 const map<string, vector<ndb_ordered_index *>> &partitions,
+                                 const map<string, OrderedIndex *> &open_tables,
+                                 const map<string, vector<OrderedIndex *>> &partitions,
                                  ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4014,8 +3985,8 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_daily_market_loader(unsigned long seed,
                            ndb_wrapper *db,
-                           const map<string, ndb_ordered_index *> &open_tables,
-                           const map<string, vector<ndb_ordered_index *>> &partitions,
+                           const map<string, OrderedIndex *> &open_tables,
+                           const map<string, vector<OrderedIndex *>> &partitions,
                            ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4073,8 +4044,8 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_financial_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4141,8 +4112,8 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_last_trade_loader(unsigned long seed,
                          ndb_wrapper *db,
-                         const map<string, ndb_ordered_index *> &open_tables,
-                         const map<string, vector<ndb_ordered_index *>> &partitions,
+                         const map<string, OrderedIndex *> &open_tables,
+                         const map<string, vector<OrderedIndex *>> &partitions,
                          ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4199,8 +4170,8 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_ni_and_nx_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables,
-                        const map<string, vector<ndb_ordered_index *>> &partitions,
+                        const map<string, OrderedIndex *> &open_tables,
+                        const map<string, vector<OrderedIndex *>> &partitions,
                         ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4283,8 +4254,8 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_security_loader(unsigned long seed,
                        ndb_wrapper *db,
-                       const map<string, ndb_ordered_index *> &open_tables,
-                       const map<string, vector<ndb_ordered_index *>> &partitions,
+                       const map<string, OrderedIndex *> &open_tables,
+                       const map<string, vector<OrderedIndex *>> &partitions,
                        ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4315,7 +4286,6 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
         security::key k;
         security::value v;
         security_index::key k_idx;
-        security_index::value v_idx;
 
         k.s_symb = string(record->S_SYMB);
         v.s_issue = string(record->S_ISSUE);
@@ -4337,12 +4307,13 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
         k_idx.s_co_id = record->S_CO_ID;
         k_idx.s_issue = string(record->S_ISSUE);
         k_idx.s_symb = string(record->S_SYMB);
-        v_idx.s_name = string(record->S_NAME);
-        v_idx.s_ex_id = string(record->S_EX_ID);
 
         transaction *txn = db->new_txn(0, arena, txn_buf());
-        try_verify_strict(tbl_security(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
-        try_verify_strict(tbl_security_index(1)->insert(txn, Encode(str(sizeof(k_idx)), k_idx), Encode(str(sizeof(v_idx)), v_idx)));
+        OID s_oid = 0;
+        try_verify_strict(tbl_security(1)->insert(txn,
+          Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &s_oid));
+        try_verify_strict(tbl_security_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx)), k_idx), s_oid));
         try_verify_strict(db->commit_txn(txn));
         arena.reset();
       }
@@ -4359,8 +4330,8 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_growing_loader(unsigned long seed,
                       ndb_wrapper *db,
-                      const map<string, ndb_ordered_index *> &open_tables,
-                      const map<string, vector<ndb_ordered_index *>> &partitions,
+                      const map<string, OrderedIndex *> &open_tables,
+                      const map<string, vector<OrderedIndex *>> &partitions,
                       ssize_t partition_id)
     : bench_loader(seed, db, open_tables),
       tpce_worker_mixin(partitions),
@@ -4462,38 +4433,23 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         v.t_lifo = record->T_LIFO;
 
         t_ca_id_index::key k_idx1;
-        t_ca_id_index::value v_idx1;
         k_idx1.t_ca_id = record->T_CA_ID;
         k_idx1.t_dts = record->T_DTS.GetDate();
         k_idx1.t_id = record->T_ID;
-        v_idx1.t_st_id = string(record->T_ST_ID);
-        v_idx1.t_tt_id = string(record->T_TT_ID);
-        v_idx1.t_is_cash  = record->T_IS_CASH;
-        v_idx1.t_s_symb = string(record->T_S_SYMB);
-        v_idx1.t_qty = record->T_QTY;
-        v_idx1.t_bid_price = record->T_BID_PRICE;
-        v_idx1.t_exec_name = string(record->T_EXEC_NAME);
-        v_idx1.t_trade_price= record->T_TRADE_PRICE;
-        v_idx1.t_chrg = record->T_CHRG;
 
         t_s_symb_index::key k_idx2;
-        t_s_symb_index::value v_idx2;
         k_idx2.t_s_symb = string(record->T_S_SYMB);
         k_idx2.t_dts = record->T_DTS.GetDate();
         k_idx2.t_id = record->T_ID;
-        v_idx2.t_ca_id = record->T_CA_ID;
-        v_idx2.t_st_id = string(record->T_ST_ID);
-        v_idx2.t_tt_id = string(record->T_TT_ID);
-        v_idx2.t_is_cash = record->T_IS_CASH;
-        v_idx2.t_qty = record->T_QTY;
-        v_idx2.t_exec_name = string(record->T_EXEC_NAME);
-        v_idx2.t_trade_price= record->T_TRADE_PRICE;
 
         transaction* txn = db->new_txn(0, arena, txn_buf());
-        try_verify_strict(tbl_trade(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
-
-        try_verify_strict(tbl_t_ca_id_index(1)->insert(txn, Encode(str(sizeof(k_idx1)), k_idx1), Encode(str(sizeof(v_idx1)), v_idx1)));
-        try_verify_strict(tbl_t_s_symb_index(1)->insert(txn, Encode(str(sizeof(k_idx2)), k_idx2), Encode(str(sizeof(v_idx2)), v_idx2)));
+        OID t_oid = 0;
+        try_verify_strict(tbl_trade(1)->insert(txn,
+          Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &t_oid));
+        try_verify_strict(tbl_t_ca_id_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx1)), k_idx1), t_oid));
+        try_verify_strict(tbl_t_s_symb_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx2)), k_idx2), t_oid));
         try_verify_strict(db->commit_txn(txn));
         arena.reset();
       }
@@ -4587,21 +4543,22 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         broker::key k;
         broker::value v;
 
-        b_name_index::key k_idx;
-        b_name_index::value v_idx;
-
         k.b_id = record->B_ID;
         v.b_st_id = string(record->B_ST_ID);
         v.b_name = string(record->B_NAME);
         v.b_num_trades = record->B_NUM_TRADES;
         v.b_comm_total = record->B_COMM_TOTAL;
 
+        b_name_index::key k_idx;
         k_idx.b_name = string(record->B_NAME);
         k_idx.b_id = record->B_ID;
 
         transaction* txn = db->new_txn(0, arena, txn_buf());
-        try_verify_strict(tbl_broker(1)->insert(txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
-        try_verify_strict(tbl_b_name_index(1)->insert(txn, Encode(str(sizeof(k_idx)), k_idx), Encode(str(sizeof(v_idx)), v_idx)));
+        OID b_oid = 0;
+        try_verify_strict(tbl_broker(1)->insert(txn,
+          Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &b_oid));
+        try_verify_strict(tbl_b_name_index(1)->insert(txn,
+          Encode(str(sizeof(k_idx)), k_idx), b_oid));
         try_verify_strict(db->commit_txn(txn));
         arena.reset();
       }
@@ -4690,11 +4647,11 @@ class tpce_bench_runner : public bench_runner {
     return true;
   }
 
-  static vector<ndb_ordered_index *>
+  static vector<OrderedIndex *>
   OpenTablesForTablespace(ndb_wrapper *db, const char *name) {
     const string s_name(name);
-    vector<ndb_ordered_index *> ret(NumPartitions());
-    ndb_ordered_index *idx = sm_index_mgr::get_index(s_name);
+    vector<OrderedIndex *> ret(NumPartitions());
+    OrderedIndex *idx = IndexDescriptor::GetIndex(s_name);
     for (size_t i = 0; i < NumPartitions(); i++)
       ret[i] = idx;
     return ret;
@@ -4703,12 +4660,8 @@ class tpce_bench_runner : public bench_runner {
   static void RegisterTable(ndb_wrapper *db, const char *name,
                             const char* primary_idx_name = nullptr) {
     const string s_name(name);
-    vector<ndb_ordered_index *> ret(NumPartitions());
-    if(primary_idx_name) {
-      sm_index_mgr::new_secondary_index(std::string(name), std::string(primary_idx_name));
-    } else {
-      sm_index_mgr::new_primary_index(std::string(name));
-    }
+    vector<OrderedIndex *> ret(NumPartitions());
+    IndexDescriptor::New(std::string(name), primary_idx_name);
   }
 
  public:
@@ -4845,7 +4798,7 @@ class tpce_bench_runner : public bench_runner {
   }
 
  private:
-  map<string, vector<ndb_ordered_index *>> partitions;
+  map<string, vector<OrderedIndex *>> partitions;
 };
 
 

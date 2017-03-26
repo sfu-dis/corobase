@@ -45,28 +45,30 @@ set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
 get_property(TMP_ALL_ERMIA_SRC GLOBAL PROPERTY ALL_ERMIA_SRC)
 
 # SI
-add_executable(ermia_SI ${TMP_ALL_ERMIA_SRC})
+add_executable(ermia_SI ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 target_link_libraries(ermia_SI ${LINK_FLAGS})
 
-# RC+SSN
-add_executable(ermia_RC_SSN_ESC ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_RC_SSN_ESC PROPERTIES COMPILE_FLAGS "-DRC -DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(ermia_RC_SSN_ESC ${LINK_FLAGS})
+add_executable(ermia2_SI ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest2.cc)
+target_link_libraries(ermia2_SI ${LINK_FLAGS})
 
-# RC_SPIN+SSN
-add_executable(ermia_RC_SPIN_SSN_ESC ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_RC_SPIN_SSN_ESC PROPERTIES COMPILE_FLAGS "-DRC_SPIN -DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(ermia_RC_SPIN_SSN_ESC ${LINK_FLAGS})
+# SI+SSN
+add_executable(ermia_SI_SSN ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(ermia_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+target_link_libraries(ermia_SI_SSN ${LINK_FLAGS})
 
-# SI+SSN+EARLY_CHECK
-add_executable(ermia_SI_SSN_ESC ${TMP_ALL_ERMIA_SRC})
-set_target_properties(ermia_SI_SSN_ESC PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(ermia_SI_SSN_ESC ${LINK_FLAGS})
+add_executable(ermia2_SI_SSN ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest2.cc)
+set_target_properties(ermia2_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+target_link_libraries(ermia2_SI_SSN ${LINK_FLAGS})
 
 # SSI
-add_executable(ermia_SSI ${TMP_ALL_ERMIA_SRC})
+add_executable(ermia_SSI ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
 target_link_libraries(ermia_SSI ${LINK_FLAGS})
 
+add_executable(ermia2_SSI ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest2.cc)
+set_target_properties(ermia2_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
+target_link_libraries(ermia2_SSI ${LINK_FLAGS})
+
 # run script
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/run2.sh" DESTINATION ${CMAKE_BINARY_DIR})

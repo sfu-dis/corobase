@@ -4,7 +4,7 @@
 #include "sm-index.h"
 #include "sm-thread.h"
 
-#include "../benchmarks/ndb_wrapper.h"
+#include "../benchmarks/ordered_index.h"
 
 sm_chkpt_mgr *chkptmgr;
 
@@ -173,20 +173,28 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
     OID himark = *himark_ptr;
     nbytes += sizeof(OID);
 
-    // FID
-    FID f = *(FID*)read_buffer(sizeof(FID));
-    ALWAYS_ASSERT(f);
+    // tuple FID
+    FID tuple_fid = *(FID*)read_buffer(sizeof(FID));
+    ALWAYS_ASSERT(tuple_fid);
+    nbytes += sizeof(FID);
+
+    // key FID
+    FID key_fid = *(FID*)read_buffer(sizeof(FID));
+    ALWAYS_ASSERT(key_fid);
     nbytes += sizeof(FID);
 
     // Benchmark code should have already registered the table with the engine
-    ALWAYS_ASSERT(sm_index_mgr::fid_map[f]);
-    ASSERT(oidmgr->file_exists(f));
+    ALWAYS_ASSERT(IndexDescriptor::FidExists(tuple_fid));
+    ALWAYS_ASSERT(IndexDescriptor::FidExists(key_fid));
+    ALWAYS_ASSERT(oidmgr->file_exists(tuple_fid));
+    ALWAYS_ASSERT(oidmgr->file_exists(key_fid));
 
-    // Recover allocator status
-    oid_array *oa = oidmgr->get_array(f);
+    oid_array *oa = oidmgr->get_array(tuple_fid);
+    oid_array *ka = oidmgr->get_array(key_fid);
 
-    // Populate the OID array and index
-    auto* index = sm_index_mgr::get_index(f);
+    // Populate the OID/key array and index
+    OrderedIndex* index = IndexDescriptor::GetIndex(key_fid);
+    bool is_primary = index->GetDescriptor()->IsPrimary();
     ALWAYS_ASSERT(index);
     while(1) {
       // Read the OID
@@ -205,30 +213,35 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
         key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
         new (key) varstr((char*)key + sizeof(varstr), key_size);
         memcpy((void*)key->p, read_buffer(key->l), key->l);
-        ALWAYS_ASSERT(index->btr.underlying_btree.insert_if_absent(*key, o, NULL, 0));
+        ALWAYS_ASSERT(index->tree_.underlying_btree.insert_if_absent(*key, o, NULL, 0));
+        oidmgr->oid_put_new(ka, o, fat_ptr::make(key, INVALID_SIZE_CODE));
+        ALWAYS_ASSERT(key->size());
       } else {
         read_buffer(key_size);
         //lseek(fd, key_size, SEEK_CUR);
       }
       nbytes += key_size;
 
-      // Size code
-      uint8_t size_code = *(uint8_t*)read_buffer(sizeof(uint8_t));
-      nbytes += sizeof(uint8_t);
-      ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
-      auto data_size = decode_size_aligned(size_code);
-      if(o % num_recovery_threads == oid_partition) {
-        fat_ptr ptr = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
-        if(config::eager_warm_up()) {
-          ptr = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
-          ASSERT(ptr.offset());
-          ASSERT(ptr.asi_type() == 0);
+      // Tuple data for primary index only
+      if(is_primary) {
+        // Size code
+        uint8_t size_code = *(uint8_t*)read_buffer(sizeof(uint8_t));
+        nbytes += sizeof(uint8_t);
+        ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
+        auto data_size = decode_size_aligned(size_code);
+        if(o % num_recovery_threads == oid_partition) {
+          fat_ptr ptr = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
+          if(config::eager_warm_up()) {
+            ptr = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
+            ASSERT(ptr.offset());
+            ASSERT(ptr.asi_type() == 0);
+          }
+          // load_durable_object uses the base_chkpt_fd, which is different, so lseek anyway.
+          oidmgr->oid_put_new(oa, o, ptr);
         }
-        // load_durable_object uses the base_chkpt_fd, which is different, so lseek anyway.
-        oidmgr->oid_put_new(oa, o, ptr, key);
+        read_buffer(data_size);//(fd, data_size, SEEK_CUR);
+        nbytes += data_size;
       }
-      read_buffer(data_size);//(fd, data_size, SEEK_CUR);
-      nbytes += data_size;
     }
   }
 }
@@ -286,39 +299,28 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     nbytes += len;
     std::string name(name_buf, len);
 
-    // FID
-    FID f = *(FID*)read_buffer(sizeof(FID));;
+    // FIDs
+    FID tuple_fid = *(FID*)read_buffer(sizeof(FID));;
+    nbytes += sizeof(FID);
+
+    FID key_fid = *(FID*)read_buffer(sizeof(FID));;
     nbytes += sizeof(FID);
 
     // High mark
     OID himark = *(OID*)read_buffer(sizeof(OID));
     nbytes += sizeof(FID);
 
-    // Recover fid_map and recreate the empty file
-    ALWAYS_ASSERT(!sm_index_mgr::get_index(name));
-
     // Benchmark code should have already registered the table with the engine
-    ALWAYS_ASSERT(sm_index_mgr::name_map[name]);
+    ALWAYS_ASSERT(IndexDescriptor::NameExists(name));
+    ALWAYS_ASSERT(IndexDescriptor::GetIndex(name));
 
-    sm_index_mgr::name_map[name]->fid = f;
-    sm_index_mgr::name_map[name]->index = new ndb_ordered_index(name);
-    sm_index_mgr::fid_map[f] = sm_index_mgr::name_map[name];
-    ASSERT(not oidmgr->file_exists(f));
-    oidmgr->recreate_file(f);
-    LOG(INFO) << "[CHKPT Recovery] FID=" << f << "(" << name << ")";
-
-    // Recover allocator status
-    oid_array *oa = oidmgr->get_array(f);
-    oa->ensure_size(oa->alloc_size(himark));
-    oidmgr->recreate_allocator(f, himark);
-
-    sm_index_mgr::name_map[name]->array = oa;
-    ALWAYS_ASSERT(sm_index_mgr::get_index(name));
-    sm_index_mgr::get_index(name)->set_oid_array(f);
+    IndexDescriptor::Get(name)->Recover(tuple_fid, key_fid, himark);
+    LOG(INFO) << "[CHKPT Recovery] " << name << "(" << tuple_fid
+              << ", " << key_fid << ")";
   }
   LOG(INFO) << "[Checkpoint] Prepared files";
 
-  // Get many threads to do it in parallel
+  // Now deal with the real data, get many threads to do it in parallel
   std::vector<thread::sm_thread*> workers;
   for(uint32_t i = 0; i < num_recovery_threads; ++i) {
     auto* t = thread::get_thread();
@@ -332,6 +334,6 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     w->join();
     thread::put_thread(w);
   }
-  LOG(INFO) << "[Checkpoint] recovered";
+  LOG(INFO) << "[Checkpoint] Recovered";
 }
 
