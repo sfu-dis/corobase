@@ -76,7 +76,7 @@ int
 main(int argc, char **argv)
 {
   google::InitGoogleLogging(argv[0]);
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  google::ParseCommandLineFlags(&argc, &argv, true);
 
   config::verbose = FLAGS_verbose;
   config::node_memory_gb = FLAGS_node_memory_gb;
