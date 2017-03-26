@@ -68,7 +68,6 @@ public:
   ~dbtuple() {}
 
   enum ReadStatus {
-    READ_FAILED,
     READ_EMPTY,
     READ_RECORD,
   };
@@ -184,22 +183,18 @@ public:
   // Note: the stable=false option will try to read from pvalue,
   // instead of the real data area; so giving stable=false is only
   // safe for the updating transaction itself to read its own write.
-  do_read(value_reader &reader, str_arena &sa, bool stable) const
-  {
-    const uint8_t *data = NULL;
-    if (stable)
-      data = get_value_start();
-    else {
+  do_read(varstr* out_v, bool stable) const {
+    if(stable) {
+      out_v->p = get_value_start();
+    } else {
       if (not pvalue) {   // so I just deleted this tuple... return empty?
         ASSERT(not size);
         return READ_EMPTY;
       }
-      data = pvalue->data();
+      out_v->p = pvalue->data();
       ASSERT(pvalue->size() == size);
     }
-
-    if (unlikely(size && !reader(data, size, sa)))
-      return READ_FAILED;
+    out_v->l = size;
     return size ? READ_RECORD : READ_EMPTY;
   }
 

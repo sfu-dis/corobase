@@ -103,7 +103,7 @@ DO_STRUCT(customer_account, CUSTOMER_ACCOUNT_KEY_FIELDS, CUSTOMER_ACCOUNT_VALUE_
     x(int64_t,   	 ca_c_id)\
     y(int64_t,   	 ca_id)
 #define CA_ID_INDEX_VALUE_FIELDS(x,y)\
-    x(double,  	 ca_bal)
+    x(bool, dummy)
 DO_STRUCT(ca_id_index, CA_ID_INDEX_KEY_FIELDS, CA_ID_INDEX_VALUE_FIELDS)
 
 #define CUSTOMER_TAXRATE_KEY_FIELDS(x,y)\
@@ -453,8 +453,7 @@ DO_STRUCT( security, SECURITY_KEY_FIELDS, SECURITY_VALUE_FIELDS )
     y(inline_str_fixed<6>, s_issue)\
     y(inline_str_fixed<15>, s_symb)
 #define SECURITY_INDEX_VALUE_FIELDS(x,y)\
-    x(inline_str_fixed<70>, s_name)\
-    y(inline_str_fixed<6>, s_ex_id)
+    x(bool, dummy)
 DO_STRUCT( security_index, SECURITY_INDEX_KEY_FIELDS, SECURITY_INDEX_VALUE_FIELDS )
 
 	/*

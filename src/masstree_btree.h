@@ -14,13 +14,17 @@
 #include <utility>
 #include <atomic>
 
+#include "dbcore/sm-alloc.h"
+#include "dbcore/sm-index.h"
+#include "dbcore/sm-oid.h"
+
 #include "macros.h"
 #include "prefetch.h"
 #include "util.h"
 
-#include "masstree/masstree_scan.hh"
 #include "masstree/masstree_insert.hh"
 #include "masstree/masstree_remove.hh"
+#include "masstree/masstree_scan.hh"
 #include "masstree/masstree_print.hh"
 #include "masstree/timestamp.hh"
 #include "masstree/mtcounters.hh"
@@ -28,9 +32,6 @@
 
 #include "object.h"
 #include "tuple.h"
-
-#include "dbcore/sm-oid.h"
-#include "dbcore/sm-alloc.h"
 
 class simple_threadinfo {
  public:
@@ -190,13 +191,20 @@ class mbtree {
     table_.destroy(ti);
   }
 
-  inline oid_array *get_oid_array() {
-    return table_.get_oid_array();
+  inline void set_arrays(IndexDescriptor* id) {
+    key_array_ = id->GetKeyArray();
+    tuple_array_ = id->GetTupleArray();
+    is_primary_idx_ = id->IsPrimary();
+    descriptor_ = id;
+    ALWAYS_ASSERT(key_array_);
+    ALWAYS_ASSERT(tuple_array_);
+    table_.set_tuple_array(tuple_array_);
   }
 
-  inline void set_oid_array(oid_array *oa) {
-    table_.set_oid_array(oa);
-  }
+  inline IndexDescriptor* get_descriptor() { return descriptor_; }
+  inline oid_array* get_key_array() { return key_array_; }
+  inline oid_array* get_tuple_array() { return tuple_array_; }
+  inline bool is_primary_idx() { return is_primary_idx_; }
 
   /**
    * NOT THREAD SAFE
@@ -358,7 +366,7 @@ class mbtree {
    * if k inserted, false otherwise (k exists already)
    */
   inline bool
-  insert_if_absent(const key_type &k, OID o, dbtuple * v, xid_context *xc,
+  insert_if_absent(const key_type &k, OID o, xid_context *xc,
                    insert_info_t *insert_info = NULL);
 
   /**
@@ -430,6 +438,10 @@ class mbtree {
 
  private:
   Masstree::basic_table<P> table_;
+  oid_array* key_array_;
+  oid_array* tuple_array_;
+  bool is_primary_idx_;
+  IndexDescriptor* descriptor_;
 
   static leaf_type* leftmost_descend_layer(node_base_type* n);
   class size_walk_callback;
@@ -545,7 +557,7 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple* &v, xid_contex
   if (found)
   {
 	  o = lp.value();
-      v = oidmgr->oid_get_version(table_.get_oid_array(), o, xc);
+      v = oidmgr->oid_get_version(tuple_array_, o, xc);
 	  if( !v )
 		  found = false;
   }
@@ -576,10 +588,8 @@ inline bool mbtree<P>::insert(const key_type &k, OID o, xid_context *xc,
 }
 
 template <typename P>
-inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o, dbtuple * v,
-                                        xid_context *xc,
-                                        insert_info_t *insert_info)
-{
+inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
+                                        xid_context *xc, insert_info_t *insert_info) {
   // Recovery will give a null xc, use epoch 0 for the memory allocated
   epoch_num e = 0;
   if (xc) {
@@ -598,12 +608,10 @@ insert_new:
       insert_info->old_version = lp.previous_full_version_value();
       insert_info->new_version = lp.next_full_version_value(1);
     }
-  }
-  else
-  {
+  } else if(is_primary_idx_) {
 	  // we have two cases: 1) predecessor's inserts are still remaining in tree, even though version chain is empty or 2) somebody else are making dirty data in this chain. If it's the first case, version chain is considered empty, then we retry insert.
 	  OID oid = lp.value();
-	  if (oidmgr->oid_get_latest_version(table_.get_oid_array(), oid))
+	  if (oidmgr->oid_get_latest_version(tuple_array_, oid))
 		  found = true;
 	  else
 		  goto insert_new;
@@ -625,7 +633,7 @@ inline bool mbtree<P>::remove(const key_type &k, xid_context* xc, dbtuple * *old
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
   bool found = lp.find_locked(ti);
   if (found && old_v)
-	  *old_v = oidmgr->oid_get_latest_version(table_.get_oid_array(), lp.value());
+	  *old_v = oidmgr->oid_get_latest_version(tuple_array_, lp.value());
 	  // XXX. need to look at lp.finish that physically removes records in tree and hack it if necessary.
   lp.finish(found ? -1 : 0, ti);
   return found;

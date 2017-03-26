@@ -75,7 +75,7 @@ class ycsb_worker : public bench_worker {
 public:
   ycsb_worker(unsigned int worker_id,
               unsigned long seed, ndb_wrapper *db,
-              const map<string, ndb_ordered_index *> &open_tables,
+              const map<string, OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
     : bench_worker(worker_id, seed, db,
                    open_tables, barrier_a, barrier_b),
@@ -163,21 +163,21 @@ protected:
   }
 
 private:
-  ndb_ordered_index *tbl;
+  OrderedIndex *tbl;
 };
 
 class ycsb_usertable_loader : public bench_loader {
 public:
   ycsb_usertable_loader(unsigned long seed,
                         ndb_wrapper *db,
-                        const map<string, ndb_ordered_index *> &open_tables)
+                        const map<string, OrderedIndex *> &open_tables)
     : bench_loader(seed, db, open_tables)
   {}
 
 protected:
   // XXX(tzwang): for now this is serial
   void load() {
-    ndb_ordered_index *tbl = open_tables.at("USERTABLE");
+    OrderedIndex *tbl = open_tables.at("USERTABLE");
     std::vector<YcsbKey> keys;
     uint64_t records_per_thread = g_initial_table_size / config::worker_threads;
     bool spread = true;
@@ -236,12 +236,12 @@ protected:
 class ycsb_bench_runner : public bench_runner {
 public:
   ycsb_bench_runner(ndb_wrapper *db) : bench_runner(db) {
-    sm_index_mgr::new_primary_index("USERTABLE");
+    IndexDescriptor::New("USERTABLE");
   }
 
   virtual void prepare(char *)
   {
-    open_tables["USERTABLE"] = sm_index_mgr::get_index("USERTABLE");
+    open_tables["USERTABLE"] = IndexDescriptor::GetIndex("USERTABLE");
   }
 
 protected:

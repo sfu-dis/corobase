@@ -749,7 +749,7 @@ void leaf<P>::assign_ksuf(int p, Str s, bool initializing, threadinfo& ti) {
 
 template <typename P>
 inline basic_table<P>::basic_table()
-    : root_(0) {
+    : root_(0), tuple_array_(nullptr) {
 }
 
 template <typename P>

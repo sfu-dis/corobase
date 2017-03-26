@@ -14,8 +14,10 @@
 static __thread transaction::read_set_t* tls_read_set;
 #endif
 
+extern write_set_t tls_write_set[config::MAX_THREADS];
+
 transaction::transaction(uint64_t flags, str_arena &sa)
-  : flags(flags), sa(&sa) {
+  : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()]) {
     if(config::phantom_prot) {
       absent_set.set_empty_key(NULL);    // google dense map
       absent_set.clear();
@@ -76,9 +78,6 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 
 transaction::~transaction()
 {
-    if(!xc) {  // Perhaps only went through the default ctor
-      return;
-    }
     // transaction shouldn't fall out of scope w/o resolution
     // resolution means TXN_CMMTD, and TXN_ABRTD
     ASSERT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
@@ -97,7 +96,6 @@ transaction::~transaction()
     else
         MM::epoch_exit(xc->end, xc->begin_epoch);
     xid_free(xid);    // must do this after epoch_exit, which uses xc.end
-    xc = nullptr;
 }
 
 void
@@ -1002,11 +1000,6 @@ transaction::si_commit()
         ASSERT((pdest == NULL_PTR and not tuple->size) or
                (pdest.asi_type() == fat_ptr::ASI_LOG));
 #endif
-        /*
-        if (config::log_ship_by_rdma && config::num_active_backups && !config::is_backup_srv()) {
-            rep::update_pdest_on_backup_rdma(&w);
-        }
-        */
     }
 
     // NOTE: make sure this happens after populating log block,
@@ -1030,33 +1023,42 @@ transaction::check_phantom()
 }
 
 bool
-transaction::try_insert_new_tuple(
-    concurrent_btree *btr,
-    const varstr *key,
-    const varstr *value,
-    FID fid)
-{
+transaction::try_insert_new_tuple(concurrent_btree *btr,
+                                  const varstr *key,
+                                  const varstr *value,
+                                  OID* inserted_oid) {
     ASSERT(key);
-    fat_ptr new_head = object::create_tuple_object(value, false, xc->begin_epoch);
-    ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
-    dbtuple *tuple = ((object *)new_head.offset())->tuple();
-    ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
-    tuple->get_object()->_clsn = xid.to_ptr();
-    OID oid = oidmgr->alloc_oid(fid);
-    varstr* new_key = nullptr;
-    if(config::enable_chkpt) {
-      // XXX(tzwang): only need to install this key if we need chkpt; not a
-      // realistic setting here to not generate it, the purpose of skipping
-      // this is solely for benchmarking CC.
-      new_key = (varstr*)MM::allocate(sizeof(varstr) + key->size(), xc->begin_epoch);
-      new (new_key) varstr((char*)new_key + sizeof(varstr), 0);
-      new_key->copy_from(key);
+    OID oid = 0;
+    IndexDescriptor* id = btr->get_descriptor();
+    bool is_primary_idx = btr->is_primary_idx();
+    auto* key_array = btr->get_key_array();
+    auto* tuple_array = btr->get_tuple_array();
+    FID tuple_fid = id->GetTupleFid();
+    dbtuple* tuple = nullptr;
+    if(likely(is_primary_idx)) {
+      fat_ptr new_head = object::create_tuple_object(value, false, xc->begin_epoch);
+      ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+      tuple = ((object *)new_head.offset())->tuple();
+      ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
+      tuple->get_object()->_clsn = xid.to_ptr();
+      oid = oidmgr->alloc_oid(tuple_fid);
+      oidmgr->oid_put_new(tuple_array, oid, new_head);
+      if(inserted_oid) {
+        *inserted_oid = oid;
+      }
+    } else {
+      // Inserting into a secondary index - just key-OID mapping is enough
+      oid = *(OID*)value;  // It's actually a pointer to an OID in user space
     }
-    oidmgr->oid_put_new(btr->get_oid_array(), oid, new_head, new_key);
     typename concurrent_btree::insert_info_t ins_info;
-    if (unlikely(!btr->insert_if_absent(*key, oid, tuple, xc, &ins_info))) {
-        oidmgr->oid_unlink(btr->get_oid_array(), oid);
-        return false;
+    if(!btr->insert_if_absent(*key, oid, xc, &ins_info)) {
+      if(is_primary_idx) {
+        oidmgr->oid_unlink(tuple_array, oid);
+      }
+      if(config::enable_chkpt) {
+        volatile_write(key_array->get(oid)->_ptr, 0);
+      }
+      return false;
     }
 
     if(config::phantom_prot && !absent_set.empty()) {
@@ -1067,7 +1069,12 @@ transaction::try_insert_new_tuple(
         if (unlikely(it->second.version != ins_info.old_version)) {
           // important: unlink the version, otherwise we risk leaving a dead
           // version at chain head -> infinite loop or segfault...
-          oidmgr->oid_unlink(btr->get_oid_array(), oid);
+          if(likely(is_primary_idx)) {
+            oidmgr->oid_unlink(tuple_array, oid);
+          }
+          if(config::enable_chkpt) {
+            volatile_write(key_array->get(oid)->_ptr, 0);
+          }
           return false;
         }
         // otherwise, bump the version
@@ -1075,38 +1082,53 @@ transaction::try_insert_new_tuple(
       }
     }
 
+    // Succeeded, now put the key there if we need it
+    if(config::enable_chkpt) {
+      // XXX(tzwang): only need to install this key if we need chkpt; not a
+      // realistic setting here to not generate it, the purpose of skipping
+      // this is solely for benchmarking CC.
+      varstr* new_key = (varstr*)MM::allocate(sizeof(varstr) + key->size(), xc->begin_epoch);
+      new (new_key) varstr((char*)new_key + sizeof(varstr), 0);
+      new_key->copy_from(key);
+      oidmgr->oid_put(key_array, oid, fat_ptr::make((void*)new_key, INVALID_SIZE_CODE));
+    }
+
     // insert to log
     ASSERT(log);
-    ASSERT(tuple->size == value->size());
-    auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
-    auto size_code = encode_size_aligned(record_size);
-    ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));
-    ASSERT(tuple->size);
-    // log the whole varstr so that recovery can figure out the real size
-    // of the tuple, instead of using the decoded (larger-than-real) size.
-    log->log_insert(fid, oid, fat_ptr::make((void *)value, size_code),
-                    DEFAULT_ALIGNMENT_BITS, &tuple->get_object()->_pdest);
+    if(likely(tuple)) {  // Primary index, "real tuple"
+      ASSERT(is_primary_idx);
+      ASSERT(tuple->size == value->size());
+      auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
+      auto size_code = encode_size_aligned(record_size);
+      ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));
+      ASSERT(tuple->size);
+      // log the whole varstr so that recovery can figure out the real size
+      // of the tuple, instead of using the decoded (larger-than-real) size.
+      log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
+                      DEFAULT_ALIGNMENT_BITS, &tuple->get_object()->_pdest);
+    }
 
     // Note: here we log the whole key varstr so that recovery
     // can figure out the real key length with key->size(), otherwise
     // it'll have to use the decoded (inaccurate) size (and so will
     // build a different index...).
-    record_size = align_up(sizeof(varstr) + key->size());
+    auto record_size = align_up(sizeof(varstr) + key->size());
     ASSERT((char *)key->data() == (char *)key + sizeof(varstr));
-    size_code = encode_size_aligned(record_size);
-    log->log_insert_index(fid, oid, fat_ptr::make((void *)key, size_code),
+    auto size_code = encode_size_aligned(record_size);
+    log->log_insert_index(id->GetKeyFid(), oid, fat_ptr::make((void *)key, size_code),
                           DEFAULT_ALIGNMENT_BITS, NULL);
 
-    // update write_set
-    ASSERT(tuple->pvalue->size() == tuple->size);
-    auto* oa = btr->get_oid_array();
-    add_to_write_set(&oa->get(oid)->ptr, config::num_backups == 0 ? 0 : fid);
+    // FIXME(tzwang): correct?
+    if(likely(is_primary_idx)) {
+      // update write_set
+      ASSERT(tuple->pvalue->size() == tuple->size);
+      add_to_write_set(tuple_array->get(oid), config::num_backups == 0 ? 0 : tuple_fid);
+    }
     return true;
 }
 
 rc_t
-transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
-{
+transaction::do_tuple_read(dbtuple *tuple, varstr *out_v) {
     ASSERT(tuple);
     ASSERT(xc);
     bool read_my_own = (tuple->get_object()->_clsn.asi_type() == fat_ptr::ASI_XID);
@@ -1131,18 +1153,11 @@ transaction::do_tuple_read(dbtuple *tuple, value_reader &value_reader)
 #endif
 
     // do the actual tuple read
-    dbtuple::ReadStatus stat;
-    {
-        stat = tuple->do_read(value_reader, this->string_allocator(), not read_my_own);
-
-        if (unlikely(stat == dbtuple::READ_FAILED))
-            return rc_t{RC_ABORT_INTERNAL};
-    }
+    dbtuple::ReadStatus stat = tuple->do_read(out_v, !read_my_own);
     ASSERT(stat == dbtuple::READ_EMPTY || stat == dbtuple::READ_RECORD);
     if (stat == dbtuple::READ_EMPTY) {
         return rc_t{RC_FALSE};
     }
-
     return {RC_TRUE};
 }
 

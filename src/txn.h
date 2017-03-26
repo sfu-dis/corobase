@@ -175,7 +175,6 @@ protected:
 
 public:
   transaction(uint64_t flags, str_arena &sa);
-  transaction() : flags(0), sa(nullptr), xc(nullptr) {}
   ~transaction();
 
   rc_t commit();
@@ -193,18 +192,12 @@ public:
   void abort_impl();
 
 protected:
-  bool
-  try_insert_new_tuple(
-      concurrent_btree *btr,
-      const varstr *key,
-      const varstr *value,
-      FID fid);
+  bool try_insert_new_tuple(concurrent_btree *btr, const varstr *key,
+                            const varstr *value, OID* inserted_oid);
 
   // reads the contents of tuple into v
   // within this transaction context
-  rc_t
-  do_tuple_read(dbtuple *tuple, value_reader &value_reader);
-
+  rc_t do_tuple_read(dbtuple *tuple, varstr *out_v);
   rc_t do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
 
 public:
@@ -233,7 +226,7 @@ protected:
   xid_context *xc;
   sm_tx_log* log;
   str_arena *sa;
-  write_set_t write_set;
+  write_set_t& write_set;
 #if defined(SSN) || defined(SSI)
   read_set_t* read_set;
 #endif
