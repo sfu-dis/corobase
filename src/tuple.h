@@ -184,7 +184,6 @@ public:
   // instead of the real data area; so giving stable=false is only
   // safe for the updating transaction itself to read its own write.
   do_read(varstr* out_v, bool stable) const {
-    const uint8_t *data = NULL;
     if(stable) {
       out_v->p = get_value_start();
     } else {
