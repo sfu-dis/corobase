@@ -34,7 +34,9 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. Returns true if found, false otherwise
    */
-  rc_t get(transaction *t, const varstr &key, varstr &value);
+  inline rc_t get(transaction *t, const varstr &key, varstr &value, OID* oid = nullptr) {
+    return tree_.do_search(*t, key, &value, oid);
+  }
 
   /**
    * Put a key of length keylen, with mapping of length valuelen.
@@ -50,8 +52,9 @@ public:
    * returned is guaranteed to be valid memory until the key associated with
    * value is overriden.
    */
-  rc_t put(transaction *t, const varstr &key, const varstr &value);
-  rc_t put(transaction *t, varstr &&key, varstr &&value);
+  inline rc_t put(transaction *t, const varstr &key, const varstr &value) {
+    return tree_.do_tree_put(*t, &key, &value, false, true, nullptr);
+  }
 
   /**
    * Insert a key of length keylen.
@@ -61,13 +64,16 @@ public:
    *
    * Default implementation calls put(). See put() for meaning of return value.
    */
-  rc_t insert(transaction *t, const varstr &key, const varstr &value, OID* oid = nullptr);
-  rc_t insert(transaction *t, varstr &&key, varstr &&value);
+  inline rc_t insert(transaction *t, const varstr &key, const varstr &value, OID* oid = nullptr) {
+    return tree_.do_tree_put(*t, &key, &value, true, true, oid);
+  }
 
   /**
    * Insert into a secondary index. Maps key to OID.
    */
-  rc_t insert(transaction *t, const varstr &key, OID oid);
+  inline rc_t insert(transaction *t, const varstr &key, OID oid) {
+    return tree_.do_tree_put(*t, &key, (varstr*)&oid, true, false, nullptr);
+  }
 
   /**
    * Search [start_key, *end_key) if end_key is not null, otherwise
@@ -86,8 +92,9 @@ public:
   /**
    * Default implementation calls put() with NULL (zero-length) value
    */
-  rc_t remove(transaction *t, const varstr &key);
-  rc_t remove(transaction *t, varstr &&key);
+  inline rc_t remove(transaction *t, const varstr &key) {
+    return tree_.do_tree_put(*t, &key, nullptr, false, false, nullptr);
+  }
 
   /**
    * Only an estimate, not transactional!
@@ -97,7 +104,9 @@ public:
   /**
    * Not thread safe for now
    */
-  std::map<std::string, uint64_t> clear();
+  inline std::map<std::string, uint64_t> clear() {
+    return tree_.unsafe_purge(true);
+  }
 
   inline IndexDescriptor* GetDescriptor() { return descriptor_; }
   inline void SetArrays() { tree_.set_arrays(descriptor_); }
