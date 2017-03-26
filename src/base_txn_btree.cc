@@ -5,7 +5,7 @@
 write_set_t tls_write_set[config::MAX_THREADS];
 
 rc_t
-base_txn_btree::do_search(transaction &t, const varstr &k, varstr *out_v) {
+base_txn_btree::do_search(transaction &t, const varstr &k, varstr *out_v, OID* out_oid) {
     t.ensure_active();
 
     // search the underlying btree to map k=>(btree_node|tuple)
@@ -13,6 +13,9 @@ base_txn_btree::do_search(transaction &t, const varstr &k, varstr *out_v) {
     OID oid;
     concurrent_btree::versioned_node_t sinfo;
     bool found = this->underlying_btree.search(k, oid, tuple, t.xc, &sinfo);
+    if(out_oid) {
+      *out_oid = oid;
+    }
     if (found) {
         return t.do_tuple_read(tuple, out_v);
     } else if(config::phantom_prot) {
