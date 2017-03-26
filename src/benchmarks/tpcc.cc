@@ -83,9 +83,9 @@ const Nation nations[]={
 
 const char* regions[]={"AFRICA","AMERICA","ASIA","EUROPE", "MIDDLE EAST"};
 
-class table_scanner: public OrderedIndex::scan_callback {
+class tpcc_table_scanner: public OrderedIndex::scan_callback {
 	public:
-		table_scanner( str_arena* arena) : _arena(arena) {}
+		tpcc_table_scanner( str_arena* arena) : _arena(arena) {}
 		virtual bool invoke( const char *keyp, size_t keylen, const varstr &value)
 		{
 			varstr * const k = _arena->next(keylen);
@@ -2125,14 +2125,14 @@ tpcc_worker::txn_query2()
 	transaction *txn = db->new_txn(transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
 	scoped_str_arena s_arena(arena);
 
-	static __thread table_scanner r_scanner(&arena);
+	static __thread tpcc_table_scanner r_scanner(&arena);
 	r_scanner.clear();
 	const region::key k_r_0( 0 );
 	const region::key k_r_1( 5 );
 	try_catch(tbl_region(1)->scan(txn, Encode(str(sizeof(k_r_0)), k_r_0), &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner, s_arena.get()));
 	ALWAYS_ASSERT( r_scanner.output.size() == 5);
 
-	static __thread table_scanner n_scanner(&arena);
+	static __thread tpcc_table_scanner n_scanner(&arena);
 	n_scanner.clear();
 	const nation::key k_n_0( 0 );
 	const nation::key k_n_1( numeric_limits<int32_t>::max() );

@@ -37,7 +37,7 @@ DO_STRUCT(customer, CUSTOMER_KEY_FIELDS, CUSTOMER_VALUE_FIELDS)
   y(inline_str_fixed<16>,c_last) \
   y(inline_str_fixed<16>,c_first)
 #define CUSTOMER_NAME_IDX_VALUE_FIELDS(x, y) \
-	x(int32_t,c_oid)
+	x(int8_t,dummy)
 DO_STRUCT(customer_name_idx, CUSTOMER_NAME_IDX_KEY_FIELDS, CUSTOMER_NAME_IDX_VALUE_FIELDS)
 
 #define DISTRICT_KEY_FIELDS(x, y) \
@@ -104,7 +104,7 @@ DO_STRUCT(oorder, OORDER_KEY_FIELDS, OORDER_VALUE_FIELDS)
   y(int32_t,o_c_id) \
   y(int32_t,o_o_id)
 #define OORDER_C_ID_IDX_VALUE_FIELDS(x, y) \
-	x(uint8_t,o_oid)
+	x(uint8_t,dummy)
 DO_STRUCT(oorder_c_id_idx, OORDER_C_ID_IDX_KEY_FIELDS, OORDER_C_ID_IDX_VALUE_FIELDS)
 
 #define ORDER_LINE_KEY_FIELDS(x, y) \
