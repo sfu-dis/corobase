@@ -73,7 +73,7 @@ public:
     key_reader *const kr;
   };
 
-  rc_t do_search(transaction &t, const varstr &k, varstr *out_v);
+  rc_t do_search(transaction &t, const varstr &k, varstr *out_v, OID* out_oid);
 
   void do_search_range_call(transaction &t, const varstr &lower, const varstr *upper,
                             search_range_callback &callback, key_reader &key_reader);
