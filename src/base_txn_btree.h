@@ -56,11 +56,8 @@ public:
 
 public:
   struct txn_search_range_callback : public concurrent_btree::low_level_search_range_callback {
-    constexpr txn_search_range_callback(
-          transaction *t,
-          search_range_callback *caller_callback,
-          key_reader *key_reader)
-      : t(t), caller_callback(caller_callback), kr(key_reader) {}
+    constexpr txn_search_range_callback(transaction *t, search_range_callback *caller_callback)
+      : t(t), caller_callback(caller_callback) {}
 
     virtual void on_resp_node(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
     virtual bool invoke(const concurrent_btree *btr_ptr,
@@ -70,16 +67,15 @@ public:
   private:
     transaction *const t;
     search_range_callback *const caller_callback;
-    key_reader *const kr;
   };
 
   rc_t do_search(transaction &t, const varstr &k, varstr *out_v, OID* out_oid);
 
   void do_search_range_call(transaction &t, const varstr &lower, const varstr *upper,
-                            search_range_callback &callback, key_reader &key_reader);
+                            search_range_callback &callback);
 
   void do_rsearch_range_call(transaction &t, const varstr &upper, const varstr *lower,
-                             search_range_callback &callback, key_reader &key_reader);
+                             search_range_callback &callback);
 
   // expect_new indicates if we expect the record to not exist in the tree-
   // is just a hint that affects perf, not correctness. remove is put with nullptr
