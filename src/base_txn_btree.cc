@@ -253,7 +253,7 @@ base_txn_btree
     varstr vv;
     caller_callback->return_code = t->do_tuple_read(v, &vv);
     if (caller_callback->return_code._val == RC_TRUE)
-        return caller_callback->invoke((*kr)(k), vv);
+        return caller_callback->invoke(k, vv);
     else if (rc_is_abort(caller_callback->return_code))
         return false;   // don't continue the read if the tx should abort
                         // ^^^^^ note: see masstree_scan.hh, whose scan() calls
@@ -265,8 +265,7 @@ base_txn_btree
 void
 base_txn_btree::do_search_range_call(transaction &t, const varstr &lower,
                                      const varstr *upper,
-                                     search_range_callback &callback,
-                                     key_reader &key_reader) {
+                                     search_range_callback &callback) {
     t.ensure_active();
     if (upper)
         VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
@@ -280,7 +279,7 @@ base_txn_btree::do_search_range_call(transaction &t, const varstr &lower,
     if (unlikely(upper && *upper <= lower))
         return;
 
-    txn_search_range_callback c(&t, &callback, &key_reader);
+    txn_search_range_callback c(&t, &callback);
 
     varstr uppervk;
     if (upper)
@@ -294,13 +293,12 @@ void
 base_txn_btree::do_rsearch_range_call(transaction &t,
                                       const varstr &upper,
                                       const varstr *lower,
-                                      search_range_callback &callback,
-                                      key_reader &key_reader) {
+                                      search_range_callback &callback) {
     t.ensure_active();
     if (unlikely(lower && upper <= *lower))
         return;
 
-    txn_search_range_callback c(&t, &callback, &key_reader);
+    txn_search_range_callback c(&t, &callback);
 
     varstr lowervk;
     if (lower)
