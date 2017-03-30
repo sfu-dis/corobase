@@ -125,12 +125,21 @@ public:
       // The backup now should have received from the primary about how many log
       // buffer partitions there will be now.
       ALWAYS_ASSERT(logbuf_partitions);
-      return logbuf_partitions == 1 ? 1 : logbuf_partitions / 2;
+      uint32_t n = logbuf_partitions == 1 ? 1 : logbuf_partitions / 2;
+      if(n > worker_threads) {
+        LOG(FATAL) << "Not enough worker threads. Need " << n << ", "
+                   << worker_threads << " provided";
+      }
+      return n;
     }
 
     static inline uint32_t num_worker_threads() {
       if(is_backup_srv()) {
-        return worker_threads - num_backup_replay_threads();
+        if(worker_threads > num_backup_replay_threads()) {
+          return worker_threads - num_backup_replay_threads();
+        } else {
+          return 0;
+        }
       } else {
         return worker_threads;
       }
