@@ -177,6 +177,7 @@ protected:
 public:
   transaction(uint64_t flags, str_arena &sa);
   ~transaction();
+  void initialize_read_write();
 
   rc_t commit();
 #ifdef SSN

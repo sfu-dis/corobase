@@ -18,6 +18,23 @@ extern write_set_t tls_write_set[config::MAX_THREADS];
 
 transaction::transaction(uint64_t flags, str_arena &sa)
   : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()]) {
+  if(config::is_backup_srv()) {
+    // Read-only transaction on backup - grab a begin timestamp and go.
+    // A read-only 'transaction' on a backup basically is reading a
+    // consistent snapshot back in time. No CC involved.
+    thread_local xid_context* ctx = nullptr;
+    if(!ctx) {
+      ctx = xid_get_context(xid_alloc());
+    }
+    xc = ctx;
+    RCU::rcu_enter();
+    xc->begin = logmgr->cur_lsn().offset();
+  } else {
+    initialize_read_write();
+  }
+}
+
+void transaction::initialize_read_write() {
     if(config::phantom_prot) {
       absent_set.set_empty_key(NULL);    // google dense map
       absent_set.clear();
@@ -78,6 +95,11 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 
 transaction::~transaction()
 {
+    if(config::is_backup_srv()) {
+      RCU::rcu_exit();
+      return;
+    }
+
     // transaction shouldn't fall out of scope w/o resolution
     // resolution means TXN_CMMTD, and TXN_ABRTD
     ASSERT(state() != TXN_ACTIVE && state() != TXN_COMMITTING);
@@ -970,6 +992,10 @@ transaction::parallel_ssi_commit()
 rc_t
 transaction::si_commit()
 {
+    if(config::is_backup_srv()) {
+      return rc_t{RC_TRUE};
+    }
+
     ASSERT(log);
     // get clsn, abort if failed
     xc->end = log->pre_commit().offset();
