@@ -310,7 +310,7 @@ void bench_runner::start_measurement() {
   while(slept < config::benchmark_seconds) {
     sleep(1);
     uint64_t sec_commits = 0, sec_aborts = 0;
-    for (size_t i = 0; i < config::worker_threads; i++) {
+    for (size_t i = 0; i < config::num_worker_threads(); i++) {
       sec_commits += workers[i]->get_ntxn_commits();
       sec_aborts += workers[i]->get_ntxn_aborts();
     }
@@ -330,7 +330,7 @@ void bench_runner::start_measurement() {
 
   __sync_synchronize();
 
-  for (size_t i = 0; i < config::worker_threads; i++)
+  for (size_t i = 0; i < config::num_worker_threads(); i++)
     workers[i]->join();
   const unsigned long elapsed_nosync = t_nosync.lap();
   size_t n_commits = 0;
@@ -343,7 +343,7 @@ void bench_runner::start_measurement() {
   size_t n_phantom_aborts = 0;
   size_t n_query_commits= 0;
   uint64_t latency_numer_us = 0;
-  for (size_t i = 0; i < config::worker_threads; i++) {
+  for (size_t i = 0; i < config::num_worker_threads(); i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
     n_int_aborts += workers[i]->get_ntxn_int_aborts();
