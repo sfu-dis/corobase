@@ -73,7 +73,7 @@ struct parallel_offset_replay : public sm_log_recover_impl {
   std::vector<struct redo_runner> redoers;
   sm_log_scan_mgr *scanner;
 
-  parallel_offset_replay() : nredoers(config::logbuf_partitions) {}
+  parallel_offset_replay() : nredoers(config::num_backup_replay_threads()) {}
   virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from, LSN to);
 };
 

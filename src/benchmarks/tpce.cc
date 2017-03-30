@@ -312,7 +312,7 @@ class tpce_worker :
            << endl;
     }
 
-    auto i = worker_id % config::worker_threads;
+    auto i = worker_id % config::num_worker_threads();
     mee = mees[i];
     ALWAYS_ASSERT(i >= 0 and i < mees.size());
     MarketFeedInputBuffer = MarketFeedInputBuffers[i];
@@ -4765,15 +4765,15 @@ class tpce_bench_runner : public bench_runner {
     vector<bench_worker *> ret;
     static bool const NO_PIN_WH = false;
     if (NO_PIN_WH) {
-      for (size_t i = 0; i < config::worker_threads; i++)
+      for (size_t i = 0; i < config::num_worker_threads(); i++)
         ret.push_back(
           new tpce_worker(
             i,
             r.next(), db, open_tables, partitions,
             &barrier_a, &barrier_b,
             1, NumPartitions() + 1));
-    } else if (NumPartitions() <= config::worker_threads) {
-      for (size_t i = 0; i < config::worker_threads; i++)
+    } else if (NumPartitions() <= config::num_worker_threads()) {
+      for (size_t i = 0; i < config::num_worker_threads(); i++)
         ret.push_back(
           new tpce_worker(
             i,
@@ -4782,9 +4782,9 @@ class tpce_bench_runner : public bench_runner {
             (i % NumPartitions()) + 1, (i % NumPartitions()) + 2));
     } else {
       auto N = NumPartitions();
-      auto T = config::worker_threads;
+      auto T = config::num_worker_threads();
       // try this in python: [i*N//T for i in range(T+1)]
-      for (size_t i = 0; i < config::worker_threads; i++) {
+      for (size_t i = 0; i < config::num_worker_threads(); i++) {
         const unsigned wstart = i*N/T;
         const unsigned wend   = (i + 1)*N/T;
         ret.push_back(
@@ -4889,7 +4889,7 @@ void tpce_do_test(ndb_wrapper *db, int argc, char **argv) {
 
   //Initialize Market side
 
-  for(unsigned int i = 0; i < config::worker_threads; i++) {
+  for(unsigned int i = 0; i < config::num_worker_threads(); i++) {
     auto mf_buf= new MFBuffer();
     auto tr_buf= new TRBuffer();
     MarketFeedInputBuffers.emplace_back(mf_buf);

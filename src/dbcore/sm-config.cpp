@@ -24,7 +24,7 @@ int config::num_backups = 0;
 int config::num_active_backups = 0;
 uint64_t config::log_buffer_mb = 512;
 uint64_t config::log_segment_mb = 8192;
-uint32_t config::logbuf_partitions = 8;
+uint32_t config::logbuf_partitions = 0;
 std::string config::log_dir("");
 bool config::null_log_device = false;
 std::string config::primary_srv("");
