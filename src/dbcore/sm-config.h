@@ -115,4 +115,24 @@ public:
       write_bytes_per_cycle = (double)CACHELINE_SIZE / (end - start);
       LOG(INFO) << write_bytes_per_cycle << " bytes per cycle";
     }
+
+    static inline uint32_t num_backup_replay_threads() { 
+      ALWAYS_ASSERT(is_backup_srv());
+      // FIXME(tzwang): there will be only half of logbuf_partitions that can get
+      // replayed concurrently. For simplicity we assign each partition a thread;
+      // revisit if we need more flexibility, e.g.,let a thread take more than one
+      // partition.
+      // The backup now should have received from the primary about how many log
+      // buffer partitions there will be now.
+      ALWAYS_ASSERT(logbuf_partitions);
+      return logbuf_partitions == 1 ? 1 : logbuf_partitions / 2;
+    }
+
+    static inline uint32_t num_worker_threads() {
+      if(is_backup_srv()) {
+        return worker_threads - num_backup_replay_threads();
+      } else {
+        return worker_threads;
+      }
+    }
 };

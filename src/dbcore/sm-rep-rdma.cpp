@@ -281,7 +281,7 @@ void start_as_backup_rdma() {
   // Extract system config and set them before new_log
   config::benchmark_scale_factor = md->system_config.scale_factor;
   config::log_segment_mb = md->system_config.log_segment_mb;
-  config::logbuf_partitions = config::logbuf_partitions;
+  config::logbuf_partitions = md->system_config.logbuf_partitions;
 
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
