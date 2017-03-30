@@ -270,6 +270,15 @@ bench_runner::run()
     }
   }
 
+  if(config::num_worker_threads()) {
+    start_measurement();
+  } else {
+    LOG(INFO) << "No worker threads available to run benchmarks.";
+    getchar();
+  }
+}
+
+void bench_runner::start_measurement() {
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
   for (vector<bench_worker *>::const_iterator it = workers.begin();
@@ -314,10 +323,13 @@ bench_runner::run()
   }
   running = false;
 
-  // Persist whatever still left in the log buffer
-  logmgr->flush();
+  if(!config::is_backup_srv()) {
+    // Persist whatever still left in the log buffer
+    logmgr->flush();
+  }
 
   __sync_synchronize();
+
   for (size_t i = 0; i < config::worker_threads; i++)
     workers[i]->join();
   const unsigned long elapsed_nosync = t_nosync.lap();
@@ -406,27 +418,7 @@ bench_runner::run()
     cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << endl;
     cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate << " aborts/sec/core" << endl;
     cerr << "txn breakdown: " << format_list(agg_txn_counts.begin(), agg_txn_counts.end()) << endl;
-
-#if 0
-	RCU::rcu_gc_info gc_info = RCU::rcu_get_gc_info();
-	cerr << "--- RCU stat --- " << endl;
-	cerr << "gc_passes: " << gc_info.gc_passes << endl;
-	cerr << "objects_freed: " << gc_info.objects_freed << endl;
-	cerr << "bytes_freed: " << gc_info.bytes_freed << endl;
-	cerr << "objects_stashed : " << gc_info.objects_stashed<< endl;
-	cerr << "bytes_stashed: " << gc_info.bytes_stashed << endl;
-    cerr << "---------------------------------------" << endl;
-#endif
   }
-
-  /*
-  ALWAYS_ASSERT(n_aborts == n_user_aborts +
-                            n_int_aborts +
-                            n_si_aborts +
-                            n_serial_aborts +
-                            n_rw_aborts +
-                            n_phantom_aborts);
-							*/
 
   // output for plotting script
   cout << "---------------------------------------\n";

@@ -234,6 +234,7 @@ public:
   virtual void prepare(char *) = 0;
   void run();
   void create_files_task(char *);
+  void start_measurement();
 
   static std::vector<bench_worker*> workers;
 
