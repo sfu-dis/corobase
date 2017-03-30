@@ -577,7 +577,11 @@ sm_log_alloc_mgr::release(log_allocation *x)
 {
     // Include the size of our allocation, indicated by next_lsn.
     // Otherwise we might lose committed work.
-    set_tls_lsn_offset(x->block->next_lsn().offset());
+    if(!config::is_backup_srv()) {
+      // Only need to do this for the primary server - worker threads on
+      // backups don't do updates
+      set_tls_lsn_offset(x->block->next_lsn().offset());
+    }
     rcu_free(x);
     bool should_kick = cur_lsn_offset() - dur_flushed_lsn_offset() >= _logbuf->window_size() / 2;
 
