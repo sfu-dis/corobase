@@ -307,7 +307,6 @@ void backup_start_replication_rdma() {
   }
 }
 
-// Support only one peer for now
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
                                   bool new_seg, uint64_t new_seg_start_offset) {
 #ifndef NDEBUG

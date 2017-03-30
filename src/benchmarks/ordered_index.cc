@@ -21,8 +21,7 @@ rc_t OrderedIndex::scan(transaction *t, const varstr &start_key, const varstr *e
                         scan_callback &callback, str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
-  key_reader kr;
-  tree_.do_search_range_call(*t, start_key, end_key, c, kr);
+  tree_.do_search_range_call(*t, start_key, end_key, c);
   return c.return_code;
 }
 
@@ -30,8 +29,7 @@ rc_t OrderedIndex::rscan(transaction *t, const varstr &start_key, const varstr *
                          scan_callback &callback, str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
-  key_reader kr;
-  tree_.do_rsearch_range_call(*t, start_key, end_key, c, kr);
+  tree_.do_rsearch_range_call(*t, start_key, end_key, c);
   return c.return_code;
 }
 
