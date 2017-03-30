@@ -23,6 +23,7 @@
 #include "macros.h"
 #include "util.h"
 #include "prefetch.h"
+#include "str_arena.h"
 #include "tuple.h"
 #include "object.h"
 

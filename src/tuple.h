@@ -4,7 +4,6 @@
 #include "macros.h"
 #include "util.h"
 
-#include "reader_writer.h"
 #include "dbcore/xid.h"
 #include "dbcore/sm-alloc.h"
 #include "dbcore/serial.h"
