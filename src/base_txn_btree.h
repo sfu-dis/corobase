@@ -13,8 +13,6 @@ class base_txn_btree {
     friend class sm_log_recover_impl;
     friend class sm_chkpt_mgr;
 public:
-
-  typedef dbtuple::size_type size_type;
   typedef concurrent_btree::string_type keystring_type;
 
   struct search_range_callback {

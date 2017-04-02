@@ -71,7 +71,6 @@ class transaction {
   friend class sm_oid_mgr;
 
 public:
-  typedef dbtuple::size_type size_type;
   typedef TXN::txn_state txn_state;
 
 #if defined(SSN) || defined(SSI)
