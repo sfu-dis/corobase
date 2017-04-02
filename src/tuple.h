@@ -22,9 +22,6 @@ using namespace TXN;
  */
 struct dbtuple {
 public:
-  typedef uint32_t size_type;
-  typedef varstr string_type;
-
 #if defined(SSN) || defined(SSI)
   readers_list::bitmap_t   readers_bitmap;   // bitmap of in-flight readers
   fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
@@ -44,12 +41,12 @@ public:
                 // it will become the X in the dangerous structure above
                 // and must abort.
 #endif
-  size_type size; // actual size of record
+  uint32_t size; // actual size of record
   varstr *pvalue;    // points to the value that will be put into value_start if committed
                      // so that read-my-own-update can copy from here.
   uint8_t value_start[0];   // must be last field
 
-  dbtuple(size_type size)
+  dbtuple(uint32_t size)
     :
 #if defined(SSN) || defined(SSI)
       sstamp(NULL_PTR),
@@ -170,10 +167,8 @@ public:
   }
 
 private:
-  static inline ALWAYS_INLINE size_type
-  CheckBounds(size_type s)
-  {
-    ASSERT(s <= std::numeric_limits<size_type>::max());
+  static inline ALWAYS_INLINE uint32_t CheckBounds(uint32_t s) {
+    ASSERT(s <= std::numeric_limits<uint32_t>::max());
     return s;
   }
 
