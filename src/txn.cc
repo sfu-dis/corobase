@@ -1116,6 +1116,7 @@ transaction::try_insert_new_tuple(concurrent_btree *btr,
       varstr* new_key = (varstr*)MM::allocate(sizeof(varstr) + key->size(), xc->begin_epoch);
       new (new_key) varstr((char*)new_key + sizeof(varstr), 0);
       new_key->copy_from(key);
+      key_array->ensure_size(oid);
       oidmgr->oid_put(key_array, oid, fat_ptr::make((void*)new_key, INVALID_SIZE_CODE));
     }
 
