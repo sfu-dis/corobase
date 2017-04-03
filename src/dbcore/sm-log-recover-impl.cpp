@@ -45,7 +45,6 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
     if(!oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset())) {
       MM::deallocate(ptr);
     }
-    ALWAYS_ASSERT(false);
   } else {
     oidmgr->oid_put_new_if_absent(f, o, ptr);
     ASSERT(oidmgr->oid_get(oa, o) == ptr);
