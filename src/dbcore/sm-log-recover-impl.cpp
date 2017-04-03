@@ -7,54 +7,48 @@
 #include "sm-oid-alloc-impl.h"
 #include "sm-rep.h"
 
-// The version-loading mechanism will only dig out the latest version as a result.
+// Returns something that we will install on the OID entry. 
 fat_ptr
-sm_log_recover_impl::recover_prepare_version(sm_log_scan_mgr::record_scan *logrec, fat_ptr next) {
-  // Note: payload_size() includes the whole varstr
-  // See do_tree_put's log_update call.
-  if (not config::eager_warm_up()) {
-    ASSERT(logrec->payload_ptr().asi_type() == fat_ptr::ASI_LOG);
-    return logrec->payload_ptr();
-  }
+sm_log_recover_impl::prepare_version(sm_log_scan_mgr::record_scan *logrec, fat_ptr next) {
+  // Regardless of the replay/warm-up policy (ie whether to load tuples from storage
+  // to memory), here we need a wrapper that points to the ``real'' localtion and
+  // the next version.
+  //
+  // Note: payload_size() includes the whole varstr. See do_tree_put's log_update call.
+  size_t sz = sizeof(Object);
 
-  size_t sz = sizeof(object);
+  // Pre-allocate space for the payload
   sz += (sizeof(dbtuple) + logrec->payload_size());
   sz = align_up(sz);
 
-  object *obj = new (MM::allocate(sz, 0)) object(logrec->payload_ptr(), next, 0);
-  obj->_clsn = logrec->payload_ptr();
+  Object* obj = new (MM::allocate(sz, 0)) Object(logrec->payload_ptr(), next,
+                                                 0, config::eager_warm_up());
+  obj->SetClsn(logrec->payload_ptr());
+  ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
 
-  // Load tuple varstr from logrec
-  dbtuple* tuple = (dbtuple *)obj->payload();
-  new (tuple) dbtuple(sz);
-  logrec->load_object((char *)tuple->get_value_start(), sz);
-
-  // Strip out the varstr stuff
-  tuple->size = ((varstr *)tuple->get_value_start())->size();
-  memmove(tuple->get_value_start(),
-    (char *)tuple->get_value_start() + sizeof(varstr),
-    tuple->size);
-
-  ASSERT(obj->_next == next);
-  obj->_clsn = logrec->payload_lsn().to_log_ptr();
-  ASSERT(logrec->payload_lsn().offset() == logrec->payload_ptr().offset());
-  ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
-  return fat_ptr::make(obj, encode_size_aligned(sz));
+  if(config::eager_warm_up()) {
+    obj->Pin();
+  }
+  return fat_ptr::make(obj, encode_size_aligned(sz), 0);
 }
 
 void
 sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool latest) {
   FID f = logrec->fid();
   OID o = logrec->oid();
-  fat_ptr ptr = recover_prepare_version(logrec, NULL_PTR);
+  fat_ptr ptr = prepare_version(logrec, NULL_PTR);
   ASSERT(oidmgr->file_exists(f));
   oid_array *oa = get_impl(oidmgr)->get_array(f);
   oa->ensure_size(o);
   // The chkpt recovery process might have picked up this tuple already
   if(latest) {
-    oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset());
+    if(!oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset())) {
+      MM::deallocate(ptr);
+    }
+    ALWAYS_ASSERT(false);
   } else {
     oidmgr->oid_put_new_if_absent(f, o, ptr);
+    ASSERT(oidmgr->oid_get(oa, o) == ptr);
   }
 }
 
@@ -127,12 +121,14 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
 
   fat_ptr ptr = NULL_PTR;
   if(!is_delete) {
-    ptr = recover_prepare_version(logrec, head_ptr);
+    ptr = prepare_version(logrec, head_ptr);
   }
   if(latest) {
-    oidmgr->oid_put(oa, o, ptr);
+    if(!oidmgr->oid_put_latest(oa, o, ptr, nullptr, logrec->payload_lsn().offset())) {
+      MM::deallocate(ptr);
+    }
   } else {
-    oidmgr->oid_put_latest(oa, o, ptr, nullptr, logrec->payload_lsn().offset());
+    oidmgr->oid_put(oa, o, ptr);
   }
 }
 

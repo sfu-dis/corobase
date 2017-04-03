@@ -3,9 +3,9 @@
 #include <unordered_set>
 #include "sm-config.h"
 #include "sm-defs.h"
+#include "sm-object.h"
 #include "epoch.h"
 #include "../macros.h"
-#include "../object.h"
 
 /*
  * tzwang(20161103): Memory allocation, deallocation, and garbage collection:
@@ -70,8 +70,8 @@ public:
       for(auto& p : *set) {
         if(p) {
           fat_ptr ret_ptr{p};
-          object *obj = (object*)ret_ptr.offset();
-          if(obj->_alloc_epoch < gc_epoch) {
+          Object *obj = (Object*)ret_ptr.offset();
+          if(obj->GetAllocateEpoch() < gc_epoch) {
             set->erase(p);
             return ret_ptr;
           }

@@ -15,9 +15,7 @@ struct sm_log_recover_impl {
   void recover_index_insert(sm_log_scan_mgr::record_scan *logrec);
   void recover_update(sm_log_scan_mgr::record_scan *logrec, bool is_delete, bool latest);
   void recover_update_key(sm_log_scan_mgr::record_scan* logrec);
-  fat_ptr recover_prepare_version(
-                              sm_log_scan_mgr::record_scan *logrec,
-                              fat_ptr next);
+  fat_ptr prepare_version(sm_log_scan_mgr::record_scan *logrec, fat_ptr next);
   OrderedIndex *recover_fid(sm_log_scan_mgr::record_scan *logrec);
   void recover_index_insert(
       sm_log_scan_mgr::record_scan *logrec, OrderedIndex* index);

@@ -14,6 +14,7 @@
 #include "sm-config.h"
 #include "sm-index.h"
 #include "sm-log-recover-impl.h"
+#include "sm-object.h"
 #include "sm-oid-impl.h"
 
 sm_oid_mgr *oidmgr = NULL;
@@ -551,22 +552,25 @@ iterate_index:
                 continue;
             }
 
-            object *obj = (object *)ptr.offset();
-            if(ptr.asi_type() == 0) {
-              ALWAYS_ASSERT(ptr.asi_type() == 0);
-              fat_ptr clsn = volatile_read(obj->_clsn);
-              ASSERT(clsn.asi_type() != fat_ptr::ASI_CHK);
-              if (clsn.asi_type() != fat_ptr::ASI_LOG) {
-                  ptr = volatile_read(obj->_next);
-                  goto retry;
-              }
+            Object* obj = (Object*)ptr.offset();
+            fat_ptr next = obj->GetNext();
+            fat_ptr clsn = obj->GetClsn();
+            if(clsn == NULL_PTR) {
+              // Stepping on a dead tuple, see details in oid_get_version.
+              ptr = oid_get(oa, oid);
+              goto retry;
+            } else if(clsn.asi_type() != fat_ptr::ASI_LOG) {
+              // Someone is still working on this version
+              ptr = next;
+            }
 
-              ASSERT(obj->_clsn.offset());
-              ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
-              if (obj->_pdest.offset() == 0) {
-                  // must be a delete, skip it
-                  continue;
-              }
+            ASSERT(obj->GetClsn().offset());
+            ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+
+            fat_ptr pdest = obj->GetPersistentAddress();
+            if(pdest.offset() == 0) {
+              // must be a delete, skip it
+              continue;
             }
 
             nrecords++;
@@ -584,32 +588,19 @@ iterate_index:
 
             // Tuple data if it's the primary index
             if(fm.second->IsPrimary()) {
+              if(!obj->IsInMemory()) {
+                obj->Pin();
+              }
               uint8_t size_code = ptr.size_code();
               ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
               auto data_size = decode_size_aligned(size_code);
-              if(ptr.asi_type()) {
-                fat_ptr p = NULL_PTR;
-                if(ptr.asi_type() == fat_ptr::ASI_CHK) {
-                  chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
-                  obj = (object*)chkptmgr->advance_buffer(data_size);
-                  p = object::load_durable_object(ptr, NULL_PTR, 0, obj);
-                  ASSERT((uint64_t)obj == p.offset());
-                } else {
-                  ALWAYS_ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
-                  p = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
-                  obj = (object*)p.offset();
-                }
-                size_code = p.size_code();
-              }
               data_size = decode_size_aligned(size_code);
-              ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
-              if(ptr.asi_type() != fat_ptr::ASI_CHK) {
-                chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
-                // It's already there if we're digging out a tuple from a previous chkpt
-                chkptmgr->write_buffer((char*)obj, data_size);
-                ALWAYS_ASSERT(obj->_clsn.asi_type() == fat_ptr::ASI_LOG);
-                ALWAYS_ASSERT(obj->tuple()->size <= data_size - sizeof(object) - sizeof(dbtuple));
-              }
+              ALWAYS_ASSERT(obj->GetTuple()->size <= data_size - sizeof(Object) - sizeof(dbtuple));
+              chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
+              // It's already there if we're digging out a tuple from a previous chkpt
+              chkptmgr->write_buffer((char*)obj, data_size);
+              ALWAYS_ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+              ALWAYS_ASSERT(obj->GetTuple()->size <= data_size - sizeof(Object) - sizeof(dbtuple));
               chkpt_size += (sizeof(OID) + sizeof(uint8_t) + data_size);
             }
         }
@@ -639,6 +630,7 @@ void
 sm_oid_mgr::warm_up()
 {
   // REVISIT
+  /*
     ASSERT(oidmgr);
     std::cout << "[Warm-up] Started\n";
     {
@@ -654,6 +646,7 @@ sm_oid_mgr::warm_up()
                 oidmgr->ensure_tuple(oa, oid, 0);
         }
     }
+    */
 }
 
 FID
@@ -752,49 +745,53 @@ sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p)
   }
 }
 
-void
+bool
 sm_oid_mgr::oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset)
 {
-  oid_put_latest(get_impl(this)->get_array(f), o, p, k, lsn_offset);
+  ASSERT(config::is_backup_srv() || config::loading);
+  return oid_put_latest(get_impl(this)->get_array(f), o, p, k, lsn_offset);
 }
 
-void
+bool
 sm_oid_mgr::oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset) {
+  ASSERT(config::is_backup_srv() || config::loading);
   auto* entry = oa->get(o);
-  uint64_t expected = -1;
-  bool do_it = false;;
-  if(*entry == NULL_PTR) {
-    expected = 0;
+retry:
+  fat_ptr ptr = *entry;
+  bool do_it = false;
+  if(ptr == NULL_PTR) {
     do_it = true;
   } else {
-    expected = entry->_ptr;
-    if(entry->asi_type() == 0) {
-      // Must go into the object to see its lsn
-      object* obj = (object*)entry->offset();
-      if(obj->_clsn.offset() < lsn_offset) {
-        do_it = true;
-      }
-    } else if(entry->asi_type() == fat_ptr::ASI_LOG) {
-      // Good, directly comparable
-      if(entry->offset() < lsn_offset) {
-        do_it = true;
-      }
-    } else {
+    uint32_t type = ptr.asi_type();
+    if(type == fat_ptr::ASI_CHK) {
       // Must be in chkpt file
       // TODO(tzwang): so far we don't chkpt on the backup, so it's safe to
       // just overwrite (a CAS is needed still) because if it remains to be
       // ASI_CHK then it's truely not touched by query threads.
-      ALWAYS_ASSERT(entry->asi_type() == fat_ptr::ASI_CHK);
+      ALWAYS_ASSERT(type == fat_ptr::ASI_CHK);
       do_it = true;
+    } else {
+      // Must go into the object to see lsn
+      Object *obj = (Object*)ptr.offset();
+      if(obj->GetClsn().offset() < lsn_offset) {
+        do_it = true;
+        obj->SetNext(ptr);
+      }
     }
   }
 
-// REVISIT
-//  if(do_it && __sync_bool_compare_and_swap(&entry->_ptr, expected, p._ptr)) {
-//    if(expected == 0) {
-//      entry->key = k;
-//    }
-//  }
+  if(do_it) {
+    uint64_t expected = ptr._ptr;
+    if(__sync_bool_compare_and_swap(&entry->_ptr, expected, p._ptr)) {
+      if(k && !config::is_backup_srv() && expected == 0) {
+        //volatile_write(IndexDescriptor::Get(f)->GetKeyArray()->get(o), k);
+      }
+      return true;
+    } else {
+      goto retry;
+    }
+  }
+  return false;
 }
 
 fat_ptr
@@ -814,22 +811,15 @@ sm_oid_mgr::oid_put_update(oid_array *oa,
                            xid_context *updater_xc,
                            fat_ptr *new_obj_ptr)
 {
-#ifndef NDEBUG
-    int attempts = 0;
-#endif
-    auto *ptr = ensure_tuple(oa, o, updater_xc->begin_epoch);
-    // No need to call ensure_tuple() below start_over - it returns a ptr,
-    // a dereference is enough to capture the content.
-    // Note: this is different from oid_get_version where start_over must
-    // appear *above* ensure_tuple: here we don't change the value of ptr.
+    auto *ptr = oa->get(o);
 start_over:
     fat_ptr head = volatile_read(*ptr);
-    object *old_desc = (object *)head.offset();
+    Object* old_desc = (Object*)head.offset();
     ASSERT(head.size_code() != INVALID_SIZE_CODE);
-    dbtuple *version = (dbtuple *)old_desc->payload();
+    dbtuple* version = (dbtuple *)old_desc->GetPayload();
     bool overwrite = false;
 
-    auto clsn = volatile_read(old_desc->_clsn);
+    auto clsn = old_desc->GetClsn();
     if (clsn == NULL_PTR) {
         // stepping on an unlinked version?
         goto start_over;
@@ -855,7 +845,7 @@ start_over:
         xid_context *holder= xid_get_context(holder_xid);
         if (not holder) {
 #ifndef NDEBUG
-            auto t = volatile_read(old_desc->_clsn).asi_type();
+            auto t = old_desc->GetClsn().asi_type();
             ASSERT(t == fat_ptr::ASI_LOG or oid_get(oa, o) != head);
 #endif
             goto start_over;
@@ -867,10 +857,6 @@ start_over:
 
         // context still valid for this XID?
         if (unlikely(owner != holder_xid)) {
-#ifndef NDEBUG
-            ASSERT(attempts < 2);
-            attempts++;
-#endif
             goto start_over;
         }
         ASSERT(holder_xid != updater_xid);
@@ -887,7 +873,7 @@ start_over:
     }
     // check dirty writes
     else {
-        ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG );
+        ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
 #ifndef RC
         // First updater wins: if some concurrent tx committed first,
         // I have to abort. Same as in Oracle. Otherwise it's an isolation
@@ -904,19 +890,18 @@ install:
     // Note for this to be correct we shouldn't allow multiple txs
     // working on the same tuple at the same time.
 
-    *new_obj_ptr = object::create_tuple_object(value, false, updater_xc->begin_epoch);
-    object* new_object = (object *)new_obj_ptr->offset();
-    new_object->_clsn = updater_xc->owner.to_ptr();
+    *new_obj_ptr = Object::Create(value, false, updater_xc->begin_epoch);
+    Object *new_object = (Object*)new_obj_ptr->offset();
+    new_object->SetClsn(updater_xc->owner.to_ptr());
 
     if (overwrite) {
-        volatile_write(new_object->_next, old_desc->_next);
+        new_object->SetNext(old_desc->GetNext());
         // I already claimed it, no need to use cas then
         volatile_write(ptr->_ptr, new_obj_ptr->_ptr);
         __sync_synchronize();
         return head;
-    }
-    else {
-        volatile_write(new_object->_next, head);
+    } else {
+        new_object->SetNext(head);
         if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_obj_ptr->_ptr)) {
             // Succeeded installing a new version, now only I can modify the
             // chain, try recycle some objects
@@ -935,19 +920,12 @@ sm_oid_mgr::oid_get_latest_version(FID f, OID o)
     return oid_get_latest_version(get_impl(this)->get_array(f), o);
 }
 
-// Load the version from log if not present in memory
-// TODO: anti-caching
-fat_ptr*
-sm_oid_mgr::ensure_tuple(FID f, OID o, epoch_num e)
-{
-    return ensure_tuple(get_impl(this)->get_array(f), o, e);
-}
-
-// @ptr: address of an object_header
-// Returns address of an object
+// Load the tuple pointed to by [ptr] from storage to memory, must
+// handle cases where we run into an concurrenty update.
 fat_ptr
-sm_oid_mgr::ensure_tuple(fat_ptr *ptr, epoch_num epoch)
+sm_oid_mgr::ensure_version(fat_ptr* prev, fat_ptr ptr, epoch_num epoch)
 {
+  /*
   fat_ptr p = *ptr;
   auto asi_type = p.asi_type();
   if(asi_type == 0) {
@@ -967,6 +945,7 @@ sm_oid_mgr::ensure_tuple(fat_ptr *ptr, epoch_num epoch)
   }
   // FIXME: handle ASI_HEAP and ASI_EXT too
   return *ptr;
+  */
 }
 
 dbtuple*
@@ -977,129 +956,116 @@ sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 }
 
 dbtuple*
-sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc)
-{
+sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc) {
 start_over:
-    // must put start_over above this, because we'll update pp later
-    fat_ptr *pp = oa->get(o);
-    fat_ptr ptr = volatile_read(*pp);
-    while (1) {
-        if(ptr.asi_type() == fat_ptr::ASI_LOG || ptr.asi_type() == fat_ptr::ASI_CHK) {
-            ptr = ensure_tuple(pp, visitor_xc->begin_epoch);
-        } else {
-            ASSERT(ptr.asi_type() == 0);  // must be in memory
-        }
-
-        if (not ptr.offset())
-            break;
-
-        auto *cur_obj = (object*)ptr.offset();
-        pp = &cur_obj->_next;
-
-        // Must dereference this before reading cur_obj->_clsn:
-        // the version we're currently reading (ie cur_obj) might be unlinked
-        // and thus recycled by the memory allocator at any time if it's not
-        // a committed version. If so, cur_obj->_next will be pointing to some
-        // other object in the allocator's free object pool - we'll probably
-        // end up at la-la land if we followed this _next pointer value...
-        // Here we employ some flavor of OCC to solve this problem:
-        // the aborting transaction that will unlink cur_obj will update
-        // cur_obj->_clsn to NULL_PTR, then deallocate(). Before reading
-        // cur_obj->_clsn, we (as the visitor), first dereference pp to get
-        // a stable value that "should" contain the right address of the next
-        // version. We then read cur_obj->_clsn to verify: if it's NULL_PTR
-        // that means we might have read a wrong _next value that's actually
-        // pointing to some irrelevant object in the allocator's memory pool,
-        // hence must start over from the beginning of the version chain.
-        ptr = volatile_read(*pp);
-        auto clsn = volatile_read(cur_obj->_clsn);
-        if (clsn == NULL_PTR) {
-            // dead tuple that was (or about to be) unlinked, start over
-            goto start_over;
-        }
-
-        ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_XID or clsn.asi_type() == fat_ptr::ASI_LOG);
-        // xid tracking & status check
-        if (clsn.asi_type() == fat_ptr::ASI_XID) {
-            /* Same as above: grab and verify XID context,
-               starting over if it has been recycled
-             */
-            auto holder_xid = XID::from_ptr(clsn);
-
-            // dirty data made by me is visible!
-            if (holder_xid == visitor_xc->owner) {
-                ASSERT(not cur_obj->_next.offset() or ((object *)cur_obj->_next.offset())->_clsn.asi_type() == fat_ptr::ASI_LOG);
-                return cur_obj->tuple();
-            }
-            auto* holder = xid_get_context(holder_xid);
-            if (not holder) // invalid XID (dead tuple, must retry than goto next in the chain)
-                goto start_over;
-
-            auto state = volatile_read(holder->state);
-            auto owner = volatile_read(holder->owner);
-
-            // context still valid for this XID?
-            if (unlikely(owner != holder_xid))
-                goto start_over;
-
-            if (state == TXN_CMMTD) {
-                ASSERT(volatile_read(holder->end));
-                ASSERT(owner == holder_xid);
-#if defined(RC) || defined(RC_SPIN)
-#ifdef SSN
-                if (config::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
-                    if (holder->end < visitor_xc->begin) {
-                        return cur_obj->tuple();
-                    }
-                }
-                else {
-                    return cur_obj->tuple();
-                }
-#else  // SSN
-                return cur_obj->tuple();
-#endif  // SSN
-#else  // not RC/RC_SPIN
-                if (holder->end < visitor_xc->begin) {
-                    return cur_obj->tuple();
-                } else {
-                    oid_check_phantom(visitor_xc, holder->end);
-                }
-#endif
-            } else {
-#ifdef RC_SPIN
-                // spin until the tx is settled (either aborted or committed)
-                if (spin_for_cstamp(holder_xid, holder) == TXN_CMMTD) {
-                    return cur_obj->tuple();
-                }
-#endif
-            }
-        }
-        else if (clsn.asi_type() == fat_ptr::ASI_LOG) {
-#if defined(RC) || defined(RC_SPIN)
-#if defined(SSN)
-            if (config::enable_safesnap and visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY) {
-                if (LSN::from_ptr(clsn).offset() <= visitor_xc->begin) {
-                    return cur_obj->tuple();
-                } else {
-                    oid_check_phantom(visitor_xc, clsn.offset());
-                }
-            } else {
-                return cur_obj->tuple();
-            }
-#else
-            return cur_obj->tuple();
-#endif
-#else  // Not RC
-            if (LSN::from_ptr(clsn).offset() <= visitor_xc->begin) {
-                return cur_obj->tuple();
-            } else {
-                oid_check_phantom(visitor_xc, clsn.offset());
-            }
-#endif
-        }
+  fat_ptr* entry = oa->get(o);
+  fat_ptr ptr = volatile_read(*entry);
+  while (1) {
+    ASSERT(ptr.asi_type() == 0);
+    if(ptr.offset() == 0) {
+      break;
     }
 
-    return NULL;    // No Visible records
+    Object *cur_obj = (Object*)ptr.offset();
+    // Must read next_ before reading cur_obj->_clsn:
+    // the version we're currently reading (ie cur_obj) might be unlinked
+    // and thus recycled by the memory allocator at any time if it's not
+    // a committed version. If so, cur_obj->_next will be pointing to some
+    // other object in the allocator's free object pool - we'll probably
+    // end up at la-la land if we followed this _next pointer value...
+    // Here we employ some flavor of OCC to solve this problem:
+    // the aborting transaction that will unlink cur_obj will update
+    // cur_obj->_clsn to NULL_PTR, then deallocate(). Before reading
+    // cur_obj->_clsn, we (as the visitor), first dereference pp to get
+    // a stable value that "should" contain the right address of the next
+    // version. We then read cur_obj->_clsn to verify: if it's NULL_PTR
+    // that means we might have read a wrong _next value that's actually
+    // pointing to some irrelevant object in the allocator's memory pool,
+    // hence must start over from the beginning of the version chain.
+    fat_ptr tentative_next = cur_obj->GetNext();
+    auto clsn = cur_obj->GetClsn();
+    if (clsn == NULL_PTR) {
+      // dead tuple that was (or about to be) unlinked, start over
+      goto start_over;
+    }
+
+    uint16_t asi_type = clsn.asi_type();
+    ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
+    if(asi_type == fat_ptr::ASI_XID) {  // in-flight
+      XID holder_xid = XID::from_ptr(clsn);
+
+      // dirty data made by me is visible!
+      if(holder_xid == visitor_xc->owner) {
+        ASSERT(!cur_obj->GetNext().offset() ||
+               ((Object*)cur_obj->GetNext().offset())->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+        return cur_obj->GetTuple();
+      }
+      auto* holder = xid_get_context(holder_xid);
+      if(!holder) {  // invalid XID (dead tuple, must retry than goto next in the chain)
+        goto start_over;
+      }
+
+      auto state = volatile_read(holder->state);
+      auto owner = volatile_read(holder->owner);
+
+      // context still valid for this XID?
+      if(owner != holder_xid) {
+        goto start_over;
+      }
+
+      if(state == TXN_CMMTD) {
+        ASSERT(volatile_read(holder->end));
+        ASSERT(owner == holder_xid);
+#if defined(RC) || defined(RC_SPIN)
+#ifdef SSN
+        if(config::enable_safesnap && (visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
+          if(holder->end < visitor_xc->begin) {
+            return cur_obj->GetTuple();
+          }
+        } else {
+          return cur_obj->GetTuple();
+        }
+#else  // SSN
+        return cur_obj->GetTuple();
+#endif  // SSN
+#else  // not RC/RC_SPIN
+        if(holder->end < visitor_xc->begin) {
+          return cur_obj->GetTuple();
+        } else {
+          oid_check_phantom(visitor_xc, holder->end);
+        }
+#endif
+      }
+    } else {
+      // Already committed, now do visibility test and also
+      // see OID entry's ASI to determine where the data is.
+      ASSERT(asi_type == fat_ptr::ASI_LOG || asi_type == fat_ptr::ASI_CHK);
+      uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
+#if defined(RC) || defined(RC_SPIN)
+#if defined(SSN)
+      if(config::enable_safesnap && (visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
+        if(lsn_offset <= visitor_xc->begin) {
+          return cur_obj->PinAndGetTuple();
+        } else {
+          oid_check_phantom(visitor_xc, clsn.offset());
+        }
+      } else {
+        return cur_obj->PinAndGetTuple();
+      }
+#else
+      return cur_obj->PinAndGetTuple();
+#endif
+#else  // Not RC
+      if(lsn_offset <= visitor_xc->begin) {
+        return cur_obj->PinAndGetTuple();
+      } else {
+        oid_check_phantom(visitor_xc, clsn.offset());
+      }
+#endif
+    }
+    ptr = tentative_next;
+  }
+  return nullptr;    // No Visible records
 }
 
 void
