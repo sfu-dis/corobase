@@ -372,8 +372,8 @@ transaction::parallel_ssn_commit()
         // overwrite for the reader list
         dbtuple *overwritten_tuple = tuple->next();
         ASSERT(not overwritten_tuple or
-               ((Object*)((char *)tuple - sizeof(Object)))->_next.offset() ==
-               (uint64_t)((char *)overwritten_tuple - sizeof(Object)));
+               (tuple->get_object())->GetNext().offset() ==
+               (uint64_t)(overwritten_tuple->get_object()));
         if (not overwritten_tuple) // insert
             continue;
 
@@ -575,8 +575,8 @@ transaction::parallel_ssn_commit()
         tuple->do_write();
         dbtuple *next_tuple = tuple->next();
         ASSERT(not next_tuple or
-               ((Object*)((char *)tuple - sizeof(Object)))->_next.offset() ==
-               (uint64_t)((char *)next_tuple - sizeof(Object)));
+               (tuple->get_object()->GetNext().offset() ==
+               (uint64_t)next_tuple->get_object()));
         if (next_tuple) {   // update, not insert
             ASSERT(next_tuple->get_object()->GetClsn().asi_type());
             ASSERT(XID::from_ptr(next_tuple->sstamp) == xid);
@@ -931,7 +931,7 @@ transaction::parallel_ssi_commit()
         }
         volatile_write(tuple->xstamp, cstamp);
         tuple->get_object()->SetClsn(clsn_ptr);
-        ASSERT(tuple->get_object()->GetClsn() == fat_ptr::ASI_LOG);
+        ASSERT(tuple->get_object()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
     }
 
     // NOTE: make sure this happens after populating log block,
