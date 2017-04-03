@@ -147,23 +147,22 @@ public:
     return &value_start[0];
   }
 
-  inline ALWAYS_INLINE object*
-  get_object()
-  {
-    object *obj = (object *)((char *)this - sizeof(object));
-    ASSERT(obj->payload() == (char *)this);
+  inline ALWAYS_INLINE Object* get_object() {
+    Object* obj = (Object*)((char *)this - sizeof(Object));
+    ASSERT(obj->GetPayload() == (char *)this);
     return obj;
   }
 
   inline ALWAYS_INLINE dbtuple*
   next()
   {
-    object *myobj = get_object();
-    ASSERT(myobj->payload() == (char *)this);
-    if (myobj->_next.offset())
-      return (dbtuple *)((object *)myobj->_next.offset())->payload();
-    else
-      return NULL;
+    Object* myobj = get_object();
+    ASSERT(myobj->GetPayload() == (char *)this);
+    if(myobj->GetNext().offset()) {
+      return (dbtuple *)((Object*)myobj->GetNext().offset())->GetPayload();
+    } else {
+      return nullptr;
+    }
   }
 
 private:
