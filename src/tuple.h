@@ -80,7 +80,7 @@ public:
     XID owner = volatile_read(visitor->owner);
 
   retry:
-    fat_ptr cstamp = volatile_read(get_object()->_clsn);
+    fat_ptr cstamp = get_object()->GetClsn();
 
     if (cstamp.asi_type() == fat_ptr::ASI_XID) {
       XID xid = XID::from_ptr(cstamp);
