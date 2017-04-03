@@ -21,31 +21,15 @@ sm_log_recover_impl::prepare_version(sm_log_scan_mgr::record_scan *logrec, fat_p
   sz += (sizeof(dbtuple) + logrec->payload_size());
   sz = align_up(sz);
 
-  Object* obj = new (MM::allocate(sz, 0)) Object(logrec->payload_ptr(), next, 0, config::eager_warm_up);
+  Object* obj = new (MM::allocate(sz, 0)) Object(logrec->payload_ptr(), next,
+                                                 0, config::eager_warm_up());
   obj->SetClsn(logrec->payload_ptr());
+  ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
 
   if(config::eager_warm_up()) {
     obj->Pin();
   }
-  /*
-    // Load tuple varstr from logrec
-    dbtuple* tuple = (dbtuple *)obj->payload();
-    new (tuple) dbtuple(sz);
-    logrec->load_object((char *)tuple->get_value_start(), sz);
-
-    // Strip out the varstr stuff
-    tuple->size = ((varstr *)tuple->get_value_start())->size();
-    memmove(tuple->get_value_start(),
-      (char *)tuple->get_value_start() + sizeof(varstr),
-      tuple->size);
-
-    ASSERT(obj->_next == next);
-    obj->SetClsn(logrec->payload_lsn().to_log_ptr());
-    ASSERT(logrec->payload_lsn().offset() == logrec->payload_ptr().offset());
-    ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
-  }
-  */
-  return fat_ptr::make(obj, encode_size_aligned(sz));
+  return fat_ptr::make(obj, encode_size_aligned(sz), 0);
 }
 
 void
@@ -59,10 +43,12 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
   // The chkpt recovery process might have picked up this tuple already
   if(latest) {
     if(!oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset())) {
-      // dealloc
+      MM::deallocate(ptr);
     }
+    ALWAYS_ASSERT(false);
   } else {
     oidmgr->oid_put_new_if_absent(f, o, ptr);
+    ASSERT(oidmgr->oid_get(oa, o) == ptr);
   }
 }
 
@@ -139,7 +125,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   }
   if(latest) {
     if(!oidmgr->oid_put_latest(oa, o, ptr, nullptr, logrec->payload_lsn().offset())) {
-      // dealloc
+      MM::deallocate(ptr);
     }
   } else {
     oidmgr->oid_put(oa, o, ptr);
