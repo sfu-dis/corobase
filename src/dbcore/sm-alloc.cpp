@@ -8,6 +8,7 @@
 #include "sm-alloc.h"
 #include "sm-chkpt.h"
 #include "sm-common.h"
+#include "sm-object.h"
 #include "../txn.h"
 
 namespace MM {
@@ -85,7 +86,7 @@ prepare_node_memory() {
 
 void gc_version_chain(fat_ptr* oid_entry) {
   fat_ptr ptr = *oid_entry;
-  object* cur_obj = (object*)ptr.offset();
+  Object* cur_obj = (Object*)ptr.offset();
   if(!cur_obj) {
     // Tuple is deleted, skip
     return;
@@ -95,31 +96,31 @@ void gc_version_chain(fat_ptr* oid_entry) {
   // because the head might be still being modified (hence its _next field)
   // and might be gone any time (tx abort). Skip records in chkpt file as
   // well - not even in memory.
-  auto clsn = volatile_read(cur_obj->_clsn);
+  auto clsn = cur_obj->GetClsn();
   fat_ptr* prev_next = nullptr;
   if(clsn.asi_type() == fat_ptr::ASI_CHK) {
     return;
   }
   if(clsn.asi_type() != fat_ptr::ASI_LOG) {
     DCHECK(clsn.asi_type() == fat_ptr::ASI_XID);
-    ptr = volatile_read(cur_obj->_next);
-    cur_obj = (object*)ptr.offset();
+    ptr = cur_obj->GetNext();
+    cur_obj = (Object*)ptr.offset();
   }
 
   // Now cur_obj should be the fisrt committed version, continue to the version
   // that can be safely recycled (the version after cur_obj).
-  ptr = volatile_read(cur_obj->_next);
-  prev_next = &cur_obj->_next;
+  ptr = cur_obj->GetNext();
+  prev_next = cur_obj->GetNextPtr();
 
   while(ptr.offset()) {
-    cur_obj = (object*)ptr.offset();
-    clsn = volatile_read(cur_obj->_clsn);
+    cur_obj = (Object*)ptr.offset();
+    clsn = cur_obj->GetClsn();
     if(clsn == NULL_PTR || clsn.asi_type() != fat_ptr::ASI_LOG) {
       // Might already got recycled, give up
       break;
     }
-    ptr = cur_obj->_next;
-    prev_next = &cur_obj->_next;
+    ptr = cur_obj->GetNext();
+    prev_next = cur_obj->GetNextPtr();
     // If the chkpt needs to be a consistent one, must make sure not to GC a version
     // that might be needed by chkpt:
     // uint64_t glsn = std::min(logmgr->durable_flushed_lsn().offset(), volatile_read(gc_lsn));
@@ -141,13 +142,13 @@ void gc_version_chain(fat_ptr* oid_entry) {
       // __sync_bool_compare_and_swap(&prev_next->_ptr, ptr._ptr, 0)) {
       volatile_write(prev_next->_ptr, 0);
       while(ptr.offset()) {
-        cur_obj = (object*)ptr.offset();
-        clsn = volatile_read(cur_obj->_clsn);
+        cur_obj = (Object*)ptr.offset();
+        clsn = cur_obj->GetClsn();
         ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
         ALWAYS_ASSERT(LSN::from_ptr(clsn).offset() <= glsn);
-        fat_ptr next_ptr = cur_obj->_next;
-        volatile_write(cur_obj->_clsn, NULL_PTR);
-        volatile_write(cur_obj->_next, NULL_PTR);
+        fat_ptr next_ptr = cur_obj->GetNext();
+        cur_obj->SetClsn(NULL_PTR);
+        cur_obj->SetNext(NULL_PTR);
         if(!tls_free_object_pool) {
           tls_free_object_pool = new TlsFreeObjectPool;
         }
@@ -213,9 +214,9 @@ void deallocate(fat_ptr p) {
   ASSERT(p != NULL_PTR);
   ASSERT(p.size_code());
   ASSERT(p.size_code() != INVALID_SIZE_CODE);
-  object *obj = (object *)p.offset();
-  volatile_write(obj->_next, NULL_PTR);
-  volatile_write(obj->_clsn, NULL_PTR);
+  Object* obj = (Object*)p.offset();
+  obj->SetNext(NULL_PTR);
+  obj->SetClsn(NULL_PTR);
   if(!tls_free_object_pool) {
     tls_free_object_pool = new TlsFreeObjectPool;
   }
