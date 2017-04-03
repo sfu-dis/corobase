@@ -173,8 +173,12 @@ struct sm_oid_mgr {
     void oid_put(FID f, OID o, fat_ptr p);
     void oid_put_new(FID f, OID o, fat_ptr p);
     void oid_put_new_if_absent(FID f, OID o, fat_ptr p);
-    void oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
-    void oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
+
+    /* Same as oid_put_update but give up if the entry is already pointing to
+     * a newer version; currently for recovery and roll-forward in backups only.
+     */
+    bool oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
+    bool oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
 
     /* Return a fat_ptr to the overwritten object (could be an in-flight version!) */
     fat_ptr oid_put_update(
@@ -187,16 +191,7 @@ struct sm_oid_mgr {
     dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
     dbtuple *oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc);
 
-    fat_ptr *ensure_tuple(FID f, OID o, epoch_num e);
-    fat_ptr ensure_tuple(fat_ptr *ptr, epoch_num e);
-
-    inline fat_ptr* ensure_tuple(oid_array *oa, OID o, epoch_num e) {
-        fat_ptr *ptr = oa->get(o);
-        fat_ptr p = *ptr;
-        if (p.asi_type() == fat_ptr::ASI_LOG)
-            ensure_tuple(ptr, e);
-        return ptr;
-    }
+    fat_ptr ensure_version(fat_ptr* prev, fat_ptr ptr, epoch_num epoch);
 
     inline void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
       if(!config::phantom_prot) {
@@ -242,7 +237,7 @@ struct sm_oid_mgr {
     inline dbtuple* oid_get_latest_version(oid_array *oa, OID o) {
         auto head_offset = oa->get(o)->offset();
         if (head_offset)
-            return (dbtuple *)((object *)head_offset)->payload();
+            return (dbtuple *)((Object*)head_offset)->GetPayload();
         return NULL;
     }
 
@@ -255,9 +250,9 @@ struct sm_oid_mgr {
         oid_unlink(oa->get(o));
     }
     inline void oid_unlink(fat_ptr* ptr) {
-        object *head_obj = (object *)ptr->offset();
+        Object* head_obj = (Object*)ptr->offset();
         // using a CAS is overkill: head is guaranteed to be the (only) dirty version
-        volatile_write(ptr->_ptr, head_obj->_next._ptr);
+        volatile_write(ptr->_ptr, head_obj->GetNext()._ptr);
         __sync_synchronize();
         // tzwang: The caller is responsible for deallocate() the head version
         // got unlinked - a update of own write will record the unlinked version

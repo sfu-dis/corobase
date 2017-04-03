@@ -30,6 +30,7 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover-impl.cpp
   #${CMAKE_CURRENT_SOURCE_DIR}/sm-log-segments.cpp  # belongs to test cases only
   #${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc.cpp     # belongs to test cases only
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-object.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-rep.cpp

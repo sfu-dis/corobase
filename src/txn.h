@@ -18,6 +18,7 @@
 #include "dbcore/sm-config.h"
 #include "dbcore/sm-oid.h"
 #include "dbcore/sm-log.h"
+#include "dbcore/sm-object.h"
 #include "dbcore/sm-rc.h"
 #include "masstree_btree.h"
 #include "macros.h"
@@ -25,7 +26,6 @@
 #include "prefetch.h"
 #include "str_arena.h"
 #include "tuple.h"
-#include "object.h"
 
 #include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
@@ -41,9 +41,7 @@ struct write_record_t {
   FID fid;  // for rdma-based log shipping
   write_record_t(fat_ptr* entry, FID fid) : entry(entry), fid(fid) {}
   write_record_t() : entry(nullptr), fid(0) {}
-  inline object *get_object() {
-    return (object *)entry->offset();
-  }
+  inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
 struct write_set_t {

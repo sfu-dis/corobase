@@ -16,6 +16,7 @@
 
 #include "dbcore/sm-alloc.h"
 #include "dbcore/sm-index.h"
+#include "dbcore/sm-object.h"
 #include "dbcore/sm-oid.h"
 
 #include "macros.h"
@@ -30,7 +31,6 @@
 #include "masstree/mtcounters.hh"
 #include "masstree/circular_int.hh"
 
-#include "object.h"
 #include "tuple.h"
 
 class simple_threadinfo {
@@ -121,12 +121,12 @@ class simple_threadinfo {
 
     // memory allocation
     void* allocate(size_t sz, memtag) {
-      object *obj = (object *)MM::allocate(sz + sizeof(object), epoch_);
-      new (obj) object(NULL_PTR, NULL_PTR, epoch_);
-      return obj->payload();
+      Object* obj = (Object *)MM::allocate(sz + sizeof(Object), epoch_);
+      new(obj) Object(NULL_PTR, NULL_PTR, epoch_, true);
+      return obj->GetPayload();
     }
     void deallocate(void* p, size_t sz, memtag) {
-      MM::deallocate(fat_ptr::make((char *)p - sizeof(object), encode_size_aligned(sz)));
+      MM::deallocate(fat_ptr::make((char *)p - sizeof(Object), encode_size_aligned(sz)));
     }
     void deallocate_rcu(void *p, size_t sz, memtag m) {
       deallocate(p, sz, m);  // FIXME(tzwang): add rcu callback support

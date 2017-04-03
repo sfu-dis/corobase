@@ -230,16 +230,18 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
         ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
         auto data_size = decode_size_aligned(size_code);
         if(o % num_recovery_threads == oid_partition) {
-          fat_ptr ptr = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
+          fat_ptr pdest = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
+          Object* obj = (Object*)MM::allocate(decode_size_aligned(size_code), 0);
+          new(obj) Object(pdest, NULL_PTR, 0, config::eager_warm_up());
           if(config::eager_warm_up()) {
-            ptr = object::load_durable_object(ptr, NULL_PTR, 0, nullptr);
-            ASSERT(ptr.offset());
-            ASSERT(ptr.asi_type() == 0);
+            obj->Pin();
+          } else {
+            obj->SetClsn(fat_ptr::make(pdest.offset(), size_code, fat_ptr::ASI_LOG_FLAG));
+            ASSERT(!obj->IsInMemory());
           }
-          // load_durable_object uses the base_chkpt_fd, which is different, so lseek anyway.
-          oidmgr->oid_put_new(oa, o, ptr);
+          oidmgr->oid_put_new(oa, o, fat_ptr::make(obj, size_code, 0));
         }
-        read_buffer(data_size);//(fd, data_size, SEEK_CUR);
+        read_buffer(data_size);
         nbytes += data_size;
       }
     }
