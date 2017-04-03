@@ -762,20 +762,15 @@ retry:
   if(ptr == NULL_PTR) {
     do_it = true;
   } else {
-    uint32_t type = ptr.asi_type();
-    if(type == fat_ptr::ASI_CHK) {
-      // Must be in chkpt file
-      // TODO(tzwang): so far we don't chkpt on the backup, so it's safe to
-      // just overwrite (a CAS is needed still) because if it remains to be
-      // ASI_CHK then it's truely not touched by query threads.
-      ALWAYS_ASSERT(type == fat_ptr::ASI_CHK);
+    ASSERT(ptr.asi_type() == 0);
+    // Go in to see LSN
+    Object* obj = (Object*)ptr.offset();
+    if(obj->GetClsn().offset() < lsn_offset) {
       do_it = true;
-    } else {
-      // Must go into the object to see lsn
-      Object *obj = (Object*)ptr.offset();
-      if(obj->GetClsn().offset() < lsn_offset) {
-        do_it = true;
-        obj->SetNext(ptr);
+      if(p.offset()) {
+        // Could be a delete
+        Object* new_obj = (Object*)p.offset();
+        new_obj->SetNext(ptr);
       }
     }
   }
