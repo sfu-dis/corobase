@@ -553,22 +553,22 @@ iterate_index:
             }
 
             Object* obj = (Object*)ptr.offset();
-            if(obj->IsInMemory()) {
-              fat_ptr clsn = obj->GetClsn();
-              ASSERT(clsn.asi_type() != fat_ptr::ASI_CHK);
-              // Someone is working on this version
-              if (clsn.asi_type() != fat_ptr::ASI_LOG) {
-                  ptr = obj->GetNext();
-                  goto retry;
-              }
+            fat_ptr next = obj->GetNext();
+            fat_ptr clsn = obj->GetClsn();
+            if(clsn == NULL_PTR) {
+              // Stepping on a dead tuple, see details in oid_get_version.
+              ptr = oid_get(oa, oid);
+              goto retry;
+            } else if(clsn.asi_type() != fat_ptr::ASI_LOG) {
+              // Someone is still working on this version
+              ptr = next;
             }
 
             ASSERT(obj->GetClsn().offset());
             ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
 
-            // ptr now will point to the persistent location
-            ptr = obj->GetPersistentAddress();
-            if(ptr.offset() == 0) {
+            fat_ptr pdest = obj->GetPersistentAddress();
+            if(pdest.offset() == 0) {
               // must be a delete, skip it
               continue;
             }
