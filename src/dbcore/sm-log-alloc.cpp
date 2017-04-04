@@ -513,7 +513,8 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
       if(start_partition != next_partition) {
         ALWAYS_ASSERT((start_partition + 1) % config::logbuf_partitions == next_partition);
         volatile_write(rep::logbuf_partition_bounds[start_partition], rval.next_lsn._val);
-        DLOG(INFO) << "Log buffer partition: " << start_partition << " " << std::hex << next_lsn_offset << std::dec;
+        DLOG(INFO) << "Log buffer partition: " << start_partition << " "
+          << std::hex << next_lsn_offset << std::dec;
       }
     }
 

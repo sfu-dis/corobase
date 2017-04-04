@@ -311,7 +311,8 @@ void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
                                   bool new_seg, uint64_t new_seg_start_offset) {
 #ifndef NDEBUG
   for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
-    LOG(INFO) << "RDMA write logbuf bounds: " << i << " " << logbuf_partition_bounds[i];
+    LOG(INFO) << "RDMA write logbuf bounds: " << i << " " << std::hex
+              << logbuf_partition_bounds[i] << std::dec;
   }
 #endif
   for(auto& node : nodes) {

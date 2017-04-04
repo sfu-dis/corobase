@@ -341,6 +341,7 @@ void
 parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to) {
   util::scoped_timer t("parallel_offset_replay");
   scanner = s;
+  DLOG(INFO) << "About to roll " << std::hex << from.offset() << " " << to.offset();
 
   RCU::rcu_enter();
   // Look for new table creations after the chkpt
@@ -355,16 +356,15 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
     }
   }
 
-  uint32_t done = 0;
   uint64_t logbuf_part = -1;
   LSN partition_start = from;
 
   // Figure out which index to start with
   uint64_t min_offset = ~uint64_t{0};
   for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
-    uint64_t off = rep::logbuf_partition_bounds[i];
-    if(off < min_offset && off > from.offset()) {
-      min_offset = off;
+    LSN bound = LSN{ rep::logbuf_partition_bounds[i] };
+    if(bound.offset() < min_offset && bound.offset() > from.offset()) {
+      min_offset = bound.offset();
       logbuf_part = i;
     }
   }
@@ -380,45 +380,45 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
     r.join();
     r.done = false;
   } else {
-    uint32_t examined_parts = 0;
-
     bool all_dispatched = false;
-    for (auto &r : redoers) {
-      // Assign a log buffer partition
-      if(examined_parts++ >= config::logbuf_partitions) {
-        break;
-      }
-      uint32_t idx = logbuf_part % config::logbuf_partitions;
-      ++logbuf_part;
-      LSN partition_end = LSN{ rep::logbuf_partition_bounds[idx] };
-      if(!partition_end.offset() || partition_end.offset() > to.offset()) {
-        partition_end = to;
-        all_dispatched = true;
-      }
+    while(!all_dispatched) {
+      // Keep dispatching until we replayed all the needed range. One
+      // partition per thread.
+      for (auto &r : redoers) {
+        // Assign a log buffer partition
+        uint32_t idx = logbuf_part % config::logbuf_partitions;
+        ++logbuf_part;
+        LSN partition_end = LSN{ rep::logbuf_partition_bounds[idx] };
 
-      if(partition_end.offset() && partition_end.offset() > partition_start.offset()) {
         r.start_lsn = partition_start;
+        if(partition_end < partition_start) {
+          partition_end = to;
+          all_dispatched = true;
+        }
         r.end_lsn = partition_end;
 
-        DLOG(INFO) << "start=" << std::hex << partition_start.offset() 
-          << " end=" << partition_end.offset() << std::dec;
+        DLOG(INFO) << "Dispatch for " << std::hex << partition_start.offset() 
+                   << " - " << partition_end.offset() << std::dec;
         partition_start = partition_end;  // for next thread
         __sync_synchronize();
         ALWAYS_ASSERT(!r.is_impersonated());
         auto v = r.try_impersonate();
         ALWAYS_ASSERT(v);
         r.start();
+
         if(all_dispatched) {
           break;
         }
       }
-    }
 
-    for (auto &r : redoers) {
-      if(r.is_impersonated()) {
-        r.join();
-        ++done;
-        r.done = false;
+      for (auto &r : redoers) {
+        if(r.is_impersonated()) {
+          r.join();
+          r.done = false;
+          if(!all_dispatched) {
+            break;
+          }
+        }
       }
     }
   }
