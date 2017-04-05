@@ -56,7 +56,8 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) 
   // No need if the chkpt recovery already picked up this tuple
   FID fid = logrec->fid();
   IndexDescriptor* id = IndexDescriptor::Get(fid);
-  if(oidmgr->oid_get(id->GetKeyArray(), logrec->oid()).offset() == 0) {
+  if(config::is_backup_srv() ||
+    oidmgr->oid_get(id->GetKeyArray(), logrec->oid()).offset() == 0) {
     recover_index_insert(logrec, id->GetIndex());
   }
 }
@@ -89,8 +90,9 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec,
   size_t len = ((varstr *)payload_buf)->size();
   ASSERT(align_up(len + sizeof(varstr)) == sz);
 
-  oid_array *ka = get_impl(oidmgr)->get_array(logrec->fid());
+  oid_array *ka = nullptr;
   if(!config::is_backup_srv() && volatile_read(*ka->get(logrec->oid())) != NULL_PTR) {
+    ka = get_impl(oidmgr)->get_array(logrec->fid());
     return;
   }
 
