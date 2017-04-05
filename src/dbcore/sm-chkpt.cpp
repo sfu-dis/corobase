@@ -209,7 +209,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
       ALWAYS_ASSERT(key_size);
 
       varstr* key = nullptr;
-      if(o % num_recovery_threads == oid_partition) {
+      if(!config::is_backup_srv() && (o % num_recovery_threads == oid_partition)) {
         key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
         new (key) varstr((char*)key + sizeof(varstr), key_size);
         memcpy((void*)key->p, read_buffer(key->l), key->l);
