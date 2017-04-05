@@ -1,5 +1,4 @@
-#ifndef _NDB_TXN_H_
-#define _NDB_TXN_H_
+#pragma once
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -230,4 +229,3 @@ protected:
   read_set_t* read_set;
 #endif
 };
-#endif /* _NDB_TXN_H_ */

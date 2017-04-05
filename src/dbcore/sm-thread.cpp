@@ -44,7 +44,7 @@ void sm_thread::idle_task() {
       COMPILER_MEMORY_FENCE;
       volatile_write(state, kStateNoWork);
     }
-    if (__sync_bool_compare_and_swap(&state, kStateNoWork, kStateSleep)) {
+    if(sleep_when_idle && __sync_bool_compare_and_swap(&state, kStateNoWork, kStateSleep)) {
       // FIXME(tzwang): add a work queue so we can
       // continue if there is more work to do
       trigger.wait(lock);
