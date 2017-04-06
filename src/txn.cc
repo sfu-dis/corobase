@@ -1057,8 +1057,8 @@ transaction::try_insert_new_tuple(concurrent_btree *btr,
     OID oid = 0;
     IndexDescriptor* id = btr->get_descriptor();
     bool is_primary_idx = btr->is_primary_idx();
-    auto* key_array = btr->get_key_array();
-    auto* tuple_array = btr->get_tuple_array();
+    auto* key_array = id->GetKeyArray();
+    auto* tuple_array = id->GetTupleArray();
     FID tuple_fid = id->GetTupleFid();
     dbtuple* tuple = nullptr;
     if(likely(is_primary_idx)) {

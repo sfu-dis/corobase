@@ -192,18 +192,14 @@ class mbtree {
   }
 
   inline void set_arrays(IndexDescriptor* id) {
-    key_array_ = id->GetKeyArray();
     tuple_array_ = id->GetTupleArray();
     is_primary_idx_ = id->IsPrimary();
     descriptor_ = id;
-    ALWAYS_ASSERT(key_array_);
     ALWAYS_ASSERT(tuple_array_);
     table_.set_tuple_array(tuple_array_);
   }
 
   inline IndexDescriptor* get_descriptor() { return descriptor_; }
-  inline oid_array* get_key_array() { return key_array_; }
-  inline oid_array* get_tuple_array() { return tuple_array_; }
   inline bool is_primary_idx() { return is_primary_idx_; }
 
   /**
@@ -438,7 +434,6 @@ class mbtree {
 
  private:
   Masstree::basic_table<P> table_;
-  oid_array* key_array_;
   oid_array* tuple_array_;
   bool is_primary_idx_;
   IndexDescriptor* descriptor_;
