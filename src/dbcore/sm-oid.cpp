@@ -915,34 +915,6 @@ sm_oid_mgr::oid_get_latest_version(FID f, OID o)
     return oid_get_latest_version(get_impl(this)->get_array(f), o);
 }
 
-// Load the tuple pointed to by [ptr] from storage to memory, must
-// handle cases where we run into an concurrenty update.
-fat_ptr
-sm_oid_mgr::ensure_version(fat_ptr* prev, fat_ptr ptr, epoch_num epoch)
-{
-  /*
-  fat_ptr p = *ptr;
-  auto asi_type = p.asi_type();
-  if(asi_type == 0) {
-    // Main-memory tuple
-    return p;
-  }
-  ASSERT(asi_type == fat_ptr::ASI_LOG || asi_type == fat_ptr::ASI_CHK);
-
-  // *ptr should point to some location in the log or chkpt file
-  fat_ptr new_ptr = object::load_durable_object(p, NULL_PTR, epoch, nullptr);
-  ASSERT(new_ptr.offset());
-
-  // Now new_ptr should point to some location in memory
-  if(not __sync_bool_compare_and_swap(&ptr->_ptr, p._ptr, new_ptr._ptr)) {
-    MM::deallocate(new_ptr);
-    // somebody might acted faster, no need to retry
-  }
-  // FIXME: handle ASI_HEAP and ASI_EXT too
-  return *ptr;
-  */
-}
-
 dbtuple*
 sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
 {

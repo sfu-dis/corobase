@@ -191,8 +191,6 @@ struct sm_oid_mgr {
     dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
     dbtuple *oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc);
 
-    fat_ptr ensure_version(fat_ptr* prev, fat_ptr ptr, epoch_num epoch);
-
     inline void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
       if(!config::phantom_prot) {
         return;
