@@ -191,7 +191,7 @@ public:
 
 protected:
   bool try_insert_new_tuple(concurrent_btree *btr, const varstr *key,
-                            const varstr *value, OID* inserted_oid);
+                            varstr *value, OID* inserted_oid);
 
   // reads the contents of tuple into v
   // within this transaction context

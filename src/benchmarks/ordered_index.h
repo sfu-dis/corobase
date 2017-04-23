@@ -52,7 +52,7 @@ public:
    * returned is guaranteed to be valid memory until the key associated with
    * value is overriden.
    */
-  inline rc_t put(transaction *t, const varstr &key, const varstr &value) {
+  inline rc_t put(transaction *t, const varstr &key, varstr &value) {
     return tree_.do_tree_put(*t, &key, &value, false, true, nullptr);
   }
 
@@ -64,7 +64,7 @@ public:
    *
    * Default implementation calls put(). See put() for meaning of return value.
    */
-  inline rc_t insert(transaction *t, const varstr &key, const varstr &value, OID* oid = nullptr) {
+  inline rc_t insert(transaction *t, const varstr &key, varstr &value, OID* oid = nullptr) {
     return tree_.do_tree_put(*t, &key, &value, true, true, oid);
   }
 

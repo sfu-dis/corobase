@@ -197,6 +197,13 @@ class mbtree {
     descriptor_ = id;
     ALWAYS_ASSERT(tuple_array_);
     table_.set_tuple_array(tuple_array_);
+    if(config::is_backup_srv()) {
+      pdest_array_ = id->GetPersistentAddressArray();
+      ALWAYS_ASSERT(pdest_array_);
+    } else {
+      pdest_array_ = nullptr;
+    }
+    table_.set_pdest_array(pdest_array_);
   }
 
   inline IndexDescriptor* get_descriptor() { return descriptor_; }
@@ -434,6 +441,7 @@ class mbtree {
 
  private:
   Masstree::basic_table<P> table_;
+  oid_array* pdest_array_;
   oid_array* tuple_array_;
   bool is_primary_idx_;
   IndexDescriptor* descriptor_;
@@ -552,7 +560,11 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple* &v, xid_contex
   if (found)
   {
 	  o = lp.value();
+    if(config::is_backup_srv()) {
+      v = oidmgr->oid_get_version_on_backup(tuple_array_, pdest_array_, o, xc);
+    } else {
       v = oidmgr->oid_get_version(tuple_array_, o, xc);
+    }
 	  if( !v )
 		  found = false;
   }

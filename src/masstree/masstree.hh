@@ -89,10 +89,12 @@ class basic_table {
 
     inline void print(FILE* f = 0, int indent = 0) const;
     inline void set_tuple_array(oid_array* oa) { tuple_array_ = oa; }
+    inline void set_pdest_array(oid_array* oa) { pdest_array_ = oa; }
 
   private:
     node_type* root_;
     oid_array* tuple_array_;
+    oid_array* pdest_array_;
 
     template <typename H, typename F>
     int scan(H helper, Str firstkey, bool matchfirst,

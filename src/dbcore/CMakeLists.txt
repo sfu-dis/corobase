@@ -26,6 +26,8 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-file.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-offset.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-offset-replay-impl.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-oid-replay-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover-impl.cpp
   #${CMAKE_CURRENT_SOURCE_DIR}/sm-log-segments.cpp  # belongs to test cases only

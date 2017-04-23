@@ -595,12 +595,12 @@ iterate_index:
               ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
               auto data_size = decode_size_aligned(size_code);
               data_size = decode_size_aligned(size_code);
-              ALWAYS_ASSERT(obj->GetTuple()->size <= data_size - sizeof(Object) - sizeof(dbtuple));
+              ALWAYS_ASSERT(obj->GetPinnedTuple()->size <= data_size - sizeof(Object) - sizeof(dbtuple));
               chkptmgr->write_buffer(&size_code, sizeof(uint8_t));
               // It's already there if we're digging out a tuple from a previous chkpt
               chkptmgr->write_buffer((char*)obj, data_size);
               ALWAYS_ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
-              ALWAYS_ASSERT(obj->GetTuple()->size <= data_size - sizeof(Object) - sizeof(dbtuple));
+              ALWAYS_ASSERT(obj->GetPinnedTuple()->size <= data_size - sizeof(Object) - sizeof(dbtuple));
               chkpt_size += (sizeof(OID) + sizeof(uint8_t) + data_size);
             }
         }
@@ -756,21 +756,32 @@ bool
 sm_oid_mgr::oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset) {
   ASSERT(config::is_backup_srv() || config::loading);
   auto* entry = oa->get(o);
+  oa->ensure_size(o);
 retry:
   fat_ptr ptr = *entry;
   bool do_it = false;
   if(ptr == NULL_PTR) {
     do_it = true;
   } else {
-    ASSERT(ptr.asi_type() == 0);
-    // Go in to see LSN
-    Object* obj = (Object*)ptr.offset();
-    if(obj->GetClsn().offset() < lsn_offset) {
-      do_it = true;
-      if(p.offset()) {
-        // Could be a delete
-        Object* new_obj = (Object*)p.offset();
-        new_obj->SetNext(ptr);
+    if(ptr.asi_type() == 0) {
+      ASSERT(ptr.asi_type() == 0);
+      // Go in to see LSN
+      Object* obj = (Object*)ptr.offset();
+      if(obj->GetClsn().offset() < lsn_offset) {
+        do_it = true;
+        if(p.offset()) {
+          // Could be a delete
+          Object* new_obj = (Object*)p.offset();
+          new_obj->SetNext(ptr);
+        }
+      }
+    } else {
+      // Must be the persistent address array on a backup
+      ASSERT(config::is_backup_srv());
+      ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+      // Direct comparison
+      if(ptr.offset() < lsn_offset) {
+        do_it = true;
       }
     }
   }
@@ -922,6 +933,101 @@ sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
     return oid_get_version(get_impl(this)->get_array(f), o, visitor_xc);
 }
 
+dbtuple* sm_oid_mgr::oid_get_version_on_backup(oid_array* tuple_array,
+                                               oid_array* pdest_array,
+                                               OID o, xid_context* xc) {
+  fat_ptr pdest_head_ptr = NULL_PTR;
+retry:
+  // See if we can find a fresh enough version in the tuple array
+  fat_ptr active_head_ptr = volatile_read(*tuple_array->get(o));
+  ASSERT(active_head_ptr.asi_type() == 0);
+  Object* active_head_obj = (Object*)active_head_ptr.offset();
+  uint64_t active_head_lsn = active_head_obj == nullptr ? 0 :
+                             active_head_obj->GetClsn().offset();
+  if(active_head_lsn >= xc->begin) {
+    // First version not visible to me, so no need to look at the pdest
+    // array, versions indexed by the tuple array are enough.
+    return oid_get_version(tuple_array, o, xc);
+  } else {
+    // First version visible to me, but not sure if there will be newer
+    // versions available for me to read, must look at the pdest array
+    // and dig out them from the log.
+    // Note: ptrs point to the log directly, making the lsns comparable
+    if(pdest_head_ptr == NULL_PTR) {
+      // Don't refresh pdest ptr, to save some resource
+      pdest_head_ptr = volatile_read(*pdest_array->get(o));
+    }
+    fat_ptr ptr = pdest_head_ptr;
+    ASSERT(ptr.offset() == 0 || ptr.offset() >= active_head_lsn);
+    if(ptr.offset() == 0 || ptr.offset() == active_head_lsn) {
+      // Nothing new in the pdest array
+      return active_head_obj ? active_head_obj->GetPinnedTuple() : nullptr;
+    }
+
+    ALWAYS_ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
+    ALWAYS_ASSERT(ptr.offset() > active_head_lsn);
+
+    // Dig out the gap between pdest_head and active_head
+    Object* prev_obj = nullptr;
+    fat_ptr install_ptr = NULL_PTR;
+    Object* ret_obj = active_head_obj;
+    while(true) {
+      ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);  // Digging things out
+      size_t sz = sizeof(Object) + sizeof(dbtuple) + decode_size_aligned(ptr.size_code());;
+      sz = align_up(sz);
+      Object* obj = (Object*)MM::allocate(sz, 0);
+      if(prev_obj) {
+        prev_obj->SetNext(fat_ptr::make(obj, encode_size_aligned(sz), 0));
+      } else {
+        install_ptr = fat_ptr::make(obj, encode_size_aligned(sz), 0);
+      }
+      // FIXME(tzwang): figure out how GC/epoch works with this
+      new(obj) Object(ptr, NULL_PTR, 0, false);  // Update next_ later
+      // TODO(tzawng): allow pinning the header part only (ie the varstr
+      // embedded in the payload) as the only purpose of Pin() here is to
+      // get to know the pdest of the overwritten version. (perhaps doesn't
+      // matter especially if using disk/SSD).
+      ASSERT(obj->GetNext() == NULL_PTR);
+      obj->Pin();  // obj.next becomes available after Pin()
+      ASSERT(obj->GetNext() == NULL_PTR || obj->GetNext().asi_type() == fat_ptr::ASI_LOG);
+      ptr = obj->GetNext();
+      uint64_t clsn = obj->GetClsn().offset();
+      ASSERT(clsn > active_head_lsn);
+      if(xc->begin > clsn && ret_obj == active_head_obj) {
+        ret_obj = obj;
+      }
+      uint64_t next_offset = ptr.offset();
+      if(next_offset <= active_head_lsn) {
+        // Done, no need to dig further
+        obj->SetNext(active_head_ptr);
+        ASSERT(obj->GetNext().asi_type() == 0);
+        break;
+      } else {
+        ALWAYS_ASSERT(next_offset > active_head_lsn);
+        prev_obj = obj;
+      }
+    }
+    // Install the chain on the tuple array slot (plain write as we locked it)
+    ALWAYS_ASSERT(install_ptr != NULL_PTR);
+    ALWAYS_ASSERT(install_ptr.asi_type() == 0);
+    ASSERT((install_ptr._ptr & (1UL << 63)) == 0);
+
+    bool success = __sync_val_compare_and_swap(
+      &tuple_array->get(o)->_ptr, active_head_ptr._ptr, install_ptr._ptr);
+    if(!success) {
+      fat_ptr to_free = install_ptr;
+      while(to_free != active_head_ptr) {
+        Object* obj = (Object*)to_free.offset();
+        fat_ptr next = obj->GetNext();
+        MM::deallocate(to_free);
+        to_free = next;
+      }
+      goto retry;
+    }
+    return ret_obj ? ret_obj->GetPinnedTuple() : nullptr;
+  }
+}
+
 dbtuple*
 sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc) {
 start_over:
@@ -950,6 +1056,7 @@ start_over:
     // pointing to some irrelevant object in the allocator's memory pool,
     // hence must start over from the beginning of the version chain.
     fat_ptr tentative_next = cur_obj->GetNext();
+    ASSERT(tentative_next.asi_type() == 0);
     auto clsn = cur_obj->GetClsn();
     if (clsn == NULL_PTR) {
       // dead tuple that was (or about to be) unlinked, start over
@@ -965,7 +1072,7 @@ start_over:
       if(holder_xid == visitor_xc->owner) {
         ASSERT(!cur_obj->GetNext().offset() ||
                ((Object*)cur_obj->GetNext().offset())->GetClsn().asi_type() == fat_ptr::ASI_LOG);
-        return cur_obj->GetTuple();
+        return cur_obj->GetPinnedTuple();
       }
       auto* holder = xid_get_context(holder_xid);
       if(!holder) {  // invalid XID (dead tuple, must retry than goto next in the chain)
@@ -987,17 +1094,17 @@ start_over:
 #ifdef SSN
         if(config::enable_safesnap && (visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
           if(holder->end < visitor_xc->begin) {
-            return cur_obj->GetTuple();
+            return cur_obj->GetPinnedTuple();
           }
         } else {
-          return cur_obj->GetTuple();
+          return cur_obj->GetPinnedTuple();
         }
 #else  // SSN
-        return cur_obj->GetTuple();
+        return cur_obj->GetPinnedTuple();
 #endif  // SSN
 #else  // not RC/RC_SPIN
         if(holder->end < visitor_xc->begin) {
-          return cur_obj->GetTuple();
+          return cur_obj->GetPinnedTuple();
         } else {
           oid_check_phantom(visitor_xc, holder->end);
         }
@@ -1006,25 +1113,26 @@ start_over:
     } else {
       // Already committed, now do visibility test and also
       // see OID entry's ASI to determine where the data is.
-      ASSERT(asi_type == fat_ptr::ASI_LOG || asi_type == fat_ptr::ASI_CHK);
+      ASSERT(cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
+             cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK);
       uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
 #if defined(RC) || defined(RC_SPIN)
 #if defined(SSN)
       if(config::enable_safesnap && (visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
         if(lsn_offset <= visitor_xc->begin) {
-          return cur_obj->PinAndGetTuple();
+          return cur_obj->GetPinnedTuple();
         } else {
           oid_check_phantom(visitor_xc, clsn.offset());
         }
       } else {
-        return cur_obj->PinAndGetTuple();
+        return cur_obj->GetPinnedTuple();
       }
 #else
-      return cur_obj->PinAndGetTuple();
+      return cur_obj->GetPinnedTuple();
 #endif
 #else  // Not RC
       if(lsn_offset <= visitor_xc->begin) {
-        return cur_obj->PinAndGetTuple();
+        return cur_obj->GetPinnedTuple();
       } else {
         oid_check_phantom(visitor_xc, clsn.offset());
       }

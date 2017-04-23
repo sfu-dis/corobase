@@ -11,14 +11,15 @@ class Object {
 private:
   typedef epoch_mgr::epoch_num epoch_num;
   static const uint32_t kStatusMemory  = 0;
-  static const uint32_t kStatusLog     = 1;
+  static const uint32_t kStatusStorage = 1;
   static const uint32_t kStatusLoading = 2;
 
-  fat_ptr pdest_; // The object's permanent home in the log
+  // alloc_epoch_ and status_ must be the first two fields
+  epoch_num alloc_epoch_;  // When did we create this object?
+  uint32_t status_;  // Where exactly is the payload?
+  fat_ptr pdest_; // The object's permanent home in the log/chkpt
   fat_ptr next_;  // The older version
   fat_ptr clsn_;  // size_code refers to the whole object including header
-  epoch_num alloc_epoch_;  // When did we create this object?
-  volatile uint32_t status_;  // Where exactly is the payload?
 
 public:
   static fat_ptr Create(const varstr *tuple_value, bool do_write, epoch_num epoch);
@@ -28,7 +29,7 @@ public:
 
   Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory) :
     pdest_(pdest), next_(next), clsn_(NULL_PTR), alloc_epoch_(e) {
-    status_ = in_memory ? kStatusMemory : kStatusLog;
+    status_ = in_memory ? kStatusMemory : kStatusStorage;
   }
 
   inline bool IsInMemory() { return status_ == kStatusMemory; }
@@ -42,10 +43,12 @@ public:
   inline epoch_num GetAllocateEpoch() { return alloc_epoch_; }
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
-  inline dbtuple* GetTuple() { return (dbtuple*)GetPayload(); }
-  inline dbtuple* PinAndGetTuple() {
-    Pin();
-    return GetTuple();
+  inline dbtuple* GetPinnedTuple() {
+    if(!IsInMemory()) {
+      Pin();
+    }
+    return (dbtuple*)GetPayload();
   }
   void Pin(sm_log_recover_mgr* lm = nullptr);  // Make sure the payload is in memory
+  void SetStatus(uint32_t s) { volatile_write(status_, s); }
 };
