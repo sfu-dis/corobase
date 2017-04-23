@@ -55,7 +55,7 @@ base_txn_btree::purge_tree_walker::on_node_failure()
     spec_values.clear();
 }
 
-rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, const varstr *v,
+rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
                                  bool expect_new, bool upsert, OID* inserted_oid) {
     ASSERT(k);
     ASSERT(!expect_new || v); // makes little sense to remove() a key you expect
@@ -83,11 +83,12 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, const varstr *
     // first *updater* wins
     fat_ptr new_obj_ptr = NULL_PTR;
     fat_ptr prev_obj_ptr = oidmgr->oid_put_update(tuple_array, oid, v, t.xc, &new_obj_ptr);
-    dbtuple *tuple = ((Object*)new_obj_ptr.offset())->GetTuple();
-    ASSERT(tuple);
+    Object* prev_obj = (Object*)prev_obj_ptr.offset();
 
-    if (prev_obj_ptr != NULL_PTR) { // succeeded
-        dbtuple *prev = ((Object*)prev_obj_ptr.offset())->GetTuple();
+    if(prev_obj) { // succeeded
+        dbtuple *tuple = ((Object*)new_obj_ptr.offset())->GetPinnedTuple();
+        ASSERT(tuple);
+        dbtuple *prev = prev_obj->GetPinnedTuple();
         ASSERT((uint64_t)prev->get_object() == prev_obj_ptr.offset());
         ASSERT(t.xc);
 #ifdef SSI
@@ -185,12 +186,25 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, const varstr *
         ASSERT(tuple->get_object()->GetClsn().asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(tuple_fid, oid, t.xc) == tuple);
         ASSERT(t.log);
+
         if (not v) {
             t.log->log_delete(tuple_fid, oid);
             // FIXME(tzwang): mark deleted in all 2nd indexes as well?
         } else {
             ASSERT(v);
-            // the logmgr only assignspointers, instead of doing memcpy here,
+
+            // The varstr also encodes the pdest of the overwritten version.
+            // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
+            // varstr. Embedding it in varstr makes it part of the payload and is
+            // helpful for digging out versions on backups. Not used by the primary.
+            if(config::num_backups > 0) {
+              v->ptr = prev_obj->GetPersistentAddress();
+              ASSERT(v->ptr == NULL_PTR || v->ptr.asi_type() == fat_ptr::ASI_LOG);
+            } else {
+              v->ptr = NULL_PTR;
+            }
+
+            // the logmgr only assigns pointers, instead of doing memcpy here,
             // unless the record is tooooo large.
             const size_t sz = v->size();
             ASSERT(sz == v->size());
@@ -202,8 +216,8 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, const varstr *
             if(config::log_key_for_update) {
               auto key_size = align_up(k->size() + sizeof(varstr));
               auto key_size_code = encode_size_aligned(key_size);
-              t.log->log_update(tuple_fid, oid, fat_ptr::make((void *)k, key_size_code),
-                                DEFAULT_ALIGNMENT_BITS, nullptr);
+              t.log->log_update_key(tuple_fid, oid, fat_ptr::make((void *)k, key_size_code),
+                                    DEFAULT_ALIGNMENT_BITS);
             }
             t.log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
                               DEFAULT_ALIGNMENT_BITS,

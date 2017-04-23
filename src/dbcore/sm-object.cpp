@@ -9,25 +9,35 @@
 // to only data size (i.e., the size of the payload of dbtuple rounded up).
 // Returns a fat_ptr to the object created
 void Object::Pin(sm_log_recover_mgr* lm) {
-  uint32_t status = status_;
-  if(status == kStatusMemory) {
+  uint32_t status = volatile_read(status_);
+  if(status != kStatusStorage) {
+    if(status == kStatusLoading) {
+      while(volatile_read(status_) != kStatusMemory) {}
+    }
+    ALWAYS_ASSERT(volatile_read(status_) == kStatusMemory);
     return;
   }
 
   // Try to 'lock' the status
   // TODO(tzwang): have the thread do something else while waiting?
-  if(!__sync_bool_compare_and_swap(&status_, kStatusLog, kStatusLoading)) {
-    while(status_ != kStatusMemory) {}
+  uint32_t val = __sync_val_compare_and_swap(&status_, kStatusStorage, kStatusLoading);
+  if(val == kStatusMemory) {
     return;
+  } else if(val == kStatusLoading) {
+    while(volatile_read(status_) != kStatusMemory) {}
+    return;
+  } else {
+    ASSERT(val == kStatusStorage);
+    ASSERT(volatile_read(status_) == kStatusLoading);
   }
 
   // Now we can load it from the durable log
-  ALWAYS_ASSERT(clsn_.offset());
+  ALWAYS_ASSERT(pdest_.offset());
   uint16_t where = pdest_.asi_type();
   ALWAYS_ASSERT(where == fat_ptr::ASI_LOG || where == fat_ptr::ASI_CHK);
 
   // Already pre-allocated space when creating the object
-  dbtuple* tuple = GetTuple();
+  dbtuple* tuple = (dbtuple*)GetPayload();
   new (tuple) dbtuple(0);  // set the correct size later
 
   size_t data_sz = decode_size_aligned(pdest_.size_code());
@@ -50,22 +60,35 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     }
     // Strip out the varstr stuff
     tuple->size = ((varstr *)tuple->get_value_start())->size();
-    ASSERT(tuple->size > 0);
+    // Fill in the overwritten version's pdest if needed
+    if(config::is_backup_srv() && next_ == NULL_PTR) {
+      next_ = ((varstr *)tuple->get_value_start())->ptr;
+    }
+    // Could be a delete
     ASSERT(tuple->size < data_sz);
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr),
             tuple->size);
+    SetClsn(fat_ptr::make(pdest_.offset(), INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG));
   } else {
     // Load tuple data form the chkpt file
     ASSERT(sm_chkpt_mgr::base_chkpt_fd);
     ALWAYS_ASSERT(pdest_.offset());
-    auto n = os_pread(sm_chkpt_mgr::base_chkpt_fd, (char*)this, data_sz, pdest_.offset());
-    ALWAYS_ASSERT(n == data_sz);
-    ALWAYS_ASSERT(tuple->size <= data_sz - sizeof(Object) - sizeof(dbtuple));
+    ASSERT(volatile_read(status_) == kStatusLoading);
+    // Skip the status_ and alloc_epoch_ fields
+    static const uint32_t skip = sizeof(status_) + sizeof(alloc_epoch_);
+    uint32_t read_size = data_sz - skip;
+    auto n = os_pread(sm_chkpt_mgr::base_chkpt_fd, (char*)this + skip,
+                      read_size, pdest_.offset() + skip);
+    ALWAYS_ASSERT(n == read_size);
+    ASSERT(tuple->size <= read_size - sizeof(dbtuple));
+    next_ = NULL_PTR;
   }
   ASSERT(clsn_.asi_type() == fat_ptr::ASI_LOG);
+  ALWAYS_ASSERT(pdest_.offset());
   ALWAYS_ASSERT(clsn_.offset());
-  status_ = kStatusMemory;
+  ASSERT(volatile_read(status_) == kStatusLoading);
+  SetStatus(kStatusMemory);
 }
 
 fat_ptr Object::Create(const varstr *tuple_value, bool do_write, epoch_num epoch) {
@@ -84,7 +107,7 @@ fat_ptr Object::Create(const varstr *tuple_value, bool do_write, epoch_num epoch
   obj->SetAllocateEpoch(epoch);
 
   // Tuple setup
-  dbtuple* tuple = obj->GetTuple();
+  dbtuple* tuple = (dbtuple*)obj->GetPayload();
   new(tuple) dbtuple(data_sz);
   ASSERT(tuple->pvalue == NULL);
   tuple->pvalue = (varstr *)tuple_value;

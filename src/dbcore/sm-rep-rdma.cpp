@@ -187,6 +187,7 @@ void backup_daemon_rdam() {
       ALWAYS_ASSERT(logbuf->available_to_read() >= size);
       //logmgr->redo_log(start_lsn, end_lsn);
       logmgr->redo_logbuf(start_lsn, end_lsn);
+      ASSERT(logmgr->durable_flushed_lsn().offset() == start_lsn.offset());
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
 

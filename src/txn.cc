@@ -140,7 +140,7 @@ transaction::abort_impl()
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple *tuple = w.get_object()->GetTuple();
+        dbtuple *tuple = w.get_object()->GetPinnedTuple();
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->get_object()->GetClsn()) == xid);
 #if defined(SSI) || defined(SSN)
@@ -366,7 +366,7 @@ transaction::parallel_ssn_commit()
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple *tuple = w.get_object()->GetTuple();
+        dbtuple *tuple = w.get_object()->GetPinnedTuple();
 
         // go to the precommitted or committed version I (am about to)
         // overwrite for the reader list
@@ -571,7 +571,7 @@ transaction::parallel_ssn_commit()
     fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple *tuple = w.get_object()->GetTuple();
+        dbtuple *tuple = w.get_object()->GetPinnedTuple();
         tuple->do_write();
         dbtuple *next_tuple = tuple->next();
         ASSERT(not next_tuple or
@@ -800,7 +800,7 @@ transaction::parallel_ssi_commit()
         // now see if I'm the unlucky T2
         for (uint32_t i = 0; i < write_set.size(); ++i) {
             auto &w = write_set[i];
-            dbtuple *overwritten_tuple = w.get_object()->GetTuple()->next();
+            dbtuple *overwritten_tuple = w.get_object()->GetPinnedTuple()->next();
             if (not overwritten_tuple)
                 continue;
 
@@ -918,7 +918,7 @@ transaction::parallel_ssi_commit()
     auto clsn = xc->end;
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple* tuple = w.get_object()->GetTuple();
+        dbtuple* tuple = w.get_object()->GetPinnedTuple();
         tuple->do_write();
         dbtuple *overwritten_tuple = tuple->next();
         if (overwritten_tuple) {    // update
@@ -1015,7 +1015,7 @@ transaction::si_commit()
     fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple* tuple = w.get_object()->GetTuple();
+        dbtuple* tuple = w.get_object()->GetPinnedTuple();
         ASSERT(w.entry);
         tuple->do_write();
         tuple->get_object()->SetClsn(clsn_ptr);
@@ -1051,7 +1051,7 @@ transaction::check_phantom()
 bool
 transaction::try_insert_new_tuple(concurrent_btree *btr,
                                   const varstr *key,
-                                  const varstr *value,
+                                  varstr *value,
                                   OID* inserted_oid) {
     ASSERT(key);
     OID oid = 0;
@@ -1064,7 +1064,7 @@ transaction::try_insert_new_tuple(concurrent_btree *btr,
     if(likely(is_primary_idx)) {
       fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
       ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
-      tuple = ((Object*)new_head.offset())->GetTuple();
+      tuple = ((Object*)new_head.offset())->GetPinnedTuple();
       ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
       tuple->get_object()->SetClsn(xid.to_ptr());
       oid = oidmgr->alloc_oid(tuple_fid);
@@ -1125,6 +1125,7 @@ transaction::try_insert_new_tuple(concurrent_btree *btr,
     if(likely(tuple)) {  // Primary index, "real tuple"
       ASSERT(is_primary_idx);
       ASSERT(tuple->size == value->size());
+      value->ptr = NULL_PTR;
       auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
       auto size_code = encode_size_aligned(record_size);
       ASSERT(not ((uint64_t)value & ((uint64_t)0xf)));

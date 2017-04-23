@@ -59,7 +59,6 @@ struct parallel_offset_replay : public sm_log_recover_impl {
     // The half-open interval
     LSN start_lsn;
     LSN end_lsn;
-    bool done;
 
     redo_runner(parallel_offset_replay *o, LSN start, LSN end) :
       thread::sm_runner(), owner(o), start_lsn(start), end_lsn(end) {}
@@ -68,7 +67,7 @@ struct parallel_offset_replay : public sm_log_recover_impl {
   };
 
   uint32_t nredoers;
-  std::vector<struct redo_runner> redoers;
+  std::vector<struct redo_runner*> redoers;
   sm_log_scan_mgr *scanner;
 
   parallel_offset_replay() : nredoers(config::num_backup_replay_threads()) {

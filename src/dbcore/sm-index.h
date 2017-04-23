@@ -50,8 +50,10 @@ private:
   FID tuple_fid_;
   oid_array* tuple_array_;
 
-  FID key_fid_;
-  oid_array* key_array_;
+  // An auxiliary array: on primary this is the key array, on
+  // backups this is the persistent address array.
+  FID aux_fid_;
+  oid_array* aux_array_;
 
 public:
   IndexDescriptor(std::string& name);
@@ -63,7 +65,21 @@ public:
   inline std::string& GetName() { return name_; }
   inline OrderedIndex* GetIndex() { return index_; }
   inline FID GetTupleFid() { return tuple_fid_; }
-  inline FID GetKeyFid() { return key_fid_; }
+  inline FID GetKeyFid() {
+    ASSERT(!config::is_backup_srv());
+    return aux_fid_;
+  }
+  inline oid_array* GetKeyArray() {
+    ASSERT(!config::is_backup_srv());
+    return aux_array_;
+  }
+  inline FID GetPersistentAddressFid() {
+    ASSERT(config::is_backup_srv());
+    return aux_fid_;
+  }
+  inline oid_array* GetPersistentAddressArray() {
+    ASSERT(config::is_backup_srv());
+    return aux_array_;
+  }
   inline oid_array* GetTupleArray() { return tuple_array_; }
-  inline oid_array* GetKeyArray() { return key_array_; }
 };

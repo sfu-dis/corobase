@@ -80,7 +80,7 @@ public:
   // as value.
   //
   // NOTE: both key and value are expected to be stable values already
-  rc_t do_tree_put(transaction &t, const varstr *k, const varstr *v,
+  rc_t do_tree_put(transaction &t, const varstr *k, varstr *v,
                    bool expect_new, bool upsert, OID* inserted_oid);
 
 private:

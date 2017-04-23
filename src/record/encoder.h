@@ -32,7 +32,7 @@ Encode(uint8_t *buf, const T &t)
 }
 
 template <typename T>
-static inline const varstr &
+static inline varstr &
 Encode(varstr &s, const T &t)
 {
   const encoder<T> enc;
