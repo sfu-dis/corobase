@@ -2,7 +2,6 @@
 
 #include "dbcore/sm-defs.h"
 
-//#define TUPLE_PREFETCH
 #define USE_BUILTIN_MEMFUNCS
 //#define ENABLE_BENCH_TXN_COUNTERS
 #define USE_VARINT_ENCODING

@@ -43,7 +43,7 @@ bool config::log_ship_by_rdma = false;
 bool config::log_ship_sync_redo = false;
 bool config::log_key_for_update = false;
 bool config::enable_chkpt = 0;
-uint64_t config::chkpt_interval = 5;
+uint64_t config::chkpt_interval = 50;
 bool config::phantom_prot = 0;
 
 uint32_t config::max_threads_per_node = 0;
@@ -64,6 +64,10 @@ config::init() {
     numa_nodes = (worker_threads + max_threads_per_node - 1) /  max_threads_per_node;
 
     thread::init();
+
+    if(num_backups) {
+      enable_chkpt = true;
+    }
 }
 
 void config::sanity_check() {
