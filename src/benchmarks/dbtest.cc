@@ -26,46 +26,18 @@
 using namespace std;
 using namespace util;
 
+// Options that are shared by the primary and backup servers
 DEFINE_bool(verbose, true, "Verbose mode.");
-DEFINE_bool(parallel_loading, true, "Load data in parallel.");
-DEFINE_bool(retry_aborted_transactions, false, "Whether to retry aborted transactions.");
-DEFINE_bool(backoff_aborted_transactions, false, "Whether backoff when retrying.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
-DEFINE_uint64(scale_factor, 1, "Scale factor.");
+DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(seconds, 10, "Duration to run benchmark in seconds.");
+DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
+DEFINE_string(tmpfs_dir, "/dev/shm", "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
 DEFINE_uint64(log_segment_mb, 8192, "Log segment size in MB.");
 DEFINE_uint64(log_buffer_mb, 512, "Log buffer size in MB.");
-DEFINE_string(recovery_warm_up, "none", "Method to load tuples during recovery:"
-  "none - don't load anything; lazy - load tuples using a background thread; "
-  "eager - load everything to memory during recovery.");
-DEFINE_string(log_ship_warm_up, "none", "Method to load tuples for log shipping:"
-  "none - don't load anything; lazy - load tuples using a background thread; "
-  "eager - load everything to memory after received log.");
 DEFINE_bool(log_ship_by_rdma, false, "Whether to use RDMA for log shipping.");
-DEFINE_uint64(log_ship_buffer_partitions, 16, "How many log buffer partitions/concurrent replay threads?");
-DEFINE_bool(log_key_for_update, false, "Whether to store the key in update log records.");
-DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
-DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
-DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
-DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
-
-// Group (pipelined) commit related settings. The daemon will flush the log buffer
-// when the following happens, whichever is earlier:
-// 1. queue is full; 2. the log buffer is half full; 3. after [timeout] seconds.
-DEFINE_bool(group_commit, false, "Whether to enable group commit.");
-DEFINE_uint64(group_commit_queue_length, 25000, "Group commit queue length");
-DEFINE_uint64(group_commit_timeout, 5, "Group commit flush interval (in seconds).");
-
-DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
-DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
-DEFINE_string(tmpfs_dir, "/dev/shm", "Path to a tmpfs location. Used by log buffer.");
-DEFINE_string(primary_host, "", "Hostname of the primary server. For backups only.");
-DEFINE_string(primary_port, "10000", "Port of the primary server for log shipping. For backups only.");
-DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
-DEFINE_bool(wait_for_backups, true,
-  "Whether to wait for backups to become online before starting transactions.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false, "Whether to use the safe snapshot (for SSI and SSN only).");
@@ -79,8 +51,41 @@ DEFINE_string(ssn_read_opt_threshold, "0xFFFFFFFFFFFFFFFF", "Threshold for SSN's
 DEFINE_bool(ssi_read_only_opt, false, "Whether to enable SSI's read-only optimization."
   "Note: this is **not** safe snapshot.");
 #endif
+DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
 
-DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
+// Options specific to the primary
+DEFINE_bool(parallel_loading, true, "Load data in parallel.");
+DEFINE_bool(retry_aborted_transactions, false, "Whether to retry aborted transactions.");
+DEFINE_bool(backoff_aborted_transactions, false, "Whether backoff when retrying.");
+DEFINE_uint64(scale_factor, 1, "Scale factor.");
+DEFINE_string(recovery_warm_up, "none", "Method to load tuples during recovery:"
+  "none - don't load anything; lazy - load tuples using a background thread; "
+  "eager - load everything to memory during recovery.");
+DEFINE_uint64(log_ship_buffer_partitions, 16, "How many log buffer partitions/concurrent replay threads?");
+DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
+DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
+DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
+DEFINE_bool(log_key_for_update, false, "Whether to store the key in update log records.");
+// Group (pipelined) commit related settings. The daemon will flush the log buffer
+// when the following happens, whichever is earlier:
+// 1. queue is full; 2. the log buffer is half full; 3. after [timeout] seconds.
+DEFINE_bool(group_commit, false, "Whether to enable group commit.");
+DEFINE_uint64(group_commit_queue_length, 25000, "Group commit queue length");
+DEFINE_uint64(group_commit_timeout, 5, "Group commit flush interval (in seconds).");
+DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
+DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
+DEFINE_bool(wait_for_backups, true,
+  "Whether to wait for backups to become online before starting transactions.");
+
+// Options specific to backups
+DEFINE_string(log_ship_warm_up, "none", "Method to load tuples for log shipping:"
+  "none - don't load anything; lazy - load tuples using a background thread; "
+  "eager - load everything to memory after received log.");
+DEFINE_string(primary_host, "", "Hostname of the primary server. For backups only.");
+DEFINE_string(primary_port, "10000", "Port of the primary server for log shipping. For backups only.");
+DEFINE_bool(log_ship_sync_redo, false, "Redo synchronously during log shipping.");
+DEFINE_bool(log_ship_full_redo, false, "Whether to repeat index update during redo."
+  "For experimenting with the benefit/cost of having indirection arrays only.");
 
 static vector<string>
 split_ws(const string &s)
@@ -96,66 +101,29 @@ split_ws(const string &s)
 int
 main(int argc, char **argv)
 {
+#ifndef NDEBUG
+  cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
+#endif
+  cerr << "PID: " << getpid() << endl;
+
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  config::benchmark_seconds = FLAGS_seconds;
-  config::benchmark_scale_factor = FLAGS_scale_factor;
   config::verbose = FLAGS_verbose;
   config::node_memory_gb = FLAGS_node_memory_gb;
   config::worker_threads = FLAGS_threads;
-  config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
-  config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
-  config::phantom_prot = FLAGS_phantom_prot;
-
+  config::benchmark_seconds = FLAGS_seconds;
   config::tmpfs_dir = FLAGS_tmpfs_dir;
   config::log_dir = FLAGS_log_data_dir;
   config::log_segment_mb = FLAGS_log_segment_mb;
   config::log_buffer_mb = FLAGS_log_buffer_mb;
-  config::logbuf_partitions = FLAGS_log_ship_buffer_partitions;
-  if(config::logbuf_partitions > rep::kMaxLogBufferPartitions) {
-    LOG(FATAL) << "Too many log buffer partitions: max " << rep::kMaxLogBufferPartitions;
-  }
-  config::null_log_device = FLAGS_null_log_device;
-  config::group_commit = FLAGS_group_commit;
-  config::group_commit_queue_length = FLAGS_group_commit_queue_length;
-  config::group_commit_timeout = FLAGS_group_commit_timeout;
+  config::phantom_prot = FLAGS_phantom_prot;
+  config::recover_functor = new parallel_oid_replay;
+  config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
 
-  config::enable_chkpt = FLAGS_enable_chkpt;
-  config::chkpt_interval = FLAGS_chkpt_interval;
-
-  config::parallel_loading = FLAGS_parallel_loading;
-  config::enable_gc = FLAGS_enable_gc;
   config::nvram_log_buffer = FLAGS_nvram_log_buffer;
   if(config::nvram_log_buffer) {
     LOG(FATAL) << "Not supported: nvram_log_buffer";
-  }
-  config::recover_functor = new parallel_oid_replay;
-
-  if(FLAGS_recovery_warm_up == "none" ) {
-    config::recovery_warm_up_policy = config::WARM_UP_NONE;
-  } else if(FLAGS_recovery_warm_up == "lazy") {
-    config::recovery_warm_up_policy = config::WARM_UP_LAZY;
-  } else if(FLAGS_recovery_warm_up == "eager") {
-    config::recovery_warm_up_policy = config::WARM_UP_EAGER;
-  } else {
-    LOG(FATAL) << "Invalid recovery warm up policy: " << FLAGS_recovery_warm_up;
-  }
-
-  config::primary_srv = FLAGS_primary_host;
-  config::primary_port = FLAGS_primary_port;
-  config::log_key_for_update = FLAGS_log_key_for_update;
-  config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
-  config::num_backups = FLAGS_num_backups;
-  config::wait_for_backups = FLAGS_wait_for_backups;
-  if(FLAGS_log_ship_warm_up == "none" ) {
-    config::log_ship_warm_up_policy = config::WARM_UP_NONE;
-  } else if(FLAGS_log_ship_warm_up == "lazy") {
-    config::log_ship_warm_up_policy = config::WARM_UP_LAZY;
-  } else if(FLAGS_log_ship_warm_up == "eager") {
-    config::log_ship_warm_up_policy = config::WARM_UP_EAGER;
-  } else {
-    LOG(FATAL) << "Invalid log shipping warm up policy: " << FLAGS_log_ship_warm_up;
   }
 
 #if defined(SSI) || defined(SSN)
@@ -168,79 +136,129 @@ main(int argc, char **argv)
   config::ssn_read_opt_threshold = strtoul(FLAGS_ssn_read_opt_threshold.c_str(), nullptr, 16);
 #endif
 
+  config::primary_srv = FLAGS_primary_host;
+  config::primary_port = FLAGS_primary_port;
+
+  // Backup specific arguments
+  if(config::is_backup_srv()) {
+    config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
+    config::log_ship_sync_redo = FLAGS_log_ship_sync_redo;
+    config::log_ship_full_redo = FLAGS_log_ship_full_redo;
+    if(FLAGS_log_ship_warm_up == "none" ) {
+      config::log_ship_warm_up_policy = config::WARM_UP_NONE;
+    } else if(FLAGS_log_ship_warm_up == "lazy") {
+      config::log_ship_warm_up_policy = config::WARM_UP_LAZY;
+    } else if(FLAGS_log_ship_warm_up == "eager") {
+      config::log_ship_warm_up_policy = config::WARM_UP_EAGER;
+    } else {
+      LOG(FATAL) << "Invalid log shipping warm up policy: " << FLAGS_log_ship_warm_up;
+    }
+    if(config::log_ship_by_rdma) {
+      RCU::rcu_register();
+      ALWAYS_ASSERT(config::log_dir.size());
+      ALWAYS_ASSERT(not logmgr);
+      ALWAYS_ASSERT(not oidmgr);
+      RCU::rcu_enter();
+      sm_log::allocate_log_buffer();
+      rep::start_as_backup_rdma();
+    } else {
+      LOG(FATAL) << "TODO";
+    }
+  } else {
+    config::benchmark_scale_factor = FLAGS_scale_factor;
+    config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
+    config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
+    config::null_log_device = FLAGS_null_log_device;
+    config::logbuf_partitions = FLAGS_threads;
+    if(config::logbuf_partitions > rep::kMaxLogBufferPartitions) {
+      LOG(FATAL) << "Too many log buffer partitions: max " << rep::kMaxLogBufferPartitions;
+    }
+    config::group_commit = FLAGS_group_commit;
+    config::group_commit_queue_length = FLAGS_group_commit_queue_length;
+    config::group_commit_timeout = FLAGS_group_commit_timeout;
+    config::enable_chkpt = FLAGS_enable_chkpt;
+    config::chkpt_interval = FLAGS_chkpt_interval;
+    config::parallel_loading = FLAGS_parallel_loading;
+    config::enable_gc = FLAGS_enable_gc;
+
+    if(FLAGS_recovery_warm_up == "none" ) {
+      config::recovery_warm_up_policy = config::WARM_UP_NONE;
+    } else if(FLAGS_recovery_warm_up == "lazy") {
+      config::recovery_warm_up_policy = config::WARM_UP_LAZY;
+    } else if(FLAGS_recovery_warm_up == "eager") {
+      config::recovery_warm_up_policy = config::WARM_UP_EAGER;
+    } else {
+      LOG(FATAL) << "Invalid recovery warm up policy: " << FLAGS_recovery_warm_up;
+    }
+
+    config::log_key_for_update = FLAGS_log_key_for_update;
+    config::num_backups = FLAGS_num_backups;
+    config::wait_for_backups = FLAGS_wait_for_backups;
+  }
+
   config::init();
 
-#ifndef NDEBUG
-  cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
-#endif
-
-  cerr << "CC : ";
+  cerr << "CC: ";
 #ifdef SSI
   cerr << "SSI";
+  cerr << "  safe snapshot          : " << config::enable_safesnap << endl;
+  cerr << "  read-only optimization : " << config::enable_ssi_read_only_opt << endl;
 #elif defined(SSN)
 #ifdef RC
   cerr << "RC+SSN";
-#elif defined RC_SPIN
-  cerr << "RC_SPIN+SSN";
+  cerr << "  safe snapshot          : " << config::enable_safesnap << endl;
+  cerr << "  read opt threshold     : 0x" << hex << config::ssn_read_opt_threshold << dec << endl;
 #else
   cerr << "SI+SSN";
+  cerr << "  safe snapshot          : " << config::enable_safesnap << endl;
+  cerr << "  read opt threshold     : 0x" << hex << config::ssn_read_opt_threshold << dec << endl;
 #endif
 #else
   cerr << "SI";
 #endif
   cerr << endl;
-  cerr << "PID: " << getpid() << endl;
-  cerr << "Settings:" << endl;
+  cerr << "  phantom-protection: " << config::phantom_prot << endl;
+
+  cerr << "Settings and properties" << endl;
   cerr << "  node-memory       : " << config::node_memory_gb << "GB" << endl;
-  cerr << "  parallel-loading: " << FLAGS_parallel_loading << endl;
-  cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions << endl;
-  cerr << "  backoff-txns      : " << FLAGS_backoff_aborted_transactions << endl;
-  cerr << "  benchmark         : " << FLAGS_benchmark << endl;
-  cerr << "  scale-factor      : " << FLAGS_scale_factor << endl;
   cerr << "  num-threads       : " << config::worker_threads << endl;
   cerr << "  numa-nodes        : " << config::numa_nodes << endl;
+  cerr << "  benchmark         : " << FLAGS_benchmark << endl;
 #ifdef USE_VARINT_ENCODING
   cerr << "  var-encode        : yes" << endl;
 #else
   cerr << "  var-encode        : no" << endl;
 #endif
-  cerr << "  phantom-protection: " << config::phantom_prot << endl;
   cerr << "  log-dir           : " << config::log_dir << endl;
-  cerr << "  group-commit      : " << config::group_commit << endl;
-  cerr << "  commit-queue      : " << config::group_commit_queue_length << endl;
   cerr << "  tmpfs-dir         : " << config::tmpfs_dir << endl;
-  cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << endl;
-  cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
   cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << endl;
-  cerr << "  log-key-for-update: " << config::log_key_for_update << endl;
-  cerr << "  enable-chkpt      : " << config::enable_chkpt << endl;
-  if(config::enable_chkpt) {
-    cerr << "  chkpt-interval  : " << config::chkpt_interval << endl;
-  }
-  cerr << "  enable-gc         : " << config::enable_gc     << endl;
-  cerr << "  null-log-device   : " << config::null_log_device << endl;
-  cerr << "  num-backups       : " << config::num_backups   << endl;
-  cerr << "  wait-for-backups  : " << config::wait_for_backups << endl;
+  cerr << "  logbuf-partitions : " << config::logbuf_partitions << endl;
 
-#if defined(SSN) || defined(SSI)
-  cerr << "  SSN/SSI safesnap  : " << config::enable_safesnap << endl;
-#endif
-#ifdef SSI
-  cerr << "  SSI read-only opt : " << config::enable_ssi_read_only_opt << endl;
-#endif
-#ifdef SSN
-  cerr << "  SSN read opt threshold: 0x" << hex << config::ssn_read_opt_threshold << dec << endl;
-#endif
-
-  cerr << "System properties:" << endl;
   cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize() << endl;
   cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize() << endl;
 
-#ifdef TUPLE_PREFETCH
-  cerr << "  tuple_prefetch          : yes" << endl;
-#else
-  cerr << "  tuple_prefetch          : no" << endl;
-#endif
+  if(config::is_backup_srv()) {
+    cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
+    cerr << "  log-ship-sync-redo: " << config::log_ship_sync_redo << endl;
+    cerr << "  log-ship-full-redo: " << config::log_ship_full_redo << endl;
+  } else {
+    cerr << "  parallel-loading: " << FLAGS_parallel_loading << endl;
+    cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions << endl;
+    cerr << "  backoff-txns      : " << FLAGS_backoff_aborted_transactions << endl;
+    cerr << "  scale-factor      : " << FLAGS_scale_factor << endl;
+    cerr << "  group-commit      : " << config::group_commit << endl;
+    cerr << "  commit-queue      : " << config::group_commit_queue_length << endl;
+    cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << endl;
+    cerr << "  log-key-for-update: " << config::log_key_for_update << endl;
+    cerr << "  enable-chkpt      : " << config::enable_chkpt << endl;
+    if(config::enable_chkpt) {
+      cerr << "  chkpt-interval    : " << config::chkpt_interval << endl;
+    }
+    cerr << "  enable-gc         : " << config::enable_gc     << endl;
+    cerr << "  null-log-device   : " << config::null_log_device << endl;
+    cerr << "  num-backups       : " << config::num_backups   << endl;
+    cerr << "  wait-for-backups  : " << config::wait_for_backups << endl;
+  }
 
   MM::prepare_node_memory();
   vector<string> bench_toks = split_ws(FLAGS_benchmark_options);
