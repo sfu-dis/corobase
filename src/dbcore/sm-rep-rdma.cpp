@@ -9,6 +9,24 @@ std::mutex nodes_lock;
 
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 
+uint64_t new_end_lsn_offset = 0;
+void LogFlushDaemon() {
+  rcu_register();
+  DEFER(rcu_deregister());
+  auto* logbuf = sm_log::get_logbuf();
+  uint64_t last_flushed = 0;
+  while(true) {
+    uint64_t lsn = volatile_read(new_end_lsn_offset);
+    if(lsn > last_flushed) {
+      rcu_enter();
+      DEFER(rcu_exit());
+      logmgr->flush_log_buffer(*logbuf, lsn, true);
+      last_flushed = lsn;
+      volatile_write(new_end_lsn_offset, 0);
+    }
+  }
+}
+
 void primary_rdma_poll_send_cq(uint64_t nops) {
   ALWAYS_ASSERT(!config::is_backup_srv());
   for(auto& n : nodes) {
@@ -118,6 +136,8 @@ void backup_daemon_rdam() {
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   auto* logbuf = sm_log::get_logbuf();
   LSN start_lsn = logmgr->durable_flushed_lsn();
+  std::thread flusher(LogFlushDaemon);
+  flusher.detach();
   while (1) {
     rcu_enter();
     DEFER(rcu_exit());
@@ -179,24 +199,28 @@ void backup_daemon_rdam() {
 
     // TODO(tzwang): persist and ack Persisted msg here
 
+    uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
     if (config::log_ship_sync_redo) {
       if(logbuf->available_to_read() < size) {
-        uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
         logbuf->advance_writer(new_byte);
       }
       ALWAYS_ASSERT(logbuf->available_to_read() >= size);
-      //logmgr->redo_log(start_lsn, end_lsn);
+      // "Notify" the flusher to write log records out, asynchronously
+      volatile_write(new_end_lsn_offset, end_lsn_offset);
       logmgr->redo_logbuf(start_lsn, end_lsn);
-      ASSERT(logmgr->durable_flushed_lsn().offset() == start_lsn.offset());
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+    } else {
+      volatile_write(new_end_lsn_offset, end_lsn_offset);
     }
 
-    // Now persist the log records in storage
-    logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
-    self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
+    // Now wait for the flusher to finish persisting log
+    while(volatile_read(new_end_lsn_offset) != 0) {}
+
+    // After advance_reader no one should read from the log buffer
+    logbuf->advance_reader(new_byte);
     ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
-    // FIXME(tzwang): now advance cur_lsn so that readers can really use the new data
-    
+    self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
+
     // Next iteration
     start_lsn = end_lsn;
   }
