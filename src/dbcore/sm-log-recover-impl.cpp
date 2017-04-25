@@ -157,7 +157,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
     retry_primary:
       fat_ptr* entry_ptr = oa->get(o);
       fat_ptr expected = *entry_ptr;
-      new_object->SetNext(expected);
+      new_object->SetNextVolatile(expected);
       // Go in to see LSN
       ASSERT(expected.offset());
       Object* obj = (Object*)expected.offset();

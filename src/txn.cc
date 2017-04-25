@@ -144,10 +144,10 @@ transaction::abort_impl()
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->GetObject()->GetClsn()) == xid);
 #if defined(SSI) || defined(SSN)
-        if (tuple->next()) {
-            volatile_write(tuple->next()->sstamp, NULL_PTR);
+        if(tuple->NextVolatile()) {
+          volatile_write(tuple->NextVolatile()->sstamp, NULL_PTR);
 #ifdef SSN
-            tuple->next()->welcome_read_mostly_tx();
+          tuple->NextVolatile()->welcome_read_mostly_tx();
 #endif
         }
 #endif
@@ -370,9 +370,9 @@ transaction::parallel_ssn_commit()
 
         // go to the precommitted or committed version I (am about to)
         // overwrite for the reader list
-        dbtuple *overwritten_tuple = tuple->next();
+        dbtuple* overwritten_tuple = tuple->NextVolatile();
         ASSERT(not overwritten_tuple or
-               (tuple->GetObject())->GetNext().offset() ==
+               (tuple->GetObject())->GetNextVolatile().offset() ==
                (uint64_t)(overwritten_tuple->GetObject()));
         if (not overwritten_tuple) // insert
             continue;
@@ -573,9 +573,9 @@ transaction::parallel_ssn_commit()
         auto &w = write_set[i];
         dbtuple *tuple = w.get_object()->GetPinnedTuple();
         tuple->do_write();
-        dbtuple *next_tuple = tuple->next();
+        dbtuple* next_tuple = tuple->NextVolatile();
         ASSERT(not next_tuple or
-               (tuple->GetObject()->GetNext().offset() ==
+               (tuple->GetObject()->GetNextVolatile().offset() ==
                (uint64_t)next_tuple->GetObject()));
         if (next_tuple) {   // update, not insert
             ASSERT(next_tuple->GetObject()->GetClsn().asi_type());
@@ -800,7 +800,7 @@ transaction::parallel_ssi_commit()
         // now see if I'm the unlucky T2
         for (uint32_t i = 0; i < write_set.size(); ++i) {
             auto &w = write_set[i];
-            dbtuple *overwritten_tuple = w.get_object()->GetPinnedTuple()->next();
+            dbtuple* overwritten_tuple = w.get_object()->GetPinnedTuple()->NextVolatile();
             if (not overwritten_tuple)
                 continue;
 
@@ -920,7 +920,7 @@ transaction::parallel_ssi_commit()
         auto &w = write_set[i];
         dbtuple* tuple = w.get_object()->GetPinnedTuple();
         tuple->do_write();
-        dbtuple *overwritten_tuple = tuple->next();
+        dbtuple* overwritten_tuple = tuple->NextVolatile();
         if (overwritten_tuple) {    // update
             ASSERT(not overwritten_tuple->s2);
             // Must set s2 first, before setting clsn

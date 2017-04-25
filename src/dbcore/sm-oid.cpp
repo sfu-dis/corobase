@@ -552,7 +552,7 @@ iterate_index:
             }
 
             Object* obj = (Object*)ptr.offset();
-            fat_ptr next = obj->GetNext();
+            fat_ptr next = obj->GetNextVolatile();
             fat_ptr clsn = obj->GetClsn();
             if(clsn == NULL_PTR) {
               // Stepping on a dead tuple, see details in oid_get_version.
@@ -753,6 +753,8 @@ fat_ptr sm_oid_mgr::PrimaryTupleUpdate(FID f,
   return PrimaryTupleUpdate(get_impl(this)->get_array(f), o, value, updater_xc, new_obj_ptr);
 }
 
+// For primary server only - guaranteed to have no gaps between versions,
+// i.e., pdest_next_ matches volatile_next_.
 fat_ptr sm_oid_mgr::PrimaryTupleUpdate(oid_array *oa,
                                        OID o,
                                        const varstr *value,
@@ -845,13 +847,15 @@ install:
     Object *new_object = (Object*)new_obj_ptr->offset();
     new_object->SetClsn(updater_xc->owner.to_ptr());
     if (overwrite) {
-        new_object->SetNext(old_desc->GetNext());
+        new_object->SetNextPersistent(old_desc->GetNextPersistent());
+        new_object->SetNextVolatile(old_desc->GetNextVolatile());
         // I already claimed it, no need to use cas then
         volatile_write(ptr->_ptr, new_obj_ptr->_ptr);
         __sync_synchronize();
         return head;
     } else {
-        new_object->SetNext(head);
+        new_object->SetNextPersistent(old_desc->GetPersistentAddress());
+        new_object->SetNextVolatile(head);
         if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr, new_obj_ptr->_ptr)) {
             // Succeeded installing a new version, now only I can modify the
             // chain, try recycle some objects
@@ -911,17 +915,17 @@ retry:
     ALWAYS_ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
     ALWAYS_ASSERT(ptr.offset() > active_head_lsn);
 
-    // Dig out the gap between pdest_head and active_head
+    // Dig out the first version until the latest one visible to me
     Object* prev_obj = nullptr;
     fat_ptr install_ptr = NULL_PTR;
     Object* ret_obj = active_head_obj;
-    while(true) {
+    while(ptr.offset() > active_head_lsn) {
       ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);  // Digging things out
       size_t sz = sizeof(Object) + sizeof(dbtuple) + decode_size_aligned(ptr.size_code());;
       sz = align_up(sz);
       Object* obj = (Object*)MM::allocate(sz, 0);
       if(prev_obj) {
-        prev_obj->SetNext(fat_ptr::make(obj, encode_size_aligned(sz), 0));
+        prev_obj->SetNextVolatile(fat_ptr::make(obj, encode_size_aligned(sz), 0));
       } else {
         install_ptr = fat_ptr::make(obj, encode_size_aligned(sz), 0);
       }
@@ -931,24 +935,21 @@ retry:
       // embedded in the payload) as the only purpose of Pin() here is to
       // get to know the pdest of the overwritten version. (perhaps doesn't
       // matter especially if using disk/SSD).
-      ASSERT(obj->GetNext() == NULL_PTR);
-      obj->Pin();  // obj.next becomes available after Pin()
-      ASSERT(obj->GetNext() == NULL_PTR || obj->GetNext().asi_type() == fat_ptr::ASI_LOG);
-      ptr = obj->GetNext();
+      ASSERT(obj->GetNextPersistent() == NULL_PTR);
+      obj->Pin();  // obj.next_pdest becomes available after Pin()
+      ASSERT(obj->GetNextPersistent() == NULL_PTR ||
+             obj->GetNextPersistent().asi_type() == fat_ptr::ASI_LOG);
       uint64_t clsn = obj->GetClsn().offset();
       ASSERT(clsn > active_head_lsn);
       if(xc->begin > clsn && ret_obj == active_head_obj) {
-        ret_obj = obj;
-      }
-      uint64_t next_offset = ptr.offset();
-      if(next_offset <= active_head_lsn) {
         // Done, no need to dig further
-        obj->SetNext(active_head_ptr);
-        ASSERT(obj->GetNext().asi_type() == 0);
+        ret_obj = obj;
+        obj->SetNextVolatile(active_head_ptr);
+        obj->SetNextPersistent(ptr);
         break;
       } else {
-        ALWAYS_ASSERT(next_offset > active_head_lsn);
         prev_obj = obj;
+        ptr = obj->GetNextPersistent();
       }
     }
     // Install the chain on the tuple array slot (plain write as we locked it)
@@ -961,8 +962,8 @@ retry:
     if(!success) {
       fat_ptr to_free = install_ptr;
       while(to_free != active_head_ptr) {
-        Object* obj = (Object*)to_free.offset();
-        fat_ptr next = obj->GetNext();
+        Object* to_free_obj = (Object*)to_free.offset();
+        fat_ptr next = to_free_obj->GetNextVolatile();
         MM::deallocate(to_free);
         to_free = next;
       }
@@ -972,18 +973,20 @@ retry:
   }
 }
 
+// For tuple arrays only, i.e., entries are guaranteed to point to Objects.
 dbtuple*
 sm_oid_mgr::oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc) {
-start_over:
   fat_ptr* entry = oa->get(o);
+start_over:
   fat_ptr ptr = volatile_read(*entry);
+  ASSERT(ptr.asi_type() == 0);
+  Object* prev_obj = nullptr;
   while (1) {
-    ASSERT(ptr.asi_type() == 0);
     if(ptr.offset() == 0) {
       break;
     }
 
-    Object *cur_obj = (Object*)ptr.offset();
+    Object *cur_obj = nullptr;
     // Must read next_ before reading cur_obj->_clsn:
     // the version we're currently reading (ie cur_obj) might be unlinked
     // and thus recycled by the memory allocator at any time if it's not
@@ -999,8 +1002,44 @@ start_over:
     // that means we might have read a wrong _next value that's actually
     // pointing to some irrelevant object in the allocator's memory pool,
     // hence must start over from the beginning of the version chain.
-    fat_ptr tentative_next = cur_obj->GetNext();
-    ASSERT(tentative_next.asi_type() == 0);
+    fat_ptr tentative_next = NULL_PTR;
+    // If this is a backup server, then must see persistent_next to find out
+    // the **real** overwritten version.
+    if(config::is_backup_srv()) {
+      // Might need to dig the version out
+      uint64_t next_volatile_lsn = 0;
+      if(prev_obj) {
+        next_volatile_lsn = prev_obj->GetClsn().offset();
+      }
+      if(ptr.asi_type() == fat_ptr::ASI_LOG && next_volatile_lsn != ptr.offset()) {
+        ASSERT(ptr.size_code() != INVALID_SIZE_CODE);
+        size_t alloc_sz = decode_size_aligned(ptr.size_code());
+        cur_obj = (Object*)MM::allocate(alloc_sz, visitor_xc->begin_epoch);
+        new(cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, true);
+        cur_obj->Pin();  // After this next_pdest_ is valid
+        ASSERT(prev_obj);
+        cur_obj->SetNextVolatile(prev_obj->GetNextVolatile());
+        fat_ptr newptr = fat_ptr::make(cur_obj, ptr.size_code(), 0);
+        if(!__sync_bool_compare_and_swap(&prev_obj->GetNextVolatilePtr()->_ptr,
+                                         ptr._ptr, newptr._ptr)) {
+          // If this CAS failed, then it must be somebody else who installed this
+          // immediate version
+          cur_obj = (Object*)prev_obj->GetNextVolatile().offset();
+          ASSERT(cur_obj);
+          ASSERT(cur_obj->GetClsn().offset() == ptr.offset());
+          MM::deallocate(newptr);
+        }
+      } else {
+        cur_obj = (Object*)ptr.offset();
+      }
+      tentative_next = cur_obj->GetNextPersistent();
+      ASSERT(tentative_next == NULL_PTR || tentative_next.asi_type() == fat_ptr::ASI_LOG);
+    } else {
+      ASSERT(ptr.asi_type() == 0);
+      cur_obj = (Object*)ptr.offset();
+      tentative_next = cur_obj->GetNextVolatile();
+      ASSERT(tentative_next.asi_type() == 0);
+    }
     auto clsn = cur_obj->GetClsn();
     if (clsn == NULL_PTR) {
       // dead tuple that was (or about to be) unlinked, start over
@@ -1014,8 +1053,9 @@ start_over:
 
       // dirty data made by me is visible!
       if(holder_xid == visitor_xc->owner) {
-        ASSERT(!cur_obj->GetNext().offset() ||
-               ((Object*)cur_obj->GetNext().offset())->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(!cur_obj->GetNextVolatile().offset() ||
+               ((Object*)cur_obj->GetNextVolatile().offset())->GetClsn().asi_type() ==
+               fat_ptr::ASI_LOG);
         return cur_obj->GetPinnedTuple();
       }
       auto* holder = xid_get_context(holder_xid);
@@ -1083,6 +1123,7 @@ start_over:
 #endif
     }
     ptr = tentative_next;
+    prev_obj = cur_obj;
   }
   return nullptr;    // No Visible records
 }
