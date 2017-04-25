@@ -119,7 +119,7 @@ struct sm_oid_mgr {
        returns, but will only be reachable if the checkpoint
        transaction commits and its location is properly recorded.
      */
-    void take_chkpt(uint64_t chkpt_start_lsn);
+    void PrimaryTakeChkpt(uint64_t chkpt_start_lsn);
 
     /* Create a new file and return its FID. If [needs_alloc]=true,
        the new file will be managed by an allocator and its FID can be
@@ -181,9 +181,9 @@ struct sm_oid_mgr {
     bool oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
 
     /* Return a fat_ptr to the overwritten object (could be an in-flight version!) */
-    fat_ptr oid_put_update(
+    fat_ptr PrimaryTupleUpdate(
       FID f, OID o, const varstr* value, xid_context *updater_xc, fat_ptr *new_obj_ptr);
-    fat_ptr oid_put_update(
+    fat_ptr PrimaryTupleUpdate(
       oid_array *oa, OID o, const varstr *value, xid_context *updater_xc, fat_ptr *new_obj_ptr);
 
     dbtuple *oid_get_latest_version(FID f, OID o);
@@ -243,15 +243,14 @@ struct sm_oid_mgr {
         return NULL;
     }
 
-    void oid_unlink(FID f, OID o);
-    inline void oid_unlink(oid_array *oa, OID o) {
+    inline void PrimaryTupleUnlink(oid_array *oa, OID o) {
         // Now the head is guaranteed to be the only dirty version
         // because we unlink the overwritten dirty version in put,
         // essentially this function ditches the head directly.
         // Otherwise use the commented out old code.
-        oid_unlink(oa->get(o));
+        PrimaryTupleUnlink(oa->get(o));
     }
-    inline void oid_unlink(fat_ptr* ptr) {
+    inline void PrimaryTupleUnlink(fat_ptr* ptr) {
         Object* head_obj = (Object*)ptr->offset();
         // using a CAS is overkill: head is guaranteed to be the (only) dirty version
         volatile_write(ptr->_ptr, head_obj->GetNext()._ptr);
@@ -259,7 +258,7 @@ struct sm_oid_mgr {
         // tzwang: The caller is responsible for deallocate() the head version
         // got unlinked - a update of own write will record the unlinked version
         // in the transaction's write-set, during abortor commit the version's
-        // pvalue needs to be examined. So oid_unlink() shouldn't deallocate()
+        // pvalue needs to be examined. So PrimaryTupleUnlink() shouldn't deallocate()
         // here. Instead, the transaction does it in during commit or abort.
     }
 

@@ -80,7 +80,7 @@ public:
     XID owner = volatile_read(visitor->owner);
 
   retry:
-    fat_ptr cstamp = get_object()->GetClsn();
+    fat_ptr cstamp = GetObject()->GetClsn();
 
     if (cstamp.asi_type() == fat_ptr::ASI_XID) {
       XID xid = XID::from_ptr(cstamp);
@@ -147,16 +147,14 @@ public:
     return &value_start[0];
   }
 
-  inline ALWAYS_INLINE Object* get_object() {
+  inline Object* GetObject() {
     Object* obj = (Object*)((char *)this - sizeof(Object));
     ASSERT(obj->GetPayload() == (char *)this);
     return obj;
   }
 
-  inline ALWAYS_INLINE dbtuple*
-  next()
-  {
-    Object* myobj = get_object();
+  inline dbtuple* next() {
+    Object* myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
     if(myobj->GetNext().offset()) {
       return (dbtuple *)((Object*)myobj->GetNext().offset())->GetPayload();

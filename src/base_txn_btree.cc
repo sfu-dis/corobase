@@ -82,14 +82,14 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
 
     // first *updater* wins
     fat_ptr new_obj_ptr = NULL_PTR;
-    fat_ptr prev_obj_ptr = oidmgr->oid_put_update(tuple_array, oid, v, t.xc, &new_obj_ptr);
+    fat_ptr prev_obj_ptr = oidmgr->PrimaryTupleUpdate(tuple_array, oid, v, t.xc, &new_obj_ptr);
     Object* prev_obj = (Object*)prev_obj_ptr.offset();
 
     if(prev_obj) { // succeeded
         dbtuple *tuple = ((Object*)new_obj_ptr.offset())->GetPinnedTuple();
         ASSERT(tuple);
         dbtuple *prev = prev_obj->GetPinnedTuple();
-        ASSERT((uint64_t)prev->get_object() == prev_obj_ptr.offset());
+        ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
         ASSERT(t.xc);
 #ifdef SSI
         ASSERT(prev->sstamp == NULL_PTR);
@@ -128,13 +128,13 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
 
                         // we're safe if the reader is read-only (so far) and started after ct3
                         if (reader_xc->xct->write_set.size() > 0 and reader_begin <= t.xc->ct3) {
-                            oidmgr->oid_unlink(tuple_array, oid);
+                            oidmgr->PrimaryTupleUnlink(tuple_array, oid);
                             return {RC_ABORT_SERIAL};
                         }
                     }
                 }
                 else {
-                  oidmgr->oid_unlink(tuple_array, oid);
+                  oidmgr->PrimaryTupleUnlink(tuple_array, oid);
                   return {RC_ABORT_SERIAL};
                 }
             }
@@ -155,7 +155,7 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
         if (not ssn_check_exclusion(t.xc)) {
             // unlink the version here (note abort_impl won't be able to catch
             // it because it's not yet in the write set)
-            oidmgr->oid_unlink(tuple_array, oid);
+            oidmgr->PrimaryTupleUnlink(tuple_array, oid);
             return rc_t{RC_ABORT_SERIAL};
         }
 #endif
@@ -167,8 +167,8 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
 
         // read prev's clsn first, in case it's a committing XID, the clsn's state
         // might change to ASI_LOG anytime
-        ASSERT((uint64_t)prev->get_object() == prev_obj_ptr.offset());
-        fat_ptr prev_clsn = prev->get_object()->GetClsn();
+        ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
+        fat_ptr prev_clsn = prev->GetObject()->GetClsn();
         if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {
             // updating my own updates!
             // prev's prev: previous *committed* version
@@ -183,7 +183,7 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
-        ASSERT(tuple->get_object()->GetClsn().asi_type() == fat_ptr::ASI_XID);
+        ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
         ASSERT(oidmgr->oid_get_version(tuple_fid, oid, t.xc) == tuple);
         ASSERT(t.log);
 
@@ -221,7 +221,7 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
             }
             t.log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
                               DEFAULT_ALIGNMENT_BITS,
-                              tuple->get_object()->GetPersistentAddressPtr());
+                              tuple->GetObject()->GetPersistentAddressPtr());
         }
         return rc_t{RC_TRUE};
     }
