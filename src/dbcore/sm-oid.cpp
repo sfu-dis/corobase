@@ -561,6 +561,7 @@ iterate_index:
             } else if(clsn.asi_type() != fat_ptr::ASI_LOG) {
               // Someone is still working on this version
               ptr = next;
+              goto retry;
             }
 
             ASSERT(obj->GetClsn().offset());
@@ -757,10 +758,13 @@ fat_ptr sm_oid_mgr::PrimaryTupleUpdate(oid_array *oa,
                                        const varstr *value,
                                        xid_context *updater_xc,
                                        fat_ptr *new_obj_ptr) {
+    ASSERT(!config::is_backup_srv());
     auto *ptr = oa->get(o);
 start_over:
     fat_ptr head = volatile_read(*ptr);
+    ASSERT(head.asi_type() == 0);
     Object* old_desc = (Object*)head.offset();
+    ASSERT(old_desc);
     ASSERT(head.size_code() != INVALID_SIZE_CODE);
     dbtuple* version = (dbtuple *)old_desc->GetPayload();
     bool overwrite = false;
@@ -837,9 +841,9 @@ install:
     // working on the same tuple at the same time.
 
     *new_obj_ptr = Object::Create(value, false, updater_xc->begin_epoch);
+    ASSERT(new_obj_ptr->asi_type() == 0);
     Object *new_object = (Object*)new_obj_ptr->offset();
     new_object->SetClsn(updater_xc->owner.to_ptr());
-
     if (overwrite) {
         new_object->SetNext(old_desc->GetNext());
         // I already claimed it, no need to use cas then
@@ -1051,10 +1055,10 @@ start_over:
 #endif
       }
     } else {
-      // Already committed, now do visibility test and also
-      // see OID entry's ASI to determine where the data is.
+      // Already committed, now do visibility test
       ASSERT(cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
-             cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK);
+             cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
+             cur_obj->GetPersistentAddress() == NULL_PTR); // Delete
       uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
 #if defined(RC) || defined(RC_SPIN)
 #if defined(SSN)
