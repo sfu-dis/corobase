@@ -43,7 +43,7 @@ struct sm_log_scan_mgr_impl : sm_log_scan_mgr {
    is in sm-log-recover.cpp, not sm-log.cpp.
  */
 struct sm_log_header_scan_impl : sm_log_scan_mgr::header_scan {
-    sm_log_header_scan_impl(sm_log_recover_mgr *lm, LSN start);
+    sm_log_header_scan_impl(sm_log_recover_mgr *lm, LSN start, bool force_fetch_from_logbuf);
     
     sm_log_recover_mgr::log_scanner scan;
     sm_log_recover_mgr *lm;
@@ -53,7 +53,8 @@ struct sm_log_header_scan_impl : sm_log_scan_mgr::header_scan {
    is in sm-log-recover.cpp, not sm-log.cpp.
  */
 struct sm_log_record_scan_impl : sm_log_scan_mgr::record_scan {
-    sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx, bool fetch_payloads);
+    sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx,
+                            bool fetch_payloads, bool force_fetch_from_logbuf);
 
     sm_log_recover_mgr::log_scanner scan;
     sm_log_recover_mgr *lm;

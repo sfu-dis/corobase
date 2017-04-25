@@ -23,7 +23,7 @@ parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to)
   // One hiwater_mark/capacity_mark per FID
   FID max_fid = 0;
   if (redoers.size() == 0) {
-    auto *scan = scanner->new_log_scan(start_lsn, config::eager_warm_up());
+    auto *scan = scanner->new_log_scan(start_lsn, config::eager_warm_up(), false);
     for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
       if (scan->type() != sm_log_scan_mgr::LOG_FID)
         continue;
@@ -90,7 +90,7 @@ parallel_oid_replay::redo_runner::redo_partition() {
   RCU::rcu_enter();
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
   ALWAYS_ASSERT(owner->start_lsn.segment() >= 1);
-  auto *scan = owner->scanner->new_log_scan(owner->start_lsn, config::eager_warm_up());
+  auto *scan = owner->scanner->new_log_scan(owner->start_lsn, config::eager_warm_up(), false);
   static __thread std::unordered_map<FID, OID> max_oid;
 
   for (; scan->valid() and scan->payload_lsn() < owner->end_lsn; scan->next()) {
