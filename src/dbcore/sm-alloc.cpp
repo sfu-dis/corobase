@@ -103,14 +103,14 @@ void gc_version_chain(fat_ptr* oid_entry) {
   }
   if(clsn.asi_type() != fat_ptr::ASI_LOG) {
     DCHECK(clsn.asi_type() == fat_ptr::ASI_XID);
-    ptr = cur_obj->GetNext();
+    ptr = cur_obj->GetNextVolatile();
     cur_obj = (Object*)ptr.offset();
   }
 
   // Now cur_obj should be the fisrt committed version, continue to the version
   // that can be safely recycled (the version after cur_obj).
-  ptr = cur_obj->GetNext();
-  prev_next = cur_obj->GetNextPtr();
+  ptr = cur_obj->GetNextVolatile();
+  prev_next = cur_obj->GetNextVolatilePtr();
 
   while(ptr.offset()) {
     cur_obj = (Object*)ptr.offset();
@@ -119,8 +119,8 @@ void gc_version_chain(fat_ptr* oid_entry) {
       // Might already got recycled, give up
       break;
     }
-    ptr = cur_obj->GetNext();
-    prev_next = cur_obj->GetNextPtr();
+    ptr = cur_obj->GetNextVolatile();
+    prev_next = cur_obj->GetNextVolatilePtr();
     // If the chkpt needs to be a consistent one, must make sure not to GC a version
     // that might be needed by chkpt:
     // uint64_t glsn = std::min(logmgr->durable_flushed_lsn().offset(), volatile_read(gc_lsn));
@@ -146,9 +146,9 @@ void gc_version_chain(fat_ptr* oid_entry) {
         clsn = cur_obj->GetClsn();
         ALWAYS_ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
         ALWAYS_ASSERT(LSN::from_ptr(clsn).offset() <= glsn);
-        fat_ptr next_ptr = cur_obj->GetNext();
+        fat_ptr next_ptr = cur_obj->GetNextVolatile();
         cur_obj->SetClsn(NULL_PTR);
-        cur_obj->SetNext(NULL_PTR);
+        cur_obj->SetNextVolatile(NULL_PTR);
         if(!tls_free_object_pool) {
           tls_free_object_pool = new TlsFreeObjectPool;
         }
@@ -215,7 +215,7 @@ void deallocate(fat_ptr p) {
   ASSERT(p.size_code());
   ASSERT(p.size_code() != INVALID_SIZE_CODE);
   Object* obj = (Object*)p.offset();
-  obj->SetNext(NULL_PTR);
+  obj->SetNextVolatile(NULL_PTR);
   obj->SetClsn(NULL_PTR);
   if(!tls_free_object_pool) {
     tls_free_object_pool = new TlsFreeObjectPool;

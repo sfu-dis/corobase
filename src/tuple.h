@@ -153,12 +153,12 @@ public:
     return obj;
   }
 
-  inline dbtuple* next() {
+  inline dbtuple* NextVolatile() {
     // So far this is only used by the primary
     ALWAYS_ASSERT(!config::is_backup_srv());
     Object* myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
-    uint64_t next_off = myobj->GetNext().offset();
+    uint64_t next_off = myobj->GetNextVolatile().offset();
     return next_off ? GetObject()->GetPinnedTuple() : nullptr;
   }
 

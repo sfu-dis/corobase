@@ -61,8 +61,8 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     // Strip out the varstr stuff
     tuple->size = ((varstr *)tuple->get_value_start())->size();
     // Fill in the overwritten version's pdest if needed
-    if(config::is_backup_srv() && next_ == NULL_PTR) {
-      next_ = ((varstr *)tuple->get_value_start())->ptr;
+    if(config::is_backup_srv() && next_pdest_ == NULL_PTR) {
+      next_pdest_ = ((varstr *)tuple->get_value_start())->ptr;
     }
     // Could be a delete
     ASSERT(tuple->size < data_sz);
@@ -82,7 +82,7 @@ void Object::Pin(sm_log_recover_mgr* lm) {
                       read_size, pdest_.offset() + skip);
     ALWAYS_ASSERT(n == read_size);
     ASSERT(tuple->size <= read_size - sizeof(dbtuple));
-    next_ = NULL_PTR;
+    next_pdest_ = NULL_PTR;
   }
   ASSERT(clsn_.asi_type() == fat_ptr::ASI_LOG);
   ALWAYS_ASSERT(pdest_.offset());
