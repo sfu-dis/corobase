@@ -174,12 +174,6 @@ struct sm_oid_mgr {
     void oid_put_new(FID f, OID o, fat_ptr p);
     void oid_put_new_if_absent(FID f, OID o, fat_ptr p);
 
-    /* Same as oid_put_update but give up if the entry is already pointing to
-     * a newer version; currently for recovery and roll-forward in backups only.
-     */
-    bool oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
-    bool oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset);
-
     /* Return a fat_ptr to the overwritten object (could be an in-flight version!) */
     fat_ptr PrimaryTupleUpdate(
       FID f, OID o, const varstr* value, xid_context *updater_xc, fat_ptr *new_obj_ptr);

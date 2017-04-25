@@ -42,7 +42,13 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
     FID pf = IndexDescriptor::Get(f)->GetPersistentAddressFid();
     oid_array *oa = get_impl(oidmgr)->get_array(pf);
     oa->ensure_size(o);
-    oidmgr->oid_put_latest(oa, o, ptr, nullptr, ptr.offset());
+    // Skip if a newer one is already there
+    fat_ptr* entry_ptr = oa->get(o);
+    fat_ptr expected = *entry_ptr;
+    ASSERT(expected.asi_type() == 0 || expected.asi_type() == fat_ptr::ASI_LOG);
+    if(expected.offset() < ptr.offset()) {
+      __sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr, ptr._ptr);
+    }
   } else {
     fat_ptr ptr = prepare_version(logrec, NULL_PTR);
     ASSERT(oidmgr->file_exists(f));
@@ -50,7 +56,11 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
     oa->ensure_size(o);
     // The chkpt recovery process might have picked up this tuple already
     if(latest) {
-      if(!oidmgr->oid_put_latest(f, o, ptr, nullptr, logrec->payload_lsn().offset())) {
+      fat_ptr* entry_ptr = oa->get(o);
+      fat_ptr expected = *entry_ptr;
+      if(expected == NULL_PTR) {
+        __sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr, ptr._ptr);
+      } else {
         MM::deallocate(ptr);
       }
     } else {
@@ -128,19 +138,34 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   if(config::is_backup_srv()) {
     FID pf = IndexDescriptor::Get(f)->GetPersistentAddressFid();
     oid_array *oa = get_impl(oidmgr)->get_array(pf);
-    fat_ptr ptr = is_delete ? NULL_PTR : logrec->payload_ptr();
-    ALWAYS_ASSERT(is_delete || ptr.asi_type() == fat_ptr::ASI_LOG);
-    oidmgr->oid_put_latest(oa, o, ptr, nullptr, ptr.offset());
+    fat_ptr* entry_ptr = oa->get(o);
+    fat_ptr ptr = logrec->payload_ptr();
+  retry_backup:
+    fat_ptr expected = *entry_ptr;
+    ASSERT(expected.asi_type() == 0 || expected.asi_type() == fat_ptr::ASI_LOG);
+    if(expected.offset() < ptr.offset()) {
+      if(!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr, ptr._ptr)) {
+        goto retry_backup;
+      }
+    }
   } else {
     auto* oa = IndexDescriptor::Get(f)->GetTupleArray();
     fat_ptr head_ptr = *oa->get(o);
-
-    fat_ptr ptr = NULL_PTR;
-    if(!is_delete) {
-      ptr = prepare_version(logrec, head_ptr);
-    }
+    fat_ptr ptr = prepare_version(logrec, head_ptr);
+    Object* new_object = (Object*)ptr.offset();
     if(latest) {
-      if(!oidmgr->oid_put_latest(oa, o, ptr, nullptr, logrec->payload_lsn().offset())) {
+    retry_primary:
+      fat_ptr* entry_ptr = oa->get(o);
+      fat_ptr expected = *entry_ptr;
+      new_object->SetNext(expected);
+      // Go in to see LSN
+      ASSERT(expected.offset());
+      Object* obj = (Object*)expected.offset();
+      if(obj->GetPersistentAddress().offset() < logrec->payload_lsn().offset()) {
+        if(!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr, ptr._ptr)) {
+          goto retry_primary;
+        }
+      } else {
         MM::deallocate(ptr);
       }
     } else {

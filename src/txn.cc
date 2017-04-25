@@ -1064,6 +1064,7 @@ transaction::try_insert_new_tuple(concurrent_btree *btr,
     if(likely(is_primary_idx)) {
       fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
       ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+      ASSERT(new_head.asi_type() == 0);
       tuple = ((Object*)new_head.offset())->GetPinnedTuple();
       ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
       tuple->GetObject()->SetClsn(xid.to_ptr());
