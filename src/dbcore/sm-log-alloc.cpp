@@ -345,8 +345,13 @@ retry:
           }
         }
 
-        // After this the buffer space will become available for consumption
-        logbuf.advance_reader(new_byte);
+        if(!config::is_backup_srv()) {
+          // After this the buffer space will become available for consumption
+          // Backup server will do it by itself as once we advance_reader the space
+          // becomes unreadable, and backups might need to replay by reading directly
+          // the log buffer.
+          logbuf.advance_reader(new_byte);
+        }
 
         // segment change?
         if(new_sid != durable_sid) {
