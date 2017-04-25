@@ -744,61 +744,6 @@ sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p)
   }
 }
 
-bool
-sm_oid_mgr::oid_put_latest(FID f, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset)
-{
-  ASSERT(config::is_backup_srv() || config::loading);
-  return oid_put_latest(get_impl(this)->get_array(f), o, p, k, lsn_offset);
-}
-
-bool
-sm_oid_mgr::oid_put_latest(oid_array* oa, OID o, fat_ptr p, varstr* k, uint64_t lsn_offset) {
-  ASSERT(config::is_backup_srv() || config::loading);
-  auto* entry = oa->get(o);
-  oa->ensure_size(o);
-retry:
-  fat_ptr ptr = *entry;
-  bool do_it = false;
-  if(ptr == NULL_PTR) {
-    do_it = true;
-  } else {
-    if(ptr.asi_type() == 0) {
-      ASSERT(ptr.asi_type() == 0);
-      // Go in to see LSN
-      Object* obj = (Object*)ptr.offset();
-      if(obj->GetClsn().offset() < lsn_offset) {
-        do_it = true;
-        if(p.offset()) {
-          // Could be a delete
-          Object* new_obj = (Object*)p.offset();
-          new_obj->SetNext(ptr);
-        }
-      }
-    } else {
-      // Must be the persistent address array on a backup
-      ASSERT(config::is_backup_srv());
-      ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);
-      // Direct comparison
-      if(ptr.offset() < lsn_offset) {
-        do_it = true;
-      }
-    }
-  }
-
-  if(do_it) {
-    uint64_t expected = ptr._ptr;
-    if(__sync_bool_compare_and_swap(&entry->_ptr, expected, p._ptr)) {
-      if(k && !config::is_backup_srv() && expected == 0) {
-        //volatile_write(IndexDescriptor::Get(f)->GetKeyArray()->get(o), k);
-      }
-      return true;
-    } else {
-      goto retry;
-    }
-  }
-  return false;
-}
-
 fat_ptr sm_oid_mgr::PrimaryTupleUpdate(FID f,
                                        OID o,
                                        const varstr *value,
