@@ -4,8 +4,6 @@
 namespace rep {
 
 bool recover_first = true;
-uint64_t cur_lsn_offset = 0;
-
 uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
 
 // for primary server only

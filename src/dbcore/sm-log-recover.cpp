@@ -12,13 +12,14 @@ using namespace RCU;
 sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     : sm_log_offset_mgr()
     , scanner(new sm_log_scan_mgr_impl{this})
+    , logbuf_scanner(nullptr)
     , recover_functor(rf)
     , logbuf_redo_functor(nullptr)
     , recover_functor_arg(rf_arg)
 {
     LSN dlsn = get_durable_mark();
     bool changed = false;
-    for (block_scanner it(this, dlsn, false, true); it.valid(); ++it) {
+    for (block_scanner it(this, dlsn, false, true, false); it.valid(); ++it) {
         // durable up to this point, but maybe no further
         if (it->checksum != it->full_checksum())
             break;
@@ -36,6 +37,7 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     }
     if(config::is_backup_srv()) {
       logbuf_redo_functor = new parallel_offset_replay;
+      logbuf_scanner = new sm_log_scan_mgr_impl{this};
     }
 }
 
@@ -57,7 +59,8 @@ void sm_log_recover_mgr::redo_log(LSN start_lsn, LSN end_lsn) {
 }
 
 void sm_log_recover_mgr::redo_logbuf(LSN start, LSN end) {
-  (*logbuf_redo_functor)(nullptr, scanner, start, end);
+  ASSERT(logbuf_scanner);
+  (*logbuf_redo_functor)(nullptr, logbuf_scanner, start, end);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr()
@@ -66,10 +69,12 @@ sm_log_recover_mgr::~sm_log_recover_mgr()
 }
 
 sm_log_recover_mgr::block_scanner::block_scanner(sm_log_recover_mgr *lm, LSN start,
-                                                 bool follow_overflow, bool fetch_payloads)
+                                                 bool follow_overflow, bool fetch_payloads,
+                                                 bool force_fetch_from_logbuf)
     : _lm(lm)
     , _follow_overflow(follow_overflow)
     , _fetch_payloads(fetch_payloads)
+    , _force_fetch_from_logbuf(force_fetch_from_logbuf)
     , _buf((log_block*)rcu_alloc(fetch_payloads? MAX_BLOCK_SIZE : MIN_BLOCK_FETCH))
 {
     _load_block(start, _follow_overflow);
@@ -117,7 +122,12 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
             return;
     }
 
-    bool read_from_logbuf = logmgr && x.offset() > logmgr->durable_flushed_lsn_offset();
+    bool read_from_logbuf = false;
+    if(config::is_backup_srv()) {
+      read_from_logbuf = _force_fetch_from_logbuf;
+    } else {
+      read_from_logbuf = logmgr && x.offset() > logmgr->durable_flushed_lsn_offset();
+    }
 
     // helper function... pread may not read everything in one call
     auto pread = [&](size_t nbytes, uint64_t i)->size_t {
@@ -197,8 +207,11 @@ sm_log_recover_mgr::block_scanner::_load_block(LSN x, bool follow_overflow)
     success = true;
 }
 
-sm_log_recover_mgr::log_scanner::log_scanner(sm_log_recover_mgr *lm, LSN start, bool fetch_payloads)
-    : _bscan(lm, start, true, fetch_payloads)
+sm_log_recover_mgr::log_scanner::log_scanner(sm_log_recover_mgr *lm,
+                                             LSN start,
+                                             bool fetch_payloads,
+                                             bool force_fetch_from_logbuf)
+    : _bscan(lm, start, true, fetch_payloads, force_fetch_from_logbuf)
     , _i(0)
     , has_payloads(fetch_payloads)
 {
@@ -520,13 +533,17 @@ sm_log_scan_mgr_impl::sm_log_scan_mgr_impl(sm_log_recover_mgr *lm)
 {
 }
 
-sm_log_header_scan_impl::sm_log_header_scan_impl(sm_log_recover_mgr *lm, LSN start)
-    : scan(lm, start, false)
+sm_log_header_scan_impl::sm_log_header_scan_impl(sm_log_recover_mgr *lm, LSN start,
+                                                 bool force_fetch_from_logbuf)
+    : scan(lm, start, false, force_fetch_from_logbuf)
     , lm(lm)
 {
 }
-sm_log_record_scan_impl::sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN start, bool just_one_tx, bool fetch_payloads)
-    : scan(lm, start, fetch_payloads)
+sm_log_record_scan_impl::sm_log_record_scan_impl(sm_log_recover_mgr *lm,
+                                                 LSN start, bool just_one_tx,
+                                                 bool fetch_payloads,
+                                                 bool force_fetch_from_logbuf)
+    : scan(lm, start, fetch_payloads, force_fetch_from_logbuf)
     , lm(lm)
     , start_lsn(start)
     , just_one(just_one_tx)
@@ -534,25 +551,27 @@ sm_log_record_scan_impl::sm_log_record_scan_impl(sm_log_recover_mgr *lm, LSN sta
 }
 
 sm_log_scan_mgr::header_scan *
-sm_log_scan_mgr::new_header_scan(LSN start)
+sm_log_scan_mgr::new_header_scan(LSN start, bool force_fetch_from_logbuf)
 {
     auto *self = get_impl(this);
-    return (sm_log_header_scan_impl*) make_new(self->lm, start);
+    return (sm_log_header_scan_impl*) make_new(self->lm, start, force_fetch_from_logbuf);
 }
 
 
 sm_log_scan_mgr::record_scan *
-sm_log_scan_mgr::new_log_scan(LSN start, bool fetch_payloads)
+sm_log_scan_mgr::new_log_scan(LSN start, bool fetch_payloads, bool force_fetch_from_logbuf)
 {
     auto *self = get_impl(this);
-    return (sm_log_record_scan_impl*) make_new(self->lm, start, false, fetch_payloads);
+    return (sm_log_record_scan_impl*) make_new(self->lm, start, false,
+                                               fetch_payloads, force_fetch_from_logbuf);
 }
 
 sm_log_scan_mgr::record_scan *
-sm_log_scan_mgr::new_tx_scan(LSN start)
+sm_log_scan_mgr::new_tx_scan(LSN start, bool force_fetch_from_logbuf)
 {
     auto *self = get_impl(this);
-    return (sm_log_record_scan_impl*) make_new(self->lm, start, true, true);
+    return (sm_log_record_scan_impl*) make_new(self->lm, start, true, true,
+                                               force_fetch_from_logbuf);
 }
 
 void

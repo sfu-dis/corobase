@@ -269,18 +269,18 @@ struct sm_log_scan_mgr {
        end-of-log. Record payloads are not available, and must be
        loaded manually if desired.
      */
-    header_scan *new_header_scan(LSN start);
+    header_scan *new_header_scan(LSN start, bool force_fetch_from_logbuf);
     
     /* Start scanning the log from [start], stopping only when
        end-of-log is encountered. Record payloads are available.
      */
-    record_scan *new_log_scan(LSN start, bool fetch_payloads);
+    record_scan *new_log_scan(LSN start, bool fetch_payloads, bool force_fetch_from_logbuf);
 
     /* Start scanning log entries for the transaction whose commit
        record resides at [start]. Stop when all records for the
        transaction have been visited. Record payloads are available.
      */
-    record_scan *new_tx_scan(LSN start);
+    record_scan *new_tx_scan(LSN start, bool force_fetch_from_logbuf);
 
     /* Load the object referenced by [ptr] from the log. The pointer
        must reference the log (ASI_LOG) and the given buffer must be large
