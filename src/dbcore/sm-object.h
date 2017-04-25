@@ -15,11 +15,20 @@ private:
   static const uint32_t kStatusLoading = 2;
 
   // alloc_epoch_ and status_ must be the first two fields
-  epoch_num alloc_epoch_;  // When did we create this object?
-  uint32_t status_;  // Where exactly is the payload?
-  fat_ptr pdest_; // The object's permanent home in the log/chkpt
+
+  // When did we create this object?
+  epoch_num alloc_epoch_;
+
+  // Where exactly is the payload?
+  uint32_t status_;
+
+  // The object's permanent home in the log/chkpt
+  fat_ptr pdest_;
+
   fat_ptr next_;  // The older version
-  fat_ptr clsn_;  // size_code refers to the whole object including header
+  // Commit timestamp of this version. Type will XID (LOG) before (after)
+  // commit. size_code refers to the whole object including header
+  fat_ptr clsn_;
 
 public:
   static fat_ptr Create(const varstr *tuple_value, bool do_write, epoch_num epoch);
