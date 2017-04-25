@@ -457,9 +457,8 @@ sm_oid_mgr::create()
   oidmgr->dfd = dirent_iterator(config::log_dir.c_str()).dup();
 }
 
-void
-sm_oid_mgr::take_chkpt(uint64_t chkpt_start_lsn)
-{
+void sm_oid_mgr::PrimaryTakeChkpt(uint64_t chkpt_start_lsn) {
+    ASSERT(!config::is_backup_srv());
     // Now the real work. The format of a chkpt file is:
     // [number of indexes]
     // [primary index 1 name length, name, tuple/key FID, himark]
@@ -800,23 +799,19 @@ retry:
   return false;
 }
 
-fat_ptr
-sm_oid_mgr::oid_put_update(FID f,
-                           OID o,
-                           const varstr *value,
-                           xid_context *updater_xc,
-                           fat_ptr *new_obj_ptr)
-{
-    return oid_put_update(get_impl(this)->get_array(f), o, value, updater_xc, new_obj_ptr);
+fat_ptr sm_oid_mgr::PrimaryTupleUpdate(FID f,
+                                       OID o,
+                                       const varstr *value,
+                                       xid_context *updater_xc,
+                                       fat_ptr *new_obj_ptr) {
+  return PrimaryTupleUpdate(get_impl(this)->get_array(f), o, value, updater_xc, new_obj_ptr);
 }
 
-fat_ptr
-sm_oid_mgr::oid_put_update(oid_array *oa,
-                           OID o,
-                           const varstr *value,
-                           xid_context *updater_xc,
-                           fat_ptr *new_obj_ptr)
-{
+fat_ptr sm_oid_mgr::PrimaryTupleUpdate(oid_array *oa,
+                                       OID o,
+                                       const varstr *value,
+                                       xid_context *updater_xc,
+                                       fat_ptr *new_obj_ptr) {
     auto *ptr = oa->get(o);
 start_over:
     fat_ptr head = volatile_read(*ptr);
@@ -1141,11 +1136,5 @@ start_over:
     ptr = tentative_next;
   }
   return nullptr;    // No Visible records
-}
-
-void
-sm_oid_mgr::oid_unlink(FID f, OID o)
-{
-    return oid_unlink(get_impl(this)->get_array(f), o);
 }
 

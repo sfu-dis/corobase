@@ -56,7 +56,7 @@ void sm_chkpt_mgr::do_chkpt() {
     return;
   }
   prepare_file(cstart);
-  oidmgr->take_chkpt(cstart.offset());
+  oidmgr->PrimaryTakeChkpt(cstart.offset());
   // FIXME (tzwang): originally we should put info about the chkpt
   // in a log record and then commit that sys transaction that's
   // responsible for doing chkpt. But that would interfere with
