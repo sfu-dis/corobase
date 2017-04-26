@@ -14,14 +14,12 @@ void LogFlushDaemon() {
   rcu_register();
   DEFER(rcu_deregister());
   auto* logbuf = sm_log::get_logbuf();
-  uint64_t last_flushed = 0;
   while(true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
-    if(lsn > last_flushed) {
+    if(lsn) {
       rcu_enter();
       DEFER(rcu_exit());
-      logmgr->flush_log_buffer(*logbuf, lsn, true);
-      last_flushed = lsn;
+      logmgr->BackupFlushLog(*logbuf, lsn);
       volatile_write(new_end_lsn_offset, 0);
     }
   }

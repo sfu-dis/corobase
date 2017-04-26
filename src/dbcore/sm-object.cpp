@@ -43,11 +43,8 @@ void Object::Pin(sm_log_recover_mgr* lm) {
   size_t data_sz = decode_size_aligned(pdest_.size_code());
   if(where == fat_ptr::ASI_LOG) {
    ASSERT(logmgr);
-    // If this is a backup server with NVRAM log buffer, then we might be
-    // trying to read a tuple that appears to be available in the OID array
-    // but its data is still in the buffer - not safe to dig out from the
-    // log buffer as it might be receiving a new batch from the primary.
-    // So spin here until the tuple is flushed from NVRAM to disk.
+    // Not safe to dig out from the log buffer as it might be receiving a
+    // new batch from the primary.
     // XXX(tzwang): for now we can't flush - need coordinate with backup daemon
     while(config::is_backup_srv() &&
           pdest_.offset() > logmgr->durable_flushed_lsn().offset()) {}

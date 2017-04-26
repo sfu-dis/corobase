@@ -94,6 +94,10 @@ sm_log::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool u
     return get_impl(this)->_lm.flush_log_buffer(logbuf, new_dlsn_offset, update_dmark);
 }
 
+void sm_log::BackupFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset) {
+  return get_impl(this)->_lm.BackupFlushLog(logbuf, new_dlsn_offset);
+}
+
 void sm_log::enqueue_committed_xct(uint32_t worker_id, uint64_t start_time)
 {
     get_impl(this)->_lm.enqueue_committed_xct(worker_id, start_time);

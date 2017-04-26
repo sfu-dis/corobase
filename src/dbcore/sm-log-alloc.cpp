@@ -213,6 +213,85 @@ sm_log_alloc_mgr::flush()
     return _lm.get_durable_mark();
 }
 
+void sm_log_alloc_mgr::BackupFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset) {
+  ASSERT(config::is_backup_srv());
+retry:
+  LSN dlsn = _lm.get_durable_mark();
+  ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
+  ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
+  auto *durable_sid = _lm.get_segment(dlsn.segment());
+  ALWAYS_ASSERT(durable_sid);
+  if(_durable_flushed_lsn_offset >= durable_sid->end_offset) {
+    // Crossing a dead zone, update the durable mark by hand
+    ALWAYS_ASSERT(config::is_backup_srv());
+    durable_sid = _lm.get_segment(dlsn.segment() + 1);
+    _durable_flushed_lsn_offset = durable_sid->start_offset;
+    _lm.update_durable_mark(LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
+    goto retry;
+  }
+  if(_durable_flushed_lsn_offset >= new_dlsn_offset) {
+    return;
+  }
+  uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
+  int active_fd = _lm.open_for_write(durable_sid);
+  DEFER(os_close(active_fd));
+
+  /* The block list contains a fluctuating---and usually fairly
+     short---set of log_allocation objects. Releasing or
+     discarding a block marks it as dead (without removing it)
+     and removes all dead blocks that follow it. The list is
+     primed at start-up with the durable LSN (as determined by
+     startup/recovery), and so is guaranteed to always contain
+     at least one (perhaps dead) node that later requests can
+     use to acquire a proper LSN.
+
+     Our goal is to find the oldest (= last) live block in the
+     list, and write out everything before that block's offset.
+
+     Once we know the offset, we can look up the corresponding
+     segment to obtain an LSN.
+   */
+  uint64_t new_byte = durable_sid->byte_offset +
+                      (new_dlsn_offset - durable_sid->start_offset);
+
+  ASSERT(durable_byte == logbuf.read_begin());
+  ASSERT(durable_byte < new_byte);
+  ASSERT(new_byte <= logbuf.write_end());
+
+  /* Log insertions don't advance the buffer window because
+     they tend to complete out of order. Do it for them now
+     that we know the correct value to use. The only exception
+     is when we read and replay the log buffer directly.
+   */
+  uint64_t nbytes = new_byte - durable_byte;
+  if(logbuf.available_to_read() < nbytes) {
+    logbuf.advance_writer(new_byte);
+  }
+  THROW_IF(logbuf.available_to_read() < nbytes,
+           log_file_error, "Not enough log bufer to read");
+
+  // perform the write
+  auto *buf = logbuf.read_buf(durable_byte, nbytes);
+  auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+  uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
+  THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
+  _durable_flushed_lsn_offset = new_dlsn_offset;
+
+  // Update cur_lsn_offset so read-only transactions can get fresh data
+  if(_lsn_offset < _durable_flushed_lsn_offset) {
+    THROW_IF(not config::is_backup_srv(), illegal_argument,
+      "Wrong cur_lsn_offset on primary node");
+    _lsn_offset = _durable_flushed_lsn_offset;
+  }
+
+  // Have to use LSN::make (instead of durable_sid->make_lsn which checks
+  // lsn offset ownership): Since we're on a backup server, this new durable
+  // lsn offset might end up in the deadzone which isn't contained by any sid,
+  // because we ship at log buffer flush boundaries (no info for the next segment
+  // until the next shipping).
+  _lm.update_durable_mark(LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
+}
+
 /* Figure out the corresponding segments in the logbuf and flush them.
  * The caller should enter/exit_rcu().
  */
