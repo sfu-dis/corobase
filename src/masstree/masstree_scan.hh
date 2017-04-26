@@ -349,7 +349,7 @@ int basic_table<P>::scan(H helper,
             dbtuple *v = NULL;
             OID o = entry.value();
             if(config::is_backup_srv()) {
-              v = oidmgr->oid_get_version_on_backup(tuple_array_, pdest_array_, o, xc);
+              v = oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
             } else {
               v = oidmgr->oid_get_version(tuple_array_, o, xc);
             }

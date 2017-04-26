@@ -881,13 +881,11 @@ sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc)
     return oid_get_version(get_impl(this)->get_array(f), o, visitor_xc);
 }
 
-dbtuple* sm_oid_mgr::oid_get_version_on_backup(oid_array* tuple_array,
-                                               oid_array* pdest_array,
-                                               OID o, xid_context* xc) {
+dbtuple* sm_oid_mgr::BackupGetVersion(oid_array* ta, oid_array* pa, OID o, xid_context* xc) {
   fat_ptr pdest_head_ptr = NULL_PTR;
 retry:
   // See if we can find a fresh enough version in the tuple array
-  fat_ptr active_head_ptr = volatile_read(*tuple_array->get(o));
+  fat_ptr active_head_ptr = volatile_read(*ta->get(o));
   ASSERT(active_head_ptr.asi_type() == 0);
   Object* active_head_obj = (Object*)active_head_ptr.offset();
   uint64_t active_head_lsn = active_head_obj == nullptr ? 0 :
@@ -895,7 +893,7 @@ retry:
   if(active_head_lsn >= xc->begin) {
     // First version not visible to me, so no need to look at the pdest
     // array, versions indexed by the tuple array are enough.
-    return oid_get_version(tuple_array, o, xc);
+    return oid_get_version(ta, o, xc);
   } else {
     // First version visible to me, but not sure if there will be newer
     // versions available for me to read, must look at the pdest array
@@ -903,7 +901,7 @@ retry:
     // Note: ptrs point to the log directly, making the lsns comparable
     if(pdest_head_ptr == NULL_PTR) {
       // Don't refresh pdest ptr, to save some resource
-      pdest_head_ptr = volatile_read(*pdest_array->get(o));
+      pdest_head_ptr = volatile_read(*pa->get(o));
     }
     fat_ptr ptr = pdest_head_ptr;
     ASSERT(ptr.offset() == 0 || ptr.offset() >= active_head_lsn);
@@ -958,7 +956,7 @@ retry:
     ASSERT((install_ptr._ptr & (1UL << 63)) == 0);
 
     bool success = __sync_val_compare_and_swap(
-      &tuple_array->get(o)->_ptr, active_head_ptr._ptr, install_ptr._ptr);
+      &ta->get(o)->_ptr, active_head_ptr._ptr, install_ptr._ptr);
     if(!success) {
       fat_ptr to_free = install_ptr;
       while(to_free != active_head_ptr) {
