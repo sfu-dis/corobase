@@ -140,7 +140,7 @@ transaction::abort_impl()
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple *tuple = w.get_object()->GetPinnedTuple();
+        dbtuple *tuple = (dbtuple*)w.get_object()->GetPayload();
         ASSERT(tuple);
         ASSERT(XID::from_ptr(tuple->GetObject()->GetClsn()) == xid);
 #if defined(SSI) || defined(SSN)
@@ -366,7 +366,7 @@ transaction::parallel_ssn_commit()
 
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple *tuple = w.get_object()->GetPinnedTuple();
+        dbtuple *tuple = (dbtuple*)w.get_object()->GetPayload();
 
         // go to the precommitted or committed version I (am about to)
         // overwrite for the reader list
@@ -571,7 +571,7 @@ transaction::parallel_ssn_commit()
     fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple *tuple = w.get_object()->GetPinnedTuple();
+        dbtuple *tuple = (dbtuple*)w.get_object()->GetPayload();
         tuple->do_write();
         dbtuple* next_tuple = tuple->NextVolatile();
         ASSERT(not next_tuple or
@@ -918,7 +918,7 @@ transaction::parallel_ssi_commit()
     auto clsn = xc->end;
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple* tuple = w.get_object()->GetPinnedTuple();
+        dbtuple* tuple = (dbtuple*)w.get_object()->GetPayload();
         tuple->do_write();
         dbtuple* overwritten_tuple = tuple->NextVolatile();
         if (overwritten_tuple) {    // update
@@ -1015,7 +1015,7 @@ transaction::si_commit()
     fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple* tuple = w.get_object()->GetPinnedTuple();
+        dbtuple* tuple = (dbtuple*)w.get_object()->GetPayload();
         ASSERT(w.entry);
         tuple->do_write();
         tuple->GetObject()->SetClsn(clsn_ptr);
@@ -1065,7 +1065,7 @@ transaction::try_insert_new_tuple(concurrent_btree *btr,
       fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
       ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
       ASSERT(new_head.asi_type() == 0);
-      tuple = ((Object*)new_head.offset())->GetPinnedTuple();
+      tuple = (dbtuple*)((Object*)new_head.offset())->GetPayload();
       ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
       tuple->GetObject()->SetClsn(xid.to_ptr());
       oid = oidmgr->alloc_oid(tuple_fid);
