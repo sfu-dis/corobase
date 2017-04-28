@@ -33,7 +33,7 @@ private:
   // and next_volatile_.
   fat_ptr next_volatile_;
 
-  // Commit timestamp of this version. Type will XID (LOG) before (after)
+  // Commit timestamp of this version. Type is XID (LOG) before (after)
   // commit. size_code refers to the whole object including header
   fat_ptr clsn_;
 
@@ -63,6 +63,7 @@ public:
   inline epoch_num GetAllocateEpoch() { return alloc_epoch_; }
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
+  inline void SetStatus(uint32_t s) { volatile_write(status_, s); }
   inline dbtuple* GetPinnedTuple() {
     if(!IsInMemory()) {
       Pin();
@@ -70,5 +71,4 @@ public:
     return (dbtuple*)GetPayload();
   }
   void Pin(sm_log_recover_mgr* lm = nullptr);  // Make sure the payload is in memory
-  void SetStatus(uint32_t s) { volatile_write(status_, s); }
 };
