@@ -9,7 +9,8 @@
 
 // Returns something that we will install on the OID entry. 
 fat_ptr
-sm_log_recover_impl::prepare_version(sm_log_scan_mgr::record_scan *logrec, fat_ptr next) {
+sm_log_recover_impl::PrimaryPrepareObject(sm_log_scan_mgr::record_scan *logrec, fat_ptr next) {
+  ASSERT(!config::is_backup_srv());
   // Regardless of the replay/warm-up policy (ie whether to load tuples from storage
   // to memory), here we need a wrapper that points to the ``real'' localtion and
   // the next version.
@@ -50,7 +51,7 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
       __sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr, ptr._ptr);
     }
   } else {
-    fat_ptr ptr = prepare_version(logrec, NULL_PTR);
+    fat_ptr ptr = PrimaryPrepareObject(logrec, NULL_PTR);
     ASSERT(oidmgr->file_exists(f));
     oid_array *oa = get_impl(oidmgr)->get_array(f);
     oa->ensure_size(o);
@@ -151,7 +152,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   } else {
     auto* oa = IndexDescriptor::Get(f)->GetTupleArray();
     fat_ptr head_ptr = *oa->get(o);
-    fat_ptr ptr = prepare_version(logrec, head_ptr);
+    fat_ptr ptr = PrimaryPrepareObject(logrec, head_ptr);
     Object* new_object = (Object*)ptr.offset();
     if(latest) {
     retry_primary:
