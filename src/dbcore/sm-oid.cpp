@@ -1040,6 +1040,7 @@ start_over:
     }
     auto clsn = cur_obj->GetClsn();
     if (clsn == NULL_PTR) {
+      ASSERT(!config::is_backup_srv());
       // dead tuple that was (or about to be) unlinked, start over
       goto start_over;
     }
@@ -1054,10 +1055,12 @@ start_over:
         ASSERT(!cur_obj->GetNextVolatile().offset() ||
                ((Object*)cur_obj->GetNextVolatile().offset())->GetClsn().asi_type() ==
                fat_ptr::ASI_LOG);
+        ASSERT(!config::is_backup_srv());
         return cur_obj->GetPinnedTuple();
       }
       auto* holder = xid_get_context(holder_xid);
       if(!holder) {  // invalid XID (dead tuple, must retry than goto next in the chain)
+        ASSERT(!config::is_backup_srv());
         goto start_over;
       }
 
@@ -1066,6 +1069,7 @@ start_over:
 
       // context still valid for this XID?
       if(owner != holder_xid) {
+        ASSERT(!config::is_backup_srv());
         goto start_over;
       }
 
