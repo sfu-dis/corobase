@@ -137,6 +137,8 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
   ASSERT(oidmgr->file_exists(f));
 
   if(config::is_backup_srv()) {
+    // Deletes on backups are handled the same way as updates, just
+    // with an empty payload
     FID pf = IndexDescriptor::Get(f)->GetPersistentAddressFid();
     oid_array *oa = get_impl(oidmgr)->get_array(pf);
     fat_ptr* entry_ptr = oa->get(o);
@@ -150,6 +152,9 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
       }
     }
   } else {
+    ALWAYS_ASSERT(!is_delete);  // Primary ignores delete before reaching here
+    // FIXME(tzwang): during recovery the primary only uses parallel OID replay,
+    // so no write-write-conflicts possible, so we can simply skip deletes here.
     auto* oa = IndexDescriptor::Get(f)->GetTupleArray();
     fat_ptr head_ptr = *oa->get(o);
     fat_ptr ptr = PrimaryPrepareObject(logrec, head_ptr);

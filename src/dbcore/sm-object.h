@@ -13,6 +13,7 @@ private:
   static const uint32_t kStatusMemory  = 0;
   static const uint32_t kStatusStorage = 1;
   static const uint32_t kStatusLoading = 2;
+  static const uint32_t kStatusDeleted = 3;
 
   // alloc_epoch_ and status_ must be the first two fields
 
@@ -49,6 +50,7 @@ public:
     status_ = in_memory ? kStatusMemory : kStatusStorage;
   }
 
+  inline bool IsDeleted() { return status_ == kStatusDeleted; }
   inline bool IsInMemory() { return status_ == kStatusMemory; }
   inline fat_ptr* GetPersistentAddressPtr() { return &pdest_; }
   inline fat_ptr GetPersistentAddress() { return pdest_; }
