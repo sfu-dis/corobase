@@ -393,35 +393,43 @@ retry:
         // perform the write
         auto *buf = logbuf.read_buf(durable_byte, nbytes);
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
-        if(!config::null_log_device) {
-          if(config::num_active_backups && !config::loading) {
-            // Ship it first, this is async for RDMA
-            // Embed the segment's real begin_offset as the immediate:
-            // Note that we have 32-bit immmediates only, so we only store the offset
-            // off the base segment size boundaries. e.g., for the second segment
-            // (segment 2) and with a segment size of 4GB: we'd encode:
-            // begin_offset - (2-1) * 4GB. This number won't usually go beyond 32-bit;
-            // the backup when received the immediate will extract and recalculate
-            // the correct segment begin/end offsets.
-            DLOG(INFO) << "Will ship " << std::hex << _durable_flushed_lsn_offset
-              << " " << new_offset << " " << durable_sid->byte_offset << std::dec;
-            rep::primary_ship_log_buffer_all(buf, nbytes, new_seg,
-              new_seg ?
-                durable_sid->start_offset - (durable_sid->segnum-1) * config::log_segment_mb * config::MB : 0);
-            if(new_seg) {
-              new_seg = false;
-            }
+        if(config::num_active_backups && !config::loading) {
+          // Ship it first, this is async for RDMA
+          // Embed the segment's real begin_offset as the immediate:
+          // Note that we have 32-bit immmediates only, so we only store the offset
+          // off the base segment size boundaries. e.g., for the second segment
+          // (segment 2) and with a segment size of 4GB: we'd encode:
+          // begin_offset - (2-1) * 4GB. This number won't usually go beyond 32-bit;
+          // the backup when received the immediate will extract and recalculate
+          // the correct segment begin/end offsets.
+          DLOG(INFO) << "Will ship " << std::hex << _durable_flushed_lsn_offset
+            << " " << new_offset << " " << durable_sid->byte_offset << std::dec;
+          rep::primary_ship_log_buffer_all(buf, nbytes, new_seg,
+            new_seg ?
+              durable_sid->start_offset - (durable_sid->segnum-1) * config::log_segment_mb * config::MB : 0);
+          if(new_seg) {
+            new_seg = false;
           }
-          uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
-          THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
-          if(config::num_active_backups && !config::loading) {
-            if(config::log_ship_by_rdma) {
-              // Now we need to poll to make sure the RDMA write finished
-              // One for the log buffer partition bounds, the other for data
-              rep::primary_rdma_poll_send_cq(2);
-              // Wait for the backup to persist (it might act fast and set ReadyToReceive too)
-              rep::primary_rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
-            }
+        }
+        uint64_t n = 0;
+        // Note: Here we actually allow skip log writing on the primary node even in
+        // a primary/backup setting, but for benchmarking purpose only. A fully 'correct'
+        // setting is to ensure persistence at *all* nodes, including the primary.
+        // Note(tzwang): 20170428: the only reason I added this is due to lack of DRAM space
+        // for storing log files in tmpfs.
+        if(config::null_log_device && !config::loading) {
+          n = nbytes;
+        } else {
+          n = os_pwrite(active_fd, buf, nbytes, file_offset);
+        }
+        THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
+        if(config::num_active_backups && !config::loading) {
+          if(config::log_ship_by_rdma) {
+            // Now we need to poll to make sure the RDMA write finished
+            // One for the log buffer partition bounds, the other for data
+            rep::primary_rdma_poll_send_cq(2);
+            // Wait for the backup to persist (it might act fast and set ReadyToReceive too)
+            rep::primary_rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
           }
         }
 
