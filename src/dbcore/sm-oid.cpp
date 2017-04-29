@@ -922,11 +922,6 @@ retry:
       size_t sz = sizeof(Object) + sizeof(dbtuple) + decode_size_aligned(ptr.size_code());;
       sz = align_up(sz);
       Object* obj = (Object*)MM::allocate(sz, 0);
-      if(prev_obj) {
-        prev_obj->SetNextVolatile(fat_ptr::make(obj, encode_size_aligned(sz), 0));
-      } else {
-        install_ptr = fat_ptr::make(obj, encode_size_aligned(sz), 0);
-      }
       // FIXME(tzwang): figure out how GC/epoch works with this
       new(obj) Object(ptr, NULL_PTR, 0, false);  // Update next_ later
       // TODO(tzawng): allow pinning the header part only (ie the varstr
@@ -937,13 +932,19 @@ retry:
       obj->Pin();  // obj.next_pdest becomes available after Pin()
       ASSERT(obj->GetNextPersistent() == NULL_PTR ||
              obj->GetNextPersistent().asi_type() == fat_ptr::ASI_LOG);
+
+      // Setup volatile backward pointers
+      obj->SetNextVolatile(active_head_ptr);  // Default, might change later
+      if(prev_obj) {
+        prev_obj->SetNextVolatile(fat_ptr::make(obj, encode_size_aligned(sz), 0));
+      } else {
+        install_ptr = fat_ptr::make(obj, encode_size_aligned(sz), 0);
+      }
       uint64_t clsn = obj->GetClsn().offset();
       ASSERT(clsn > active_head_lsn);
       if(xc->begin > clsn && ret_obj == active_head_obj) {
         // Done, no need to dig further
         ret_obj = obj;
-        obj->SetNextVolatile(active_head_ptr);
-        obj->SetNextPersistent(ptr);
         break;
       } else {
         prev_obj = obj;

@@ -353,6 +353,8 @@ get_type(log_record_type tp)
 
     case LOG_DELETE:
         return sm_log_scan_mgr::LOG_DELETE;
+    case LOG_ENHANCED_DELETE:
+        return sm_log_scan_mgr::LOG_ENHANCED_DELETE;
 
     case LOG_RELOCATE:
         return sm_log_scan_mgr::LOG_RELOCATE;

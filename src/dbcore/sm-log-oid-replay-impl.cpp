@@ -115,8 +115,9 @@ parallel_oid_replay::redo_runner::redo_partition() {
       size += scan->payload_size();
       break;
     case sm_log_scan_mgr::LOG_DELETE:
+    case sm_log_scan_mgr::LOG_ENHANCED_DELETE:
+      // Ignore delete on primary server
       dcount++;
-      owner->recover_update(scan, true, false);
       break;
     case sm_log_scan_mgr::LOG_INSERT_INDEX:
       iicount++;

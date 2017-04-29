@@ -14,7 +14,8 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     if(status == kStatusLoading) {
       while(volatile_read(status_) != kStatusMemory) {}
     }
-    ALWAYS_ASSERT(volatile_read(status_) == kStatusMemory);
+    ALWAYS_ASSERT(volatile_read(status_) == kStatusMemory ||
+                  volatile_read(status_) == kStatusDeleted);
     return;
   }
 
@@ -30,6 +31,8 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     ASSERT(val == kStatusStorage);
     ASSERT(volatile_read(status_) == kStatusLoading);
   }
+
+  uint32_t final_status = kStatusMemory;
 
   // Now we can load it from the durable log
   ALWAYS_ASSERT(pdest_.offset());
@@ -63,10 +66,13 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     }
     // Could be a delete
     ASSERT(tuple->size < data_sz);
+    if(tuple->size == 0) {
+      final_status = kStatusDeleted;
+    }
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr),
             tuple->size);
-    SetClsn(fat_ptr::make(pdest_.offset(), INVALID_SIZE_CODE, fat_ptr::ASI_LOG_FLAG));
+    SetClsn(pdest_);
   } else {
     // Load tuple data form the chkpt file
     ASSERT(sm_chkpt_mgr::base_chkpt_fd);
@@ -85,7 +91,7 @@ void Object::Pin(sm_log_recover_mgr* lm) {
   ALWAYS_ASSERT(pdest_.offset());
   ALWAYS_ASSERT(clsn_.offset());
   ASSERT(volatile_read(status_) == kStatusLoading);
-  SetStatus(kStatusMemory);
+  SetStatus(final_status);
 }
 
 fat_ptr Object::Create(const varstr *tuple_value, bool do_write, epoch_num epoch) {

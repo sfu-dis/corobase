@@ -111,7 +111,7 @@ parallel_offset_replay::redo_runner::redo_logbuf_partition() {
       owner->recover_update(scan, false, true);
       size += scan->payload_size();
       break;
-    case sm_log_scan_mgr::LOG_DELETE:
+    case sm_log_scan_mgr::LOG_ENHANCED_DELETE:
       dcount++;
       owner->recover_update(scan, true, true);
       break;

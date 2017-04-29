@@ -169,10 +169,12 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
         // might change to ASI_LOG anytime
         ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
         fat_ptr prev_clsn = prev->GetObject()->GetClsn();
+        fat_ptr prev_persistent_ptr = NULL_PTR;
         if (prev_clsn.asi_type() == fat_ptr::ASI_XID and XID::from_ptr(prev_clsn) == t.xid) {
             // updating my own updates!
             // prev's prev: previous *committed* version
             ASSERT(((Object*)prev_obj_ptr.offset())->GetAllocateEpoch() == t.xc->begin_epoch);
+            prev_persistent_ptr = prev_obj->GetNextPersistent();
             MM::deallocate(prev_obj_ptr);
         }
         else {  // prev is committed (or precommitted but in post-commit now) head
@@ -180,6 +182,7 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
             t.add_to_write_set(tuple_array->get(oid), config::num_backups == 0 ? 0 : tuple_fid);
+            prev_persistent_ptr = prev_obj->GetPersistentAddress();
         }
 
         ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
@@ -187,41 +190,42 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
         ASSERT(oidmgr->oid_get_version(tuple_fid, oid, t.xc) == tuple);
         ASSERT(t.log);
 
-        if (not v) {
-            t.log->log_delete(tuple_fid, oid);
-            // FIXME(tzwang): mark deleted in all 2nd indexes as well?
+        // FIXME(tzwang): mark deleted in all 2nd indexes as well?
+
+        // The varstr also encodes the pdest of the overwritten version.
+        // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
+        // varstr. Embedding it in varstr makes it part of the payload and is
+        // helpful for digging out versions on backups. Not used by the primary.
+        bool is_delete = !v;
+        if(!v) {
+          // Get an empty varstr just to store the overwritten tuple's
+          // persistent address
+          v = t.string_allocator().next(0);
+          v->p = nullptr;
+          v->l = 0;
+        }
+        ASSERT(v);
+        v->ptr = prev_persistent_ptr;
+        ASSERT(v->ptr == NULL_PTR || v->ptr.asi_type() == fat_ptr::ASI_LOG);
+
+        // log the whole varstr so that recovery can figure out the real size
+        // of the tuple, instead of using the decoded (larger-than-real) size.
+        size_t data_size = v->size() + sizeof(varstr);
+        auto size_code = encode_size_aligned(data_size);
+        if(is_delete) {
+          t.log->log_enhanced_delete(tuple_fid, oid, fat_ptr::make((void*)v, size_code),
+                                     DEFAULT_ALIGNMENT_BITS);
         } else {
-            ASSERT(v);
+          t.log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
+                            DEFAULT_ALIGNMENT_BITS,
+                            tuple->GetObject()->GetPersistentAddressPtr());
 
-            // The varstr also encodes the pdest of the overwritten version.
-            // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
-            // varstr. Embedding it in varstr makes it part of the payload and is
-            // helpful for digging out versions on backups. Not used by the primary.
-            if(config::num_backups > 0) {
-              v->ptr = prev_obj->GetPersistentAddress();
-              ASSERT(v->ptr == NULL_PTR || v->ptr.asi_type() == fat_ptr::ASI_LOG);
-            } else {
-              v->ptr = NULL_PTR;
-            }
-
-            // the logmgr only assigns pointers, instead of doing memcpy here,
-            // unless the record is tooooo large.
-            const size_t sz = v->size();
-            ASSERT(sz == v->size());
-            auto record_size = align_up(sz + sizeof(varstr));
-            auto size_code = encode_size_aligned(record_size);
-            ASSERT(not ((uint64_t)v & ((uint64_t)0xf)));
-            // log the whole varstr so that recovery can figure out the real size
-            // of the tuple, instead of using the decoded (larger-than-real) size.
-            if(config::log_key_for_update) {
-              auto key_size = align_up(k->size() + sizeof(varstr));
-              auto key_size_code = encode_size_aligned(key_size);
-              t.log->log_update_key(tuple_fid, oid, fat_ptr::make((void *)k, key_size_code),
-                                    DEFAULT_ALIGNMENT_BITS);
-            }
-            t.log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
-                              DEFAULT_ALIGNMENT_BITS,
-                              tuple->GetObject()->GetPersistentAddressPtr());
+          if(config::log_key_for_update) {
+            auto key_size = align_up(k->size() + sizeof(varstr));
+            auto key_size_code = encode_size_aligned(key_size);
+            t.log->log_update_key(tuple_fid, oid, fat_ptr::make((void *)k, key_size_code),
+                                  DEFAULT_ALIGNMENT_BITS);
+          }
         }
         return rc_t{RC_TRUE};
     }

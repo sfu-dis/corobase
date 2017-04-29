@@ -100,6 +100,10 @@ sm_tx_log::log_delete(FID f, OID o) {
     get_log_impl(this)->add_request(req);
 }
 
+void sm_tx_log::log_enhanced_delete(FID f, OID o, fat_ptr ptr, int abits) {
+  get_log_impl(this)->add_payload_request(LOG_ENHANCED_DELETE, f, o, ptr, abits, nullptr);
+}
+
 LSN
 sm_tx_log::get_clsn() {
     /* The caller already has a published CLSN, so if this tx still
