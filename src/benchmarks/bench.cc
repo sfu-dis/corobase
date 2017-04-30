@@ -253,7 +253,10 @@ bench_runner::run()
 
   // Start checkpointer after database is ready
   if(config::is_backup_srv()) {
-    getchar();
+    if(!config::quick_bench_start) {
+      std::cout << "Press Enter to start benchmark" << std::endl;
+      getchar();
+    }
   } else {
     if(config::num_backups) {
       std::cout << "[Primary] Expect " << config::num_backups << " backups\n";
