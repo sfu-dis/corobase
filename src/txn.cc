@@ -568,14 +568,14 @@ transaction::parallel_ssn_commit()
 
     // post-commit: stuff access stamps for reads; init new versions
     auto clsn = xc->end;
-    fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple *tuple = (dbtuple*)w.get_object()->GetPayload();
+        Object* object = w.get_object();
+        dbtuple *tuple = (dbtuple*)object->GetPayload();
         tuple->do_write();
         dbtuple* next_tuple = tuple->NextVolatile();
         ASSERT(not next_tuple or
-               (tuple->GetObject()->GetNextVolatile().offset() ==
+               (object->GetNextVolatile().offset() ==
                (uint64_t)next_tuple->GetObject()));
         if (next_tuple) {   // update, not insert
             ASSERT(next_tuple->GetObject()->GetClsn().asi_type());
@@ -585,7 +585,8 @@ transaction::parallel_ssn_commit()
             next_tuple->welcome_read_mostly_tx();
         }
         volatile_write(tuple->xstamp, cstamp);
-        tuple->GetObject()->SetClsn(clsn_ptr);
+        fat_ptr clsn_ptr = LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
+        object->SetClsn(clsn_ptr);
         ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
     }
 
@@ -913,14 +914,15 @@ transaction::parallel_ssi_commit()
     // survived!
     log->commit(NULL);
 
-    fat_ptr clsn_ptr = LSN::make(cstamp, 0).to_log_ptr();
     // stamp overwritten versions, stuff clsn
     auto clsn = xc->end;
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple* tuple = (dbtuple*)w.get_object()->GetPayload();
+        Object* object = w.get_object();
+        dbtuple* tuple = (dbtuple*)object->GetPayload();
         tuple->do_write();
         dbtuple* overwritten_tuple = tuple->NextVolatile();
+        fat_ptr clsn_ptr = LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
         if (overwritten_tuple) {    // update
             ASSERT(not overwritten_tuple->s2);
             // Must set s2 first, before setting clsn
@@ -930,7 +932,7 @@ transaction::parallel_ssi_commit()
             volatile_write(overwritten_tuple->sstamp, clsn_ptr);
         }
         volatile_write(tuple->xstamp, cstamp);
-        tuple->GetObject()->SetClsn(clsn_ptr);
+        object->SetClsn(clsn_ptr);
         ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
     }
 
@@ -1012,13 +1014,14 @@ transaction::si_commit()
     // (traverse write-tuple)
     // stuff clsn in tuples in write-set
     auto clsn = xc->end;
-    fat_ptr clsn_ptr = LSN::make(clsn, 0).to_log_ptr();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
         auto &w = write_set[i];
-        dbtuple* tuple = (dbtuple*)w.get_object()->GetPayload();
+        Object* object = w.get_object();
+        dbtuple* tuple = (dbtuple*)object->GetPayload();
         ASSERT(w.entry);
         tuple->do_write();
-        tuple->GetObject()->SetClsn(clsn_ptr);
+        fat_ptr clsn_ptr = LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
+        object->SetClsn(clsn_ptr);
         ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
 #ifndef NDEBUG
         Object* obj = tuple->GetObject();

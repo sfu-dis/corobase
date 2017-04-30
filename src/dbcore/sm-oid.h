@@ -190,6 +190,12 @@ struct sm_oid_mgr {
      */
     dbtuple* BackupGetVersion(oid_array* ta, oid_array* pa, OID o, xid_context* xc);
 
+    /* Helper function for oid_get_version to test visibility. Returns true if the
+     * version ([object]) is visible to the given transaction ([xc]). Sets [retry]
+     * to true if the caller needs to retry the search from the head of the chain.
+     */
+    bool TestVisibility(Object* object, xid_context* xc, bool& retry);
+
     inline void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
       if(!config::phantom_prot) {
         return;

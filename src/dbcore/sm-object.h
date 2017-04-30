@@ -67,6 +67,9 @@ public:
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
   inline void SetStatus(uint32_t s) { volatile_write(status_, s); }
   inline dbtuple* GetPinnedTuple() {
+    if(IsDeleted()) {
+      return nullptr;
+    }
     if(!IsInMemory()) {
       Pin();
     }
