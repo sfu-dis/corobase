@@ -13,6 +13,7 @@ public:
     static bool verbose;
     static uint32_t benchmark_seconds;
     static uint32_t benchmark_scale_factor;
+    static bool quick_bench_start;
     static bool parallel_loading;
     static bool retry_aborted_transactions;
     static int backoff_aborted_transactions;

@@ -86,6 +86,9 @@ DEFINE_string(primary_port, "10000", "Port of the primary server for log shippin
 DEFINE_bool(log_ship_sync_redo, false, "Redo synchronously during log shipping.");
 DEFINE_bool(log_ship_full_redo, false, "Whether to repeat index update during redo."
   "For experimenting with the benefit/cost of having indirection arrays only.");
+DEFINE_bool(quick_bench_start, false,
+  "Whether to start benchmark right after loading, without waiting for user input. "
+  "For backup servers only.");
 
 static vector<string>
 split_ws(const string &s)
@@ -141,6 +144,7 @@ main(int argc, char **argv)
 
   // Backup specific arguments
   if(config::is_backup_srv()) {
+    config::quick_bench_start = FLAGS_quick_bench_start;
     config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
     config::log_ship_sync_redo = FLAGS_log_ship_sync_redo;
     config::log_ship_full_redo = FLAGS_log_ship_full_redo;
@@ -241,6 +245,7 @@ main(int argc, char **argv)
     cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
     cerr << "  log-ship-sync-redo: " << config::log_ship_sync_redo << endl;
     cerr << "  log-ship-full-redo: " << config::log_ship_full_redo << endl;
+    cerr << "  quick-bench-start : " << config::quick_bench_start << endl;
   } else {
     cerr << "  parallel-loading: " << FLAGS_parallel_loading << endl;
     cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions << endl;
