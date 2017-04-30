@@ -123,11 +123,7 @@ main(int argc, char **argv)
   config::phantom_prot = FLAGS_phantom_prot;
   config::recover_functor = new parallel_oid_replay;
   config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
-
   config::nvram_log_buffer = FLAGS_nvram_log_buffer;
-  if(config::nvram_log_buffer) {
-    LOG(FATAL) << "Not supported: nvram_log_buffer";
-  }
 
 #if defined(SSI) || defined(SSN)
   config::enable_safesnap = FLAGS_safesnap;

@@ -233,12 +233,9 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
           fat_ptr pdest = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
           Object* obj = (Object*)MM::allocate(decode_size_aligned(size_code), 0);
           new(obj) Object(pdest, NULL_PTR, 0, config::eager_warm_up());
-          if(config::eager_warm_up()) {
-            obj->Pin();
-          } else {
-            obj->SetClsn(fat_ptr::make(pdest.offset(), size_code, fat_ptr::ASI_LOG_FLAG));
-            ASSERT(!obj->IsInMemory());
-          }
+          // Pin it regardless - the clsn needs to be comparable with other versions
+          obj->Pin();
+          ASSERT(obj->GetClsn().offset());
           oidmgr->oid_put_new(oa, o, fat_ptr::make(obj, size_code, 0));
         }
         read_buffer(data_size);

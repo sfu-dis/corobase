@@ -942,19 +942,21 @@ retry:
       }
       uint64_t clsn = obj->GetClsn().offset();
       ASSERT(clsn > active_head_lsn);
-      if(xc->begin > clsn && ret_obj == active_head_obj) {
+      if(xc->begin > clsn) {
         // Done, no need to dig further
+        ASSERT(ret_obj == active_head_obj);
         ret_obj = obj;
         break;
-      } else {
-        prev_obj = obj;
-        ptr = obj->GetNextPersistent();
       }
+      prev_obj = obj;
+      ptr = obj->GetNextPersistent();
     }
+    ASSERT(ptr.offset() == active_head_lsn ||
+           ptr.offset() > active_head_lsn && ret_obj != active_head_obj);
+
     // Install the chain on the tuple array slot (plain write as we locked it)
     ALWAYS_ASSERT(install_ptr != NULL_PTR);
     ALWAYS_ASSERT(install_ptr.asi_type() == 0);
-    ASSERT((install_ptr._ptr & (1UL << 63)) == 0);
 
     bool success = __sync_val_compare_and_swap(
       &ta->get(o)->_ptr, active_head_ptr._ptr, install_ptr._ptr);
@@ -980,11 +982,7 @@ start_over:
   fat_ptr ptr = volatile_read(*entry);
   ASSERT(ptr.asi_type() == 0);
   Object* prev_obj = nullptr;
-  while (1) {
-    if(ptr.offset() == 0) {
-      break;
-    }
-
+  while(ptr.offset()) {
     Object *cur_obj = nullptr;
     // Must read next_ before reading cur_obj->_clsn:
     // the version we're currently reading (ie cur_obj) might be unlinked
@@ -1005,17 +1003,24 @@ start_over:
     // If this is a backup server, then must see persistent_next to find out
     // the **real** overwritten version.
     if(config::is_backup_srv()) {
-      // Might need to dig the version out
-      uint64_t next_volatile_lsn = 0;
       if(prev_obj) {
-        next_volatile_lsn = prev_obj->GetClsn().offset();
+        // See if we can just follow the volatile pointer without touching the log
+        fat_ptr prev_next_ptr = prev_obj->GetNextVolatile();
+        Object* prev_next_obj = (Object*)prev_next_ptr.offset();
+        ASSERT(prev_next_obj->GetClsn().offset() ==
+               prev_next_obj->GetPersistentAddress().offset());
+        if(prev_next_obj->GetClsn().offset() == prev_obj->GetNextPersistent().offset()) {
+          // No gap
+          ptr = prev_next_ptr;
+        }
       }
-      if(ptr.asi_type() == fat_ptr::ASI_LOG && next_volatile_lsn != ptr.offset()) {
+      if(ptr.asi_type() == fat_ptr::ASI_LOG) {
         ASSERT(ptr.size_code() != INVALID_SIZE_CODE);
         size_t alloc_sz = decode_size_aligned(ptr.size_code());
         cur_obj = (Object*)MM::allocate(alloc_sz, visitor_xc->begin_epoch);
         new(cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, true);
         cur_obj->Pin();  // After this next_pdest_ is valid
+        ASSERT(cur_obj->GetClsn().offset());
         ASSERT(prev_obj);
         cur_obj->SetNextVolatile(prev_obj->GetNextVolatile());
         fat_ptr newptr = fat_ptr::make(cur_obj, ptr.size_code(), 0);
@@ -1026,11 +1031,15 @@ start_over:
           cur_obj = (Object*)prev_obj->GetNextVolatile().offset();
           ASSERT(cur_obj);
           ASSERT(cur_obj->GetClsn().offset() == ptr.offset());
+          ASSERT(cur_obj->GetPersistentAddress().offset() == ptr.offset());
           MM::deallocate(newptr);
         }
       } else {
+        ASSERT(ptr.asi_type() == 0);
         cur_obj = (Object*)ptr.offset();
       }
+      ASSERT(cur_obj->GetClsn().offset());
+      ASSERT(!prev_obj || prev_obj->GetClsn().offset() > cur_obj->GetClsn().offset());
       tentative_next = cur_obj->GetNextPersistent();
       ASSERT(tentative_next == NULL_PTR || tentative_next.asi_type() == fat_ptr::ASI_LOG);
     } else {
@@ -1039,91 +1048,14 @@ start_over:
       tentative_next = cur_obj->GetNextVolatile();
       ASSERT(tentative_next.asi_type() == 0);
     }
-    auto clsn = cur_obj->GetClsn();
-    if (clsn == NULL_PTR) {
-      ASSERT(!config::is_backup_srv());
-      // dead tuple that was (or about to be) unlinked, start over
+
+    bool retry = false;
+    bool visible = TestVisibility(cur_obj, visitor_xc, retry);
+    if(retry) {
       goto start_over;
     }
-
-    uint16_t asi_type = clsn.asi_type();
-    ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
-    if(asi_type == fat_ptr::ASI_XID) {  // in-flight
-      XID holder_xid = XID::from_ptr(clsn);
-
-      // dirty data made by me is visible!
-      if(holder_xid == visitor_xc->owner) {
-        ASSERT(!cur_obj->GetNextVolatile().offset() ||
-               ((Object*)cur_obj->GetNextVolatile().offset())->GetClsn().asi_type() ==
-               fat_ptr::ASI_LOG);
-        ASSERT(!config::is_backup_srv());
-        return cur_obj->GetPinnedTuple();
-      }
-      auto* holder = xid_get_context(holder_xid);
-      if(!holder) {  // invalid XID (dead tuple, must retry than goto next in the chain)
-        ASSERT(!config::is_backup_srv());
-        goto start_over;
-      }
-
-      auto state = volatile_read(holder->state);
-      auto owner = volatile_read(holder->owner);
-
-      // context still valid for this XID?
-      if(owner != holder_xid) {
-        ASSERT(!config::is_backup_srv());
-        goto start_over;
-      }
-
-      if(state == TXN_CMMTD) {
-        ASSERT(volatile_read(holder->end));
-        ASSERT(owner == holder_xid);
-#if defined(RC) || defined(RC_SPIN)
-#ifdef SSN
-        if(config::enable_safesnap && (visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
-          if(holder->end < visitor_xc->begin) {
-            return cur_obj->GetPinnedTuple();
-          }
-        } else {
-          return cur_obj->GetPinnedTuple();
-        }
-#else  // SSN
-        return cur_obj->GetPinnedTuple();
-#endif  // SSN
-#else  // not RC/RC_SPIN
-        if(holder->end < visitor_xc->begin) {
-          return cur_obj->GetPinnedTuple();
-        } else {
-          oid_check_phantom(visitor_xc, holder->end);
-        }
-#endif
-      }
-    } else {
-      // Already committed, now do visibility test
-      ASSERT(cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
-             cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
-             cur_obj->GetPersistentAddress() == NULL_PTR); // Delete
-      uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
-#if defined(RC) || defined(RC_SPIN)
-#if defined(SSN)
-      if(config::enable_safesnap && (visitor_xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
-        if(lsn_offset <= visitor_xc->begin) {
-          return cur_obj->GetPinnedTuple();
-        } else {
-          oid_check_phantom(visitor_xc, clsn.offset());
-        }
-      } else {
-        return cur_obj->GetPinnedTuple();
-      }
-#else
+    if(visible) {
       return cur_obj->GetPinnedTuple();
-#endif
-#else  // Not RC
-      if(lsn_offset <= visitor_xc->begin) {
-        return cur_obj->GetPinnedTuple();
-      } else {
-        oid_check_phantom(visitor_xc, clsn.offset());
-      }
-#endif
     }
     ptr = tentative_next;
     prev_obj = cur_obj;
@@ -1131,3 +1063,96 @@ start_over:
   return nullptr;    // No Visible records
 }
 
+bool sm_oid_mgr::TestVisibility(Object* object, xid_context* xc, bool& retry) {
+  fat_ptr clsn = object->GetClsn();
+  uint16_t asi_type = clsn.asi_type();
+  if(clsn == NULL_PTR) {
+    ASSERT(!config::is_backup_srv());
+    // dead tuple that was (or about to be) unlinked, start over
+    retry = true;
+    return false;
+  }
+
+  ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
+  if(asi_type == fat_ptr::ASI_XID) {  // in-flight
+    // Backups don't write
+    ASSERT(!config::is_backup_srv());
+
+    XID holder_xid = XID::from_ptr(clsn);
+    // Dirty data made by me is visible!
+    if(holder_xid == xc->owner) {
+      ASSERT(!object->GetNextVolatile().offset() ||
+             ((Object*)object->GetNextVolatile().offset())->GetClsn().asi_type() ==
+             fat_ptr::ASI_LOG);
+      ASSERT(!config::is_backup_srv());
+      return true;
+    }
+    auto* holder = xid_get_context(holder_xid);
+    if(!holder) {  // invalid XID (dead tuple, must retry than goto next in the chain)
+      retry = true;
+      return false;
+    }
+
+    auto state = volatile_read(holder->state);
+    auto owner = volatile_read(holder->owner);
+
+    // context still valid for this XID?
+    if(owner != holder_xid) {
+      ASSERT(!config::is_backup_srv());
+      retry = true;
+      return false;
+    }
+
+    if(state == TXN_CMMTD) {
+      ASSERT(volatile_read(holder->end));
+      ASSERT(owner == holder_xid);
+#if defined(RC) || defined(RC_SPIN)
+#ifdef SSN
+      if(config::enable_safesnap && (xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
+        if(holder->end < xc->begin) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+#else  // SSN
+      return true;
+#endif  // SSN
+#else  // not RC/RC_SPIN
+      if(holder->end < xc->begin) {
+        return true;
+      } else {
+        oid_check_phantom(xc, holder->end);
+      }
+#endif
+    }
+  } else {
+    // Already committed, now do visibility test
+    ASSERT(object->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
+           object->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
+           object->GetPersistentAddress() == NULL_PTR); // Delete
+    uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
+#if defined(RC) || defined(RC_SPIN)
+#if defined(SSN)
+    if(config::enable_safesnap && (xc->xct->flags & transaction::TXN_FLAG_READ_ONLY)) {
+      if(lsn_offset <= xc->begin) {
+        return true;
+      } else {
+        oid_check_phantom(xc, clsn.offset());
+      }
+    } else {
+      return true;
+    }
+#else
+    return true;
+#endif
+#else  // Not RC
+    if(lsn_offset <= xc->begin) {
+      return true;
+    } else {
+      oid_check_phantom(xc, clsn.offset());
+    }
+#endif
+  }
+  return false;
+}

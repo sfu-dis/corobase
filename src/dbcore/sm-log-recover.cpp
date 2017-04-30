@@ -261,6 +261,25 @@ sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr, int align_
     auto *sid = get_segment(segnum);
     ASSERT(sid);
     ASSERT(ptr.offset() >= sid->start_offset);
+
+    if(config::nvram_log_buffer && ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
+      ALWAYS_ASSERT(config::is_backup_srv());
+      auto* logbuf = logmgr->get_logbuf();
+      size_t read_end = logbuf->read_end();
+      size_t read_begin = logbuf->read_begin();
+      uint64_t offset = sid->buf_offset(LSN::from_ptr(ptr));
+      if(read_begin <= offset && read_end > offset + nbytes) {
+        memcpy(buf, logbuf->_get_ptr(offset), nbytes);
+        // Verify to make sure we didn't read garbage
+        read_end = logbuf->read_end();
+        read_begin = logbuf->read_begin();
+        if(read_begin <= offset && read_end > offset + nbytes) {
+          return;
+        }
+      }
+      while(ptr.offset() >= logmgr->durable_flushed_lsn().offset()) {}
+    }
+
     size_t m = os_pread(sid->fd, buf, nbytes, ptr.offset() - sid->start_offset);
     ALWAYS_ASSERT(m == nbytes);
     THROW_IF(m != nbytes, log_file_error,

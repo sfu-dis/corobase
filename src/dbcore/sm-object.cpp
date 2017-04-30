@@ -47,10 +47,11 @@ void Object::Pin(sm_log_recover_mgr* lm) {
   if(where == fat_ptr::ASI_LOG) {
    ASSERT(logmgr);
     // Not safe to dig out from the log buffer as it might be receiving a
-    // new batch from the primary.
+    // new batch from the primary, unless we have NVRAM as log buffer.
     // XXX(tzwang): for now we can't flush - need coordinate with backup daemon
-    while(config::is_backup_srv() &&
-          pdest_.offset() > logmgr->durable_flushed_lsn().offset()) {}
+    if(config::is_backup_srv() && !config::nvram_log_buffer) {
+      while(pdest_.offset() >= logmgr->durable_flushed_lsn().offset()) {}
+    }
 
     // Load tuple varstr from the log
     if (lm) {
@@ -72,7 +73,7 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr),
             tuple->size);
-    SetClsn(pdest_);
+    SetClsn(LSN::make(pdest_.offset(), 0).to_log_ptr());
   } else {
     // Load tuple data form the chkpt file
     ASSERT(sm_chkpt_mgr::base_chkpt_fd);
