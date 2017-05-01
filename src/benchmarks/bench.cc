@@ -347,6 +347,12 @@ void bench_runner::start_measurement() {
     logmgr->flush();
   }
 
+  volatile_write(config::state, config::kStateShutdown);
+  if(config::num_backups) {
+    rep::PrimaryShutdown();
+  }
+  __sync_synchronize();
+
   for (size_t i = 0; i < config::num_worker_threads(); i++)
     workers[i]->join();
   const unsigned long elapsed_nosync = t_nosync.lap();
@@ -412,12 +418,6 @@ void bench_runner::start_measurement() {
 
   if (config::enable_chkpt)
       delete chkptmgr;
-
-  if(config::num_backups) {
-    rep::PrimaryShutdown();
-    volatile_write(config::state, config::kStateShutdown);
-  }
-  __sync_synchronize();
 
   if(config::verbose) {
     cerr << "--- table statistics ---" << endl;
