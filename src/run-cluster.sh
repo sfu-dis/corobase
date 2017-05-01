@@ -38,30 +38,33 @@ echo "Backup args: $backup_args"
 primary_output_file=$output_dir/primary.$CC.$primary_bench.sf$scale_factor.t$threads.txt
 ./run.sh ./ermia_$CC $primary_bench $scale_factor $threads $duration "$primary_args" &> $primary_output_file & export primary_pid=$!
 
-# Sometimes it takes a while to get the file written
-for (( ; ; )); do
-  if [ ! -f $primary_output_file ]; then
-    break
-  fi
-done
-
-# Wait until the primary is ready to receive connections from backups
-for (( ; ; )); do
-  l=`tail -1 $primary_output_file`
-  if [[ $l == *"[Server]"* ]]; then
-    echo "Primary is ready, starting backups..."
-    break
-  fi
-done
-
+last_mod_time=0
 for backup in "$@"; do
-  backup_output_file=$output_dir/backup.$CC.$backup_bench.sf$scale_factor.t$threads.txt
+  # Wait until the primary is ready to receive connections from backups.
+  # If there's multiple backups, must wait until the primary becomes
+  # available again.
+  for (( ; ; )); do
+    l=`tail -1 $primary_output_file 2> /dev/null`
+    if [[ $l == *"[Server]"* ]]; then
+      # Make sure it finished handling the last client and has output new "ready" information
+      mod_time=`stat --printf="%Y" $primary_output_file`
+      if [ "$mod_time" != "$last_mod_time" ]; then
+        echo "Primary is ready, starting backup $backup..."
+        last_mod_time=$mod_time
+        break
+      fi
+    fi
+  done
+
+  backup_output_file=$output_dir/backup.$backup.$CC.$backup_bench.sf$scale_factor.t$threads.txt
   cmd="cd $exec_dir; \
     mkdir -p $output_dir; \
     ./run2.sh ./ermia_$CC $backup_bench $threads \"$backup_args\" &> $backup_output_file &"
   ssh $backup $cmd
   echo "Started $backup"
 done
+
+echo "Started all backups"
 
 # Wait for the primary to finish
 wait

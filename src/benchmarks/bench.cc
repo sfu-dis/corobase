@@ -342,12 +342,14 @@ void bench_runner::start_measurement() {
   }
   running = false;
 
+  volatile_write(config::state, config::kStateShutdown);
   if(!config::is_backup_srv()) {
     // Persist whatever still left in the log buffer
+    // Must do this after setting to shutdown state: the flusher will
+    // instead flush till the max tls_lsn_offset, instead of the minimum.
     logmgr->flush();
   }
 
-  volatile_write(config::state, config::kStateShutdown);
   if(config::num_backups) {
     rep::PrimaryShutdown();
   }
