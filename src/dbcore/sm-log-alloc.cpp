@@ -742,7 +742,8 @@ sm_log_alloc_mgr::_log_write_daemon()
     uint64_t last_dmark = stopwatch_t::now();
     for (;;) {
         auto cur_offset = cur_lsn_offset();
-        auto new_dlsn_offset = smallest_tls_lsn_offset();
+        auto new_dlsn_offset = config::IsShutdown() ?
+                               cur_lsn_offset() : smallest_tls_lsn_offset();
         auto *durable_sid = flush_log_buffer(*_logbuf, new_dlsn_offset);
 
         rcu_exit();

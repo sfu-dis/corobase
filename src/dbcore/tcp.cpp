@@ -57,7 +57,7 @@ int server_context::expect_client() {
 
   char s[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &sin.sin_addr, s, INET_ADDRSTRLEN);
-  printf("[Server] New client: %s\n", s);
+  std::cout << "[Server] New client: " << s;
   return fd;
 }
 
