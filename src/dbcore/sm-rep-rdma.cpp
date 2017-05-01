@@ -149,6 +149,12 @@ void backup_daemon_rdam() {
     // primary wants to shutdown it will note this in the immediate.
     uint32_t intent = 0;
     auto bounds_array_size = self_rdma_node->ReceiveImm(&intent);
+    if(!config::IsForwardProcessing()) {
+      // Received the first batch, for sure the backup can start benchmarks.
+      // FIXME(tzwang): this is not optimal - ideally we should start after
+      // the primary starts, instead of when the primary *shipped* the first batch.
+      volatile_write(config::state, config::kStateForwardProcessing);
+    }
     if(intent == kRdmaImmShutdown) {
       // Primary signaled shutdown, exit daemon
       volatile_write(config::state, config::kStateShutdown);
@@ -381,4 +387,11 @@ void PrimaryShutdownRdma() {
   }
 }
 
+void PrimaryShutdown() {
+  if(config::log_ship_by_rdma) {
+    PrimaryShutdownRdma();
+  } else {
+    LOG(FATAL) << "Not implemented";
+  }
+}
 }  // namespace rep

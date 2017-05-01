@@ -117,6 +117,7 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size,
                                  bool new_seg, uint64_t new_seg_start_offset);
 void redo_daemon();
 backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_lsn);
+void PrimaryShutdown();
 
 // RDMA-specific functions
 void PrimaryShutdownRdma();

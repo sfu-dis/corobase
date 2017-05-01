@@ -13,6 +13,7 @@ uint32_t config::benchmark_scale_factor = 1;
 bool config::parallel_loading = false;
 bool config::retry_aborted_transactions = false;
 bool config::quick_bench_start = false;
+bool config::wait_for_primary = true;
 int config::backoff_aborted_transactions = 0;
 int config::numa_nodes = 0;
 int config::enable_gc = 0;
