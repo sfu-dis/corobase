@@ -249,7 +249,7 @@ bench_runner::run()
     RCU::rcu_exit();
   }
   RCU::rcu_deregister();
-  volatile_write(config::loading, false);
+  volatile_write(config::state, config::kStateForwardProcessing);
 
   // Start checkpointer after database is ready
   if(config::is_backup_srv()) {
@@ -310,7 +310,8 @@ void bench_runner::start_measurement() {
   uint64_t slept = 0;
   uint64_t last_commits = 0, last_aborts = 0;
   printf("Sec,Commits,Aborts\n");
-  while(slept < config::benchmark_seconds) {
+
+  auto gather_stats = [&]() {
     sleep(1);
     uint64_t sec_commits = 0, sec_aborts = 0;
     for (size_t i = 0; i < config::num_worker_threads(); i++) {
@@ -323,6 +324,17 @@ void bench_runner::start_measurement() {
     last_aborts += sec_aborts;
     printf("%lu,%lu,%lu\n", slept+1, sec_commits, sec_aborts);
     slept++;
+  };
+
+  // Backups run forever until told to stop.
+  if(config::is_backup_srv()) {
+    while(!config::IsShutdown()) {
+      gather_stats();
+    }
+  } else {
+    while(slept < config::benchmark_seconds) {
+      gather_stats();
+    }
   }
   running = false;
 
@@ -330,8 +342,6 @@ void bench_runner::start_measurement() {
     // Persist whatever still left in the log buffer
     logmgr->flush();
   }
-
-  __sync_synchronize();
 
   for (size_t i = 0; i < config::num_worker_threads(); i++)
     workers[i]->join();
@@ -398,6 +408,12 @@ void bench_runner::start_measurement() {
 
   if (config::enable_chkpt)
       delete chkptmgr;
+
+  if(config::num_backups) {
+    rep::PrimaryShutdownRdma();
+    volatile_write(config::state, config::kStateShutdown);
+  }
+  __sync_synchronize();
 
   if(config::verbose) {
     cerr << "--- table statistics ---" << endl;

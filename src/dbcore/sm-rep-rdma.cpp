@@ -8,6 +8,7 @@ std::vector<struct RdmaNode*> nodes;
 std::mutex nodes_lock;
 
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
+const static uint32_t kRdmaImmShutdown = 1U << 30;
 
 uint64_t new_end_lsn_offset = 0;
 void LogFlushDaemon() {
@@ -136,14 +137,24 @@ void backup_daemon_rdam() {
   LSN start_lsn = logmgr->durable_flushed_lsn();
   std::thread flusher(LogFlushDaemon);
   flusher.detach();
-  while (1) {
+  while(!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
     // Post an RR to get the log buffer partition bounds
     // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
     // the peer sends data).
-    auto bounds_array_size = self_rdma_node->ReceiveImm();
+    // This RR also serves the purpose of getting the primary's next step. Normally
+    // the primary would send over the bounds array without immediate; when the
+    // primary wants to shutdown it will note this in the immediate.
+    uint32_t intent = 0;
+    auto bounds_array_size = self_rdma_node->ReceiveImm(&intent);
+    if(intent == kRdmaImmShutdown) {
+      // Primary signaled shutdown, exit daemon
+      volatile_write(config::state, config::kStateShutdown);
+      LOG(INFO) << "Got shutdown signal from primary, exit.";
+      return;
+    }
     ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * kMaxLogBufferPartitions);
 
 #ifndef NDEBUG
@@ -358,6 +369,15 @@ void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
     ALWAYS_ASSERT(new_seg_start_offset <= ~kRdmaImmNewSeg);
     uint32_t imm = new_seg ? kRdmaImmNewSeg | (uint32_t)new_seg_start_offset : 0;
     node->RdmaWriteImmLogBuffer(offset, offset, size, imm, false);
+  }
+}
+
+void PrimaryShutdownRdma() {
+  for(auto& node : nodes) {
+    node->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+
+    // Send the shutdown signal using the bounds buffer
+    node->RdmaWriteImmLogBufferPartitionBounds(0, 0, 8, kRdmaImmShutdown, true);
   }
 }
 

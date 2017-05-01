@@ -119,6 +119,7 @@ void redo_daemon();
 backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_lsn);
 
 // RDMA-specific functions
+void PrimaryShutdownRdma();
 void primary_daemon_rdma();
 void start_as_backup_rdma();
 void backup_start_replication_rdma();

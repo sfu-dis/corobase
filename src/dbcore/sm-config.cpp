@@ -46,11 +46,9 @@ bool config::log_key_for_update = false;
 bool config::enable_chkpt = 0;
 uint64_t config::chkpt_interval = 50;
 bool config::phantom_prot = 0;
-
 uint32_t config::max_threads_per_node = 0;
-bool config::loading = true;
-
 uint64_t config::write_bytes_per_cycle = 0;
+uint32_t config::state = config::kStateLoading;
 
 void
 config::init() {
