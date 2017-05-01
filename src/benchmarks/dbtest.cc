@@ -31,7 +31,6 @@ DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
-DEFINE_uint64(seconds, 10, "Duration to run benchmark in seconds.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
 DEFINE_string(tmpfs_dir, "/dev/shm", "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
@@ -54,6 +53,7 @@ DEFINE_bool(ssi_read_only_opt, false, "Whether to enable SSI's read-only optimiz
 DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
 
 // Options specific to the primary
+DEFINE_uint64(seconds, 10, "Duration to run benchmark in seconds.");
 DEFINE_bool(parallel_loading, true, "Load data in parallel.");
 DEFINE_bool(retry_aborted_transactions, false, "Whether to retry aborted transactions.");
 DEFINE_bool(backoff_aborted_transactions, false, "Whether backoff when retrying.");
@@ -112,10 +112,10 @@ main(int argc, char **argv)
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
+  config::state = config::kStateLoading;
   config::verbose = FLAGS_verbose;
   config::node_memory_gb = FLAGS_node_memory_gb;
   config::worker_threads = FLAGS_threads;
-  config::benchmark_seconds = FLAGS_seconds;
   config::tmpfs_dir = FLAGS_tmpfs_dir;
   config::log_dir = FLAGS_log_data_dir;
   config::log_segment_mb = FLAGS_log_segment_mb;
@@ -140,6 +140,7 @@ main(int argc, char **argv)
 
   // Backup specific arguments
   if(config::is_backup_srv()) {
+    config::benchmark_seconds = ~uint32_t{0};  // Backups run forever
     config::quick_bench_start = FLAGS_quick_bench_start;
     config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
     config::log_ship_sync_redo = FLAGS_log_ship_sync_redo;
@@ -165,6 +166,7 @@ main(int argc, char **argv)
       LOG(FATAL) << "TODO";
     }
   } else {
+    config::benchmark_seconds = FLAGS_seconds;
     config::benchmark_scale_factor = FLAGS_scale_factor;
     config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
     config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
@@ -269,7 +271,7 @@ main(int argc, char **argv)
   for (size_t i = 1; i <= bench_toks.size(); i++)
     new_argv[i] = (char *) bench_toks[i - 1].c_str();
 
-  // Must have everything in config ready by this point (ndb-wrapper's ctor will use them)
+  // Must have everything in config ready by this point
   config::sanity_check();
   config::calibrate_spin_cycles();
   ndb_wrapper *db = NULL;

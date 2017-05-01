@@ -26,7 +26,7 @@ public:
     static std::string tmpfs_dir;
     static int htt_is_on;
     static uint32_t max_threads_per_node;
-    static bool loading;
+    static uint32_t state;
 
     static bool enable_chkpt;
     static uint64_t chkpt_interval;
@@ -43,6 +43,13 @@ public:
     static sm_log_recover_impl *recover_functor;
     static uint64_t node_memory_gb;
     static bool phantom_prot;
+
+    enum SystemState { kStateLoading, kStateForwardProcessing, kStateShutdown };
+    static inline bool IsLoading() { return volatile_read(state) == kStateLoading; }
+    static inline bool IsForwardProcessing() {
+      return volatile_read(state) == kStateForwardProcessing;
+    }
+    static inline bool IsShutdown() { return volatile_read(state) == kStateShutdown; }
 
     // Warm-up policy when recovering from a chkpt or the log.
     // Set by --recovery-warm-up=[lazy/eager/whatever].

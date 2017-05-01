@@ -393,7 +393,7 @@ retry:
         // perform the write
         auto *buf = logbuf.read_buf(durable_byte, nbytes);
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
-        if(config::num_active_backups && !config::loading) {
+        if(config::num_active_backups && config::IsForwardProcessing()) {
           // Ship it first, this is async for RDMA
           // Embed the segment's real begin_offset as the immediate:
           // Note that we have 32-bit immmediates only, so we only store the offset
@@ -417,13 +417,13 @@ retry:
         // setting is to ensure persistence at *all* nodes, including the primary.
         // Note(tzwang): 20170428: the only reason I added this is due to lack of DRAM space
         // for storing log files in tmpfs.
-        if(config::null_log_device && !config::loading) {
+        if(config::null_log_device && config::IsForwardProcessing()) {
           n = nbytes;
         } else {
           n = os_pwrite(active_fd, buf, nbytes, file_offset);
         }
         THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
-        if(config::num_active_backups && !config::loading) {
+        if(config::num_active_backups && config::IsForwardProcessing()) {
           if(config::log_ship_by_rdma) {
             // Now we need to poll to make sure the RDMA write finished
             // One for the log buffer partition bounds, the other for data
@@ -600,7 +600,7 @@ sm_log_alloc_mgr::allocate(uint32_t nrec, size_t payload_bytes)
 
     // If adding my payload, we're crossing a log buffer partition boundary,
     // make sure the flusher knows about this location (for log shipping).
-    if(!config::loading && config::num_active_backups) {
+    if(config::IsForwardProcessing() && config::num_active_backups) {
       uint64_t start_partition = (lsn_offset / _logbuf_partition_size) % config::logbuf_partitions;
       uint64_t next_partition = (next_lsn_offset / _logbuf_partition_size) % config::logbuf_partitions;
       if(start_partition != next_partition) {
