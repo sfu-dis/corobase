@@ -88,7 +88,9 @@ DEFINE_bool(log_ship_full_redo, false, "Whether to repeat index update during re
   "For experimenting with the benefit/cost of having indirection arrays only.");
 DEFINE_bool(quick_bench_start, false,
   "Whether to start benchmark right after loading, without waiting for user input. "
-  "For backup servers only.");
+  "For backup servers only. Subject to -wait_for_primary.");
+DEFINE_bool(wait_for_primary, true,
+  "Whether to start benchmark only after the primary starts benchmark.");
 
 static vector<string>
 split_ws(const string &s)
@@ -142,6 +144,7 @@ main(int argc, char **argv)
   if(config::is_backup_srv()) {
     config::benchmark_seconds = ~uint32_t{0};  // Backups run forever
     config::quick_bench_start = FLAGS_quick_bench_start;
+    config::wait_for_primary = FLAGS_wait_for_primary;
     config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
     config::log_ship_sync_redo = FLAGS_log_ship_sync_redo;
     config::log_ship_full_redo = FLAGS_log_ship_full_redo;
@@ -244,6 +247,7 @@ main(int argc, char **argv)
     cerr << "  log-ship-sync-redo: " << config::log_ship_sync_redo << endl;
     cerr << "  log-ship-full-redo: " << config::log_ship_full_redo << endl;
     cerr << "  quick-bench-start : " << config::quick_bench_start << endl;
+    cerr << "  wait-for-primary  : " << config::wait_for_primary << endl;
   } else {
     cerr << "  parallel-loading: " << FLAGS_parallel_loading << endl;
     cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions << endl;

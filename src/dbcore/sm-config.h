@@ -8,41 +8,44 @@
 
 class sm_log_recover_impl;
 
-class config {
-public:
+struct config {
+    // Common settings
     static bool verbose;
-    static uint32_t benchmark_seconds;
     static uint32_t benchmark_scale_factor;
-    static bool quick_bench_start;
-    static bool parallel_loading;
-    static bool retry_aborted_transactions;
-    static int backoff_aborted_transactions;
     static uint32_t worker_threads;
     static int numa_nodes;
     static const uint32_t MAX_THREADS = 256;
     static const uint64_t MB = 1024 * 1024;
     static const uint64_t GB = MB * 1024;
-    static int enable_gc;
     static std::string tmpfs_dir;
     static int htt_is_on;
     static uint32_t max_threads_per_node;
     static uint32_t state;
-
     static bool enable_chkpt;
     static uint64_t chkpt_interval;
     static uint64_t log_buffer_mb;
     static uint64_t log_segment_mb;
-    static uint32_t logbuf_partitions;
     static std::string log_dir;
-    static bool null_log_device;
     static bool nvram_log_buffer;
-    static bool group_commit;
-    static int group_commit_timeout;
-    static int group_commit_queue_length;  // how much to reserve
-    static int max_mb_per_log_io;
     static sm_log_recover_impl *recover_functor;
     static uint64_t node_memory_gb;
     static bool phantom_prot;
+
+    // Primary-specific settings
+    static bool parallel_loading;
+    static bool retry_aborted_transactions;
+    static int backoff_aborted_transactions;
+    static int enable_gc;
+    static uint32_t logbuf_partitions;
+    static bool null_log_device;
+    static bool group_commit;
+    static int group_commit_timeout;
+    static int group_commit_queue_length;  // how much to reserve
+
+    // Backup-specific settings
+    static uint32_t benchmark_seconds;
+    static bool quick_bench_start;
+    static bool wait_for_primary;
 
     enum SystemState { kStateLoading, kStateForwardProcessing, kStateShutdown };
     static inline bool IsLoading() { return volatile_read(state) == kStateLoading; }

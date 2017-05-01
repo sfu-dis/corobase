@@ -249,10 +249,13 @@ bench_runner::run()
     RCU::rcu_exit();
   }
   RCU::rcu_deregister();
-  volatile_write(config::state, config::kStateForwardProcessing);
 
   // Start checkpointer after database is ready
   if(config::is_backup_srv()) {
+    // See if we need to wait for the 'go' signal from the primary
+    if(config::wait_for_primary) {
+      while(!config::IsForwardProcessing()) {}
+    }
     if(!config::quick_bench_start) {
       std::cout << "Press Enter to start benchmark" << std::endl;
       getchar();
@@ -271,6 +274,7 @@ bench_runner::run()
     if(config::enable_chkpt) {
       chkptmgr->start_chkpt_thread();
     }
+    volatile_write(config::state, config::kStateForwardProcessing);
   }
 
   if(config::num_worker_threads()) {
@@ -410,7 +414,7 @@ void bench_runner::start_measurement() {
       delete chkptmgr;
 
   if(config::num_backups) {
-    rep::PrimaryShutdownRdma();
+    rep::PrimaryShutdown();
     volatile_write(config::state, config::kStateShutdown);
   }
   __sync_synchronize();
