@@ -176,7 +176,7 @@ public:
     uint64_t new_value);
 
   /* Post a receive request to "receive" data sent by rdma_write with immediate from the peer.
-   * Returns the immediate, the caller should know where to look for the data.
+   * Returns data size (not the immediate's), the caller should know where to look for the data.
    */
   uint32_t receive_rdma_with_imm(uint32_t *imm = nullptr);
 };
