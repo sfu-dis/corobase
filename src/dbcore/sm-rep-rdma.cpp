@@ -10,6 +10,8 @@ std::mutex nodes_lock;
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
 
+uint64_t logbuf_new_byte = 0;
+
 uint64_t new_end_lsn_offset = 0;
 void LogFlushDaemon() {
   rcu_register();
@@ -21,6 +23,8 @@ void LogFlushDaemon() {
       rcu_enter();
       DEFER(rcu_exit());
       logmgr->BackupFlushLog(*logbuf, lsn);
+      // After advance_reader no one should read from the log buffer
+      logbuf->advance_reader(logbuf_new_byte);
       volatile_write(new_end_lsn_offset, 0);
     }
   }
@@ -141,6 +145,7 @@ void backup_daemon_rdam() {
   while(!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
+    while(volatile_read(new_end_lsn_offset) != 0) {}
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
     // Post an RR to get the log buffer partition bounds
     // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
@@ -215,7 +220,7 @@ void backup_daemon_rdam() {
 
     // TODO(tzwang): persist and ack Persisted msg here
 
-    uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
+    uint64_t new_byte = logbuf_new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
     if (config::log_ship_sync_redo) {
       if(logbuf->available_to_read() < size) {
         logbuf->advance_writer(new_byte);
@@ -232,10 +237,11 @@ void backup_daemon_rdam() {
     }
 
     // Now wait for the flusher to finish persisting log
-    while(volatile_read(new_end_lsn_offset) != 0) {}
 
-    // After advance_reader no one should read from the log buffer
-    logbuf->advance_reader(new_byte);
+    if(!config::nvram_log_buffer) {
+      while(volatile_read(new_end_lsn_offset) != 0) {}
+    }
+
     ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
     self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
 
