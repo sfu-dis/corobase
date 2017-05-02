@@ -46,6 +46,7 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
 void primary_daemon_rdma() {
   // Create an RdmaNode object for each backup node
   for(uint32_t i = 0; i < config::num_backups; ++i) {
+    std::cout << "Expecting node " << i << std::endl;
     RdmaNode* rn = new RdmaNode(true);
     nodes.push_back(rn);
 

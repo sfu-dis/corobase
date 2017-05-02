@@ -11,7 +11,7 @@ namespace tcp {
 
 server_context::server_context(std::string& port, uint32_t nclients) : sockfd(0) {
   gethostname(sock_addr, INET_ADDRSTRLEN);
-  std::cout << "[Server] " << get_sock_addr() << ":" << port << std::endl;
+  LOG(INFO) << "[Server] " << get_sock_addr() << ":" << port;
   struct addrinfo hints;
   memset(&hints, 0, sizeof(struct addrinfo));
   hints.ai_family = AF_INET;
@@ -51,13 +51,9 @@ int server_context::expect_client() {
   int fd = accept(sockfd, &addr, &addr_size);
   ALWAYS_ASSERT(fd);
 
-  struct sockaddr_in sin;
-  socklen_t len = sizeof(struct sockaddr_in);
-  getsockname(fd, (struct sockaddr *)&sin, &len);
-
   char s[INET_ADDRSTRLEN];
-  inet_ntop(AF_INET, &sin.sin_addr, s, INET_ADDRSTRLEN);
-  std::cout << "[Server] New client: " << s;
+  inet_ntop(AF_INET, &((sockaddr_in*)&addr)->sin_addr, s, INET_ADDRSTRLEN);
+  LOG(INFO) << "[Server] New client: " << s;
   return fd;
 }
 
