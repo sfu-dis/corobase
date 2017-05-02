@@ -52,7 +52,7 @@ void context::finish_init() {
   int ret = ibv_query_device(ctx, &dev_attr);
   cqe = dev_attr.max_cqe;
   ALWAYS_ASSERT(cqe > kPollOps);
-  std::cout << "[RDMA] Max cqe=" << cqe << std::endl;
+  LOG(INFO) << "[RDMA] Max cqe=" << cqe;
 
   send_cq = ibv_create_cq(ctx, cqe, (void *)this, nullptr, 0);
   THROW_IF(not send_cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");

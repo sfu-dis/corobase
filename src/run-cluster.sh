@@ -38,19 +38,19 @@ echo "Backup args: $backup_args"
 primary_output_file=$output_dir/primary.$CC.$primary_bench.sf$scale_factor.t$threads.txt
 ./run.sh ./ermia_$CC $primary_bench $scale_factor $threads $duration "$primary_args" &> $primary_output_file & export primary_pid=$!
 
-last_mod_time=0
+cnt=0
 for backup in "$@"; do
   # Wait until the primary is ready to receive connections from backups.
   # If there's multiple backups, must wait until the primary becomes
   # available again.
   for (( ; ; )); do
+    # Make sure it finished handling the last client and has output new "ready" information
     l=`tail -1 $primary_output_file 2> /dev/null`
-    if [[ $l == *"[Server]"* ]]; then
-      # Make sure it finished handling the last client and has output new "ready" information
-      mod_time=`stat --printf="%Y" $primary_output_file`
-      if [ "$mod_time" != "$last_mod_time" ]; then
+    if [[ $l == *"Expecting node"* ]]; then
+      n=`echo $l | cut -d ' ' -f3`
+      if [[ "$n" == "$cnt" ]]; then
         echo "Primary is ready, starting backup $backup..."
-        last_mod_time=$mod_time
+        cnt=`expr $cnt + 1`
         break
       fi
     fi
@@ -60,8 +60,7 @@ for backup in "$@"; do
   cmd="cd $exec_dir; \
     mkdir -p $output_dir; \
     ./run2.sh ./ermia_$CC $backup_bench $threads \"$backup_args\" &> $backup_output_file &"
-  ssh $backup $cmd
-  echo "Started $backup"
+  ssh -o StrictHostKeyChecking=no $backup $cmd
 done
 
 echo "Started all backups"
@@ -73,7 +72,7 @@ echo "Primary exited"
 # See if the backups are done as well
 for backup in "$@"; do
   for (( ; ; )); do
-    result=`ssh $backup "ps aux | grep ermia_SI | grep -v grep"`
+    result=`ssh -o StrictHostKeyChecking=no $backup "ps aux | grep ermia_SI | grep -v grep"`
     if [[ $result == *"ermia_SI"* ]]; then
       sleep 2
     else
