@@ -37,9 +37,8 @@ using namespace TXN;
 // the entry pointer results a fat_ptr to the new object.
 struct write_record_t {
   fat_ptr* entry;
-  FID fid;  // for rdma-based log shipping
-  write_record_t(fat_ptr* entry, FID fid) : entry(entry), fid(fid) {}
-  write_record_t() : entry(nullptr), fid(0) {}
+  write_record_t(fat_ptr* entry) : entry(entry) {}
+  write_record_t() : entry(nullptr) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
 
@@ -48,9 +47,9 @@ struct write_set_t {
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr* oe, FID f) {
+  inline void emplace_back(fat_ptr* oe) {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
-    new (&entries[num_entries]) write_record_t(oe, f);
+    new (&entries[num_entries]) write_record_t(oe);
     ++num_entries;
     ASSERT(entries[num_entries-1].entry == oe);
   }
@@ -207,7 +206,7 @@ public:
     return *sa;
   }
 
-  inline void add_to_write_set(fat_ptr* entry, FID fid) {
+  inline void add_to_write_set(fat_ptr* entry) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto& w = write_set[i];
@@ -215,7 +214,7 @@ public:
       ASSERT(w.entry != entry);
     }
 #endif
-    write_set.emplace_back(entry, fid);
+    write_set.emplace_back(entry);
   }
 
 protected:
