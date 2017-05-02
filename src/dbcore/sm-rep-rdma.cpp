@@ -224,7 +224,9 @@ void backup_daemon_rdam() {
       // "Notify" the flusher to write log records out, asynchronously
       volatile_write(new_end_lsn_offset, end_lsn_offset);
       logmgr->redo_logbuf(start_lsn, end_lsn);
-      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
+      DLOG(INFO) << "[Backup] Rolled forward log "
+                 << std::hex << start_lsn.offset()
+                 << "-" << end_lsn_offset << std::dec;
     } else {
       volatile_write(new_end_lsn_offset, end_lsn_offset);
     }
