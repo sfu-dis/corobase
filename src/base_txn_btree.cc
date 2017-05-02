@@ -181,7 +181,7 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
 #if defined(SSI) || defined(SSN)
             volatile_write(prev->sstamp, t.xc->owner.to_ptr());
 #endif
-            t.add_to_write_set(tuple_array->get(oid), config::num_backups == 0 ? 0 : tuple_fid);
+            t.add_to_write_set(tuple_array->get(oid));
             prev_persistent_ptr = prev_obj->GetPersistentAddress();
         }
 
