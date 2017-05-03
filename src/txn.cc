@@ -1155,7 +1155,7 @@ transaction::try_insert_new_tuple(concurrent_btree *btr,
     if(likely(is_primary_idx)) {
       // update write_set
       ASSERT(tuple->pvalue->size() == tuple->size);
-      add_to_write_set(tuple_array->get(oid), config::num_backups == 0 ? 0 : tuple_fid);
+      add_to_write_set(tuple_array->get(oid));
     }
     return true;
 }
