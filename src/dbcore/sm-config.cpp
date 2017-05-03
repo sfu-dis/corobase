@@ -35,14 +35,12 @@ int config::htt_is_on = 1;
 uint64_t config::node_memory_gb = 12;
 int config::recovery_warm_up_policy = config::WARM_UP_NONE;
 int config::log_ship_warm_up_policy = config::WARM_UP_NONE;
-bool config::log_ship_full_redo = false;
 bool config::nvram_log_buffer = false;
 bool config::group_commit = false;
 int config::group_commit_queue_length = 25000;
 int config::group_commit_timeout = 5;
 sm_log_recover_impl *config::recover_functor = nullptr;
 bool config::log_ship_by_rdma = false;
-bool config::log_ship_sync_redo = false;
 bool config::log_key_for_update = false;
 bool config::enable_chkpt = 0;
 uint64_t config::chkpt_interval = 50;
@@ -50,6 +48,7 @@ bool config::phantom_prot = 0;
 uint32_t config::max_threads_per_node = 0;
 uint64_t config::write_bytes_per_cycle = 0;
 uint32_t config::state = config::kStateLoading;
+int config::replay_policy = config::kReplayPipelined;
 
 void
 config::init() {

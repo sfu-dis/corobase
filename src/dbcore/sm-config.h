@@ -46,6 +46,21 @@ struct config {
     static uint32_t benchmark_seconds;
     static bool quick_bench_start;
     static bool wait_for_primary;
+    static int replay_policy;
+
+    // How does the backup replay log records?
+    // Sync - replay in the critical path; ack 'persisted' only after replaying
+    //        **and** persisted log records
+    // Pipelined - replay out of the critical path; ack 'persisted' immediately
+    //             after log records are durable. Start replay in another thread
+    //             once received log records (usually overlapped with log flush).
+    //             Log buffer cannot be reused until the replay is finished, but
+    //             this doesn't block the primary as long as replay finishes fast
+    //             enough, before the next batch arrives and log flush finishes.
+    // Background - don't care about the shipping, just keep replaying from persisted
+    //              log records continuously; no freshness guarantee.
+    // None - don't replay at all.
+    enum BackupReplayPolicy { kReplaySync, kReplayPipelined, kReplayBackground, kReplayNone};
 
     enum SystemState { kStateLoading, kStateForwardProcessing, kStateShutdown };
     static inline bool IsLoading() { return volatile_read(state) == kStateLoading; }
@@ -90,9 +105,7 @@ struct config {
     static std::string primary_srv;
     static std::string primary_port;
     static int log_ship_warm_up_policy;
-    static bool log_ship_full_redo;
     static bool log_ship_by_rdma;
-    static bool log_ship_sync_redo;
     static bool log_key_for_update;
 
     static uint64_t write_bytes_per_cycle;

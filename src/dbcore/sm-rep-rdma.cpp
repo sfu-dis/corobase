@@ -20,12 +20,12 @@ void LogFlushDaemon() {
   rcu_register();
   DEFER(rcu_deregister());
   auto* logbuf = sm_log::get_logbuf();
+  rcu_enter();
+  DEFER(rcu_exit());
   while(true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
     if(lsn) {
       //util::scoped_timer t("log_flush");
-      rcu_enter();
-      DEFER(rcu_exit());
       logmgr->BackupFlushLog(*logbuf, lsn);
       // Wait for the redo daemon to finish
       while(volatile_read(redo_start_lsn)._val) {}
@@ -33,7 +33,6 @@ void LogFlushDaemon() {
       // After advance_reader no one should read from the log buffer
       logbuf->advance_reader(logbuf_new_byte);
       volatile_write(new_end_lsn_offset, 0);
-      __sync_synchronize();
     }
   }
 }
@@ -47,15 +46,14 @@ void LogRedoDaemon() {
   redo_end_lsn = INVALID_LSN;
   rcu_register();
   DEFER(rcu_deregister());
+  rcu_enter();
+  DEFER(rcu_exit());
   auto* logbuf = sm_log::get_logbuf();
   while(true) {
     LSN start = volatile_read(redo_start_lsn);
     if(start != INVALID_LSN) {
-      rcu_enter();
-      DEFER(rcu_exit());
       logmgr->redo_logbuf(redo_start_lsn, redo_end_lsn);
       volatile_write(redo_start_lsn._val, 0);
-      __sync_synchronize();
     }
   }
 }
@@ -163,7 +161,7 @@ void backup_daemon_rdam() {
   DEFER(delete self_rdma_node);
 
   uint32_t size = 0;
-  if(!config::log_ship_sync_redo) {
+  if(config::replay_policy == config::kReplayPipelined) {
     std::thread rt(LogRedoDaemon);
     rt.detach();
   }
@@ -257,23 +255,34 @@ void backup_daemon_rdam() {
     if(logbuf->available_to_read() < size) {
       logbuf->advance_writer(new_byte);
     }
-    ALWAYS_ASSERT(logbuf->available_to_read() >= size);
 
-    // "Notify" the flusher to write log records out, asynchronously
+    ALWAYS_ASSERT(logbuf->available_to_read() >= size);
+    ASSERT(volatile_read(redo_start_lsn) == INVALID_LSN);
+
+    if(config::replay_policy == config::kReplayPipelined ||
+       config::replay_policy == config::kReplaySync) {
+      volatile_write(redo_end_lsn._val, end_lsn._val);
+
+      // After this the redo daemon will start working if we use pipelined replay
+      volatile_write(redo_start_lsn._val, start_lsn._val);
+    }
+
+    // Now it is safe to "notify" the flusher to write log records out,
+    // asynchronously. Note we can't do until we have redo_start_lsn set
+    // because the flusher daemon checks it to see if replay finished.
     volatile_write(new_end_lsn_offset, end_lsn_offset);
 
-    if (config::log_ship_sync_redo) {
+    if(config::replay_policy == config::kReplaySync) {
       logmgr->redo_logbuf(start_lsn, end_lsn);
       DLOG(INFO) << "[Backup] Rolled forward log "
                  << std::hex << start_lsn.offset()
                  << "-" << end_lsn_offset << std::dec;
-      logbuf->advance_reader(logbuf_new_byte);
+      volatile_write(redo_start_lsn._val, 0);
+    } else if(config::replay_policy == config::kReplayNone) {
+      // Nothing to do
     } else {
-      ASSERT(volatile_read(redo_start_lsn) == INVALID_LSN);
-      // After this the redo daemon will start working
-      volatile_write(redo_end_lsn._val, end_lsn._val);
-      __sync_synchronize();
-      volatile_write(redo_start_lsn._val, start_lsn._val);
+      ASSERT(config::replay_policy == config::kReplayBackground);
+      // TODO(tzwang): handle background replay
     }
 
     // Now wait for the flusher to finish persisting log if we don't have NVRAM,
