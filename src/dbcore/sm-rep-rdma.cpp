@@ -20,6 +20,7 @@ void LogFlushDaemon() {
   while(true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
     if(lsn) {
+      //util::scoped_timer t("log_flush");
       rcu_enter();
       DEFER(rcu_exit());
       logmgr->BackupFlushLog(*logbuf, lsn);
