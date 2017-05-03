@@ -229,7 +229,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
 
     tcp::send_ack(cctx->server_sockfd);
 
-    if (config::log_ship_sync_redo) {
+    if(config::replay_policy == config::kReplaySync) {
       logmgr->redo_log(start_lsn, end_lsn);
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }

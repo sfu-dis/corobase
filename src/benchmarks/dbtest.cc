@@ -84,14 +84,16 @@ DEFINE_string(log_ship_warm_up, "none", "Method to load tuples for log shipping:
   "eager - load everything to memory after received log.");
 DEFINE_string(primary_host, "", "Hostname of the primary server. For backups only.");
 DEFINE_string(primary_port, "10000", "Port of the primary server for log shipping. For backups only.");
-DEFINE_bool(log_ship_sync_redo, false, "Redo synchronously during log shipping.");
-DEFINE_bool(log_ship_full_redo, false, "Whether to repeat index update during redo."
-  "For experimenting with the benefit/cost of having indirection arrays only.");
 DEFINE_bool(quick_bench_start, false,
   "Whether to start benchmark right after loading, without waiting for user input. "
   "For backup servers only. Subject to -wait_for_primary.");
 DEFINE_bool(wait_for_primary, true,
   "Whether to start benchmark only after the primary starts benchmark.");
+DEFINE_string(replay_policy, "pipelined", "How log records should be replayed on backups."
+  "pipelined - replay out of the critical path in a separate thread, but in sync with primary;"
+  "bg - replay out of the critical path in background with a separate thread, async with the primary;"
+  "sync - synchronous replay in the critical path; doesn't ack primary until finished replay;"
+  "none - don't replay at all.");
 
 static vector<string>
 split_ws(const string &s)
@@ -148,8 +150,6 @@ main(int argc, char **argv)
     config::quick_bench_start = FLAGS_quick_bench_start;
     config::wait_for_primary = FLAGS_wait_for_primary;
     config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
-    config::log_ship_sync_redo = FLAGS_log_ship_sync_redo;
-    config::log_ship_full_redo = FLAGS_log_ship_full_redo;
     if(FLAGS_log_ship_warm_up == "none" ) {
       config::log_ship_warm_up_policy = config::WARM_UP_NONE;
     } else if(FLAGS_log_ship_warm_up == "lazy") {
@@ -158,6 +158,17 @@ main(int argc, char **argv)
       config::log_ship_warm_up_policy = config::WARM_UP_EAGER;
     } else {
       LOG(FATAL) << "Invalid log shipping warm up policy: " << FLAGS_log_ship_warm_up;
+    }
+    if(FLAGS_replay_policy == "bg") {
+      config::replay_policy = config::kReplayBackground;
+    } else if(FLAGS_replay_policy == "sync") {
+      config::replay_policy = config::kReplaySync;
+    } else if(FLAGS_replay_policy == "pipelined") {
+      config::replay_policy = config::kReplayPipelined;
+    } else if(FLAGS_replay_policy == "none") {
+      config::replay_policy = config::kReplayNone;
+    } else {
+      LOG(FATAL) << "Invalid log shipping replay policy: " << FLAGS_replay_policy;
     }
     if(config::log_ship_by_rdma) {
       RCU::rcu_register();
@@ -246,8 +257,7 @@ main(int argc, char **argv)
 
   if(config::is_backup_srv()) {
     cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
-    cerr << "  log-ship-sync-redo: " << config::log_ship_sync_redo << endl;
-    cerr << "  log-ship-full-redo: " << config::log_ship_full_redo << endl;
+    cerr << "  replay-policy     : " << FLAGS_replay_policy << endl;
     cerr << "  quick-bench-start : " << config::quick_bench_start << endl;
     cerr << "  wait-for-primary  : " << config::wait_for_primary << endl;
   } else {
