@@ -31,7 +31,7 @@ std::string config::log_dir("");
 bool config::null_log_device = false;
 std::string config::primary_srv("");
 std::string config::primary_port("10000");
-int config::htt_is_on= 1;
+int config::htt_is_on = 1;
 uint64_t config::node_memory_gb = 12;
 int config::recovery_warm_up_policy = config::WARM_UP_NONE;
 int config::log_ship_warm_up_policy = config::WARM_UP_NONE;
