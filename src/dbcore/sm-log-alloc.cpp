@@ -742,8 +742,29 @@ sm_log_alloc_mgr::_log_write_daemon()
     uint64_t last_dmark = stopwatch_t::now();
     for (;;) {
         auto cur_offset = cur_lsn_offset();
-        auto new_dlsn_offset = config::IsShutdown() ?
-                               cur_lsn_offset() : smallest_tls_lsn_offset();
+          uint64_t min_tls = smallest_tls_lsn_offset();
+        uint64_t new_dlsn_offset = min_tls;
+        if(config::IsShutdown()) {
+          new_dlsn_offset = cur_lsn_offset();
+        } else if(config::IsForwardProcessing() && config::num_backups > 0) {
+          // Don't exceed the number of log buffer partitions
+          uint64_t upper_bound = _durable_flushed_lsn_offset +
+            (config::logbuf_partitions / 2 - 1) * _logbuf_partition_size;
+          if(min_tls < upper_bound) {
+            new_dlsn_offset = min_tls;
+          } else {
+            new_dlsn_offset = 0;
+            for(uint64_t i = 0; i < config::logbuf_partitions; ++i) {
+              uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
+              if(off <= min_tls && off < upper_bound && new_dlsn_offset < off) {
+                new_dlsn_offset = off;
+              }
+            }
+          }
+        } else {
+          new_dlsn_offset = smallest_tls_lsn_offset();
+        }
+        ALWAYS_ASSERT(new_dlsn_offset >= _durable_flushed_lsn_offset);
         auto *durable_sid = flush_log_buffer(*_logbuf, new_dlsn_offset);
 
         rcu_exit();
