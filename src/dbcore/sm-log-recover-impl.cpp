@@ -85,11 +85,11 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec) 
 void
 sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec,
                                           OrderedIndex* index) {
-  static const uint32_t kBufferSize = 128 * config::MB;
+  static const uint32_t kBufferSize = 8 * config::MB;
   ASSERT(index);
   auto sz = align_up(logrec->payload_size());
   static __thread char *buf;
-  if (unlikely(not buf)) {
+  if(!buf) {
     buf = (char *)malloc(kBufferSize);
   }
   char* payload_buf = nullptr;
