@@ -223,7 +223,6 @@ retry:
   ALWAYS_ASSERT(durable_sid);
   if(_durable_flushed_lsn_offset >= durable_sid->end_offset) {
     // Crossing a dead zone, update the durable mark by hand
-    ALWAYS_ASSERT(config::is_backup_srv());
     durable_sid = _lm.get_segment(dlsn.segment() + 1);
     _durable_flushed_lsn_offset = durable_sid->start_offset;
     _lm.update_durable_mark(LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
