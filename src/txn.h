@@ -44,7 +44,7 @@ struct write_record_t {
 };
 
 struct write_set_t {
-  static const uint32_t kMaxEntries = 1024;
+  static const uint32_t kMaxEntries = 256;
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
