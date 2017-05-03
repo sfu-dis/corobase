@@ -27,6 +27,7 @@ using namespace std;
 using namespace util;
 
 // Options that are shared by the primary and backup servers
+DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled.");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
@@ -115,6 +116,7 @@ main(int argc, char **argv)
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   config::state = config::kStateLoading;
+  config::htt_is_on = FLAGS_htt;
   config::verbose = FLAGS_verbose;
   config::node_memory_gb = FLAGS_node_memory_gb;
   config::worker_threads = FLAGS_threads;

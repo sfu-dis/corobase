@@ -2371,13 +2371,14 @@ private:
     const bool is_read_only = IsTableReadOnly(name);
     string s_name(name);
     if (g_enable_separate_tree_per_partition && !is_read_only) {
-      if (NumWarehouses() <= config::num_worker_threads()) {
+      if(config::is_backup_srv() || NumWarehouses() <= config::num_worker_threads()) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
           string s_primary_name("");
           if(primary_idx_name) {
             s_primary_name = std::string(primary_idx_name) + "_" + to_string(i);
           }
-          IndexDescriptor::New(s_name + "_" + to_string(i), s_primary_name.c_str());
+          auto ss_name = s_name + "_" + to_string(i);
+          IndexDescriptor::New(ss_name, s_primary_name.c_str());
         }
       } else {
         const unsigned nwhse_per_partition = NumWarehouses() / config::num_worker_threads();
