@@ -3,17 +3,20 @@
 #include "../benchmarks/ndb_wrapper.h"
 
 namespace rep {
-struct RdmaNode* self_rdma_node = nullptr;
+struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes;
-std::mutex nodes_lock;
+std::mutex nodes_lock CACHE_ALIGNED;
 
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
 
-uint64_t logbuf_new_byte = 0;
+uint64_t logbuf_new_byte CACHE_ALIGNED;
+LSN redo_start_lsn CACHE_ALIGNED;
+LSN redo_end_lsn CACHE_ALIGNED;
 
-uint64_t new_end_lsn_offset = 0;
+uint64_t new_end_lsn_offset CACHE_ALIGNED;
 void LogFlushDaemon() {
+  new_end_lsn_offset = 0;
   rcu_register();
   DEFER(rcu_deregister());
   auto* logbuf = sm_log::get_logbuf();
@@ -24,9 +27,35 @@ void LogFlushDaemon() {
       rcu_enter();
       DEFER(rcu_exit());
       logmgr->BackupFlushLog(*logbuf, lsn);
+      // Wait for the redo daemon to finish
+      while(volatile_read(redo_start_lsn)._val) {}
+
       // After advance_reader no one should read from the log buffer
       logbuf->advance_reader(logbuf_new_byte);
       volatile_write(new_end_lsn_offset, 0);
+      __sync_synchronize();
+    }
+  }
+}
+
+// Redo is faster then forward processing - so it should be safe to
+// replay on the log buffer directly, and the log buffer content
+// will be intact after we finish replaying, before the next batch
+// arrives.
+void LogRedoDaemon() {
+  redo_start_lsn = INVALID_LSN;
+  redo_end_lsn = INVALID_LSN;
+  rcu_register();
+  DEFER(rcu_deregister());
+  auto* logbuf = sm_log::get_logbuf();
+  while(true) {
+    LSN start = volatile_read(redo_start_lsn);
+    if(start != INVALID_LSN) {
+      rcu_enter();
+      DEFER(rcu_exit());
+      logmgr->redo_logbuf(redo_start_lsn, redo_end_lsn);
+      volatile_write(redo_start_lsn._val, 0);
+      __sync_synchronize();
     }
   }
 }
@@ -127,16 +156,17 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
 }
 
 void backup_daemon_rdam() {
+  logbuf_new_byte = 0;
   while(!volatile_read(logmgr)) { /** spin **/ }
   rcu_register();
   DEFER(rcu_deregister());
   DEFER(delete self_rdma_node);
 
   uint32_t size = 0;
-  //if (not config::log_ship_sync_redo) {
-  //  std::thread rt(redo_daemon);
-  //  rt.detach();
-  //}
+  if(!config::log_ship_sync_redo) {
+    std::thread rt(LogRedoDaemon);
+    rt.detach();
+  }
 
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   auto* logbuf = sm_log::get_logbuf();
@@ -146,7 +176,9 @@ void backup_daemon_rdam() {
   while(!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
-    while(volatile_read(new_end_lsn_offset) != 0) {}
+    if(config::nvram_log_buffer) {
+      while(volatile_read(new_end_lsn_offset) != 0) {}
+    }
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
     // Post an RR to get the log buffer partition bounds
     // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
@@ -219,31 +251,37 @@ void backup_daemon_rdam() {
     DLOG(INFO) << "[Backup] Received " << size << " bytes ("
       << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
 
-    // TODO(tzwang): persist and ack Persisted msg here
-
     uint64_t new_byte = logbuf_new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
+
+    // Both sync and semi-sync replay need this, do it here.
+    if(logbuf->available_to_read() < size) {
+      logbuf->advance_writer(new_byte);
+    }
+    ALWAYS_ASSERT(logbuf->available_to_read() >= size);
+
+    // "Notify" the flusher to write log records out, asynchronously
+    volatile_write(new_end_lsn_offset, end_lsn_offset);
+
     if (config::log_ship_sync_redo) {
-      if(logbuf->available_to_read() < size) {
-        logbuf->advance_writer(new_byte);
-      }
-      ALWAYS_ASSERT(logbuf->available_to_read() >= size);
-      // "Notify" the flusher to write log records out, asynchronously
-      volatile_write(new_end_lsn_offset, end_lsn_offset);
       logmgr->redo_logbuf(start_lsn, end_lsn);
       DLOG(INFO) << "[Backup] Rolled forward log "
                  << std::hex << start_lsn.offset()
                  << "-" << end_lsn_offset << std::dec;
+      logbuf->advance_reader(logbuf_new_byte);
     } else {
-      volatile_write(new_end_lsn_offset, end_lsn_offset);
+      ASSERT(volatile_read(redo_start_lsn) == INVALID_LSN);
+      // After this the redo daemon will start working
+      volatile_write(redo_end_lsn._val, end_lsn._val);
+      __sync_synchronize();
+      volatile_write(redo_start_lsn._val, start_lsn._val);
     }
 
-    // Now wait for the flusher to finish persisting log
-
+    // Now wait for the flusher to finish persisting log if we don't have NVRAM,
     if(!config::nvram_log_buffer) {
       while(volatile_read(new_end_lsn_offset) != 0) {}
     }
 
-    ASSERT(logmgr->durable_flushed_lsn().offset() == end_lsn_offset);
+    ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn_offset);
     self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
 
     // Next iteration
