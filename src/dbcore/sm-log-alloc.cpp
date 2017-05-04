@@ -746,18 +746,28 @@ sm_log_alloc_mgr::_log_write_daemon()
         if(config::IsShutdown()) {
           new_dlsn_offset = cur_lsn_offset();
         } else if(config::IsForwardProcessing() && config::num_backups > 0) {
-          // Don't exceed the number of log buffer partitions
+          // Don't exceed the number of log buffer partitions that can be
+          // replayed in parallel in one dispatch
+          uint32_t nthreads = config::logbuf_partitions / 2;
           uint64_t upper_bound = _durable_flushed_lsn_offset +
-            (config::logbuf_partitions / 2 - 1) * _logbuf_partition_size;
-          if(min_tls < upper_bound) {
-            new_dlsn_offset = min_tls;
-          } else {
-            new_dlsn_offset = 0;
-            for(uint64_t i = 0; i < config::logbuf_partitions; ++i) {
-              uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
-              if(off <= min_tls && off < upper_bound && new_dlsn_offset < off) {
-                new_dlsn_offset = off;
-              }
+                                 nthreads * (_logbuf_partition_size);
+          uint64_t min = min_tls;
+          uint32_t min_index = -1;
+          // Find the minimum that's larger than _durable_flushed_lsn_offset
+          for(uint64_t i = 0; i < config::logbuf_partitions; ++i) {
+            uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
+            if(off <= min_tls && off < min && off > _durable_flushed_lsn_offset) {
+              min = off;
+              min_index = i;
+            }
+          }
+
+          new_dlsn_offset = min;
+          for(uint64_t i = min_index; i < min_index + nthreads; ++i) {
+            uint32_t idx = i % config::logbuf_partitions;
+            uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
+            if(off > new_dlsn_offset) {
+              new_dlsn_offset = off;
             }
           }
         } else {

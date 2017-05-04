@@ -43,6 +43,9 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
     }
   }
 
+#ifndef NDEBUG
+  uint32_t ndispatches = 0;
+#endif
   bool all_dispatched = false;
   uint32_t idx = 0;
   while(!all_dispatched) {
@@ -64,16 +67,19 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
       ++logbuf_part;
       LSN partition_end = LSN{ rep::logbuf_partition_bounds[part_id] };
 
-      if(partition_end < partition_start || partition_end > to) {
+      if(partition_end < partition_start || partition_end >= to) {
         partition_end = to;
         all_dispatched = true;
       }
       r->start_lsn = partition_start;
       r->end_lsn = partition_end;
 
-      //LOG(INFO) << "Dispatch " << r->me << " " << std::hex << partition_start.offset() 
-      //           << " - " << partition_end.offset() << std::dec;
+      DLOG(INFO) << "Dispatch " << r->me << " " << std::hex << partition_start.offset() 
+                 << " - " << partition_end.offset() << std::dec;
       partition_start = partition_end;  // for next thread
+#ifndef NDEBUG
+      ++ndispatches;
+#endif
     }
     r->start();
   }
@@ -83,6 +89,9 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
       r->wait();
     }
   }
+#ifndef NDEBUG
+  DLOG(INFO) << "Dispatched " << ndispatches << " threads";
+#endif
 }
 
 void

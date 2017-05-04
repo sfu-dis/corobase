@@ -281,7 +281,8 @@ void backup_daemon_rdam() {
     } else if(config::replay_policy == config::kReplayNone) {
       // Nothing to do
     } else {
-      ASSERT(config::replay_policy == config::kReplayBackground);
+      ASSERT(config::replay_policy == config::kReplayBackground ||
+             config::replay_policy == config::kReplayPipelined);
       // TODO(tzwang): handle background replay
     }
 
