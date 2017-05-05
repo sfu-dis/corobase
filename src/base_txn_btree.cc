@@ -206,7 +206,7 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
         }
         ASSERT(v);
         v->ptr = prev_persistent_ptr;
-        ASSERT(v->ptr == NULL_PTR || v->ptr.asi_type() == fat_ptr::ASI_LOG);
+        ASSERT(v->ptr.offset() && v->ptr.asi_type() == fat_ptr::ASI_LOG);
 
         // log the whole varstr so that recovery can figure out the real size
         // of the tuple, instead of using the decoded (larger-than-real) size.
