@@ -263,9 +263,7 @@ retry:
      is when we read and replay the log buffer directly.
    */
   uint64_t nbytes = new_byte - durable_byte;
-  if(logbuf.available_to_read() < nbytes) {
-    logbuf.advance_writer(new_byte);
-  }
+  ALWAYS_ASSERT(logbuf.available_to_read() >= nbytes);
   THROW_IF(logbuf.available_to_read() < nbytes,
            log_file_error, "Not enough log bufer to read");
 
