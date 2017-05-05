@@ -232,7 +232,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
         if(o % num_recovery_threads == oid_partition) {
           fat_ptr pdest = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
           Object* obj = (Object*)MM::allocate(decode_size_aligned(size_code), 0);
-          new(obj) Object(pdest, NULL_PTR, 0, config::eager_warm_up());
+          new(obj) Object(pdest, NULL_PTR, 0, false);
           // Pin it regardless - the clsn needs to be comparable with other versions
           obj->Pin();
           ASSERT(obj->GetClsn().offset());

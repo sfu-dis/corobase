@@ -69,6 +69,7 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     ASSERT(tuple->size < data_sz);
     if(tuple->size == 0) {
       final_status = kStatusDeleted;
+      ASSERT(next_pdest_.offset());
     }
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr),

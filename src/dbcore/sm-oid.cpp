@@ -890,6 +890,9 @@ retry:
   Object* active_head_obj = (Object*)active_head_ptr.offset();
   uint64_t active_head_lsn = active_head_obj == nullptr ? 0 :
                              active_head_obj->GetClsn().offset();
+  ASSERT(!active_head_obj ||
+         active_head_obj->GetClsn().offset() ==
+         active_head_obj->GetPersistentAddress().offset());
   if(active_head_lsn >= xc->begin) {
     // First version not visible to me, so no need to look at the pdest
     // array, versions indexed by the tuple array are enough.
@@ -930,6 +933,8 @@ retry:
       // matter especially if using disk/SSD).
       ASSERT(obj->GetNextPersistent() == NULL_PTR);
       obj->Pin();  // obj.next_pdest becomes available after Pin()
+      ASSERT(obj->GetClsn().offset());
+      ASSERT(obj->GetClsn().offset() == obj->GetPersistentAddress().offset());
       ASSERT(obj->GetNextPersistent() == NULL_PTR ||
              obj->GetNextPersistent().asi_type() == fat_ptr::ASI_LOG);
 
@@ -950,6 +955,7 @@ retry:
       }
       prev_obj = obj;
       ptr = obj->GetNextPersistent();
+      ASSERT((active_head_obj && ptr.offset()) || !active_head_obj);
     }
     ASSERT(ptr.offset() == active_head_lsn ||
            ptr.offset() > active_head_lsn && ret_obj != active_head_obj);
@@ -958,7 +964,7 @@ retry:
     ALWAYS_ASSERT(install_ptr != NULL_PTR);
     ALWAYS_ASSERT(install_ptr.asi_type() == 0);
 
-    bool success = __sync_val_compare_and_swap(
+    bool success = __sync_bool_compare_and_swap(
       &ta->get(o)->_ptr, active_head_ptr._ptr, install_ptr._ptr);
     if(!success) {
       fat_ptr to_free = install_ptr;
@@ -1018,7 +1024,7 @@ start_over:
         ASSERT(ptr.size_code() != INVALID_SIZE_CODE);
         size_t alloc_sz = decode_size_aligned(ptr.size_code());
         cur_obj = (Object*)MM::allocate(alloc_sz, visitor_xc->begin_epoch);
-        new(cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, true);
+        new(cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, false);
         cur_obj->Pin();  // After this next_pdest_ is valid
         ASSERT(cur_obj->GetClsn().offset());
         ASSERT(prev_obj);
