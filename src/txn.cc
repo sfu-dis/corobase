@@ -28,7 +28,8 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     }
     xc = ctx;
     RCU::rcu_enter();
-    xc->begin = volatile_read(rep::replayed_lsn_offset);
+    xc->begin = std::min(volatile_read(rep::replayed_lsn_offset),
+                         logmgr->cur_lsn().offset());
     ASSERT(xc->begin);
   } else {
     initialize_read_write();
