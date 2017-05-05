@@ -29,6 +29,7 @@ uint64_t config::log_segment_mb = 8192;
 uint32_t config::logbuf_partitions = 0;
 std::string config::log_dir("");
 bool config::null_log_device = false;
+bool config::fake_log_write = false;
 std::string config::primary_srv("");
 std::string config::primary_port("10000");
 int config::htt_is_on = 1;

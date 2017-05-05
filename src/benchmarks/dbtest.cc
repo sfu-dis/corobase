@@ -66,6 +66,7 @@ DEFINE_uint64(log_ship_buffer_partitions, 16, "How many log buffer partitions/co
 DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
 DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
+DEFINE_bool(fake_log_write, false, "Whether truncate the log file after writing to it (save tmpfs space).");
 DEFINE_bool(log_key_for_update, false, "Whether to store the key in update log records.");
 // Group (pipelined) commit related settings. The daemon will flush the log buffer
 // when the following happens, whichever is earlier:
@@ -187,6 +188,7 @@ main(int argc, char **argv)
     config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
     config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
     config::null_log_device = FLAGS_null_log_device;
+    config::fake_log_write = FLAGS_fake_log_write;
     config::logbuf_partitions = FLAGS_threads;
     if(config::logbuf_partitions > rep::kMaxLogBufferPartitions) {
       LOG(FATAL) << "Too many log buffer partitions: max " << rep::kMaxLogBufferPartitions;
@@ -275,6 +277,7 @@ main(int argc, char **argv)
     }
     cerr << "  enable-gc         : " << config::enable_gc     << endl;
     cerr << "  null-log-device   : " << config::null_log_device << endl;
+    cerr << "  fake-log-write    : " << config::fake_log_write << endl;
     cerr << "  num-backups       : " << config::num_backups   << endl;
     cerr << "  wait-for-backups  : " << config::wait_for_backups << endl;
   }

@@ -38,6 +38,7 @@ struct config {
     static int enable_gc;
     static uint32_t logbuf_partitions;
     static bool null_log_device;
+    static bool fake_log_write;
     static bool group_commit;
     static int group_commit_timeout;
     static int group_commit_queue_length;  // how much to reserve
