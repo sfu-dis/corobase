@@ -223,7 +223,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     if (config::nvram_log_buffer) {
       logmgr->persist_nvram_log_buffer(*logbuf, end_lsn_offset);
     } else {
-      logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
+      logmgr->BackupFlushLog(*logbuf, end_lsn_offset);
       ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
     }
 
@@ -234,7 +234,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
     if (config::nvram_log_buffer)
-      logmgr->flush_log_buffer(*logbuf, end_lsn_offset, true);
+      logmgr->BackupFlushLog(*logbuf, end_lsn_offset);
   }
 }
 

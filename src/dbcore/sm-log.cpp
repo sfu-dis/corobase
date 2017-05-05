@@ -89,9 +89,9 @@ sm_log::assign_segment(uint64_t lsn_begin, uint64_t lsn_end)
 }
 
 segment_id *
-sm_log::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
+sm_log::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
 {
-    return get_impl(this)->_lm.flush_log_buffer(logbuf, new_dlsn_offset, update_dmark);
+    return get_impl(this)->_lm.PrimaryFlushLog(logbuf, new_dlsn_offset, update_dmark);
 }
 
 void sm_log::BackupFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset) {
