@@ -12,7 +12,7 @@ namespace rep {
 class RdmaNode {
  public:
   const static int kMessageSize = 8;
-  const static uint64_t kDaemonBufferSize = 512 * config::MB;
+  const static uint64_t kDaemonBufferSize = 128 * config::MB;
 
  private:
   char msg_buf_[kMessageSize] CACHE_ALIGNED;
