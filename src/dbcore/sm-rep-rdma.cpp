@@ -387,22 +387,13 @@ void start_as_backup_rdma() {
 }
 
 void backup_start_replication_rdma() {
-  if(recover_first) {
-    ALWAYS_ASSERT(oidmgr);
-    logmgr->recover();
-  }
-
+  ALWAYS_ASSERT(oidmgr);
+  logmgr->recover();
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
 
   // Start a daemon to receive and persist future log records
   std::thread t(backup_daemon_rdam);
   t.detach();
-
-  if(!recover_first) {
-    // Now we proceed to recovery
-    ALWAYS_ASSERT(oidmgr);
-    logmgr->recover();
-  }
 }
 
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
