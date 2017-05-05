@@ -477,6 +477,10 @@ retry:
           dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
         }
     }
+    if(config::IsForwardProcessing() && config::fake_log_write &&
+       config::num_active_backups == config::num_backups) {
+      int unused = ftruncate(active_fd, 0);
+    }
     return durable_sid;
 }
 
