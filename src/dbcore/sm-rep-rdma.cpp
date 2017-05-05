@@ -25,8 +25,11 @@ void LogFlushDaemon() {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
     if(lsn) {
       logmgr->BackupFlushLog(*logbuf, lsn);
-      // Wait for the redo daemon to finish
-      while(volatile_read(replayed_lsn_offset) < lsn) {}
+      if(config::replay_policy == config::kReplaySync ||
+         config::replay_policy == config::kReplayPipelined) {
+        // Wait for the redo daemon to finish
+        while(volatile_read(replayed_lsn_offset) < lsn) {}
+      }
 
       // After advance_reader no one should read from the log buffer
       logbuf->advance_reader(logbuf_new_byte);
@@ -230,7 +233,6 @@ void backup_daemon_rdam() {
     }
 
     ALWAYS_ASSERT(logbuf->available_to_read() >= size);
-    ASSERT(volatile_read(redo_start_lsn) == INVALID_LSN);
 
     // Now "notify" the flusher to write log records out, asynchronously.
     volatile_write(new_end_lsn_offset, end_lsn_offset);
