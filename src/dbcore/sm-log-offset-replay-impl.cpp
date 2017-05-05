@@ -103,7 +103,14 @@ parallel_offset_replay::redo_runner::redo_logbuf_partition() {
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
   auto *scan = owner->scanner->new_log_scan(start_lsn, config::eager_warm_up(), true);
 
-  for (; scan->valid() and scan->payload_lsn() < end_lsn; scan->next()) {
+  while(true) {
+    if(!scan->valid()) {
+      ASSERT(size > 0);
+      break;
+    }
+    if(scan->payload_lsn() >= end_lsn) {
+      break;
+    }
     LSN payload_lsn = scan->payload_lsn();
     //ALWAYS_ASSERT(payload_lsn >= start_lsn);
     ALWAYS_ASSERT(payload_lsn.segment() >= 1);
@@ -141,6 +148,7 @@ parallel_offset_replay::redo_runner::redo_logbuf_partition() {
     default:
       DIE("unreachable");
     }
+    scan->next();
   }
   DLOG(INFO) << "[Recovery.log] 0x" << std::hex << start_lsn.offset() << "-"
     << end_lsn.offset() << " inserts/updates/deletes/size: " << std::dec
