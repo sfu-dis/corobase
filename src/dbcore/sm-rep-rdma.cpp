@@ -12,8 +12,6 @@ const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
 
 uint64_t logbuf_new_byte CACHE_ALIGNED;
-LSN redo_start_lsn CACHE_ALIGNED;
-LSN redo_end_lsn CACHE_ALIGNED;
 
 uint64_t new_end_lsn_offset CACHE_ALIGNED;
 void LogFlushDaemon() {
@@ -26,37 +24,13 @@ void LogFlushDaemon() {
   while(true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
     if(lsn) {
-      //util::scoped_timer t("log_flush");
       logmgr->BackupFlushLog(*logbuf, lsn);
       // Wait for the redo daemon to finish
-      while(volatile_read(redo_start_lsn)._val) {}
+      while(volatile_read(replayed_lsn_offset) < lsn) {}
 
       // After advance_reader no one should read from the log buffer
       logbuf->advance_reader(logbuf_new_byte);
       volatile_write(new_end_lsn_offset, 0);
-    }
-  }
-}
-
-// Redo is faster then forward processing - so it should be safe to
-// replay on the log buffer directly, and the log buffer content
-// will be intact after we finish replaying, before the next batch
-// arrives.
-void LogRedoDaemon() {
-  redo_start_lsn = INVALID_LSN;
-  redo_end_lsn = INVALID_LSN;
-  rcu_register();
-  DEFER(rcu_deregister());
-  rcu_enter();
-  DEFER(rcu_exit());
-  auto* logbuf = sm_log::get_logbuf();
-  while(true) {
-    LSN start = volatile_read(redo_start_lsn);
-    if(start != INVALID_LSN) {
-      ASSERT(redo_end_lsn.offset());
-      logmgr->redo_logbuf(redo_start_lsn, redo_end_lsn);
-      volatile_write(replayed_lsn_offset, redo_end_lsn.offset());
-      volatile_write(redo_start_lsn._val, 0);
     }
   }
 }
@@ -164,11 +138,6 @@ void backup_daemon_rdam() {
   DEFER(delete self_rdma_node);
 
   uint32_t size = 0;
-  if(config::replay_policy == config::kReplayPipelined) {
-    std::thread rt(LogRedoDaemon);
-    rt.detach();
-  }
-
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   auto* logbuf = sm_log::get_logbuf();
   LSN start_lsn = logmgr->durable_flushed_lsn();
@@ -263,17 +232,7 @@ void backup_daemon_rdam() {
     ALWAYS_ASSERT(logbuf->available_to_read() >= size);
     ASSERT(volatile_read(redo_start_lsn) == INVALID_LSN);
 
-    if(config::replay_policy == config::kReplayPipelined ||
-       config::replay_policy == config::kReplaySync) {
-      volatile_write(redo_end_lsn._val, end_lsn._val);
-
-      // After this the redo daemon will start working if we use pipelined replay
-      volatile_write(redo_start_lsn._val, start_lsn._val);
-    }
-
-    // Now it is safe to "notify" the flusher to write log records out,
-    // asynchronously. Note we can't do until we have redo_start_lsn set
-    // because the flusher daemon checks it to see if replay finished.
+    // Now "notify" the flusher to write log records out, asynchronously.
     volatile_write(new_end_lsn_offset, end_lsn_offset);
 
     if(config::replay_policy == config::kReplaySync) {
@@ -282,13 +241,6 @@ void backup_daemon_rdam() {
                  << std::hex << start_lsn.offset() << "." << start_lsn.segment()
                  << "-" << end_lsn_offset << "." << end_lsn.segment() << std::dec;
       volatile_write(replayed_lsn_offset, end_lsn.offset());
-      volatile_write(redo_start_lsn._val, 0);
-    } else if(config::replay_policy == config::kReplayNone) {
-      // Nothing to do
-    } else {
-      ASSERT(config::replay_policy == config::kReplayBackground ||
-             config::replay_policy == config::kReplayPipelined);
-      // TODO(tzwang): handle background replay
     }
 
     // Now wait for the flusher to finish persisting log if we don't have NVRAM,
@@ -298,6 +250,15 @@ void backup_daemon_rdam() {
 
     ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn_offset);
     self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
+
+    if(config::replay_policy == config::kReplayPipelined &&
+      config::nvram_log_buffer) {
+      logmgr->redo_logbuf(start_lsn, end_lsn);
+      DLOG(INFO) << "[Backup] Rolled forward log "
+                 << std::hex << start_lsn.offset() << "." << start_lsn.segment()
+                 << "-" << end_lsn_offset << "." << end_lsn.segment() << std::dec;
+      volatile_write(replayed_lsn_offset, end_lsn.offset());
+    }
 
     // Next iteration
     start_lsn = end_lsn;
