@@ -150,22 +150,14 @@ void start_as_backup_tcp() {
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
 
-  if(recover_first) {
-    ALWAYS_ASSERT(oidmgr);
-    logmgr->recover();
-  }
+  ALWAYS_ASSERT(oidmgr);
+  logmgr->recover();
 
   // Done with receiving files and they should all be persisted, now ack the primary
   tcp::send_ack(cctx->server_sockfd);
   LOG(INFO) << "[Backup] Received log file.";
   std::thread t(backup_daemon_tcp, cctx);
   t.detach();
-
-  if(!recover_first) {
-    // Now we proceed to recovery
-    ALWAYS_ASSERT(oidmgr);
-    logmgr->recover();
-  }
 }
 
 // Send the log buffer to backups
