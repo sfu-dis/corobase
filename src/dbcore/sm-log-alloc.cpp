@@ -431,6 +431,11 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
         // After this the buffer space will become available for consumption
         logbuf.advance_reader(new_byte);
 
+        if(config::IsForwardProcessing() && config::fake_log_write &&
+           config::num_active_backups == config::num_backups) {
+          int unused = ftruncate(active_fd, 0);
+        }
+
         // segment change?
         if(new_sid != durable_sid) {
           os_close(active_fd);
@@ -457,10 +462,6 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
           util::timer t;
           dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
         }
-    }
-    if(config::IsForwardProcessing() && config::fake_log_write &&
-       config::num_active_backups == config::num_backups) {
-      int unused = ftruncate(active_fd, 0);
     }
     return durable_sid;
 }
