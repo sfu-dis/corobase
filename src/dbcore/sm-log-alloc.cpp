@@ -388,10 +388,20 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
           // the backup when received the immediate will extract and recalculate
           // the correct segment begin/end offsets.
           DLOG(INFO) << "Will ship " << std::hex << _durable_flushed_lsn_offset
-            << " " << new_offset << " " << durable_sid->byte_offset << std::dec;
-          rep::primary_ship_log_buffer_all(buf, nbytes, new_seg,
-            new_seg ?
-              durable_sid->start_offset - (durable_sid->segnum-1) * config::log_segment_mb * config::MB : 0);
+            << " " << new_offset << " " << durable_sid->byte_offset
+            << " new_seg=" << new_seg << " nbytes=" << nbytes << std::dec;
+          bool seg_first_ship = _durable_flushed_lsn_offset == durable_sid->start_offset;
+          uint32_t imm = 0;
+          // Two cases when we cross segment boundaries:
+          // 1. We will end in the new segment;
+          // 2. We end right before the new segment (ie the end of the old segment).
+          // [new_seg] covers the first case; [seg_first_ship] covers the second.
+          bool have_imm = new_seg || seg_first_ship;
+          if(have_imm) {
+            imm = durable_sid->start_offset -
+                  (durable_sid->segnum - 1) * config::log_segment_mb * config::MB;
+          }
+          rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
           if(new_seg) {
             new_seg = false;
           }
