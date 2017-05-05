@@ -50,6 +50,7 @@ for backup in "$@"; do
       n=`echo $l | cut -d ' ' -f3`
       if [[ "$n" == "$cnt" ]]; then
         echo "Primary is ready, starting backup $backup..."
+        sleep 3
         cnt=`expr $cnt + 1`
         break
       fi
@@ -82,3 +83,4 @@ for backup in "$@"; do
   done
 done
 
+tail $primary_output_file
