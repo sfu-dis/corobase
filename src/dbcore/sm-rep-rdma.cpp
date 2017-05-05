@@ -6,6 +6,7 @@ namespace rep {
 struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes;
 std::mutex nodes_lock CACHE_ALIGNED;
+uint64_t replayed_lsn_offset CACHE_ALIGNED;
 
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
@@ -52,7 +53,9 @@ void LogRedoDaemon() {
   while(true) {
     LSN start = volatile_read(redo_start_lsn);
     if(start != INVALID_LSN) {
+      ASSERT(redo_end_lsn.offset());
       logmgr->redo_logbuf(redo_start_lsn, redo_end_lsn);
+      volatile_write(replayed_lsn_offset, redo_end_lsn.offset());
       volatile_write(redo_start_lsn._val, 0);
     }
   }
@@ -217,6 +220,7 @@ void backup_daemon_rdam() {
     THROW_IF(not size, illegal_argument, "Invalid data size");
 
     segment_id *sid = logmgr->get_segment(start_lsn.segment());
+    ASSERT(sid->segnum == start_lsn.segment());
     if(imm & kRdmaImmNewSeg) {
       // Extract the segment's start offset (off of the segment's raw, theoreticall start offset)
       start_lsn = LSN::make(
@@ -275,8 +279,9 @@ void backup_daemon_rdam() {
     if(config::replay_policy == config::kReplaySync) {
       logmgr->redo_logbuf(start_lsn, end_lsn);
       DLOG(INFO) << "[Backup] Rolled forward log "
-                 << std::hex << start_lsn.offset()
-                 << "-" << end_lsn_offset << std::dec;
+                 << std::hex << start_lsn.offset() << "." << start_lsn.segment()
+                 << "-" << end_lsn_offset << "." << end_lsn.segment() << std::dec;
+      volatile_write(replayed_lsn_offset, end_lsn.offset());
       volatile_write(redo_start_lsn._val, 0);
     } else if(config::replay_policy == config::kReplayNone) {
       // Nothing to do
@@ -387,6 +392,8 @@ void start_as_backup_rdma() {
 }
 
 void backup_start_replication_rdma() {
+  volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
+  LOG(INFO) << "replayed_lsn_offset=" << std::hex << replayed_lsn_offset << std::dec;
   ALWAYS_ASSERT(oidmgr);
   logmgr->recover();
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);

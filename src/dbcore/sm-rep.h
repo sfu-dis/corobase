@@ -35,7 +35,7 @@ class RdmaNode;
 const uint64_t kRdmaWaiting = 0x1;
 const uint64_t kRdmaReadyToReceive = 0x2;
 const uint64_t kRdmaPersisted = 0x4;
-extern bool recover_first;
+extern uint64_t replayed_lsn_offset;
 
 const uint32_t kMaxLogBufferPartitions = 64;
 extern uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];
