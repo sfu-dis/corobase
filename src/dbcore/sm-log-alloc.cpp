@@ -295,8 +295,9 @@ retry:
  * The caller should enter/exit_rcu().
  */
 segment_id *
-sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
+sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
 {
+  ASSERT(!config::is_backup_srv());
   /* The primary ships log records at log buffer flush boundaries, and log flushing
    * respects segment boundaries. Threads trying to carve out a range of LSN offset
    * also need to respect segment boundaries, boundary-crossing threads will try again
@@ -308,20 +309,11 @@ sm_log_alloc_mgr::flush_log_buffer(window_buffer &logbuf, uint64_t new_dlsn_offs
    * segment, but the range might extend into the dead zone. So we might have a durable
    * LSN in the dead zone on the backup, which is fine as we skip it during redo.
    */
-retry:
     LSN dlsn = _lm.get_durable_mark();
     ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
     ASSERT(_durable_flushed_lsn_offset <= new_dlsn_offset);
     auto *durable_sid = _lm.get_segment(dlsn.segment());
     ALWAYS_ASSERT(durable_sid);
-    if(_durable_flushed_lsn_offset >= durable_sid->end_offset) {
-      // Crossing a dead zone, update the durable mark by hand
-      ALWAYS_ASSERT(config::is_backup_srv());
-      durable_sid = _lm.get_segment(dlsn.segment() + 1);
-      _durable_flushed_lsn_offset = durable_sid->start_offset;
-      _lm.update_durable_mark(LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
-      goto retry;
-    }
     uint64_t durable_byte = durable_sid->buf_offset(_durable_flushed_lsn_offset);
     int active_fd = _lm.open_for_write(durable_sid);
     DEFER(os_close(active_fd));
@@ -347,30 +339,26 @@ retry:
         uint64_t new_offset;
         uint64_t new_byte;
 
-        if(config::is_backup_srv()) {
+        if(durable_sid->end_offset < new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
+          /* Watch out for segment boundaries!
+
+             The true end of a segment is somewhere in the last
+             MIN_LOG_BLOCK_SIZE bytes, with the exact value
+             determined by the start_offset of its
+             successor. Fortunately, any request that lands in
+             this "red zone" also ensures that the next segment
+             has been created, so we can safely access it.
+           */
+          new_sid = _lm.get_segment((durable_sid->segnum+1) % NUM_LOG_SEGMENTS);
+          ASSERT(new_sid);
+          new_offset = new_sid->start_offset;
+          new_byte = new_sid->byte_offset;
+          DLOG(INFO) << "Crossing segment boundary, new_offset=" << std::hex
+                     << new_offset << " new_byte=" << new_byte << std::dec;
+        } else {
           new_sid = durable_sid;
           new_offset = new_dlsn_offset;
-          new_byte = durable_sid->byte_offset + (new_dlsn_offset - durable_sid->start_offset);
-        } else {
-          if (durable_sid->end_offset < new_dlsn_offset + MIN_LOG_BLOCK_SIZE) {
-            /* Watch out for segment boundaries!
-
-               The true end of a segment is somewhere in the last
-               MIN_LOG_BLOCK_SIZE bytes, with the exact value
-               determined by the start_offset of its
-               successor. Fortunately, any request that lands in
-               this "red zone" also ensures that the next segment
-               has been created, so we can safely access it.
-             */
-            new_sid = _lm.get_segment((durable_sid->segnum+1) % NUM_LOG_SEGMENTS);
-            ASSERT(new_sid);
-            new_offset = new_sid->start_offset;
-            new_byte = new_sid->byte_offset;
-          } else {
-            new_sid = durable_sid;
-            new_offset = new_dlsn_offset;
-            new_byte = new_sid->buf_offset(new_dlsn_offset);
-          }
+          new_byte = new_sid->buf_offset(new_dlsn_offset);
         }
 
         ASSERT(durable_byte == logbuf.read_begin());
@@ -432,13 +420,8 @@ retry:
           }
         }
 
-        if(!config::is_backup_srv()) {
-          // After this the buffer space will become available for consumption
-          // Backup server will do it by itself as once we advance_reader the space
-          // becomes unreadable, and backups might need to replay by reading directly
-          // the log buffer.
-          logbuf.advance_reader(new_byte);
-        }
+        // After this the buffer space will become available for consumption
+        logbuf.advance_reader(new_byte);
 
         // segment change?
         if(new_sid != durable_sid) {
@@ -452,16 +435,6 @@ retry:
         durable_sid = new_sid;
         _durable_flushed_lsn_offset = new_offset;
         durable_byte = new_byte;
-
-        // update cur_lsn_offset as well if we're flushing on a backup
-        // XXX(tzwang): we don't have to do this, but just as a metric
-        // to see if the replicated database can still run benchmarks
-        // after replayed logs shipped from the primary.
-        if(_lsn_offset < _durable_flushed_lsn_offset) {
-          THROW_IF(not config::is_backup_srv(), illegal_argument,
-            "Wrong cur_lsn_offset on primary node");
-          _lsn_offset = _durable_flushed_lsn_offset;
-        }
 
         if(update_dmark) {
           // Have to use LSN::make (instead of durable_sid->make_lsn which checks
@@ -744,8 +717,8 @@ sm_log_alloc_mgr::_log_write_daemon()
     static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(5000)*1000*1000;
     uint64_t last_dmark = stopwatch_t::now();
     for (;;) {
-        auto cur_offset = cur_lsn_offset();
-          uint64_t min_tls = smallest_tls_lsn_offset();
+        uint64_t cur_offset = cur_lsn_offset();
+        uint64_t min_tls = smallest_tls_lsn_offset();
         uint64_t new_dlsn_offset = min_tls;
         if(config::IsShutdown()) {
           new_dlsn_offset = cur_lsn_offset();
@@ -778,7 +751,7 @@ sm_log_alloc_mgr::_log_write_daemon()
           new_dlsn_offset = smallest_tls_lsn_offset();
         }
         ALWAYS_ASSERT(new_dlsn_offset >= _durable_flushed_lsn_offset);
-        auto *durable_sid = flush_log_buffer(*_logbuf, new_dlsn_offset);
+        auto *durable_sid = PrimaryFlushLog(*_logbuf, new_dlsn_offset);
 
         rcu_exit();
 
