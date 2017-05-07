@@ -50,6 +50,18 @@ struct sm_thread {
     task(nullptr),
     sleep_when_idle(true) {
     thd = std::move(std::thread(&sm_thread::idle_task, this));
+    // Make sure we run on a physical core, not a hyper thread
+    if(config::htt_is_on) {
+      // Assuming a topology where all physical cores are listed first,
+      // ie 16-core cpu, 2-socket: 0-15 will be physical cores, 16 and
+      // beyond are hyper threads.
+      cpu_set_t cpuset;
+      CPU_ZERO(&cpuset);
+      CPU_SET(core + node * config::max_threads_per_node, &cpuset);
+      int rc = pthread_setaffinity_np(thd.native_handle(),
+                                      sizeof(cpu_set_t), &cpuset);
+      ALWAYS_ASSERT(rc == 0);
+    }
   }
 
   ~sm_thread() {}
