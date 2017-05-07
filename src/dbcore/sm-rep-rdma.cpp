@@ -7,33 +7,46 @@ struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes;
 std::mutex nodes_lock CACHE_ALIGNED;
 uint64_t replayed_lsn_offset CACHE_ALIGNED;
+uint64_t new_end_lsn_offset CACHE_ALIGNED;
+LSN redo_start_lsn CACHE_ALIGNED;
+LSN redo_end_lsn CACHE_ALIGNED;
+window_buffer* logbuf CACHE_ALIGNED;
 
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
 
-uint64_t logbuf_new_byte CACHE_ALIGNED;
-
-uint64_t new_end_lsn_offset CACHE_ALIGNED;
 void LogFlushDaemon() {
   new_end_lsn_offset = 0;
   rcu_register();
   DEFER(rcu_deregister());
-  auto* logbuf = sm_log::get_logbuf();
   rcu_enter();
   DEFER(rcu_exit());
   while(true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
-    if(lsn) {
+    if(lsn > logmgr->durable_flushed_lsn().offset()) {
       logmgr->BackupFlushLog(*logbuf, lsn);
-      if(config::replay_policy == config::kReplaySync ||
-         config::replay_policy == config::kReplayPipelined) {
-        // Wait for the redo daemon to finish
-        while(volatile_read(replayed_lsn_offset) < lsn) {}
-      }
+    }
+  }
+}
 
-      // After advance_reader no one should read from the log buffer
-      logbuf->advance_reader(logbuf_new_byte);
-      volatile_write(new_end_lsn_offset, 0);
+void LogRedoDaemon() {
+  redo_start_lsn = redo_end_lsn = INVALID_LSN;
+  rcu_register();
+  DEFER(rcu_deregister());
+  rcu_enter();
+  DEFER(rcu_exit());
+  while(true) {
+    LSN end = volatile_read(redo_end_lsn);
+    LSN start = volatile_read(redo_start_lsn);
+    if(end.offset() > replayed_lsn_offset) {
+      logmgr->redo_logbuf(start, end);
+      DLOG(INFO) << "[Backup] Rolled forward log "
+                 << std::hex << start.offset() << "." << start.segment()
+                 << "-" << end.offset() << "." << end.segment() << std::dec;
+      volatile_write(replayed_lsn_offset, end.offset());
+      ASSERT(start.segment() == end.segment());
+      segment_id* sid = logmgr->get_segment(start.segment());
+      logbuf->advance_reader(sid->byte_offset + (end.offset() - sid->start_offset));
     }
   }
 }
@@ -133,133 +146,179 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
   }
 }
 
+// Receives the bounds array sent from the primary.
+// Returns false if we should stop.
+bool BackupReceiveBoundsArray() {
+  // Post an RR to get the log buffer partition bounds
+  // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
+  // the peer sends data).
+  // This RR also serves the purpose of getting the primary's next step. Normally
+  // the primary would send over the bounds array without immediate; when the
+  // primary wants to shutdown it will note this in the immediate.
+  uint32_t intent = 0;
+  auto bounds_array_size = self_rdma_node->ReceiveImm(&intent);
+  if(!config::IsForwardProcessing()) {
+    // Received the first batch, for sure the backup can start benchmarks.
+    // FIXME(tzwang): this is not optimal - ideally we should start after
+    // the primary starts, instead of when the primary *shipped* the first batch.
+    volatile_write(config::state, config::kStateForwardProcessing);
+  }
+  if(intent == kRdmaImmShutdown) {
+    // Primary signaled shutdown, exit daemon
+    volatile_write(config::state, config::kStateShutdown);
+    LOG(INFO) << "Got shutdown signal from primary, exit.";
+    return false;
+  }
+  ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * kMaxLogBufferPartitions);
+
+#ifndef NDEBUG
+  for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+    uint64_t s = 0;
+    if(i > 0) {
+      s = (logbuf_partition_bounds[i] >> 16) - (logbuf_partition_bounds[i-1] >> 16);
+    }
+    LOG(INFO) << "Logbuf partition: " << i << " " << std::hex
+              << logbuf_partition_bounds[i] << std::dec << " " << s;
+  }
+#endif
+  return true;
+}
+
+uint64_t recv_offset[2] CACHE_ALIGNED;
+LSN BackupReceiveLogData(LSN& start_lsn) {
+  static uint32_t recv_idx = 0;
+
+  // Make sure the log buffer portion of interest is free of access now, ie
+  // flushed and replayed (if needed).
+  while(volatile_read(recv_offset[recv_idx]) > logmgr->durable_flushed_lsn().offset()) {}
+  if(config::replay_policy != config::kReplayNone) {
+    while(volatile_read(recv_offset[recv_idx]) > volatile_read(replayed_lsn_offset)) {}
+  }
+
+  // post an RR to get the data and the chunk's begin LSN embedded as an the wr_id
+  uint32_t imm = 0;
+  uint32_t size = self_rdma_node->ReceiveImm(&imm);
+  THROW_IF(not size, illegal_argument, "Invalid data size");
+  segment_id *sid = logmgr->get_segment(start_lsn.segment());
+  ASSERT(sid->segnum == start_lsn.segment());
+  if(imm & kRdmaImmNewSeg) {
+    // Extract the segment's start offset (off of the segment's raw, theoreticall start offset)
+    start_lsn = LSN::make(
+      config::log_segment_mb * config::MB * start_lsn.segment() + (imm & ~kRdmaImmNewSeg),
+      start_lsn.segment() + 1);
+  }
+
+  uint64_t end_lsn_offset = start_lsn.offset() + size;
+  sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
+
+  volatile_write(recv_offset[recv_idx], end_lsn_offset);
+  recv_idx = (recv_idx + 1) % 2;
+
+  // Now we should already have data sitting in the buffer, but we need
+  // to use the data size we got to calculate a new durable lsn first.
+  ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
+  ALWAYS_ASSERT(sid && sid->segnum == start_lsn.segment());
+  if(imm & kRdmaImmNewSeg) {
+    // Fix the start and end offsets for the new segment
+    sid->start_offset = start_lsn.offset();
+    sid->end_offset = sid->start_offset + config::log_segment_mb * config::MB;
+
+    // Now we're ready to create the file with correct file name
+    logmgr->create_segment_file(sid);
+    ALWAYS_ASSERT(sid->start_offset == start_lsn.offset());
+    ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
+  }
+  DLOG(INFO) << "Assigned " << std::hex << start_lsn.offset() << "-" << end_lsn_offset
+    << " to " << std::dec << sid->segnum << " " << std::hex
+    << sid->start_offset << " " << sid->byte_offset << std::dec;
+  ALWAYS_ASSERT(sid);
+  LSN end_lsn = LSN::make(end_lsn_offset, start_lsn.segment());
+
+  DLOG(INFO) << "[Backup] Received " << size << " bytes ("
+    << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
+
+  uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
+  logbuf->advance_writer(new_byte);  // Extends reader_end too
+
+  ALWAYS_ASSERT(logbuf->available_to_read() >= size);
+  return end_lsn;
+}
+
 void backup_daemon_rdam() {
-  logbuf_new_byte = 0;
+  memset(recv_offset, 0, sizeof(uint64_t) * 2);
   while(!volatile_read(logmgr)) { /** spin **/ }
   rcu_register();
   DEFER(rcu_deregister());
   DEFER(delete self_rdma_node);
 
-  uint32_t size = 0;
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
-  auto* logbuf = sm_log::get_logbuf();
+  logbuf = sm_log::get_logbuf();
   LSN start_lsn = logmgr->durable_flushed_lsn();
   std::thread flusher(LogFlushDaemon);
   flusher.detach();
+
+  if(config::replay_policy == config::kReplayPipelined) {
+    std::thread redoer(LogRedoDaemon);
+    redoer.detach();
+  }
+
   while(!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
-    if(config::nvram_log_buffer) {
-      while(volatile_read(new_end_lsn_offset) != 0) {}
-    }
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
-    // Post an RR to get the log buffer partition bounds
-    // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
-    // the peer sends data).
-    // This RR also serves the purpose of getting the primary's next step. Normally
-    // the primary would send over the bounds array without immediate; when the
-    // primary wants to shutdown it will note this in the immediate.
-    uint32_t intent = 0;
-    auto bounds_array_size = self_rdma_node->ReceiveImm(&intent);
-    if(!config::IsForwardProcessing()) {
-      // Received the first batch, for sure the backup can start benchmarks.
-      // FIXME(tzwang): this is not optimal - ideally we should start after
-      // the primary starts, instead of when the primary *shipped* the first batch.
-      volatile_write(config::state, config::kStateForwardProcessing);
-    }
-    if(intent == kRdmaImmShutdown) {
-      // Primary signaled shutdown, exit daemon
-      volatile_write(config::state, config::kStateShutdown);
-      LOG(INFO) << "Got shutdown signal from primary, exit.";
+
+    if(!BackupReceiveBoundsArray()) {
       return;
     }
-    ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * kMaxLogBufferPartitions);
 
-#ifndef NDEBUG
-    for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
-      uint64_t s = 0;
-      if(i > 0) {
-        s = (logbuf_partition_bounds[i] >> 16) - (logbuf_partition_bounds[i-1] >> 16);
-      }
-      LOG(INFO) << "Logbuf partition: " << i << " " << std::hex
-                << logbuf_partition_bounds[i] << std::dec << " " << s;
-    }
-#endif
-
-    // post an RR to get the data and the chunk's begin LSN embedded as an the wr_id
-    uint32_t imm = 0;
-    size = self_rdma_node->ReceiveImm(&imm);
-    THROW_IF(not size, illegal_argument, "Invalid data size");
-
-    segment_id *sid = logmgr->get_segment(start_lsn.segment());
-    ASSERT(sid->segnum == start_lsn.segment());
-    if(imm & kRdmaImmNewSeg) {
-      // Extract the segment's start offset (off of the segment's raw, theoreticall start offset)
-      start_lsn = LSN::make(
-        config::log_segment_mb * config::MB * start_lsn.segment() + (imm & ~kRdmaImmNewSeg),
-        start_lsn.segment() + 1);
-    }
-    uint64_t end_lsn_offset = start_lsn.offset() + size;
-    sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
-
-    // now we should already have data sitting in the buffer, but we need
-    // to use the data size we got to calculate a new durable lsn first.
-    ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
-    ALWAYS_ASSERT(sid && sid->segnum == start_lsn.segment());
-    if(imm & kRdmaImmNewSeg) {
-      // Fix the start and end offsets for the new segment
-      sid->start_offset = start_lsn.offset();
-      sid->end_offset = sid->start_offset + config::log_segment_mb * config::MB;
-
-      // Now we're ready to create the file with correct file name
-      logmgr->create_segment_file(sid);
-      ALWAYS_ASSERT(sid->start_offset == start_lsn.offset());
-      ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
-    }
-    DLOG(INFO) << "Assigned " << std::hex << start_lsn.offset() << "-" << end_lsn_offset
-      << " to " << std::dec << sid->segnum << " " << std::hex
-      << sid->start_offset << " " << sid->byte_offset << std::dec;
-    ALWAYS_ASSERT(sid);
-    LSN end_lsn = LSN::make(end_lsn_offset, start_lsn.segment());
-
-    DLOG(INFO) << "[Backup] Received " << size << " bytes ("
-      << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
-
-    uint64_t new_byte = logbuf_new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
-
-    // Both sync and semi-sync replay need this, do it here.
-    if(logbuf->available_to_read() < size) {
-      logbuf->advance_writer(new_byte);
-    }
-
-    ALWAYS_ASSERT(logbuf->available_to_read() >= size);
+    LSN end_lsn = BackupReceiveLogData(start_lsn);
 
     // Now "notify" the flusher to write log records out, asynchronously.
-    volatile_write(new_end_lsn_offset, end_lsn_offset);
+    volatile_write(new_end_lsn_offset, end_lsn.offset());
 
+    // Now handle replay policies:
+    // 1. Sync - replay immediately; then when finished ack persitence
+    //    immediately if NVRAM is present, otherwise ack persistence when
+    //    data is flushed.
+    // 2. Pipelined - notify replay daemon to start; then ack persitence
+    //    immediately if NVRAM is present, otherwise ack persistence when
+    //    data is flushed.
+    //
+    // Both synchronous and pipelined replay ensure log flush is out of
+    // the critical path. The difference is whether log replay is on/out of
+    // the critical path, i.e., before ack-ing persistence. The primary can't
+    // continue unless it received persistence ack.
+    //
+    // The role of NVRAM here is solely for making persistence faster and is
+    // orthogonal to the choice of replay policy.
     if(config::replay_policy == config::kReplaySync) {
       logmgr->redo_logbuf(start_lsn, end_lsn);
       DLOG(INFO) << "[Backup] Rolled forward log "
                  << std::hex << start_lsn.offset() << "." << start_lsn.segment()
-                 << "-" << end_lsn_offset << "." << end_lsn.segment() << std::dec;
-      volatile_write(replayed_lsn_offset, end_lsn.offset());
+                 << "-" << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
+      ASSERT(start_lsn.segment() == end_lsn.segment());
+      segment_id* sid = logmgr->get_segment(start_lsn.segment());
+      logbuf->advance_reader(sid->byte_offset + (end_lsn.offset() - sid->start_offset));
     }
 
     // Now wait for the flusher to finish persisting log if we don't have NVRAM,
     if(!config::nvram_log_buffer) {
-      while(volatile_read(new_end_lsn_offset) != 0) {}
+      while(end_lsn.offset() > logmgr->durable_flushed_lsn().offset()) {}
     }
 
-    ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn_offset);
+    // Make the new records visible only after persisting them
+    if(config::replay_policy == config::kReplaySync) {
+      volatile_write(replayed_lsn_offset, end_lsn.offset());
+    }
+
+    // Tell the primary the data is persisted, it can continue
+    ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
     self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
 
     if(config::replay_policy == config::kReplayPipelined &&
       config::nvram_log_buffer) {
-      logmgr->redo_logbuf(start_lsn, end_lsn);
-      DLOG(INFO) << "[Backup] Rolled forward log "
-                 << std::hex << start_lsn.offset() << "." << start_lsn.segment()
-                 << "-" << end_lsn_offset << "." << end_lsn.segment() << std::dec;
-      volatile_write(replayed_lsn_offset, end_lsn.offset());
+      volatile_write(redo_start_lsn._val, start_lsn._val);
+      volatile_write(redo_end_lsn._val, end_lsn._val);
     }
 
     // Next iteration

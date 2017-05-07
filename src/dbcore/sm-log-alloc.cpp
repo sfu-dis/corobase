@@ -253,15 +253,9 @@ retry:
   uint64_t new_byte = durable_sid->byte_offset +
                       (new_dlsn_offset - durable_sid->start_offset);
 
-  ASSERT(durable_byte == logbuf.read_begin());
   ASSERT(durable_byte < new_byte);
   ASSERT(new_byte <= logbuf.write_end());
 
-  /* Log insertions don't advance the buffer window because
-     they tend to complete out of order. Do it for them now
-     that we know the correct value to use. The only exception
-     is when we read and replay the log buffer directly.
-   */
   uint64_t nbytes = new_byte - durable_byte;
   ALWAYS_ASSERT(logbuf.available_to_read() >= nbytes);
   THROW_IF(logbuf.available_to_read() < nbytes,
@@ -273,6 +267,10 @@ retry:
   uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
   THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
   _durable_flushed_lsn_offset = new_dlsn_offset;
+
+  if(config::replay_policy == config::kReplayNone) {
+    logbuf.advance_reader(new_byte);
+  }
 
   // Update cur_lsn_offset so read-only transactions can get fresh data
   if(_lsn_offset < _durable_flushed_lsn_offset) {
