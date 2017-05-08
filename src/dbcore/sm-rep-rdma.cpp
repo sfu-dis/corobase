@@ -54,6 +54,7 @@ void LogRedoDaemon() {
       volatile_write(replayed_lsn_offset, end.offset());
       ASSERT(start.segment() == end.segment());
       segment_id* sid = logmgr->get_segment(start.segment());
+      while(volatile_read(persisted_lsn_offset) < end.offset()) {}
       logbuf->advance_reader(sid->byte_offset + (end.offset() - sid->start_offset));
     }
   }
@@ -265,7 +266,7 @@ void backup_daemon_rdam() {
 
     // Make sure the log buffer portion of interest is free of access now, ie
     // flushed and replayed (if needed).
-    while(volatile_read(recv_offset[recv_idx]) > logmgr->durable_flushed_lsn().offset()) {}
+    while(volatile_read(recv_offset[recv_idx]) > volatile_read(persisted_lsn_offset)) {}
     if(config::replay_policy != config::kReplayNone) {
       while(volatile_read(recv_offset[recv_idx]) > volatile_read(replayed_lsn_offset)) {}
     }
@@ -303,8 +304,6 @@ void backup_daemon_rdam() {
                  << std::hex << start_lsn.offset() << "." << start_lsn.segment()
                  << "-" << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
       ASSERT(start_lsn.segment() == end_lsn.segment());
-      segment_id* sid = logmgr->get_segment(start_lsn.segment());
-      logbuf->advance_reader(sid->byte_offset + (end_lsn.offset() - sid->start_offset));
     }
 
     // Now wait for the flusher to finish persisting log if we don't have NVRAM,
@@ -315,6 +314,8 @@ void backup_daemon_rdam() {
     // Make the new records visible only after persisting them
     if(config::replay_policy == config::kReplaySync) {
       volatile_write(replayed_lsn_offset, end_lsn.offset());
+      segment_id* sid = logmgr->get_segment(start_lsn.segment());
+      logbuf->advance_reader(sid->byte_offset + (end_lsn.offset() - sid->start_offset));
     }
 
     // Tell the primary the data is persisted, it can continue
