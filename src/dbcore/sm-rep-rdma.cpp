@@ -235,7 +235,6 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
 
   uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
   logbuf->advance_writer(new_byte);  // Extends reader_end too
-
   ALWAYS_ASSERT(logbuf->available_to_read() >= size);
   return end_lsn;
 }
@@ -314,6 +313,7 @@ void backup_daemon_rdam() {
     // Make the new records visible only after persisting them
     if(config::replay_policy == config::kReplaySync) {
       volatile_write(replayed_lsn_offset, end_lsn.offset());
+      while(end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
       segment_id* sid = logmgr->get_segment(start_lsn.segment());
       logbuf->advance_reader(sid->byte_offset + (end_lsn.offset() - sid->start_offset));
     }
