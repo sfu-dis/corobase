@@ -343,6 +343,9 @@ void bench_runner::start_measurement() {
   running = false;
 
   volatile_write(config::state, config::kStateShutdown);
+  for (size_t i = 0; i < config::num_worker_threads(); i++) {
+    workers[i]->join();
+  }
   if(!config::is_backup_srv()) {
     // Persist whatever still left in the log buffer
     // Must do this after setting to shutdown state: the flusher will
@@ -355,8 +358,6 @@ void bench_runner::start_measurement() {
   }
   __sync_synchronize();
 
-  for (size_t i = 0; i < config::num_worker_threads(); i++)
-    workers[i]->join();
   const unsigned long elapsed_nosync = t_nosync.lap();
   size_t n_commits = 0;
   size_t n_aborts = 0;
