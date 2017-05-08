@@ -7,6 +7,7 @@ struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes;
 std::mutex nodes_lock CACHE_ALIGNED;
 uint64_t replayed_lsn_offset CACHE_ALIGNED;
+uint64_t persisted_lsn_offset CACHE_ALIGNED;
 uint64_t new_end_lsn_offset CACHE_ALIGNED;
 LSN redo_start_lsn CACHE_ALIGNED;
 LSN redo_end_lsn CACHE_ALIGNED;
@@ -23,8 +24,15 @@ void LogFlushDaemon() {
   DEFER(rcu_exit());
   while(true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
-    if(lsn > logmgr->durable_flushed_lsn().offset()) {
+    // Use another variable to record the durable flushed LSN offset
+    // here, as the backup daemon might change a new sgment ID's
+    // start_offset when it needs to create new one after receiving
+    // data from the primary. That might cause the durable_flushed_lsn
+    // call to fail when the adjusted start_offset makes the sid think
+    // it doesn't contain the LSN.
+    if(lsn > volatile_read(persisted_lsn_offset)) {
       logmgr->BackupFlushLog(*logbuf, lsn);
+      volatile_write(persisted_lsn_offset, lsn);
     }
   }
 }
@@ -184,17 +192,7 @@ bool BackupReceiveBoundsArray() {
   return true;
 }
 
-uint64_t recv_offset[2] CACHE_ALIGNED;
 LSN BackupReceiveLogData(LSN& start_lsn) {
-  static uint32_t recv_idx = 0;
-
-  // Make sure the log buffer portion of interest is free of access now, ie
-  // flushed and replayed (if needed).
-  while(volatile_read(recv_offset[recv_idx]) > logmgr->durable_flushed_lsn().offset()) {}
-  if(config::replay_policy != config::kReplayNone) {
-    while(volatile_read(recv_offset[recv_idx]) > volatile_read(replayed_lsn_offset)) {}
-  }
-
   // post an RR to get the data and the chunk's begin LSN embedded as an the wr_id
   uint32_t imm = 0;
   uint32_t size = self_rdma_node->ReceiveImm(&imm);
@@ -210,9 +208,6 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
 
   uint64_t end_lsn_offset = start_lsn.offset() + size;
   sid = logmgr->assign_segment(start_lsn.offset(), end_lsn_offset);
-
-  volatile_write(recv_offset[recv_idx], end_lsn_offset);
-  recv_idx = (recv_idx + 1) % 2;
 
   // Now we should already have data sitting in the buffer, but we need
   // to use the data size we got to calculate a new durable lsn first.
@@ -245,7 +240,6 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
 }
 
 void backup_daemon_rdam() {
-  memset(recv_offset, 0, sizeof(uint64_t) * 2);
   while(!volatile_read(logmgr)) { /** spin **/ }
   rcu_register();
   DEFER(rcu_deregister());
@@ -262,16 +256,28 @@ void backup_daemon_rdam() {
     redoer.detach();
   }
 
+  static uint32_t recv_idx = 0;
+  static uint64_t recv_offset[2] CACHE_ALIGNED;
+  memset(recv_offset, 0, sizeof(uint64_t) * 2);
   while(!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
-    self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
 
+    // Make sure the log buffer portion of interest is free of access now, ie
+    // flushed and replayed (if needed).
+    while(volatile_read(recv_offset[recv_idx]) > logmgr->durable_flushed_lsn().offset()) {}
+    if(config::replay_policy != config::kReplayNone) {
+      while(volatile_read(recv_offset[recv_idx]) > volatile_read(replayed_lsn_offset)) {}
+    }
+
+    self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
     if(!BackupReceiveBoundsArray()) {
       return;
     }
 
     LSN end_lsn = BackupReceiveLogData(start_lsn);
+    volatile_write(recv_offset[recv_idx], end_lsn.offset());
+    recv_idx = (recv_idx + 1) % 2;
 
     // Now "notify" the flusher to write log records out, asynchronously.
     volatile_write(new_end_lsn_offset, end_lsn.offset());
@@ -415,7 +421,7 @@ void start_as_backup_rdma() {
 
 void backup_start_replication_rdma() {
   volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
-  LOG(INFO) << "replayed_lsn_offset=" << std::hex << replayed_lsn_offset << std::dec;
+  volatile_write(persisted_lsn_offset, logmgr->durable_flushed_lsn().offset());
   ALWAYS_ASSERT(oidmgr);
   logmgr->recover();
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);

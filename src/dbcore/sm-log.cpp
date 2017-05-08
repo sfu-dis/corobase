@@ -203,6 +203,7 @@ sm_log::durable_flushed_lsn()
     auto *log = &get_impl(this)->_lm;
     auto offset = log->dur_flushed_lsn_offset();
     auto *sid = log->_lm.get_offset_segment(offset);
+    ASSERT(!sid || sid->start_offset <= offset);
 
     if(!sid) {
     retry:
@@ -215,6 +216,7 @@ sm_log::durable_flushed_lsn()
       }
     }
     ASSERT(sid);
+    ASSERT(sid->start_offset <= offset);
     return sid->make_lsn(offset);
 }
 

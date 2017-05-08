@@ -8,8 +8,13 @@ fat_ptr
 sm_log_offset_mgr::lsn2ptr(LSN lsn, bool is_ext)
 {
 #ifndef NDEBUG
-    auto *sid = get_segment(lsn.segment());
-    ASSERT(sid->contains(lsn));
+    if(!config::is_backup_srv()) {
+      // On backup servers the replay threads could run in parallel
+      // with the flusher, and the segments are set up by the daemon
+      // concurrently.
+      auto *sid = get_segment(lsn.segment());
+      ASSERT(sid->contains(lsn));
+    }
 #endif
     uint64_t offset = lsn.offset();
 
