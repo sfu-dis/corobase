@@ -726,13 +726,11 @@ sm_log_alloc_mgr::_log_write_daemon()
         uint64_t cur_offset = cur_lsn_offset();
         uint64_t min_tls = smallest_tls_lsn_offset();
         uint64_t new_dlsn_offset = min_tls;
-        if(config::IsShutdown()) {
-          new_dlsn_offset = cur_lsn_offset();
-        } else if(config::IsForwardProcessing() && config::num_backups > 0) {
-          /*
-           * FIXME(tzwang): 20170505: doesn't seem to be better than just
-           * shipping till the end; revisit later.
-           *
+        /*
+         * FIXME(tzwang): 20170505: doesn't seem to be better than just
+         * shipping till the end; revisit later.
+         *
+        if(config::IsForwardProcessing() && config::num_backups > 0) {
           // Don't exceed the number of log buffer partitions that can be
           // replayed in parallel in one dispatch
           uint32_t nthreads = config::logbuf_partitions / 2;
@@ -757,8 +755,8 @@ sm_log_alloc_mgr::_log_write_daemon()
               new_dlsn_offset = off;
             }
           }
-          */
         }
+        */
         ALWAYS_ASSERT(new_dlsn_offset >= _durable_flushed_lsn_offset);
         auto *durable_sid = PrimaryFlushLog(*_logbuf, new_dlsn_offset);
 

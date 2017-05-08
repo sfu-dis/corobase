@@ -47,12 +47,12 @@ void LogRedoDaemon() {
     LSN end = volatile_read(redo_end_lsn);
     LSN start = volatile_read(redo_start_lsn);
     if(end.offset() > replayed_lsn_offset) {
+      ASSERT(start.segment() == end.segment());
       logmgr->redo_logbuf(start, end);
       DLOG(INFO) << "[Backup] Rolled forward log "
                  << std::hex << start.offset() << "." << start.segment()
                  << "-" << end.offset() << "." << end.segment() << std::dec;
       volatile_write(replayed_lsn_offset, end.offset());
-      ASSERT(start.segment() == end.segment());
       segment_id* sid = logmgr->get_segment(start.segment());
       while(volatile_read(persisted_lsn_offset) < end.offset()) {}
       logbuf->advance_reader(sid->byte_offset + (end.offset() - sid->start_offset));
@@ -308,7 +308,7 @@ void backup_daemon_rdam() {
 
     // Now wait for the flusher to finish persisting log if we don't have NVRAM,
     if(!config::nvram_log_buffer) {
-      while(end_lsn.offset() > logmgr->durable_flushed_lsn().offset()) {}
+      while(end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
     }
 
     // Make the new records visible only after persisting them
