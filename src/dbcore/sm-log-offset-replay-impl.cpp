@@ -112,7 +112,7 @@ parallel_offset_replay::redo_runner::redo_logbuf_partition() {
       break;
     }
     LSN payload_lsn = scan->payload_lsn();
-    //ALWAYS_ASSERT(payload_lsn >= start_lsn);
+    ALWAYS_ASSERT(payload_lsn >= start_lsn);
     ALWAYS_ASSERT(payload_lsn.segment() >= 1);
     auto oid = scan->oid();
     auto fid = scan->fid();
