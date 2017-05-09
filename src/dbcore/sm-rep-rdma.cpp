@@ -45,17 +45,14 @@ void LogRedoDaemon() {
   DEFER(rcu_exit());
   while(true) {
     LSN end = volatile_read(redo_end_lsn);
-    LSN start = volatile_read(redo_start_lsn);
-    if(end.offset() > replayed_lsn_offset) {
+    if(end.offset() > volatile_read(replayed_lsn_offset)) {
+      LSN start = volatile_read(redo_start_lsn);
       ASSERT(start.segment() == end.segment());
       logmgr->redo_logbuf(start, end);
       DLOG(INFO) << "[Backup] Rolled forward log "
                  << std::hex << start.offset() << "." << start.segment()
                  << "-" << end.offset() << "." << end.segment() << std::dec;
       volatile_write(replayed_lsn_offset, end.offset());
-      segment_id* sid = logmgr->get_segment(start.segment());
-      while(volatile_read(persisted_lsn_offset) < end.offset()) {}
-      logbuf->advance_reader(sid->byte_offset + (end.offset() - sid->start_offset));
     }
   }
 }
@@ -156,7 +153,7 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
 }
 
 // Receives the bounds array sent from the primary.
-// Returns false if we should stop.
+// Returns false if we should stop. The only caller is backup daemon.
 bool BackupReceiveBoundsArray() {
   // Post an RR to get the log buffer partition bounds
   // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
@@ -193,6 +190,7 @@ bool BackupReceiveBoundsArray() {
   return true;
 }
 
+// Receive log data from the primary. The only caller is the backup daemon.
 LSN BackupReceiveLogData(LSN& start_lsn) {
   // post an RR to get the data and the chunk's begin LSN embedded as an the wr_id
   uint32_t imm = 0;
@@ -228,15 +226,14 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
     << " to " << std::dec << sid->segnum << " " << std::hex
     << sid->start_offset << " " << sid->byte_offset << std::dec;
   ALWAYS_ASSERT(sid);
-  LSN end_lsn = LSN::make(end_lsn_offset, start_lsn.segment());
 
   DLOG(INFO) << "[Backup] Received " << size << " bytes ("
     << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
 
   uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
   logbuf->advance_writer(new_byte);  // Extends reader_end too
-  ALWAYS_ASSERT(logbuf->available_to_read() >= size);
-  return end_lsn;
+  ASSERT(logbuf->available_to_read() >= size);
+  return LSN::make(end_lsn_offset, start_lsn.segment());
 }
 
 void backup_daemon_rdam() {
@@ -256,18 +253,27 @@ void backup_daemon_rdam() {
     redoer.detach();
   }
 
-  static uint32_t recv_idx = 0;
-  static uint64_t recv_offset[2] CACHE_ALIGNED;
-  memset(recv_offset, 0, sizeof(uint64_t) * 2);
+  uint32_t recv_idx = 0;
+  LSN recv_lsn[2] = {INVALID_LSN, INVALID_LSN};
   while(!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
 
-    // Make sure the log buffer portion of interest is free of access now, ie
-    // flushed and replayed (if needed).
-    while(volatile_read(recv_offset[recv_idx]) > volatile_read(persisted_lsn_offset)) {}
-    if(config::replay_policy != config::kReplayNone) {
-      while(volatile_read(recv_offset[recv_idx]) > volatile_read(replayed_lsn_offset)) {}
+    // Make sure the half we're about to use is free now, i.e., data persisted
+    // and replayed (if needed).
+    uint64_t off = recv_lsn[recv_idx].offset();
+    if(off) {
+      while(off > volatile_read(persisted_lsn_offset)) {}
+      if(config::replay_policy != config::kReplayNone) {
+        while(off > volatile_read(replayed_lsn_offset)) {}
+      }
+
+      // Really make room for the incoming data.
+      // Note: No CC for window buffer's advance_reader/writer. The backup
+      // daemon is the only one that conduct these operations.
+      // advance_writer is done when we receive the data right away.
+      segment_id* sid = logmgr->get_segment(recv_lsn[recv_idx].segment());
+      logbuf->advance_reader(sid->buf_offset(off));
     }
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
@@ -276,7 +282,7 @@ void backup_daemon_rdam() {
     }
 
     LSN end_lsn = BackupReceiveLogData(start_lsn);
-    volatile_write(recv_offset[recv_idx], end_lsn.offset());
+    volatile_write(recv_lsn[recv_idx]._val, end_lsn._val);
     recv_idx = (recv_idx + 1) % 2;
 
     // Now "notify" the flusher to write log records out, asynchronously.
@@ -313,9 +319,6 @@ void backup_daemon_rdam() {
     // Make the new records visible only after persisting them
     if(config::replay_policy == config::kReplaySync) {
       volatile_write(replayed_lsn_offset, end_lsn.offset());
-      while(end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
-      segment_id* sid = logmgr->get_segment(start_lsn.segment());
-      logbuf->advance_reader(sid->byte_offset + (end_lsn.offset() - sid->start_offset));
     }
 
     // Tell the primary the data is persisted, it can continue

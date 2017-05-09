@@ -268,10 +268,6 @@ retry:
   THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
   _durable_flushed_lsn_offset = new_dlsn_offset;
 
-  if(config::replay_policy == config::kReplayNone) {
-    logbuf.advance_reader(new_byte);
-  }
-
   // Update cur_lsn_offset so read-only transactions can get fresh data
   if(_lsn_offset < _durable_flushed_lsn_offset) {
     THROW_IF(not config::is_backup_srv(), illegal_argument,
@@ -724,39 +720,24 @@ sm_log_alloc_mgr::_log_write_daemon()
     uint64_t last_dmark = stopwatch_t::now();
     for (;;) {
         uint64_t cur_offset = cur_lsn_offset();
-        uint64_t min_tls = smallest_tls_lsn_offset();
-        uint64_t new_dlsn_offset = min_tls;
-        /*
-         * FIXME(tzwang): 20170505: doesn't seem to be better than just
-         * shipping till the end; revisit later.
-         *
+        uint64_t new_dlsn_offset = 0;
+        smallest_tls_lsn_offset();
         if(config::IsForwardProcessing() && config::num_backups > 0) {
-          // Don't exceed the number of log buffer partitions that can be
-          // replayed in parallel in one dispatch
-          uint32_t nthreads = config::logbuf_partitions / 2;
-          uint64_t upper_bound = _durable_flushed_lsn_offset +
-                                 nthreads * (_logbuf_partition_size);
-          uint64_t min = min_tls;
-          uint32_t min_index = -1;
-          // Find the minimum that's larger than _durable_flushed_lsn_offset
+          new_dlsn_offset = _durable_flushed_lsn_offset;
+          uint64_t max = _durable_flushed_lsn_offset + _logbuf->window_size() / 2;
+          // Find the maximum that's smaller than max - the backup assumes
+          // pipelined shipping and flush in half-logbuffer chunks. So we
+          // make sure here not to ship too much (exceeding 1/2 of the logbuf)
+          // while respecting the boundaries too.
           for(uint64_t i = 0; i < config::logbuf_partitions; ++i) {
             uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
-            if(off <= min_tls && off > _durable_flushed_lsn_offset) {
-              min = off;
-              min_index = i;
-            }
-          }
-
-          new_dlsn_offset = min;
-          for(uint64_t i = min_index; i < min_index + nthreads; ++i) {
-            uint32_t idx = i % config::logbuf_partitions;
-            uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
-            if(off > new_dlsn_offset && off <= min_tls) {
+            if(off > new_dlsn_offset && off < max) {
               new_dlsn_offset = off;
             }
           }
+        } else {
+          new_dlsn_offset = smallest_tls_lsn_offset();
         }
-        */
         ALWAYS_ASSERT(new_dlsn_offset >= _durable_flushed_lsn_offset);
         auto *durable_sid = PrimaryFlushLog(*_logbuf, new_dlsn_offset);
 
