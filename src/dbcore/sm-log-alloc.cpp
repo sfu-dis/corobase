@@ -721,7 +721,7 @@ sm_log_alloc_mgr::_log_write_daemon()
     for (;;) {
         uint64_t cur_offset = cur_lsn_offset();
         uint64_t new_dlsn_offset = 0;
-        smallest_tls_lsn_offset();
+        uint64_t min_tls = smallest_tls_lsn_offset();
         if(config::IsForwardProcessing() && config::num_backups > 0) {
           new_dlsn_offset = _durable_flushed_lsn_offset;
           uint64_t max = _durable_flushed_lsn_offset + _logbuf->window_size() / 2;
@@ -731,12 +731,16 @@ sm_log_alloc_mgr::_log_write_daemon()
           // while respecting the boundaries too.
           for(uint64_t i = 0; i < config::logbuf_partitions; ++i) {
             uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
-            if(off > new_dlsn_offset && off < max) {
+            if(off > new_dlsn_offset && off <= max) {
               new_dlsn_offset = off;
             }
           }
+          if(new_dlsn_offset == _durable_flushed_lsn_offset) {
+            // No boundary crossing?
+            new_dlsn_offset = min_tls;
+          }
         } else {
-          new_dlsn_offset = smallest_tls_lsn_offset();
+          new_dlsn_offset = min_tls;
         }
         ALWAYS_ASSERT(new_dlsn_offset >= _durable_flushed_lsn_offset);
         auto *durable_sid = PrimaryFlushLog(*_logbuf, new_dlsn_offset);
