@@ -143,6 +143,9 @@ struct config {
 
     static inline uint32_t num_backup_replay_threads() { 
       ALWAYS_ASSERT(is_backup_srv());
+      if(config::replay_policy == config::kReplayNone) {
+        return 0;
+      }
       // FIXME(tzwang): there will be only half of logbuf_partitions that can get
       // replayed concurrently. For simplicity we assign each partition a thread;
       // revisit if we need more flexibility, e.g.,let a thread take more than one

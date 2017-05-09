@@ -35,7 +35,7 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     if(!config::is_backup_srv()) {
       truncate_after(sid->segnum, dlsn.offset());
     }
-    if(config::is_backup_srv()) {
+    if(config::replay_policy != config::kReplayNone && config::is_backup_srv()) {
       logbuf_redo_functor = new parallel_offset_replay;
       logbuf_scanner = new sm_log_scan_mgr_impl{this};
     }
