@@ -117,6 +117,7 @@ inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles)
 }
 
 // Common functions
+void WaitForLogBufferSpace(LSN& target_lsn);
 void start_as_primary();
 void BackupStartReplication();
 void primary_ship_log_buffer_all(const char *buf, uint32_t size,

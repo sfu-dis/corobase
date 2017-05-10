@@ -211,23 +211,7 @@ void BackupDaemonRdma() {
   while(!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
-
-    // Make sure the half we're about to use is free now, i.e., data persisted
-    // and replayed (if needed).
-    uint64_t off = recv_lsn[recv_idx].offset();
-    if(off) {
-      while(off > volatile_read(persisted_lsn_offset)) {}
-      if(config::replay_policy != config::kReplayNone) {
-        while(off > volatile_read(replayed_lsn_offset)) {}
-      }
-
-      // Really make room for the incoming data.
-      // Note: No CC for window buffer's advance_reader/writer. The backup
-      // daemon is the only one that conduct these operations.
-      // advance_writer is done when we receive the data right away.
-      segment_id* sid = logmgr->get_segment(recv_lsn[recv_idx].segment());
-      sm_log::logbuf->advance_reader(sid->buf_offset(off));
-    }
+    WaitForLogBufferSpace(recv_lsn[recv_idx]);
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
     if(!BackupReceiveBoundsArray()) {
