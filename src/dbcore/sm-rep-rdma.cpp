@@ -6,56 +6,9 @@ namespace rep {
 struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes;
 std::mutex nodes_lock CACHE_ALIGNED;
-uint64_t replayed_lsn_offset CACHE_ALIGNED;
-uint64_t persisted_lsn_offset CACHE_ALIGNED;
-uint64_t new_end_lsn_offset CACHE_ALIGNED;
-LSN redo_start_lsn CACHE_ALIGNED;
-LSN redo_end_lsn CACHE_ALIGNED;
-window_buffer* logbuf CACHE_ALIGNED;
 
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
-
-void LogFlushDaemon() {
-  new_end_lsn_offset = 0;
-  rcu_register();
-  DEFER(rcu_deregister());
-  rcu_enter();
-  DEFER(rcu_exit());
-  while(true) {
-    uint64_t lsn = volatile_read(new_end_lsn_offset);
-    // Use another variable to record the durable flushed LSN offset
-    // here, as the backup daemon might change a new sgment ID's
-    // start_offset when it needs to create new one after receiving
-    // data from the primary. That might cause the durable_flushed_lsn
-    // call to fail when the adjusted start_offset makes the sid think
-    // it doesn't contain the LSN.
-    if(lsn > volatile_read(persisted_lsn_offset)) {
-      logmgr->BackupFlushLog(*logbuf, lsn);
-      volatile_write(persisted_lsn_offset, lsn);
-    }
-  }
-}
-
-void LogRedoDaemon() {
-  redo_start_lsn = redo_end_lsn = INVALID_LSN;
-  rcu_register();
-  DEFER(rcu_deregister());
-  rcu_enter();
-  DEFER(rcu_exit());
-  while(true) {
-    LSN end = volatile_read(redo_end_lsn);
-    if(end.offset() > volatile_read(replayed_lsn_offset)) {
-      LSN start = volatile_read(redo_start_lsn);
-      ASSERT(start.segment() == end.segment());
-      logmgr->redo_logbuf(start, end);
-      DLOG(INFO) << "[Backup] Rolled forward log "
-                 << std::hex << start.offset() << "." << start.segment()
-                 << "-" << end.offset() << "." << end.segment() << std::dec;
-      volatile_write(replayed_lsn_offset, end.offset());
-    }
-  }
-}
 
 void primary_rdma_poll_send_cq(uint64_t nops) {
   ALWAYS_ASSERT(!config::is_backup_srv());
@@ -231,19 +184,19 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
     << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
 
   uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
-  logbuf->advance_writer(new_byte);  // Extends reader_end too
-  ASSERT(logbuf->available_to_read() >= size);
+  sm_log::logbuf->advance_writer(new_byte);  // Extends reader_end too
+  ASSERT(sm_log::logbuf->available_to_read() >= size);
   return LSN::make(end_lsn_offset, start_lsn.segment());
 }
 
-void backup_daemon_rdam() {
+void BackupDaemonRdma() {
+  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
   while(!volatile_read(logmgr)) { /** spin **/ }
   rcu_register();
   DEFER(rcu_deregister());
   DEFER(delete self_rdma_node);
 
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
-  logbuf = sm_log::get_logbuf();
   LSN start_lsn = logmgr->durable_flushed_lsn();
   std::thread flusher(LogFlushDaemon);
   flusher.detach();
@@ -273,7 +226,7 @@ void backup_daemon_rdam() {
       // daemon is the only one that conduct these operations.
       // advance_writer is done when we receive the data right away.
       segment_id* sid = logmgr->get_segment(recv_lsn[recv_idx].segment());
-      logbuf->advance_reader(sid->buf_offset(off));
+      sm_log::logbuf->advance_reader(sid->buf_offset(off));
     }
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
@@ -421,18 +374,6 @@ void start_as_backup_rdma() {
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
   LOG(INFO) << "[Backup] Received log file.";
-}
-
-void backup_start_replication_rdma() {
-  volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
-  volatile_write(persisted_lsn_offset, logmgr->durable_flushed_lsn().offset());
-  ALWAYS_ASSERT(oidmgr);
-  logmgr->recover();
-  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
-
-  // Start a daemon to receive and persist future log records
-  std::thread t(backup_daemon_rdam);
-  t.detach();
 }
 
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,

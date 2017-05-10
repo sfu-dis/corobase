@@ -76,7 +76,7 @@ struct sm_log_alloc_mgr {
     void _kick_log_write_daemon();
     segment_id *PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_dlsn,
                                 bool update_dmark=false);
-    void BackupFlushLog(window_buffer &logbuf, uint64_t new_dlsn_dlsn);
+    void BackupFlushLog(uint64_t new_dlsn_dlsn);
     uint64_t smallest_tls_lsn_offset();
     void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
     void dequeue_committed_xcts(uint64_t up_to, uint64_t end_time);

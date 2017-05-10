@@ -6,6 +6,7 @@
 #include "../benchmarks/ndb_wrapper.h"
 
 namespace rep {
+tcp::client_context *cctx;
 // A daemon that runs on the primary for bringing up backups by shipping
 // the latest chkpt (if any) + the log that follows (if any).
 void primary_daemon_tcp() {
@@ -82,7 +83,7 @@ void start_as_backup_tcp() {
   ALWAYS_ASSERT(config::is_backup_srv());
 
   LOG(INFO) << "[Backup] Primary: " << config::primary_srv << ":" << config::primary_port;
-  tcp::client_context *cctx = new tcp::client_context(config::primary_srv, config::primary_port);
+  cctx = new tcp::client_context(config::primary_srv, config::primary_port);
 
   // Expect the primary to send metadata, the header first
   const int kNumPreAllocFiles = 10;
@@ -147,17 +148,14 @@ void start_as_backup_tcp() {
     os_close(log_fd);
   }
 
+  // Extract system config and set them before new_log
+  config::benchmark_scale_factor = md->system_config.scale_factor;
+  config::log_segment_mb = md->system_config.log_segment_mb;
+  config::logbuf_partitions = md->system_config.logbuf_partitions;
+
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
-
-  ALWAYS_ASSERT(oidmgr);
-  logmgr->recover();
-
-  // Done with receiving files and they should all be persisted, now ack the primary
-  tcp::send_ack(cctx->server_sockfd);
   LOG(INFO) << "[Backup] Received log file.";
-  std::thread t(backup_daemon_tcp, cctx);
-  t.detach();
 }
 
 // Send the log buffer to backups
@@ -171,7 +169,7 @@ void primary_ship_log_buffer_tcp(int backup_sockfd, const char* buf, uint32_t si
   tcp::expect_ack(backup_sockfd);
 }
 
-void backup_daemon_tcp(tcp::client_context *cctx) {
+void BackupDaemonTcp() {
   rcu_register();
   rcu_enter();
   DEFER(rcu_exit());
@@ -184,11 +182,8 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
   while (not volatile_read(logmgr)) {}
   auto* logbuf = logmgr->get_logbuf();
 
-  // Now safe to start the redo daemon with a valid durable_flushed_lsn
-  //if (not config::log_ship_sync_redo) {
-  //  std::thread rt(redo_daemon);
-  //  rt.detach();
-  //}
+  // Done with receiving files and they should all be persisted, now ack the primary
+  tcp::send_ack(cctx->server_sockfd);
 
   while (1) {
     // expect an integer indicating data size
@@ -215,7 +210,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
     if (config::nvram_log_buffer) {
       logmgr->persist_nvram_log_buffer(*logbuf, end_lsn_offset);
     } else {
-      logmgr->BackupFlushLog(*logbuf, end_lsn_offset);
+      logmgr->BackupFlushLog(end_lsn_offset);
       ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
     }
 
@@ -226,7 +221,7 @@ void backup_daemon_tcp(tcp::client_context *cctx) {
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
     if (config::nvram_log_buffer)
-      logmgr->BackupFlushLog(*logbuf, end_lsn_offset);
+      logmgr->BackupFlushLog(end_lsn_offset);
   }
 }
 

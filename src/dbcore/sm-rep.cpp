@@ -9,6 +9,13 @@ uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
 std::vector<int> backup_sockfds;
 std::mutex backup_sockfds_mutex;
 
+// For backups only
+uint64_t replayed_lsn_offset CACHE_ALIGNED;
+uint64_t persisted_lsn_offset CACHE_ALIGNED;
+uint64_t new_end_lsn_offset CACHE_ALIGNED;
+LSN redo_start_lsn CACHE_ALIGNED;
+LSN redo_end_lsn CACHE_ALIGNED;
+
 void start_as_primary() {
   memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(not config::is_backup_srv());
@@ -17,6 +24,62 @@ void start_as_primary() {
     t.detach();
   } else {
     std::thread t(primary_daemon_tcp);
+    t.detach();
+  }
+}
+
+void LogFlushDaemon() {
+  new_end_lsn_offset = 0;
+  rcu_register();
+  DEFER(rcu_deregister());
+  rcu_enter();
+  DEFER(rcu_exit());
+  while(true) {
+    uint64_t lsn = volatile_read(new_end_lsn_offset);
+    // Use another variable to record the durable flushed LSN offset
+    // here, as the backup daemon might change a new sgment ID's
+    // start_offset when it needs to create new one after receiving
+    // data from the primary. That might cause the durable_flushed_lsn
+    // call to fail when the adjusted start_offset makes the sid think
+    // it doesn't contain the LSN.
+    if(lsn > volatile_read(persisted_lsn_offset)) {
+      logmgr->BackupFlushLog(lsn);
+      volatile_write(persisted_lsn_offset, lsn);
+    }
+  }
+}
+
+void LogRedoDaemon() {
+  redo_start_lsn = redo_end_lsn = INVALID_LSN;
+  rcu_register();
+  DEFER(rcu_deregister());
+  rcu_enter();
+  DEFER(rcu_exit());
+  while(true) {
+    LSN end = volatile_read(redo_end_lsn);
+    if(end.offset() > volatile_read(replayed_lsn_offset)) {
+      LSN start = volatile_read(redo_start_lsn);
+      ASSERT(start.segment() == end.segment());
+      logmgr->redo_logbuf(start, end);
+      DLOG(INFO) << "[Backup] Rolled forward log "
+                 << std::hex << start.offset() << "." << start.segment()
+                 << "-" << end.offset() << "." << end.segment() << std::dec;
+      volatile_write(replayed_lsn_offset, end.offset());
+    }
+  }
+}
+
+void BackupStartReplication() {
+  volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
+  volatile_write(persisted_lsn_offset, logmgr->durable_flushed_lsn().offset());
+  ALWAYS_ASSERT(oidmgr);
+  logmgr->recover();
+  if(config::log_ship_by_rdma) {
+    // Start a daemon to receive and persist future log records
+    std::thread t(BackupDaemonRdma);
+    t.detach();
+  } else {
+    std::thread t(BackupDaemonTcp);
     t.detach();
   }
 }
@@ -34,24 +97,6 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size,
     }
   }
   backup_sockfds_mutex.unlock();
-}
-
-void redo_daemon() {
-  rcu_register();
-  rcu_enter();
-  DEFER(rcu_exit());
-  DEFER(rcu_deregister());
-
-  auto start_lsn = logmgr->durable_flushed_lsn();
-  while (true) {
-    auto end_lsn = logmgr->durable_flushed_lsn();
-    if (end_lsn > start_lsn) {
-      printf("[Backup] Rolling forward %lx-%lx\n", start_lsn.offset(), end_lsn.offset());
-      logmgr->redo_log(start_lsn, end_lsn);
-      printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn.offset());
-      start_lsn = end_lsn;
-    }
-  }
 }
 
 // Generate a metadata structure for sending to the new backup.

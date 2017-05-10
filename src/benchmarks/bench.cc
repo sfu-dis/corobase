@@ -156,11 +156,7 @@ void
 bench_runner::run()
 {
   if(config::is_backup_srv()) {
-    if(config::log_ship_by_rdma) {
-      rep::backup_start_replication_rdma();
-    } else{
-      rep::start_as_backup_tcp();
-    }
+    rep::BackupStartReplication();
   } else {
     // Now we should already have a list of registered tables in IndexDescriptor::name_map,
     // but all the index, oid_array fileds are empty; only the table name is available.
