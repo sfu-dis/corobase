@@ -183,15 +183,15 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
   DLOG(INFO) << "[Backup] Received " << size << " bytes ("
     << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
 
-  uint64_t new_byte = sid->byte_offset + (end_lsn_offset - sid->start_offset);
+  uint64_t new_byte = sid->buf_offset(end_lsn_offset);
   sm_log::logbuf->advance_writer(new_byte);  // Extends reader_end too
   ASSERT(sm_log::logbuf->available_to_read() >= size);
   return LSN::make(end_lsn_offset, start_lsn.segment());
 }
 
 void BackupDaemonRdma() {
+  ALWAYS_ASSERT(logmgr);
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
-  while(!volatile_read(logmgr)) { /** spin **/ }
   rcu_register();
   DEFER(rcu_deregister());
   DEFER(delete self_rdma_node);
@@ -413,14 +413,6 @@ void PrimaryShutdownRdma() {
 
     // Send the shutdown signal using the bounds buffer
     node->RdmaWriteImmLogBufferPartitionBounds(0, 0, 8, kRdmaImmShutdown, true);
-  }
-}
-
-void PrimaryShutdown() {
-  if(config::log_ship_by_rdma) {
-    PrimaryShutdownRdma();
-  } else {
-    LOG(FATAL) << "Not implemented";
   }
 }
 }  // namespace rep
