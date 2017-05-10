@@ -171,16 +171,16 @@ main(int argc, char **argv)
     } else {
       LOG(FATAL) << "Invalid log shipping replay policy: " << FLAGS_replay_policy;
     }
+    RCU::rcu_register();
+    ALWAYS_ASSERT(config::log_dir.size());
+    ALWAYS_ASSERT(not logmgr);
+    ALWAYS_ASSERT(not oidmgr);
+    RCU::rcu_enter();
+    sm_log::allocate_log_buffer();
     if(config::log_ship_by_rdma) {
-      RCU::rcu_register();
-      ALWAYS_ASSERT(config::log_dir.size());
-      ALWAYS_ASSERT(not logmgr);
-      ALWAYS_ASSERT(not oidmgr);
-      RCU::rcu_enter();
-      sm_log::allocate_log_buffer();
       rep::start_as_backup_rdma();
     } else {
-      LOG(FATAL) << "TODO";
+      rep::start_as_backup_tcp();
     }
   } else {
     config::benchmark_seconds = FLAGS_seconds;

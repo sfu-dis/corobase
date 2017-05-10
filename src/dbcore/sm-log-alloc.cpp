@@ -213,7 +213,7 @@ sm_log_alloc_mgr::flush()
     return _lm.get_durable_mark();
 }
 
-void sm_log_alloc_mgr::BackupFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset) {
+void sm_log_alloc_mgr::BackupFlushLog(uint64_t new_dlsn_offset) {
   ASSERT(config::is_backup_srv());
 retry:
   LSN dlsn = _lm.get_durable_mark();
@@ -254,15 +254,15 @@ retry:
                       (new_dlsn_offset - durable_sid->start_offset);
 
   ASSERT(durable_byte < new_byte);
-  ASSERT(new_byte <= logbuf.write_end());
+  ASSERT(new_byte <= sm_log::logbuf->write_end());
 
   uint64_t nbytes = new_byte - durable_byte;
-  ALWAYS_ASSERT(logbuf.available_to_read() >= nbytes);
-  THROW_IF(logbuf.available_to_read() < nbytes,
+  ALWAYS_ASSERT(sm_log::logbuf->available_to_read() >= nbytes);
+  THROW_IF(sm_log::logbuf->available_to_read() < nbytes,
            log_file_error, "Not enough log bufer to read");
 
   // perform the write
-  auto *buf = logbuf.read_buf(durable_byte, nbytes);
+  auto *buf = sm_log::logbuf->read_buf(durable_byte, nbytes);
   auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
   uint64_t n = os_pwrite(active_fd, buf, nbytes, file_offset);
   THROW_IF(n < nbytes, log_file_error, "Incomplete log write");

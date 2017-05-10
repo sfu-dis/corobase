@@ -35,7 +35,12 @@ class RdmaNode;
 const uint64_t kRdmaWaiting = 0x1;
 const uint64_t kRdmaReadyToReceive = 0x2;
 const uint64_t kRdmaPersisted = 0x4;
+
 extern uint64_t replayed_lsn_offset;
+extern uint64_t persisted_lsn_offset;
+extern uint64_t new_end_lsn_offset;
+extern LSN redo_start_lsn;
+extern LSN redo_end_lsn;
 
 const uint32_t kMaxLogBufferPartitions = 64;
 extern uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];
@@ -113,17 +118,20 @@ inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles)
 
 // Common functions
 void start_as_primary();
+void BackupStartReplication();
 void primary_ship_log_buffer_all(const char *buf, uint32_t size,
                                  bool new_seg, uint64_t new_seg_start_offset);
 void redo_daemon();
 backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_lsn);
 void PrimaryShutdown();
+void LogFlushDaemon();
+void LogRedoDaemon();
 
 // RDMA-specific functions
+void BackupDaemonRdma();
 void PrimaryShutdownRdma();
 void primary_daemon_rdma();
 void start_as_backup_rdma();
-void backup_start_replication_rdma();
 void primary_init_rdma();
 void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
                                   bool new_seg, uint64_t new_seg_start_offset);
@@ -134,7 +142,7 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset);
 
 // TCP-specific functions
 void start_as_backup_tcp();
-void backup_daemon_tcp(tcp::client_context *cctx);
+void BackupDaemonTcp();
 void primary_daemon_tcp();
 void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkpt_start);
 

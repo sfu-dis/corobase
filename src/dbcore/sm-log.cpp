@@ -94,8 +94,8 @@ sm_log::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset, bool up
     return get_impl(this)->_lm.PrimaryFlushLog(logbuf, new_dlsn_offset, update_dmark);
 }
 
-void sm_log::BackupFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset) {
-  return get_impl(this)->_lm.BackupFlushLog(logbuf, new_dlsn_offset);
+void sm_log::BackupFlushLog(uint64_t new_dlsn_offset) {
+  return get_impl(this)->_lm.BackupFlushLog(new_dlsn_offset);
 }
 
 void sm_log::enqueue_committed_xct(uint32_t worker_id, uint64_t start_time)
