@@ -84,6 +84,14 @@ void BackupStartReplication() {
   }
 }
 
+void PrimaryShutdown() {
+  if(config::log_ship_by_rdma) {
+    PrimaryShutdownRdma();
+  } else {
+    LOG(FATAL) << "Not implemented";
+  }
+}
+
 void primary_ship_log_buffer_all(const char *buf, uint32_t size,
                                  bool new_seg, uint64_t new_seg_start_offset) {
   backup_sockfds_mutex.lock();

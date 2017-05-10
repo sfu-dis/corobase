@@ -13,42 +13,41 @@ void primary_daemon_tcp() {
   ALWAYS_ASSERT(logmgr);
   tcp::server_context primary_tcp_ctx(config::primary_port, config::num_backups);
 
-wait_for_backup:
-  int backup_sockfd = primary_tcp_ctx.expect_client();
+  for(uint32_t i = 0; i < config::num_backups; ++i) {
+    int backup_sockfd = primary_tcp_ctx.expect_client();
 
-  // Got a new backup, send out the latest chkpt (if any)
-  // Scan the whole log dir, and send chkpt (if any) + the log that follows,
-  // or all the logs if a chkpt doesn't exist.
-  int chkpt_fd = -1;
-  LSN chkpt_start_lsn = INVALID_LSN;
-  backup_start_metadata* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
-  auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
-  ALWAYS_ASSERT(sent_bytes == md->size());
+    // Got a new backup, send out the latest chkpt (if any)
+    // Scan the whole log dir, and send chkpt (if any) + the log that follows,
+    // or all the logs if a chkpt doesn't exist.
+    int chkpt_fd = -1;
+    LSN chkpt_start_lsn = INVALID_LSN;
+    backup_start_metadata* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
+    auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
+    ALWAYS_ASSERT(sent_bytes == md->size());
 
-  // TODO(tzwang): support log-only bootstrap
-  ALWAYS_ASSERT(chkpt_fd != -1);
-  if(chkpt_fd != -1) {
-    off_t offset = 0;
-    while(md->chkpt_size > 0) {
-      sent_bytes = sendfile(backup_sockfd, chkpt_fd, &offset, md->chkpt_size);
-      ALWAYS_ASSERT(sent_bytes);
-      md->chkpt_size -= sent_bytes;
+    // TODO(tzwang): support log-only bootstrap
+    ALWAYS_ASSERT(chkpt_fd != -1);
+    if(chkpt_fd != -1) {
+      off_t offset = 0;
+      while(md->chkpt_size > 0) {
+        sent_bytes = sendfile(backup_sockfd, chkpt_fd, &offset, md->chkpt_size);
+        ALWAYS_ASSERT(sent_bytes);
+        md->chkpt_size -= sent_bytes;
+      }
+      os_close(chkpt_fd);
     }
-    os_close(chkpt_fd);
+
+    // Now send the log after chkpt
+    send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn);
+
+    // Wait for the backup to notify me that it persisted the logs
+    tcp::expect_ack(backup_sockfd);
+
+    // Surely backup is alive and ready after we got ack'ed, make it visible to the shipping thread
+    backup_sockfds.push_back(backup_sockfd);
+    ++config::num_active_backups;
+    __sync_synchronize();
   }
-
-  // Now send the log after chkpt
-  send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn);
-
-  // Wait for the backup to notify me that it persisted the logs
-  tcp::expect_ack(backup_sockfd);
-
-  // Surely backup is alive and ready after we got ack'ed, make it visible to the shipping thread
-  backup_sockfds_mutex.lock();
-  backup_sockfds.push_back(backup_sockfd);
-  ++config::num_active_backups;
-  backup_sockfds_mutex.unlock();
-  goto wait_for_backup;
 }
 
 void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkpt_start) {
@@ -170,6 +169,7 @@ void primary_ship_log_buffer_tcp(int backup_sockfd, const char* buf, uint32_t si
 }
 
 void BackupDaemonTcp() {
+  ALWAYS_ASSERT(logmgr);
   rcu_register();
   rcu_enter();
   DEFER(rcu_exit());
@@ -178,9 +178,6 @@ void BackupDaemonTcp() {
 
   // Listen to incoming log records from the primary
   uint32_t size = 0;
-  // Wait for the main thread to create logmgr - it might run slower than me
-  while (not volatile_read(logmgr)) {}
-  auto* logbuf = logmgr->get_logbuf();
 
   // Done with receiving files and they should all be persisted, now ack the primary
   tcp::send_ack(cctx->server_sockfd);
@@ -200,17 +197,22 @@ void BackupDaemonTcp() {
 
     // expect the real log data
     //std::cout << "[Backup] Will receive " << size << " bytes\n";
-    char *buf = logbuf->write_buf(sid->buf_offset(start_lsn), size);
+    char *buf = sm_log::logbuf->write_buf(sid->buf_offset(start_lsn), size);
     ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
     tcp::receive(cctx->server_sockfd, buf, size);
     std::cout << "[Backup] Recieved " << size << " bytes ("
       << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
 
+    uint64_t new_byte = sid->buf_offset(end_lsn_offset);
+    sm_log::logbuf->advance_writer(new_byte);  // Extends reader_end too
+    ASSERT(sm_log::logbuf->available_to_read() >= size);
+
     // now got the batch of log records, persist them
     if (config::nvram_log_buffer) {
-      logmgr->persist_nvram_log_buffer(*logbuf, end_lsn_offset);
+      //logmgr->persist_nvram_log_buffer(*logbuf, end_lsn_offset);
     } else {
       logmgr->BackupFlushLog(end_lsn_offset);
+      sm_log::logbuf->advance_reader(new_byte);
       ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
     }
 
