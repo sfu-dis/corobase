@@ -169,12 +169,16 @@ void primary_ship_log_buffer_tcp(int backup_sockfd, const char* buf, uint32_t si
 }
 
 void BackupDaemonTcp() {
+  if(config::replay_policy != config::kReplayNone) {
+    LOG(FATAL) << "Replay not supported";
+  }
   ALWAYS_ASSERT(logmgr);
   rcu_register();
-  rcu_enter();
-  DEFER(rcu_exit());
   DEFER(rcu_deregister());
   DEFER(delete cctx);
+
+  std::thread flusher(LogFlushDaemon);
+  flusher.detach();
 
   // Listen to incoming log records from the primary
   uint32_t size = 0;
@@ -182,7 +186,14 @@ void BackupDaemonTcp() {
   // Done with receiving files and they should all be persisted, now ack the primary
   tcp::send_ack(cctx->server_sockfd);
 
-  while (1) {
+  uint32_t recv_idx = 0;
+  LSN recv_lsn[2] = {INVALID_LSN, INVALID_LSN};
+  while (!config::IsShutdown()) {
+    rcu_enter();
+    DEFER(rcu_exit());
+
+    WaitForLogBufferSpace(recv_lsn[recv_idx]);
+
     // expect an integer indicating data size
     tcp::receive(cctx->server_sockfd, (char *)&size, sizeof(size));
     ALWAYS_ASSERT(size);
@@ -195,35 +206,36 @@ void BackupDaemonTcp() {
     LSN end_lsn = sid->make_lsn(end_lsn_offset);
     ASSERT(end_lsn_offset == end_lsn.offset());
 
+    volatile_write(recv_lsn[recv_idx]._val, end_lsn._val);
+    recv_idx = (recv_idx + 1) % 2;
+
     // expect the real log data
-    //std::cout << "[Backup] Will receive " << size << " bytes\n";
+    DLOG(INFO) << "[Backup] Will receive " << size << " bytes";
     char *buf = sm_log::logbuf->write_buf(sid->buf_offset(start_lsn), size);
     ALWAYS_ASSERT(buf);   // XXX: consider different log buffer sizes than the primary's later
     tcp::receive(cctx->server_sockfd, buf, size);
-    std::cout << "[Backup] Recieved " << size << " bytes ("
-      << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")\n";
+    DLOG(INFO) << "[Backup] Recieved " << size << " bytes ("
+      << std::hex << start_lsn.offset() << "-" << end_lsn.offset() << std::dec << ")";
 
     uint64_t new_byte = sid->buf_offset(end_lsn_offset);
     sm_log::logbuf->advance_writer(new_byte);  // Extends reader_end too
     ASSERT(sm_log::logbuf->available_to_read() >= size);
 
-    // now got the batch of log records, persist them
-    if (config::nvram_log_buffer) {
-      //logmgr->persist_nvram_log_buffer(*logbuf, end_lsn_offset);
-    } else {
-      logmgr->BackupFlushLog(end_lsn_offset);
-      sm_log::logbuf->advance_reader(new_byte);
-      ASSERT(logmgr->durable_flushed_lsn() == end_lsn);
+    // Now "notify" the flusher to write log records out, asynchronously.
+    volatile_write(new_end_lsn_offset, end_lsn.offset());
+
+    // Now wait for the flusher to finish persisting log if we don't have NVRAM,
+    if(!config::nvram_log_buffer) {
+      while(end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
     }
 
     tcp::send_ack(cctx->server_sockfd);
-
+    /* No replay supported yet - already too slow anyway. Revisit if needed.
     if(config::replay_policy == config::kReplaySync) {
       logmgr->redo_log(start_lsn, end_lsn);
       printf("[Backup] Rolled forward log %lx-%lx\n", start_lsn.offset(), end_lsn_offset);
     }
-    if (config::nvram_log_buffer)
-      logmgr->BackupFlushLog(end_lsn_offset);
+    */
   }
 }
 
