@@ -196,7 +196,20 @@ void BackupDaemonTcp() {
 
     // expect an integer indicating data size
     tcp::receive(cctx->server_sockfd, (char *)&size, sizeof(size));
-    ALWAYS_ASSERT(size);
+
+    if(!config::IsForwardProcessing()) {
+      // Received the first batch, for sure the backup can start benchmarks.
+      // FIXME(tzwang): this is not optimal - ideally we should start after
+      // the primary starts, instead of when the primary *shipped* the first batch.
+      volatile_write(config::state, config::kStateForwardProcessing);
+    }
+
+    // Zero size indicates 'shutdown' signal from the primary
+    if(size == 0) {
+      volatile_write(config::state, config::kStateShutdown);
+      LOG(INFO) << "Got shutdown signal from primary, exit.";
+      return;
+    }
 
     // prepare segment if needed
     LSN start_lsn =  logmgr->durable_flushed_lsn();
@@ -237,6 +250,17 @@ void BackupDaemonTcp() {
     }
     */
   }
+}
+
+void PrimaryShutdownTcp() {
+  static const uint32_t kZero = 0;
+  backup_sockfds_mutex.lock();
+  ASSERT(backup_sockfds.size());
+  for (int &fd : backup_sockfds) {
+    size_t nbytes = send(fd, (char*)&kZero, sizeof(uint32_t), 0);
+    ALWAYS_ASSERT(nbytes == sizeof(uint32_t));
+  }
+  backup_sockfds_mutex.unlock();
 }
 
 }  // namespace rep
