@@ -88,7 +88,7 @@ void PrimaryShutdown() {
   if(config::log_ship_by_rdma) {
     PrimaryShutdownRdma();
   } else {
-    LOG(FATAL) << "Not implemented";
+    PrimaryShutdownTcp();
   }
 }
 

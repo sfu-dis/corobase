@@ -146,6 +146,7 @@ void start_as_backup_tcp();
 void BackupDaemonTcp();
 void primary_daemon_tcp();
 void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkpt_start);
+void PrimaryShutdownTcp();
 
 /* Send a chunk of log records (still in memory log buffer) to a backup via TCP.
  */
