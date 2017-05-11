@@ -92,27 +92,6 @@ void PrimaryShutdown() {
   }
 }
 
-// Wait until the log buffer space up to [target_lsn] becomes available
-// for receiving write from the primary.
-void WaitForLogBufferSpace(LSN& target_lsn) {
-  // Make sure the half we're about to use is free now, i.e., data persisted
-  // and replayed (if needed).
-  uint64_t off = target_lsn.offset();
-  if(off) {
-    while(off > volatile_read(persisted_lsn_offset)) {}
-    if(config::replay_policy != config::kReplayNone) {
-      while(off > volatile_read(replayed_lsn_offset)) {}
-    }
-
-    // Really make room for the incoming data.
-    // Note: No CC for window buffer's advance_reader/writer. The backup
-    // daemon is the only one that conduct these operations.
-    // advance_writer is done when we receive the data right away.
-    segment_id* sid = logmgr->get_segment(target_lsn.segment());
-    sm_log::logbuf->advance_reader(sid->buf_offset(off));
-  }
-}
-
 void primary_ship_log_buffer_all(const char *buf, uint32_t size,
                                  bool new_seg, uint64_t new_seg_start_offset) {
   backup_sockfds_mutex.lock();
