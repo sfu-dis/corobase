@@ -394,6 +394,8 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
             imm = durable_sid->start_offset -
                   (durable_sid->segnum - 1) * config::log_segment_mb * config::MB;
           }
+          LOG_IF(FATAL, nbytes > logbuf.window_size() / 2 + MIN_LOG_BLOCK_SIZE)
+            << "Trying to ship more than half log buffer";
           rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
           if(new_seg) {
             new_seg = false;
@@ -724,14 +726,11 @@ sm_log_alloc_mgr::_log_write_daemon()
         uint64_t min_tls = smallest_tls_lsn_offset();
         if(config::IsForwardProcessing() && config::num_backups > 0) {
           new_dlsn_offset = _durable_flushed_lsn_offset;
-          uint64_t max = _durable_flushed_lsn_offset + _logbuf->window_size() / 2;
-          // Find the maximum that's smaller than max - the backup assumes
-          // pipelined shipping and flush in half-logbuffer chunks. So we
-          // make sure here not to ship too much (exceeding 1/2 of the logbuf)
-          // while respecting the boundaries too.
+          // Find the maximum that will cause us to ship at most 1/2 of the logbuf
           for(uint64_t i = 0; i < config::logbuf_partitions; ++i) {
             uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
-            if(off > new_dlsn_offset && off <= max) {
+            if((off > new_dlsn_offset) &&
+               (off - _durable_flushed_lsn_offset <= _logbuf->window_size() / 2)) {
               new_dlsn_offset = off;
             }
           }
