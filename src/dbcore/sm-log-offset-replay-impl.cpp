@@ -33,13 +33,15 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
   uint64_t logbuf_part = -1;
   LSN partition_start = from;
 
-  // Figure out which index to start with
-  uint64_t min_offset = ~uint64_t{0};
-  for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
-    LSN bound = LSN{ rep::logbuf_partition_bounds[i] };
-    if(bound.offset() < min_offset && bound.offset() > from.offset()) {
-      min_offset = bound.offset();
-      logbuf_part = i;
+  if(nredoers > 1) {
+    // Figure out which index to start with
+    uint64_t min_offset = ~uint64_t{0};
+    for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+      LSN bound = LSN{ rep::logbuf_partition_bounds[i] };
+      if(bound.offset() < min_offset && bound.offset() > from.offset()) {
+        min_offset = bound.offset();
+        logbuf_part = i;
+      }
     }
   }
 
@@ -58,11 +60,12 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
       idx = (idx + 1) % nredoers;
       r = redoers[idx];
     }
-    if(logbuf_part == -1) {
+    if(nredoers == 1) {
       r->start_lsn = from;
       r->end_lsn = to;
       all_dispatched = true;
     } else {
+      ASSERT(logbuf_part != -1);
       uint32_t part_id = logbuf_part % config::logbuf_partitions;
       ++logbuf_part;
       LSN partition_end = LSN{ rep::logbuf_partition_bounds[part_id] };
@@ -77,10 +80,10 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
       DLOG(INFO) << "Dispatch " << r->me << " " << std::hex << partition_start.offset() 
                  << " - " << partition_end.offset() << std::dec;
       partition_start = partition_end;  // for next thread
-#ifndef NDEBUG
-      ++ndispatches;
-#endif
     }
+#ifndef NDEBUG
+    ++ndispatches;
+#endif
     r->start();
   }
 

@@ -50,6 +50,7 @@ uint32_t config::max_threads_per_node = 0;
 uint64_t config::write_bytes_per_cycle = 0;
 uint32_t config::state = config::kStateLoading;
 int config::replay_policy = config::kReplayPipelined;
+bool config::single_redoer = false;
 
 void
 config::init() {

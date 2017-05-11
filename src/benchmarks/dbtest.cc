@@ -81,6 +81,7 @@ DEFINE_bool(wait_for_backups, true,
   "Whether to wait for backups to become online before starting transactions.");
 
 // Options specific to backups
+DEFINE_bool(single_redoer, false, "Whether to just use a single replay thread.");
 DEFINE_string(log_ship_warm_up, "none", "Method to load tuples for log shipping:"
   "none - don't load anything; lazy - load tuples using a background thread; "
   "eager - load everything to memory after received log.");
@@ -148,6 +149,7 @@ main(int argc, char **argv)
 
   // Backup specific arguments
   if(config::is_backup_srv()) {
+    config::single_redoer = FLAGS_single_redoer;
     config::benchmark_seconds = ~uint32_t{0};  // Backups run forever
     config::quick_bench_start = FLAGS_quick_bench_start;
     config::wait_for_primary = FLAGS_wait_for_primary;
