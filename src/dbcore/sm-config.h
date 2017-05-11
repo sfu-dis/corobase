@@ -48,6 +48,7 @@ struct config {
     static bool quick_bench_start;
     static bool wait_for_primary;
     static int replay_policy;
+    static bool single_redoer;
 
     // How does the backup replay log records?
     // Sync - replay in the critical path; ack 'persisted' only after replaying
@@ -146,6 +147,9 @@ struct config {
       if(config::replay_policy == config::kReplayNone) {
         return 0;
       }
+      if(config::single_redoer) {
+        return 1;
+      }
       // FIXME(tzwang): there will be only half of logbuf_partitions that can get
       // replayed concurrently. For simplicity we assign each partition a thread;
       // revisit if we need more flexibility, e.g.,let a thread take more than one
@@ -153,7 +157,14 @@ struct config {
       // The backup now should have received from the primary about how many log
       // buffer partitions there will be now.
       ALWAYS_ASSERT(logbuf_partitions);
-      uint32_t n = logbuf_partitions == 1 ? 1 : logbuf_partitions / 2;
+      uint32_t n = 0;
+      if(worker_threads >= 4) {
+        n = logbuf_partitions == 1 ? 1 : logbuf_partitions / 2;
+      } else {
+        ASSERT(worker_threads == 1 || worker_threads == 2);
+        // Must be two or one thread available, we can only have one redoer then
+        n = 1;
+      }
       if(n > worker_threads) {
         LOG(FATAL) << "Not enough worker threads. Need " << n << ", "
                    << worker_threads << " provided";
