@@ -62,7 +62,8 @@ DEFINE_uint64(scale_factor, 1, "Scale factor.");
 DEFINE_string(recovery_warm_up, "none", "Method to load tuples during recovery:"
   "none - don't load anything; lazy - load tuples using a background thread; "
   "eager - load everything to memory during recovery.");
-DEFINE_uint64(log_ship_buffer_partitions, 16, "How many log buffer partitions/concurrent replay threads?");
+DEFINE_uint64(log_ship_buffer_partitions, 0, "How many log buffer partitions/concurrent replay threads?"
+  "0 means use FLAGS_threads. The number of replay threads will be 1/2 partitions");
 DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
 DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
@@ -189,10 +190,18 @@ main(int argc, char **argv)
     config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
     config::null_log_device = FLAGS_null_log_device;
     config::fake_log_write = FLAGS_fake_log_write;
-    config::logbuf_partitions = FLAGS_threads;
+
+    // Using 2 or fewer partitions makes it hard to keep shipping size below 1/2 logbuf
+    if(FLAGS_log_ship_buffer_partitions == 0) {
+      config::logbuf_partitions = FLAGS_threads > 2 ? FLAGS_threads : 4;
+    } else {
+      LOG_IF(FATAL, FLAGS_log_ship_buffer_partitions < 4) << "Too few partitions (minimum 4)";
+      config::logbuf_partitions = FLAGS_log_ship_buffer_partitions;
+    }
     if(config::logbuf_partitions > rep::kMaxLogBufferPartitions) {
       LOG(FATAL) << "Too many log buffer partitions: max " << rep::kMaxLogBufferPartitions;
     }
+
     config::group_commit = FLAGS_group_commit;
     config::group_commit_queue_length = FLAGS_group_commit_queue_length;
     config::group_commit_timeout = FLAGS_group_commit_timeout;
@@ -253,11 +262,13 @@ main(int argc, char **argv)
   cerr << "  tmpfs-dir         : " << config::tmpfs_dir << endl;
   cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << endl;
   cerr << "  logbuf-partitions : " << config::logbuf_partitions << endl;
+  cerr << "  worker-threads    : " << config::num_worker_threads() << endl;
 
   cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize() << endl;
   cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize() << endl;
 
   if(config::is_backup_srv()) {
+    cerr << "  replay-threads    : " << config::num_backup_replay_threads() << endl;
     cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
     cerr << "  replay-policy     : " << FLAGS_replay_policy << endl;
     cerr << "  quick-bench-start : " << config::quick_bench_start << endl;
