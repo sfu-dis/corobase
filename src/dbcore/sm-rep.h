@@ -42,7 +42,7 @@ extern uint64_t new_end_lsn_offset;
 extern LSN redo_start_lsn;
 extern LSN redo_end_lsn;
 
-const uint32_t kMaxLogBufferPartitions = 64;
+static const uint32_t kMaxLogBufferPartitions = 64;
 extern uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];
 
 extern std::vector<int> backup_sockfds;
