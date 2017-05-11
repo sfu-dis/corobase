@@ -94,7 +94,8 @@ sm_log_recover_impl::recover_index_insert(sm_log_scan_mgr::record_scan *logrec,
   }
   char* payload_buf = nullptr;
   ALWAYS_ASSERT(sz < kBufferSize);
-  if(logrec->payload_lsn().offset() >= logmgr->durable_flushed_lsn_offset()) {
+  if(config::is_backup_srv() ||
+     logrec->payload_lsn().offset() >= logmgr->durable_flushed_lsn_offset()) {
     // In the log buffer, point directly to it without memcpy
     ASSERT(config::is_backup_srv());
     auto *logrec_impl = get_impl(logrec);
