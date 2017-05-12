@@ -1,7 +1,7 @@
 #!/bin/bash
 
-primary=apt035
-declare -a backups=("apt054" "apt037" "apt053" "apt034" "apt042" "apt041")
+primary=apt006
+declare -a backups=("apt002" "apt035" "apt003" "apt031" "apt005" "apt030" "apt029")
 
 function cleanup {
   killall -9 ermia_SI 2> /dev/null
@@ -54,5 +54,24 @@ function replay_speed {
   done
 }
 
-scalability
+function nvram {
+  for num_backups in 4 3 2 1; do
+    for t in 16 8 4 2; do
+      for redo_policy in none pipelined sync; do
+        for delay in clflush clwb-emu; do
+          echo "----------"
+          echo thread:$t $redo_policy
+          echo "----------"
+          ./run-cluster.sh SI $t 10 $t tpcc_org tpccr \
+            "-chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma -fake_log_write -wait_for_backups -num_backups=$num_backups -log_ship_buffer_partitions=0" \
+            "-primary_host=$primary -node_memory_gb=17 -log_ship_by_rdma -nvram_log_buffer -quick_bench_start -wait_for_primary -replay_policy=$redo_policy -nvram_delay_type=$delay" \
+            "${backups[@]:0:$num_backups}"
+        done
+      done
+    done
+  done
+}
+
 replay_speed
+scalability
+nvram
