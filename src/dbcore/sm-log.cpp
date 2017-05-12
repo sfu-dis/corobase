@@ -38,13 +38,6 @@ sm_log::get_chkpt_start()
 }
 
 void
-sm_log::persist_nvram_log_buffer(window_buffer& logbuf, int32_t size)
-{
-    return;
-    //get_impl(this)->_lm.persist_nvram_log_buffer(logbuf, size);
-}
-
-void
 sm_log::set_tls_lsn_offset(uint64_t offset)
 {
     get_impl(this)->_lm.set_tls_lsn_offset(offset);

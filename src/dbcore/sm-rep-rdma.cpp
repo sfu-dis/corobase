@@ -1,3 +1,4 @@
+#include <x86intrin.h>
 #include "sm-rep.h"
 #include "sm-rep-rdma.h"
 #include "../benchmarks/ndb_wrapper.h"
@@ -224,6 +225,26 @@ void BackupDaemonRdma() {
 
     // Now "notify" the flusher to write log records out, asynchronously.
     volatile_write(new_end_lsn_offset, end_lsn.offset());
+
+    // Impose delays to emulate NVRAM if needed
+    if(config::nvram_log_buffer &&
+       (config::nvram_delay_type != config::kDelayNone)) {
+      uint64_t size = end_lsn.offset() - start_lsn.offset();
+      if(config::nvram_delay_type == config::kDelayClflush) {
+        segment_id *sid = logmgr->get_segment(start_lsn.segment());
+        const char* buf = sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
+        uint32_t clines = size / CACHELINE_SIZE;
+        for(uint32_t i = 0; i < clines; ++i) {
+          _mm_clflush(&buf[i * CACHELINE_SIZE]);
+        }
+      } else {
+        // Emulate clwb, spin
+        uint64_t total_cycles = size * config::cycles_per_byte;
+        unsigned int unused = 0;
+        uint64_t cycle_end = __rdtscp(&unused) + total_cycles;
+        while(__rdtscp(&unused) < cycle_end) {}
+      }
+    }
 
     // Now handle replay policies:
     // 1. Sync - replay immediately; then when finished ack persitence

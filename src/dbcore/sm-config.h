@@ -1,4 +1,5 @@
 #pragma once
+#include <cpuid.h>
 #include <x86intrin.h>
 #include <iostream>
 #include <string>
@@ -27,6 +28,7 @@ struct config {
     static uint64_t log_segment_mb;
     static std::string log_dir;
     static bool nvram_log_buffer;
+    static uint32_t nvram_delay_type;
     static sm_log_recover_impl *recover_functor;
     static uint64_t node_memory_gb;
     static bool phantom_prot;
@@ -63,6 +65,8 @@ struct config {
     //              log records continuously; no freshness guarantee.
     // None - don't replay at all.
     enum BackupReplayPolicy { kReplaySync, kReplayPipelined, kReplayBackground, kReplayNone};
+
+    enum NvramDelayType { kDelayNone, kDelayClflush, kDelayClwbEmu};
 
     enum SystemState { kStateLoading, kStateForwardProcessing, kStateShutdown };
     static inline bool IsLoading() { return volatile_read(state) == kStateLoading; }
@@ -110,7 +114,7 @@ struct config {
     static bool log_ship_by_rdma;
     static bool log_key_for_update;
 
-    static uint64_t write_bytes_per_cycle;
+    static double cycles_per_byte;
 
     inline static bool is_backup_srv() {
         return primary_srv.size();
@@ -132,14 +136,46 @@ struct config {
         return ssn_read_opt_threshold < SSN_READ_OPT_DISABLED;
     }
 
-    static inline void calibrate_spin_cycles() {
-      char test_arr[CACHELINE_SIZE];
+    static inline void CalibrateNvramDelay() {
+      /* 20170511(tzwang): tried two ways of estimating how many cycles
+       * we need to write one byte to memory. Using clflush gives around
+       * 4-5 cycles/byte, non-temporal store gives ~1-1.3. This was on the
+       * c6220 node.
+       */
+      /*
+      static const uint32_t kCachelines = 1024;
+      char test_arr[kCachelines * CACHELINE_SIZE] CACHE_ALIGNED;
       unsigned int unused = 0;
+      unsigned int eax, ebx, ecx, edx;
+
+      __get_cpuid(1, &eax, &ebx, &ecx, &edx);
       uint64_t start  = __rdtscp(&unused);
-      _mm_clflush(test_arr);
+      for(uint32_t i = 0; i < kCachelines; ++i) {
+        _mm_clflush(&test_arr[i * CACHELINE_SIZE]);
+      }
       uint64_t end = __rdtscp(&unused);
-      write_bytes_per_cycle = (double)CACHELINE_SIZE / (end - start);
-      LOG(INFO) << write_bytes_per_cycle << " bytes per cycle";
+      __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+      cycles_per_byte = (end - start) / (double)(kCachelines * CACHELINE_SIZE);
+      LOG(INFO) << cycles_per_byte << " cycles per bytes";
+      */
+      static const uint32_t kElements = 1024 * 1024 * 64;  // 64MB
+      int *test_arr = (int*)malloc(sizeof(int) * kElements);
+
+      unsigned int unused = 0;
+      unsigned int eax, ebx, ecx, edx;
+
+      __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+      uint64_t start  = __rdtscp(&unused);
+      for(uint32_t i = 0; i < kElements; ++i) {
+        // Non-temporal store to skip the cache
+        _mm_stream_si32(&test_arr[i], 0xdeadbeef);
+      }
+      _mm_sfence();  // need fence for non-temporal store
+      uint64_t end = __rdtscp(&unused);
+      __get_cpuid(1, &eax, &ebx, &ecx, &edx);
+      cycles_per_byte = (end - start) / (double)(kElements * sizeof(int));
+      LOG(INFO) << cycles_per_byte << " cycles per bytes";
+      free(test_arr);
     }
 
     static inline uint32_t num_backup_replay_threads() { 

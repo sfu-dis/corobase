@@ -52,6 +52,11 @@ DEFINE_bool(ssi_read_only_opt, false, "Whether to enable SSI's read-only optimiz
   "Note: this is **not** safe snapshot.");
 #endif
 DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
+DEFINE_string(nvram_delay_type, "none", "How should NVRAM be emulated?"
+  "none - no dealy, same as DRAM + non-volatile cache;"
+  "clflush - use clflush to 'persist';"
+  "clwb-emu - spin the equivalent number of cycles clflush would consume but"
+   "without using clflush (so content not evicted), emulates clwb.");
 
 // Options specific to the primary
 DEFINE_uint64(seconds, 10, "Duration to run benchmark in seconds.");
@@ -133,6 +138,18 @@ main(int argc, char **argv)
   config::recover_functor = new parallel_oid_replay;
   config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
   config::nvram_log_buffer = FLAGS_nvram_log_buffer;
+
+  if(FLAGS_nvram_delay_type == "clwb-emu") {
+    config::CalibrateNvramDelay();
+    config::nvram_delay_type = config::kDelayClwbEmu;
+  } else if(FLAGS_nvram_delay_type == "clflush") {
+    config::nvram_delay_type = config::kDelayClflush;
+    config::cycles_per_byte= 0;
+  } else {
+    ALWAYS_ASSERT(FLAGS_nvram_delay_type == "none");
+    config::nvram_delay_type = config::kDelayNone;
+    config::cycles_per_byte= 0;
+  }
 
 #if defined(SSI) || defined(SSN)
   config::enable_safesnap = FLAGS_safesnap;
@@ -270,6 +287,8 @@ main(int argc, char **argv)
   cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize() << endl;
 
   if(config::is_backup_srv()) {
+    cerr << "  nvram-delay-type  : " << FLAGS_nvram_delay_type << endl;
+    cerr << "  cycles-per-byte   : " << config::cycles_per_byte << endl;
     cerr << "  replay-threads    : " << config::num_backup_replay_threads() << endl;
     cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
     cerr << "  replay-policy     : " << FLAGS_replay_policy << endl;
@@ -305,7 +324,6 @@ main(int argc, char **argv)
 
   // Must have everything in config ready by this point
   config::sanity_check();
-  config::calibrate_spin_cycles();
   ndb_wrapper *db = NULL;
   db = new ndb_wrapper();
   void (*test_fn)(ndb_wrapper *, int argc, char **argv) = NULL;
