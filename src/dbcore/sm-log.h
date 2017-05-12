@@ -380,7 +380,6 @@ struct sm_log {
     LSN get_chkpt_start();
     static window_buffer *get_logbuf();
     segment_id *assign_segment(uint64_t lsn_begin, uint64_t lsn_end);
-    void persist_nvram_log_buffer(window_buffer& logbuf, int32_t size);
     segment_id *PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark);
     void BackupFlushLog(uint64_t new_dlsn_offset);
     segment_id* get_segment(uint32_t segnum);
