@@ -102,6 +102,8 @@ DEFINE_string(replay_policy, "pipelined", "How log records should be replayed on
   "bg - replay out of the critical path in background with a separate thread, async with the primary;"
   "sync - synchronous replay in the critical path; doesn't ack primary until finished replay;"
   "none - don't replay at all.");
+DEFINE_bool(full_replay, false, "Create a version object directly and install it on the main arrays."
+  "(for comparison and experimental purpose only).");
 
 static vector<string>
 split_ws(const string &s)
@@ -191,6 +193,7 @@ main(int argc, char **argv)
     } else {
       LOG(FATAL) << "Invalid log shipping replay policy: " << FLAGS_replay_policy;
     }
+    config::full_replay = FLAGS_full_replay;
     RCU::rcu_register();
     ALWAYS_ASSERT(config::log_dir.size());
     ALWAYS_ASSERT(not logmgr);
@@ -292,6 +295,7 @@ main(int argc, char **argv)
     cerr << "  replay-threads    : " << config::num_backup_replay_threads() << endl;
     cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
     cerr << "  replay-policy     : " << FLAGS_replay_policy << endl;
+    cerr << "  full-replay       : " << config::full_replay << endl;
     cerr << "  quick-bench-start : " << config::quick_bench_start << endl;
     cerr << "  wait-for-primary  : " << config::wait_for_primary << endl;
   } else {
