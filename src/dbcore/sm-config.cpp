@@ -52,11 +52,12 @@ double config::cycles_per_byte= 0;
 uint32_t config::state = config::kStateLoading;
 int config::replay_policy = config::kReplayPipelined;
 bool config::full_replay = false;
-bool config::single_redoer = false;
+uint32_t config::replay_threads = 0;
+uint32_t config::threads = 0;
 
 void
 config::init() {
-    ALWAYS_ASSERT(worker_threads);
+    ALWAYS_ASSERT(threads);
     // We pin threads compactly, ie., socket by socket
     // Figure out how many socket we will occupy here; this determines how
     // much memory we allocate for the centralized pool per socket too.
@@ -64,7 +65,7 @@ config::init() {
     ALWAYS_ASSERT(ncpus);
     max_threads_per_node = htt_is_on ?
         ncpus / 2 / (numa_max_node() + 1): ncpus / (numa_max_node() + 1);
-    numa_nodes = (worker_threads + max_threads_per_node - 1) /  max_threads_per_node;
+    numa_nodes = (threads + max_threads_per_node - 1) /  max_threads_per_node;
 
     thread::init();
 

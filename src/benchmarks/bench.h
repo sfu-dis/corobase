@@ -229,7 +229,7 @@ public:
   bench_runner &operator=(const bench_runner &) = delete;
 
   bench_runner(ndb_wrapper *db)
-    : db(db), barrier_a(config::num_worker_threads()), barrier_b(1) {}
+    : db(db), barrier_a(config::worker_threads), barrier_b(config::worker_threads > 0 ? 1 : 0) {}
   virtual ~bench_runner() {}
   virtual void prepare(char *) = 0;
   void run();
