@@ -8,6 +8,8 @@ struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes;
 std::mutex nodes_lock CACHE_ALIGNED;
 
+std::condition_variable backup_shutdown_trigger;
+
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
 
@@ -216,6 +218,7 @@ void BackupDaemonRdma() {
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
     if(!BackupReceiveBoundsArray()) {
+      rep::backup_shutdown_trigger.notify_all();  // Actually only needed if no query workers
       return;
     }
 

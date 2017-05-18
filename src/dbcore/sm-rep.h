@@ -1,4 +1,5 @@
 #pragma once
+#include <condition_variable>
 
 #include <iostream>
 #include <thread>
@@ -41,6 +42,8 @@ extern uint64_t persisted_lsn_offset;
 extern uint64_t new_end_lsn_offset;
 extern LSN redo_start_lsn;
 extern LSN redo_end_lsn;
+
+extern std::condition_variable backup_shutdown_trigger;
 
 static const uint32_t kMaxLogBufferPartitions = 64;
 extern uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];

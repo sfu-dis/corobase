@@ -13,7 +13,7 @@ public:
   spin_barrier(size_t n)
     : n(n)
   {
-    ALWAYS_ASSERT(n > 0);
+    ALWAYS_ASSERT(n >= 0);
   }
 
   spin_barrier(const spin_barrier &) = delete;

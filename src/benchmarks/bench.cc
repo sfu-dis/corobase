@@ -273,11 +273,18 @@ bench_runner::run()
     volatile_write(config::state, config::kStateForwardProcessing);
   }
 
-  if(config::num_worker_threads()) {
+  if(config::worker_threads) {
     start_measurement();
   } else {
     LOG(INFO) << "No worker threads available to run benchmarks.";
-    getchar();
+    std::mutex trigger_lock;
+    std::unique_lock<std::mutex> lock(trigger_lock);
+    rep::backup_shutdown_trigger.wait(lock);
+    if(config::replay_policy != config::kReplayNone) {
+      while(volatile_read(rep::replayed_lsn_offset) <
+            volatile_read(rep::new_end_lsn_offset)) {}
+    }
+    cerr << "Shutdown successfully" << std::endl;
   }
 }
 
@@ -314,7 +321,7 @@ void bench_runner::start_measurement() {
   auto gather_stats = [&]() {
     sleep(1);
     uint64_t sec_commits = 0, sec_aborts = 0;
-    for (size_t i = 0; i < config::num_worker_threads(); i++) {
+    for (size_t i = 0; i < config::worker_threads; i++) {
       sec_commits += workers[i]->get_ntxn_commits();
       sec_aborts += workers[i]->get_ntxn_aborts();
     }
@@ -339,7 +346,7 @@ void bench_runner::start_measurement() {
   running = false;
 
   volatile_write(config::state, config::kStateShutdown);
-  for (size_t i = 0; i < config::num_worker_threads(); i++) {
+  for (size_t i = 0; i < config::worker_threads; i++) {
     workers[i]->join();
   }
   if(!config::is_backup_srv()) {
@@ -365,7 +372,7 @@ void bench_runner::start_measurement() {
   size_t n_phantom_aborts = 0;
   size_t n_query_commits= 0;
   uint64_t latency_numer_us = 0;
-  for (size_t i = 0; i < config::num_worker_threads(); i++) {
+  for (size_t i = 0; i < config::worker_threads; i++) {
     n_commits += workers[i]->get_ntxn_commits();
     n_aborts += workers[i]->get_ntxn_aborts();
     n_int_aborts += workers[i]->get_ntxn_int_aborts();

@@ -167,13 +167,15 @@ PartitionId(unsigned int wid)
 {
   ASSERT(wid >= 1 && wid <= NumWarehouses());
   wid -= 1; // 0-idx
-  if (NumWarehouses() <= config::num_worker_threads())
+  if (NumWarehouses() <= config::worker_threads) {
     // more workers than partitions, so its easy
     return wid;
-  const unsigned nwhse_per_partition = NumWarehouses() / config::num_worker_threads();
+  }
+  const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
   const unsigned partid = wid / nwhse_per_partition;
-  if (partid >= config::num_worker_threads())
-    return config::num_worker_threads() - 1;
+  if (partid >= config::worker_threads) {
+    return config::worker_threads - 1;
+  }
   return partid;
 }
 
@@ -2343,14 +2345,14 @@ private:
     const string s_name(name);
     vector<OrderedIndex*> ret(NumWarehouses());
     if (g_enable_separate_tree_per_partition && !is_read_only) {
-      if (NumWarehouses() <= config::num_worker_threads()) {
+      if (NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
           ret[i] = IndexDescriptor::GetIndex(s_name + "_" + to_string(i));
       } else {
-        const unsigned nwhse_per_partition = NumWarehouses() / config::num_worker_threads();
-        for (size_t partid = 0; partid < config::num_worker_threads(); partid++) {
+        const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
+        for (size_t partid = 0; partid < config::worker_threads; partid++) {
           const unsigned wstart = partid * nwhse_per_partition;
-          const unsigned wend   = (partid + 1 == config::num_worker_threads()) ?
+          const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
           OrderedIndex *idx =
             IndexDescriptor::GetIndex(s_name + "_" + to_string(partid));
@@ -2371,7 +2373,7 @@ private:
     const bool is_read_only = IsTableReadOnly(name);
     string s_name(name);
     if (g_enable_separate_tree_per_partition && !is_read_only) {
-      if(config::is_backup_srv() || NumWarehouses() <= config::num_worker_threads()) {
+      if(config::is_backup_srv() || NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
           string s_primary_name("");
           if(primary_idx_name) {
@@ -2381,10 +2383,10 @@ private:
           IndexDescriptor::New(ss_name, s_primary_name.c_str());
         }
       } else {
-        const unsigned nwhse_per_partition = NumWarehouses() / config::num_worker_threads();
-        for (size_t partid = 0; partid < config::num_worker_threads(); partid++) {
+        const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
+        for (size_t partid = 0; partid < config::worker_threads; partid++) {
           const unsigned wstart = partid * nwhse_per_partition;
-          const unsigned wend   = (partid + 1 == config::num_worker_threads()) ?
+          const unsigned wend   = (partid + 1 == config::worker_threads) ?
             NumWarehouses() : (partid + 1) * nwhse_per_partition;
           string s_primary_name("");
           if(primary_idx_name) {
@@ -2489,15 +2491,15 @@ protected:
   {
     fast_random r(23984543);
     vector<bench_worker *> ret;
-    if (NumWarehouses() <= config::num_worker_threads()) {
-      for (size_t i = 0; i < config::num_worker_threads(); i++)
+    if (NumWarehouses() <= config::worker_threads) {
+      for (size_t i = 0; i < config::worker_threads; i++)
         ret.push_back(new tpcc_worker(i, r.next(), db,
                                       open_tables, partitions,
                                       &barrier_a, &barrier_b,
                                       (i % NumWarehouses()) + 1));
     }
     else {
-      for (size_t i = 0; i < config::num_worker_threads(); i++) {
+      for (size_t i = 0; i < config::worker_threads; i++) {
         ret.push_back(
           new tpcc_worker(
             i,
