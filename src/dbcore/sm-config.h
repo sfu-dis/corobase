@@ -52,6 +52,11 @@ struct config {
     static int replay_policy;
     static bool single_redoer;
 
+    // Create an object for each version and install directly on the main
+    // indirection arrays only; for experimental purpose only to see the
+    // difference between pipelined/sync replay which use the pdest array.
+    static bool full_replay;
+
     // How does the backup replay log records?
     // Sync - replay in the critical path; ack 'persisted' only after replaying
     //        **and** persisted log records
@@ -64,7 +69,7 @@ struct config {
     // Background - don't care about the shipping, just keep replaying from persisted
     //              log records continuously; no freshness guarantee.
     // None - don't replay at all.
-    enum BackupReplayPolicy { kReplaySync, kReplayPipelined, kReplayBackground, kReplayNone};
+    enum BackupReplayPolicy { kReplaySync, kReplayPipelined, kReplayBackground, kReplayNone };
 
     enum NvramDelayType { kDelayNone, kDelayClflush, kDelayClwbEmu};
 
