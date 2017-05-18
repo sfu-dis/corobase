@@ -60,7 +60,8 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
       idx = (idx + 1) % nredoers;
       r = redoers[idx];
     }
-    if(nredoers == 1) {
+    if(logbuf_part == -1 || nredoers == 1) {
+      // logbuf_part will be -1 if there is only one partition
       r->start_lsn = from;
       r->end_lsn = to;
       all_dispatched = true;
