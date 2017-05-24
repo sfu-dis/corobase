@@ -154,6 +154,8 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
        enough to hold the object.
      */
     void load_object(char *buf, size_t bufsz, fat_ptr ptr, int align_bits=DEFAULT_ALIGNMENT_BITS);
+    void load_object_from_logbuf(char *buf, size_t bufsz, fat_ptr ptr,
+                                 int align_bits=DEFAULT_ALIGNMENT_BITS);
 
     /* A convenience method that can be used instead of load_object
        when the object to be loaded is an ext_ptr payload.

@@ -14,6 +14,7 @@ void primary_daemon_tcp() {
   tcp::server_context primary_tcp_ctx(config::primary_port, config::num_backups);
 
   for(uint32_t i = 0; i < config::num_backups; ++i) {
+    std::cout << "Expecting node " << i << std::endl;
     int backup_sockfd = primary_tcp_ctx.expect_client();
 
     // Got a new backup, send out the latest chkpt (if any)
@@ -208,6 +209,7 @@ void BackupDaemonTcp() {
     if(size == 0) {
       volatile_write(config::state, config::kStateShutdown);
       LOG(INFO) << "Got shutdown signal from primary, exit.";
+      rep::backup_shutdown_trigger.notify_all();  // Actually only needed if no query workers
       return;
     }
 

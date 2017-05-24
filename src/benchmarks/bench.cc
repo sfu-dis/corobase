@@ -252,13 +252,12 @@ bench_runner::run()
     if(config::wait_for_primary) {
       while(!config::IsForwardProcessing()) {}
     }
-    if(!config::quick_bench_start) {
+    if(config::log_ship_by_rdma && !config::quick_bench_start) {
       std::cout << "Press Enter to start benchmark" << std::endl;
       getchar();
     }
   } else {
     if(config::num_backups) {
-      std::cout << "[Primary] Expect " << config::num_backups << " backups\n";
       ALWAYS_ASSERT(not config::is_backup_srv());
       rep::start_as_primary();
       if (config::wait_for_backups) {
@@ -274,6 +273,7 @@ bench_runner::run()
   }
 
   if(config::worker_threads) {
+    getchar();
     start_measurement();
   } else {
     LOG(INFO) << "No worker threads available to run benchmarks.";

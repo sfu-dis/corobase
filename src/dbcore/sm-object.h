@@ -75,5 +75,5 @@ public:
     }
     return (dbtuple*)GetPayload();
   }
-  void Pin(sm_log_recover_mgr* lm = nullptr);  // Make sure the payload is in memory
+  void Pin(bool load_from_logbuf = false);  // Make sure the payload is in memory
 };

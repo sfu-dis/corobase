@@ -8,7 +8,7 @@
 // ptr should point to some position in the log and its size_code should refer
 // to only data size (i.e., the size of the payload of dbtuple rounded up).
 // Returns a fat_ptr to the object created
-void Object::Pin(sm_log_recover_mgr* lm) {
+void Object::Pin(bool load_from_logbuf) {
   uint32_t status = volatile_read(status_);
   if(status != kStatusStorage) {
     if(status == kStatusLoading) {
@@ -54,8 +54,8 @@ void Object::Pin(sm_log_recover_mgr* lm) {
     }
 
     // Load tuple varstr from the log
-    if (lm) {
-      lm->load_object((char *)tuple->get_value_start(), data_sz, pdest_);
+    if(load_from_logbuf) {
+      logmgr->load_object_from_logbuf((char *)tuple->get_value_start(), data_sz, pdest_);
     } else {
       logmgr->load_object((char *)tuple->get_value_start(), data_sz, pdest_);
     }

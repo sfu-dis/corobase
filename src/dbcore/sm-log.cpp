@@ -114,6 +114,12 @@ sm_log::load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits)
     get_impl(this)->_lm._lm.load_object(buf, bufsz, ptr, align_bits);
 }
 
+void
+sm_log::load_object_from_logbuf(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits)
+{
+    get_impl(this)->_lm._lm.load_object_from_logbuf(buf, bufsz, ptr, align_bits);
+}
+
 fat_ptr
 sm_log::load_ext_pointer(fat_ptr ptr)
 {
