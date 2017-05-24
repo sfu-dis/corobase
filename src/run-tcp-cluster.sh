@@ -1,7 +1,9 @@
 #!/bin/bash
 
+# Note: adjust segment size to 16GB - TCP backup currently doesn't
+# support creating new segments like the RDMA variant does
 primary="192.168.1.106" # apt030
-declare -a backups=("apt061" "apt053" "apt047" "apt043" "apt039" "apt040" "apt055")
+declare -a backups=("apt008")
 
 function cleanup {
   killall -9 ermia_SI 2> /dev/null

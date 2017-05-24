@@ -164,7 +164,7 @@ void primary_ship_log_buffer_tcp(int backup_sockfd, const char* buf, uint32_t si
   size_t nbytes = send(backup_sockfd, (char *)&size, sizeof(uint32_t), 0);
   THROW_IF(nbytes != sizeof(uint32_t), log_file_error, "Incomplete log shipping (header)");
   nbytes = send(backup_sockfd, buf, size, 0);
-  THROW_IF(nbytes != size, log_file_error, "Incomplete log shipping (data)");
+  LOG_IF(FATAL, nbytes != size) << "Incomplete log shipping: " << nbytes << "/" << size;
   // XXX(tzwang): do this in flush()?
   tcp::expect_ack(backup_sockfd);
 }
