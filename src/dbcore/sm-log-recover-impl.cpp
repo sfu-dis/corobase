@@ -9,7 +9,7 @@
 
 // Returns something that we will install on the OID entry. 
 fat_ptr
-sm_log_recover_impl::PrepareObject(sm_log_scan_mgr::record_scan *logrec, fat_ptr next) {
+sm_log_recover_impl::PrepareObject(sm_log_scan_mgr::record_scan *logrec) {
   // Regardless of the replay/warm-up policy (ie whether to load tuples from storage
   // to memory), here we need a wrapper that points to the ``real'' localtion and
   // the next version.
@@ -21,7 +21,7 @@ sm_log_recover_impl::PrepareObject(sm_log_scan_mgr::record_scan *logrec, fat_ptr
   sz += (sizeof(dbtuple) + logrec->payload_size());
   sz = align_up(sz);
 
-  Object* obj = new (MM::allocate(sz, 0)) Object(logrec->payload_ptr(), next,
+  Object* obj = new (MM::allocate(sz, 0)) Object(logrec->payload_ptr(), NULL_PTR,
                                                  0, config::eager_warm_up());
   obj->SetClsn(logrec->payload_ptr());
   ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
@@ -42,7 +42,7 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
       oa->ensure_size(o);
       fat_ptr* entry_ptr = oa->get(o);
       if(volatile_read(entry_ptr->_ptr) == 0) {
-        fat_ptr ptr = PrepareObject(logrec, NULL_PTR);
+        fat_ptr ptr = PrepareObject(logrec);
         if(!__sync_bool_compare_and_swap(&entry_ptr->_ptr, 0, ptr._ptr)) {
           MM::deallocate(ptr);
         }
@@ -60,7 +60,7 @@ sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan *logrec, bool l
       }
     }
   } else {
-    fat_ptr ptr = PrepareObject(logrec, NULL_PTR);
+    fat_ptr ptr = PrepareObject(logrec);
     ASSERT(oidmgr->file_exists(f));
     oid_array *oa = get_impl(oidmgr)->get_array(f);
     oa->ensure_size(o);
@@ -152,21 +152,27 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
     if(config::full_replay) {
       auto* oa = IndexDescriptor::Get(f)->GetTupleArray();
       fat_ptr* entry_ptr = oa->get(o);
+      fat_ptr ptr = NULL_PTR;
+      bool success = false;
     retry_install_obj:
       fat_ptr expected = volatile_read(*entry_ptr);
       Object* head_obj = (Object*)expected.offset();
       if(!head_obj || head_obj->GetClsn().offset() < logrec->payload_ptr().offset()) {
-        fat_ptr ptr = PrepareObject(logrec, head_obj ?
-                                    head_obj->GetPersistentAddress() : NULL_PTR);
-        Object* new_obj = (Object*)ptr.offset();
-        new_obj->Pin();
+        Object* new_obj = nullptr;
+        if(ptr == NULL_PTR) {
+          ptr = PrepareObject(logrec);
+          new_obj = (Object*)ptr.offset();
+          new_obj->Pin(true);  // This will fully instantiate the version
+        }
+        new_obj = (Object*)ptr.offset();
         new_obj->SetNextVolatile(expected);
-        // Pin it so next_pdest is available
         if(!__sync_bool_compare_and_swap(&entry_ptr->_ptr, expected._ptr, ptr._ptr)) {
-          expected = volatile_read(*entry_ptr);
-          MM::deallocate(ptr);
           goto retry_install_obj;
         }
+        success = true;
+      }
+      if(ptr != NULL_PTR && !success) {
+        MM::deallocate(ptr);
       }
     } else {
       FID pf = IndexDescriptor::Get(f)->GetPersistentAddressFid();
@@ -188,7 +194,7 @@ sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan *logrec,
     // so no write-write-conflicts possible, so we can simply skip deletes here.
     auto* oa = IndexDescriptor::Get(f)->GetTupleArray();
     fat_ptr head_ptr = *oa->get(o);
-    fat_ptr ptr = PrepareObject(logrec, head_ptr);
+    fat_ptr ptr = PrepareObject(logrec);
     Object* new_object = (Object*)ptr.offset();
     if(latest) {
     retry_primary:

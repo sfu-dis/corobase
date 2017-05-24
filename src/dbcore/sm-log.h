@@ -368,7 +368,10 @@ struct sm_log {
        must reference the log (ASI_LOG) and the given buffer must be large
        enough to hold the object.
      */
-    void load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits=DEFAULT_ALIGNMENT_BITS);
+    void load_object(char *buf, size_t bufsz, fat_ptr ptr,
+                     size_t align_bits=DEFAULT_ALIGNMENT_BITS);
+    void load_object_from_logbuf(char *buf, size_t bufsz, fat_ptr ptr,
+                                 size_t align_bits=DEFAULT_ALIGNMENT_BITS);
 
     /* Retrieve the address of an externalized log record payload.
 

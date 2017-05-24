@@ -246,6 +246,41 @@ sm_log_recover_mgr::log_scanner::_find_record()
 }
 
 void
+sm_log_recover_mgr::load_object_from_logbuf(char *buf, size_t bufsz, fat_ptr ptr, int align_bits)
+{
+    THROW_IF(ptr.asi_type() != fat_ptr::ASI_LOG,
+             illegal_argument, "Source object not stored in the log");
+    size_t nbytes = decode_size_aligned(ptr.size_code(), align_bits);
+    THROW_IF(bufsz < nbytes, illegal_argument,
+             "Source object too large for buffer (%zd needed, %zd available)",
+             nbytes, bufsz);
+
+    auto segnum = ptr.log_segment();
+    ASSERT(segnum >= 0);
+
+    auto *sid = get_segment(segnum);
+    ASSERT(sid);
+    ASSERT(ptr.offset() >= sid->start_offset);
+
+    ALWAYS_ASSERT(config::is_backup_srv());
+    auto* logbuf = logmgr->get_logbuf();
+    size_t read_end = logbuf->read_end();
+    size_t read_begin = logbuf->read_begin();
+    uint64_t offset = sid->buf_offset(LSN::from_ptr(ptr));
+    if(read_begin <= offset && read_end > offset + nbytes) {
+      memcpy(buf, logbuf->_get_ptr(offset), nbytes);
+      // Verify to make sure we didn't read garbage
+      read_end = logbuf->read_end();
+      read_begin = logbuf->read_begin();
+      if(read_begin <= offset && read_end > offset + nbytes) {
+        return;
+      }
+    }
+    while(ptr.offset() >= logmgr->durable_flushed_lsn().offset()) {}
+    load_object(buf, bufsz, ptr, align_bits);
+}
+
+void
 sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr, int align_bits)
 {
     THROW_IF(ptr.asi_type() != fat_ptr::ASI_LOG,
@@ -262,22 +297,8 @@ sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr, int align_
     ASSERT(sid);
     ASSERT(ptr.offset() >= sid->start_offset);
 
-    if(config::nvram_log_buffer && ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
-      ALWAYS_ASSERT(config::is_backup_srv());
-      auto* logbuf = logmgr->get_logbuf();
-      size_t read_end = logbuf->read_end();
-      size_t read_begin = logbuf->read_begin();
-      uint64_t offset = sid->buf_offset(LSN::from_ptr(ptr));
-      if(read_begin <= offset && read_end > offset + nbytes) {
-        memcpy(buf, logbuf->_get_ptr(offset), nbytes);
-        // Verify to make sure we didn't read garbage
-        read_end = logbuf->read_end();
-        read_begin = logbuf->read_begin();
-        if(read_begin <= offset && read_end > offset + nbytes) {
-          return;
-        }
-      }
-      while(ptr.offset() >= logmgr->durable_flushed_lsn().offset()) {}
+    if (config::nvram_log_buffer && ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
+      return load_object_from_logbuf(buf, bufsz, ptr, align_bits);
     }
 
     size_t m = os_pread(sid->fd, buf, nbytes, ptr.offset() - sid->start_offset);
