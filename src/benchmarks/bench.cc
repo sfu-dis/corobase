@@ -273,7 +273,6 @@ bench_runner::run()
   }
 
   if(config::worker_threads) {
-    getchar();
     start_measurement();
   } else {
     LOG(INFO) << "No worker threads available to run benchmarks.";
