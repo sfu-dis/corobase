@@ -9,8 +9,6 @@
 
 void
 parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN to) {
-  // FIXME(tzwang): 20170503: the timer seems to cause unstable performance...
-  //util::scoped_timer t("parallel_offset_replay");
   scanner = s;
   DLOG(INFO) << "About to roll " << std::hex << from.offset() << " " << to.offset();
 
