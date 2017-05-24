@@ -27,10 +27,7 @@ output_dir=$exec_dir/results-`date +%Y%m%d%H%M%S`/
 mkdir -p $output_dir
 
 echo "Output dir: $output_dir"
-echo "CC: $CC"
-echo "Scale factor: $scale_factor"
-echo "Duration: $duration"
-echo "Threads: $threads"
+echo "$CC, SF=$scale_factor, duration=$duration, threads=$threads"
 echo "Primary args: $primary_args"
 echo "Backup args: $backup_args"
 
