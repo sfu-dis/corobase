@@ -58,6 +58,7 @@ void LogRedoDaemon() {
   while(true) {
     LSN end = volatile_read(redo_end_lsn);
     if(end.offset() > volatile_read(replayed_lsn_offset)) {
+      //util::scoped_timer t("log_replay");
       LSN start = volatile_read(redo_start_lsn);
       ASSERT(start.segment() == end.segment());
       logmgr->redo_logbuf(start, end);
