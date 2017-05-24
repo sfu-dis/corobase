@@ -2,6 +2,8 @@
 #include <string.h>
 #include "rcu.h"
 
+#include <glog/logging.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
@@ -44,7 +46,7 @@ int
 os_openat(int dfd, char const *fname, int flags)
 {
     int fd = openat(dfd, fname, flags, S_IRUSR|S_IWUSR);
-    THROW_IF(fd < 0, os_error, errno, "Unable to open file: %s", fname);
+    LOG_IF(FATAL, fd < 0) << "Unable to open file " << fname;
     return fd;
 }
 

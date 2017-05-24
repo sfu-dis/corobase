@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <stdint.h>
 
+#include <glog/logging.h>
+
 #include "sm-exceptions.h"
 
 /* A window buffer implementation that maintains a fixed-size
@@ -106,8 +108,9 @@ struct window_buffer {
        the reader or not.
      */
     char *write_buf(size_t offset, size_t size) {
-		THROW_IF(write_begin() > offset, illegal_argument,
-				"Attempted write to region before before window");
+        LOG_IF(FATAL, write_begin() > offset)
+            << "Attempted write to region before before window "
+            << write_begin() << "/" << offset;
         if (write_end() < offset+size) {
             return NULL;
         }
