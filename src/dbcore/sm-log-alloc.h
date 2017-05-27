@@ -1,9 +1,6 @@
-// -*- mode:c++ -*-
-#ifndef __SM_LOG_ALLOC_H
-#define __SM_LOG_ALLOC_H
+#pragma once
 
 #include <deque>
-#include "../spinlock.h"
 #include "sm-log-recover.h"
 
 /* The log block allocator.
@@ -142,7 +139,7 @@ struct sm_log_alloc_mgr {
     struct commit_queue {
         // Each entry is a std::pair<lsn_offset, start_time>
         std::vector<std::pair<uint64_t, uint64_t> > queue;
-        spinlock lock;  // well hopefully this won't be a bottleneck
+        mcs_lock lock;  // well hopefully this won't be a bottleneck
         uint32_t start;
         uint32_t end;
         sm_log_alloc_mgr *lm;
@@ -154,5 +151,3 @@ struct sm_log_alloc_mgr {
     };
     commit_queue *_commit_queue;
 };
-
-#endif

@@ -106,10 +106,10 @@ void
 sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn, uint64_t start_time)
 {
 retry:
-    lock.lock();
+  {
+    CRITICAL_SECTION(cs, lock);
     if (start == (end + 1) % config::group_commit_queue_length) {
         // max_queue_length is too small?
-        lock.unlock();
         if (config::nvram_log_buffer) {
             // just persist it, no need to flush to disk
             //auto persist_lsn_offset = logmgr->persist_log_buffer();
@@ -124,15 +124,15 @@ retry:
     volatile_write(queue[end].first, lsn);
     volatile_write(queue[end].second, start_time);
     volatile_write(end, (end + 1) % config::group_commit_queue_length);
-    lock.unlock();
+  }
 }
 
 void
 sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto, uint64_t end_time)
 {
     for (uint32_t i = 0; i < config::worker_threads; i++) {
+        CRITICAL_SECTION(cs, _commit_queue[i].lock);
         uint32_t to_dequeue = 0;
-        _commit_queue[i].lock.lock();
         auto slot = volatile_read(_commit_queue[i].start);
         auto end = volatile_read(_commit_queue[i].end);
         while (slot != end) {
@@ -150,7 +150,6 @@ sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto, uint64_t end_time)
         ALWAYS_ASSERT(_commit_queue[i].size() >= to_dequeue);
         volatile_write(_commit_queue[i].start,
           (volatile_read(_commit_queue[i].start) + to_dequeue) % config::group_commit_queue_length);
-        _commit_queue[i].lock.unlock();
     }
 }
 
