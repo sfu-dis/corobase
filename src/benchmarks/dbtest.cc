@@ -51,7 +51,7 @@ DEFINE_string(ssn_read_opt_threshold, "0xFFFFFFFFFFFFFFFF", "Threshold for SSN's
 DEFINE_bool(ssi_read_only_opt, false, "Whether to enable SSI's read-only optimization."
   "Note: this is **not** safe snapshot.");
 #endif
-DEFINE_bool(nvram_log_buffer, false, "Whether to use NVRAM-based log buffer.");
+DEFINE_bool(nvram_log_buffer, true , "Whether to use NVRAM-based log buffer.");
 DEFINE_string(nvram_delay_type, "none", "How should NVRAM be emulated?"
   "none - no dealy, same as DRAM + non-volatile cache;"
   "clflush - use clflush to 'persist';"

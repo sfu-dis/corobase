@@ -286,8 +286,7 @@ void BackupDaemonRdma() {
     ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
     self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
 
-    if(config::replay_policy == config::kReplayPipelined &&
-      config::nvram_log_buffer) {
+    if(config::replay_policy == config::kReplayPipelined) {
       volatile_write(redo_start_lsn._val, start_lsn._val);
       volatile_write(redo_end_lsn._val, end_lsn._val);
     }
