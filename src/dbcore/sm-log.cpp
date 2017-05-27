@@ -81,12 +81,6 @@ sm_log::assign_segment(uint64_t lsn_begin, uint64_t lsn_end)
     return rval.sid;
 }
 
-segment_id *
-sm_log::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
-{
-    return get_impl(this)->_lm.PrimaryFlushLog(logbuf, new_dlsn_offset, update_dmark);
-}
-
 void sm_log::BackupFlushLog(uint64_t new_dlsn_offset) {
   return get_impl(this)->_lm.BackupFlushLog(new_dlsn_offset);
 }
