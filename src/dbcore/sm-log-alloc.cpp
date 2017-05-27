@@ -286,7 +286,7 @@ retry:
  * The caller should enter/exit_rcu().
  */
 segment_id *
-sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offset, bool update_dmark)
+sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset, bool update_dmark)
 {
   ASSERT(!config::is_backup_srv());
   /* The primary ships log records at log buffer flush boundaries, and log flushing
@@ -352,9 +352,9 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
           new_byte = new_sid->buf_offset(new_dlsn_offset);
         }
 
-        ASSERT(durable_byte == logbuf.read_begin());
+        ASSERT(durable_byte == _logbuf->read_begin());
         ASSERT(durable_byte < new_byte);
-        ASSERT(new_byte <= logbuf.write_end());
+        ASSERT(new_byte <= _logbuf->write_end());
 
         /* Log insertions don't advance the buffer window because
            they tend to complete out of order. Do it for them now
@@ -362,12 +362,12 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
            is when we read and replay the log buffer directly.
          */
         uint64_t nbytes = new_byte - durable_byte;
-        logbuf.advance_writer(new_byte);
-        THROW_IF(logbuf.available_to_read() < nbytes,
+        _logbuf->advance_writer(new_byte);
+        THROW_IF(_logbuf->available_to_read() < nbytes,
                  log_file_error, "Not enough log bufer to read");
 
         // perform the write
-        auto *buf = logbuf.read_buf(durable_byte, nbytes);
+        auto *buf = _logbuf->read_buf(durable_byte, nbytes);
         auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
         if(config::num_active_backups && config::IsForwardProcessing()) {
           // Ship it first, this is async for RDMA
@@ -393,7 +393,7 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
             imm = durable_sid->start_offset -
                   (durable_sid->segnum - 1) * config::log_segment_mb * config::MB;
           }
-          LOG_IF(FATAL, nbytes > logbuf.window_size() / 2 + MIN_LOG_BLOCK_SIZE)
+          LOG_IF(FATAL, nbytes > _logbuf->window_size() / 2 + MIN_LOG_BLOCK_SIZE)
             << "Trying to ship more than half log buffer";
           rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
           if(new_seg) {
@@ -423,7 +423,7 @@ sm_log_alloc_mgr::PrimaryFlushLog(window_buffer &logbuf, uint64_t new_dlsn_offse
         }
 
         // After this the buffer space will become available for consumption
-        logbuf.advance_reader(new_byte);
+        _logbuf->advance_reader(new_byte);
 
         if(config::IsForwardProcessing() && config::fake_log_write &&
            config::num_active_backups == config::num_backups) {
@@ -741,7 +741,7 @@ sm_log_alloc_mgr::_log_write_daemon()
           new_dlsn_offset = min_tls;
         }
         ALWAYS_ASSERT(new_dlsn_offset >= _durable_flushed_lsn_offset);
-        auto *durable_sid = PrimaryFlushLog(*_logbuf, new_dlsn_offset);
+        auto *durable_sid = PrimaryFlushLog(new_dlsn_offset);
 
         rcu_exit();
 
