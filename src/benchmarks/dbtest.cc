@@ -291,6 +291,7 @@ main(int argc, char **argv)
   cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize() << endl;
 
   if(config::is_backup_srv()) {
+    cerr << "  nvram-log-buffer  : " << config::nvram_log_buffer << endl;
     cerr << "  nvram-delay-type  : " << FLAGS_nvram_delay_type << endl;
     cerr << "  cycles-per-byte   : " << config::cycles_per_byte << endl;
     cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
