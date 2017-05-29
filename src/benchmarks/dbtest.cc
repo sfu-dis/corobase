@@ -82,6 +82,8 @@ DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
 DEFINE_bool(wait_for_backups, true,
   "Whether to wait for backups to become online before starting transactions.");
+DEFINE_bool(pipelined_persist, false,
+  "Whether *not* to wait for the 'persited' signal from backups immediately after shipping.");
 
 // Options specific to backups
 DEFINE_string(log_ship_warm_up, "none", "Method to load tuples for log shipping:"
@@ -245,6 +247,7 @@ main(int argc, char **argv)
     config::log_key_for_update = FLAGS_log_key_for_update;
     config::num_backups = FLAGS_num_backups;
     config::wait_for_backups = FLAGS_wait_for_backups;
+    config::pipelined_persist = FLAGS_pipelined_persist;
   }
 
   config::init();
@@ -318,6 +321,7 @@ main(int argc, char **argv)
     cerr << "  fake-log-write    : " << config::fake_log_write << endl;
     cerr << "  num-backups       : " << config::num_backups   << endl;
     cerr << "  wait-for-backups  : " << config::wait_for_backups << endl;
+    cerr << "  pipelined-persist : " << config::pipelined_persist << endl;
   }
 
   MM::prepare_node_memory();

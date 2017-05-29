@@ -395,6 +395,10 @@ sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset, bool update_dmark)
           }
           LOG_IF(FATAL, nbytes > _logbuf->window_size() / 2 + MIN_LOG_BLOCK_SIZE)
             << "Trying to ship more than half log buffer";
+          if (config::pipelined_persist) {
+            // Wait for the backup to persist (it might act fast and set ReadyToReceive too)
+            rep::primary_rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+          }
           rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
           if(new_seg) {
             new_seg = false;
@@ -417,8 +421,10 @@ sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset, bool update_dmark)
             // Now we need to poll to make sure the RDMA write finished
             // One for the log buffer partition bounds, the other for data
             rep::primary_rdma_poll_send_cq(2);
-            // Wait for the backup to persist (it might act fast and set ReadyToReceive too)
-            rep::primary_rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+            if (!config::pipelined_persist) {
+              // Wait for the backup to persist (it might act fast and set ReadyToReceive too)
+              rep::primary_rdma_wait_for_message(rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+            }
           }
         }
 

@@ -45,6 +45,7 @@ struct config {
     static bool group_commit;
     static int group_commit_timeout;
     static int group_commit_queue_length;  // how much to reserve
+    static bool pipelined_persist;  // wait for persistence right after shipping
 
     // Backup-specific settings
     static uint32_t benchmark_seconds;
