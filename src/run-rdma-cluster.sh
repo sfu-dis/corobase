@@ -1,6 +1,6 @@
 #!/bin/bash 
-primary=apt030
-declare -a backups=("apt061" "apt053" "apt047" "apt043" "apt039" "apt040" "apt055")
+primary="192.168.1.106" # apt059
+declare -a backups=("apt061" "apt064" "apt051" "apt007" "apt044" "apt055" "apt039")
 
 function cleanup {
   killall -9 ermia_SI 2> /dev/null
@@ -19,13 +19,14 @@ run() {
   full=$4
   redoers=$5
   delay=$6
+  nvram=$7
 
   echo "----------"
-  echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay
+  echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram
   echo "----------"
   ./run-cluster.sh SI $t 10 $t tpcc_org tpccr \
     "-chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma -fake_log_write -wait_for_backups -num_backups=$num_backups" \
-    "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma -nvram_log_buffer -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay" \
+    "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay" \
     "${backups[@]:0:$num_backups}"
   echo
 }
@@ -41,7 +42,7 @@ single_backup_replay() {
           fi
           num_backups=1
           echo "backups:$num_backups thread:$t $policy full_redo=$full_redo redoers=$redoers delay=$delay"
-          run $num_backups $t $policy $full_redo $redoers $delay
+          run $num_backups $t $policy $full_redo $redoers $delay 1
         done
       done
     done
@@ -51,12 +52,12 @@ single_backup_replay() {
 multi_backup_replay() {
   delay="none"
   full_redo=0
-  for num_backups in 5 6 7; do
-    for policy in pipelined sync; do
-      for redoers in 8 4 2 1; do
+  for redoers in 4 2 1 8; do
+    for policy in sync pipelined; do
+      for num_backups in 2 3 4 5 6 7; do
         t=16
         echo "backups:$num_backups thread:$t $policy full_redo=$full_redo redoers=$redoers delay=$delay"
-        run $num_backups $t $policy $full_redo $redoers $delay
+        run $num_backups $t $policy $full_redo $redoers $delay 1
       done
     done
   done
@@ -65,32 +66,43 @@ multi_backup_replay() {
 nvram() {
   for delay in clwb-emu clflush; do
     full_redo=0
-    for num_backups in 5 6 7; do
+    for num_backups in 1 2 3 4 5 6 7; do
       t=16
 
       policy="none"
       redoers=0
       echo "backups:$num_backups thread:$t $policy full_redo=$full_redo redoers=$redoers delay=$delay"
-      run $num_backups $t $policy $full_redo $redoers $delay
+      run $num_backups $t $policy $full_redo $redoers $delay 1
 
       for policy in pipelined ; do
-        for redoers in 8; do
+        for redoers in 4; do
           echo "backups:$num_backups thread:$t $policy full_redo=$full_redo redoers=$redoers delay=$delay"
-          run $num_backups $t $policy $full_redo $redoers $delay
+          run $num_backups $t $policy $full_redo $redoers $delay 1
         done
       done
     done
   done
 }
 
+no_nvram() {
+  for num_backups in 1 2 3 4 5 6 7; do
+    echo "backups:$num_backups thread:16 pipelined full_redo=0 redoers=4 delay=none nvram_log_buffer=0"
+    run $num_backups 16 "pipelined" 0 4 "none" 0
+
+    echo "backups:$num_backups thread:16 none full_redo=0 redoers=0 delay=none nvram_log_buffer=0"
+    run $num_backups 16 "none" 0 0 "none" 0
+  done
+}
+
 no_replay() {
   delay="none"
-  for t in 2 4 8 16; do
-    run 1 $t none 0 0 $delay
+  for t in 1 2 4 8 16; do
+    run 1 $t none 0 0 $delay 1
   done
-  for num_backups in 5 6 7; do
+
+  for num_backups in 2 3 4 5 6 7; do
     t=16
-    run $num_backups $t none 0 0 $delay
+    run $num_backups $t none 0 0 $delay 1
   done
 }
 
@@ -102,33 +114,36 @@ full_replay() {
     redoers=4
     t=16
     echo "backups:$num_backups thread:$t $policy full_redo=$full_redo redoers=$redoers delay=$delay"
-    run $num_backups $t $policy $full_redo $redoers $delay
+    run $num_backups $t $policy $full_redo $redoers $delay 1
   done
 }
+
+for r in 1 2 3; do
+  echo "Running no_replay r$r"
+  no_replay
+done
+
+for r in 1 2 3; do
+  echo "Running single_backup_replay r$r"
+  single_backup_replay
+done
 
 for r in 1 2 3; do
   echo "Running full_replay r$r"
   full_replay
 done
 
-#for r in 1 2 3; do
-#  echo "Running nvram r$r"
-#  nvram
-#done
+for r in 1 2 3; do
+  echo "Running multi_backup_replay r$r"
+  multi_backup_replay
+done
 
-#for r in 1 2 3; do
-#  echo "Running no_replay r$r"
-#  no_replay
-#done
+for r in 1 2 3; do
+  echo "Running nvram r$r"
+  nvram
+done
 
-#for r in 1 2 3; do
-#  echo "Running single_backup_replay r$r"
-#  single_backup_replay
-#done
-
-#for r in 1 2 3; do
-#  echo "Running multi_backup_replay r$r"
-#  multi_backup_replay
-#done
-
-
+for r in 1 2 3; do
+  echo "Running no_nvram r$r"
+  no_nvram
+done
