@@ -270,6 +270,11 @@ void BackupDaemonRdma() {
                  << std::hex << start_lsn.offset() << "." << start_lsn.segment()
                  << "-" << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
       ASSERT(start_lsn.segment() == end_lsn.segment());
+      // Make the new records visible, but pending persistence
+      volatile_write(replayed_lsn_offset, end_lsn.offset());
+    } else if(config::replay_policy == config::kReplayPipelined) {
+      volatile_write(redo_start_lsn._val, start_lsn._val);
+      volatile_write(redo_end_lsn._val, end_lsn._val);
     }
 
     // Now wait for the flusher to finish persisting log if we don't have NVRAM,
@@ -277,19 +282,9 @@ void BackupDaemonRdma() {
       while(end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
     }
 
-    // Make the new records visible only after persisting them
-    if(config::replay_policy == config::kReplaySync) {
-      volatile_write(replayed_lsn_offset, end_lsn.offset());
-    }
-
     // Tell the primary the data is persisted, it can continue
     ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
     self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
-
-    if(config::replay_policy == config::kReplayPipelined) {
-      volatile_write(redo_start_lsn._val, start_lsn._val);
-      volatile_write(redo_end_lsn._val, end_lsn._val);
-    }
 
     // Next iteration
     start_lsn = end_lsn;
