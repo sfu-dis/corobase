@@ -1,3 +1,4 @@
+#include <x86intrin.h>
 #include "../benchmarks/ndb_wrapper.h"
 #include "../util.h"
 #include "sm-index.h"
@@ -99,6 +100,28 @@ parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from, LSN 
 void
 parallel_offset_replay::redo_runner::redo_logbuf_partition() {
   ALWAYS_ASSERT(config::is_backup_srv());
+
+  if(config::nvram_log_buffer &&
+     config::persist_nvram_on_replay &&
+     config::nvram_delay_type != config::kDelayNone) {
+    auto *sid = logmgr->get_segment(start_lsn.segment());
+    uint64_t start_byte = sid->buf_offset(start_lsn.offset());
+    uint64_t size = end_lsn.offset() - start_lsn.offset();
+    auto *buf = sm_log::logbuf->read_buf(start_byte, size);
+
+    if(config::nvram_delay_type == config::kDelayClflush) {
+      uint32_t clines = size / CACHELINE_SIZE;
+      for(uint32_t i = 0; i < clines; ++i) {
+        _mm_clflush(&buf[i * CACHELINE_SIZE]);
+      }
+    } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
+      uint64_t total_cycles = size * config::cycles_per_byte;
+      unsigned int unused = 0;
+      uint64_t cycle_end = __rdtscp(&unused) + total_cycles;
+      while(__rdtscp(&unused) < cycle_end) {}
+    }
+    __atomic_add_fetch(&rep::persisted_nvram_size, size, __ATOMIC_SEQ_CST);
+  }
 
   //util::scoped_timer t("redo_partition");
   RCU::rcu_enter();

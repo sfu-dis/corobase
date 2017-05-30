@@ -53,6 +53,7 @@ struct config {
     static bool wait_for_primary;
     static int replay_policy;
     static uint32_t replay_threads;
+    static bool persist_nvram_on_replay;
 
     // Create an object for each version and install directly on the main
     // indirection arrays only; for experimental purpose only to see the

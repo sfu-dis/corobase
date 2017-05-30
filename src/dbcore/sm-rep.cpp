@@ -12,9 +12,11 @@ std::mutex backup_sockfds_mutex;
 // For backups only
 uint64_t replayed_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_lsn_offset CACHE_ALIGNED;
+uint64_t persisted_nvram_size CACHE_ALIGNED;
 uint64_t new_end_lsn_offset CACHE_ALIGNED;
 LSN redo_start_lsn CACHE_ALIGNED;
 LSN redo_end_lsn CACHE_ALIGNED;
+
 
 void start_as_primary() {
   memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
@@ -73,6 +75,7 @@ void LogRedoDaemon() {
 void BackupStartReplication() {
   volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
   volatile_write(persisted_lsn_offset, logmgr->durable_flushed_lsn().offset());
+  volatile_write(persisted_nvram_size, 0);
   ALWAYS_ASSERT(oidmgr);
   logmgr->recover();
   if(config::log_ship_by_rdma) {
