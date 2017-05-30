@@ -39,6 +39,7 @@ const uint64_t kRdmaPersisted = 0x4;
 
 extern uint64_t replayed_lsn_offset;
 extern uint64_t persisted_lsn_offset;
+extern uint64_t persisted_nvram_size;
 extern uint64_t new_end_lsn_offset;
 extern LSN redo_start_lsn;
 extern LSN redo_end_lsn;
@@ -163,7 +164,6 @@ void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
 void send_log_files_after_rdma(RdmaNode* node, backup_start_metadata* md, LSN chkpt_start);
 void primary_rdma_poll_send_cq(uint64_t nops);
 void primary_rdma_wait_for_message(uint64_t msg, bool reset);
-//void primary_persist_remote_nvram(const char* buf, uint32_t size);
 
 // TCP-specific functions
 void start_as_backup_tcp();

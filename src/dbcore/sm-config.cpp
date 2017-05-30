@@ -55,6 +55,7 @@ bool config::full_replay = false;
 uint32_t config::replay_threads = 0;
 uint32_t config::threads = 0;
 bool config::pipelined_persist = false;
+bool config::persist_nvram_on_replay = true;
 
 void
 config::init() {

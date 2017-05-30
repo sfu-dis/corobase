@@ -104,6 +104,7 @@ DEFINE_string(replay_policy, "pipelined", "How log records should be replayed on
 DEFINE_bool(full_replay, false, "Create a version object directly and install it on the main arrays."
   "(for comparison and experimental purpose only).");
 DEFINE_uint64(replay_threads, 0, "How many replay threads to use.");
+DEFINE_bool(persist_nvram_on_replay, true, "Whether to issue clwb/clflush (if specified) during replay.");
 
 static vector<string>
 split_ws(const string &s)
@@ -172,6 +173,7 @@ main(int argc, char **argv)
     config::quick_bench_start = FLAGS_quick_bench_start;
     config::wait_for_primary = FLAGS_wait_for_primary;
     config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
+    config::persist_nvram_on_replay = FLAGS_persist_nvram_on_replay;
     if(FLAGS_log_ship_warm_up == "none" ) {
       config::log_ship_warm_up_policy = config::WARM_UP_NONE;
     } else if(FLAGS_log_ship_warm_up == "lazy") {
@@ -303,6 +305,7 @@ main(int argc, char **argv)
     cerr << "  quick-bench-start : " << config::quick_bench_start << endl;
     cerr << "  wait-for-primary  : " << config::wait_for_primary << endl;
     cerr << "  replay-threads    : " << config::replay_threads << endl;
+    cerr << "  persist-nvram-on-replay : " << config::persist_nvram_on_replay << endl;
   } else {
     cerr << "  parallel-loading: " << FLAGS_parallel_loading << endl;
     cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions << endl;

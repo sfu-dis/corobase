@@ -230,9 +230,8 @@ void BackupDaemonRdma() {
     volatile_write(new_end_lsn_offset, end_lsn.offset());
 
     // Impose delays to emulate NVRAM if needed
-    if(config::nvram_log_buffer &&
-       (config::nvram_delay_type != config::kDelayNone)) {
-      uint64_t size = end_lsn.offset() - start_lsn.offset();
+    uint64_t size = end_lsn.offset() - start_lsn.offset();
+    if(config::nvram_log_buffer && !config::persist_nvram_on_replay) {
       if(config::nvram_delay_type == config::kDelayClflush) {
         segment_id *sid = logmgr->get_segment(start_lsn.segment());
         const char* buf = sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
@@ -240,7 +239,7 @@ void BackupDaemonRdma() {
         for(uint32_t i = 0; i < clines; ++i) {
           _mm_clflush(&buf[i * CACHELINE_SIZE]);
         }
-      } else {
+      } else if(config::nvram_delay_type == config::kDelayClwbEmu) {
         // Emulate clwb, spin
         uint64_t total_cycles = size * config::cycles_per_byte;
         unsigned int unused = 0;
@@ -277,8 +276,13 @@ void BackupDaemonRdma() {
       volatile_write(redo_end_lsn._val, end_lsn._val);
     }
 
-    // Now wait for the flusher to finish persisting log if we don't have NVRAM,
-    if(!config::nvram_log_buffer) {
+    if(config::nvram_log_buffer) {
+      if(config::persist_nvram_on_replay) {
+        while(size > volatile_read(persisted_nvram_size)) {}
+        volatile_write(persisted_nvram_size, 0);
+      }
+    } else {
+      // Now wait for the flusher to finish persisting log if we don't have NVRAM,
       while(end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
     }
 
