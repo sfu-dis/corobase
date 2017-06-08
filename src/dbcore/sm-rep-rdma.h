@@ -30,12 +30,17 @@ class RdmaNode {
   uint32_t daemon_buf_ridx_;
 
  public:
-  RdmaNode(bool as_primary) : context_(nullptr), msg_buf_ridx_(-1),
-    log_buf_ridx_(-1), log_buf_partition_bounds_ridx_(-1), daemon_buf_ridx_(-1) {
-    if(as_primary) {
+  RdmaNode(bool as_primary)
+      : context_(nullptr),
+        msg_buf_ridx_(-1),
+        log_buf_ridx_(-1),
+        log_buf_partition_bounds_ridx_(-1),
+        daemon_buf_ridx_(-1) {
+    if (as_primary) {
       context_ = new rdma::context(config::primary_port, 1);
     } else {
-      context_ = new rdma::context(config::primary_srv, config::primary_port, 1);
+      context_ =
+          new rdma::context(config::primary_srv, config::primary_port, 1);
     }
 
     memset(msg_buf_, 0, kMessageSize);
@@ -43,12 +48,15 @@ class RdmaNode {
 
     // XXX(tzawng): Assuming the primary and backup register in the same order
     msg_buf_ridx_ = context_->register_memory(msg_buf_, kMessageSize);
-    daemon_buf_ridx_ = context_->register_memory(daemon_buf_, kDaemonBufferSize);
+    daemon_buf_ridx_ =
+        context_->register_memory(daemon_buf_, kDaemonBufferSize);
 
     auto* logbuf = sm_log::get_logbuf();
-    log_buf_ridx_ = context_->register_memory(logbuf->_data, logbuf->window_size() * 2);
-    log_buf_partition_bounds_ridx_ = context_->register_memory(
-      (char*)rep::logbuf_partition_bounds, sizeof(uint64_t) * kMaxLogBufferPartitions);
+    log_buf_ridx_ =
+        context_->register_memory(logbuf->_data, logbuf->window_size() * 2);
+    log_buf_partition_bounds_ridx_ =
+        context_->register_memory((char*)rep::logbuf_partition_bounds,
+                                  sizeof(uint64_t) * kMaxLogBufferPartitions);
 
     context_->finish_init();
     LOG(INFO) << "RDMA initialized";
@@ -58,12 +66,12 @@ class RdmaNode {
 
   inline void WaitForMessageAsPrimary(uint64_t msg, bool reset = true) {
     ALWAYS_ASSERT(!config::is_backup_srv());
-    while(true) {
-      uint64_t m = volatile_read(*(uint64_t *)GetMemoryRegion(msg_buf_ridx_));
-      if(m & msg) {
-        if(reset) {
+    while (true) {
+      uint64_t m = volatile_read(*(uint64_t*)GetMemoryRegion(msg_buf_ridx_));
+      if (m & msg) {
+        if (reset) {
           // reset it so I'm not confused next time
-          *(uint64_t *)GetMemoryRegion(msg_buf_ridx_) = kRdmaWaiting;
+          *(uint64_t*)GetMemoryRegion(msg_buf_ridx_) = kRdmaWaiting;
         }
         break;
       }
@@ -77,27 +85,31 @@ class RdmaNode {
 
   inline void SetMessageAsBackup(uint64_t msg) {
     ALWAYS_ASSERT(config::is_backup_srv());
-    *(uint64_t *)GetMemoryRegion(msg_buf_ridx_) = msg;
+    *(uint64_t*)GetMemoryRegion(msg_buf_ridx_) = msg;
     context_->rdma_write(msg_buf_ridx_, 0, msg_buf_ridx_, 0, kMessageSize);
   }
 
   inline rdma::context* GetContext() { return context_; }
 
   inline void RdmaWriteImmDaemonBuffer(uint64_t local_offset,
-    uint64_t remote_offset, uint64_t size, uint32_t imm, bool sync = true) {
+                                       uint64_t remote_offset, uint64_t size,
+                                       uint32_t imm, bool sync = true) {
     context_->rdma_write_imm(daemon_buf_ridx_, local_offset, daemon_buf_ridx_,
                              remote_offset, size, imm, sync);
   }
   inline void RdmaWriteImmLogBufferPartitionBounds(uint64_t local_offset,
-    uint64_t remote_offset, uint64_t size, uint32_t imm, bool sync = true) {
+                                                   uint64_t remote_offset,
+                                                   uint64_t size, uint32_t imm,
+                                                   bool sync = true) {
     context_->rdma_write_imm(log_buf_partition_bounds_ridx_, local_offset,
                              log_buf_partition_bounds_ridx_, remote_offset,
                              size, imm, sync);
   }
-  inline void RdmaWriteImmLogBuffer(uint64_t local_offset, uint64_t remote_offset,
-    uint64_t size, uint32_t imm, bool sync = true) {
+  inline void RdmaWriteImmLogBuffer(uint64_t local_offset,
+                                    uint64_t remote_offset, uint64_t size,
+                                    uint32_t imm, bool sync = true) {
     context_->rdma_write_imm(log_buf_ridx_, local_offset, log_buf_ridx_,
-      remote_offset, size, imm, sync);
+                             remote_offset, size, imm, sync);
   }
   inline uint64_t ReceiveImm(uint32_t* imm = nullptr) {
     return context_->receive_rdma_with_imm(imm);
@@ -110,4 +122,4 @@ class RdmaNode {
   }
 };
 
-} // namespace rep
+}  // namespace rep

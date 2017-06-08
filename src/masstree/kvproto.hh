@@ -18,40 +18,37 @@
 #include "compiler.hh"
 
 enum {
-    Cmd_None = 0,
-    Cmd_Get = 2,
-    Cmd_Scan = 4,
-    Cmd_Put = 6,
-    Cmd_Replace = 8,
-    Cmd_Remove = 10,
-    Cmd_Checkpoint = 12,
-    Cmd_Handshake = 14,
-    Cmd_Max
+  Cmd_None = 0,
+  Cmd_Get = 2,
+  Cmd_Scan = 4,
+  Cmd_Put = 6,
+  Cmd_Replace = 8,
+  Cmd_Remove = 10,
+  Cmd_Checkpoint = 12,
+  Cmd_Handshake = 14,
+  Cmd_Max
 };
 
 enum result_t {
-    NotFound = -2,
-    Retry,
-    OutOfDate,
-    Inserted,
-    Updated,
-    Found,
-    ScanDone
+  NotFound = -2,
+  Retry,
+  OutOfDate,
+  Inserted,
+  Updated,
+  Found,
+  ScanDone
 };
 
-enum ckptrav_order_t {
-    ckptrav_inorder = 0,
-    ckptrav_preorder
-};
+enum ckptrav_order_t { ckptrav_inorder = 0, ckptrav_preorder };
 
 struct row_marker {
-    enum { mt_remove = 1, mt_delta = 2 };
-    int marker_type_;
+  enum { mt_remove = 1, mt_delta = 2 };
+  int marker_type_;
 };
 
 template <typename R>
 inline bool row_is_marker(const R* row) {
-    return row->timestamp() & 1;
+  return row->timestamp() & 1;
 }
 
 #endif

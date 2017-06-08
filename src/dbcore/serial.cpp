@@ -79,7 +79,8 @@ namespace TXN {
        invalid.
 
        This means there has been some context change after the updater has read
-       the bitmap, and before it retrived the xid_context represented by the bit.
+       the bitmap, and before it retrived the xid_context represented by the
+   bit.
        Perhaps the transaction just left before we can retrieve its context.
 
     For both 1 and 2, without any further information, we can't determine the
@@ -130,18 +131,24 @@ namespace TXN {
           but haven't measured). The updater will try to notify the reader
           "hey yo, you need to abort!", betting that the reader will later use
           the updater's cstamp as its sstamp which will be low. But this makes
-          it very tricky to choose the threshold and can abort lots of read-mostly
+          it very tricky to choose the threshold and can abort lots of
+   read-mostly
           transactions.
 
           (The implementation is like: use a boolean (set by the updater) in the
-          reader's context (xc.should_abort) to indicate whether it needs to abort.
+          reader's context (xc.should_abort) to indicate whether it needs to
+   abort.
           The reader will examine this flag before post-commit (if it survived),
           and abort accordingly. The updater should read the reader's state
-          (e.g., ACTIVE) before setting the flag, then re-read it after setting it.
+          (e.g., ACTIVE) before setting the flag, then re-read it after setting
+   it.
           If the reader's state didn't change, it means the reader will know it
-          should abort later; otherwise the updater considers it missed this precious
-          opportunity. Then the updater will have two choice: spin on the reader or
-          abort. The former might cause deadlock - an reader might be spinning on
+          should abort later; otherwise the updater considers it missed this
+   precious
+          opportunity. Then the updater will have two choice: spin on the reader
+   or
+          abort. The former might cause deadlock - an reader might be spinning
+   on
           the updater already hoping to use its cstamp as sstamp. So here we let
           the updater abort.)
 
@@ -165,120 +172,115 @@ readers_list rlist;
 static __thread readers_list::tls_bitmap_info tls_bitmap_info;
 
 void assign_reader_bitmap_entry() {
-    if (tls_bitmap_info.entry)
+  if (tls_bitmap_info.entry) return;
+
+  for (uint32_t i = 0; i < readers_list::bitmap_t::ARRAY_SIZE; ++i) {
+  retry:
+    auto bits = volatile_read(rlist.bitmap.array[i]);
+    if (bits != ~uint64_t{0}) {
+      auto my_entry = bits + 1;
+      auto new_bits = bits | my_entry;
+      auto cur_bits =
+          __sync_val_compare_and_swap(&rlist.bitmap.array[i], bits, new_bits);
+      if (cur_bits == bits) {
+        ASSERT(tls_bitmap_info.entry == 0);
+        tls_bitmap_info.entry = my_entry;
+        tls_bitmap_info.index = i;
         return;
-
-    for (uint32_t i = 0; i < readers_list::bitmap_t::ARRAY_SIZE; ++i) {
-    retry:
-        auto bits = volatile_read(rlist.bitmap.array[i]);
-        if (bits != ~uint64_t{0}) {
-            auto my_entry = bits + 1;
-            auto new_bits = bits | my_entry;
-            auto cur_bits = __sync_val_compare_and_swap(&rlist.bitmap.array[i], bits, new_bits);
-            if (cur_bits == bits) {
-                ASSERT(tls_bitmap_info.entry == 0);
-                tls_bitmap_info.entry = my_entry;
-                tls_bitmap_info.index = i;
-                return;
-            }
-            goto retry;
-        }
+      }
+      goto retry;
     }
+  }
 
-    ALWAYS_ASSERT(false);
+  ALWAYS_ASSERT(false);
 }
 
 void deassign_reader_bitmap_entry() {
-    ASSERT(tls_bitmap_info.entry);
-    ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
-    __sync_fetch_and_xor(&rlist.bitmap.array[tls_bitmap_info.index], tls_bitmap_info.entry);
-    tls_bitmap_info.entry = tls_bitmap_info.index = 0;
+  ASSERT(tls_bitmap_info.entry);
+  ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
+  __sync_fetch_and_xor(&rlist.bitmap.array[tls_bitmap_info.index],
+                       tls_bitmap_info.entry);
+  tls_bitmap_info.entry = tls_bitmap_info.index = 0;
 }
 
 // register tx in the global rlist (called at tx start)
-void
-serial_register_tx(XID xid)
-{
-    ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
-    volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, xid._val);
+void serial_register_tx(XID xid) {
+  ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
+  volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, xid._val);
 }
 
 // deregister tx in the global rlist (called at tx end)
-void
-serial_deregister_tx(XID xid)
-{
-    ASSERT(rlist.xids[tls_bitmap_info.xid_index()]._val == xid._val);
-    volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, 0);
-    ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
+void serial_deregister_tx(XID xid) {
+  ASSERT(rlist.xids[tls_bitmap_info.xid_index()]._val == xid._val);
+  volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, 0);
+  ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
 }
 
-
-void serial_register_reader_tx(XID xid, readers_list::bitmap_t* tuple_readers_bitmap) {
-    ASSERT(tls_bitmap_info.entry);
-    ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
-    // With read optimization, a transaction might not clear the bit,
-    // so no need to set it again if it's set already (by a previous reader).
-    if (config::ssn_read_opt_enabled() &&
-        (volatile_read(tuple_readers_bitmap->array[tls_bitmap_info.index]) & tls_bitmap_info.entry) != 0) {
-        return;
-    }
-    __sync_fetch_and_or(&tuple_readers_bitmap->array[tls_bitmap_info.index], tls_bitmap_info.entry);
+void serial_register_reader_tx(XID xid,
+                               readers_list::bitmap_t* tuple_readers_bitmap) {
+  ASSERT(tls_bitmap_info.entry);
+  ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
+  // With read optimization, a transaction might not clear the bit,
+  // so no need to set it again if it's set already (by a previous reader).
+  if (config::ssn_read_opt_enabled() &&
+      (volatile_read(tuple_readers_bitmap->array[tls_bitmap_info.index]) &
+       tls_bitmap_info.entry) != 0) {
+    return;
+  }
+  __sync_fetch_and_or(&tuple_readers_bitmap->array[tls_bitmap_info.index],
+                      tls_bitmap_info.entry);
 }
 
 void serial_deregister_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap) {
-    ASSERT(tls_bitmap_info.entry);
-    // if a tx reads a tuple multiple times (e.g., 3 times),
-    // then during post-commit it will call this function
-    // multiple times, so we take a look to see if it's still set before the xor.
-    auto b = volatile_read(tuple_readers_bitmap->array[tls_bitmap_info.index]);
-    if (b & tls_bitmap_info.entry) {
-      __sync_fetch_and_xor(&tuple_readers_bitmap->array[tls_bitmap_info.index], tls_bitmap_info.entry);
+  ASSERT(tls_bitmap_info.entry);
+  // if a tx reads a tuple multiple times (e.g., 3 times),
+  // then during post-commit it will call this function
+  // multiple times, so we take a look to see if it's still set before the xor.
+  auto b = volatile_read(tuple_readers_bitmap->array[tls_bitmap_info.index]);
+  if (b & tls_bitmap_info.entry) {
+    __sync_fetch_and_xor(&tuple_readers_bitmap->array[tls_bitmap_info.index],
+                         tls_bitmap_info.entry);
+  }
+  ASSERT(not(tuple_readers_bitmap->array[tls_bitmap_info.index] &
+             tls_bitmap_info.entry));
+}
+
+void serial_stamp_last_committed_lsn(uint64_t lsn) {
+  volatile_write(rlist.last_read_mostly_clsns[tls_bitmap_info.xid_index()],
+                 lsn);
+}
+
+uint64_t serial_get_last_read_mostly_cstamp(int xid_idx) {
+  return volatile_read(rlist.last_read_mostly_clsns[xid_idx]);
+}
+
+bool readers_list::bitmap_t::is_empty(bool exclude_self) {
+  for (uint32_t i = 0; i < ARRAY_SIZE; ++i) {
+    auto bits = volatile_read(array[i]);
+    if (bits) {
+      if (exclude_self and i == TXN::tls_bitmap_info.index and
+          bits == TXN::tls_bitmap_info.entry)
+        continue;
+      return false;
     }
-    ASSERT(not (tuple_readers_bitmap->array[tls_bitmap_info.index] & tls_bitmap_info.entry));
+  }
+  return true;
 }
 
-void
-serial_stamp_last_committed_lsn(uint64_t lsn)
-{
-    volatile_write(rlist.last_read_mostly_clsns[tls_bitmap_info.xid_index()], lsn);
-}
-
-uint64_t
-serial_get_last_read_mostly_cstamp(int xid_idx)
-{
-    return volatile_read(rlist.last_read_mostly_clsns[xid_idx]);
-}
-
-bool
-readers_list::bitmap_t::is_empty(bool exclude_self) {
-    for (uint32_t i = 0; i < ARRAY_SIZE; ++i) {
-        auto bits = volatile_read(array[i]);
-        if (bits) {
-            if (exclude_self and i == TXN::tls_bitmap_info.index and bits == TXN::tls_bitmap_info.entry)
-                continue;
-            return false;
-        }
+int32_t readers_bitmap_iterator::next(bool skip_self) {
+  while (true) {
+    if (cur_entry) {
+      auto pos = __builtin_ctzll(cur_entry);
+      cur_entry &= (cur_entry - 1);
+      if (skip_self and cur_entry_index == tls_bitmap_info.index and
+          pos == __builtin_ctzll(tls_bitmap_info.entry)) {
+        continue;
+      }
+      return cur_entry_index * 64 + pos;
     }
-    return true;
-}
-
-int32_t
-readers_bitmap_iterator::next(bool skip_self) {
-    while (true) {
-        if (cur_entry) {
-            auto pos = __builtin_ctzll(cur_entry);
-            cur_entry &= (cur_entry - 1);
-            if (skip_self and
-                cur_entry_index == tls_bitmap_info.index and
-                pos == __builtin_ctzll(tls_bitmap_info.entry)) {
-                continue;
-            }
-            return cur_entry_index * 64 + pos;
-        }
-        if ((cur_entry_index + 1) * 64 >= config::worker_threads)
-            return -1;
-        cur_entry = volatile_read(array[++cur_entry_index]);
-    }
+    if ((cur_entry_index + 1) * 64 >= config::worker_threads) return -1;
+    cur_entry = volatile_read(array[++cur_entry_index]);
+  }
 }
 
 };  // end of namespace

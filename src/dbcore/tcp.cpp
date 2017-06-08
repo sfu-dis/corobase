@@ -9,7 +9,8 @@
 
 namespace tcp {
 
-server_context::server_context(std::string& port, uint32_t nclients) : sockfd(0) {
+server_context::server_context(std::string &port, uint32_t nclients)
+    : sockfd(0) {
   gethostname(sock_addr, INET_ADDRSTRLEN);
   LOG(INFO) << "[Server] " << get_sock_addr() << ":" << port;
   struct addrinfo hints;
@@ -25,19 +26,20 @@ server_context::server_context(std::string& port, uint32_t nclients) : sockfd(0)
 
   for (auto *r = result; r; r = r->ai_next) {
     sockfd = socket(r->ai_family, r->ai_socktype, r->ai_protocol);
-    if (sockfd == -1)
-      continue;
+    if (sockfd == -1) continue;
 
     int yes = 1;
-    THROW_IF(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1,
-             illegal_argument, "Can't setsocketopt()");
+    THROW_IF(
+        setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1,
+        illegal_argument, "Can't setsocketopt()");
 
     if (bind(sockfd, r->ai_addr, r->ai_addrlen) == 0) {
       struct sockaddr_in sin;
       socklen_t len = sizeof(struct sockaddr_in);
       getsockname(sockfd, (struct sockaddr *)&sin, &len);
       inet_ntop(AF_INET, &sin.sin_addr, sock_addr, sizeof(sock_addr));
-      THROW_IF(listen(sockfd, nclients) == -1, illegal_argument, "Can't listen()");
+      THROW_IF(listen(sockfd, nclients) == -1, illegal_argument,
+               "Can't listen()");
       return;
     }
   }
@@ -52,12 +54,13 @@ int server_context::expect_client() {
   ALWAYS_ASSERT(fd);
 
   char s[INET_ADDRSTRLEN];
-  inet_ntop(AF_INET, &((sockaddr_in*)&addr)->sin_addr, s, INET_ADDRSTRLEN);
+  inet_ntop(AF_INET, &((sockaddr_in *)&addr)->sin_addr, s, INET_ADDRSTRLEN);
   LOG(INFO) << "[Server] New client: " << s;
   return fd;
 }
 
-client_context::client_context(std::string& server, std::string& port) : server_sockfd(0) {
+client_context::client_context(std::string &server, std::string &port)
+    : server_sockfd(0) {
   struct addrinfo hints;
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
@@ -65,7 +68,8 @@ client_context::client_context(std::string& server, std::string& port) : server_
 
   struct addrinfo *servinfo = nullptr;
   int ret = getaddrinfo(server.c_str(), port.c_str(), &hints, &servinfo);
-  THROW_IF(ret != 0, illegal_argument, "Error getaddrinfo(): %s", gai_strerror(ret));
+  THROW_IF(ret != 0, illegal_argument, "Error getaddrinfo(): %s",
+           gai_strerror(ret));
   DEFER(freeaddrinfo(servinfo));
 
   for (auto *r = servinfo; r; r = r->ai_next) {
@@ -75,12 +79,14 @@ client_context::client_context(std::string& server, std::string& port) : server_
     }
 
     int yes = 1;
-    int ret = setsockopt(server_sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+    int ret =
+        setsockopt(server_sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
     THROW_IF(ret == -1, illegal_argument, "setsocketopt() failed");
 
     if (connect(server_sockfd, r->ai_addr, r->ai_addrlen) == 0) {
-      inet_ntop(r->ai_family, (void *)&((struct sockaddr_in*)server_sock_addr)->sin_addr,
-        server_sock_addr, sizeof(server_sock_addr));
+      inet_ntop(r->ai_family,
+                (void *)&((struct sockaddr_in *)server_sock_addr)->sin_addr,
+                server_sock_addr, sizeof(server_sock_addr));
       std::cout << "[Client] Connected to " << server << "\n";
       return;
     }

@@ -16,54 +16,45 @@
    [1] http://burtleburtle.net/bob/hash/integer.html
 */
 struct burt_hash {
-    typedef uint32_t (function)(uint32_t);
-    
-    static
-    function *select_hash(uint32_t selector);
+  typedef uint32_t(function)(uint32_t);
 
-    burt_hash(uint32_t selector=0)
-        : fn(select_hash(selector))
-    {
-    }
-    
-    uint32_t operator()(uint32_t x) const { return fn(x); }
-    
-    function *fn;
+  static function *select_hash(uint32_t selector);
+
+  burt_hash(uint32_t selector = 0) : fn(select_hash(selector)) {}
+
+  uint32_t operator()(uint32_t x) const { return fn(x); }
+
+  function *fn;
 };
 
 struct burt_hash4 {
-    typedef __v4si (function)(__v4si);
+  typedef __v4si(function)(__v4si);
 
-    static
-    function *select_hash(uint32_t selector);
+  static function *select_hash(uint32_t selector);
 
-    burt_hash4(uint32_t selector=0)
-        : fn(select_hash(selector))
-    {
-    }
+  burt_hash4(uint32_t selector = 0) : fn(select_hash(selector)) {}
 
-    /* Emulate hashing one value with four different functions by
-       hashing four different byte-permutations of the input. To avoid
-       interacting badly with hash functions' habit of using
-       bidirectional shifts (= rotations, if you squint), no two
-       permutations are rotations of each other and no byte is placed
-       in the same position twice.
+  /* Emulate hashing one value with four different functions by
+     hashing four different byte-permutations of the input. To avoid
+     interacting badly with hash functions' habit of using
+     bidirectional shifts (= rotations, if you squint), no two
+     permutations are rotations of each other and no byte is placed
+     in the same position twice.
 
-       The first computed value is equivalent to the one computed by
-       the integer function.
+     The first computed value is equivalent to the one computed by
+     the integer function.
 
-       The hope is that this will work well, given high-quality hash
-       functions, but that has not been verified empirically.
-     */
-    __v4si operator()(int32_t xi) const {
-        __v4si x = {xi};
-        __v16qi k = {0,1,2,3, 3,2,0,1, 2,3,1,0, 1,0,3,2};
-        x = (__v4si)__builtin_shuffle((__v16qi) x, k);
-        return operator()(x);
-    }
-    
-    __v4si operator()(__v4si x) const { return fn(x); }
-    
-    function *fn;
+     The hope is that this will work well, given high-quality hash
+     functions, but that has not been verified empirically.
+   */
+  __v4si operator()(int32_t xi) const {
+    __v4si x = {xi};
+    __v16qi k = {0, 1, 2, 3, 3, 2, 0, 1, 2, 3, 1, 0, 1, 0, 3, 2};
+    x = (__v4si)__builtin_shuffle((__v16qi)x, k);
+    return operator()(x);
+  }
+
+  __v4si operator()(__v4si x) const { return fn(x); }
+
+  function *fn;
 };
-

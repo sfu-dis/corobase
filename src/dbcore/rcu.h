@@ -74,38 +74,36 @@ namespace RCU {
 void rcu_set_gc_threshold(size_t nobj, size_t nbytes);
 
 struct rcu_gc_info {
-    size_t gc_passes;
-    size_t objects_freed;
-    size_t bytes_freed;
+  size_t gc_passes;
+  size_t objects_freed;
+  size_t bytes_freed;
 
-    size_t objects_stashed;
-    size_t bytes_stashed;
+  size_t objects_stashed;
+  size_t bytes_stashed;
 };
 
 // tzwang: moved here for silo side to use
-struct  __attribute__((aligned(DEFAULT_ALIGNMENT))) pointer {
-    pointer *next;
-    size_t size;
+struct __attribute__((aligned(DEFAULT_ALIGNMENT))) pointer {
+  pointer *next;
+  size_t size;
 };
 
 static_assert(sizeof(pointer) == 16, "Yikes");
 
 struct pointer_list {
-    pointer *head;
-    pointer_list *next_list;
-    uint64_t nobj;
-    uint64_t nbytes;
+  pointer *head;
+  pointer_list *next_list;
+  uint64_t nobj;
+  uint64_t nbytes;
 
-    pointer_list() : head(0), next_list(0), nobj(0), nbytes(0) { }
+  pointer_list() : head(0), next_list(0), nobj(0), nbytes(0) {}
 };
-
 
 union rcu_pointer {
-    void const *vc;
-    void *v;
-    pointer *p;
+  void const *vc;
+  void *v;
+  pointer *p;
 };
-
 
 /* Return the number of GC passes, plus total number of objects freed,
    since RCU was initialized.
@@ -193,28 +191,26 @@ bool rcu_is_active();
 
    Throw rcu_alloc_fail if no memory is available
 */
-void* rcu_alloc(size_t nbytes);
-void* rcu_alloc_gc(size_t& nbytes);
+void *rcu_alloc(size_t nbytes);
+void *rcu_alloc_gc(size_t &nbytes);
 
 /* Free a pointer previously returned by rcu_alloc */
-void rcu_free(void const*);
+void rcu_free(void const *);
 
 void rcu_delete(void *ptr);
 
 /* Convenience function...
  */
 template <typename T>
-static inline
-void rcu_alloc_into(T *&ptr)
-{
-    ptr = (T*) rcu_alloc(sizeof(T));
+static inline void rcu_alloc_into(T *&ptr) {
+  ptr = (T *)rcu_alloc(sizeof(T));
 }
 
 struct rcu_alloc_on_decay {
-    template <typename T>
-    operator T*() {
-        return (T*) rcu_alloc(sizeof(T));
-    }
+  template <typename T>
+  operator T *() {
+    return (T *)rcu_alloc(sizeof(T));
+  }
 };
 
 /* Exploit C++ type decay to make a type-safe allocator.
@@ -227,33 +223,33 @@ struct rcu_alloc_on_decay {
    instances of an object; it does *not* work for arrays unless
    assigned to a pointer-to-array (implying a fixed-size array).
  */
-static inline
-rcu_alloc_on_decay rcu_alloc() { return rcu_alloc_on_decay(); }
-
+static inline rcu_alloc_on_decay rcu_alloc() { return rcu_alloc_on_decay(); }
 
 class rcu_new_sentinel {
-protected:
-    rcu_new_sentinel() { }
+ protected:
+  rcu_new_sentinel() {}
 };
 
 template <typename Tuple, size_t... i>
 struct rcu_new_decay : rcu_new_sentinel {
-    Tuple tup;
-    rcu_new_decay(Tuple t) : tup(std::move(t)) { }
-    
-    template <typename T>
-    operator T*() {
-        static_assert(std::is_trivially_destructible<T>::value,
-                      "Non-trivial destructors don't work with RCU storage");
-        return new (*this) T{std::get<i>(tup)...};
-    }
+  Tuple tup;
+  rcu_new_decay(Tuple t) : tup(std::move(t)) {}
+
+  template <typename T>
+  operator T *() {
+    static_assert(std::is_trivially_destructible<T>::value,
+                  "Non-trivial destructors don't work with RCU storage");
+    return new (*this) T{std::get<i>(tup)...};
+  }
 };
 
 template <size_t N, typename Tuple, size_t... i>
-struct rcu_new_helper : rcu_new_helper<N-1, Tuple, N-1, i...> { };
+struct rcu_new_helper : rcu_new_helper<N - 1, Tuple, N - 1, i...> {};
 
 template <typename Tuple, size_t... i>
-struct rcu_new_helper<0, Tuple, i...> { typedef rcu_new_decay<Tuple, i...> type; };
+struct rcu_new_helper<0, Tuple, i...> {
+  typedef rcu_new_decay<Tuple, i...> type;
+};
 
 /* Create an RCU version of make_new for allocating and initializing
    new objects in a single operation.
@@ -268,15 +264,12 @@ struct rcu_new_helper<0, Tuple, i...> { typedef rcu_new_decay<Tuple, i...> type;
    calling the default operator new.
  */
 template <typename... Args>
-auto
-rcu_new(Args&&... args) ->
-    typename rcu_new_helper<
-        sizeof...(Args),
-        decltype(std::forward_as_tuple(args...))
-        >::type
-    
+auto rcu_new(Args &&... args) ->
+    typename rcu_new_helper<sizeof...(Args),
+                            decltype(std::forward_as_tuple(args...))>::type
+
 {
-    return std::forward_as_tuple(args...);
+  return std::forward_as_tuple(args...);
 }
 
 /* Format the given message into string that occupies space newly
@@ -286,7 +279,8 @@ rcu_new(Args&&... args) ->
    malloc, and throwing an exception if anything goes wrong, rather
    than returning an error code.
  */
-char const *rcu_sprintf(char const *msg, ...) __attribute__((format(printf,1,2)));
+char const *rcu_sprintf(char const *msg, ...)
+    __attribute__((format(printf, 1, 2)));
 char const *rcu_vsprintf(char const *msg, va_list ap);
 
 /* Although RCU requires no effort on the reader's part to dereference
@@ -299,14 +293,13 @@ char const *rcu_vsprintf(char const *msg, va_list ap);
 extern void rcu_unwind(char const *);
 
 template <typename T>
-static inline
-T *rcu_read(T *ptr) {
+static inline T *rcu_read(T *ptr) {
 #ifdef RCU_UNWIND
-    if (not rcu_is_active())
-        rcu_unwind("RCU access detected outside RCU transaction!");
+  if (not rcu_is_active())
+    rcu_unwind("RCU access detected outside RCU transaction!");
 #endif
-    ASSERT(rcu_is_active());
-    return ptr;
+  ASSERT(rcu_is_active());
+  return ptr;
 }
 #define RCU_READ(ptr) rcu_read(ptr)
 #else
@@ -314,16 +307,12 @@ T *rcu_read(T *ptr) {
 #endif
 }
 
-inline
-void *
-operator new(size_t nbytes, RCU::rcu_new_sentinel const &) {
-    return RCU::rcu_alloc(nbytes);
+inline void *operator new(size_t nbytes, RCU::rcu_new_sentinel const &) {
+  return RCU::rcu_alloc(nbytes);
 }
 
-inline
-void 
-operator delete(void *ptr, RCU::rcu_new_sentinel const &) {
-    RCU::rcu_free(ptr);
+inline void operator delete(void *ptr, RCU::rcu_new_sentinel const &) {
+  RCU::rcu_free(ptr);
 }
 
 #endif

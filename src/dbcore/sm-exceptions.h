@@ -38,16 +38,16 @@
 #include <cstddef>
 #include <cstdlib>
 
-#define THROW_IF(cond, eclass, ...)             \
-    do {                                        \
-        if (cond) {                             \
-            printf("Exception thrown at %s:%d\n", __FILE__, __LINE__); \
-            throw eclass{__VA_ARGS__};          \
-        } \
-    } while (0)
+#define THROW_IF(cond, eclass, ...)                              \
+  do {                                                           \
+    if (cond) {                                                  \
+      printf("Exception thrown at %s:%d\n", __FILE__, __LINE__); \
+      throw eclass{__VA_ARGS__};                                 \
+    }                                                            \
+  } while (0)
 
-#define THROW_UNLESS(cond, eclass, ...)         \
-    THROW_IF(not (cond), eclass, ##__VA_ARGS__)
+#define THROW_UNLESS(cond, eclass, ...) \
+  THROW_IF(not(cond), eclass, ##__VA_ARGS__)
 
 /* C++ considers the following two functions ambiguous:
 
@@ -79,20 +79,22 @@
    be passed to rcu_free() by whoever consumes the exception.
  */
 struct illegal_argument {
-    char const *msg;
-    char *free_msg;
-    illegal_argument(char const *m="Illegal argument") : msg(m), free_msg(0) { }
-    illegal_argument(char const volatile *m, ...) __attribute__((format(printf,2,3)));
-    ~illegal_argument() { free(free_msg); }
+  char const *msg;
+  char *free_msg;
+  illegal_argument(char const *m = "Illegal argument") : msg(m), free_msg(0) {}
+  illegal_argument(char const volatile *m, ...)
+      __attribute__((format(printf, 2, 3)));
+  ~illegal_argument() { free(free_msg); }
 };
 
 struct os_error {
-    char const *msg;
-    char *free_msg;
-    int err;
-    os_error(int e, char const *m) : msg(m), free_msg(0), err(e) { }
-    os_error(int e, char const volatile *m, ...) __attribute__((format(printf,3,4)));
-    ~os_error() { free(free_msg); }
+  char const *msg;
+  char *free_msg;
+  int err;
+  os_error(int e, char const *m) : msg(m), free_msg(0), err(e) {}
+  os_error(int e, char const volatile *m, ...)
+      __attribute__((format(printf, 3, 4)));
+  ~os_error() { free(free_msg); }
 };
 
 /* Indicates that RCU failed to allocate memory. The caller must end
@@ -100,27 +102,28 @@ struct os_error {
    guarantee success because the system really could be out of memory).
  */
 struct rcu_alloc_fail {
-    size_t nbytes;
-    rcu_alloc_fail(size_t n) : nbytes(n) { }
+  size_t nbytes;
+  rcu_alloc_fail(size_t n) : nbytes(n) {}
 };
 
 struct log_is_full {
-    /* no members */    
+  /* no members */
 };
 
 /* Something went wrong with log file handling that prevents any more
    logging. Probably not recoverable.
  */
 struct log_file_error {
-    char const *msg;
-    char *free_msg;
-    log_file_error(char const *m) : msg(m), free_msg(0) { }
-    log_file_error(char const volatile *m, ...) __attribute__((format(printf,2,3)));
-    ~log_file_error() { free(free_msg); }
+  char const *msg;
+  char *free_msg;
+  log_file_error(char const *m) : msg(m), free_msg(0) {}
+  log_file_error(char const volatile *m, ...)
+      __attribute__((format(printf, 2, 3)));
+  ~log_file_error() { free(free_msg); }
 };
 
 /* Indicates that no more OIDs can be allocated in the specified table.
  */
-struct table_is_full { };
+struct table_is_full {};
 
 #endif

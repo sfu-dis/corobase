@@ -28,7 +28,8 @@ void context::init(const char *server) {
   THROW_IF(not ctx, illegal_argument, "ibv_open_device() failed");
 
 #ifdef EXP_VERBS
-  // Query for the IBV_EXP_ATOMIC_HCA_REPLY_BE atomic_cap to use experimental verbs
+  // Query for the IBV_EXP_ATOMIC_HCA_REPLY_BE atomic_cap to use experimental
+  // verbs
   // for atomics on Connect-IB (libmlx5)
   struct ibv_exp_device_attr exp_attr;
   memset(&exp_attr, 0, sizeof(exp_attr));
@@ -39,7 +40,8 @@ void context::init(const char *server) {
     abort();
   }
   std::cout << "[RDMA] Using experimental verbs for atomics" << std::endl;
-  std::cout << "[RDMA] Max memory region size " << exp_attr.max_mr_size << std::endl;
+  std::cout << "[RDMA] Max memory region size " << exp_attr.max_mr_size
+            << std::endl;
 #endif
 
   pd = ibv_alloc_pd(ctx);
@@ -55,10 +57,12 @@ void context::finish_init() {
   LOG(INFO) << "[RDMA] Max cqe=" << cqe;
 
   send_cq = ibv_create_cq(ctx, cqe, (void *)this, nullptr, 0);
-  THROW_IF(not send_cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
+  THROW_IF(not send_cq, illegal_argument,
+           "Could not create send completion queue, ibv_create_cq");
 
   recv_cq = ibv_create_cq(ctx, cqe, (void *)this, nullptr, 0);
-  THROW_IF(not recv_cq, illegal_argument, "Could not create send completion queue, ibv_create_cq");
+  THROW_IF(not recv_cq, illegal_argument,
+           "Could not create send completion queue, ibv_create_cq");
 
 #ifdef EXP_VERBS
   struct ibv_exp_qp_init_attr exp_qp_init_attr;
@@ -67,7 +71,8 @@ void context::finish_init() {
   exp_qp_init_attr.send_cq = send_cq;
   exp_qp_init_attr.recv_cq = recv_cq;
   exp_qp_init_attr.qp_type = IBV_QPT_RC;
-  exp_qp_init_attr.comp_mask |= IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS | IBV_EXP_QP_INIT_ATTR_PD;
+  exp_qp_init_attr.comp_mask |=
+      IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS | IBV_EXP_QP_INIT_ATTR_PD;
   // Allow atomics
   exp_qp_init_attr.exp_create_flags = IBV_EXP_QP_CREATE_CROSS_CHANNEL |
                                       IBV_EXP_QP_CREATE_IGNORE_SQ_OVERFLOW |
@@ -80,7 +85,8 @@ void context::finish_init() {
   exp_qp_init_attr.cap.max_inline_data = 16;
 
   qp = ibv_exp_create_qp(ctx, &exp_qp_init_attr);
-  THROW_IF(not qp, illegal_argument, "Could not create queue pair, ibv_exp_create_qp");
+  THROW_IF(not qp, illegal_argument,
+           "Could not create queue pair, ibv_exp_create_qp");
 
   struct ibv_exp_qp_attr exp_attr;
   memset(&exp_attr, 0, sizeof(exp_attr));
@@ -88,13 +94,14 @@ void context::finish_init() {
   exp_attr.pkey_index = 0;
   exp_attr.port_num = ib_port;
   exp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-                             IBV_ACCESS_REMOTE_ATOMIC |
-                             IBV_ACCESS_REMOTE_READ |
+                             IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_REMOTE_READ |
                              IBV_ACCESS_LOCAL_WRITE;
 
   ret = ibv_exp_modify_qp(qp, &exp_attr,
-    IBV_EXP_QP_STATE | IBV_EXP_QP_PKEY_INDEX | IBV_EXP_QP_PORT | IBV_EXP_QP_ACCESS_FLAGS);
-  THROW_IF(ret, illegal_argument, "Could not modify QP to INIT, ibv_exp_modify_qp");
+                          IBV_EXP_QP_STATE | IBV_EXP_QP_PKEY_INDEX |
+                              IBV_EXP_QP_PORT | IBV_EXP_QP_ACCESS_FLAGS);
+  THROW_IF(ret, illegal_argument,
+           "Could not modify QP to INIT, ibv_exp_modify_qp");
 #else
   struct ibv_qp_init_attr qp_init_attr;
   memset(&qp_init_attr, 0, sizeof(qp_init_attr));
@@ -108,20 +115,19 @@ void context::finish_init() {
   qp_init_attr.cap.max_inline_data = 16;
 
   qp = ibv_create_qp(pd, &qp_init_attr);
-  THROW_IF(not qp, illegal_argument, "Could not create queue pair, ibv_create_qp");
+  THROW_IF(not qp, illegal_argument,
+           "Could not create queue pair, ibv_create_qp");
 
   struct ibv_qp_attr attr;
   memset(&attr, 0, sizeof(attr));
   attr.qp_state = IBV_QPS_INIT;
   attr.pkey_index = 0;
   attr.port_num = ib_port;
-  attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-                         IBV_ACCESS_REMOTE_ATOMIC |
-                         IBV_ACCESS_REMOTE_READ |
-                         IBV_ACCESS_LOCAL_WRITE;
+  attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC |
+                         IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE;
 
-  ret = ibv_modify_qp(qp, &attr,
-    IBV_QP_STATE | IBV_QP_PKEY_INDEX | IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
+  ret = ibv_modify_qp(qp, &attr, IBV_QP_STATE | IBV_QP_PKEY_INDEX |
+                                     IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
   THROW_IF(ret, illegal_argument, "Could not modify QP to INIT, ibv_modify_qp");
 #endif
 
@@ -140,7 +146,7 @@ context::~context() {
   ibv_destroy_qp(qp);
   ibv_destroy_cq(send_cq);
   ibv_destroy_cq(recv_cq);
-  for (auto& r : mem_regions) {
+  for (auto &r : mem_regions) {
     delete r;
   }
   ibv_dealloc_pd(pd);
@@ -190,7 +196,8 @@ void context::qp_change_state_rtr() {
 void context::exchange_ib_connection_info(int peer_sockfd) {
   local_connection = new ib_connection(this);
   int ret = send(peer_sockfd, local_connection, sizeof(ib_connection), 0);
-  THROW_IF(ret != sizeof(*local_connection), os_error, ret, "Could not send connection_details to peer");
+  THROW_IF(ret != sizeof(*local_connection), os_error, ret,
+           "Could not send connection_details to peer");
   remote_connection = new ib_connection();
   tcp::receive(peer_sockfd, (char *)remote_connection, sizeof(ib_connection));
 }
@@ -198,7 +205,7 @@ void context::exchange_ib_connection_info(int peer_sockfd) {
 void context::poll_send_cq(uint64_t nops) {
   struct ibv_wc wc[kPollOps];
   uint64_t to_poll = nops;
-  while(to_poll) {
+  while (to_poll) {
     uint64_t batch = std::min(kPollOps, to_poll);
     memset(wc, 0, sizeof(struct ibv_wc) * batch);
     int n = 0;
@@ -207,17 +214,18 @@ void context::poll_send_cq(uint64_t nops) {
     } while (n == 0);
     for (int i = 0; i < n; ++i) {
       ALWAYS_ASSERT(wc[i].status == IBV_WC_SUCCESS);
-      THROW_IF(wc[i].status != IBV_WC_SUCCESS, os_error, wc[i].status, "Failed wc status");
+      THROW_IF(wc[i].status != IBV_WC_SUCCESS, os_error, wc[i].status,
+               "Failed wc status");
     }
     ALWAYS_ASSERT(n <= batch);
     to_poll -= batch;
   }
 }
 
-void context::rdma_write(
-  uint32_t local_index, uint64_t local_offset,
-  uint32_t remote_index, uint64_t remote_offset, uint64_t size) {
-  auto* mem_region = mem_regions[local_index];
+void context::rdma_write(uint32_t local_index, uint64_t local_offset,
+                         uint32_t remote_index, uint64_t remote_offset,
+                         uint64_t size) {
+  auto *mem_region = mem_regions[local_index];
   struct ibv_sge sge_list;
   memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
@@ -226,7 +234,8 @@ void context::rdma_write(
 
   struct ibv_send_wr wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.rdma.remote_addr =
+      remote_connection->vaddrs[remote_index] + remote_offset;
   wr.wr.rdma.rkey = remote_connection->rkeys[remote_index];
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
@@ -241,11 +250,10 @@ void context::rdma_write(
   poll_send_cq();
 }
 
-void context::rdma_write_imm(
-  uint32_t local_index, uint64_t local_offset,
-  uint32_t remote_index, uint64_t remote_offset,
-  uint64_t size, uint32_t imm_data, bool sync) {
-  auto* mem_region = mem_regions[local_index];
+void context::rdma_write_imm(uint32_t local_index, uint64_t local_offset,
+                             uint32_t remote_index, uint64_t remote_offset,
+                             uint64_t size, uint32_t imm_data, bool sync) {
+  auto *mem_region = mem_regions[local_index];
   struct ibv_sge sge_list;
   memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
@@ -254,7 +262,8 @@ void context::rdma_write_imm(
 
   struct ibv_send_wr wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.rdma.remote_addr =
+      remote_connection->vaddrs[remote_index] + remote_offset;
   wr.wr.rdma.rkey = remote_connection->rkeys[remote_index];
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
@@ -267,15 +276,15 @@ void context::rdma_write_imm(
   struct ibv_send_wr *bad_wr = nullptr;
   int ret = ibv_post_send(qp, &wr, &bad_wr);
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
-  if(sync) {
+  if (sync) {
     poll_send_cq();
   }
 }
 
-void context::rdma_read(
-  uint32_t local_index, uint64_t local_offset,
-  uint32_t remote_index, uint64_t remote_offset, uint32_t size) {
-  auto* mem_region = mem_regions[local_index];
+void context::rdma_read(uint32_t local_index, uint64_t local_offset,
+                        uint32_t remote_index, uint64_t remote_offset,
+                        uint32_t size) {
+  auto *mem_region = mem_regions[local_index];
   struct ibv_sge sge_list;
   memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
@@ -284,7 +293,8 @@ void context::rdma_read(
 
   struct ibv_send_wr wr;
   memset(&wr, 0, sizeof(wr));
-  wr.wr.rdma.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.rdma.remote_addr =
+      remote_connection->vaddrs[remote_index] + remote_offset;
   wr.wr.rdma.rkey = remote_connection->rkeys[remote_index];
   wr.wr_id = RDMA_WRID;
   wr.sg_list = &sge_list;
@@ -298,14 +308,12 @@ void context::rdma_read(
   THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
 }
 
-uint64_t context::rdma_compare_and_swap(
-  uint32_t local_index,
-  uint64_t local_offset,
-  uint32_t remote_index,
-  uint64_t remote_offset,
-  uint64_t expected,
-  uint64_t new_value) {
-  auto* mem_region = mem_regions[local_index];
+uint64_t context::rdma_compare_and_swap(uint32_t local_index,
+                                        uint64_t local_offset,
+                                        uint32_t remote_index,
+                                        uint64_t remote_offset,
+                                        uint64_t expected, uint64_t new_value) {
+  auto *mem_region = mem_regions[local_index];
   struct ibv_sge sge_list;
   memset(&sge_list, 0, sizeof(sge_list));
   sge_list.addr = (uintptr_t)mem_region->buf + local_offset;
@@ -320,7 +328,8 @@ uint64_t context::rdma_compare_and_swap(
   exp_wr.num_sge = 1;
   exp_wr.exp_opcode = IBV_EXP_WR_ATOMIC_CMP_AND_SWP;
   exp_wr.exp_send_flags = IBV_EXP_SEND_SIGNALED;
-  exp_wr.wr.atomic.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  exp_wr.wr.atomic.remote_addr =
+      remote_connection->vaddrs[remote_index] + remote_offset;
   exp_wr.wr.atomic.rkey = remote_connection->rkeys[remote_index];
   exp_wr.wr.atomic.compare_add = expected;
   exp_wr.wr.atomic.swap = new_value;
@@ -334,7 +343,8 @@ uint64_t context::rdma_compare_and_swap(
   wr.num_sge = 1;
   wr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
   wr.send_flags = IBV_SEND_SIGNALED;
-  wr.wr.atomic.remote_addr = remote_connection->vaddrs[remote_index] + remote_offset;
+  wr.wr.atomic.remote_addr =
+      remote_connection->vaddrs[remote_index] + remote_offset;
   wr.wr.atomic.rkey = remote_connection->rkeys[remote_index];
   wr.wr.atomic.compare_add = expected;
   wr.wr.atomic.swap = new_value;
@@ -352,7 +362,7 @@ uint64_t context::rdma_compare_and_swap(
  * immediate from the peer. Returns data size, the caller
  * should know where to find the data as the result of RDMA write.
  */
-uint32_t context::receive_rdma_with_imm(uint32_t* imm) {
+uint32_t context::receive_rdma_with_imm(uint32_t *imm) {
   struct ibv_recv_wr wr, *bad_wr = nullptr;
   memset(&wr, 0, sizeof(wr));
   wr.wr_id = RDMA_WRID;
@@ -370,14 +380,16 @@ uint32_t context::receive_rdma_with_imm(uint32_t* imm) {
       if (wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
         break;
       }
-      //std::cout << "Not IBV_WC_RECV_RDMA_WITH_IMM\n";
+      // std::cout << "Not IBV_WC_RECV_RDMA_WITH_IMM\n";
     } else {
-      //std::cout << "Nothing\n";
+      // std::cout << "Nothing\n";
     }
   }
-  //while (not (ibv_poll_cq(cq, 1, &wc) and wc.opcode == IBV_WC_RECV_RDMA_WITH_IMM)) {}
-  THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status, "Failed wc status");
-  if(imm) {
+  // while (not (ibv_poll_cq(cq, 1, &wc) and wc.opcode ==
+  // IBV_WC_RECV_RDMA_WITH_IMM)) {}
+  THROW_IF(wc.status != IBV_WC_SUCCESS, os_error, wc.status,
+           "Failed wc status");
+  if (imm) {
     *imm = ntohl(wc.imm_data);
   }
   return wc.byte_len;
@@ -387,7 +399,8 @@ ib_connection::ib_connection(struct context *ctx) {
   // Set up local IB connection attributes that will be exchanged via TCP
   struct ibv_port_attr attr;
   int ret = ibv_query_port(ctx->ctx, ctx->ib_port, &attr);
-  THROW_IF(ret, illegal_argument, "Could not get port attributes, ibv_query_port");
+  THROW_IF(ret, illegal_argument,
+           "Could not get port attributes, ibv_query_port");
   lid = attr.lid;
   qpn = ctx->qp->qp_num;
   psn = lrand48() & 0xffffff;

@@ -18,65 +18,56 @@
 #include "masstree.hh"
 #include "kvrow.hh"
 class threadinfo;
-namespace lcdf { class Json; }
+namespace lcdf {
+class Json;
+}
 
 namespace Masstree {
 
 template <typename P>
 class query_table {
-  public:
-    typedef P param_type;
-    typedef node_base<P> node_type;
-    typedef typename P::threadinfo_type threadinfo;
-    typedef unlocked_tcursor<P> unlocked_cursor_type;
-    typedef tcursor<P> cursor_type;
+ public:
+  typedef P param_type;
+  typedef node_base<P> node_type;
+  typedef typename P::threadinfo_type threadinfo;
+  typedef unlocked_tcursor<P> unlocked_cursor_type;
+  typedef tcursor<P> cursor_type;
 
-    query_table() {
-    }
+  query_table() {}
 
-    const basic_table<P>& table() const {
-        return table_;
-    }
-    basic_table<P>& table() {
-        return table_;
-    }
+  const basic_table<P>& table() const { return table_; }
+  basic_table<P>& table() { return table_; }
 
-    void initialize(threadinfo& ti) {
-        table_.initialize(ti);
-    }
-    void destroy(threadinfo& ti) {
-        table_.destroy(ti);
-    }
+  void initialize(threadinfo& ti) { table_.initialize(ti); }
+  void destroy(threadinfo& ti) { table_.destroy(ti); }
 
-    void findpivots(Str* pv, int npv) const;
+  void findpivots(Str* pv, int npv) const;
 
-    void stats(FILE* f);
-    void json_stats(lcdf::Json& j, threadinfo& ti);
-    inline lcdf::Json json_stats(threadinfo& ti) {
-        lcdf::Json j;
-        json_stats(j, ti);
-        return j;
-    }
+  void stats(FILE* f);
+  void json_stats(lcdf::Json& j, threadinfo& ti);
+  inline lcdf::Json json_stats(threadinfo& ti) {
+    lcdf::Json j;
+    json_stats(j, ti);
+    return j;
+  }
 
-    void print(FILE* f, int indent) const;
+  void print(FILE* f, int indent) const;
 
-    static void test(threadinfo& ti);
+  static void test(threadinfo& ti);
 
-    static const char* name() {
-        return "mb";
-    }
+  static const char* name() { return "mb"; }
 
-  private:
-    basic_table<P> table_;
+ private:
+  basic_table<P> table_;
 };
 
 struct default_query_table_params : public nodeparams<15, 15> {
-    typedef row_type* value_type;
-    typedef value_print<value_type> value_print_type;
-    typedef ::threadinfo threadinfo_type;
+  typedef row_type* value_type;
+  typedef value_print<value_type> value_print_type;
+  typedef ::threadinfo threadinfo_type;
 };
 
 typedef query_table<default_query_table_params> default_table;
 
-} // namespace Masstree
+}  // namespace Masstree
 #endif

@@ -15,14 +15,14 @@ const static uint32_t kRdmaImmShutdown = 1U << 30;
 
 void primary_rdma_poll_send_cq(uint64_t nops) {
   ALWAYS_ASSERT(!config::is_backup_srv());
-  for(auto& n : nodes) {
+  for (auto& n : nodes) {
     n->PollSendCompletionAsPrimary(nops);
   }
 }
 
 void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
   ALWAYS_ASSERT(!config::is_backup_srv());
-  for(auto& n : nodes) {
+  for (auto& n : nodes) {
     n->WaitForMessageAsPrimary(kRdmaPersisted | kRdmaReadyToReceive, false);
   }
 }
@@ -32,7 +32,7 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
 // based memcpy to transfer chkpt and log file data.
 void primary_daemon_rdma() {
   // Create an RdmaNode object for each backup node
-  for(uint32_t i = 0; i < config::num_backups; ++i) {
+  for (uint32_t i = 0; i < config::num_backups; ++i) {
     std::cout << "Expecting node " << i << std::endl;
     RdmaNode* rn = new RdmaNode(true);
     nodes.push_back(rn);
@@ -44,23 +44,25 @@ void primary_daemon_rdma() {
     // Wait for the 'go' signal from the peer
     rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
 
-    // Now can really send something, metadata first, header must fit in the buffer
+    // Now can really send something, metadata first, header must fit in the
+    // buffer
     ALWAYS_ASSERT(md->size() < RdmaNode::kDaemonBufferSize);
     char* daemon_buffer = rn->GetDaemonBuffer();
     memcpy(daemon_buffer, md, md->size());
 
     uint64_t buf_offset = md->size();
     uint64_t to_send = md->chkpt_size;
-    while(to_send) {
+    while (to_send) {
       ALWAYS_ASSERT(buf_offset <= RdmaNode::kDaemonBufferSize);
-      if(buf_offset == RdmaNode::kDaemonBufferSize) {
+      if (buf_offset == RdmaNode::kDaemonBufferSize) {
         // Full, wait for the backup to finish processing this
         rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
         buf_offset = 0;
       }
-      uint64_t n = read(chkpt_fd, daemon_buffer + buf_offset,
-                        std::min(to_send, RdmaNode::kDaemonBufferSize - buf_offset));
-      to_send -=n;
+      uint64_t n =
+          read(chkpt_fd, daemon_buffer + buf_offset,
+               std::min(to_send, RdmaNode::kDaemonBufferSize - buf_offset));
+      to_send -= n;
 
       // Write it out, then wait
       rn->RdmaWriteImmDaemonBuffer(0, 0, buf_offset + n, buf_offset + n);
@@ -81,23 +83,24 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
   char* daemon_buffer = self->GetDaemonBuffer();
   dirent_iterator dir(config::log_dir.c_str());
   int dfd = dir.dup();
-  for(uint32_t i = 0; i < md->num_log_files; ++i) {
+  for (uint32_t i = 0; i < md->num_log_files; ++i) {
     uint32_t segnum = 0;
-    uint64_t start_offset = 0, end_offset = 0; 
+    uint64_t start_offset = 0, end_offset = 0;
     char canary_unused;
     backup_start_metadata::log_segment* ls = md->get_log_segment(i);
-    int n = sscanf(ls->file_name.buf, SEGMENT_FILE_NAME_FMT "%c",
-                   &segnum, &start_offset, &end_offset, &canary_unused);
+    int n = sscanf(ls->file_name.buf, SEGMENT_FILE_NAME_FMT "%c", &segnum,
+                   &start_offset, &end_offset, &canary_unused);
     ALWAYS_ASSERT(n == 3);
     uint64_t to_send = ls->size;
-    if(to_send) {
+    if (to_send) {
       // Ship only the part after chkpt start
       auto* seg = logmgr->get_offset_segment(start_offset);
       int log_fd = os_openat(dfd, ls->file_name.buf, O_RDONLY);
       lseek(log_fd, start_offset - seg->start_offset, SEEK_SET);
-      while(to_send) {
-        uint64_t n = read(log_fd, daemon_buffer,
-                          std::min((uint64_t)RdmaNode::kDaemonBufferSize, to_send));
+      while (to_send) {
+        uint64_t n =
+            read(log_fd, daemon_buffer,
+                 std::min((uint64_t)RdmaNode::kDaemonBufferSize, to_send));
         ALWAYS_ASSERT(n);
         self->RdmaWriteImmDaemonBuffer(0, 0, n, n);
         to_send -= n;
@@ -112,32 +115,37 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
 // Returns false if we should stop. The only caller is backup daemon.
 bool BackupReceiveBoundsArray() {
   // Post an RR to get the log buffer partition bounds
-  // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted before
+  // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted
+  // before
   // the peer sends data).
-  // This RR also serves the purpose of getting the primary's next step. Normally
+  // This RR also serves the purpose of getting the primary's next step.
+  // Normally
   // the primary would send over the bounds array without immediate; when the
   // primary wants to shutdown it will note this in the immediate.
   uint32_t intent = 0;
   auto bounds_array_size = self_rdma_node->ReceiveImm(&intent);
-  if(!config::IsForwardProcessing()) {
+  if (!config::IsForwardProcessing()) {
     // Received the first batch, for sure the backup can start benchmarks.
     // FIXME(tzwang): this is not optimal - ideally we should start after
-    // the primary starts, instead of when the primary *shipped* the first batch.
+    // the primary starts, instead of when the primary *shipped* the first
+    // batch.
     volatile_write(config::state, config::kStateForwardProcessing);
   }
-  if(intent == kRdmaImmShutdown) {
+  if (intent == kRdmaImmShutdown) {
     // Primary signaled shutdown, exit daemon
     volatile_write(config::state, config::kStateShutdown);
     LOG(INFO) << "Got shutdown signal from primary, exit.";
     return false;
   }
-  ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * kMaxLogBufferPartitions);
+  ALWAYS_ASSERT(bounds_array_size ==
+                sizeof(uint64_t) * kMaxLogBufferPartitions);
 
 #ifndef NDEBUG
-  for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
     uint64_t s = 0;
-    if(i > 0) {
-      s = (logbuf_partition_bounds[i] >> 16) - (logbuf_partition_bounds[i-1] >> 16);
+    if (i > 0) {
+      s = (logbuf_partition_bounds[i] >> 16) -
+          (logbuf_partition_bounds[i - 1] >> 16);
     }
     LOG(INFO) << "Logbuf partition: " << i << " " << std::hex
               << logbuf_partition_bounds[i] << std::dec << " " << s;
@@ -148,17 +156,20 @@ bool BackupReceiveBoundsArray() {
 
 // Receive log data from the primary. The only caller is the backup daemon.
 LSN BackupReceiveLogData(LSN& start_lsn) {
-  // post an RR to get the data and the chunk's begin LSN embedded as an the wr_id
+  // post an RR to get the data and the chunk's begin LSN embedded as an the
+  // wr_id
   uint32_t imm = 0;
   uint32_t size = self_rdma_node->ReceiveImm(&imm);
   THROW_IF(not size, illegal_argument, "Invalid data size");
-  segment_id *sid = logmgr->get_segment(start_lsn.segment());
+  segment_id* sid = logmgr->get_segment(start_lsn.segment());
   ASSERT(sid->segnum == start_lsn.segment());
-  if(imm & kRdmaImmNewSeg) {
-    // Extract the segment's start offset (off of the segment's raw, theoreticall start offset)
-    start_lsn = LSN::make(
-      config::log_segment_mb * config::MB * start_lsn.segment() + (imm & ~kRdmaImmNewSeg),
-      start_lsn.segment() + 1);
+  if (imm & kRdmaImmNewSeg) {
+    // Extract the segment's start offset (off of the segment's raw,
+    // theoreticall start offset)
+    start_lsn =
+        LSN::make(config::log_segment_mb * config::MB * start_lsn.segment() +
+                      (imm & ~kRdmaImmNewSeg),
+                  start_lsn.segment() + 1);
   }
 
   uint64_t end_lsn_offset = start_lsn.offset() + size;
@@ -168,7 +179,7 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
   // to use the data size we got to calculate a new durable lsn first.
   ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
   ALWAYS_ASSERT(sid && sid->segnum == start_lsn.segment());
-  if(imm & kRdmaImmNewSeg) {
+  if (imm & kRdmaImmNewSeg) {
     // Fix the start and end offsets for the new segment
     sid->start_offset = start_lsn.offset();
     sid->end_offset = sid->start_offset + config::log_segment_mb * config::MB;
@@ -178,13 +189,14 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
     ALWAYS_ASSERT(sid->start_offset == start_lsn.offset());
     ALWAYS_ASSERT(sid->end_offset >= end_lsn_offset);
   }
-  DLOG(INFO) << "Assigned " << std::hex << start_lsn.offset() << "-" << end_lsn_offset
-    << " to " << std::dec << sid->segnum << " " << std::hex
-    << sid->start_offset << " " << sid->byte_offset << std::dec;
+  DLOG(INFO) << "Assigned " << std::hex << start_lsn.offset() << "-"
+             << end_lsn_offset << " to " << std::dec << sid->segnum << " "
+             << std::hex << sid->start_offset << " " << sid->byte_offset
+             << std::dec;
   ALWAYS_ASSERT(sid);
 
-  DLOG(INFO) << "[Backup] Received " << size << " bytes ("
-    << std::hex << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
+  DLOG(INFO) << "[Backup] Received " << size << " bytes (" << std::hex
+             << start_lsn.offset() << "-" << end_lsn_offset << std::dec << ")";
 
   uint64_t new_byte = sid->buf_offset(end_lsn_offset);
   sm_log::logbuf->advance_writer(new_byte);  // Extends reader_end too
@@ -204,21 +216,22 @@ void BackupDaemonRdma() {
   std::thread flusher(LogFlushDaemon);
   flusher.detach();
 
-  if(config::replay_policy == config::kReplayPipelined) {
+  if (config::replay_policy == config::kReplayPipelined) {
     std::thread redoer(LogRedoDaemon);
     redoer.detach();
   }
 
   uint32_t recv_idx = 0;
   LSN recv_lsn[2] = {INVALID_LSN, INVALID_LSN};
-  while(!config::IsShutdown()) {
+  while (!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
     WaitForLogBufferSpace(recv_lsn[recv_idx]);
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
-    if(!BackupReceiveBoundsArray()) {
-      rep::backup_shutdown_trigger.notify_all();  // Actually only needed if no query workers
+    if (!BackupReceiveBoundsArray()) {
+      rep::backup_shutdown_trigger
+          .notify_all();  // Actually only needed if no query workers
       return;
     }
 
@@ -231,20 +244,22 @@ void BackupDaemonRdma() {
 
     // Impose delays to emulate NVRAM if needed
     uint64_t size = end_lsn.offset() - start_lsn.offset();
-    if(config::nvram_log_buffer && !config::persist_nvram_on_replay) {
-      if(config::nvram_delay_type == config::kDelayClflush) {
-        segment_id *sid = logmgr->get_segment(start_lsn.segment());
-        const char* buf = sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
+    if (config::nvram_log_buffer && !config::persist_nvram_on_replay) {
+      if (config::nvram_delay_type == config::kDelayClflush) {
+        segment_id* sid = logmgr->get_segment(start_lsn.segment());
+        const char* buf =
+            sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
         uint32_t clines = size / CACHELINE_SIZE;
-        for(uint32_t i = 0; i < clines; ++i) {
+        for (uint32_t i = 0; i < clines; ++i) {
           _mm_clflush(&buf[i * CACHELINE_SIZE]);
         }
-      } else if(config::nvram_delay_type == config::kDelayClwbEmu) {
+      } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
         // Emulate clwb, spin
         uint64_t total_cycles = size * config::cycles_per_byte;
         unsigned int unused = 0;
         uint64_t cycle_end = __rdtscp(&unused) + total_cycles;
-        while(__rdtscp(&unused) < cycle_end) {}
+        while (__rdtscp(&unused) < cycle_end) {
+        }
       }
     }
 
@@ -263,27 +278,30 @@ void BackupDaemonRdma() {
     //
     // The role of NVRAM here is solely for making persistence faster and is
     // orthogonal to the choice of replay policy.
-    if(config::replay_policy == config::kReplaySync) {
+    if (config::replay_policy == config::kReplaySync) {
       logmgr->redo_logbuf(start_lsn, end_lsn);
-      DLOG(INFO) << "[Backup] Rolled forward log "
-                 << std::hex << start_lsn.offset() << "." << start_lsn.segment()
-                 << "-" << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
+      DLOG(INFO) << "[Backup] Rolled forward log " << std::hex
+                 << start_lsn.offset() << "." << start_lsn.segment() << "-"
+                 << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
       ASSERT(start_lsn.segment() == end_lsn.segment());
       // Make the new records visible, but pending persistence
       volatile_write(replayed_lsn_offset, end_lsn.offset());
-    } else if(config::replay_policy == config::kReplayPipelined) {
+    } else if (config::replay_policy == config::kReplayPipelined) {
       volatile_write(redo_start_lsn._val, start_lsn._val);
       volatile_write(redo_end_lsn._val, end_lsn._val);
     }
 
-    if(config::nvram_log_buffer) {
-      if(config::persist_nvram_on_replay) {
-        while(size > volatile_read(persisted_nvram_size)) {}
+    if (config::nvram_log_buffer) {
+      if (config::persist_nvram_on_replay) {
+        while (size > volatile_read(persisted_nvram_size)) {
+        }
         volatile_write(persisted_nvram_size, 0);
       }
     } else {
-      // Now wait for the flusher to finish persisting log if we don't have NVRAM,
-      while(end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
+      // Now wait for the flusher to finish persisting log if we don't have
+      // NVRAM,
+      while (end_lsn.offset() > volatile_read(persisted_lsn_offset)) {
+      }
     }
 
     // Tell the primary the data is persisted, it can continue
@@ -296,7 +314,8 @@ void BackupDaemonRdma() {
 }
 
 void start_as_backup_rdma() {
-  memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
+  memset(logbuf_partition_bounds, 0,
+         sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(config::is_backup_srv());
   self_rdma_node = new RdmaNode(false);
 
@@ -317,21 +336,22 @@ void start_as_backup_rdma() {
   md->persist_marker_files();
 
   to_process -= md->size();
-  if(md->chkpt_size > 0) {
+  if (md->chkpt_size > 0) {
     dirent_iterator dir(config::log_dir.c_str());
     int dfd = dir.dup();
     char canary_unused;
     uint64_t chkpt_start = 0, chkpt_end_unused;
-    int n = sscanf(md->chkpt_marker, CHKPT_FILE_NAME_FMT "%c",
-                   &chkpt_start, &chkpt_end_unused, &canary_unused);
+    int n = sscanf(md->chkpt_marker, CHKPT_FILE_NAME_FMT "%c", &chkpt_start,
+                   &chkpt_end_unused, &canary_unused);
     static char chkpt_fname[CHKPT_DATA_FILE_NAME_BUFSZ];
-    n = os_snprintf(chkpt_fname, sizeof(chkpt_fname),
-                           CHKPT_DATA_FILE_NAME_FMT, chkpt_start);
-    int chkpt_fd = os_openat(dfd, chkpt_fname, O_CREAT|O_WRONLY);
-    LOG(INFO) << "[Backup] Checkpoint " << chkpt_fname << ", " << md->chkpt_size << " bytes";
+    n = os_snprintf(chkpt_fname, sizeof(chkpt_fname), CHKPT_DATA_FILE_NAME_FMT,
+                    chkpt_start);
+    int chkpt_fd = os_openat(dfd, chkpt_fname, O_CREAT | O_WRONLY);
+    LOG(INFO) << "[Backup] Checkpoint " << chkpt_fname << ", " << md->chkpt_size
+              << " bytes";
 
     // Flush out the bytes in the buffer stored after the metadata first
-    if(to_process > 0) {
+    if (to_process > 0) {
       uint64_t to_write = std::min(md->chkpt_size, to_process);
       os_write(chkpt_fd, buf + md->size(), to_write);
       os_fsync(chkpt_fd);
@@ -341,7 +361,7 @@ void start_as_backup_rdma() {
     ALWAYS_ASSERT(to_process == 0);  // XXX(tzwang): currently always have chkpt
 
     // More coming in the buffer
-    while(md->chkpt_size > 0) {
+    while (md->chkpt_size > 0) {
       // Let the primary know to begin the next round
       self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
       uint64_t to_write = self_rdma_node->ReceiveImm();
@@ -356,12 +376,12 @@ void start_as_backup_rdma() {
   // Now get log files
   dirent_iterator dir(config::log_dir.c_str());
   int dfd = dir.dup();
-  for(uint64_t i = 0; i < md->num_log_files; ++i) {
+  for (uint64_t i = 0; i < md->num_log_files; ++i) {
     backup_start_metadata::log_segment* ls = md->get_log_segment(i);
     uint64_t file_size = ls->size;
-    int log_fd = os_openat(dfd, ls->file_name.buf, O_CREAT|O_WRONLY);
+    int log_fd = os_openat(dfd, ls->file_name.buf, O_CREAT | O_WRONLY);
     ALWAYS_ASSERT(log_fd > 0);
-    while(file_size > 0) {
+    while (file_size > 0) {
       self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
       uint64_t received_bytes = self_rdma_node->ReceiveImm();
       ALWAYS_ASSERT(received_bytes);
@@ -382,39 +402,40 @@ void start_as_backup_rdma() {
   LOG(INFO) << "[Backup] Received log file.";
 }
 
-void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
-                                  bool new_seg, uint64_t new_seg_start_offset) {
+void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
+                                  uint64_t new_seg_start_offset) {
 #ifndef NDEBUG
-  for(uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
     LOG(INFO) << "RDMA write logbuf bounds: " << i << " " << std::hex
               << logbuf_partition_bounds[i] << std::dec;
   }
 #endif
-  for(auto& node : nodes) {
+  for (auto& node : nodes) {
     node->WaitForMessageAsPrimary(kRdmaReadyToReceive);
 
     // Send buffer partition boundary information first
-    node->RdmaWriteImmLogBufferPartitionBounds(0, 0,
-                                     sizeof(uint64_t) * kMaxLogBufferPartitions,
-                                     sizeof(uint64_t) * kMaxLogBufferPartitions,
-                                     false /* async */);
+    node->RdmaWriteImmLogBufferPartitionBounds(
+        0, 0, sizeof(uint64_t) * kMaxLogBufferPartitions,
+        sizeof(uint64_t) * kMaxLogBufferPartitions, false /* async */);
 
     ALWAYS_ASSERT(size);
     uint64_t offset = buf - sm_log::get_logbuf()->_data;
     ASSERT(offset + size <= sm_log::get_logbuf()->window_size() * 2);
 #ifndef NDEBUG
-    if(new_seg) {
-      LOG(INFO) << "new segment start offset=" << std::hex << new_seg_start_offset << std::dec;
+    if (new_seg) {
+      LOG(INFO) << "new segment start offset=" << std::hex
+                << new_seg_start_offset << std::dec;
     }
 #endif
     ALWAYS_ASSERT(new_seg_start_offset <= ~kRdmaImmNewSeg);
-    uint32_t imm = new_seg ? kRdmaImmNewSeg | (uint32_t)new_seg_start_offset : 0;
+    uint32_t imm =
+        new_seg ? kRdmaImmNewSeg | (uint32_t)new_seg_start_offset : 0;
     node->RdmaWriteImmLogBuffer(offset, offset, size, imm, false);
   }
 }
 
 void PrimaryShutdownRdma() {
-  for(auto& node : nodes) {
+  for (auto& node : nodes) {
     node->WaitForMessageAsPrimary(kRdmaReadyToReceive);
 
     // Send the shutdown signal using the bounds buffer

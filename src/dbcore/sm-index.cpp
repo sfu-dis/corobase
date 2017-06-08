@@ -1,24 +1,33 @@
-#include "sm-index.h"  
+#include "sm-index.h"
 #include "../benchmarks/ordered_index.h"
 
 std::unordered_map<std::string, IndexDescriptor*> IndexDescriptor::name_map;
 std::unordered_map<FID, IndexDescriptor*> IndexDescriptor::fid_map;
 
-IndexDescriptor::IndexDescriptor(std::string& name) : name_(name), primary_name_(""),
-  tuple_fid_(0), aux_fid_(0), tuple_array_(nullptr), aux_array_(nullptr) {
+IndexDescriptor::IndexDescriptor(std::string& name)
+    : name_(name),
+      primary_name_(""),
+      tuple_fid_(0),
+      aux_fid_(0),
+      tuple_array_(nullptr),
+      aux_array_(nullptr) {
   name_map[name_] = this;
   index_ = new OrderedIndex(this);
 }
 
 IndexDescriptor::IndexDescriptor(std::string& name, std::string& primary_name)
-: name_(name), primary_name_(primary_name),
-  tuple_fid_(0), aux_fid_(0), tuple_array_(nullptr), aux_array_(nullptr) {
+    : name_(name),
+      primary_name_(primary_name),
+      tuple_fid_(0),
+      aux_fid_(0),
+      tuple_array_(nullptr),
+      aux_array_(nullptr) {
   name_map[name_] = this;
   index_ = new OrderedIndex(this);
 }
 
 void IndexDescriptor::Initialize() {
-  if(IsPrimary()) {
+  if (IsPrimary()) {
     tuple_fid_ = oidmgr->create_file(true);
     fid_map[tuple_fid_] = this;
   } else {
@@ -40,7 +49,7 @@ void IndexDescriptor::Recover(FID tuple_fid, FID aux_fid, OID himark) {
   aux_fid_ = aux_fid;
 
   // Both primary and secondary indexes point to the same descriptor
-  if(!FidExists(tuple_fid_)) {
+  if (!FidExists(tuple_fid_)) {
     // Primary index
     oidmgr->recreate_file(tuple_fid_);
     fid_map[tuple_fid_] = this;
@@ -54,7 +63,7 @@ void IndexDescriptor::Recover(FID tuple_fid, FID aux_fid, OID himark) {
   aux_array_ = oidmgr->get_array(aux_fid_);
   ALWAYS_ASSERT(index_);
 
-  if(himark > 0) {
+  if (himark > 0) {
     tuple_array_->ensure_size(tuple_array_->alloc_size(himark));
     aux_array_->ensure_size(aux_array_->alloc_size(himark));
     oidmgr->recreate_allocator(tuple_fid_, himark);

@@ -10,28 +10,30 @@
 
 struct varstr {
   friend std::ostream &operator<<(std::ostream &o, const varstr &k);
-public:
+
+ public:
   inline varstr() : l(0), p(NULL) {}
 
   inline varstr(const uint8_t *p, uint32_t l) : l(l), p(p) {}
   inline varstr(const char *p, uint32_t l) : l(l), p((const uint8_t *)p) {}
-  inline void copy_from(const uint8_t *s, uint32_t l) { copy_from((char *)s, l); }
-  inline void copy_from(const varstr* v) { copy_from(v->p, v->l); }
+  inline void copy_from(const uint8_t *s, uint32_t l) {
+    copy_from((char *)s, l);
+  }
+  inline void copy_from(const varstr *v) { copy_from(v->p, v->l); }
 
   inline void copy_from(const char *s, uint32_t ll) {
-    if(ll) {
-      memcpy((void*)p, s, ll);
+    if (ll) {
+      memcpy((void *)p, s, ll);
     }
     l = ll;
   }
 
   inline bool operator==(const varstr &that) const {
-    if (size() != that.size())
-      return false;
+    if (size() != that.size()) return false;
     return memcmp(data(), that.data(), size()) == 0;
   }
 
-  inline varstr& operator=(const varstr& other) {
+  inline varstr &operator=(const varstr &other) {
     p = other.p;
     l = other.l;
     return *this;
@@ -59,15 +61,15 @@ public:
 
   inline uint64_t slice() const {
     uint64_t ret = 0;
-    uint8_t *rp = (uint8_t *) &ret;
-    for (uint32_t i = 0; i < std::min(l, uint64_t(8)); i++)
-      rp[i] = p[i];
+    uint8_t *rp = (uint8_t *)&ret;
+    for (uint32_t i = 0; i < std::min(l, uint64_t(8)); i++) rp[i] = p[i];
     return util::host_endian_trfm<uint64_t>()(ret);
   }
 
 #ifdef MASSTREE
   inline uint64_t slice_at(int pos) const {
-    return string_slice<uint64_t>::make_comparable((const char*) p + pos, std::min(int(l - pos), 8));
+    return string_slice<uint64_t>::make_comparable((const char *)p + pos,
+                                                   std::min(int(l - pos), 8));
   }
 #endif
 
@@ -82,17 +84,15 @@ public:
   }
 
   inline uint32_t size() const { return l; }
-  inline const uint8_t* data() const { return p; }
-  inline uint8_t* data() { return (uint8_t *)p; }
+  inline const uint8_t *data() const { return p; }
+  inline uint8_t *data() { return (uint8_t *)p; }
   inline bool empty() const { return not size(); }
 
 #ifdef MASSTREE
-  inline operator lcdf::Str() const {
-    return lcdf::Str(p, l);
-  }
+  inline operator lcdf::Str() const { return lcdf::Str(p, l); }
 #endif
 
   uint64_t l;
   fat_ptr ptr;
-  const uint8_t *p; // must be the last field
+  const uint8_t *p;  // must be the last field
 };

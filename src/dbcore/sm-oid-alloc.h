@@ -36,8 +36,6 @@
    more space than that.
  */
 
-
-
 /* [CHECKPOINTING] [RECOVERY]
 
    The scaling factor to use when decoding OID allocator snapshot
@@ -49,12 +47,11 @@
  */
 static size_t const SM_OID_ALLOC_ALIGN_BITS = 10;
 
-
 /* Create a new OID allocator, associated with file [f]. OIDs can then
    be allocated and freed by passing [f] to the appropriate functions.
    The caller is responsible to call destroy_allocator() when the
    allocator is no longer needed.
-       
+
    In the event of a crash, a newly-created allocator will be freed
    unless its pointer was persisted somewhere.
 
@@ -64,7 +61,7 @@ static size_t const SM_OID_ALLOC_ALIGN_BITS = 10;
    obtained at any time by calling oid_copy_allocator(). Successive
    versions should be tracked using an OID array slot so the GC can
    free them.
-   
+
    NOTE: [f] serves only as a key when looking up which allocator
    object to use. It is the caller's responsibility to track which
    FIDs are in use by the system, as not every FID has an allocator
@@ -77,7 +74,7 @@ version *sm_oid_allocator_create(FID f);
 
 /* Destroy an existing OID allocator and free any resources associated
    with it.
-   
+
    In the event of a crash, the allocator will be restored unless
    the persistent pointer to it was also removed.
 */
@@ -135,7 +132,7 @@ version *sm_oid_allocator_copy(FID f);
    snapshot previously returned by either sm_oid_allocator_create or
    sm_oid_allocator_copy. Note that the recovery logic is responsible
    to detect log records which imply the need to call this function.
-   
+
    Throw illegal_argument if the target FID already has an
    allocator. The implication is that snapshots of an existing
    allocator should only be found in checkpoints.
@@ -164,4 +161,3 @@ void sm_oid_alloc_restore(FID f, OID o);
    Similar to sm_oid_alloc_restore, except it flags OID [o] as deleted.
 */
 void sm_oid_free_restore(FID f, OID o);
-

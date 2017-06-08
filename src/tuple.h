@@ -21,13 +21,14 @@ using namespace TXN;
  * also contains the memory of the value
  */
 struct dbtuple {
-public:
+ public:
 #if defined(SSN) || defined(SSI)
-  readers_list::bitmap_t   readers_bitmap;   // bitmap of in-flight readers
-  fat_ptr sstamp;          // successor (overwriter) stamp (\pi in ssn), set to writer XID during
-                           // normal write to indicate its existence; become writer cstamp at commit
-  uint64_t xstamp;         // access (reader) stamp (\eta), updated when reader commits
-  uint64_t preader;         // did I have some reader thinking I'm old?
+  readers_list::bitmap_t readers_bitmap;  // bitmap of in-flight readers
+  fat_ptr sstamp;  // successor (overwriter) stamp (\pi in ssn), set to writer
+                   // XID during
+  // normal write to indicate its existence; become writer cstamp at commit
+  uint64_t xstamp;  // access (reader) stamp (\eta), updated when reader commits
+  uint64_t preader;  // did I have some reader thinking I'm old?
 #endif
 #ifdef SSI
   uint64_t s2;  // smallest successor stamp of all reads performed by the tx
@@ -41,24 +42,24 @@ public:
                 // it will become the X in the dangerous structure above
                 // and must abort.
 #endif
-  uint32_t size; // actual size of record
-  varstr *pvalue;    // points to the value that will be put into value_start if committed
-                     // so that read-my-own-update can copy from here.
-  uint8_t value_start[0];   // must be last field
+  uint32_t size;   // actual size of record
+  varstr *pvalue;  // points to the value that will be put into value_start if
+                   // committed
+                   // so that read-my-own-update can copy from here.
+  uint8_t value_start[0];  // must be last field
 
   dbtuple(uint32_t size)
-    :
+      :
 #if defined(SSN) || defined(SSI)
-      sstamp(NULL_PTR),
-      xstamp(0),
-      preader(0),
+        sstamp(NULL_PTR),
+        xstamp(0),
+        preader(0),
 #endif
 #ifdef SSI
-      s2(0),
+        s2(0),
 #endif
-      size(CheckBounds(size)),
-      pvalue(NULL)
-  {
+        size(CheckBounds(size)),
+        pvalue(NULL) {
   }
 
   ~dbtuple() {}
@@ -84,14 +85,12 @@ public:
 
     if (cstamp.asi_type() == fat_ptr::ASI_XID) {
       XID xid = XID::from_ptr(cstamp);
-      if (xid == owner)   // my own update
+      if (xid == owner)  // my own update
         return 0;
       xid_context *xc = xid_get_context(xid);
       end = volatile_read(xc->end);
-      if (not xc or xc->owner != xid)
-        goto retry;
-    }
-    else {
+      if (not xc or xc->owner != xid) goto retry;
+    } else {
       ASSERT(cstamp.asi_type() == fat_ptr::ASI_LOG);
       end = cstamp.offset();
     }
@@ -103,12 +102,12 @@ public:
   inline ALWAYS_INLINE bool set_persistent_reader() {
     uint64_t pr = 0;
     do {
-        pr = volatile_read(preader);
-        if (pr >> 7)   // some updater already locked it
-            return false;
-    }
-    while (volatile_read(preader) != PERSISTENT_READER_MARK and
-           not __sync_bool_compare_and_swap(&preader, pr, PERSISTENT_READER_MARK));
+      pr = volatile_read(preader);
+      if (pr >> 7)  // some updater already locked it
+        return false;
+    } while (
+        volatile_read(preader) != PERSISTENT_READER_MARK and
+        not __sync_bool_compare_and_swap(&preader, pr, PERSISTENT_READER_MARK));
     return true;
   }
 #endif
@@ -119,8 +118,8 @@ public:
   // XXX: for the writer who's updating this tuple only
   inline ALWAYS_INLINE void lockout_read_mostly_tx() {
     if (config::ssn_read_opt_enabled()) {
-      if (not (volatile_read(preader) >> 7))
-          __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
+      if (not(volatile_read(preader) >> 7))
+        __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
       ASSERT(volatile_read(preader) >> 7);
     }
   }
@@ -129,55 +128,49 @@ public:
   inline ALWAYS_INLINE void welcome_read_mostly_tx() {
     if (config::ssn_read_opt_enabled()) {
       if (volatile_read(preader) >> 7)
-          __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
-      ASSERT(not (volatile_read(preader) >> 7));
+        __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
+      ASSERT(not(volatile_read(preader) >> 7));
     }
   }
 #endif
 
-  inline ALWAYS_INLINE uint8_t *
-  get_value_start()
-  {
+  inline ALWAYS_INLINE uint8_t *get_value_start() { return &value_start[0]; }
+
+  inline ALWAYS_INLINE const uint8_t *get_value_start() const {
     return &value_start[0];
   }
 
-  inline ALWAYS_INLINE const uint8_t *
-  get_value_start() const
-  {
-    return &value_start[0];
-  }
-
-  inline Object* GetObject() {
-    Object* obj = (Object*)((char *)this - sizeof(Object));
+  inline Object *GetObject() {
+    Object *obj = (Object *)((char *)this - sizeof(Object));
     ASSERT(obj->GetPayload() == (char *)this);
     return obj;
   }
 
-  inline dbtuple* NextVolatile() {
+  inline dbtuple *NextVolatile() {
     // So far this is only used by the primary
     ALWAYS_ASSERT(!config::is_backup_srv());
-    Object* myobj = GetObject();
+    Object *myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
     uint64_t next_off = myobj->GetNextVolatile().offset();
     return next_off ? GetObject()->GetPinnedTuple() : nullptr;
   }
 
-private:
+ private:
   static inline ALWAYS_INLINE uint32_t CheckBounds(uint32_t s) {
     ASSERT(s <= std::numeric_limits<uint32_t>::max());
     return s;
   }
 
-public:
+ public:
   inline ALWAYS_INLINE ReadStatus
-  // Note: the stable=false option will try to read from pvalue,
-  // instead of the real data area; so giving stable=false is only
-  // safe for the updating transaction itself to read its own write.
-  do_read(varstr* out_v, bool stable) const {
-    if(stable) {
+      // Note: the stable=false option will try to read from pvalue,
+      // instead of the real data area; so giving stable=false is only
+      // safe for the updating transaction itself to read its own write.
+      do_read(varstr *out_v, bool stable) const {
+    if (stable) {
       out_v->p = get_value_start();
     } else {
-      if (not pvalue) {   // so I just deleted this tuple... return empty?
+      if (not pvalue) {  // so I just deleted this tuple... return empty?
         ASSERT(not size);
         return READ_EMPTY;
       }
@@ -189,15 +182,12 @@ public:
   }
 
   // move data from the user's varstr pvalue to this tuple
-  inline ALWAYS_INLINE void
-  do_write() const
-  {
+  inline ALWAYS_INLINE void do_write() const {
     if (pvalue) {
       ASSERT(pvalue->size() == size);
       memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());
     }
   }
-}
-;
+};
 
 #endif /* _NDB_TUPLE_H_ */

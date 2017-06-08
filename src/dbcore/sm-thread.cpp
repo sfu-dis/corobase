@@ -20,19 +20,22 @@ void sm_thread::idle_task() {
   // MM::deregister_thread could call cur_lsn inside
   RCU::rcu_register();
   MM::register_thread();
-  RCU::rcu_start_tls_cache( 32, 100000 );
+  RCU::rcu_start_tls_cache(32, 100000);
 
   while (not volatile_read(shutdown)) {
     if (volatile_read(state) == kStateHasWork) {
       task(task_input);
       if (!config::IsShutdown() && logmgr and not config::is_backup_srv()) {
-        // logmgr might be null during recovery and backups will flush on their own
+        // logmgr might be null during recovery and backups will flush on their
+        // own
         auto my_offset = logmgr->get_tls_lsn_offset();
-        // Must use a while loop here instead of using logmgr->wait_for_durable();
+        // Must use a while loop here instead of using
+        // logmgr->wait_for_durable();
         // otherwise the N-1 out of N threads reached here at the same time will
         // stuck - only the first guy can return from wait_for_durable() and the
         // rest will wait indefinitely because flush() always flushes up to the
-        // smallest tls_lsn_offset. Invoking flush at the same time results in the
+        // smallest tls_lsn_offset. Invoking flush at the same time results in
+        // the
         // same smallest offset and stuck at wait_for_durable.
         while (logmgr->durable_flushed_lsn().offset() < my_offset) {
           logmgr->flush();
@@ -42,14 +45,16 @@ void sm_thread::idle_task() {
       COMPILER_MEMORY_FENCE;
       volatile_write(state, kStateNoWork);
     }
-    if(sleep_when_idle && __sync_bool_compare_and_swap(&state, kStateNoWork, kStateSleep)) {
+    if (sleep_when_idle &&
+        __sync_bool_compare_and_swap(&state, kStateNoWork, kStateSleep)) {
       // FIXME(tzwang): add a work queue so we can
       // continue if there is more work to do
       trigger.wait(lock);
       volatile_write(state, kStateNoWork);
       // Somebody woke me up, wait for work to do
-      while(volatile_read(state) != kStateHasWork) { /** spin **/ }
-    } // else can't sleep, go check another round
+      while (volatile_read(state) != kStateHasWork) { /** spin **/
+      }
+    }  // else can't sleep, go check another round
   }
 
   MM::deregister_thread();
@@ -57,7 +62,6 @@ void sm_thread::idle_task() {
 #if defined(SSN) || defined(SSI)
   TXN::deassign_reader_bitmap_entry();
 #endif
-
 }
 
 }  // namespace thread

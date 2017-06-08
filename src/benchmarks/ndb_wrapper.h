@@ -5,7 +5,7 @@
 #include "../str_arena.h"
 
 class ndb_wrapper {
-public:
+ public:
   typedef std::map<std::string, uint64_t> counter_map;
   typedef std::map<std::string, counter_map> txn_counter_map;
 
@@ -16,6 +16,8 @@ public:
   rc_t commit_txn(transaction *txn);
   void abort_txn(transaction *txn);
 
-  inline counter_map get_txn_counters(transaction *txn) const { return counter_map(); }
+  inline counter_map get_txn_counters(transaction *txn) const {
+    return counter_map();
+  }
   inline ssize_t txn_max_batch_size() const { return 100; }
 };
