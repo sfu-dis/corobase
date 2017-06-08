@@ -20,24 +20,29 @@ This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see b
 ```
 *Re-login to apply.*
 
-#### Choosing a CC scheme
-
-ERMIA supports Read Committed (RC), Snapshot Isolation (SI), Serializable Snapshot Isolation (SSI), and Serial Safety Net (SSN) with SI/RC. The CMake config will build all variants. For example:
-
-* `ERMIA_SI` - snapshot isolation;
-* `ERMIA_SI_SSN_ESC` - SI + SSN + SSN early exclusion window checks without phantom protection;
-* `ERMIA_SI_SSN_ESC_PP` - same as `ERMIA_SI_SSN_ESC` but with phantom protection;
-* `ERMIA_SSI` - SSI without phantom protection;
-* `ERMIA_SSI_PP` - SSI + phantom protection;
-
 #### Adjust maximum concurrent workers
 
-By default we support up to 256 cores. The limit can be adjusted by setting `MAX_THREADS` defined under `sysconf` in `dbcore/sm-config.h.` `MAX_THREADS` must be a multiple of 64.
+By default we support up to 256 cores. The limit can be adjusted by setting `MAX_THREADS` defined under `config` in `dbcore/sm-config.h.` `MAX_THREADS` must be a multiple of 64.
 
 #### Build it
 --------
 
-Use `src/build.sh` to compile ERMIA. For performance runs, `$ build.sh`, `$ build.sh 1` for debugging.
+We do not allow building in the source directory. Suppose we build in a separate directory:
+
+```
+$ mkdir build
+$ cd build
+$ cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
+$ make -jN
+```
+
+After `make` there will be three executables under `build`: 
+`ermia_SI` that runs snapshot isolation (not serializable);
+`ermia_SI_SSN` that runs snapshot isolation + Serial Safety Net (serializable)
+`ermia_SSI` that runs serializable snapshot isolation *
+
+* Serializable Isolation for Snapshot Databases, M. Cahill, U. Rohm, A. Fekete, SIGMOD 2008.
+
 
 #### Run it
 ```
@@ -50,21 +55,22 @@ $run.sh \
        "[other system-wide runtime options]" \
        "[other benchmark-specific runtime options]"`
 ```
-*Note the quotation marks for additional options.*
 
 #### System-wide runtime options
 
-`--node-memory-gb`: how many GBs of memory to allocate per socket.
+`-node_memory_gb`: how many GBs of memory to allocate per socket.
 
-`--null-log-device`: flush log buffer to `/dev/null`. With more than 30 threads, log flush (even to tmpfs) can easily become a bottleneck because of a mutex in the kernel held during the flush. This option does *not* disable logging, but it voids the ability to recover.
+`-null_log_device`: flush log buffer to `/dev/null`. With more than 30 threads, log flush (even to tmpfs) can easily become a bottleneck because of a mutex in the kernel held during the flush. This option does *not* disable logging, but it voids the ability to recover.
 
-`--tmpfs-dir`: location of the log buffer's mmap file. Default: `/tmpfs/`.
+`-tmpfs_dir`: location of the log buffer's mmap file. Default: `/tmpfs/`.
 
-`--enable-gc`: turn on garbage collection. Currently there is only one GC thread.
+`-enable_gc`: turn on garbage collection. Currently there is only one GC thread.
 
-`--enable-chkpt`: enable checkpointing.
+`-enable_chkpt`: enable checkpointing.
 
-`--warm-up`: strategy to load versions upon recovery. Candidates are:
+`-phantom_prot`: enable phantom protection.
+
+`-warm-up`: strategy to load versions upon recovery. Candidates are:
 - `eager`: load all latest versions during recovery, so the database is fully in-memory when it starts to process new transactions;
 - `lazy`: start a thread to load versions in the background after recovery, so the database is partially in-memory when it starts to process new transactions.
 - `none`: load versions on-demand upon access.
