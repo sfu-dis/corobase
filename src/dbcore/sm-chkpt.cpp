@@ -6,20 +6,19 @@
 
 #include "../benchmarks/ordered_index.h"
 
-sm_chkpt_mgr *chkptmgr;
+sm_chkpt_mgr* chkptmgr;
 
 // The fd for the original chkpt file we recovered from.
 // Never changes once assigned value - we currently don't
 // evict tuples from main memory, so if an OID entry points
 // to somewhere in the chkpt, it must be in this base chkpt.
 // TODO(tzwang): implement tuple eviction (anti-caching like).
-int sm_chkpt_mgr::base_chkpt_fd= -1;
+int sm_chkpt_mgr::base_chkpt_fd = -1;
 
 uint32_t sm_chkpt_mgr::num_recovery_threads = 1;
 
-void
-sm_chkpt_mgr::take(bool wait) {
-  if(wait) {
+void sm_chkpt_mgr::take(bool wait) {
+  if (wait) {
     std::unique_lock<std::mutex> lock(_wait_chkpt_mutex);
     _daemon_cv.notify_all();
     _wait_chkpt_cv.wait(lock);
@@ -30,10 +29,10 @@ sm_chkpt_mgr::take(bool wait) {
 
 void sm_chkpt_mgr::daemon() {
   RCU::rcu_register();
-  while(!volatile_read(_shutdown)) {
+  while (!volatile_read(_shutdown)) {
     std::unique_lock<std::mutex> lock(_daemon_mutex);
     _daemon_cv.wait_for(lock, std::chrono::seconds(config::chkpt_interval));
-    if(!volatile_read(_shutdown)) {
+    if (!volatile_read(_shutdown)) {
       do_chkpt();
     }
   }
@@ -41,7 +40,7 @@ void sm_chkpt_mgr::daemon() {
 }
 
 void sm_chkpt_mgr::do_chkpt() {
-  if(!__sync_bool_compare_and_swap(&_in_progress, false, true)) {
+  if (!__sync_bool_compare_and_swap(&_in_progress, false, true)) {
     return;
   }
   ASSERT(volatile_read(_in_progress));
@@ -52,7 +51,7 @@ void sm_chkpt_mgr::do_chkpt() {
   // making the chkpt essentially consistent.
   auto cstart = logmgr->flush();
   ASSERT(cstart >= _last_cstart);
-  if(_last_cstart == cstart) {
+  if (_last_cstart == cstart) {
     return;
   }
   prepare_file(cstart);
@@ -76,12 +75,13 @@ void sm_chkpt_mgr::do_chkpt() {
   // iterating files in the log dir)
   os_fsync(_fd);
   os_close(_fd);
-  logmgr->update_chkpt_mark(cstart,
-          LSN::make(align_up(cstart.offset()+1), cstart.segment()));
+  logmgr->update_chkpt_mark(
+      cstart, LSN::make(align_up(cstart.offset() + 1), cstart.segment()));
   scavenge();
   _last_cstart = cstart;
   RCU::rcu_exit();
-  LOG(INFO) << "[Checkpoint] marker: 0x" << std::hex << cstart.offset() << std::dec;
+  LOG(INFO) << "[Checkpoint] marker: 0x" << std::hex << cstart.offset()
+            << std::dec;
 
   std::unique_lock<std::mutex> l(_wait_chkpt_mutex);
   _wait_chkpt_cv.notify_all();
@@ -89,52 +89,46 @@ void sm_chkpt_mgr::do_chkpt() {
   __sync_synchronize();
 }
 
-void
-sm_chkpt_mgr::scavenge()
-{
+void sm_chkpt_mgr::scavenge() {
   // Don't scavenge the (possibly open) base_chkpt
-  if(_last_cstart > _base_chkpt_lsn) {
+  if (_last_cstart > _base_chkpt_lsn) {
     char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
-    size_t n = os_snprintf(buf, sizeof(buf),
-                           CHKPT_DATA_FILE_NAME_FMT, _last_cstart._val);
+    size_t n = os_snprintf(buf, sizeof(buf), CHKPT_DATA_FILE_NAME_FMT,
+                           _last_cstart._val);
     ASSERT(n < sizeof(buf));
     ASSERT(oidmgr and oidmgr->dfd);
     os_unlinkat(oidmgr->dfd, buf);
   }
 }
 
-void
-sm_chkpt_mgr::prepare_file(LSN cstart)
-{
-    char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
-    size_t n = os_snprintf(buf, sizeof(buf),
-                           CHKPT_DATA_FILE_NAME_FMT, cstart._val);
-    ASSERT(n < sizeof(buf));
-    ASSERT(oidmgr and oidmgr->dfd);
-    _fd = os_openat(oidmgr->dfd, buf, O_CREAT|O_WRONLY);
-    _buf_pos = _dur_pos = 0;
+void sm_chkpt_mgr::prepare_file(LSN cstart) {
+  char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
+  size_t n =
+      os_snprintf(buf, sizeof(buf), CHKPT_DATA_FILE_NAME_FMT, cstart._val);
+  ASSERT(n < sizeof(buf));
+  ASSERT(oidmgr and oidmgr->dfd);
+  _fd = os_openat(oidmgr->dfd, buf, O_CREAT | O_WRONLY);
+  _buf_pos = _dur_pos = 0;
 }
 
-void
-sm_chkpt_mgr::write_buffer(void *p, size_t s)
-{
-    if (s > kBufferSize) {
-        // Too large, write to file directly
-        sync_buffer();
-        ALWAYS_ASSERT(false);
+void sm_chkpt_mgr::write_buffer(void* p, size_t s) {
+  if (s > kBufferSize) {
+    // Too large, write to file directly
+    sync_buffer();
+    ALWAYS_ASSERT(false);
+  } else {
+    if (_buf_pos + s > kBufferSize) {
+      sync_buffer();
+      _buf_pos = _dur_pos = 0;
     }
-    else {
-        if (_buf_pos + s > kBufferSize) {
-            sync_buffer();
-            _buf_pos = _dur_pos = 0;
-        }
-        ASSERT(_buf_pos + s <= kBufferSize);
-        memcpy(_buffer + _buf_pos, p, s);
-        _buf_pos += s;
-    }
+    ASSERT(_buf_pos + s <= kBufferSize);
+    memcpy(_buffer + _buf_pos, p, s);
+    _buf_pos += s;
+  }
 }
 
-void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t start_offset) {
+void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
+                               uint64_t start_offset) {
   int fd = os_openat(oidmgr->dfd, chkpt_name, O_RDONLY);
   lseek(fd, start_offset, SEEK_SET);
   DEFER(close(fd));
@@ -149,13 +143,13 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
   uint64_t file_offset = start_offset;
   uint64_t buf_offset = 0;
   uint64_t cur_buffer_size = read(fd, buffer, kBufferSize);
-  while(true) {
-    auto read_buffer = [&] (uint32_t size) {
-      if(buf_offset + size > cur_buffer_size) {
+  while (true) {
+    auto read_buffer = [&](uint32_t size) {
+      if (buf_offset + size > cur_buffer_size) {
         file_offset += buf_offset;
-        lseek(fd, file_offset , SEEK_SET);
+        lseek(fd, file_offset, SEEK_SET);
         cur_buffer_size = read(fd, buffer, kBufferSize);
-        if(cur_buffer_size == 0) {
+        if (cur_buffer_size == 0) {
           return (char*)nullptr;
         }
         buf_offset = 0;
@@ -167,7 +161,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
 
     // Extract himark
     OID* himark_ptr = (OID*)read_buffer(sizeof(OID));
-    if(!himark_ptr) {
+    if (!himark_ptr) {
       break;
     }
     OID himark = *himark_ptr;
@@ -189,51 +183,54 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
     ALWAYS_ASSERT(oidmgr->file_exists(tuple_fid));
     ALWAYS_ASSERT(oidmgr->file_exists(key_fid));
 
-    oid_array *oa = oidmgr->get_array(tuple_fid);
-    oid_array *ka = oidmgr->get_array(key_fid);
+    oid_array* oa = oidmgr->get_array(tuple_fid);
+    oid_array* ka = oidmgr->get_array(key_fid);
 
     // Populate the OID/key array and index
     OrderedIndex* index = IndexDescriptor::GetIndex(key_fid);
     bool is_primary = index->GetDescriptor()->IsPrimary();
     ALWAYS_ASSERT(index);
-    while(1) {
+    while (1) {
       // Read the OID
       OID o = *(OID*)read_buffer(sizeof(OID));
       nbytes += sizeof(OID);
-      if (o == himark)
-          break;
+      if (o == himark) break;
 
       // Key
       uint32_t key_size = *(uint32_t*)read_buffer(sizeof(uint32_t));
       nbytes += sizeof(uint32_t);
       ALWAYS_ASSERT(key_size);
-      if(o % num_recovery_threads == oid_partition) {
+      if (o % num_recovery_threads == oid_partition) {
         varstr* key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
         new (key) varstr((char*)key + sizeof(varstr), key_size);
         memcpy((void*)key->p, read_buffer(key->l), key->l);
         ALWAYS_ASSERT(key->size());
-        ALWAYS_ASSERT(index->tree_.underlying_btree.insert_if_absent(*key, o, NULL, 0));
-        if(!config::is_backup_srv()) {
+        ALWAYS_ASSERT(
+            index->tree_.underlying_btree.insert_if_absent(*key, o, NULL, 0));
+        if (!config::is_backup_srv()) {
           oidmgr->oid_put_new(ka, o, fat_ptr::make(key, INVALID_SIZE_CODE));
         }
       } else {
         read_buffer(key_size);
-        //lseek(fd, key_size, SEEK_CUR);
+        // lseek(fd, key_size, SEEK_CUR);
       }
       nbytes += key_size;
 
       // Tuple data for primary index only
-      if(is_primary) {
+      if (is_primary) {
         // Size code
         uint8_t size_code = *(uint8_t*)read_buffer(sizeof(uint8_t));
         nbytes += sizeof(uint8_t);
         ALWAYS_ASSERT(size_code != INVALID_SIZE_CODE);
         auto data_size = decode_size_aligned(size_code);
-        if(o % num_recovery_threads == oid_partition) {
-          fat_ptr pdest = fat_ptr::make((uintptr_t)nbytes, size_code, fat_ptr::ASI_CHK_FLAG);
-          Object* obj = (Object*)MM::allocate(decode_size_aligned(size_code), 0);
-          new(obj) Object(pdest, NULL_PTR, 0, false);
-          // Pin it regardless - the clsn needs to be comparable with other versions
+        if (o % num_recovery_threads == oid_partition) {
+          fat_ptr pdest = fat_ptr::make((uintptr_t)nbytes, size_code,
+                                        fat_ptr::ASI_CHK_FLAG);
+          Object* obj =
+              (Object*)MM::allocate(decode_size_aligned(size_code), 0);
+          new (obj) Object(pdest, NULL_PTR, 0, false);
+          // Pin it regardless - the clsn needs to be comparable with other
+          // versions
           obj->Pin();
           ASSERT(obj->GetClsn().offset());
           oidmgr->oid_put_new(oa, o, fat_ptr::make(obj, size_code, 0));
@@ -245,20 +242,20 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition, uint64_t sta
   }
 }
 
-void
-sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
+void sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr* lm) {
   util::scoped_timer t("chkpt_recovery");
   num_recovery_threads = config::worker_threads;
   // Find the chkpt file and recover from there
   char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
-  uint64_t n = os_snprintf(buf, sizeof(buf),
-                         CHKPT_DATA_FILE_NAME_FMT, chkpt_start._val);
+  uint64_t n =
+      os_snprintf(buf, sizeof(buf), CHKPT_DATA_FILE_NAME_FMT, chkpt_start._val);
   LOG(INFO) << "[CHKPT Recovery] " << buf;
   ASSERT(n < sizeof(buf));
   ALWAYS_ASSERT(base_chkpt_fd == -1);
   base_chkpt_fd = os_openat(oidmgr->dfd, buf, O_RDONLY);
 
-  // Read a large chunk each time (hopefully we only need it once for the header)
+  // Read a large chunk each time (hopefully we only need it once for the
+  // header)
   static const uint32_t kBufferSize = 4 * config::MB;
   char* buffer = (char*)malloc(kBufferSize);
   DEFER(free(buffer));
@@ -267,12 +264,12 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
   uint64_t buf_offset = 0;
   uint64_t cur_buffer_size = read(base_chkpt_fd, buffer, kBufferSize);
 
-  auto read_buffer = [&] (uint32_t size) {
-    if(buf_offset + size > cur_buffer_size) {
+  auto read_buffer = [&](uint32_t size) {
+    if (buf_offset + size > cur_buffer_size) {
       file_offset += buf_offset;
-      lseek(base_chkpt_fd, file_offset , SEEK_SET);
+      lseek(base_chkpt_fd, file_offset, SEEK_SET);
       cur_buffer_size = read(base_chkpt_fd, buffer, kBufferSize);
-      if(cur_buffer_size == 0) {
+      if (cur_buffer_size == 0) {
         return (char*)nullptr;
       }
       buf_offset = 0;
@@ -288,10 +285,11 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
   LOG(INFO) << nfiles << " tables";
   uint64_t nbytes = sizeof(uint32_t);
 
-  for(uint32_t i = 0; i < nfiles; ++i) {
+  for (uint32_t i = 0; i < nfiles; ++i) {
     // Format: [table name length, table name, table FID, table himark]
     // Read the table's name
-    size_t len = *(size_t*)read_buffer(sizeof(size_t));;
+    size_t len = *(size_t*)read_buffer(sizeof(size_t));
+    ;
     nbytes += sizeof(size_t);
     char name_buf[256];
     memcpy(name_buf, read_buffer(len), len);
@@ -299,10 +297,12 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     std::string name(name_buf, len);
 
     // FIDs
-    FID tuple_fid = *(FID*)read_buffer(sizeof(FID));;
+    FID tuple_fid = *(FID*)read_buffer(sizeof(FID));
+    ;
     nbytes += sizeof(FID);
 
-    FID key_fid = *(FID*)read_buffer(sizeof(FID));;
+    FID key_fid = *(FID*)read_buffer(sizeof(FID));
+    ;
     nbytes += sizeof(FID);
 
     // High mark
@@ -314,14 +314,14 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     ALWAYS_ASSERT(IndexDescriptor::GetIndex(name));
 
     IndexDescriptor::Get(name)->Recover(tuple_fid, key_fid, himark);
-    LOG(INFO) << "[CHKPT Recovery] " << name << "(" << tuple_fid
-              << ", " << key_fid << ")";
+    LOG(INFO) << "[CHKPT Recovery] " << name << "(" << tuple_fid << ", "
+              << key_fid << ")";
   }
   LOG(INFO) << "[Checkpoint] Prepared files";
 
   // Now deal with the real data, get many threads to do it in parallel
   std::vector<thread::sm_thread*> workers;
-  for(uint32_t i = 0; i < num_recovery_threads; ++i) {
+  for (uint32_t i = 0; i < num_recovery_threads; ++i) {
     auto* t = thread::get_thread();
     ALWAYS_ASSERT(t);
     thread::sm_thread::task_t task = std::bind(&do_recovery, buf, i, nbytes);
@@ -329,10 +329,9 @@ sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr *lm) {
     workers.push_back(t);
   }
 
-  for(auto& w : workers) {
+  for (auto& w : workers) {
     w->join();
     thread::put_thread(w);
   }
   LOG(INFO) << "[Checkpoint] Recovered";
 }
-

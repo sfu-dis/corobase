@@ -9,11 +9,15 @@
  * A typical usage is:
  * 1. Create an RDMA context, e.g., ctx = new rdma::context().
  * 2. Register one or more memory buffers using ctx->register_memory(...).
- *    The register_memory() function uses ibverbs to register memory regions for the
- *    buffer address provided. It can be called multiple times to register different
- *    buffers. The buffers are fully controlled by the user, this library doesn't
+ *    The register_memory() function uses ibverbs to register memory regions for
+ *the
+ *    buffer address provided. It can be called multiple times to register
+ *different
+ *    buffers. The buffers are fully controlled by the user, this library
+ *doesn't
  *    interpret buffer contents.
- * 3. After registering all buffers needed, call ctx->finish_init() which finishes
+ * 3. After registering all buffers needed, call ctx->finish_init() which
+ *finishes
  *    other needed steps before changing to RTS state.
  *
  * TODO(tzwang): allow dynamic add/delete of buffers.
@@ -35,48 +39,50 @@
 
 namespace rdma {
 
-struct context{
+struct context {
   friend class ib_connection;
 
-private:
+ private:
   const static int RDMA_WRID = 3;
   const static int tx_depth = 100;
   int cqe;
 #ifdef EXP_VERBS
   const static int QP_EXP_RTS_ATTR =
-    IBV_EXP_QP_STATE | IBV_EXP_QP_TIMEOUT | IBV_EXP_QP_RETRY_CNT |
-    IBV_EXP_QP_RNR_RETRY | IBV_EXP_QP_SQ_PSN | IBV_EXP_QP_MAX_QP_RD_ATOMIC;
-  const static int QP_EXP_RTR_ATTR = IBV_EXP_QP_STATE | IBV_EXP_QP_AV | IBV_EXP_QP_PATH_MTU |
-    IBV_EXP_QP_DEST_QPN | IBV_EXP_QP_RQ_PSN | IBV_EXP_QP_MAX_DEST_RD_ATOMIC | IBV_EXP_QP_MIN_RNR_TIMER;
+      IBV_EXP_QP_STATE | IBV_EXP_QP_TIMEOUT | IBV_EXP_QP_RETRY_CNT |
+      IBV_EXP_QP_RNR_RETRY | IBV_EXP_QP_SQ_PSN | IBV_EXP_QP_MAX_QP_RD_ATOMIC;
+  const static int QP_EXP_RTR_ATTR =
+      IBV_EXP_QP_STATE | IBV_EXP_QP_AV | IBV_EXP_QP_PATH_MTU |
+      IBV_EXP_QP_DEST_QPN | IBV_EXP_QP_RQ_PSN | IBV_EXP_QP_MAX_DEST_RD_ATOMIC |
+      IBV_EXP_QP_MIN_RNR_TIMER;
 #else
-  const static int QP_RTS_ATTR =
-    IBV_QP_STATE | IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
-    IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
-  const static int QP_RTR_ATTR = IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU |
-    IBV_QP_DEST_QPN | IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
+  const static int QP_RTS_ATTR = IBV_QP_STATE | IBV_QP_TIMEOUT |
+                                 IBV_QP_RETRY_CNT | IBV_QP_RNR_RETRY |
+                                 IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
+  const static int QP_RTR_ATTR =
+      IBV_QP_STATE | IBV_QP_AV | IBV_QP_PATH_MTU | IBV_QP_DEST_QPN |
+      IBV_QP_RQ_PSN | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
 #endif
 
   struct memory_region {
     struct ibv_mr *mr;
     char *buf;
     uint64_t buf_size;
-    memory_region(struct ibv_pd *pd, char *addr, uint64_t size) : buf(addr), buf_size(size) {
+    memory_region(struct ibv_pd *pd, char *addr, uint64_t size)
+        : buf(addr), buf_size(size) {
 #ifdef EXP_VERBS
       struct ibv_exp_reg_mr_in in;
       memset(&in, 0, sizeof(in));
       in.pd = pd;
       in.addr = buf;
       in.length = buf_size;
-      in.exp_access = IBV_EXP_ACCESS_REMOTE_WRITE |
-                      IBV_EXP_ACCESS_REMOTE_READ |
-                      IBV_EXP_ACCESS_REMOTE_ATOMIC |
-                      IBV_EXP_ACCESS_LOCAL_WRITE;
+      in.exp_access = IBV_EXP_ACCESS_REMOTE_WRITE | IBV_EXP_ACCESS_REMOTE_READ |
+                      IBV_EXP_ACCESS_REMOTE_ATOMIC | IBV_EXP_ACCESS_LOCAL_WRITE;
       in.create_flags = IBV_EXP_REG_MR_CREATE_CONTIG;
       mr = ibv_exp_reg_mr(&in);
 #else
       mr = ibv_reg_mr(pd, buf, buf_size,
-        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE |
-        IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
+                      IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE |
+                          IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
 #endif
       ALWAYS_ASSERT(mr);
       THROW_IF(not mr, illegal_argument, "ibv_reg_mr() failed");
@@ -98,13 +104,13 @@ private:
   std::string port;
   int ib_port;
 
-  std::vector<memory_region*> mem_regions;
+  std::vector<memory_region *> mem_regions;
   std::mutex mr_lock;
 
   struct ib_connection *local_connection;
   struct ib_connection *remote_connection;
 
-  // Ready-to-receive/ready-to-send attr for state change later
+// Ready-to-receive/ready-to-send attr for state change later
 #ifdef EXP_VERBS
   struct ibv_exp_qp_attr rtr_attr;
   struct ibv_exp_qp_attr rts_attr;
@@ -121,16 +127,22 @@ private:
   void init(const char *server);
   inline bool is_server() { return server_name.length() == 0; }
 
-public:
+ public:
   void poll_send_cq(uint64_t nops = 1);
-  context(std::string& server, std::string& port, int ib_port) :
-    pd(nullptr), port(port), ib_port(ib_port),
-    local_connection(nullptr), remote_connection(nullptr) {
+  context(std::string &server, std::string &port, int ib_port)
+      : pd(nullptr),
+        port(port),
+        ib_port(ib_port),
+        local_connection(nullptr),
+        remote_connection(nullptr) {
     init(server.c_str());
   }
-  context(std::string& port, int ib_port) :
-    pd(nullptr), port(port), ib_port(ib_port),
-    local_connection(nullptr), remote_connection(nullptr) {
+  context(std::string &port, int ib_port)
+      : pd(nullptr),
+        port(port),
+        ib_port(ib_port),
+        local_connection(nullptr),
+        remote_connection(nullptr) {
     init(nullptr);
   }
   ~context();
@@ -146,37 +158,35 @@ public:
     return idx;
   }
 
-  /* Write [size] of bytes placed at the offset of [local_offset] of the 
+  /* Write [size] of bytes placed at the offset of [local_offset] of the
    * buffer specified by [index] to remote address + [remote_offset] */
-  void rdma_write(
-    uint32_t local_index, uint64_t local_offset,
-    uint32_t remote_index, uint64_t remote_offset, uint64_t size);
+  void rdma_write(uint32_t local_index, uint64_t local_offset,
+                  uint32_t remote_index, uint64_t remote_offset, uint64_t size);
 
   /* Same as rdma_write() above, but with immediate data [imm_data] */
-  void rdma_write_imm(
-    uint32_t local_index, uint64_t local_offset,
-    uint32_t remote_index, uint64_t remote_offset,
-    uint64_t size, uint32_t imm_data, bool sync = true);
+  void rdma_write_imm(uint32_t local_index, uint64_t local_offset,
+                      uint32_t remote_index, uint64_t remote_offset,
+                      uint64_t size, uint32_t imm_data, bool sync = true);
 
-  /* Read [size] of bytes placed at the [remote_index] buffer with [remote_offset]
+  /* Read [size] of bytes placed at the [remote_index] buffer with
+   * [remote_offset]
    * into [local_index] buffer with [local_offset]. */
-  void rdma_read(
-    uint32_t local_index, uint64_t local_offset,
-    uint32_t remote_index, uint64_t remote_offset,
-    uint32_t size);
+  void rdma_read(uint32_t local_index, uint64_t local_offset,
+                 uint32_t remote_index, uint64_t remote_offset, uint32_t size);
 
   /* Conduct a CAS at the offset of the specified remote buffer.
    * Returns the old value. */
   uint64_t rdma_compare_and_swap(
-    uint32_t local_index,    // Buffer for storing the old value
-    uint64_t local_offset,   // Where in the buffer to store the old value
-    uint32_t remote_index,   // Remote buffer for doing the CAS
-    uint64_t remote_offset,  // Where in the remote buffer to do the CAS
-    uint64_t expected,
-    uint64_t new_value);
+      uint32_t local_index,    // Buffer for storing the old value
+      uint64_t local_offset,   // Where in the buffer to store the old value
+      uint32_t remote_index,   // Remote buffer for doing the CAS
+      uint64_t remote_offset,  // Where in the remote buffer to do the CAS
+      uint64_t expected, uint64_t new_value);
 
-  /* Post a receive request to "receive" data sent by rdma_write with immediate from the peer.
-   * Returns data size (not the immediate's), the caller should know where to look for the data.
+  /* Post a receive request to "receive" data sent by rdma_write with immediate
+   * from the peer.
+   * Returns data size (not the immediate's), the caller should know where to
+   * look for the data.
    */
   uint32_t receive_rdma_with_imm(uint32_t *imm = nullptr);
 };
@@ -196,4 +206,3 @@ struct ib_connection {
 };
 
 }  // namespace rdma
-

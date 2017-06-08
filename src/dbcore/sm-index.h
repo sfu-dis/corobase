@@ -8,7 +8,7 @@
 class OrderedIndex;
 
 class IndexDescriptor {
-public:
+ public:
   static std::unordered_map<std::string, IndexDescriptor*> name_map;
   static std::unordered_map<FID, IndexDescriptor*> fid_map;
 
@@ -21,9 +21,7 @@ public:
   static inline IndexDescriptor* Get(std::string name) {
     return name_map[name];
   }
-  static inline IndexDescriptor* Get(FID fid) {
-    return fid_map[fid];
-  }
+  static inline IndexDescriptor* Get(FID fid) { return fid_map[fid]; }
   static inline OrderedIndex* GetIndex(const std::string& name) {
     return name_map[name]->GetIndex();
   }
@@ -31,18 +29,16 @@ public:
     return fid_map[fid]->GetIndex();
   }
   static inline void New(std::string name, const char* primary = nullptr) {
-    if(primary) {
+    if (primary) {
       std::string p(primary);
       name_map[name] = new IndexDescriptor(name, p);
     } else {
       name_map[name] = new IndexDescriptor(name);
     }
   }
-  static inline uint32_t NumIndexes() {
-    return name_map.size();
-  }
+  static inline uint32_t NumIndexes() { return name_map.size(); }
 
-private:
+ private:
   std::string name_;
   std::string primary_name_;  // Null for primary index
   OrderedIndex* index_;
@@ -55,7 +51,7 @@ private:
   FID aux_fid_;
   oid_array* aux_array_;
 
-public:
+ public:
   IndexDescriptor(std::string& name);
   IndexDescriptor(std::string& name, std::string& primary_name);
 

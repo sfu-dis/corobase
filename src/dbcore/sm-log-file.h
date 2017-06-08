@@ -23,25 +23,24 @@
 #include <deque>
 
 struct nxt_seg_file_name {
-    char buf[NXT_SEG_FILE_NAME_BUFSZ];
-    nxt_seg_file_name(uint32_t segnum) {
-        size_t n = os_snprintf(buf, sizeof(buf),
-                               NXT_SEG_FILE_NAME_FMT, segnum);
-        ASSERT(n < sizeof(buf));
-    }
-    operator char const *() { return buf; }
-    char const *operator*() { return buf; }
+  char buf[NXT_SEG_FILE_NAME_BUFSZ];
+  nxt_seg_file_name(uint32_t segnum) {
+    size_t n = os_snprintf(buf, sizeof(buf), NXT_SEG_FILE_NAME_FMT, segnum);
+    ASSERT(n < sizeof(buf));
+  }
+  operator char const *() { return buf; }
+  char const *operator*() { return buf; }
 };
 
 struct cmark_file_name {
-    char buf[CHKPT_FILE_NAME_BUFSZ];
-    cmark_file_name(LSN start, LSN end) {
-        size_t n = os_snprintf(buf, sizeof(buf),
-                               CHKPT_FILE_NAME_FMT, start._val, end._val);
-        ASSERT(n < sizeof(buf));
-    }
-    operator char const *() { return buf; }
-    char const *operator*() { return buf; }
+  char buf[CHKPT_FILE_NAME_BUFSZ];
+  cmark_file_name(LSN start, LSN end) {
+    size_t n = os_snprintf(buf, sizeof(buf), CHKPT_FILE_NAME_FMT, start._val,
+                           end._val);
+    ASSERT(n < sizeof(buf));
+  }
+  operator char const *() { return buf; }
+  char const *operator*() { return buf; }
 };
 
 /* The file management part of the log.
@@ -53,215 +52,207 @@ struct cmark_file_name {
  */
 
 struct segment_id {
-    int fd;
-    uint32_t segnum;
-    uint64_t start_offset;
-    uint64_t end_offset;
-    uint64_t byte_offset;
-    
-    bool contains(uint64_t lsn_offset) {
-        return start_offset <= lsn_offset
-            and lsn_offset+MIN_LOG_BLOCK_SIZE <= end_offset;
-    }
+  int fd;
+  uint32_t segnum;
+  uint64_t start_offset;
+  uint64_t end_offset;
+  uint64_t byte_offset;
 
-    bool contains(LSN lsn) {
-        if (lsn.segment() != segnum % NUM_LOG_SEGMENTS)
-            return false;
-        return contains(lsn.offset());
-    }
+  bool contains(uint64_t lsn_offset) {
+    return start_offset <= lsn_offset and
+           lsn_offset + MIN_LOG_BLOCK_SIZE <= end_offset;
+  }
 
-    /* Compute the segment offset of an LSN in this segment
-     */
-    uint64_t offset(uint64_t lsn_offset) {
-        ASSERT(contains(lsn_offset));
-        return lsn_offset - start_offset;
-    }
-    uint64_t offset(LSN lsn) {
-        ASSERT(contains(lsn));
-        return offset(lsn.offset());
-    }
+  bool contains(LSN lsn) {
+    if (lsn.segment() != segnum % NUM_LOG_SEGMENTS) return false;
+    return contains(lsn.offset());
+  }
 
-    /* Compute the buffer offset of an LSN in this segment.
-     */
-    uint64_t buf_offset(uint64_t lsn_offset) {
-        return byte_offset + offset(lsn_offset);
-    }
+  /* Compute the segment offset of an LSN in this segment
+   */
+  uint64_t offset(uint64_t lsn_offset) {
+    ASSERT(contains(lsn_offset));
+    return lsn_offset - start_offset;
+  }
+  uint64_t offset(LSN lsn) {
+    ASSERT(contains(lsn));
+    return offset(lsn.offset());
+  }
 
-    /* Compute the buffer offset of an LSN in this segment.
-     */
-    uint64_t buf_offset(LSN lsn) {
-        return buf_offset(lsn.offset());
-    }
+  /* Compute the buffer offset of an LSN in this segment.
+   */
+  uint64_t buf_offset(uint64_t lsn_offset) {
+    return byte_offset + offset(lsn_offset);
+  }
 
-    LSN make_lsn(uint64_t lsn_offset) {
-        ASSERT(contains(lsn_offset));
-        return LSN::make(lsn_offset, segnum % NUM_LOG_SEGMENTS);
-    }
+  /* Compute the buffer offset of an LSN in this segment.
+   */
+  uint64_t buf_offset(LSN lsn) { return buf_offset(lsn.offset()); }
 
+  LSN make_lsn(uint64_t lsn_offset) {
+    ASSERT(contains(lsn_offset));
+    return LSN::make(lsn_offset, segnum % NUM_LOG_SEGMENTS);
+  }
 };
 
 struct segment_file_name {
-    char buf[SEGMENT_FILE_NAME_BUFSZ];
-    segment_file_name(segment_id *sid)
-        : segment_file_name(sid->segnum, sid->start_offset, sid->end_offset)
-    {
-    }
-    segment_file_name(uint32_t segnum, uint64_t start, uint64_t end) {
-        size_t n = os_snprintf(buf, sizeof(buf),
-                               SEGMENT_FILE_NAME_FMT, segnum, start, end);
-        ASSERT(n < sizeof(buf));
-    }
-    operator char const *() { return buf; }
-    char const *operator*() { return buf; }
+  char buf[SEGMENT_FILE_NAME_BUFSZ];
+  segment_file_name(segment_id *sid)
+      : segment_file_name(sid->segnum, sid->start_offset, sid->end_offset) {}
+  segment_file_name(uint32_t segnum, uint64_t start, uint64_t end) {
+    size_t n = os_snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, segnum,
+                           start, end);
+    ASSERT(n < sizeof(buf));
+  }
+  operator char const *() { return buf; }
+  char const *operator*() { return buf; }
 };
 
 struct sm_log_file_mgr {
-    /* A volatile modulo-indexed array, which forms part of the
-       segment race-riddled assignment protocol.
-     */
-    struct segment_array {
-        segment_array();
-        ~segment_array();
+  /* A volatile modulo-indexed array, which forms part of the
+     segment race-riddled assignment protocol.
+   */
+  struct segment_array {
+    segment_array();
+    ~segment_array();
 
-        segment_id * volatile &operator[](size_t i) {
-            return arr[i % NUM_LOG_SEGMENTS];
-        }
-        
-        segment_id * volatile arr[NUM_LOG_SEGMENTS];
-    };
+    segment_id *volatile &operator[](size_t i) {
+      return arr[i % NUM_LOG_SEGMENTS];
+    }
 
-    sm_log_file_mgr();
+    segment_id *volatile arr[NUM_LOG_SEGMENTS];
+  };
 
-    void create_segment_file(segment_id *sid);
+  sm_log_file_mgr();
 
-    /* Change the segment size.
+  void create_segment_file(segment_id *sid);
 
-       All new segments created after the point will use the new size.
-     */
-    void set_segment_size(size_t ssize);
-    
-    /* Update on-disk information to reflect a new durable LSN.
+  /* Change the segment size.
 
-       The given LSN should point past-end of some known-durable log
-       block. 
+     All new segments created after the point will use the new size.
+   */
+  void set_segment_size(size_t ssize);
 
-       At start-up, the system must find the end of the log by
-       validating checksums, and will start that search from the most
-       recent durable mark to reach disk. The actual end of log could
-       be quite a bit after the most recent mark, if the mark has not
-       been set recently, or the update process did not complete due
-       to a crash.
+  /* Update on-disk information to reflect a new durable LSN.
 
-       Implementations should call this function fairly often, perhaps
-       once per second, to limit the amount of work required to find
-       the end of the log.
+     The given LSN should point past-end of some known-durable log
+     block.
 
-       WARNING: the caller is responsible to guarantee that the log is
-       really durable up to the named LSN.
-    */
-    void update_durable_mark(LSN lsn);
+     At start-up, the system must find the end of the log by
+     validating checksums, and will start that search from the most
+     recent durable mark to reach disk. The actual end of log could
+     be quite a bit after the most recent mark, if the mark has not
+     been set recently, or the update process did not complete due
+     to a crash.
 
-    LSN get_durable_mark() { return _durable_lsn; }
+     Implementations should call this function fairly often, perhaps
+     once per second, to limit the amount of work required to find
+     the end of the log.
 
-    
-    /* Update on-disk information to reflect a new (durable)
-       checkpoint.
+     WARNING: the caller is responsible to guarantee that the log is
+     really durable up to the named LSN.
+  */
+  void update_durable_mark(LSN lsn);
 
-       The start LSN is the point where the checkpointing process
-       began, and all records before it have are accounted for in the
-       checkpoint.
+  LSN get_durable_mark() { return _durable_lsn; }
 
-       The end LSN is the actual location of the checkpoint
-       transaction, which should be replayed to start recovery. No
-       records after it are accounted for in this checkpoint.
+  /* Update on-disk information to reflect a new (durable)
+     checkpoint.
 
-       Records between the start and end LSN may or may not be
-       accounted for, and will be applied blindly to be safe.
+     The start LSN is the point where the checkpointing process
+     began, and all records before it have are accounted for in the
+     checkpoint.
 
-       The checkpoint mark must not be later than the durable mark.
-    */
-    void update_chkpt_mark(LSN start, LSN end);
+     The end LSN is the actual location of the checkpoint
+     transaction, which should be replayed to start recovery. No
+     records after it are accounted for in this checkpoint.
 
-    LSN get_chkpt_start() { return _chkpt_start_lsn; }
-    LSN get_chkpt_end() { return _chkpt_end_lsn; }
+     Records between the start and end LSN may or may not be
+     accounted for, and will be applied blindly to be safe.
 
-    /* Open a writable file descriptor for the passed-in log
-       segment. The segment must already exist.
-     */
-    int open_for_write(segment_id *sid);
-    
-    /* Create a new log segment file, with segment number one higher
-       than the current highest segnum.
+     The checkpoint mark must not be later than the durable mark.
+  */
+  void update_chkpt_mark(LSN start, LSN end);
 
-       WARNING: this function is *not* threadsafe: multiple
-       simultaneous calls will result in multiple new segments (or,
-       more likely, raise an exception because the offsets overlap
-       each other).
-     */
-    bool create_segment(segment_id *sid);
+  LSN get_chkpt_start() { return _chkpt_start_lsn; }
+  LSN get_chkpt_end() { return _chkpt_end_lsn; }
 
-    /* Allocate a new segment_id as if for a new segment, but do not
-       actually create the segment yet. If the passed-in start segment
-       is provably not past-end, return NULL.
+  /* Open a writable file descriptor for the passed-in log
+     segment. The segment must already exist.
+   */
+  int open_for_write(segment_id *sid);
 
-       A non-NULL return value of this call can then be passed to
-       create_segment, if desired
-     */
-    segment_id *prepare_new_segment(uint64_t start);
+  /* Create a new log segment file, with segment number one higher
+     than the current highest segnum.
 
-    /* Truncate the log at the given segment and offset.
+     WARNING: this function is *not* threadsafe: multiple
+     simultaneous calls will result in multiple new segments (or,
+     more likely, raise an exception because the offsets overlap
+     each other).
+   */
+  bool create_segment(segment_id *sid);
 
-       All segments that follow [segnum] are destroyed, and the
-       segment is truncated to offset [new_end].
+  /* Allocate a new segment_id as if for a new segment, but do not
+     actually create the segment yet. If the passed-in start segment
+     is provably not past-end, return NULL.
 
-       The durable mark must entirely precede the truncated region.
-     */
-    void truncate_after(uint32_t segnum, uint64_t new_end);
+     A non-NULL return value of this call can then be passed to
+     create_segment, if desired
+   */
+  segment_id *prepare_new_segment(uint64_t start);
 
-    /* Reclaim (destroy) log segments that precede [segnum].
+  /* Truncate the log at the given segment and offset.
 
-       The caller is responsible to ensure that all data stored in the
-       log has either been invalidated by later writes, or moved to
-       safer locations.
+     All segments that follow [segnum] are destroyed, and the
+     segment is truncated to offset [new_end].
 
-       The reclaimed segments must all precede the checkpoint mark.
-     */
-    void reclaim_before(uint32_t segnum);
+     The durable mark must entirely precede the truncated region.
+   */
+  void truncate_after(uint32_t segnum, uint64_t new_end);
 
-    /* WARNING: these are only safe to access while holding the
-       file_mutex. The STL makes no guarantees whatsoever about what
-       happens during races to create or destroy segments. These could
-       return the correct value... but they could also return garbage,
-       or even seg fault.
-     */
-    segment_id *_oldest_segment();
-    segment_id *_newest_segment();
-    void _pop_oldest();
-    void _pop_newest();
+  /* Reclaim (destroy) log segments that precede [segnum].
 
-    
-    void _create_nxt_seg_file(bool force);
-    segment_id* _prepare_new_segment(uint32_t segnum, uint64_t start, uint64_t byte_offset);
-    void _make_new_log();
+     The caller is responsible to ensure that all data stored in the
+     log has either been invalidated by later writes, or moved to
+     safer locations.
 
-    // log file directory
-    int dfd;
+     The reclaimed segments must all precede the checkpoint mark.
+   */
+  void reclaim_before(uint32_t segnum);
 
-    size_t volatile segment_size;
+  /* WARNING: these are only safe to access while holding the
+     file_mutex. The STL makes no guarantees whatsoever about what
+     happens during races to create or destroy segments. These could
+     return the correct value... but they could also return garbage,
+     or even seg fault.
+   */
+  segment_id *_oldest_segment();
+  segment_id *_newest_segment();
+  void _pop_oldest();
+  void _pop_newest();
 
-    segment_array segments;
-    segment_id *active_segment;
-    uint32_t oldest_segnum;
+  void _create_nxt_seg_file(bool force);
+  segment_id *_prepare_new_segment(uint32_t segnum, uint64_t start,
+                                   uint64_t byte_offset);
+  void _make_new_log();
 
-    uint64_t nxt_segment_fd;
-    
-    LSN _durable_lsn;
-    
-    LSN _chkpt_start_lsn;
-    LSN _chkpt_end_lsn;
+  // log file directory
+  int dfd;
 
-    os_mutex file_mutex;
+  size_t volatile segment_size;
+
+  segment_array segments;
+  segment_id *active_segment;
+  uint32_t oldest_segnum;
+
+  uint64_t nxt_segment_fd;
+
+  LSN _durable_lsn;
+
+  LSN _chkpt_start_lsn;
+  LSN _chkpt_end_lsn;
+
+  os_mutex file_mutex;
 };
-
 
 #endif

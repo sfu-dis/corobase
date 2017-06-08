@@ -20,27 +20,23 @@
 struct kvstats {
   double min, max, sum, sumsq;
   long count;
-  kvstats()
-    : min(-1), max(-1), sum(0), sumsq(0), count(0) {
-  }
+  kvstats() : min(-1), max(-1), sum(0), sumsq(0), count(0) {}
   void add(double x) {
-    if (!count || x < min)
-      min = x;
-    if (max < x)
-      max = x;
+    if (!count || x < min) min = x;
+    if (max < x) max = x;
     sum += x;
     sumsq += x * x;
     count += 1;
   }
   typedef void (kvstats::*unspecified_bool_type)(double);
-  operator unspecified_bool_type() const {
-    return count ? &kvstats::add : 0;
-  }
+  operator unspecified_bool_type() const { return count ? &kvstats::add : 0; }
   void print_report(const char *name) const {
     if (count)
-      printf("%s: n %ld, total %.0f, average %.0f, min %.0f, max %.0f, stddev %.0f\n",
-	     name, count, sum, sum / count, min, max,
-	     sqrt((sumsq - sum * sum / count) / (count - 1)));
+      printf(
+          "%s: n %ld, total %.0f, average %.0f, min %.0f, max %.0f, stddev "
+          "%.0f\n",
+          name, count, sum, sum / count, min, max,
+          sqrt((sumsq - sum * sum / count) / (count - 1)));
   }
   double avg() {
     if (count)

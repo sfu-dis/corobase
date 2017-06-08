@@ -13,11 +13,11 @@ class OrderedIndex {
   friend class sm_log_recover_impl;
   friend class sm_chkpt_mgr;
 
-public:
-  OrderedIndex(IndexDescriptor* id) : tree_(id), descriptor_(id) {}
+ public:
+  OrderedIndex(IndexDescriptor *id) : tree_(id), descriptor_(id) {}
 
   class scan_callback {
-  public:
+   public:
     ~scan_callback() {}
     // XXX(stephentu): key is passed as (const char *, size_t) pair
     // because it really should be the string_type of the underlying
@@ -34,7 +34,8 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. Returns true if found, false otherwise
    */
-  inline rc_t get(transaction *t, const varstr &key, varstr &value, OID* oid = nullptr) {
+  inline rc_t get(transaction *t, const varstr &key, varstr &value,
+                  OID *oid = nullptr) {
     return tree_.do_search(*t, key, &value, oid);
   }
 
@@ -60,11 +61,13 @@ public:
    * Insert a key of length keylen.
    *
    * If a record with key k exists, behavior is unspecified- this function
-   * is only to be used when you can guarantee no such key exists (ie in loading phase)
+   * is only to be used when you can guarantee no such key exists (ie in loading
+   *phase)
    *
    * Default implementation calls put(). See put() for meaning of return value.
    */
-  inline rc_t insert(transaction *t, const varstr &key, varstr &value, OID* oid = nullptr) {
+  inline rc_t insert(transaction *t, const varstr &key, varstr &value,
+                     OID *oid = nullptr) {
     return tree_.do_tree_put(*t, &key, &value, true, true, oid);
   }
 
@@ -72,7 +75,7 @@ public:
    * Insert into a secondary index. Maps key to OID.
    */
   inline rc_t insert(transaction *t, const varstr &key, OID oid) {
-    return tree_.do_tree_put(*t, &key, (varstr*)&oid, true, false, nullptr);
+    return tree_.do_tree_put(*t, &key, (varstr *)&oid, true, false, nullptr);
   }
 
   /**
@@ -108,10 +111,10 @@ public:
     return tree_.unsafe_purge(true);
   }
 
-  inline IndexDescriptor* GetDescriptor() { return descriptor_; }
+  inline IndexDescriptor *GetDescriptor() { return descriptor_; }
   inline void SetArrays() { tree_.set_arrays(descriptor_); }
 
-private:
+ private:
   base_txn_btree tree_;
-  IndexDescriptor* descriptor_;
+  IndexDescriptor *descriptor_;
 };

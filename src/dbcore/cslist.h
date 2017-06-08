@@ -8,7 +8,7 @@
    from the head of the list. Popping any node other than the head
    requires time linear in the list size. FIFO and LIFO behavior are
    achieved by pushing to head and tail of list, respectively.
-   
+
    Forward iteration (from head to tail) is efficient; backward
    iteration is unsupported.
 
@@ -23,7 +23,7 @@
    verify) list membership of a given node before performing a
    requested action. The user should do these things if desired (and
    is responsible for keeping that information up to date).
-   
+
    No concurrency control is implied or assumed; the user is
    responsible to protect the list from concurrent access.
 
@@ -34,120 +34,103 @@
    each list uses a different set of links.
  */
 
-template <typename T, T* T::*next_ptr>
+template <typename T, T *T::*next_ptr>
 struct cslist {
-    typedef T Node;
+  typedef T Node;
 
-    struct iterator {
-        Node *prev;
-        bool advanced;
-        
-        Node &operator*() { return *next(prev); }
-        Node *operator->() { return next(prev); }
+  struct iterator {
+    Node *prev;
+    bool advanced;
 
-        iterator &operator++() {
-            advanced = true;
-            prev = next(prev);
-            return *this;
-        }
+    Node &operator*() { return *next(prev); }
+    Node *operator->() { return next(prev); }
 
-        bool operator==(iterator const &other) const {
-            return prev == other.prev and advanced == other.advanced;
-        }
-        bool operator!=(iterator const &other) const {
-            return not (*this == other);
-        }
-    };
-
-    /* Create a new, empty list */
-    cslist()
-        : _tail(0)
-    {
+    iterator &operator++() {
+      advanced = true;
+      prev = next(prev);
+      return *this;
     }
-    
-    /* As a matter of policy, the list must be empty before being
-       discarded. Otherwise we have no way to know if the memory
-       leaked. A user can call unsafe_clear() to deliberately "leak"
-       the list's contents (perhaps because it was allocated from some
-       pool or block allocator and will be freed en masse).
 
-       We can't actually make the assertion, however, because that
-       would produce a non-trivial destructor that makes the object
-       unusable with rcu_new.
-     */
+    bool operator==(iterator const &other) const {
+      return prev == other.prev and advanced == other.advanced;
+    }
+    bool operator!=(iterator const &other) const { return not(*this == other); }
+  };
+
+  /* Create a new, empty list */
+  cslist() : _tail(0) {}
+
+/* As a matter of policy, the list must be empty before being
+   discarded. Otherwise we have no way to know if the memory
+   leaked. A user can call unsafe_clear() to deliberately "leak"
+   the list's contents (perhaps because it was allocated from some
+   pool or block allocator and will be freed en masse).
+
+   We can't actually make the assertion, however, because that
+   would produce a non-trivial destructor that makes the object
+   unusable with rcu_new.
+ */
 #if 0
     ~cslist() {
         ASSERT(empty());
     }
 #endif
-    
-    /* Push a new node to the head of the list. It will be the first
-       node visited by a new iterator, and the first to be popped by a
-       call to pop_head.
-     */
-    void push_head(Node *n) {
-        if (_tail) {
-            next(n) = next(_tail);
-            next(_tail) = n;
-        }
-        else {
-            next(n) = n;
-            _tail = n;
-        }
-    }
 
-    /* Push a new node to the tail of the list. It will be the last
-       node visited by a new iterator, or popped by a call to
-       pop_head.
-     */
-    void push_tail(Node *n) {
-        push_head(n);
-        _tail = n;
+  /* Push a new node to the head of the list. It will be the first
+     node visited by a new iterator, and the first to be popped by a
+     call to pop_head.
+   */
+  void push_head(Node *n) {
+    if (_tail) {
+      next(n) = next(_tail);
+      next(_tail) = n;
+    } else {
+      next(n) = n;
+      _tail = n;
     }
+  }
 
-    /* Pop the current head from the list.
+  /* Push a new node to the tail of the list. It will be the last
+     node visited by a new iterator, or popped by a call to
+     pop_head.
+   */
+  void push_tail(Node *n) {
+    push_head(n);
+    _tail = n;
+  }
 
-       Return NULL if the list is currently empty
-    */
-    Node *pop_head() {
-        if (not _tail)
-            return 0;
+  /* Pop the current head from the list.
 
-        Node *n = next(_tail);
-        if (n == _tail) 
-            _tail = 0;
-        else
-            next(_tail) = next(n);
-        return n;
-    }
-    
-    /* Return true if the list currently contains no elements
-     */
-    bool empty() const {
-        return not _tail;
-    }
+     Return NULL if the list is currently empty
+  */
+  Node *pop_head() {
+    if (not _tail) return 0;
 
-    /* Deliberately clear the list without popping any elements it
-       might contain. The list destructor can be invoked safely after
-       this call returns, but any elements that were present will leak
-       if they are not accounted for by other means.
-     */
-    void unsafe_clear() {
-        _tail = 0;
-    }
+    Node *n = next(_tail);
+    if (n == _tail)
+      _tail = 0;
+    else
+      next(_tail) = next(n);
+    return n;
+  }
 
-    /* Iterators! */
-    iterator begin() {
-        return (iterator) { _tail, not _tail };
-    }
-    iterator end() {
-        return (iterator) { _tail, true };
-    }
-    
-    static Node *&next(Node *n) {
-        return n->*next_ptr;
-    }
+  /* Return true if the list currently contains no elements
+   */
+  bool empty() const { return not _tail; }
 
-    Node *_tail;
+  /* Deliberately clear the list without popping any elements it
+     might contain. The list destructor can be invoked safely after
+     this call returns, but any elements that were present will leak
+     if they are not accounted for by other means.
+   */
+  void unsafe_clear() { _tail = 0; }
+
+  /* Iterators! */
+  iterator begin() { return (iterator){_tail, not _tail}; }
+  iterator end() { return (iterator){_tail, true}; }
+
+  static Node *&next(Node *n) { return n->*next_ptr; }
+
+  Node *_tail;
 };
 #endif

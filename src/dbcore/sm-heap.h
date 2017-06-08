@@ -30,38 +30,40 @@
    but can be placed in cheaper/slower storage.
  */
 struct sm_heap_mgr {
-    /* Allocate and return a new heap manager. If [dname] exists, it
-       will be mounted and used. Otherwise, a new (empty) heap
-       directory will be created.
-     */
-    static
-    sm_heap_mgr *make(char const *dname, size_t segment_size);
-    
-    /* Allocate space for an object in the heap and return its
-       location, but do not write anything yet.
-     */
-    fat_ptr alloc_object(uint8_t szcode, size_t align_bits=DEFAULT_ALIGNMENT_BITS);
+  /* Allocate and return a new heap manager. If [dname] exists, it
+     will be mounted and used. Otherwise, a new (empty) heap
+     directory will be created.
+   */
+  static sm_heap_mgr *make(char const *dname, size_t segment_size);
 
-    /* Store an object of the specified size in the heap at the
-       specified location, and return once it is durable.
+  /* Allocate space for an object in the heap and return its
+     location, but do not write anything yet.
+   */
+  fat_ptr alloc_object(uint8_t szcode,
+                       size_t align_bits = DEFAULT_ALIGNMENT_BITS);
 
-       WARNING: Attempting to overwrite an existing object is strongly
-       discouraged and will void your warranty. A caller that insists
-       on overwriting an object is responsible to deal with partial or
-       interrupted writes, and to update any in-memory copies of the
-       object that might exist.
-     */
-    void store_object(fat_ptr dest, char *buf, size_t bufsz, size_t align_bits=DEFAULT_ALIGNMENT_BITS);
-    
-    /* Load the object referenced by [ptr] from the heap. The pointer
-       must reference the log (ASI_HEAP) and the given buffer must be
-       large enough to hold the object.
-     */
-    void load_object(char *buf, size_t bufsz, fat_ptr ptr, size_t align_bits=DEFAULT_ALIGNMENT_BITS);
+  /* Store an object of the specified size in the heap at the
+     specified location, and return once it is durable.
 
-    virtual ~sm_heap_mgr() { }
-    
-protected:
-    // Forbid direct instantiation
-    sm_heap_mgr() { }
+     WARNING: Attempting to overwrite an existing object is strongly
+     discouraged and will void your warranty. A caller that insists
+     on overwriting an object is responsible to deal with partial or
+     interrupted writes, and to update any in-memory copies of the
+     object that might exist.
+   */
+  void store_object(fat_ptr dest, char *buf, size_t bufsz,
+                    size_t align_bits = DEFAULT_ALIGNMENT_BITS);
+
+  /* Load the object referenced by [ptr] from the heap. The pointer
+     must reference the log (ASI_HEAP) and the given buffer must be
+     large enough to hold the object.
+   */
+  void load_object(char *buf, size_t bufsz, fat_ptr ptr,
+                   size_t align_bits = DEFAULT_ALIGNMENT_BITS);
+
+  virtual ~sm_heap_mgr() {}
+
+ protected:
+  // Forbid direct instantiation
+  sm_heap_mgr() {}
 };

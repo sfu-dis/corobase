@@ -32,88 +32,88 @@
 // because of copy constructors; for types with more expensive non-default
 // copy constructors this would probably be worse.
 
-typedef size_t hashcode_t;	///< Typical type for a hashcode() value.
+typedef size_t hashcode_t;  ///< Typical type for a hashcode() value.
 
 template <typename T>
 inline hashcode_t hashcode(T const &x) {
-    return x.hashcode();
+  return x.hashcode();
 }
 
 template <>
 inline hashcode_t hashcode(char const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(signed char const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(unsigned char const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(short const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(unsigned short const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(int const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(unsigned const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(long const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(unsigned long const &x) {
-    return x;
+  return x;
 }
 
 template <>
 inline hashcode_t hashcode(long long const &x) {
-    return (x >> 32) ^ x;
+  return (x >> 32) ^ x;
 }
 
 template <>
 inline hashcode_t hashcode(unsigned long long const &x) {
-    return (x >> 32) ^ x;
+  return (x >> 32) ^ x;
 }
 
 #if HAVE_INT64_TYPES && !HAVE_INT64_IS_LONG && !HAVE_INT64_IS_LONG_LONG
 template <>
 inline hashcode_t hashcode(int64_t const &x) {
-    return (x >> 32) ^ x;
+  return (x >> 32) ^ x;
 }
 
 template <>
 inline hashcode_t hashcode(uint64_t const &x) {
-    return (x >> 32) ^ x;
+  return (x >> 32) ^ x;
 }
 #endif
 
 template <typename T>
-inline hashcode_t hashcode(T * const &x) {
-    return reinterpret_cast<uintptr_t>(x) >> 3;
+inline hashcode_t hashcode(T *const &x) {
+  return reinterpret_cast<uintptr_t>(x) >> 3;
 }
 
 template <typename T>
 inline typename T::key_const_reference hashkey(const T &x) {
-    return x.hashkey();
+  return x.hashkey();
 }
 
 #endif

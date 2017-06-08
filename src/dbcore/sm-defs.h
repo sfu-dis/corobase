@@ -46,44 +46,30 @@
    arguments, nad thus interacts badly with static const class
    variables that were initialized inline (causing linker failures).
  */
-template<typename T>
-static constexpr
-T const &
-min(T const &a, T const &b)
-{
-    return (a < b)? a : b;
-}
-        
-template<typename A,
-         typename B,
-         typename C=
-         typename std::enable_if<not std::is_same<A, B>::value,
-                                 typename std::common_type<A,B>::type>::type>
-static constexpr
-C
-min(A a, B b) 
-{
-    return (a < b)? C(a) : C(b);
+template <typename T>
+static constexpr T const &min(T const &a, T const &b) {
+  return (a < b) ? a : b;
 }
 
-template<typename T>
-static constexpr
-T const &
-max(T const &a, T const &b)
-{
-    return (a < b)? a : b;
+template <typename A, typename B,
+          typename C = typename std::enable_if<
+              not std::is_same<A, B>::value,
+              typename std::common_type<A, B>::type>::type>
+static constexpr C min(A a, B b) {
+  return (a < b) ? C(a) : C(b);
 }
-        
-template<typename A,
-         typename B,
-         typename C=
-         typename std::enable_if<not std::is_same<A, B>::value,
-                                 typename std::common_type<A,B>::type>::type>
-static constexpr
-C
-max(A a, B b) 
-{
-    return (a < b)? C(a) : C(b);
+
+template <typename T>
+static constexpr T const &max(T const &a, T const &b) {
+  return (a < b) ? a : b;
+}
+
+template <typename A, typename B,
+          typename C = typename std::enable_if<
+              not std::is_same<A, B>::value,
+              typename std::common_type<A, B>::type>::type>
+static constexpr C max(A a, B b) {
+  return (a < b) ? C(a) : C(b);
 }
 
 /* A wrapper for std::memset that zeroes out memory between two typed
@@ -92,69 +78,55 @@ max(A a, B b)
    specified.
  */
 template <typename T>
-static inline
-typename std::enable_if<std::is_trivial<T>::value, T>::type*
-objzero(T *begin, T* end)
-{
-    return (T*) std::memset(begin, 0, sizeof(T)*(end - begin));
+static inline typename std::enable_if<std::is_trivial<T>::value, T>::type *
+objzero(T *begin, T *end) {
+  return (T *)std::memset(begin, 0, sizeof(T) * (end - begin));
 }
 template <typename T>
-static inline
-typename std::enable_if<std::is_trivial<T>::value, T>::type*
-objzero(T *begin, size_t n)
-{
-    return (T*) std::memset(begin, 0, sizeof(T)*n);
+static inline typename std::enable_if<std::is_trivial<T>::value, T>::type *
+objzero(T *begin, size_t n) {
+  return (T *)std::memset(begin, 0, sizeof(T) * n);
 }
 template <typename T, size_t N>
 static inline
-typename std::enable_if<std::is_trivial<T>::value, T>::type*
-objzero(T (&arr)[N])
-{
-    return objzero(arr, N);
+    typename std::enable_if<std::is_trivial<T>::value, T>::type *objzero(
+        T(&arr)[N]) {
+  return objzero(arr, N);
 }
 
 /* A wrapper for std::memcpy that accepts typed pointers for begin and
    end points of source and dest. Only works for trivial data types.
  */
 template <typename T>
-static inline
-typename std::enable_if<std::is_trivial<T>::value, T>::type*
-objcopy(T *dest, T const *src_begin, T const* src_end)
-{
-    return ::memcpy(dest, src_begin, sizeof(T)*(src_end - src_begin));
+static inline typename std::enable_if<std::is_trivial<T>::value, T>::type *
+objcopy(T *dest, T const *src_begin, T const *src_end) {
+  return ::memcpy(dest, src_begin, sizeof(T) * (src_end - src_begin));
 }
 
 template <typename T>
-static inline
-typename std::enable_if<std::is_trivial<T>::value, T>::type*
-objcopy(T *dest, T const *src, size_t n)
-{
-    return (T*) ::memcpy(dest, src, sizeof(T)*n);
+static inline typename std::enable_if<std::is_trivial<T>::value, T>::type *
+objcopy(T *dest, T const *src, size_t n) {
+  return (T *)::memcpy(dest, src, sizeof(T) * n);
 }
 
 /* Align integers up/down to the nearest alignment boundary, and check
    for existing alignment
  */
-template <typename T, typename U=int>
-static constexpr
-typename std::common_type<T, U>::type
-align_down(T val, U amount=DEFAULT_ALIGNMENT)
-{
-    return val & -amount;
+template <typename T, typename U = int>
+static constexpr typename std::common_type<T, U>::type align_down(
+    T val, U amount = DEFAULT_ALIGNMENT) {
+  return val & -amount;
 }
 
-template <typename T, typename U=int>
-static constexpr
-typename std::common_type<T, U>::type
-align_up(T val, U amount=DEFAULT_ALIGNMENT)
-{
-    return align_down(val + amount - 1, amount);
+template <typename T, typename U = int>
+static constexpr typename std::common_type<T, U>::type align_up(
+    T val, U amount = DEFAULT_ALIGNMENT) {
+  return align_down(val + amount - 1, amount);
 }
 
-template <typename T, typename U=int>
-static constexpr
-bool is_aligned(T val, U amount=DEFAULT_ALIGNMENT) {
-    return not (val & (amount-1));
+template <typename T, typename U = int>
+static constexpr bool is_aligned(T val, U amount = DEFAULT_ALIGNMENT) {
+  return not(val & (amount - 1));
 }
 
 /* A zero-sized object that serves only to force alignment of whatever
@@ -162,24 +134,24 @@ bool is_aligned(T val, U amount=DEFAULT_ALIGNMENT) {
  */
 template <int N>
 struct __attribute__((aligned(N))) aligner {
-    char _empty[];
+  char _empty[];
 };
-
 
 // lest there be any confusion...
 template <typename T>
-static inline
-T volatile_read(T volatile &x) { return *&x; }
+static inline T volatile_read(T volatile &x) {
+  return *&x;
+}
 
 template <typename T, typename U>
-static inline
-void volatile_write(T volatile &x, U const &y) { *&x = y; }
+static inline void volatile_write(T volatile &x, U const &y) {
+  *&x = y;
+}
 
 /* If [x] is not true, abort
  */
 #ifndef NDEBUG
-#define ASSERT(x)                               \
-    _MSG_IF(ASSERTION_FAILURE, not (x), #x, "")
+#define ASSERT(x) _MSG_IF(ASSERTION_FAILURE, not(x), #x, "")
 #else
 #define ASSERT(x) ;
 #endif
@@ -187,13 +159,12 @@ void volatile_write(T volatile &x, U const &y) { *&x = y; }
 /* If [x] is not true, abort with an extra message (perhaps to print
    offending values)
  */
-#define ASSERT_MSG(x, msg, ...)                         \
-    _MSG_IF(ASSERTION_FAILURE, not (x), #x,             \
-            ". Extra info: " msg, ##__VA_ARGS__);       \
+#define ASSERT_MSG(x, msg, ...) \
+  _MSG_IF(ASSERTION_FAILURE, not(x), #x, ". Extra info: " msg, ##__VA_ARGS__);
 
 #ifndef NDEBUG
 #define ASSERTION_FAILURE(cond, msg, ...) \
-    DIE("assertion failure: %s" msg, cond, ##__VA_ARGS__)
+  DIE("assertion failure: %s" msg, cond, ##__VA_ARGS__)
 #else
 #define ASSERTION_FAILURE(cond, msg, ...) __builtin_unreachable()
 #endif
@@ -206,31 +177,28 @@ void volatile_write(T volatile &x, U const &y) { *&x = y; }
 #ifndef NDEBUG
 #define ASSUME(x) ASSERT(x)
 #else
-#define ASSUME(x)                               \
-    do {                                        \
-        if (not (x))                            \
-            __builtin_unreachable();            \
-    } while (0)
+#define ASSUME(x)                        \
+  do {                                   \
+    if (not(x)) __builtin_unreachable(); \
+  } while (0)
 #endif
 
+#define DO_IF(cond, what) \
+  do {                    \
+    if (cond) {           \
+      what;               \
+    }                     \
+  } while (0)
 
-#define DO_IF(cond, what)                       \
-    do {                                        \
-        if (cond) { what; }                     \
-    } while(0)
+#define _MSG_IF(tp, cond, msg, ...) DO_IF(cond, tp(msg, ##__VA_ARGS__))
 
-#define _MSG_IF(tp, cond, msg, ...)          \
-    DO_IF(cond, tp(msg, ##__VA_ARGS__))
+#define DIE_IF(cond, msg, ...) _MSG_IF(DIE, cond, msg, ##__VA_ARGS__)
 
-#define DIE_IF(cond, msg, ...)                  \
-    _MSG_IF(DIE, cond, msg, ##__VA_ARGS__)
+#define SPAM(msg, ...)                                        \
+  fprintf(stderr, "%s:%d: %s: " msg "\n", __FILE__, __LINE__, \
+          __PRETTY_FUNCTION__, ##__VA_ARGS__)
 
-#define SPAM(msg, ...) \
-    fprintf(stderr, "%s:%d: %s: " msg "\n", \
-        __FILE__, __LINE__, __PRETTY_FUNCTION__, ##__VA_ARGS__)
-
-#define SPAM_IF(cond, msg, ...)                 \
-    _MSG_IF(SPAM, cond, msg, ##__VA_ARGS__)
+#define SPAM_IF(cond, msg, ...) _MSG_IF(SPAM, cond, msg, ##__VA_ARGS__)
 
 /* Print a warning but continue normally
 
@@ -246,11 +214,10 @@ void volatile_write(T volatile &x, U const &y) { *&x = y; }
 #endif
 
 /* Print a message and terminate abnormally */
-#define DIE(msg, ...) \
-    SPAM(msg, ##__VA_ARGS__); \
-    abort();
+#define DIE(msg, ...)       \
+  SPAM(msg, ##__VA_ARGS__); \
+  abort();
 
-    
 #ifdef __GNUC__
 /* GCC's offsetof() macro is broken in C++ for versions <= 4.9.0 when
    array indexes are not known at compile time.
@@ -261,7 +228,7 @@ void volatile_write(T volatile &x, U const &y) { *&x = y; }
 
    Work around: good old-fashioned null pointer arithmetic...
  */
-#define OFFSETOF(tp, expr) (((char*) &((tp*)0)->expr) - ((char*)((tp*)0)))
+#define OFFSETOF(tp, expr) (((char *)&((tp *)0)->expr) - ((char *)((tp *)0)))
 #else
 #define OFFSETOF(tp, expr) offsetof(tp, expr)
 #endif
@@ -271,52 +238,48 @@ void volatile_write(T volatile &x, U const &y) { *&x = y; }
  */
 template <typename T>
 struct _enumerate_helper {
-    T &iterable;
-    typedef typename std::iterator_traits<typename T::iterator>::reference Ref;
-    struct iterator {
-        size_t i;
-        typename T::iterator it;
-        void operator++() {
-            ++it;
-            ++i;
-        }
-        std::pair<size_t, Ref> operator*() {
-            return std::pair<size_t, Ref>(i, *it);
-        }
-        bool operator!=(iterator const &other) {
-            return it != other.it;
-        }
-    };
-    iterator begin() { return iterator{0, iterable.begin()}; }
-    iterator end() { return iterator{0, iterable.end()}; }
+  T &iterable;
+  typedef typename std::iterator_traits<typename T::iterator>::reference Ref;
+  struct iterator {
+    size_t i;
+    typename T::iterator it;
+    void operator++() {
+      ++it;
+      ++i;
+    }
+    std::pair<size_t, Ref> operator*() {
+      return std::pair<size_t, Ref>(i, *it);
+    }
+    bool operator!=(iterator const &other) { return it != other.it; }
+  };
+  iterator begin() { return iterator{0, iterable.begin()}; }
+  iterator end() { return iterator{0, iterable.end()}; }
 };
 
 // specialize it for arrays
 template <typename T, size_t N>
 struct _enumerate_helper<T[N]> {
-    T *iterable;
-    typedef T &Ref;
-    struct iterator {
-        size_t i;
-        T* it;
-        void operator++() {
-            ++it;
-            ++i;
-        }
-        std::pair<size_t, Ref> operator*() {
-            return std::pair<size_t, Ref>(i, *it);
-        }
-        bool operator!=(iterator const &other) {
-            return it != other.it;
-        }
-    };
-    iterator begin() { return iterator{0, iterable}; }
-    iterator end() { return iterator{N, iterable+N}; }
+  T *iterable;
+  typedef T &Ref;
+  struct iterator {
+    size_t i;
+    T *it;
+    void operator++() {
+      ++it;
+      ++i;
+    }
+    std::pair<size_t, Ref> operator*() {
+      return std::pair<size_t, Ref>(i, *it);
+    }
+    bool operator!=(iterator const &other) { return it != other.it; }
+  };
+  iterator begin() { return iterator{0, iterable}; }
+  iterator end() { return iterator{N, iterable + N}; }
 };
 
 template <typename T>
 _enumerate_helper<T> enumerate(T &iterable) {
-    return _enumerate_helper<T>{iterable};
+  return _enumerate_helper<T>{iterable};
 }
 
 /* This tangle of C++11 allows to replace the following:
@@ -337,42 +300,42 @@ _enumerate_helper<T> enumerate(T &iterable) {
    };
    baz(make_new(...));
 
-   The first of those three is technically not shorter than 
-   
+   The first of those three is technically not shorter than
+
    auto *f = new very_long_class_name(...);
 
    But the intent is clear and type inference doesn't help for
    constructor initializers lists or other function calls.
 
-   Everything inlines, so there is no runtime overhead. 
+   Everything inlines, so there is no runtime overhead.
  */
 
 template <typename Tuple, size_t... i>
 struct make_new_decay {
-    Tuple tup;
-    make_new_decay(Tuple t) : tup(std::move(t)) { }
-    
-    template <typename T>
-    operator T*() { return new T{std::get<i>(tup)...}; }
+  Tuple tup;
+  make_new_decay(Tuple t) : tup(std::move(t)) {}
+
+  template <typename T>
+  operator T *() {
+    return new T{std::get<i>(tup)...};
+  }
 };
 
 template <size_t N, typename Tuple, size_t... i>
-struct make_new_helper : make_new_helper<N-1, Tuple, N-1, i...> { };
+struct make_new_helper : make_new_helper<N - 1, Tuple, N - 1, i...> {};
 
 template <typename Tuple, size_t... i>
-struct make_new_helper<0, Tuple, i...> { typedef make_new_decay<Tuple, i...> type; };
+struct make_new_helper<0, Tuple, i...> {
+  typedef make_new_decay<Tuple, i...> type;
+};
 
 template <typename... Args>
-auto
-make_new(Args&&... args) ->
-    typename make_new_helper<
-        sizeof...(Args),
-        decltype(std::forward_as_tuple(args...))
-        >::type
-    
+auto make_new(Args &&... args) ->
+    typename make_new_helper<sizeof...(Args),
+                             decltype(std::forward_as_tuple(args...))>::type
+
 {
-    return std::forward_as_tuple(args...);
+  return std::forward_as_tuple(args...);
 }
 
 #endif
-  

@@ -36,8 +36,8 @@ using namespace TXN;
 // updates will leave only one entry by the first update. Dereferencing
 // the entry pointer results a fat_ptr to the new object.
 struct write_record_t {
-  fat_ptr* entry;
-  write_record_t(fat_ptr* entry) : entry(entry) {}
+  fat_ptr *entry;
+  write_record_t(fat_ptr *entry) : entry(entry) {}
   write_record_t() : entry(nullptr) {}
   inline Object *get_object() { return (Object *)entry->offset(); }
 };
@@ -47,15 +47,15 @@ struct write_set_t {
   uint32_t num_entries;
   write_record_t entries[kMaxEntries];
   write_set_t() : num_entries(0) {}
-  inline void emplace_back(fat_ptr* oe) {
+  inline void emplace_back(fat_ptr *oe) {
     ALWAYS_ASSERT(num_entries < kMaxEntries);
     new (&entries[num_entries]) write_record_t(oe);
     ++num_entries;
-    ASSERT(entries[num_entries-1].entry == oe);
+    ASSERT(entries[num_entries - 1].entry == oe);
   }
   inline uint32_t size() { return num_entries; }
   inline void clear() { num_entries = 0; }
-  inline write_record_t& operator[](uint32_t idx) { return entries[idx]; }
+  inline write_record_t &operator[](uint32_t idx) { return entries[idx]; }
 };
 
 // forward decl
@@ -66,7 +66,7 @@ class transaction {
   friend class base_txn_btree;
   friend class sm_oid_mgr;
 
-public:
+ public:
   typedef TXN::txn_state txn_state;
 
 #if defined(SSN) || defined(SSI)
@@ -115,7 +115,8 @@ public:
 
   // KeyReader Interface
   //
-  // KeyReader is a simple transformation from (const std::string &) => const Key &.
+  // KeyReader is a simple transformation from (const std::string &) => const
+  // Key &.
   // The input is guaranteed to be stable, so it has a simple interface:
   //
   //   const Key &operator()(const std::string &)
@@ -126,8 +127,10 @@ public:
 
   // ValueReader Interface
   //
-  // ValueReader is a more complex transformation from (const uint8_t *, size_t) => Value &.
-  // The input is not guaranteed to be stable, so it has a more complex interface:
+  // ValueReader is a more complex transformation from (const uint8_t *, size_t)
+  // => Value &.
+  // The input is not guaranteed to be stable, so it has a more complex
+  // interface:
   //
   //   template <typename StringAllocator>
   //   bool operator()(const uint8_t *, size_t, StringAllocator &)
@@ -151,25 +154,23 @@ public:
   // results() should remain valid and stable until the next call to
   // operator().
 
-protected:
-  inline txn_state state() const
-  {
-    return xc->state;
-  }
+ protected:
+  inline txn_state state() const { return xc->state; }
 
   // only fires during invariant checking
-  inline void
-  ensure_active()
-  {
+  inline void ensure_active() {
     volatile_write(xc->state, TXN_ACTIVE);
     ASSERT(state() == TXN_ACTIVE);
   }
   // the absent set is a mapping from (btree_node -> version_number).
-  struct absent_record_t { uint64_t version; };
-  typedef dense_hash_map<const concurrent_btree::node_opaque_t*, absent_record_t> absent_set_map;
+  struct absent_record_t {
+    uint64_t version;
+  };
+  typedef dense_hash_map<const concurrent_btree::node_opaque_t *,
+                         absent_record_t> absent_set_map;
   absent_set_map absent_set;
 
-public:
+ public:
   transaction(uint64_t flags, str_arena &sa);
   ~transaction();
   void initialize_read_write();
@@ -188,28 +189,25 @@ public:
   bool check_phantom();
   void abort_impl();
 
-protected:
+ protected:
   bool try_insert_new_tuple(concurrent_btree *btr, const varstr *key,
-                            varstr *value, OID* inserted_oid);
+                            varstr *value, OID *inserted_oid);
 
   // reads the contents of tuple into v
   // within this transaction context
   rc_t do_tuple_read(dbtuple *tuple, varstr *out_v);
-  rc_t do_node_read(const typename concurrent_btree::node_opaque_t *n, uint64_t version);
+  rc_t do_node_read(const typename concurrent_btree::node_opaque_t *n,
+                    uint64_t version);
 
-public:
+ public:
   // expected public overrides
 
-  inline str_arena &
-  string_allocator()
-  {
-    return *sa;
-  }
+  inline str_arena &string_allocator() { return *sa; }
 
-  inline void add_to_write_set(fat_ptr* entry) {
+  inline void add_to_write_set(fat_ptr *entry) {
 #ifndef NDEBUG
     for (uint32_t i = 0; i < write_set.size(); ++i) {
-      auto& w = write_set[i];
+      auto &w = write_set[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
     }
@@ -217,14 +215,14 @@ public:
     write_set.emplace_back(entry);
   }
 
-protected:
+ protected:
   const uint64_t flags;
   XID xid;
   xid_context *xc;
-  sm_tx_log* log;
+  sm_tx_log *log;
   str_arena *sa;
-  write_set_t& write_set;
+  write_set_t &write_set;
 #if defined(SSN) || defined(SSI)
-  read_set_t* read_set;
+  read_set_t *read_set;
 #endif
 };

@@ -20,63 +20,56 @@
 #include <errno.h>
 #include "string.hh"
 
-inline ssize_t
-safe_read(int fd, void *buf, size_t count)
-{
-    size_t pos = 0;
-    while (pos != count) {
-        ssize_t x = ::read(fd, buf, count - pos);
-        if (x != -1 && x != 0) {
-            buf = reinterpret_cast<char *>(buf) + x;
-            pos += x;
-        } else if (x == 0)
-            break;
-        else if (errno != EINTR && pos == 0)
-            return -1;
-        else if (errno != EINTR)
-            break;
-    }
-    return pos;
+inline ssize_t safe_read(int fd, void *buf, size_t count) {
+  size_t pos = 0;
+  while (pos != count) {
+    ssize_t x = ::read(fd, buf, count - pos);
+    if (x != -1 && x != 0) {
+      buf = reinterpret_cast<char *>(buf) + x;
+      pos += x;
+    } else if (x == 0)
+      break;
+    else if (errno != EINTR && pos == 0)
+      return -1;
+    else if (errno != EINTR)
+      break;
+  }
+  return pos;
 }
 
-inline ssize_t
-safe_write(int fd, const void *buf, size_t count)
-{
-    size_t pos = 0;
-    while (pos != count) {
-        ssize_t x = ::write(fd, buf, count - pos);
-        if (x != -1 && x != 0) {
-            buf = reinterpret_cast<const char *>(buf) + x;
-            pos += x;
-        } else if (x == 0)
-            break;
-        else if (errno != EINTR && pos == 0)
-            return -1;
-        else if (errno != EINTR)
-            break;
-    }
-    return pos;
+inline ssize_t safe_write(int fd, const void *buf, size_t count) {
+  size_t pos = 0;
+  while (pos != count) {
+    ssize_t x = ::write(fd, buf, count - pos);
+    if (x != -1 && x != 0) {
+      buf = reinterpret_cast<const char *>(buf) + x;
+      pos += x;
+    } else if (x == 0)
+      break;
+    else if (errno != EINTR && pos == 0)
+      return -1;
+    else if (errno != EINTR)
+      break;
+  }
+  return pos;
 }
 
-inline void
-checked_write(int fd, const void *buf, size_t count)
-{
-    ssize_t x = safe_write(fd, buf, count);
-    always_assert(size_t(x) == count);
+inline void checked_write(int fd, const void *buf, size_t count) {
+  ssize_t x = safe_write(fd, buf, count);
+  always_assert(size_t(x) == count);
 }
 
-template <typename T> inline void
-checked_write(int fd, const T *x)
-{
-    checked_write(fd, reinterpret_cast<const void *>(x), sizeof(*x));
+template <typename T>
+inline void checked_write(int fd, const T *x) {
+  checked_write(fd, reinterpret_cast<const void *>(x), sizeof(*x));
 }
-
 
 lcdf::String read_file_contents(int fd);
 lcdf::String read_file_contents(const char *filename);
 int sync_write_file_contents(const char *filename, const lcdf::String &contents,
                              mode_t mode = 0666);
-int atomic_write_file_contents(const char *filename, const lcdf::String &contents,
+int atomic_write_file_contents(const char *filename,
+                               const lcdf::String &contents,
                                mode_t mode = 0666);
 
 #endif

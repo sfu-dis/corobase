@@ -2,7 +2,6 @@
 
 #include "dynarray.h"
 
-
 namespace {
 #if 0
 } // disable autoindent
@@ -10,7 +9,7 @@ namespace {
 
 #warning Watch out for thread-local allocations!
 /* ^^^
-   
+
    To reduce contention, we use a thread-local caching mechanism that
    hands out chunks of the OID space to threads, which they can then
    use at their leisure. In a sense, the system considers those OIDs
@@ -30,8 +29,7 @@ namespace {
    reclaimed from the various threads in the system.
 */
 
-
-# if 0
+#if 0
 { // disable autoindent
 #endif
 }

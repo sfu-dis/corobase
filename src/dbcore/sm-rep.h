@@ -74,20 +74,19 @@ struct backup_start_metadata {
   uint64_t num_log_files;
   log_segment segments[0];  // must be the last one
 
-  backup_start_metadata() :
-    chkpt_size(0)
-    , log_size(0)
-    , num_log_files(0) {
+  backup_start_metadata() : chkpt_size(0), log_size(0), num_log_files(0) {
     system_config.scale_factor = config::benchmark_scale_factor;
     system_config.log_segment_mb = config::log_segment_mb;
     system_config.logbuf_partitions = config::logbuf_partitions;
   }
 
-  inline void add_log_segment(
-    unsigned int segment, uint64_t start_offset, uint64_t end_offset, uint64_t size) {
-    // The filename; start_offset should already be adjusted according to chkpt_start
+  inline void add_log_segment(unsigned int segment, uint64_t start_offset,
+                              uint64_t end_offset, uint64_t size) {
+    // The filename; start_offset should already be adjusted according to
+    // chkpt_start
     // so we only ship the part needed
-    new (&(segments[num_log_files].file_name)) segment_file_name(segment, start_offset, end_offset);
+    new (&(segments[num_log_files].file_name))
+        segment_file_name(segment, start_offset, end_offset);
 
     // The real size we're going to send
     segments[num_log_files].size = size;
@@ -97,26 +96,26 @@ struct backup_start_metadata {
   inline uint64_t size() {
     return sizeof(*this) + sizeof(log_segment) * num_log_files;
   }
-  inline log_segment* get_log_segment(uint32_t idx) {
-    return &segments[idx];
-  }
+  inline log_segment* get_log_segment(uint32_t idx) { return &segments[idx]; }
   void persist_marker_files() {
     ALWAYS_ASSERT(config::is_backup_srv());
     // Write the marker files
     dirent_iterator dir(config::log_dir.c_str());
     int dfd = dir.dup();
-    int marker_fd = os_openat(dfd, chkpt_marker, O_CREAT|O_WRONLY);
+    int marker_fd = os_openat(dfd, chkpt_marker, O_CREAT | O_WRONLY);
     os_close(marker_fd);
-    marker_fd = os_openat(dfd, durable_marker, O_CREAT|O_WRONLY);
+    marker_fd = os_openat(dfd, durable_marker, O_CREAT | O_WRONLY);
     os_close(marker_fd);
-    marker_fd = os_openat(dfd, nxt_marker, O_CREAT|O_WRONLY);
+    marker_fd = os_openat(dfd, nxt_marker, O_CREAT | O_WRONLY);
     os_close(marker_fd);
   }
 };
 
-inline backup_start_metadata* allocate_backup_start_metadata(uint64_t nlogfiles) {
-  uint32_t size = sizeof(backup_start_metadata) + nlogfiles * sizeof(backup_start_metadata::log_segment);
-  backup_start_metadata *md = (backup_start_metadata*)malloc(size);
+inline backup_start_metadata* allocate_backup_start_metadata(
+    uint64_t nlogfiles) {
+  uint32_t size = sizeof(backup_start_metadata) +
+                  nlogfiles * sizeof(backup_start_metadata::log_segment);
+  backup_start_metadata* md = (backup_start_metadata*)malloc(size);
   return md;
 }
 
@@ -128,10 +127,12 @@ inline void WaitForLogBufferSpace(LSN target_lsn) {
   // Make sure the half we're about to use is free now, i.e., data persisted
   // and replayed (if needed).
   uint64_t off = target_lsn.offset();
-  if(off) {
-    while(off > volatile_read(persisted_lsn_offset)) {}
-    if(config::replay_policy != config::kReplayNone) {
-      while(off > volatile_read(replayed_lsn_offset)) {}
+  if (off) {
+    while (off > volatile_read(persisted_lsn_offset)) {
+    }
+    if (config::replay_policy != config::kReplayNone) {
+      while (off > volatile_read(replayed_lsn_offset)) {
+      }
     }
 
     // Really make room for the incoming data.
@@ -145,10 +146,11 @@ inline void WaitForLogBufferSpace(LSN target_lsn) {
 
 void start_as_primary();
 void BackupStartReplication();
-void primary_ship_log_buffer_all(const char *buf, uint32_t size,
-                                 bool new_seg, uint64_t new_seg_start_offset);
+void primary_ship_log_buffer_all(const char* buf, uint32_t size, bool new_seg,
+                                 uint64_t new_seg_start_offset);
 void redo_daemon();
-backup_start_metadata* prepare_start_metadata(int& chkpt_fd, LSN& chkpt_start_lsn);
+backup_start_metadata* prepare_start_metadata(int& chkpt_fd,
+                                              LSN& chkpt_start_lsn);
 void PrimaryShutdown();
 void LogFlushDaemon();
 void LogRedoDaemon();
@@ -159,9 +161,10 @@ void PrimaryShutdownRdma();
 void primary_daemon_rdma();
 void start_as_backup_rdma();
 void primary_init_rdma();
-void primary_ship_log_buffer_rdma(const char *buf, uint32_t size,
-                                  bool new_seg, uint64_t new_seg_start_offset);
-void send_log_files_after_rdma(RdmaNode* node, backup_start_metadata* md, LSN chkpt_start);
+void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
+                                  uint64_t new_seg_start_offset);
+void send_log_files_after_rdma(RdmaNode* node, backup_start_metadata* md,
+                               LSN chkpt_start);
 void primary_rdma_poll_send_cq(uint64_t nops);
 void primary_rdma_wait_for_message(uint64_t msg, bool reset);
 
@@ -169,11 +172,12 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset);
 void start_as_backup_tcp();
 void BackupDaemonTcp();
 void primary_daemon_tcp();
-void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md, LSN chkpt_start);
+void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
+                              LSN chkpt_start);
 void PrimaryShutdownTcp();
 
 /* Send a chunk of log records (still in memory log buffer) to a backup via TCP.
  */
-void primary_ship_log_buffer_tcp(
-  int backup_sockfd, const char* buf, uint32_t size);
+void primary_ship_log_buffer_tcp(int backup_sockfd, const char* buf,
+                                 uint32_t size);
 };  // namespace rep

@@ -30,16 +30,16 @@
    // the "stub" is world-visible
    struct foo {
        // note lack of data members
-       
+
        // factory methods instead of constructor/destructor
-       static 
+       static
        foo *make();
-       
+
        void destroy();
-       
+
        // public method
        void bar();
-       
+
    protected:
        // prevent users from allocating the stub directly
        foo() { }
@@ -48,7 +48,7 @@
    ///////////////////////////////////////
 
    // in .cpp ////////////////////////////
-   
+
    // derive the "impl" class from stub
    struct foo_impl : foo {
        // a private method
@@ -65,12 +65,12 @@
    void foo::destroy() {
        delete get_impl(this);
    }
-   
+
    // define "stub" functions
    void foo::bar() {
        get_impl(this)->baz();
    }
-   
+
    //////////////////////////////////////
 */
 
@@ -84,13 +84,18 @@
  */
 #define DEF_IMPL(tp) DEF_IMPL2(tp, tp##_impl)
 
-#define DEF_IMPL2(tp,impl)                                           \
-    static_assert(std::is_base_of<tp, impl>::value,                  \
-                  #impl " is not derived from " #tp);                \
-    template <> struct _impl_of<tp> { typedef impl type; }
+#define DEF_IMPL2(tp, impl)                         \
+  static_assert(std::is_base_of<tp, impl>::value,   \
+                #impl " is not derived from " #tp); \
+  template <>                                       \
+  struct _impl_of<tp> {                             \
+    typedef impl type;                              \
+  }
 
 template <typename T>
-struct _impl_of { typedef T type; };
+struct _impl_of {
+  typedef T type;
+};
 
 /* Given a pointer to T (a stub), return a pointer to T's
    implementation. The default is to return a pointer to T. If the
@@ -98,12 +103,12 @@ struct _impl_of { typedef T type; };
    impl instead. This ensures that only one implementation exists.
  */
 template <typename T>
-typename _impl_of<T>::type *get_impl(T* ptr) {
-    return (typename _impl_of<T>::type*) ptr;
+typename _impl_of<T>::type *get_impl(T *ptr) {
+  return (typename _impl_of<T>::type *)ptr;
 }
 template <typename T>
 typename _impl_of<T>::type const *get_impl(T const *ptr) {
-    return (typename _impl_of<T>::type*) ptr;
+  return (typename _impl_of<T>::type *)ptr;
 }
 
 #endif

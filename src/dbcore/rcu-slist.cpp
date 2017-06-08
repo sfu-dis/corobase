@@ -5,227 +5,212 @@
 using namespace RCU;
 
 //#include "rcu.h"
-extern void RCU::rcu_free(void const*);
+extern void RCU::rcu_free(void const *);
 
 namespace {
-    typedef _rcu_slist::node node;
-    typedef _rcu_slist::next_ptr next_ptr;
-    typedef _rcu_slist::owner_status owner_status;
-    struct cached_next {
-        next_ptr volatile *ptr;
-        next_ptr copy;
+typedef _rcu_slist::node node;
+typedef _rcu_slist::next_ptr next_ptr;
+typedef _rcu_slist::owner_status owner_status;
+struct cached_next {
+  next_ptr volatile *ptr;
+  next_ptr copy;
 
-        cached_next() { /* uninitialized */ }
-        
-        cached_next(next_ptr volatile *n)
-            : ptr(n), copy(n->copy())
-        {
-        }
+  cached_next() { /* uninitialized */
+  }
 
-        cached_next &operator=(cached_next const &other) {
-            ptr = other.ptr;
-            copy = other.copy;
-            return *this;
-        }
+  cached_next(next_ptr volatile *n) : ptr(n), copy(n->copy()) {}
 
-        bool atomic_cas(node *n, owner_status s) {
-            next_ptr nv(n, s);
-            uintptr_t rval = __sync_val_compare_and_swap(&ptr->val, copy.val, nv.val);
-            if (rval == copy.val) {
-                copy.val = nv.val;
-                return true;
-            }
-            copy.val = rval;
-            return false;
-        }
-    };
+  cached_next &operator=(cached_next const &other) {
+    ptr = other.ptr;
+    copy = other.copy;
+    return *this;
+  }
 
-    static
-    node* find_live_successor(cached_next const &point) {
-        cached_next other = point;
-        while (node *succ = other.copy.get()) {
-            cached_next tmp = &succ->next;
-            if (not tmp.copy.owner_is_dead()) 
-                return succ;
-
-            // keep looking
-            other = tmp;
-        }
-
-        // EOL
-        return 0;
+  bool atomic_cas(node *n, owner_status s) {
+    next_ptr nv(n, s);
+    uintptr_t rval = __sync_val_compare_and_swap(&ptr->val, copy.val, nv.val);
+    if (rval == copy.val) {
+      copy.val = nv.val;
+      return true;
     }
+    copy.val = rval;
+    return false;
+  }
+};
 
-    static inline
-    bool install_successor(cached_next &point, node *dead_end, node *n, owner_status s) {
-        next_ptr tmp = point.copy;
-        if (not point.atomic_cas(n, s)) {
-            // caller will sort out what went wrong
-            return false;
-        }
-    
-        /* Successfully installed [n], free up dead sublist to finish.
+static node *find_live_successor(cached_next const &point) {
+  cached_next other = point;
+  while (node *succ = other.copy.get()) {
+    cached_next tmp = &succ->next;
+    if (not tmp.copy.owner_is_dead()) return succ;
 
-           Note that we access x->next after passing it rcu_free. This is
-           OK because RCU won't actually free the node (or even alter it)
-           until after the next quiescent point.
-        */
-        while (1) {
-            node *x = tmp.get();
-            if (x == dead_end)
-                break;
-        
-            tmp = x->next.copy();
-            ASSERT (tmp.owner_is_dead());
-            rcu_free(x);
-        }
-    
-        return true;
-    }
+    // keep looking
+    other = tmp;
+  }
+
+  // EOL
+  return 0;
+}
+
+static inline bool install_successor(cached_next &point, node *dead_end,
+                                     node *n, owner_status s) {
+  next_ptr tmp = point.copy;
+  if (not point.atomic_cas(n, s)) {
+    // caller will sort out what went wrong
+    return false;
+  }
+
+  /* Successfully installed [n], free up dead sublist to finish.
+
+     Note that we access x->next after passing it rcu_free. This is
+     OK because RCU won't actually free the node (or even alter it)
+     until after the next quiescent point.
+  */
+  while (1) {
+    node *x = tmp.get();
+    if (x == dead_end) break;
+
+    tmp = x->next.copy();
+    ASSERT(tmp.owner_is_dead());
+    rcu_free(x);
+  }
+
+  return true;
+}
 }
 
 _rcu_slist::next_ptr::next_ptr(node *n, owner_status s) {
-    union {
-        node *p;
-        uintptr_t n;
-    } u = {n};
-    if (s == OWNER_DEAD)
-        u.n |= OWNER_DEAD;
-    val = u.n;
+  union {
+    node *p;
+    uintptr_t n;
+  } u = {n};
+  if (s == OWNER_DEAD) u.n |= OWNER_DEAD;
+  val = u.n;
 }
 
-bool _rcu_slist::next_ptr::owner_is_dead() {
-    return val & OWNER_DEAD;
-}
+bool _rcu_slist::next_ptr::owner_is_dead() { return val & OWNER_DEAD; }
 
 void _rcu_slist::next_ptr::set_owner_status(owner_status s) {
-    if (s == OWNER_DEAD)
-        val |= OWNER_DEAD;
-    else
-        val &= -2;
+  if (s == OWNER_DEAD)
+    val |= OWNER_DEAD;
+  else
+    val &= -2;
 }
-    
+
 _rcu_slist::node *_rcu_slist::next_ptr::get() {
-    union {
-        uintptr_t n;
-        node* v;
-    } u = {this->val & -2};
-    return u.v;
+  union {
+    uintptr_t n;
+    node *v;
+  } u = {this->val & -2};
+  return u.v;
 }
 
 bool _rcu_slist::kill() {
-    cached_next point = &this->head;
- retry:
-    node *succ = find_live_successor(point);
-    bool killed = not succ;
-    owner_status s = killed? OWNER_DEAD : OWNER_LIVE;
-    if (not install_successor(point, succ, succ, s)) {
-        if (point.copy.owner_is_dead()) {
-            // somebody else killed the list first
-            return false;
-        }
-
-        // successor changed, try again
-        goto retry;
+  cached_next point = &this->head;
+retry:
+  node *succ = find_live_successor(point);
+  bool killed = not succ;
+  owner_status s = killed ? OWNER_DEAD : OWNER_LIVE;
+  if (not install_successor(point, succ, succ, s)) {
+    if (point.copy.owner_is_dead()) {
+      // somebody else killed the list first
+      return false;
     }
 
-    // kill succeeds only if there was no successor
-    ASSERT (killed == point.copy.owner_is_dead());
-    return killed;
+    // successor changed, try again
+    goto retry;
+  }
+
+  // kill succeeds only if there was no successor
+  ASSERT(killed == point.copy.owner_is_dead());
+  return killed;
 }
 
 namespace {
-    bool list_push(cached_next &point, node *n, _rcu_slist::push_callback_fn *cb, void *x) {
-        node *succ = find_live_successor(point);
-        if (cb)
-            cb(x, n, succ);
+bool list_push(cached_next &point, node *n, _rcu_slist::push_callback_fn *cb,
+               void *x) {
+  node *succ = find_live_successor(point);
+  if (cb) cb(x, n, succ);
 
-        /* [point] is the correct predecessor to [n], and [succ] is the
-           correct successor to [n]. Remember the head of the dead
-           sublist, then try to CAS everything into place.
+  /* [point] is the correct predecessor to [n], and [succ] is the
+     correct successor to [n]. Remember the head of the dead
+     sublist, then try to CAS everything into place.
 
-           NOTE: In spite of our scan above, our successor may die before
-           we finish linking to it. That's OK, because unlinking dead
-           sublists is just a courtesy to other threads (since we had to
-           do a CAS either way).
-        */
-        n->next = next_ptr(succ, _rcu_slist::OWNER_LIVE);
-        if (not install_successor(point, succ, n, _rcu_slist::OWNER_LIVE)) {
-            if (point.copy.owner_is_dead()) {
-                // yikes! list killed!
-                return false;
-            }
-
-            // somebody else got here first, start over
-            return list_push(point, n, cb, x);
-        }
-    
-        return true;
+     NOTE: In spite of our scan above, our successor may die before
+     we finish linking to it. That's OK, because unlinking dead
+     sublists is just a courtesy to other threads (since we had to
+     do a CAS either way).
+  */
+  n->next = next_ptr(succ, _rcu_slist::OWNER_LIVE);
+  if (not install_successor(point, succ, n, _rcu_slist::OWNER_LIVE)) {
+    if (point.copy.owner_is_dead()) {
+      // yikes! list killed!
+      return false;
     }
-}
 
-_rcu_slist::node *
-_rcu_slist::peek_raw(bool *valid)
-{
-    cached_next p = &this->head;
-    if (valid)
-        *valid = not p.copy.owner_is_dead();
-    return p.copy.get();
-}
-
-bool __attribute__((flatten))
-_rcu_slist::push(node *n)
-{
-    cached_next point = &this->head;
-    return list_push(point, n, NULL, NULL);
-}
-
-bool __attribute__((flatten))
-_rcu_slist::push_callback(node *n, push_callback_fn *cb, void *x)
-{
-    ASSERT (cb != NULL);
-    cached_next point = &this->head;
+    // somebody else got here first, start over
     return list_push(point, n, cb, x);
+  }
+
+  return true;
+}
+}
+
+_rcu_slist::node *_rcu_slist::peek_raw(bool *valid) {
+  cached_next p = &this->head;
+  if (valid) *valid = not p.copy.owner_is_dead();
+  return p.copy.get();
+}
+
+bool __attribute__((flatten)) _rcu_slist::push(node *n) {
+  cached_next point = &this->head;
+  return list_push(point, n, NULL, NULL);
+}
+
+bool __attribute__((flatten)) _rcu_slist::push_callback(node *n,
+                                                        push_callback_fn *cb,
+                                                        void *x) {
+  ASSERT(cb != NULL);
+  cached_next point = &this->head;
+  return list_push(point, n, cb, x);
 }
 
 /* Mark [n] as dead and clean up downstream. Return true if an
    upstream cleanup is also necessary (ie because no live nodes
    remain downstream).
 */
-bool //__attribute__((flatten))
-_rcu_slist::remove_fast(node *n)
-{
-    /*
-      The actual removal is simple enough: just mark the node as dead.
-      To avoid leaks, however, we impose the invariant that a node
-      with a dead successor may not be marked dead (the dead successor
-      must be unlinked first). That forces us to use CAS.
-    */
-    
-    cached_next point = &n->next;
- retry:
-    // we haven't been deleted yet...
+bool  //__attribute__((flatten))
+    _rcu_slist::remove_fast(node *n) {
+  /*
+    The actual removal is simple enough: just mark the node as dead.
+    To avoid leaks, however, we impose the invariant that a node
+    with a dead successor may not be marked dead (the dead successor
+    must be unlinked first). That forces us to use CAS.
+  */
+
+  cached_next point = &n->next;
+retry:
+  // we haven't been deleted yet...
+  ASSERT(not point.copy.owner_is_dead());
+  node *succ = find_live_successor(point);
+  if (not install_successor(point, succ, succ, OWNER_DEAD)) {
+    // hopefully not a double-free attempt
     ASSERT(not point.copy.owner_is_dead());
-    node *succ = find_live_successor(point);
-    if (not install_successor(point, succ, succ, OWNER_DEAD)) {
-        // hopefully not a double-free attempt
-        ASSERT (not point.copy.owner_is_dead());
 
-        goto retry;
+    goto retry;
+  }
+
+  if (succ) {
+    node *x = point.copy.get();
+    cached_next tmp = &x->next;
+    if (not tmp.copy.owner_is_dead()) {
+      // live successor confirmed, we're done!
+      return false;
     }
+  }
 
-    if (succ) {
-        node *x = point.copy.get();
-        cached_next tmp = &x->next;
-        if (not tmp.copy.owner_is_dead()) {
-            // live successor confirmed, we're done!
-            return false;
-        }
-    }
-
-    // no live successor
-    return true;
-
+  // no live successor
+  return true;
 }
 
 /* Remove the given node from the list. Return true if the list became
@@ -233,106 +218,101 @@ _rcu_slist::remove_fast(node *n)
 
    NOTE: in the event that a list kill arrives just after [n] has been
    removed, but before we can confirm that [n] was the last element of
-   the list, then we return false. 
+   the list, then we return false.
 
    WARNING: once this function returns, the caller should not access
    the passed-in list node any more.
-   
+
    WARNING: caller is responsible to ensure that only one thread tries
    to delete each node.
  */
-bool //__attribute__((flatten))
-_rcu_slist::remove(node *n)
-{
-    
-    if (not remove_fast(n))
-        return false;
+bool  //__attribute__((flatten))
+    _rcu_slist::remove(node *n) {
+  if (not remove_fast(n)) return false;
 
-    /* Couldn't confirm a live successor, have to check from list
-       head.  Note that the list could be killed at any moment because
-       our node is no longer live.
-     */
-    cached_next point = &this->head;
-    node *succ = find_live_successor(point);
-    if (not install_successor(point, succ, succ, OWNER_LIVE)) {
-        /* The list may have died. If the list did not die, then the
-           head's successor must have changed. A successor change
-           could only be due to an insert (in which case the list is
-           clearly not empty), or a head cleanup similar to ours (in
-           which case the other thread either proved the list is
-           non-empty or received the blame for emptying it).
+  /* Couldn't confirm a live successor, have to check from list
+     head.  Note that the list could be killed at any moment because
+     our node is no longer live.
+   */
+  cached_next point = &this->head;
+  node *succ = find_live_successor(point);
+  if (not install_successor(point, succ, succ, OWNER_LIVE)) {
+    /* The list may have died. If the list did not die, then the
+       head's successor must have changed. A successor change
+       could only be due to an insert (in which case the list is
+       clearly not empty), or a head cleanup similar to ours (in
+       which case the other thread either proved the list is
+       non-empty or received the blame for emptying it).
 
-           In all three cases, removing [n] did not "cause" the list
-           to become empty. 
-        */
-        return false;
-    }
-
-    /* Installation succeeded. The list became empty only if there was
-       no successor; otherwise, we have proven the existence of a live
-       successor, even if it has since died.
+       In all three cases, removing [n] did not "cause" the list
+       to become empty.
     */
-    return not succ;
+    return false;
+  }
+
+  /* Installation succeeded. The list became empty only if there was
+     no successor; otherwise, we have proven the existence of a live
+     successor, even if it has since died.
+  */
+  return not succ;
 }
 
-bool //__attribute__((flatten))
-_rcu_slist::remove_and_kill(node *n)
-{
-    /*
-      The actual removal is simple enough: just mark the node as dead.
-      To avoid leaks, however, we impose the invariant that a node
-      with a dead successor may not be marked dead (the dead successor
-      must be unlinked first). That forces us to use CAS.
-    */
-    
-    cached_next point = &n->next;
- retry:
-    // we haven't been deleted yet...
+bool  //__attribute__((flatten))
+    _rcu_slist::remove_and_kill(node *n) {
+  /*
+    The actual removal is simple enough: just mark the node as dead.
+    To avoid leaks, however, we impose the invariant that a node
+    with a dead successor may not be marked dead (the dead successor
+    must be unlinked first). That forces us to use CAS.
+  */
+
+  cached_next point = &n->next;
+retry:
+  // we haven't been deleted yet...
+  ASSERT(not point.copy.owner_is_dead());
+  node *succ = find_live_successor(point);
+  if (not install_successor(point, succ, succ, OWNER_DEAD)) {
+    // hopefully not a double-free attempt
     ASSERT(not point.copy.owner_is_dead());
-    node *succ = find_live_successor(point);
-    if (not install_successor(point, succ, succ, OWNER_DEAD)) {
-        // hopefully not a double-free attempt
-        ASSERT (not point.copy.owner_is_dead());
-        goto retry;
+    goto retry;
+  }
+
+  if (succ) {
+    node *x = point.copy.get();
+    cached_next tmp = &x->next;
+    if (not tmp.copy.owner_is_dead()) {
+      // live successor confirmed, we're done!
+      return false;
     }
+  }
 
-    if (succ) {
-        node *x = point.copy.get();
-        cached_next tmp = &x->next;
-        if (not tmp.copy.owner_is_dead()) {
-            // live successor confirmed, we're done!
-            return false;
-        }
-    }
+  /* Couldn't confirm a live successor, have to check from list
+     head.  Note that the list could become (or is already) empty
+     and could therefore be killed at any moment.
+   */
+  point = &this->head;
+  succ = find_live_successor(point);
+  owner_status s = succ ? OWNER_LIVE : OWNER_DEAD;
+  if (not install_successor(point, succ, succ, s)) {
+    /* The list may have died. If the list did not die, then the
+       head's successor must have changed. A successor change
+       could only be due to an insert (in which case the list is
+       clearly not empty), or a head cleanup similar to ours (in
+       which case the other thread either proved the list is
+       non-empty or received the blame for emptying it).
 
-    /* Couldn't confirm a live successor, have to check from list
-       head.  Note that the list could become (or is already) empty
-       and could therefore be killed at any moment.
-     */
-    point = &this->head;
-    succ = find_live_successor(point);
-    owner_status s = succ? OWNER_LIVE : OWNER_DEAD;
-    if (not install_successor(point, succ, succ, s)) {
-        /* The list may have died. If the list did not die, then the
-           head's successor must have changed. A successor change
-           could only be due to an insert (in which case the list is
-           clearly not empty), or a head cleanup similar to ours (in
-           which case the other thread either proved the list is
-           non-empty or received the blame for emptying it).
-
-           In all three cases, removing [n] did not "cause" the list
-           to become empty. 
-        */
-        return false;
-    }
-
-    /* Installation succeeded. The list became empty only if there was
-       no successor; otherwise, we have proven the existence of a live
-       successor, even if it has since died.
+       In all three cases, removing [n] did not "cause" the list
+       to become empty.
     */
-    return not succ;
-}
+    return false;
+  }
 
+  /* Installation succeeded. The list became empty only if there was
+     no successor; otherwise, we have proven the existence of a live
+     successor, even if it has since died.
+  */
+  return not succ;
+}
 
 /* Sorted list insertion works in single-threaded tests, but it has
    not been tested in a multi-threaded environment yet. It's not clear

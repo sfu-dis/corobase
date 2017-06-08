@@ -20,37 +20,37 @@
 #include "msgpack.hh"
 
 struct ckstate {
-    kvout *vals; // key, val, timestamp in msgpack
-    uint64_t count; // total nodes written
-    uint64_t bytes;
-    pthread_cond_t state_cond;
-    volatile int state;
-    threadinfo *ti;
-    Str startkey;
-    Str endkey;
+  kvout* vals;     // key, val, timestamp in msgpack
+  uint64_t count;  // total nodes written
+  uint64_t bytes;
+  pthread_cond_t state_cond;
+  volatile int state;
+  threadinfo* ti;
+  Str startkey;
+  Str endkey;
 
-    template <typename SS, typename K>
-    void visit_leaf(const SS&, const K&, threadinfo&) {
-    }
-    bool visit_value(Str key, const row_type* value, threadinfo& ti);
+  template <typename SS, typename K>
+  void visit_leaf(const SS&, const K&, threadinfo&) {}
+  bool visit_value(Str key, const row_type* value, threadinfo& ti);
 
-    template <typename T>
-    static void insert(T& table, msgpack::parser& par, threadinfo& ti);
+  template <typename T>
+  static void insert(T& table, msgpack::parser& par, threadinfo& ti);
 };
 
 template <typename T>
 void ckstate::insert(T& table, msgpack::parser& par, threadinfo& ti) {
-    Str key;
-    kvtimestamp_t ts{};
-    par >> key >> ts;
-    row_type* row = row_type::checkpoint_read(par, ts, ti);
+  Str key;
+  kvtimestamp_t ts{};
+  par >> key >> ts;
+  row_type* row = row_type::checkpoint_read(par, ts, ti);
 
-    typename T::cursor_type lp(table, key);
-    bool found = lp.find_insert(ti);
-    masstree_invariant(!found); (void) found;
-    ti.advance_timestamp(lp.node_timestamp());
-    lp.value() = row;
-    lp.finish(1, ti);
+  typename T::cursor_type lp(table, key);
+  bool found = lp.find_insert(ti);
+  masstree_invariant(!found);
+  (void)found;
+  ti.advance_timestamp(lp.node_timestamp());
+  lp.value() = row;
+  lp.finish(1, ti);
 }
 
 #endif

@@ -22,17 +22,15 @@
 
 namespace Perf {
 struct stat {
-    /** @brief An initialization call from main function
-     */
-    static void initmain(bool pinthreads);
+  /** @brief An initialization call from main function
+   */
+  static void initmain(bool pinthreads);
 #if GCSTATS
-    int gc_nfree;
+  int gc_nfree;
 #endif
-    void initialize(int cid) {
-        this->cid = cid;
-    }
-    static void print(const stat **s, int n);
-    int cid;    // core index
+  void initialize(int cid) { this->cid = cid; }
+  static void print(const stat **s, int n);
+  int cid;  // core index
 };
 }
 #endif

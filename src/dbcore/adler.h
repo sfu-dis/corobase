@@ -4,8 +4,7 @@
 #include <stdint.h>
 #include <cstddef>
 
-
-/* An efficient implementation of the adler32 checksum algorithm. 
+/* An efficient implementation of the adler32 checksum algorithm.
 
    One really nice feature of adler32 (in addition to its speed) is
    that checksums compose: given N bytes to process, we can compute
@@ -20,7 +19,8 @@
    beats the optimized scalar version by anywhere from ~2x (for a few
    dozen bytes) to nearly 9x (for tens of kB or more). Achieving
    speedup better than 8x is especially impressive, given that the SSE
-   implementation works with 8x16-bit values internally. For a workload that fits
+   implementation works with 8x16-bit values internally. For a workload that
+   fits
    in cache, the SSE variant can surpass 12 GB/s. Obviously memory
    bandwidth limitations, or short runs, might eat into that
    throughtput.
@@ -41,10 +41,13 @@ static uint32_t const ADLER32_CSUM_INIT = 1;
    allows building up a checksum incrementally, or over physically
    disjoint data sets.
  */
-uint32_t adler32(char const *data, size_t nbytes, uint32_t sofar=ADLER32_CSUM_INIT);
-uint32_t adler32_vanilla(char const *data, size_t nbytes, uint32_t sofar=ADLER32_CSUM_INIT);
+uint32_t adler32(char const *data, size_t nbytes,
+                 uint32_t sofar = ADLER32_CSUM_INIT);
+uint32_t adler32_vanilla(char const *data, size_t nbytes,
+                         uint32_t sofar = ADLER32_CSUM_INIT);
 #ifdef __SSSE3__
-uint32_t adler32_sse(char const *data, size_t nbytes, uint32_t sofar=ADLER32_CSUM_INIT);
+uint32_t adler32_sse(char const *data, size_t nbytes,
+                     uint32_t sofar = ADLER32_CSUM_INIT);
 #endif
 
 /* Combine two adjacent checksums into a single one and return the
@@ -61,10 +64,13 @@ uint32_t adler32_merge(uint32_t left, uint32_t right, size_t right_size);
    alignment to a 16-byte boundary. In other words, the both buffers
    must start at the same offset from the preceding 16-byte boundary.
  */
-uint32_t adler32_memcpy(char *dest, char const *src, size_t nbytes, uint32_t sofar=ADLER32_CSUM_INIT);
-uint32_t adler32_memcpy_vanilla(char *dest, char const *src, size_t nbytes, uint32_t sofar=ADLER32_CSUM_INIT);
+uint32_t adler32_memcpy(char *dest, char const *src, size_t nbytes,
+                        uint32_t sofar = ADLER32_CSUM_INIT);
+uint32_t adler32_memcpy_vanilla(char *dest, char const *src, size_t nbytes,
+                                uint32_t sofar = ADLER32_CSUM_INIT);
 #ifdef __SSSE3__
-uint32_t adler32_memcpy_sse(char *dest, char const *src, size_t nbytes, uint32_t sofar=ADLER32_CSUM_INIT);
+uint32_t adler32_memcpy_sse(char *dest, char const *src, size_t nbytes,
+                            uint32_t sofar = ADLER32_CSUM_INIT);
 #endif
 
 #endif

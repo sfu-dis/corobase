@@ -16,10 +16,10 @@
 namespace tcp {
 
 static const int ACK_TEXT_LEN = 4;
-static const char *ACK_TEXT= "ACK";
+static const char* ACK_TEXT = "ACK";
 
 // to_receive must be <= buf's capacity
-inline void receive(int fd, char *buf, size_t to_receive) {
+inline void receive(int fd, char* buf, size_t to_receive) {
   auto total = to_receive;
   while (to_receive) {
     to_receive -= recv(fd, buf + total - to_receive, to_receive, 0);
@@ -38,18 +38,18 @@ inline void send_ack(int sockfd) {
 }
 
 struct server_context {
-private:
+ private:
   char sock_addr[INET_ADDRSTRLEN];
   int sockfd;
 
-public:
+ public:
   server_context(std::string& port, uint32_t nclients);
   ~server_context() {
     if (sockfd) {
       close(sockfd);
     }
   }
-  inline const char *get_sock_addr() { return sock_addr; }
+  inline const char* get_sock_addr() { return sock_addr; }
   int expect_client();
 };
 

@@ -48,7 +48,7 @@ bool config::enable_chkpt = 0;
 uint64_t config::chkpt_interval = 50;
 bool config::phantom_prot = 0;
 uint32_t config::max_threads_per_node = 0;
-double config::cycles_per_byte= 0;
+double config::cycles_per_byte = 0;
 uint32_t config::state = config::kStateLoading;
 int config::replay_policy = config::kReplayPipelined;
 bool config::full_replay = false;
@@ -57,27 +57,26 @@ uint32_t config::threads = 0;
 bool config::pipelined_persist = false;
 bool config::persist_nvram_on_replay = true;
 
-void
-config::init() {
-    ALWAYS_ASSERT(threads);
-    // We pin threads compactly, ie., socket by socket
-    // Figure out how many socket we will occupy here; this determines how
-    // much memory we allocate for the centralized pool per socket too.
-    const long ncpus = ::sysconf(_SC_NPROCESSORS_ONLN);
-    ALWAYS_ASSERT(ncpus);
-    max_threads_per_node = htt_is_on ?
-        ncpus / 2 / (numa_max_node() + 1): ncpus / (numa_max_node() + 1);
-    numa_nodes = (threads + max_threads_per_node - 1) /  max_threads_per_node;
+void config::init() {
+  ALWAYS_ASSERT(threads);
+  // We pin threads compactly, ie., socket by socket
+  // Figure out how many socket we will occupy here; this determines how
+  // much memory we allocate for the centralized pool per socket too.
+  const long ncpus = ::sysconf(_SC_NPROCESSORS_ONLN);
+  ALWAYS_ASSERT(ncpus);
+  max_threads_per_node = htt_is_on ? ncpus / 2 / (numa_max_node() + 1)
+                                   : ncpus / (numa_max_node() + 1);
+  numa_nodes = (threads + max_threads_per_node - 1) / max_threads_per_node;
 
-    thread::init();
+  thread::init();
 
-    if(num_backups) {
-      enable_chkpt = true;
-    }
+  if (num_backups) {
+    enable_chkpt = true;
+  }
 }
 
 void config::sanity_check() {
-    ALWAYS_ASSERT(recover_functor || is_backup_srv());
-    ALWAYS_ASSERT(numa_nodes);
-    ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
+  ALWAYS_ASSERT(recover_functor || is_backup_srv());
+  ALWAYS_ASSERT(numa_nodes);
+  ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
 }

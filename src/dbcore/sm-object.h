@@ -8,9 +8,9 @@ struct dbtuple;
 class sm_log_recover_mgr;
 
 class Object {
-private:
+ private:
   typedef epoch_mgr::epoch_num epoch_num;
-  static const uint32_t kStatusMemory  = 0;
+  static const uint32_t kStatusMemory = 0;
   static const uint32_t kStatusStorage = 1;
   static const uint32_t kStatusLoading = 2;
   static const uint32_t kStatusDeleted = 3;
@@ -38,15 +38,24 @@ private:
   // commit. size_code refers to the whole object including header
   fat_ptr clsn_;
 
-public:
-  static fat_ptr Create(const varstr *tuple_value, bool do_write, epoch_num epoch);
+ public:
+  static fat_ptr Create(const varstr* tuple_value, bool do_write,
+                        epoch_num epoch);
 
-  Object() : pdest_(NULL_PTR), next_pdest_(NULL_PTR), next_volatile_(NULL_PTR),
-             clsn_(NULL_PTR), alloc_epoch_(0), status_(kStatusMemory) {}
+  Object()
+      : pdest_(NULL_PTR),
+        next_pdest_(NULL_PTR),
+        next_volatile_(NULL_PTR),
+        clsn_(NULL_PTR),
+        alloc_epoch_(0),
+        status_(kStatusMemory) {}
 
-  Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory) :
-    pdest_(pdest), next_pdest_(next), next_volatile_(NULL_PTR),
-    clsn_(NULL_PTR), alloc_epoch_(e) {
+  Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory)
+      : pdest_(pdest),
+        next_pdest_(next),
+        next_volatile_(NULL_PTR),
+        clsn_(NULL_PTR),
+        alloc_epoch_(e) {
     status_ = in_memory ? kStatusMemory : kStatusStorage;
   }
 
@@ -60,20 +69,25 @@ public:
   inline fat_ptr* GetNextPersistentPtr() { return &next_pdest_; }
   inline fat_ptr GetNextVolatile() { return volatile_read(next_volatile_); }
   inline fat_ptr* GetNextVolatilePtr() { return &next_volatile_; }
-  inline void SetNextPersistent(fat_ptr next) { volatile_write(next_pdest_, next); }
-  inline void SetNextVolatile(fat_ptr next) { volatile_write(next_volatile_, next); }
+  inline void SetNextPersistent(fat_ptr next) {
+    volatile_write(next_pdest_, next);
+  }
+  inline void SetNextVolatile(fat_ptr next) {
+    volatile_write(next_volatile_, next);
+  }
   inline epoch_num GetAllocateEpoch() { return alloc_epoch_; }
   inline void SetAllocateEpoch(epoch_num e) { alloc_epoch_ = e; }
   inline char* GetPayload() { return (char*)((char*)this + sizeof(Object)); }
   inline void SetStatus(uint32_t s) { volatile_write(status_, s); }
   inline dbtuple* GetPinnedTuple() {
-    if(IsDeleted()) {
+    if (IsDeleted()) {
       return nullptr;
     }
-    if(!IsInMemory()) {
+    if (!IsInMemory()) {
       Pin();
     }
     return (dbtuple*)GetPayload();
   }
-  void Pin(bool load_from_logbuf = false);  // Make sure the payload is in memory
+  void Pin(
+      bool load_from_logbuf = false);  // Make sure the payload is in memory
 };
