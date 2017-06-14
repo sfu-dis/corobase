@@ -3,6 +3,7 @@
 #include <numa.h>
 
 #include <condition_variable>
+#include <fstream>
 #include <mutex>
 #include <thread>
 
@@ -34,6 +35,7 @@ struct sm_thread {
   std::thread thd;
   uint16_t node;
   uint16_t core;
+  uint32_t sys_cpu;  // OS-given CPU number
   bool shutdown;
   uint8_t state;
   task_t task;
@@ -43,27 +45,46 @@ struct sm_thread {
   std::condition_variable trigger;
   std::mutex trigger_lock;
 
+  // Not recommended: only use when there isn't /proc/devices/cpu* available.
   sm_thread(uint16_t n, uint16_t c)
       : node(n),
         core(c),
+        sys_cpu(-1),
         shutdown(false),
         state(kStateNoWork),
         task(nullptr),
         sleep_when_idle(true) {
     thd = std::move(std::thread(&sm_thread::idle_task, this));
-    // Make sure we run on a physical core, not a hyper thread
-    if (config::htt_is_on) {
-      // Assuming a topology where all physical cores are listed first,
-      // ie 16-core cpu, 2-socket: 0-15 will be physical cores, 16 and
-      // beyond are hyper threads.
-      cpu_set_t cpuset;
-      CPU_ZERO(&cpuset);
-      //CPU_SET(core + node * config::max_threads_per_node, &cpuset);
-      CPU_SET(node + 4 * core, &cpuset);
-      int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
-                                      &cpuset);
-      ALWAYS_ASSERT(rc == 0);
-    }
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    // Assuming a topology where all physical cores are listed first,
+    //       // ie 16-core cpu, 2-socket: 0-15 will be physical cores, 16 and
+    //       // beyond are hyper threads.
+    CPU_SET(core + node * config::max_threads_per_node, &cpuset);
+    int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
+                                    &cpuset);
+    LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
+    ALWAYS_ASSERT(rc == 0);
+  }
+
+  // Recommended: caller figure out the physical core's OS-given CPU number.
+  // Otherwise we have to guess in the other ctor that doesn't take sys_cpu.
+  sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu)
+      : node(n),
+        core(c),
+        sys_cpu(sys_cpu),
+        shutdown(false),
+        state(kStateNoWork),
+        task(nullptr),
+        sleep_when_idle(true) {
+    thd = std::move(std::thread(&sm_thread::idle_task, this));
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(sys_cpu, &cpuset);
+    int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
+                                    &cpuset);
+    LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
+    ALWAYS_ASSERT(rc == 0);
   }
 
   ~sm_thread() {}
@@ -124,8 +145,50 @@ struct node_thread_pool {
     ALWAYS_ASSERT(!numa_run_on_node(node));
     threads = (sm_thread *)numa_alloc_onnode(
         sizeof(sm_thread) * config::max_threads_per_node, node);
-    for (uint core = 0; core < config::max_threads_per_node; core++) {
-      new (threads + core) sm_thread(node, core);
+
+    // FIXME(tzwang): Linux-specific way of querying NUMA topology
+    // Query /sys/devices/system/node/nodeX/cpulist to get a list
+    // of all cores for this node.
+    std::string file_name = "/sys/devices/system/node/node" + std::to_string(n) + "/cpulist";
+    std::ifstream proc_file(file_name);
+    if (proc_file.good()) {
+      std::vector<uint32_t> phy_cores;
+      while (proc_file.good()) {
+        char cpu[8];  // Large enough...
+        memset(cpu, 0, 8);
+        proc_file.getline(cpu, 256, ',');
+
+        // Make sure it's a physical thread, not a hyper-thread
+        // Query /sys/devices/system/cpu/cpuX/topology/thread_siblings_list,
+        // if the first number matches X, then it's a physical core [1]
+        // (might not work in virtualized environments like Xen).
+        // [1] https://stackoverflow.com/questions/7274585/linux-find-out-hyper-threaded-core-id
+        uint32_t cpu_num = atoi(cpu);
+        std::string cpu_file_name = "/sys/devices/system/cpu/cpu" +
+                                    std::to_string(cpu_num) +
+                                    "/topology/thread_siblings_list";
+        std::ifstream cpu_file(cpu_file_name);
+        while (cpu_file.good()) {
+          memset(cpu, 0, 8);
+          cpu_file.getline(cpu, 256, ',');
+          break;
+        }
+
+        // A physical core?
+        if (cpu_num == atoi(cpu)) {
+          phy_cores.push_back(cpu_num);
+          LOG(INFO) << "Physical core: " << phy_cores[phy_cores.size()-1];
+        }
+      }
+
+      for (uint core = 0; core < config::max_threads_per_node; core++) {
+        new (threads + core) sm_thread(node, core, phy_cores[core]);
+      }
+    } else {
+      // No desired proc interface available, fallback to our assumption
+      for (uint core = 0; core < config::max_threads_per_node; core++) {
+        new (threads + core) sm_thread(node, core);
+      }
     }
   }
 };
