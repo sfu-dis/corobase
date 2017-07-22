@@ -272,23 +272,17 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
                                               bool update_dmark) {
   ASSERT(!config::is_backup_srv());
   /* The primary ships log records at log buffer flush boundaries, and log
-   *flushing
-   * respects segment boundaries. Threads trying to carve out a range of LSN
-   *offset
-   * also need to respect segment boundaries, boundary-crossing threads will try
-   *again
-   * after realizing the current segment isn't enough to hold the requested
-   *range,
-   * hence we might have daed zones that don't correspond to any valid range.
+   * flushing respects segment boundaries. Threads trying to carve out a range
+   * of LSN offset also need to respect segment boundaries, boundary-crossing
+   * threads will try again after realizing the current segment isn't enough to
+   * hold the requested range, hence we might have daed zones that don't
+   * correspond to any valid range.
    *
    * When shipping log records, we never ship across buffer boundaries or
-   *segments.
-   * The backup always receives a chunk of the log guaranteed to reside in a
-   *single
-   * segment, but the range might extend into the dead zone. So we might have a
-   *durable
-   * LSN in the dead zone on the backup, which is fine as we skip it during
-   *redo.
+   * segments. The backup always receives a chunk of the log guaranteed to
+   * reside in a single segment, but the range might extend into the dead zone.
+   * So we might have a durable LSN in the dead zone on the backup, which is
+   * fine as we skip it during redo.
    */
   LSN dlsn = _lm.get_durable_mark();
   ASSERT(_durable_flushed_lsn_offset == dlsn.offset());
