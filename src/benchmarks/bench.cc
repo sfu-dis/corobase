@@ -64,7 +64,7 @@ void bench_worker::my_work(char *) {
         if (!rc_is_abort(ret)) {
           ++ntxn_commits;
           std::get<0>(txn_counts[i])++;
-          if (config::group_commit) {
+          if (config::num_active_backups > 0 || config::group_commit) {
             logmgr->enqueue_committed_xct(worker_id, t.get_start());
           } else {
             latency_numer_us += t.lap();

@@ -26,8 +26,6 @@ enum { DAEMON_HAS_WORK = 0x1, DAEMON_SLEEPING = 0x2 };
 }  // end anonymous namespace
 
 void sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset) {
-  // TODO(tzwang): clflush (or the like) before setting the value
-  // if the logbuf is backed by NVRAM (--nvram-log-buffer is true).
   volatile_write(_tls_lsn_offset[thread::my_id()], offset);
 }
 
@@ -419,6 +417,11 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
       }
     }
 
+    if (config::num_active_backups > 0 || config::group_commit) {
+      util::timer t;
+      dequeue_committed_xcts(new_offset, t.get_start());
+    }
+
     // After this the buffer space will become available for consumption
     _logbuf->advance_reader(new_byte);
 
@@ -451,11 +454,6 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
       // until the next shipping).
       _lm.update_durable_mark(
           LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
-    }
-
-    if (config::group_commit) {
-      util::timer t;
-      dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
     }
   }
   return durable_sid;
