@@ -144,16 +144,22 @@ struct sm_log_alloc_mgr {
   // flushed_durable_lsn
   struct commit_queue {
     // Each entry is a std::pair<lsn_offset, start_time>
-    std::vector<std::pair<uint64_t, uint64_t> > queue;
-    mcs_lock lock;  // well hopefully this won't be a bottleneck
+    struct Entry {
+      uint64_t lsn;
+      uint64_t start_time;
+      Entry() : lsn(0), start_time(0) {}
+    };
+    Entry *queue;
+    mcs_lock lock;
     uint32_t start;
-    uint32_t end;
+    uint32_t items;
     sm_log_alloc_mgr *lm;
-    commit_queue() : start(0), end(0), lm(nullptr) {
-      queue.reserve(config::group_commit_queue_length);
+    commit_queue() : start(0), items(0), lm(nullptr) {
+      queue = new Entry[config::group_commit_queue_length];
     }
+    ~commit_queue() { delete[] queue; }
     void push_back(uint64_t lsn, uint64_t start_time);
-    inline uint32_t size() { return end - start; }
+    inline uint32_t size() { return items; }
   };
   commit_queue *_commit_queue;
 };

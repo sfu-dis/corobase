@@ -55,14 +55,6 @@ DEFINE_bool(ssi_read_only_opt, false,
             "Whether to enable SSI's read-only optimization."
             "Note: this is **not** safe snapshot.");
 #endif
-DEFINE_bool(nvram_log_buffer, true, "Whether to use NVRAM-based log buffer.");
-DEFINE_string(
-    nvram_delay_type, "none",
-    "How should NVRAM be emulated?"
-    "none - no dealy, same as DRAM + non-volatile cache;"
-    "clflush - use clflush to 'persist';"
-    "clwb-emu - spin the equivalent number of cycles clflush would consume but"
-    "without using clflush (so content not evicted), emulates clwb.");
 
 // Options specific to the primary
 DEFINE_uint64(seconds, 10, "Duration to run benchmark in seconds.");
@@ -103,6 +95,14 @@ DEFINE_bool(pipelined_persist, false,
             "immediately after shipping.");
 
 // Options specific to backups
+DEFINE_bool(nvram_log_buffer, true, "Whether to use NVRAM-based log buffer.");
+DEFINE_string(
+    nvram_delay_type, "none",
+    "How should NVRAM be emulated?"
+    "none - no dealy, same as DRAM + non-volatile cache;"
+    "clflush - use clflush to 'persist';"
+    "clwb-emu - spin the equivalent number of cycles clflush would consume but"
+    "without using clflush (so content not evicted), emulates clwb.");
 DEFINE_string(
     log_ship_warm_up, "none",
     "Method to load tuples for log shipping:"
@@ -165,19 +165,6 @@ int main(int argc, char **argv) {
   config::phantom_prot = FLAGS_phantom_prot;
   config::recover_functor = new parallel_oid_replay;
   config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
-  config::nvram_log_buffer = FLAGS_nvram_log_buffer;
-
-  if (FLAGS_nvram_delay_type == "clwb-emu") {
-    config::CalibrateNvramDelay();
-    config::nvram_delay_type = config::kDelayClwbEmu;
-  } else if (FLAGS_nvram_delay_type == "clflush") {
-    config::nvram_delay_type = config::kDelayClflush;
-    config::cycles_per_byte = 0;
-  } else {
-    ALWAYS_ASSERT(FLAGS_nvram_delay_type == "none");
-    config::nvram_delay_type = config::kDelayNone;
-    config::cycles_per_byte = 0;
-  }
 
 #if defined(SSI) || defined(SSN)
   config::enable_safesnap = FLAGS_safesnap;
@@ -195,6 +182,19 @@ int main(int argc, char **argv) {
 
   // Backup specific arguments
   if (config::is_backup_srv()) {
+    config::nvram_log_buffer = FLAGS_nvram_log_buffer;
+    if (FLAGS_nvram_delay_type == "clwb-emu") {
+      config::CalibrateNvramDelay();
+      config::nvram_delay_type = config::kDelayClwbEmu;
+    } else if (FLAGS_nvram_delay_type == "clflush") {
+      config::nvram_delay_type = config::kDelayClflush;
+      config::cycles_per_byte = 0;
+    } else {
+      ALWAYS_ASSERT(FLAGS_nvram_delay_type == "none");
+      config::nvram_delay_type = config::kDelayNone;
+      config::cycles_per_byte = 0;
+    }
+
     config::benchmark_seconds = ~uint32_t{0};  // Backups run forever
     config::quick_bench_start = FLAGS_quick_bench_start;
     config::wait_for_primary = FLAGS_wait_for_primary;
