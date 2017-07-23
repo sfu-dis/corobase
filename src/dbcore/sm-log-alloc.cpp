@@ -95,23 +95,24 @@ void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,
 
 void sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn,
                                                uint64_t start_time) {
-retry : {
+  bool flush = false;
+retry :
+  if (flush) {
+    lm->flush();
+    flush = false;
+  }
+{
   CRITICAL_SECTION(cs, lock);
-  if (start == (end + 1) % config::group_commit_queue_length) {
+  if (items == config::group_commit_queue_length) {
     // max_queue_length is too small?
-    if (config::nvram_log_buffer) {
-      // just persist it, no need to flush to disk
-      // auto persist_lsn_offset = logmgr->persist_log_buffer();
-      // util::timer t;
-      // lm->dequeue_committed_xcts(persist_lsn_offset, t.get_start());
-    } else {
-      logmgr->flush();
-    }
+    flush = true;
     goto retry;
   }
-  volatile_write(queue[end].first, lsn);
-  volatile_write(queue[end].second, start_time);
-  volatile_write(end, (end + 1) % config::group_commit_queue_length);
+  uint32_t idx = (start + items) % config::group_commit_queue_length;
+  volatile_write(queue[idx].lsn, lsn);
+  volatile_write(queue[idx].start_time, start_time);
+  volatile_write(items, items + 1);
+  ASSERT(items == size());
 }
 }
 
@@ -119,27 +120,25 @@ void sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto,
                                               uint64_t end_time) {
   for (uint32_t i = 0; i < config::worker_threads; i++) {
     CRITICAL_SECTION(cs, _commit_queue[i].lock);
-    uint32_t to_dequeue = 0;
-    auto slot = volatile_read(_commit_queue[i].start);
-    auto end = volatile_read(_commit_queue[i].end);
-    while (slot != end) {
-      auto &entry = _commit_queue[i].queue[slot];
-      if (volatile_read(entry.first) > upto) {
+    uint32_t n = volatile_read(_commit_queue[i].start);
+    uint32_t size = _commit_queue[i].size();
+    uint32_t dequeue = 0;
+    for (uint32_t j = 0; j < size; ++j) {
+      uint32_t idx = (n + j) % config::group_commit_queue_length;
+      auto &entry = _commit_queue[i].queue[idx];
+      if (volatile_read(entry.lsn) > upto) {
         break;
       }
       uint64_t worker_latency =
           volatile_read(bench_runner::workers[i]->latency_numer_us);
-      uint64_t latency = end_time - volatile_read(entry.second);
+      uint64_t latency = end_time - volatile_read(entry.start_time);
       // Must do volatile_write here
       volatile_write(bench_runner::workers[i]->latency_numer_us,
                      worker_latency + latency);
-      ++to_dequeue;
-      slot = (slot + 1) % config::group_commit_queue_length;
+      dequeue++;
     }
-    ALWAYS_ASSERT(_commit_queue[i].size() >= to_dequeue);
-    volatile_write(_commit_queue[i].start,
-                   (volatile_read(_commit_queue[i].start) + to_dequeue) %
-                       config::group_commit_queue_length);
+    _commit_queue[i].items -= dequeue;
+    volatile_write(_commit_queue[i].start, (n + dequeue) % config::group_commit_queue_length);
   }
 }
 

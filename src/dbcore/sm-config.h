@@ -28,6 +28,8 @@ struct config {
   static uint64_t log_buffer_mb;
   static uint64_t log_segment_mb;
   static std::string log_dir;
+
+  // NVRAM settings - for backup servers only, the primary doesn't care.
   static bool nvram_log_buffer;
   static uint32_t nvram_delay_type;
   static sm_log_recover_impl *recover_functor;
@@ -196,5 +198,22 @@ struct config {
     cycles_per_byte = (end - start) / (double)(kElements * sizeof(int));
     LOG(INFO) << cycles_per_byte << " cycles per bytes";
     free(test_arr);
+  }
+
+  static inline void NvramClflush(const char *data, uint64_t size) {
+    ASSERT(config::nvram_delay_type == config::kDelayClflush);
+    uint32_t clines = size / CACHELINE_SIZE;
+    for (uint32_t i = 0; i < clines; ++i) {
+      _mm_clflush(&data[i * CACHELINE_SIZE]);
+    }
+  }
+
+  static inline void NvramClwbEmu(uint64_t size) {
+    ASSERT(config::nvram_delay_type == config::kDelayClwbEmu);
+    uint64_t total_cycles = size * config::cycles_per_byte;
+    unsigned int unused = 0;
+    uint64_t cycle_end = __rdtscp(&unused) + total_cycles;
+    while (__rdtscp(&unused) < cycle_end) {
+    }
   }
 };

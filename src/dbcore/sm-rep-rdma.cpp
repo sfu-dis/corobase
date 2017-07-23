@@ -249,17 +249,9 @@ void BackupDaemonRdma() {
         segment_id* sid = logmgr->get_segment(start_lsn.segment());
         const char* buf =
             sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
-        uint32_t clines = size / CACHELINE_SIZE;
-        for (uint32_t i = 0; i < clines; ++i) {
-          _mm_clflush(&buf[i * CACHELINE_SIZE]);
-        }
+        config::NvramClflush(buf, size);
       } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
-        // Emulate clwb, spin
-        uint64_t total_cycles = size * config::cycles_per_byte;
-        unsigned int unused = 0;
-        uint64_t cycle_end = __rdtscp(&unused) + total_cycles;
-        while (__rdtscp(&unused) < cycle_end) {
-        }
+        config::NvramClwbEmu(size);
       }
     }
 
