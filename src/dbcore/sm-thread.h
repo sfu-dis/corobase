@@ -7,6 +7,8 @@
 #include <mutex>
 #include <thread>
 
+#include <sys/stat.h>
+
 #include "sm-defs.h"
 #include "xid.h"
 #include "../macros.h"
@@ -147,45 +149,56 @@ struct node_thread_pool {
         sizeof(sm_thread) * config::max_threads_per_node, node);
 
     // FIXME(tzwang): Linux-specific way of querying NUMA topology
-    // Query /sys/devices/system/node/nodeX/cpulist to get a list
-    // of all cores for this node.
-    std::string file_name = "/sys/devices/system/node/node" + std::to_string(n) + "/cpulist";
-    std::ifstream proc_file(file_name);
-    if (proc_file.good()) {
-      std::vector<uint32_t> phy_cores;
-      while (proc_file.good()) {
-        char cpu[8];  // Large enough...
-        memset(cpu, 0, 8);
-        proc_file.getline(cpu, 256, ',');
+    //
+    // We used to query /sys/devices/system/node/nodeX/cpulist to get a list of
+    // all cores for this node, but it could be a comma-separated list (x, y,
+    // z) or a range (x-y). So we just iterate each cpu dir here until dir not
+    // found.
+    uint32_t cpu = 0;
+    std::vector<uint32_t> phy_cores;
+    struct stat info;
+    if (stat("/sys/devices/system/node", &info) == 0) {
+      while (cpu < std::thread::hardware_concurrency()) {
+        std::string dir_name = "/sys/devices/system/node/node" +
+                                std::to_string(n) + "/cpu" + std::to_string(cpu);
+        struct stat info;
+        if (stat(dir_name.c_str(), &info) != 0) {
+          // Doesn't exist, continue to next so we can get all cores in the
+          // same node
+          ++cpu;
+          continue;
+        }
+        ALWAYS_ASSERT(info.st_mode & S_IFDIR);
 
         // Make sure it's a physical thread, not a hyper-thread
         // Query /sys/devices/system/cpu/cpuX/topology/thread_siblings_list,
         // if the first number matches X, then it's a physical core [1]
         // (might not work in virtualized environments like Xen).
         // [1] https://stackoverflow.com/questions/7274585/linux-find-out-hyper-threaded-core-id
-        uint32_t cpu_num = atoi(cpu);
-        std::string cpu_file_name = "/sys/devices/system/cpu/cpu" +
-                                    std::to_string(cpu_num) +
-                                    "/topology/thread_siblings_list";
-        std::ifstream cpu_file(cpu_file_name);
-        while (cpu_file.good()) {
-          memset(cpu, 0, 8);
-          cpu_file.getline(cpu, 256, ',');
+        std::string sibling_file_name = "/sys/devices/system/cpu/cpu" +
+                                        std::to_string(cpu) +
+                                        "/topology/thread_siblings_list";
+        char cpu_buf[8];
+        memset(cpu_buf, 0, 8);
+        std::ifstream sibling_file(sibling_file_name);
+        while (sibling_file.good()) {
+          memset(cpu_buf, 0, 8);
+          sibling_file.getline(cpu_buf, 256, ',');
           break;
         }
 
         // A physical core?
-        if (cpu_num == atoi(cpu)) {
-          phy_cores.push_back(cpu_num);
+        if (cpu == atoi(cpu_buf)) {
+          phy_cores.push_back(cpu);
           LOG(INFO) << "Physical core: " << phy_cores[phy_cores.size()-1];
         }
+        ++cpu;
       }
-
       for (uint core = 0; core < config::max_threads_per_node; core++) {
         new (threads + core) sm_thread(node, core, phy_cores[core]);
       }
     } else {
-      // No desired proc interface available, fallback to our assumption
+      // No desired /sys/devices interface, fallback to our assumption
       for (uint core = 0; core < config::max_threads_per_node; core++) {
         new (threads + core) sm_thread(node, core);
       }
