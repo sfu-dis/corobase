@@ -718,7 +718,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     uint64_t cur_offset = cur_lsn_offset();
     uint64_t new_dlsn_offset = 0;
     uint64_t min_tls = smallest_tls_lsn_offset();
-    if (config::IsForwardProcessing() && config::num_backups > 0) {
+    if (config::IsForwardProcessing() && config::num_active_backups > 0) {
       new_dlsn_offset = _durable_flushed_lsn_offset;
       // Find the maximum that will cause us to ship at most 1/2 of the logbuf
       for (uint64_t i = 0; i < config::logbuf_partitions; ++i) {
@@ -732,6 +732,8 @@ void sm_log_alloc_mgr::_log_write_daemon() {
         // No boundary crossing?
         new_dlsn_offset = min_tls;
       }
+      // The boundary offsets might contain holes, avoid shipping too much
+      new_dlsn_offset = std::min<uint64_t>(new_dlsn_offset, min_tls);
     } else {
       new_dlsn_offset = min_tls;
     }
