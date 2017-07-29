@@ -213,9 +213,7 @@ void context::poll_send_cq(uint64_t nops) {
       n = ibv_poll_cq(send_cq, batch, wc);
     } while (n == 0);
     for (int i = 0; i < n; ++i) {
-      ALWAYS_ASSERT(wc[i].status == IBV_WC_SUCCESS);
-      THROW_IF(wc[i].status != IBV_WC_SUCCESS, os_error, wc[i].status,
-               "Failed wc status");
+      LOG_IF(FATAL, wc[i].status != IBV_WC_SUCCESS) << "Failed wc status: " << wc[i].status;
     }
     ALWAYS_ASSERT(n <= batch);
     to_poll -= batch;

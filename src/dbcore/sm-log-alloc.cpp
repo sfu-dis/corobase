@@ -392,11 +392,9 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     uint64_t n = 0;
     // Note: Here we actually allow skip log writing on the primary node even in
     // a primary/backup setting, but for benchmarking purpose only. A fully
-    // 'correct'
-    // setting is to ensure persistence at *all* nodes, including the primary.
-    // Note(tzwang): 20170428: the only reason I added this is due to lack of
-    // DRAM space
-    // for storing log files in tmpfs.
+    // 'correct' setting is to ensure persistence at *all* nodes, including the
+    // primary.  Note(tzwang): 20170428: the only reason I added this is due to
+    // lack of DRAM space for storing log files in tmpfs.
     if (config::null_log_device && config::IsForwardProcessing()) {
       n = nbytes;
     } else {

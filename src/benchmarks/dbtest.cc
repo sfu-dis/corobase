@@ -321,6 +321,7 @@ int main(int argc, char **argv) {
 #endif
   cerr << "  log-dir           : " << config::log_dir << endl;
   cerr << "  tmpfs-dir         : " << config::tmpfs_dir << endl;
+  cerr << "  log-buffer-mb     : " << config::log_buffer_mb << endl;
   cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << endl;
   cerr << "  logbuf-partitions : " << config::logbuf_partitions << endl;
   cerr << "  worker-threads    : " << config::worker_threads << endl;
