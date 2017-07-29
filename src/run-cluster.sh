@@ -7,16 +7,18 @@
 # $2 - Scale factor
 # $3 - Duration (for primary)
 # $4 - Number of threads
-# $5 - Primary benchmark
-# $6 - Backup benchmark
-# $7 - Additional parameters (primary)
-# $8 - Additional parameters (secondaries)
-# $9 and beyond - a list of secondary server hosts
+# $5 - Log buffer size in MB
+# $6 - Primary benchmark
+# $7 - Backup benchmark
+# $8 - Additional parameters (primary)
+# $9 - Additional parameters (secondaries)
+# $10 and beyond - a list of secondary server hosts
 
 CC=$1; shift
 scale_factor=$1; shift
 duration=$1; shift
 threads=$1; shift
+export logbuf_mb=$1; shift
 primary_bench=$1; shift
 backup_bench=$1; shift
 primary_args="$1"; shift
@@ -27,7 +29,7 @@ output_dir=$exec_dir/results-`date +%Y%m%d%H%M%S`/
 mkdir -p $output_dir
 
 echo "Output dir: $output_dir"
-echo "$CC, SF=$scale_factor, duration=$duration, threads=$threads"
+echo "$CC, SF=$scale_factor, duration=$duration, threads=$threads, logbuf_mb=$logbuf_mb"
 echo "Primary args: $primary_args"
 echo "Backup args: $backup_args"
 
@@ -57,7 +59,7 @@ for backup in "$@"; do
   backup_output_file=$output_dir/backup.$backup.$CC.$backup_bench.sf$scale_factor.t$threads.txt
   cmd="cd $exec_dir; \
     mkdir -p $output_dir; \
-    ./run2.sh ./ermia_$CC $backup_bench $threads \"$backup_args\" &> $backup_output_file &"
+    ./run2.sh ./ermia_$CC $backup_bench $threads $logbuf_mb \"$backup_args\" &> $backup_output_file &"
   ssh -o StrictHostKeyChecking=no $backup $cmd
 done
 

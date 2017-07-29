@@ -1,6 +1,6 @@
 #!/bin/bash 
 primary="192.168.1.106" # apt059
-declare -a backups=("apt061" "apt064" "apt051" "apt007" "apt044" "apt055" "apt039")
+declare -a backups=("apt064" "apt045" "apt056" "apt059" "apt049" "apt053" "apt048")
 
 function cleanup {
   killall -9 ermia_SI 2> /dev/null
@@ -25,8 +25,29 @@ run() {
   echo "----------"
   echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram
   echo "----------"
-  ./run-cluster.sh SI $t 10 $t tpcc_org tpccr \
+  ./run-cluster.sh SI $t 10 $t 128 tpcc_org tpccr \
     "-chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma -fake_log_write -wait_for_backups -num_backups=$num_backups -pipelined_persist=0" \
+    "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -persist_nvram_on_replay=$persist_nvram_on_replay" \
+    "${backups[@]:0:$num_backups}"
+  echo
+}
+
+run_group_commit() {
+  num_backups=$1
+  t=$2
+  policy=$3
+  full=$4
+  redoers=$5
+  delay=$6
+  nvram=$7
+  persist_nvram_on_replay=$8
+  log_buffer_mb=$9
+
+  echo "----------"
+  echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram
+  echo "----------"
+  ./run-cluster.sh SI $t 10 $t $log_buffer_mb tpcc_org tpccr \
+    "-group_commit -chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma -fake_log_write -wait_for_backups -num_backups=$num_backups -pipelined_persist=0" \
     "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -persist_nvram_on_replay=$persist_nvram_on_replay" \
     "${backups[@]:0:$num_backups}"
   echo
@@ -127,6 +148,26 @@ full_replay() {
     run $num_backups $t $policy $full_redo $redoers $delay 1 0
   done
 }
+
+latency() {
+  delay="none"
+  full_redo=0
+  for num_backups in 2 3 4 5 6; do
+    policy="pipelined"
+    redoers=4
+    t=16
+    for m in 16; do # 32 64 128; do
+      echo "backups:$num_backups log_buffer:$m MB"
+      run_group_commit $num_backups $t $policy $full_redo $redoers $delay 1 0 $m
+    done
+  done
+}
+
+for r in 1 2 3; do
+  echo "Running latency r$r"
+  latency
+done
+exit
 
 for r in 1 2 3; do
   echo "Running nvram_persist_on_replay r$r"
