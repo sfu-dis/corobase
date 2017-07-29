@@ -27,7 +27,8 @@ using namespace std;
 using namespace util;
 
 // Options that are shared by the primary and backup servers
-DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled.");
+DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
+  "Ignored if auto-detection of physical cores succeeded.");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
