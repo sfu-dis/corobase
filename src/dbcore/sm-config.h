@@ -45,8 +45,8 @@ struct config {
   static bool null_log_device;
   static bool fake_log_write;
   static bool group_commit;
-  static int group_commit_timeout;
-  static int group_commit_queue_length;  // how much to reserve
+  static uint32_t group_commit_timeout;
+  static uint32_t group_commit_queue_length;  // how much to reserve
   static bool pipelined_persist;  // wait for persistence right after shipping
 
   // Backup-specific settings
