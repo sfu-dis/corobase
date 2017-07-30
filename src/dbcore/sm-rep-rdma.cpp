@@ -27,54 +27,62 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
   }
 }
 
+// Helper function that brings up a backup server
+void bring_up_backup(RdmaNode* rn) {
+  int chkpt_fd = -1;
+  LSN chkpt_start_lsn = INVALID_LSN;
+  auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
+  ALWAYS_ASSERT(chkpt_fd != -1);
+  // Wait for the 'go' signal from the peer
+  rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+
+  // Now can really send something, metadata first, header must fit in the
+  // buffer
+  ALWAYS_ASSERT(md->size() < RdmaNode::kDaemonBufferSize);
+  char* daemon_buffer = rn->GetDaemonBuffer();
+  memcpy(daemon_buffer, md, md->size());
+
+  uint64_t buf_offset = md->size();
+  uint64_t to_send = md->chkpt_size;
+  while (to_send) {
+    ALWAYS_ASSERT(buf_offset <= RdmaNode::kDaemonBufferSize);
+    if (buf_offset == RdmaNode::kDaemonBufferSize) {
+      // Full, wait for the backup to finish processing this
+      rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+      buf_offset = 0;
+    }
+    uint64_t n =
+        read(chkpt_fd, daemon_buffer + buf_offset,
+             std::min(to_send, RdmaNode::kDaemonBufferSize - buf_offset));
+    to_send -= n;
+
+    // Write it out, then wait
+    rn->RdmaWriteImmDaemonBuffer(0, 0, buf_offset + n, buf_offset + n);
+    buf_offset = 0;
+    rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+  }
+  os_close(chkpt_fd);
+
+  // Done with the chkpt file, now log files
+  send_log_files_after_rdma(rn, md, chkpt_start_lsn);
+  ++config::num_active_backups;
+  __sync_synchronize();
+}
+
 // A daemon that runs on the primary for bringing up backups by shipping
 // the latest chkpt (if any) + the log that follows (if any). Uses RDMA
 // based memcpy to transfer chkpt and log file data.
 void primary_daemon_rdma() {
   // Create an RdmaNode object for each backup node
+  std::vector<std::thread*> workers;
   for (uint32_t i = 0; i < config::num_backups; ++i) {
     std::cout << "Expecting node " << i << std::endl;
     RdmaNode* rn = new RdmaNode(true);
     nodes.push_back(rn);
-
-    int chkpt_fd = -1;
-    LSN chkpt_start_lsn = INVALID_LSN;
-    auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
-    ALWAYS_ASSERT(chkpt_fd != -1);
-    // Wait for the 'go' signal from the peer
-    rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
-
-    // Now can really send something, metadata first, header must fit in the
-    // buffer
-    ALWAYS_ASSERT(md->size() < RdmaNode::kDaemonBufferSize);
-    char* daemon_buffer = rn->GetDaemonBuffer();
-    memcpy(daemon_buffer, md, md->size());
-
-    uint64_t buf_offset = md->size();
-    uint64_t to_send = md->chkpt_size;
-    while (to_send) {
-      ALWAYS_ASSERT(buf_offset <= RdmaNode::kDaemonBufferSize);
-      if (buf_offset == RdmaNode::kDaemonBufferSize) {
-        // Full, wait for the backup to finish processing this
-        rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
-        buf_offset = 0;
-      }
-      uint64_t n =
-          read(chkpt_fd, daemon_buffer + buf_offset,
-               std::min(to_send, RdmaNode::kDaemonBufferSize - buf_offset));
-      to_send -= n;
-
-      // Write it out, then wait
-      rn->RdmaWriteImmDaemonBuffer(0, 0, buf_offset + n, buf_offset + n);
-      buf_offset = 0;
-      rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
-    }
-    os_close(chkpt_fd);
-
-    // Done with the chkpt file, now log files
-    send_log_files_after_rdma(rn, md, chkpt_start_lsn);
-    ++config::num_active_backups;
-    __sync_synchronize();
+    workers.push_back(new std::thread(bring_up_backup, rn));
+  }
+  for (auto& w : workers) {
+    w->join();
   }
 }
 
