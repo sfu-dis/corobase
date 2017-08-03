@@ -68,14 +68,13 @@ void config::init() {
     ALWAYS_ASSERT(ncpus);
     max_threads_per_node = htt_is_on ? ncpus / 2 / (numa_max_node() + 1)
                                      : ncpus / (numa_max_node() + 1);
-    numa_nodes = (threads + max_threads_per_node - 1) / max_threads_per_node;
   } else {
     LOG(INFO) << "Successfully detected physical cores, ignoring the -htt option";
     // HTT on/off doesn't matter here, we use physical cores only
     max_threads_per_node = thread::phys_cores.size() / (numa_max_node() + 1);
-    numa_nodes = threads / max_threads_per_node;
     ALWAYS_ASSERT(thread::phys_cores.size());
   }
+  numa_nodes = (threads + max_threads_per_node - 1) / max_threads_per_node;
 
   thread::init();
 
