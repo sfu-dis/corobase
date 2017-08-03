@@ -419,7 +419,6 @@ void bench_runner::start_measurement() {
   const double agg_phantom_abort_rate = double(n_phantom_aborts) / elapsed_sec;
   const double agg_rw_abort_rate = double(n_rw_aborts) / elapsed_sec;
 
-  // XXX(stephentu): latency currently doesn't account for read-only txns
   const double avg_latency_us = double(latency_numer_us) / double(n_commits);
   const double avg_latency_ms = avg_latency_us / 1000.0;
 
