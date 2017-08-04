@@ -64,6 +64,9 @@ class RdmaNode {
 
   ~RdmaNode() { delete context_; }
 
+  inline uint32_t GetLogBufferIndex() { return log_buf_ridx_; }
+  inline uint32_t GetBoundsIndex() { return log_buf_partition_bounds_ridx_; }
+
   inline void WaitForMessageAsPrimary(uint64_t msg, bool reset = true) {
     ALWAYS_ASSERT(!config::is_backup_srv());
     while (true) {

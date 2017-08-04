@@ -158,6 +158,22 @@ struct context {
     return idx;
   }
 
+  // Describes a write request; used by rdma_write_imm_n.
+  struct write_request {
+    uint32_t local_index;
+    uint64_t local_offset;
+    uint32_t remote_index;
+    uint64_t remote_offset;
+    uint64_t size;
+    uint32_t imm_data;
+    bool sync;
+    write_request *next;
+    write_request() : local_index(0), local_offset(0),
+                           remote_index(0), remote_offset(0),
+                           size(0), imm_data(0), sync(true), next(nullptr) {}
+    ~write_request() {}
+  };
+
   /* Write [size] of bytes placed at the offset of [local_offset] of the
    * buffer specified by [index] to remote address + [remote_offset] */
   void rdma_write(uint32_t local_index, uint64_t local_offset,
@@ -167,6 +183,9 @@ struct context {
   void rdma_write_imm(uint32_t local_index, uint64_t local_offset,
                       uint32_t remote_index, uint64_t remote_offset,
                       uint64_t size, uint32_t imm_data, bool sync = true);
+
+  /* Send multiple RDMA Write with Immediate requests in a single post */
+  void rdma_write_imm_n(struct write_request *req_list);
 
   /* Read [size] of bytes placed at the [remote_index] buffer with
    * [remote_offset]

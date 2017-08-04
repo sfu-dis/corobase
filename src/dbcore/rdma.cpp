@@ -248,6 +248,51 @@ void context::rdma_write(uint32_t local_index, uint64_t local_offset,
   poll_send_cq();
 }
 
+void context::rdma_write_imm_n(struct write_request *req_list) {
+  static const uint32_t kMaxWorkRequests = 16;
+
+  write_request *req = req_list;
+  struct ibv_send_wr req_wrs[kMaxWorkRequests];
+  struct ibv_sge sge_lists[kMaxWorkRequests];
+  uint32_t wr_idx = 0;
+  struct ibv_send_wr *prev_wr = nullptr;
+  while (req) {
+    LOG_IF(FATAL, wr_idx >= kMaxWorkRequests) << "Too many work requests";
+    struct ibv_send_wr *wr = &req_wrs[wr_idx++];
+    struct ibv_sge *sge_list = &sge_lists[wr_idx];
+    memset(wr, 0, sizeof(*wr));
+    memset(sge_list, 0, sizeof(*sge_list));
+
+    auto *mem_region = mem_regions[req->local_index];
+    sge_list->addr = (uintptr_t)mem_region->buf + req->local_offset;
+    sge_list->length = req->size;
+    sge_list->lkey = mem_region->mr->lkey;
+
+    wr->wr.rdma.remote_addr =
+        remote_connection->vaddrs[req->remote_index] + req->remote_offset;
+    wr->wr.rdma.rkey = remote_connection->rkeys[req->remote_index];
+    wr->wr_id = RDMA_WRID;
+    wr->sg_list = sge_list;
+    wr->num_sge = 1;
+    wr->imm_data = htonl(req->imm_data);
+    wr->opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+    wr->send_flags = IBV_SEND_SIGNALED;
+    wr->next = NULL;
+    if (prev_wr) {
+      prev_wr->next = wr;
+    }
+    prev_wr = wr;
+    req = req->next;
+  }
+
+  struct ibv_send_wr *bad_wr = nullptr;
+  int ret = ibv_post_send(qp, &req_wrs[0], &bad_wr);
+  THROW_IF(ret, illegal_argument, "ibv_post_send() failed");
+  if (sync) {
+    poll_send_cq();
+  }
+}
+
 void context::rdma_write_imm(uint32_t local_index, uint64_t local_offset,
                              uint32_t remote_index, uint64_t remote_offset,
                              uint64_t size, uint32_t imm_data, bool sync) {

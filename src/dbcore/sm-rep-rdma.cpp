@@ -402,6 +402,7 @@ void start_as_backup_rdma() {
   LOG(INFO) << "[Backup] Received log file.";
 }
 
+#if 0
 void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
                                   uint64_t new_seg_start_offset) {
 #ifndef NDEBUG
@@ -431,6 +432,53 @@ void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
     uint32_t imm =
         new_seg ? kRdmaImmNewSeg | (uint32_t)new_seg_start_offset : 0;
     node->RdmaWriteImmLogBuffer(offset, offset, size, imm, false);
+  }
+}
+#endif
+
+void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
+                                  uint64_t new_seg_start_offset) {
+#ifndef NDEBUG
+  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+    LOG(INFO) << "RDMA write logbuf bounds: " << i << " " << std::hex
+              << logbuf_partition_bounds[i] << std::dec;
+  }
+#endif
+  for (auto& node : nodes) {
+    node->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+
+    rdma::context::write_request bounds_req;
+    rdma::context::write_request data_req;
+
+    // Partition boundary information
+    bounds_req.local_index = bounds_req.remote_index = node->GetBoundsIndex();
+    bounds_req.local_offset = bounds_req.remote_offset = 0;
+    bounds_req.size = bounds_req.imm_data = sizeof(uint64_t) * kMaxLogBufferPartitions;
+    bounds_req.sync = false;
+    bounds_req.next = &data_req;
+
+    // Real log data
+    ALWAYS_ASSERT(size);
+    uint64_t offset = buf - sm_log::get_logbuf()->_data;
+    ASSERT(offset + size <= sm_log::get_logbuf()->window_size() * 2);
+
+#ifndef NDEBUG
+    if (new_seg) {
+      LOG(INFO) << "new segment start offset=" << std::hex
+                << new_seg_start_offset << std::dec;
+    }
+#endif
+    ALWAYS_ASSERT(new_seg_start_offset <= ~kRdmaImmNewSeg);
+    uint32_t imm =
+        new_seg ? kRdmaImmNewSeg | (uint32_t)new_seg_start_offset : 0;
+
+    data_req.local_index = data_req.remote_index = node->GetLogBufferIndex();
+    data_req.local_offset = data_req.remote_offset = offset;
+    data_req.size = size;
+    data_req.imm_data = imm;
+    data_req.sync = false;
+    data_req.next = nullptr;
+    node->GetContext()->rdma_write_imm_n(&bounds_req);
   }
 }
 
