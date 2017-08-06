@@ -19,5 +19,5 @@ class ndb_wrapper {
   inline counter_map get_txn_counters(transaction *txn) const {
     return counter_map();
   }
-  inline ssize_t txn_max_batch_size() const { return 100; }
+  inline ssize_t txn_max_batch_size() const { return 10; }
 };
