@@ -214,7 +214,7 @@ class small_unordered_map {
       const_iterator;
 
   small_unordered_map() : n(0), large_elems(0) {
-    NDB_MEMSET(&table[0], 0, sizeof(table));
+    memset(&table[0], 0, sizeof(table));
   }
 
   ~small_unordered_map() {
@@ -226,7 +226,7 @@ class small_unordered_map {
   }
 
   small_unordered_map(const small_unordered_map &other) : n(0), large_elems(0) {
-    NDB_MEMSET(&table[0], 0, sizeof(table));
+    memset(&table[0], 0, sizeof(table));
     assignFrom(other);
   }
 
@@ -367,7 +367,7 @@ class small_unordered_map {
       return;
     }
     if (!n) return;
-    NDB_MEMSET(&table[0], 0, sizeof(table));
+    memset(&table[0], 0, sizeof(table));
     for (size_t i = 0; i < n; i++) small_elems[i].destroy();
     n = 0;
   }

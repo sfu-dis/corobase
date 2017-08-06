@@ -1,5 +1,4 @@
-#ifndef _NDB_BENCH_INLINE_STR_H_
-#define _NDB_BENCH_INLINE_STR_H_
+#pragma once
 
 #include <stdint.h>
 #include <string.h>
@@ -28,13 +27,13 @@ class inline_str_base {
   inline_str_base(const std::string &s) { assign(s); }
 
   inline_str_base(const inline_str_base &that) : sz(that.sz) {
-    NDB_MEMCPY(&buf[0], &that.buf[0], sz);
+    memcpy(&buf[0], &that.buf[0], sz);
   }
 
   inline_str_base &operator=(const inline_str_base &that) {
     if (this == &that) return *this;
     sz = that.sz;
-    NDB_MEMCPY(&buf[0], &that.buf[0], sz);
+    memcpy(&buf[0], &that.buf[0], sz);
     return *this;
   }
 
@@ -49,7 +48,7 @@ class inline_str_base {
     if (zeropad) {
       ASSERT(N >= sz);
       std::string r(N, 0);
-      NDB_MEMCPY((char *)r.data(), &buf[0], sz);
+      memcpy((char *)r.data(), &buf[0], sz);
       return r;
     } else {
       return std::string(&buf[0], sz);
@@ -64,7 +63,7 @@ class inline_str_base {
 
   inline void assign(const char *s, size_t n) {
     ASSERT(n <= N);
-    NDB_MEMCPY(&buf[0], s, n);
+    memcpy(&buf[0], s, n);
     sz = n;
   }
 
@@ -74,7 +73,7 @@ class inline_str_base {
 
   inline void resize(size_t n, char c = 0) {
     ASSERT(n <= N);
-    if (n > sz) NDB_MEMSET(&buf[sz], c, n - sz);
+    if (n > sz) memset(&buf[sz], c, n - sz);
     sz = n;
   }
 
@@ -133,7 +132,7 @@ class inline_str_fixed {
   friend class serializer;
 
  public:
-  inline_str_fixed() { NDB_MEMSET(&buf[0], FillChar, N); }
+  inline_str_fixed() { memset(&buf[0], FillChar, N); }
 
   inline_str_fixed(const char *s) { assign(s, strlen(s)); }
 
@@ -142,12 +141,12 @@ class inline_str_fixed {
   inline_str_fixed(const std::string &s) { assign(s.data(), s.size()); }
 
   inline_str_fixed(const inline_str_fixed &that) {
-    NDB_MEMCPY(&buf[0], &that.buf[0], N);
+    memcpy(&buf[0], &that.buf[0], N);
   }
 
   inline_str_fixed &operator=(const inline_str_fixed &that) {
     if (this == &that) return *this;
-    NDB_MEMCPY(&buf[0], &that.buf[0], N);
+    memcpy(&buf[0], &that.buf[0], N);
     return *this;
   }
 
@@ -163,9 +162,9 @@ class inline_str_fixed {
 
   inline void assign(const char *s, size_t n) {
     ASSERT(n <= N);
-    NDB_MEMCPY(&buf[0], s, n);
+    memcpy(&buf[0], s, n);
     if ((N - n) > 0)                         // to suppress compiler warning
-      NDB_MEMSET(&buf[n], FillChar, N - n);  // pad with spaces
+      memset(&buf[n], FillChar, N - n);  // pad with spaces
   }
 
   inline ALWAYS_INLINE void assign(const std::string &s) {
@@ -197,13 +196,13 @@ struct serializer<inline_str_base<IntSizeType, N>, Compress> {
   typedef inline_str_base<IntSizeType, N> obj_type;
   static inline uint8_t *write(uint8_t *buf, const obj_type &obj) {
     buf = serializer<IntSizeType, Compress>::write(buf, &obj.sz);
-    NDB_MEMCPY(buf, &obj.buf[0], obj.sz);
+    memcpy(buf, &obj.buf[0], obj.sz);
     return buf + obj.sz;
   }
 
   static const uint8_t *read(const uint8_t *buf, obj_type *obj) {
     buf = serializer<IntSizeType, Compress>::read(buf, &obj->sz);
-    NDB_MEMCPY(&obj->buf[0], buf, obj->sz);
+    memcpy(&obj->buf[0], buf, obj->sz);
     return buf + obj->sz;
   }
 
@@ -215,7 +214,7 @@ struct serializer<inline_str_base<IntSizeType, N>, Compress> {
     nbytes -= (hdrbuf - buf);
     if (nbytes < obj->sz) return nullptr;
     buf = hdrbuf;
-    NDB_MEMCPY(&obj->buf[0], buf, obj->sz);
+    memcpy(&obj->buf[0], buf, obj->sz);
     return buf + obj->sz;
   }
 
@@ -228,7 +227,7 @@ struct serializer<inline_str_base<IntSizeType, N>, Compress> {
     const uint8_t *const body =
         serializer<IntSizeType, Compress>::read(stream, &sz);
     const size_t totalsz = (body - stream) + sz;
-    if (oldv) NDB_MEMCPY(oldv, stream, totalsz);
+    if (oldv) memcpy(oldv, stream, totalsz);
     return totalsz;
   }
 
@@ -241,7 +240,7 @@ struct serializer<inline_str_base<IntSizeType, N>, Compress> {
     nbytes -= (body - stream);
     if (unlikely(nbytes < sz)) return 0;
     const size_t totalsz = (body - stream) + sz;
-    if (oldv) NDB_MEMCPY(oldv, stream, totalsz);
+    if (oldv) memcpy(oldv, stream, totalsz);
     return totalsz;
   }
 
@@ -249,5 +248,3 @@ struct serializer<inline_str_base<IntSizeType, N>, Compress> {
     return serializer<IntSizeType, Compress>::max_bytes() + N;
   }
 };
-
-#endif /* _NDB_BENCH_INLINE_STR_H_ */

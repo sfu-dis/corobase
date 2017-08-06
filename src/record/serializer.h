@@ -1,5 +1,4 @@
-#ifndef _NDB_BENCH_SERIALIZER_H_
-#define _NDB_BENCH_SERIALIZER_H_
+#pragma once
 
 #include <stdint.h>
 #include "../macros.h"
@@ -77,14 +76,14 @@ struct serializer {
   static inline size_t nbytes(const T *obj) { return sizeof(*obj); }
 
   static inline size_t skip(const uint8_t *stream, uint8_t *rawv) {
-    if (rawv) NDB_MEMCPY(rawv, stream, sizeof(T));
+    if (rawv) memcpy(rawv, stream, sizeof(T));
     return sizeof(T);
   }
 
   static inline size_t failsafe_skip(const uint8_t *stream, size_t nbytes,
                                      uint8_t *rawv) {
     if (unlikely(nbytes < sizeof(T))) return 0;
-    if (rawv) NDB_MEMCPY(rawv, stream, sizeof(T));
+    if (rawv) memcpy(rawv, stream, sizeof(T));
     return sizeof(T);
   }
 
@@ -178,5 +177,3 @@ struct serializer<int32_t, true> {
     return (value >> 1) ^ -static_cast<int32_t>(value & 1);
   }
 };
-
-#endif /* _NDB_BENCH_SERIALIZER_H_ */
