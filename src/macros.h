@@ -2,7 +2,6 @@
 
 #include "dbcore/sm-defs.h"
 
-#define USE_BUILTIN_MEMFUNCS
 //#define ENABLE_BENCH_TXN_COUNTERS
 #define USE_VARINT_ENCODING
 //#define DISABLE_FIELD_SELECTION
@@ -35,13 +34,5 @@
 
 // tune away
 #define SMALL_SIZE_MAP       64
-
-#ifdef USE_BUILTIN_MEMFUNCS
-#define NDB_MEMCPY __builtin_memcpy
-#define NDB_MEMSET __builtin_memset
-#else
-#define NDB_MEMCPY memcpy
-#define NDB_MEMSET memset
-#endif
 
 #define NOP_PAUSE asm volatile("pause" : :)

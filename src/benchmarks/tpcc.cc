@@ -378,11 +378,11 @@ class tpcc_worker_mixin : private _dummy {
     const size_t s0_sz = s0.size();
     const size_t s1_sz = s1.size();
     const size_t s2_sz = s2.size();
-    NDB_MEMCPY(buf, s0.data(), s0_sz);
+    memcpy(buf, s0.data(), s0_sz);
     buf += s0_sz;
-    NDB_MEMCPY(buf, s1.data(), s1_sz);
+    memcpy(buf, s1.data(), s1_sz);
     buf += s1_sz;
-    NDB_MEMCPY(buf, s2.data(), s2_sz);
+    memcpy(buf, s2.data(), s2_sz);
     buf += s2_sz;
     return buf - begin;
   }
@@ -462,7 +462,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
         tpcc_worker_mixin(partitions),
         home_warehouse_id(home_warehouse_id) {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
-    NDB_MEMSET(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+    memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
   }
 
   // XXX(stephentu): tune this
@@ -1784,7 +1784,7 @@ rc_t tpcc_worker::txn_payment() {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
     static_assert(sizeof(lastname_buf) == 16, "xx");
-    NDB_MEMSET(lastname_buf, 0, sizeof(lastname_buf));
+    memset(lastname_buf, 0, sizeof(lastname_buf));
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
     static const string zeros(16, 0);
@@ -1840,7 +1840,7 @@ rc_t tpcc_worker::txn_payment() {
                      paymentAmount, v_c.c_data.c_str());
     v_c_new.c_data.resize_junk(
         std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
-    NDB_MEMCPY((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
+    memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
   }
 
   try_catch(tbl_customer(customerWarehouseID)
@@ -1932,7 +1932,7 @@ rc_t tpcc_worker::txn_order_status() {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
     static_assert(sizeof(lastname_buf) == 16, "xx");
-    NDB_MEMSET(lastname_buf, 0, sizeof(lastname_buf));
+    memset(lastname_buf, 0, sizeof(lastname_buf));
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
     static const string zeros(16, 0);
