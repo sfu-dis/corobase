@@ -135,9 +135,9 @@ struct sm_log_alloc_mgr {
   // smallest_tls_lsn_offset() returns the "durable lsn" (possibly still in the
   // log buffer). The daemon is only responsible for flushing, ie making room
   // in the log buffer to take more transactions.
-  uint64_t *_tls_lsn_offset;
+  uint64_t *_tls_lsn_offset CACHE_ALIGNED;
   uint64_t _lsn_offset CACHE_ALIGNED;
-  uint64_t _logbuf_partition_size;
+  uint64_t _logbuf_partition_size CACHE_ALIGNED;
 
   // One queue per worker thread to account latency under group commit
   // The flusher dequeues all entries from these vectors up to
@@ -161,5 +161,5 @@ struct sm_log_alloc_mgr {
     void push_back(uint64_t lsn, uint64_t start_time);
     inline uint32_t size() { return items; }
   };
-  commit_queue *_commit_queue;
+  commit_queue *_commit_queue CACHE_ALIGNED;
 };

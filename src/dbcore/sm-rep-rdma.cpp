@@ -5,7 +5,7 @@
 
 namespace rep {
 struct RdmaNode* self_rdma_node CACHE_ALIGNED;
-std::vector<struct RdmaNode*> nodes;
+std::vector<struct RdmaNode*> nodes CACHE_ALIGNED;
 std::mutex nodes_lock CACHE_ALIGNED;
 
 std::condition_variable backup_shutdown_trigger;
@@ -23,7 +23,7 @@ void primary_rdma_poll_send_cq(uint64_t nops) {
 void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
   ALWAYS_ASSERT(!config::is_backup_srv());
   for (auto& n : nodes) {
-    n->WaitForMessageAsPrimary(kRdmaPersisted | kRdmaReadyToReceive, false);
+    n->WaitForMessageAsPrimary(msg, false);
   }
 }
 
