@@ -227,6 +227,7 @@ retry:
      Once we know the offset, we can look up the corresponding
      segment to obtain an LSN.
    */
+  LOG_IF(FATAL, new_dlsn_offset < durable_sid->start_offset);
   uint64_t new_byte =
       durable_sid->byte_offset + (new_dlsn_offset - durable_sid->start_offset);
 
@@ -444,12 +445,9 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     if (update_dmark) {
       // Have to use LSN::make (instead of durable_sid->make_lsn which checks
       // lsn offset ownership): If we're on a backup server, then this new
-      // durable
-      // lsn offset might end up in the deadzone which isn't contained by any
-      // sid,
-      // because we ship at log buffer flush boundaries (no info for the next
-      // segment
-      // until the next shipping).
+      // durable lsn offset might end up in the deadzone which isn't contained
+      // by any sid, because we ship at log buffer flush boundaries (no info
+      // for the next segment until the next shipping).
       _lm.update_durable_mark(
           LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
     }
@@ -586,7 +584,9 @@ start_over:
       volatile_write(rep::logbuf_partition_bounds[start_partition],
                      rval.next_lsn._val);
       DLOG(INFO) << "Log buffer partition: " << start_partition << " "
-                 << std::hex << next_lsn_offset << std::dec;
+                 << std::hex << rep::logbuf_partition_bounds[start_partition] << std::dec
+                 << " "
+                 << next_lsn_offset - LSN{rep::logbuf_partition_bounds[(start_partition-1) % config::logbuf_partitions]}.offset();
     }
   }
 

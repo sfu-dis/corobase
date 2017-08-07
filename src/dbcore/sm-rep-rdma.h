@@ -69,12 +69,13 @@ class RdmaNode {
 
   inline void WaitForMessageAsPrimary(uint64_t msg, bool reset = true) {
     ALWAYS_ASSERT(!config::is_backup_srv());
+    uint64_t *p = (uint64_t*)GetMemoryRegion(msg_buf_ridx_);
     while (true) {
-      uint64_t m = volatile_read(*(uint64_t*)GetMemoryRegion(msg_buf_ridx_));
+      uint64_t m = volatile_read(*p);
       if (m & msg) {
         if (reset) {
           // reset it so I'm not confused next time
-          *(uint64_t*)GetMemoryRegion(msg_buf_ridx_) = kRdmaWaiting;
+          *p = kRdmaWaiting;
         }
         break;
       }

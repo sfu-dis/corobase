@@ -119,8 +119,8 @@ struct window_buffer {
      writer.
    */
   char const *read_buf(size_t offset, size_t size) {
-    THROW_IF(read_begin() > offset, illegal_argument,
-             "Attempted read from region before before window");
+    LOG_IF(FATAL, read_begin() > offset)
+      << "Attempted read from region before before window";
     if (read_end() < offset + size) {
       return NULL;
     }

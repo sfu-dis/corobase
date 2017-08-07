@@ -54,6 +54,8 @@ size_t os_pwrite(int fd, char const *buf, size_t bufsz, off_t offset) {
   while (n < bufsz) {
     ssize_t m = pwrite(fd, buf + n, bufsz - n, offset + n);
     if (not m) break;
+    LOG_IF(FATAL, m < 0) << "Error writing " << bufsz << " bytes at offset "
+                         << offset << "(" << errno << ")";
     THROW_IF(m < 0, os_error, errno,
              "Error writing %zd bytes to file at offset %zd", bufsz, offset);
     n += m;
