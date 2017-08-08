@@ -135,6 +135,7 @@ struct sm_log_alloc_mgr {
   // smallest_tls_lsn_offset() returns the "durable lsn" (possibly still in the
   // log buffer). The daemon is only responsible for flushing, ie making room
   // in the log buffer to take more transactions.
+  static const uint64_t kDirtyTlsLsnOffset = uint64_t{1} << 63;
   uint64_t *_tls_lsn_offset CACHE_ALIGNED;
   uint64_t _lsn_offset CACHE_ALIGNED;
   uint64_t _logbuf_partition_size CACHE_ALIGNED;
