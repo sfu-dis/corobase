@@ -105,8 +105,9 @@ struct window_buffer {
    */
   char *write_buf(size_t offset, size_t size) {
     LOG_IF(FATAL, write_begin() > offset)
-        << "Attempted write to region before before window " << write_begin()
-        << "/" << offset;
+        << "Attempted write to region before before window "
+        << std::hex << write_begin()
+        << "/" << offset << std::dec;
     if (write_end() < offset + size) {
       return NULL;
     }

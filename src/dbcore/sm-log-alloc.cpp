@@ -344,7 +344,9 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
        is when we read and replay the log buffer directly.
      */
     uint64_t nbytes = new_byte - durable_byte;
-    _logbuf->advance_writer(new_byte);
+    if (_logbuf->available_to_read() < nbytes) {
+      _logbuf->advance_writer(new_byte);
+    }
     THROW_IF(_logbuf->available_to_read() < nbytes, log_file_error,
              "Not enough log bufer to read");
 
@@ -544,6 +546,10 @@ log_allocation *sm_log_alloc_mgr::allocate(uint32_t nrec,
    All we need here is the LSN offset for the new block; we don't
    yet know what segment (if any) actually contains that offset.
  */
+
+  uint64_t *my_off = &_tls_lsn_offset[thread::my_id()];
+  volatile_write(*my_off, *my_off | kDirtyTlsLsnOffset);
+
 start_over:
   size_t nbytes = log_block::size(nrec, payload_bytes);
   auto lsn_offset = __sync_fetch_and_add(&_lsn_offset, nbytes);
@@ -690,12 +696,23 @@ void sm_log_alloc_mgr::discard(log_allocation *x) {
 }
 
 uint64_t sm_log_alloc_mgr::smallest_tls_lsn_offset() {
-  uint64_t oldest_offset = cur_lsn_offset();
+  bool found = false;
+  uint64_t min_dirty = _lsn_offset;
+  uint64_t max_clean = 0;
   for (uint32_t i = 0; i < thread::next_thread_id; i++) {
-    if (_tls_lsn_offset[i])
-      oldest_offset = std::min(_tls_lsn_offset[i], oldest_offset);
+    uint64_t off = volatile_read(_tls_lsn_offset[i]);
+    if (off) {
+      if (off & kDirtyTlsLsnOffset) {
+        min_dirty = std::min(off & ~kDirtyTlsLsnOffset, min_dirty);
+        found = true;
+      } else {
+        if (max_clean < off) {
+          max_clean = off;
+        }
+      }
+    }
   }
-  return oldest_offset;
+  return found ? min_dirty : max_clean;
 }
 
 /* This guy's only job is to write released log blocks to disk. In
