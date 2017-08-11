@@ -159,12 +159,10 @@ void bench_runner::run() {
     rep::BackupStartReplication();
   } else {
     // Now we should already have a list of registered tables in
-    // IndexDescriptor::name_map,
-    // but all the index, oid_array fileds are empty; only the table name is
-    // available.
-    // Create the logmgr here, instead of in an sm-thread: recovery might want
-    // to utilize
-    // all the worker_threads specified in config.
+    // IndexDescriptor::name_map, but all the index, oid_array fileds are
+    // empty; only the table name is available.  Create the logmgr here,
+    // instead of in an sm-thread: recovery might want to utilize all the
+    // worker_threads specified in config.
     RCU::rcu_register();
     ALWAYS_ASSERT(config::log_dir.size());
     ALWAYS_ASSERT(not logmgr);
@@ -272,8 +270,8 @@ void bench_runner::run() {
         while (volatile_read(config::num_active_backups) !=
                volatile_read(config::num_backups)) {
         }
-        std::cout << "[Primary] " << config::num_backups << " backups\n";
       }
+      std::cout << "[Primary] " << config::num_backups << " backups\n";
     }
 
     if (config::enable_chkpt) {

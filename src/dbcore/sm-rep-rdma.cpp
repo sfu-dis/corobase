@@ -84,6 +84,21 @@ void primary_daemon_rdma() {
   for (auto& w : workers) {
     w->join();
   }
+
+  // Save tmpfs (memory) space, use with caution for replication: will lose the
+  // ability for 'catch' up using logs from storage. Do this here before
+  // benchmark begins so we don't get hit by ftruncate-ing a large file.
+  if (config::fake_log_write) {
+    dirent_iterator dir(config::log_dir.c_str());
+    int dfd = dir.dup();
+    for (char const *fname : dir) {
+      if (fname[0] == 'o' || fname[0] == 'l') {
+        int fd = os_openat(dfd, fname, O_RDWR);
+        int unused = ftruncate(fd, 0);
+        os_close(fd);
+      }
+    }
+  }
 }
 
 void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,

@@ -426,8 +426,11 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // After this the buffer space will become available for consumption
     _logbuf->advance_reader(new_byte);
 
-    if (config::IsForwardProcessing() && config::fake_log_write &&
-        config::num_active_backups == config::num_backups) {
+    // XXX(tzwang): again, like -null_log_device, this is purely for saving
+    // memory space but still keeps the actual 'write' syscall. Use with
+    // caution when log shipping is enabled: won't be able to ship log from
+    // storage (only memory), so can't really do 'catch-up'.
+    if (config::IsForwardProcessing() && config::fake_log_write) {
       int unused = ftruncate(active_fd, 0);
     }
 
