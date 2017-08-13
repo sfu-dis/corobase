@@ -784,6 +784,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
         should_update = true;
 
       if (should_update) {
+        ALWAYS_ASSERT(durable_sid);
         last_dmark = now;
         _lm.update_durable_mark(
             durable_sid->make_lsn(_durable_flushed_lsn_offset));
@@ -815,7 +816,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
         // logbuf => nobody kicking => log buffer never flushed
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 5;
+        ts.tv_nsec += 500;
         _write_daemon_cond.timedwait(_write_daemon_mutex, &ts);
       }
 
