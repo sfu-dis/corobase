@@ -30,6 +30,9 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     RCU::rcu_enter();
     xc->begin = std::min(volatile_read(rep::replayed_lsn_offset),
                          logmgr->cur_lsn().offset());
+    if (config::nvram_log_buffer) {
+      xc->begin = std::min(xc->begin, rep::persisted_nvram_offset);
+    }
     ASSERT(xc->begin);
   } else {
     initialize_read_write();
