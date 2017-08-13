@@ -40,6 +40,7 @@ const uint64_t kRdmaPersisted = 0x4;
 extern uint64_t replayed_lsn_offset;
 extern uint64_t persisted_lsn_offset;
 extern uint64_t persisted_nvram_size;
+extern uint64_t persisted_nvram_offset;
 extern uint64_t new_end_lsn_offset;
 extern LSN redo_start_lsn;
 extern LSN redo_end_lsn;

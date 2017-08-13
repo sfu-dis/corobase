@@ -312,6 +312,7 @@ void BackupDaemonRdma() {
         }
         volatile_write(persisted_nvram_size, 0);
       }
+      volatile_write(persisted_nvram_offset, end_lsn.offset());
     } else {
       // Now wait for the flusher to finish persisting log if we don't have
       // NVRAM,
