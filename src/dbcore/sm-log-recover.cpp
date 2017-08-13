@@ -54,9 +54,8 @@ void sm_log_recover_mgr::redo_log(LSN start_lsn, LSN end_lsn) {
   (*recover_functor)(recover_functor_arg, scanner, start_lsn, end_lsn);
 }
 
-void sm_log_recover_mgr::redo_logbuf(LSN start, LSN end) {
-  ASSERT(logbuf_scanner);
-  (*logbuf_redo_functor)(nullptr, logbuf_scanner, start, end);
+void sm_log_recover_mgr::start_logbuf_redoers() {
+  (*logbuf_redo_functor)(recover_functor_arg, logbuf_scanner, INVALID_LSN, INVALID_LSN);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr() { delete scanner; }

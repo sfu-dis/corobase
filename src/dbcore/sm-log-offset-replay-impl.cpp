@@ -7,99 +7,23 @@
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
 #include "sm-rep.h"
+#include "sm-rep-rdma.h"
 
 void parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
                                         LSN to) {
   scanner = s;
-  DLOG(INFO) << "About to roll " << std::hex << from.offset() << " "
-             << to.offset();
-
   RCU::rcu_enter();
-  // Look for new table creations after the chkpt
-  // Use one redo thread per new table found
-  // XXX(tzwang): no support for dynamically created tables for now
-  // XXX(tzwang): 20161212: So far this is for log shipping only, so no support
-  // for recovering table FIDs.
-
-  if (redoers.size() == 0) {
-    for (uint32_t i = 0; i < nredoers; ++i) {
-      redo_runner *r = new redo_runner(this, INVALID_LSN, INVALID_LSN);
-      redoers.push_back(r);
-      bool success = r->try_impersonate(false);
-      ALWAYS_ASSERT(success);
-    }
-  }
-
-  uint64_t logbuf_part = -1;
-  LSN partition_start = from;
-
-  if (nredoers > 1) {
-    // Figure out which index to start with
-    uint64_t min_offset = ~uint64_t{0};
-    for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
-      LSN bound = LSN{rep::logbuf_partition_bounds[i]};
-      if (bound.offset() < min_offset && bound.offset() > from.offset()) {
-        min_offset = bound.offset();
-        logbuf_part = i;
-      }
-    }
-  }
-
-#ifndef NDEBUG
-  uint32_t ndispatches = 0;
-#endif
-  bool all_dispatched = false;
-  uint32_t idx = 0;
-  while (!all_dispatched) {
-    // Get a thread
-    auto *r = redoers[idx];
-    while (true) {
-      if (r->try_wait()) {
-        break;
-      }
-      idx = (idx + 1) % nredoers;
-      r = redoers[idx];
-    }
-    if (logbuf_part == -1 || nredoers == 1) {
-      // logbuf_part will be -1 if there is only one partition
-      r->start_lsn = from;
-      r->end_lsn = to;
-      all_dispatched = true;
-    } else {
-      ASSERT(logbuf_part != -1);
-      uint32_t part_id = logbuf_part % config::logbuf_partitions;
-      ++logbuf_part;
-      LSN partition_end = LSN{rep::logbuf_partition_bounds[part_id]};
-
-      if (partition_end < partition_start || partition_end >= to) {
-        partition_end = to;
-        all_dispatched = true;
-      }
-      r->start_lsn = partition_start;
-      r->end_lsn = partition_end;
-
-      DLOG(INFO) << "Dispatch " << r->me << " " << std::hex
-                 << partition_start.offset() << " - " << partition_end.offset()
-                 << std::dec;
-      partition_start = partition_end;  // for next thread
-    }
-#ifndef NDEBUG
-    ++ndispatches;
-#endif
+  for (uint32_t i = 0; i < nredoers; ++i) {
+    redo_runner *r = new redo_runner(this, INVALID_LSN, INVALID_LSN);
+    redoers.push_back(r);
+    bool success = r->try_impersonate(false);
+    ALWAYS_ASSERT(success);
     r->start();
   }
-
-  for (auto &r : redoers) {
-    if (r->is_impersonated()) {
-      r->wait();
-    }
-  }
-#ifndef NDEBUG
-  DLOG(INFO) << "Dispatched " << ndispatches << " threads";
-#endif
+  RCU::rcu_exit();
 }
 
-void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
+void parallel_offset_replay::redo_runner::persist_logbuf_partition() {
   ALWAYS_ASSERT(config::is_backup_srv());
 
   if (config::nvram_log_buffer && config::persist_nvram_on_replay &&
@@ -123,9 +47,10 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
     }
     __atomic_add_fetch(&rep::persisted_nvram_size, size, __ATOMIC_SEQ_CST);
   }
+}
 
+void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
   // util::scoped_timer t("redo_partition");
-  RCU::rcu_enter();
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
   auto *scan =
       owner->scanner->new_log_scan(start_lsn, config::eager_warm_up(), true);
@@ -195,10 +120,118 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
   // taking over as new primary only.
   // TODO(tzwang): record the maximum OID to use during take-over.
   delete scan;
-  RCU::rcu_exit();
 }
 
+struct redo_range {
+  LSN start;
+  LSN end;
+};
+
 void parallel_offset_replay::redo_runner::my_work(char *) {
-  redo_logbuf_partition();
-  __sync_synchronize();
+  // Distributing persistence work over replay threads: when enabled, this
+  // allows each replay thread to persist its own replay partition so we get
+  // lower NVRAM persistence latency. But a pure persist-replay procedure would
+  // delay the primary if each thread has more than one partition to replay. So
+  // what we do is first persist the partitions and collect the corresponding
+  // LSN offsets for redo later.
+  redo_range *ranges = nullptr;
+  bool persist_first = false;
+  if (config::nvram_log_buffer && config::persist_nvram_on_replay &&
+      config::nvram_delay_type != config::kDelayNone) {
+    persist_first = true;
+    ranges = new redo_range[config::logbuf_partitions];
+  }
+
+  rcu_register();
+  DEFER(rcu_deregister());
+  rcu_enter();
+  DEFER(rcu_exit());
+
+  while (true) {
+    for (uint32_t i = 0; i < 2; ++i) {
+      uint32_t num_ranges = 0;
+      rep::ReplayPipelineStage& stage = rep::pipeline_stages[i];
+      LSN stage_end = INVALID_LSN;
+      do {
+        stage_end = volatile_read(stage.end_lsn);
+      } while (stage_end.offset() <= volatile_read(rep::replayed_lsn_offset));
+
+      LSN stage_start = volatile_read(stage.start_lsn);
+      ASSERT(stage_start.segment() == stage_end.segment());
+
+      DLOG(INFO) << "Start to roll " << std::hex << stage_start.offset()
+        << "-" << stage_end.offset() << std::dec;
+
+      // Find myself a partition
+      uint64_t min_offset = ~uint64_t{0};
+      uint64_t idx = -1;
+      for (uint32_t j = 0; j < config::logbuf_partitions; ++j) {
+        LSN bound = LSN{stage.logbuf_partition_bounds[j]};
+        if (bound.offset() < min_offset && bound.offset() > stage_start.offset()) {
+          min_offset = bound.offset();
+          idx = j;
+        }
+      }
+      if (idx != -1) {
+        start_lsn = stage_start;
+        bool done = false;
+        while (!done) {
+          end_lsn = LSN{stage.logbuf_partition_bounds[idx]};
+          if (end_lsn.offset() < stage_start.offset() || end_lsn.offset() > stage.end_lsn.offset()) {
+              end_lsn = stage_end;
+              done = true;
+          }
+          if (start_lsn == end_lsn) {
+            break;
+          }
+          // Get a partition - one potential problem is some threads act always
+          // faster and get the work. So it's important to have each thread do
+          // some amount of non-trivial work after claiming a partition (e.g.,
+          // persist it or replay it).
+          if (stage.consumed[idx].exchange(true, std::memory_order_seq_cst) == false) {
+            DLOG(INFO) << "[Backup] found log partition " << std::hex << start_lsn.offset()
+                       << "." << start_lsn.segment() << "-" << end_lsn.offset() << "."
+                       << end_lsn.segment() << std::dec;
+            if (persist_first) {
+              ranges[num_ranges].start = start_lsn;
+              ranges[num_ranges].end = end_lsn;
+              num_ranges++;
+              persist_logbuf_partition();
+            } else {
+              redo_logbuf_partition();
+            }
+          }
+          start_lsn = end_lsn;
+          idx = (idx + 1) % config::logbuf_partitions;
+        }
+        LOG_IF(FATAL, end_lsn.offset() != stage_end.offset());
+        if (persist_first) {
+          // At this point all my partitions are persisted and I won't block the
+          // primary. Now replay them.
+          for (uint32_t i = 0; i < num_ranges; ++i) {
+            start_lsn = ranges[i].start;
+            end_lsn = ranges[i].end;
+            redo_logbuf_partition();
+          }
+        }
+        if (--stage.num_replaying_threads == 0) {
+          volatile_write(rep::replayed_lsn_offset, stage.end_lsn.offset());
+          DLOG(INFO) << "replayed_lsn_offset=" << std::hex << rep::replayed_lsn_offset << std::dec;
+        }
+      } else {
+        // Just one partition
+        if (--stage.num_replaying_threads == 0) {
+          end_lsn = stage_end;
+          persist_logbuf_partition();
+          redo_logbuf_partition();
+          DLOG(INFO) << "[Backup] Rolled forward log " << std::hex << start_lsn.offset()
+                     << "." << start_lsn.segment() << "-" << end_lsn.offset() << "."
+                     << end_lsn.segment() << std::dec;
+          volatile_write(rep::replayed_lsn_offset, stage.end_lsn.offset());
+        }
+      }
+      // Make sure everyone is finished before we look at the next stage
+      while (volatile_read(rep::replayed_lsn_offset) != stage.end_lsn.offset()) {}
+    }
+  }
 }

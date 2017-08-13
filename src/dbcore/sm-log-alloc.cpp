@@ -88,7 +88,7 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr() {
 void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,
                                              uint64_t start_time) {
   ALWAYS_ASSERT(worker_id < config::worker_threads);
-  _commit_queue[worker_id].push_back(get_tls_lsn_offset(), start_time);
+  _commit_queue[worker_id].push_back(get_tls_lsn_offset() & ~kDirtyTlsLsnOffset, start_time);
 }
 
 void sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn,
@@ -379,13 +379,18 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
         imm = durable_sid->start_offset -
               (durable_sid->segnum - 1) * config::log_segment_mb * config::MB;
       }
-      LOG_IF(FATAL, nbytes > _logbuf->window_size() / 2 + MIN_LOG_BLOCK_SIZE)
-          << "Trying to ship more than half log buffer";
+      LOG_IF(FATAL, nbytes > config::group_commit_bytes + MIN_LOG_BLOCK_SIZE)
+          << "Trying to ship too much: " << nbytes;
       if (config::pipelined_persist) {
         // Wait for the backup to persist (it might act fast and set
         // ReadyToReceive too)
         rep::primary_rdma_wait_for_message(
             rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+
+        {
+          util::timer t;
+          dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
+        }
       }
       rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
       if (new_seg) {
@@ -406,19 +411,26 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
     if (config::num_active_backups && config::IsForwardProcessing()) {
       if (config::log_ship_by_rdma) {
-        // Now we need to poll to make sure the RDMA write finished
-        // One for the log buffer partition bounds, the other for data
-        rep::primary_rdma_poll_send_cq(2);
         if (!config::pipelined_persist) {
           // Wait for the backup to persist (it might act fast and set
           // ReadyToReceive too)
           rep::primary_rdma_wait_for_message(
-              rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+              rep::kRdmaPersisted, false);
+          {
+            util::timer t;
+            dequeue_committed_xcts(new_offset, t.get_start());
+          }
         }
+        // Now we need to poll to make sure the RDMA write finished
+        // One for the log buffer partition bounds, the other for data
+        rep::primary_rdma_poll_send_cq(2);
+      } else {
+        util::timer t;
+        dequeue_committed_xcts(new_offset, t.get_start());
       }
     }
 
-    if (config::num_active_backups > 0 || config::group_commit) {
+    if (config::num_active_backups == 0 && config::group_commit) {
       util::timer t;
       dequeue_committed_xcts(new_offset, t.get_start());
     }
@@ -664,8 +676,9 @@ void sm_log_alloc_mgr::release(log_allocation *x) {
     set_tls_lsn_offset(x->block->next_lsn().offset());
   }
   rcu_free(x);
-  bool should_kick =
-      cur_lsn_offset() - dur_flushed_lsn_offset() >= _logbuf->window_size() / 2;
+  bool should_kick = config::group_commit ?
+      cur_lsn_offset() - _durable_flushed_lsn_offset >= config::group_commit_bytes :
+      cur_lsn_offset() - _durable_flushed_lsn_offset >= config::log_buffer_mb * config::MB / 2;
 
   /* Hopefully the log daemon is already awake, but be ready to give
      it a kick if need be.
@@ -736,29 +749,26 @@ void sm_log_alloc_mgr::_log_write_daemon() {
   uint64_t last_dmark = stopwatch_t::now();
   for (;;) {
     uint64_t cur_offset = cur_lsn_offset();
-    uint64_t new_dlsn_offset = 0;
     uint64_t min_tls = smallest_tls_lsn_offset();
+    uint64_t new_dlsn_offset = min_tls;
     if (config::IsForwardProcessing() && config::num_active_backups > 0) {
-      new_dlsn_offset = _durable_flushed_lsn_offset;
-      // Find the maximum that will cause us to ship at most 1/2 of the logbuf
-      for (uint64_t i = 0; i < config::logbuf_partitions; ++i) {
-        uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
-        if ((off > new_dlsn_offset) &&
-            (off - _durable_flushed_lsn_offset <= _logbuf->window_size() / 2)) {
-          new_dlsn_offset = off;
+      uint64_t max_size = config::group_commit_bytes + MIN_LOG_BLOCK_SIZE;
+      if (new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
+        // Find the maximum that will cause us to ship at most [group_commit_size_mb]
+        uint64_t max = 0;
+        for (uint64_t i = 0; i < config::logbuf_partitions; ++i) {
+          uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
+          if (off <= min_tls && off > max && (off - _durable_flushed_lsn_offset <= max_size)) {
+            max = off;
+          }
         }
+        new_dlsn_offset = max;
       }
-      if (new_dlsn_offset == _durable_flushed_lsn_offset) {
-        // No boundary crossing?
-        new_dlsn_offset = min_tls;
-      }
-      // The boundary offsets might contain holes, avoid shipping too much
-      new_dlsn_offset = std::min<uint64_t>(new_dlsn_offset, min_tls);
-    } else {
-      new_dlsn_offset = min_tls;
     }
-    ALWAYS_ASSERT(new_dlsn_offset >= _durable_flushed_lsn_offset);
-    auto *durable_sid = PrimaryFlushLog(new_dlsn_offset);
+    segment_id *durable_sid = nullptr;
+    if (new_dlsn_offset > _durable_flushed_lsn_offset) {
+      durable_sid = PrimaryFlushLog(new_dlsn_offset);
+    }
 
     rcu_exit();
 

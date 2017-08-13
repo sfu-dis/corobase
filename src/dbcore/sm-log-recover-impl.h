@@ -68,6 +68,7 @@ struct parallel_offset_replay : public sm_log_recover_impl {
         : thread::sm_runner(), owner(o), start_lsn(start), end_lsn(end) {}
     virtual void my_work(char *);
     void redo_logbuf_partition();
+    void persist_logbuf_partition();
   };
 
   uint32_t nredoers;

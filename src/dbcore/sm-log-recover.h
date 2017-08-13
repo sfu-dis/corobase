@@ -172,7 +172,7 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
 
   void redo_log(LSN start_lsn, LSN end_lsn);
   // For log shipping only
-  void redo_logbuf(LSN start, LSN end);
+  void start_logbuf_redoers();
   void recover();
 };
 
