@@ -696,10 +696,11 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
  protected:
   virtual void load() {
     string obj_buf;
-    transaction *txn = db->new_txn(0, arena, txn_buf());
     uint64_t warehouse_total_sz = 0, n_warehouses = 0;
     vector<warehouse::value> warehouses;
     for (uint i = 1; i <= NumWarehouses(); i++) {
+      arena.reset();
+      transaction *txn = db->new_txn(0, arena, txn_buf());
       const warehouse::key k(i);
 
       const string w_name = RandomStr(r, RandomNumber(r, 6, 10));
@@ -727,11 +728,11 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
                                                  Encode(str(sz), v)));
 
       warehouses.push_back(v);
+      try_verify_strict(db->commit_txn(txn));
     }
-    try_verify_strict(db->commit_txn(txn));
-    arena.reset();
-    txn = db->new_txn(0, arena, txn_buf());
     for (uint i = 1; i <= NumWarehouses(); i++) {
+      arena.reset();
+      transaction *txn = db->new_txn(0, arena, txn_buf());
       const warehouse::key k(i);
       warehouse::value warehouse_temp;
       varstr warehouse_v = str(Size(warehouse_temp));
@@ -741,8 +742,8 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       ALWAYS_ASSERT(warehouses[i - 1] == *v);
 
       checker::SanityCheckWarehouse(&k, v);
+      try_verify_strict(db->commit_txn(txn));
     }
-    try_verify_strict(db->commit_txn(txn));
 
     // pre-build supp-stock mapping table to boost tpc-ch queries
     for (uint w = 1; w <= NumWarehouses(); w++)
@@ -768,10 +769,10 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
  protected:
   virtual void load() {
     string obj_buf;
-    const ssize_t bsize = db->txn_max_batch_size();
-    transaction *txn = db->new_txn(0, arena, txn_buf());
     uint64_t total_sz = 0;
     for (uint i = 1; i <= NumItems(); i++) {
+      arena.reset();
+      transaction *txn = db->new_txn(0, arena, txn_buf());
       // items don't "belong" to a certain warehouse, so no pinning
       const item::key k(i);
 
@@ -797,14 +798,8 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
       try_verify_strict(tbl_item(1)->insert(
           txn, Encode(str(Size(k)), k),
           Encode(str(sz), v)));  // this table is shared, so any partition is OK
-
-      if (bsize != -1 && !(i % bsize)) {
-        try_verify_strict(db->commit_txn(txn));
-        txn = db->new_txn(0, arena, txn_buf());
-        arena.reset();
-      }
+      try_verify_strict(db->commit_txn(txn));
     }
-    try_verify_strict(db->commit_txn(txn));
     if (config::verbose) {
       cerr << "[INFO] finished loading item" << endl;
       cerr << "[INFO]   * average item record length: "
@@ -845,8 +840,9 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
       for (size_t i = 0; i < NumItems();) {
         size_t iend = std::min(i + batchsize, NumItems());
         scoped_str_arena s_arena(arena);
-        transaction *const txn = db->new_txn(0, arena, txn_buf());
         for (uint j = i + 1; j <= iend; j++) {
+          arena.reset();
+          transaction *const txn = db->new_txn(0, arena, txn_buf());
           const stock::key k(w, j);
           const stock_data::key k_data(w, j);
 
@@ -887,8 +883,8 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           try_verify_strict(
               tbl_stock_data(w)->insert(txn, Encode(str(Size(k_data)), k_data),
                                         Encode(str(Size(v_data)), v_data)));
+          try_verify_strict(db->commit_txn(txn));
         }
-        try_verify_strict(db->commit_txn(txn));
 
         // loop update
         i = iend;
@@ -922,11 +918,12 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
     string obj_buf;
 
     const ssize_t bsize = db->txn_max_batch_size();
-    transaction *txn = db->new_txn(0, arena, txn_buf());
     uint64_t district_total_sz = 0, n_districts = 0;
     uint cnt = 0;
     for (uint w = 1; w <= NumWarehouses(); w++) {
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++, cnt++) {
+        arena.reset();
+        transaction *txn = db->new_txn(0, arena, txn_buf());
         const district::key k(w, d);
 
         district::value v;
@@ -947,14 +944,9 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
         try_verify_strict(tbl_district(w)->insert(txn, Encode(str(Size(k)), k),
                                                   Encode(str(sz), v)));
 
-        if (bsize != -1 && !((cnt + 1) % bsize)) {
-          try_verify_strict(db->commit_txn(txn));
-          txn = db->new_txn(0, arena, txn_buf());
-          arena.reset();
-        }
+        try_verify_strict(db->commit_txn(txn));
       }
     }
-    try_verify_strict(db->commit_txn(txn));
     if (config::verbose) {
       cerr << "[INFO] finished loading district" << endl;
       cerr << "[INFO]   * average district record length: "
@@ -998,12 +990,13 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
     for (uint w = w_start; w <= w_end; w++) {
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
         for (uint batch = 0; batch < nbatches;) {
-          scoped_str_arena s_arena(arena);
-          transaction *const txn = db->new_txn(0, arena, txn_buf());
           const size_t cstart = batch * batchsize;
           const size_t cend =
               std::min((batch + 1) * batchsize, NumCustomersPerDistrict());
           for (uint cidx0 = cstart; cidx0 < cend; cidx0++) {
+            scoped_str_arena s_arena(arena);
+            arena.reset();
+            transaction *txn = db->new_txn(0, arena, txn_buf());
             const uint c = cidx0 + 1;
             const customer::key k(w, d, c);
 
@@ -1045,6 +1038,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             OID c_oid = 0;  // Get the OID and put in customer_name_idx later
             try_verify_strict(tbl_customer(w)->insert(
                 txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid));
+            try_verify_strict(db->commit_txn(txn));
 
             // customer name index
             const customer_name_idx::key k_idx(
@@ -1053,8 +1047,12 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             // index structure is:
             // (c_w_id, c_d_id, c_last, c_first) -> OID
 
+            arena.reset();
+            txn = db->new_txn(0, arena, txn_buf());
             try_verify_strict(tbl_customer_name_idx(w)->insert(
                 txn, Encode(str(Size(k_idx)), k_idx), c_oid));
+            try_verify_strict(db->commit_txn(txn));
+            arena.reset();
 
             history::key k_hist;
             k_hist.h_c_id = c;
@@ -1068,11 +1066,13 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             v_hist.h_amount = 10;
             v_hist.h_data.assign(RandomStr(r, RandomNumber(r, 10, 24)));
 
+            arena.reset();
+            txn = db->new_txn(0, arena, txn_buf());
             try_verify_strict(
                 tbl_history(w)->insert(txn, Encode(str(Size(k_hist)), k_hist),
                                        Encode(str(Size(v_hist)), v_hist)));
+            try_verify_strict(db->commit_txn(txn));
           }
-          try_verify_strict(db->commit_txn(txn));
           batch++;
         }
       }
@@ -1136,7 +1136,8 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
         }
         for (uint c = 1; c <= NumCustomersPerDistrict();) {
           scoped_str_arena s_arena(arena);
-          transaction *const txn = db->new_txn(0, arena, txn_buf());
+          arena.reset();
+          transaction *txn = db->new_txn(0, arena, txn_buf());
           const oorder::key k_oo(w, d, c);
 
           oorder::value v_oo;
@@ -1157,13 +1158,19 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
           try_verify_strict(
               tbl_oorder(w)->insert(txn, Encode(str(Size(k_oo)), k_oo),
                                     Encode(str(sz), v_oo), &v_oo_oid));
+          try_verify_strict(db->commit_txn(txn));
+          arena.reset();
+          txn = db->new_txn(0, arena, txn_buf());
 
           const oorder_c_id_idx::key k_oo_idx(k_oo.o_w_id, k_oo.o_d_id,
                                               v_oo.o_c_id, k_oo.o_id);
           try_verify_strict(tbl_oorder_c_id_idx(w)->insert(
               txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
+          try_verify_strict(db->commit_txn(txn));
 
           if (c >= 2101) {
+            arena.reset();
+            txn = db->new_txn(0, arena, txn_buf());
             const new_order::key k_no(w, d, c);
             const new_order::value v_no;
 
@@ -1173,6 +1180,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             n_new_orders++;
             try_verify_strict(tbl_new_order(w)->insert(
                 txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no)));
+            try_verify_strict(db->commit_txn(txn));
           }
 
           for (uint l = 1; l <= uint(v_oo.o_ol_cnt); l++) {
@@ -1198,10 +1206,12 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             const size_t sz = Size(v_ol);
             order_line_total_sz += sz;
             n_order_lines++;
+            arena.reset();
+            txn = db->new_txn(0, arena, txn_buf());
             try_verify_strict(tbl_order_line(w)->insert(
                 txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol)));
+            try_verify_strict(db->commit_txn(txn));
           }
-          try_verify_strict(db->commit_txn(txn));
           c++;
         }
       }
