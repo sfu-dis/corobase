@@ -23,7 +23,7 @@ void primary_rdma_poll_send_cq(uint64_t nops) {
 void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
   ALWAYS_ASSERT(!config::is_backup_srv());
   for (auto& n : nodes) {
-    n->WaitForMessageAsPrimary(msg, false);
+    n->WaitForMessageAsPrimary(msg, reset);
   }
 }
 
@@ -417,40 +417,6 @@ void start_as_backup_rdma() {
   sm_oid_mgr::create();
   LOG(INFO) << "[Backup] Received log file.";
 }
-
-#if 0
-void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
-                                  uint64_t new_seg_start_offset) {
-#ifndef NDEBUG
-  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
-    LOG(INFO) << "RDMA write logbuf bounds: " << i << " " << std::hex
-              << logbuf_partition_bounds[i] << std::dec;
-  }
-#endif
-  for (auto& node : nodes) {
-    node->WaitForMessageAsPrimary(kRdmaReadyToReceive);
-
-    // Send buffer partition boundary information first
-    node->RdmaWriteImmLogBufferPartitionBounds(
-        0, 0, sizeof(uint64_t) * kMaxLogBufferPartitions,
-        sizeof(uint64_t) * kMaxLogBufferPartitions, false /* async */);
-
-    ALWAYS_ASSERT(size);
-    uint64_t offset = buf - sm_log::get_logbuf()->_data;
-    ASSERT(offset + size <= sm_log::get_logbuf()->window_size() * 2);
-#ifndef NDEBUG
-    if (new_seg) {
-      LOG(INFO) << "new segment start offset=" << std::hex
-                << new_seg_start_offset << std::dec;
-    }
-#endif
-    ALWAYS_ASSERT(new_seg_start_offset <= ~kRdmaImmNewSeg);
-    uint32_t imm =
-        new_seg ? kRdmaImmNewSeg | (uint32_t)new_seg_start_offset : 0;
-    node->RdmaWriteImmLogBuffer(offset, offset, size, imm, false);
-  }
-}
-#endif
 
 void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
                                   uint64_t new_seg_start_offset) {
