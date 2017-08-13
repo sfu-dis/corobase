@@ -82,4 +82,4 @@ for backup in "$@"; do
   done
 done
 
-tail $primary_output_file
+tail -13 $primary_output_file
