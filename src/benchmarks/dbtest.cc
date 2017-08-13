@@ -38,7 +38,7 @@ DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
 DEFINE_uint64(log_segment_mb, 8192, "Log segment size in MB.");
-DEFINE_uint64(log_buffer_mb, 512, "Log buffer size in MB.");
+DEFINE_uint64(log_buffer_mb, 16, "Log buffer size in MB.");
 DEFINE_bool(log_ship_by_rdma, false, "Whether to use RDMA for log shipping.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
 #if defined(SSN) || defined(SSI)
@@ -86,6 +86,8 @@ DEFINE_bool(group_commit, false, "Whether to enable group commit.");
 DEFINE_uint64(group_commit_queue_length, 25000, "Group commit queue length");
 DEFINE_uint64(group_commit_timeout, 5,
               "Group commit flush interval (in seconds).");
+DEFINE_uint64(group_commit_size_mb, 4,
+              "Group commit flush size interval in MB.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
 DEFINE_bool(wait_for_backups, true,
@@ -181,6 +183,8 @@ int main(int argc, char **argv) {
   config::primary_srv = FLAGS_primary_host;
   config::primary_port = FLAGS_primary_port;
 
+  config::logbuf_partitions = rep::kMaxLogBufferPartitions;
+
   // Backup specific arguments
   if (config::is_backup_srv()) {
     config::nvram_log_buffer = FLAGS_nvram_log_buffer;
@@ -248,20 +252,14 @@ int main(int argc, char **argv) {
     config::null_log_device = FLAGS_null_log_device;
     config::fake_log_write = FLAGS_fake_log_write;
 
-    // At least four partitions to avoid trouble when sending half buffer with 2
-    // partitions
-    config::logbuf_partitions = FLAGS_threads > 2 ? FLAGS_threads : 4;
-    if (config::logbuf_partitions > rep::kMaxLogBufferPartitions) {
-      LOG(FATAL) << "Too many log buffer partitions: max "
-                 << rep::kMaxLogBufferPartitions;
-    }
-
     config::replay_threads = 0;
     config::worker_threads = FLAGS_threads;
 
     config::group_commit = FLAGS_group_commit;
     config::group_commit_queue_length = FLAGS_group_commit_queue_length;
     config::group_commit_timeout = FLAGS_group_commit_timeout;
+    config::group_commit_size_mb = FLAGS_group_commit_size_mb;
+    config::group_commit_bytes = FLAGS_group_commit_size_mb * config::MB;
     config::enable_chkpt = FLAGS_enable_chkpt;
     config::chkpt_interval = FLAGS_chkpt_interval;
     config::parallel_loading = FLAGS_parallel_loading;
@@ -354,6 +352,8 @@ int main(int argc, char **argv) {
     cerr << "  scale-factor      : " << FLAGS_scale_factor << endl;
     cerr << "  group-commit      : " << config::group_commit << endl;
     cerr << "  commit-queue      : " << config::group_commit_queue_length
+         << endl;
+    cerr << "  group-commit-size : " << config::group_commit_size_mb << "MB"
          << endl;
     cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << endl;
     cerr << "  log-key-for-update: " << config::log_key_for_update << endl;

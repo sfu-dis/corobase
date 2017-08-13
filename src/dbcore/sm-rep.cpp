@@ -15,8 +15,6 @@ uint64_t persisted_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_nvram_size CACHE_ALIGNED;
 uint64_t persisted_nvram_offset CACHE_ALIGNED;
 uint64_t new_end_lsn_offset CACHE_ALIGNED;
-LSN redo_start_lsn CACHE_ALIGNED;
-LSN redo_end_lsn CACHE_ALIGNED;
 
 void start_as_primary() {
   memset(logbuf_partition_bounds, 0,
@@ -48,27 +46,6 @@ void LogFlushDaemon() {
     if (lsn > volatile_read(persisted_lsn_offset)) {
       logmgr->BackupFlushLog(lsn);
       volatile_write(persisted_lsn_offset, lsn);
-    }
-  }
-}
-
-void LogRedoDaemon() {
-  redo_start_lsn = redo_end_lsn = INVALID_LSN;
-  rcu_register();
-  DEFER(rcu_deregister());
-  rcu_enter();
-  DEFER(rcu_exit());
-  while (true) {
-    LSN end = volatile_read(redo_end_lsn);
-    if (end.offset() > volatile_read(replayed_lsn_offset)) {
-      // util::scoped_timer t("log_replay");
-      LSN start = volatile_read(redo_start_lsn);
-      ASSERT(start.segment() == end.segment());
-      logmgr->redo_logbuf(start, end);
-      DLOG(INFO) << "[Backup] Rolled forward log " << std::hex << start.offset()
-                 << "." << start.segment() << "-" << end.offset() << "."
-                 << end.segment() << std::dec;
-      volatile_write(replayed_lsn_offset, end.offset());
     }
   }
 }

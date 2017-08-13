@@ -7,6 +7,7 @@ namespace rep {
 struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes CACHE_ALIGNED;
 std::mutex nodes_lock CACHE_ALIGNED;
+ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
 
 std::condition_variable backup_shutdown_trigger;
 
@@ -33,8 +34,6 @@ void bring_up_backup(RdmaNode* rn) {
   LSN chkpt_start_lsn = INVALID_LSN;
   auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
   ALWAYS_ASSERT(chkpt_fd != -1);
-  // Wait for the 'go' signal from the peer
-  rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
 
   // Now can really send something, metadata first, header must fit in the
   // buffer
@@ -45,10 +44,11 @@ void bring_up_backup(RdmaNode* rn) {
   uint64_t buf_offset = md->size();
   uint64_t to_send = md->chkpt_size;
   while (to_send) {
+    // Wait for the 'go' signal from the peer
+    rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+
     ALWAYS_ASSERT(buf_offset <= RdmaNode::kDaemonBufferSize);
     if (buf_offset == RdmaNode::kDaemonBufferSize) {
-      // Full, wait for the backup to finish processing this
-      rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
       buf_offset = 0;
     }
     uint64_t n =
@@ -59,14 +59,17 @@ void bring_up_backup(RdmaNode* rn) {
     // Write it out, then wait
     rn->RdmaWriteImmDaemonBuffer(0, 0, buf_offset + n, buf_offset + n);
     buf_offset = 0;
-    rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
   }
   os_close(chkpt_fd);
 
   // Done with the chkpt file, now log files
   send_log_files_after_rdma(rn, md, chkpt_start_lsn);
-  ++config::num_active_backups;
+
+  // Wait for the backup to become ready for receiving log records
+  rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+
   __sync_synchronize();
+  ++config::num_active_backups;
 }
 
 // A daemon that runs on the primary for bringing up backups by shipping
@@ -125,9 +128,9 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
             read(log_fd, daemon_buffer,
                  std::min((uint64_t)RdmaNode::kDaemonBufferSize, to_send));
         ALWAYS_ASSERT(n);
+        self->WaitForMessageAsPrimary(kRdmaReadyToReceive);
         self->RdmaWriteImmDaemonBuffer(0, 0, n, n);
         to_send -= n;
-        self->WaitForMessageAsPrimary(kRdmaReadyToReceive);
       }
       os_close(log_fd);
     }
@@ -136,7 +139,7 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
 
 // Receives the bounds array sent from the primary.
 // Returns false if we should stop. The only caller is backup daemon.
-bool BackupReceiveBoundsArray() {
+bool BackupReceiveBoundsArray(ReplayPipelineStage& pipeline_stage) {
   // Post an RR to get the log buffer partition bounds
   // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted
   // before
@@ -160,8 +163,7 @@ bool BackupReceiveBoundsArray() {
     LOG(INFO) << "Got shutdown signal from primary, exit.";
     return false;
   }
-  ALWAYS_ASSERT(bounds_array_size ==
-                sizeof(uint64_t) * kMaxLogBufferPartitions);
+  ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * config::logbuf_partitions);
 
 #ifndef NDEBUG
   for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
@@ -174,6 +176,15 @@ bool BackupReceiveBoundsArray() {
               << logbuf_partition_bounds[i] << std::dec << " " << s;
   }
 #endif
+
+  // Make a stable local copy for replay threads to use
+  memcpy(pipeline_stage.logbuf_partition_bounds,
+         logbuf_partition_bounds,
+         config::logbuf_partitions * sizeof(uint64_t));
+  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+    pipeline_stage.consumed[i] = false;
+  }
+  pipeline_stage.num_replaying_threads = config::replay_threads;
   return true;
 }
 
@@ -229,54 +240,41 @@ LSN BackupReceiveLogData(LSN& start_lsn) {
 
 void BackupDaemonRdma() {
   ALWAYS_ASSERT(logmgr);
-  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
   rcu_register();
   DEFER(rcu_deregister());
   DEFER(delete self_rdma_node);
 
-  LOG(INFO) << "[Backup] Start to wait for logs from primary";
   LSN start_lsn = logmgr->durable_flushed_lsn();
   std::thread flusher(LogFlushDaemon);
   flusher.detach();
 
-  if (config::replay_policy == config::kReplayPipelined) {
-    std::thread redoer(LogRedoDaemon);
-    redoer.detach();
+  pipeline_stages = new ReplayPipelineStage[2];
+
+  if (config::replay_policy != config::kReplayNone) {
+    logmgr->start_logbuf_redoers();
   }
 
+  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
+  LOG(INFO) << "[Backup] Start to wait for logs from primary";
   uint32_t recv_idx = 0;
-  LSN recv_lsn[2] = {INVALID_LSN, INVALID_LSN};
   while (!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
-    WaitForLogBufferSpace(recv_lsn[recv_idx]);
+    ReplayPipelineStage& stage = pipeline_stages[recv_idx];
+    WaitForLogBufferSpace(stage.end_lsn);
 
-    self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
-    if (!BackupReceiveBoundsArray()) {
-      rep::backup_shutdown_trigger
-          .notify_all();  // Actually only needed if no query workers
+    self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive | kRdmaPersisted);
+    if (!BackupReceiveBoundsArray(stage)) {
+      // Actually only needed if no query workers
+      rep::backup_shutdown_trigger.notify_all();
       return;
     }
 
     LSN end_lsn = BackupReceiveLogData(start_lsn);
-    volatile_write(recv_lsn[recv_idx]._val, end_lsn._val);
     recv_idx = (recv_idx + 1) % 2;
 
     // Now "notify" the flusher to write log records out, asynchronously.
     volatile_write(new_end_lsn_offset, end_lsn.offset());
-
-    // Impose delays to emulate NVRAM if needed
-    uint64_t size = end_lsn.offset() - start_lsn.offset();
-    if (config::nvram_log_buffer && !config::persist_nvram_on_replay) {
-      if (config::nvram_delay_type == config::kDelayClflush) {
-        segment_id* sid = logmgr->get_segment(start_lsn.segment());
-        const char* buf =
-            sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
-        config::NvramClflush(buf, size);
-      } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
-        config::NvramClwbEmu(size);
-      }
-    }
 
     // Now handle replay policies:
     // 1. Sync - replay immediately; then when finished ack persitence
@@ -293,24 +291,35 @@ void BackupDaemonRdma() {
     //
     // The role of NVRAM here is solely for making persistence faster and is
     // orthogonal to the choice of replay policy.
+
+    // The write of stage.end_lsn "notifies" redo threads
+    volatile_write(stage.start_lsn._val, start_lsn._val);
+    volatile_write(stage.end_lsn._val, end_lsn._val);
+
     if (config::replay_policy == config::kReplaySync) {
-      logmgr->redo_logbuf(start_lsn, end_lsn);
+      while (volatile_read(replayed_lsn_offset) != end_lsn.offset()) {}
       DLOG(INFO) << "[Backup] Rolled forward log " << std::hex
                  << start_lsn.offset() << "." << start_lsn.segment() << "-"
                  << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
       ASSERT(start_lsn.segment() == end_lsn.segment());
-      // Make the new records visible, but pending persistence
-      volatile_write(replayed_lsn_offset, end_lsn.offset());
-    } else if (config::replay_policy == config::kReplayPipelined) {
-      volatile_write(redo_start_lsn._val, start_lsn._val);
-      volatile_write(redo_end_lsn._val, end_lsn._val);
     }
 
     if (config::nvram_log_buffer) {
+      uint64_t size = end_lsn.offset() - start_lsn.offset();
       if (config::persist_nvram_on_replay) {
         while (size > volatile_read(persisted_nvram_size)) {
         }
         volatile_write(persisted_nvram_size, 0);
+      } else {
+        // Impose delays to emulate NVRAM if needed
+        if (config::nvram_delay_type == config::kDelayClflush) {
+          segment_id* sid = logmgr->get_segment(start_lsn.segment());
+          const char* buf =
+              sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
+          config::NvramClflush(buf, size);
+        } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
+          config::NvramClwbEmu(size);
+        }
       }
       volatile_write(persisted_nvram_offset, end_lsn.offset());
     } else {
@@ -411,7 +420,6 @@ void start_as_backup_rdma() {
   // Extract system config and set them before new_log
   config::benchmark_scale_factor = md->system_config.scale_factor;
   config::log_segment_mb = md->system_config.log_segment_mb;
-  config::logbuf_partitions = md->system_config.logbuf_partitions;
 
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
@@ -435,7 +443,7 @@ void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
     // Partition boundary information
     bounds_req.local_index = bounds_req.remote_index = node->GetBoundsIndex();
     bounds_req.local_offset = bounds_req.remote_offset = 0;
-    bounds_req.size = bounds_req.imm_data = sizeof(uint64_t) * kMaxLogBufferPartitions;
+    bounds_req.size = bounds_req.imm_data = sizeof(uint64_t) * config::logbuf_partitions;
     bounds_req.sync = false;
     bounds_req.next = &data_req;
 

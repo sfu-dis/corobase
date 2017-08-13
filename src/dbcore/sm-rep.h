@@ -42,8 +42,6 @@ extern uint64_t persisted_lsn_offset;
 extern uint64_t persisted_nvram_size;
 extern uint64_t persisted_nvram_offset;
 extern uint64_t new_end_lsn_offset;
-extern LSN redo_start_lsn;
-extern LSN redo_end_lsn;
 
 extern std::condition_variable backup_shutdown_trigger;
 
@@ -63,7 +61,6 @@ struct backup_start_metadata {
   struct backup_config {
     uint32_t scale_factor;
     uint64_t log_segment_mb;
-    uint32_t logbuf_partitions;
   };
 
   struct backup_config system_config;
@@ -78,7 +75,6 @@ struct backup_start_metadata {
   backup_start_metadata() : chkpt_size(0), log_size(0), num_log_files(0) {
     system_config.scale_factor = config::benchmark_scale_factor;
     system_config.log_segment_mb = config::log_segment_mb;
-    system_config.logbuf_partitions = config::logbuf_partitions;
   }
 
   inline void add_log_segment(unsigned int segment, uint64_t start_offset,
@@ -145,16 +141,26 @@ inline void WaitForLogBufferSpace(LSN target_lsn) {
   }
 }
 
+struct ReplayPipelineStage {
+  LSN start_lsn;
+  LSN end_lsn;
+  uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];
+  std::atomic<bool> consumed[kMaxLogBufferPartitions];
+  std::atomic<uint32_t> num_replaying_threads;
+  ReplayPipelineStage() : start_lsn(INVALID_LSN), end_lsn(INVALID_LSN), num_replaying_threads(0) {
+    memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
+  }
+};
+extern ReplayPipelineStage *pipeline_stages;
+
 void start_as_primary();
 void BackupStartReplication();
 void primary_ship_log_buffer_all(const char* buf, uint32_t size, bool new_seg,
                                  uint64_t new_seg_start_offset);
-void redo_daemon();
 backup_start_metadata* prepare_start_metadata(int& chkpt_fd,
                                               LSN& chkpt_start_lsn);
 void PrimaryShutdown();
 void LogFlushDaemon();
-void LogRedoDaemon();
 
 // RDMA-specific functions
 void BackupDaemonRdma();
