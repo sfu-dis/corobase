@@ -174,6 +174,9 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
   // For log shipping only
   void start_logbuf_redoers();
   void recover();
+  sm_log_recover_impl *get_logbuf_redo_functor() {
+    return logbuf_redo_functor;
+  }
 };
 
 #endif

@@ -50,11 +50,11 @@ void parallel_offset_replay::redo_runner::persist_logbuf_partition() {
 }
 
 void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
-  // util::scoped_timer t("redo_partition");
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
   auto *scan =
       owner->scanner->new_log_scan(start_lsn, config::eager_warm_up(), true);
 
+  util::timer t;
   while (true) {
     if (!scan->valid()) {
 #ifndef NDEBUG
@@ -109,10 +109,13 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
     }
     scan->next();
   }
+  redo_latency_us += t.lap();
+  ++redo_batches;
   DLOG(INFO) << "[Recovery.log] 0x" << std::hex << start_lsn.offset() << "-"
              << end_lsn.offset()
              << " inserts/updates/deletes/size: " << std::dec << icount << "/"
-             << ucount << "/" << dcount << "/" << size;
+             << ucount << "/" << dcount << "/" << size << " "
+             << redo_latency_us << "us so far";
 
   // Normally we'd also recreate_allocator here; for log shipping
   // redo this takes ~10% of total cycles (need to take a lock etc),
