@@ -420,6 +420,22 @@ void bench_runner::start_measurement() {
   const double avg_latency_us = double(latency_numer_us) / double(n_commits);
   const double avg_latency_ms = avg_latency_us / 1000.0;
 
+  uint64_t agg_latency_us = 0;
+  uint64_t agg_redo_batches = 0;
+  if (config::is_backup_srv()) {
+    parallel_offset_replay *f = (parallel_offset_replay *)logmgr->get_logbuf_redo_functor();
+    if (f) {
+      for (auto &r : f->redoers) {
+        if (agg_latency_us < r->redo_latency_us) {
+          agg_latency_us = r->redo_latency_us;
+        }
+        agg_redo_batches += r->redo_batches;
+      }
+    }
+  }
+
+  const double agg_replay_latency_ms = agg_latency_us / 1000.0;
+
   tx_stat_map agg_txn_counts = workers[0]->get_txn_counts();
   for (size_t i = 1; i < workers.size(); i++) {
     auto &c = workers[i]->get_txn_counts();
@@ -461,6 +477,11 @@ void bench_runner::start_measurement() {
          << " aborts/sec/core" << endl;
     cerr << "txn breakdown: " << format_list(agg_txn_counts.begin(),
                                              agg_txn_counts.end()) << endl;
+    if (config::is_backup_srv()) {
+      cerr << "agg_replay_time: " << agg_replay_latency_ms << " ms" << endl;
+      cerr << "agg_redo_batches: " << agg_redo_batches << endl;
+      cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << endl;
+    }
   }
 
   // output for plotting script
