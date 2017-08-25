@@ -25,27 +25,7 @@ using namespace std;
 using namespace util;
 
 volatile bool running = true;
-
 std::vector<bench_worker *> bench_runner::workers;
-
-template <typename T>
-static void delete_pointers(const vector<T *> &pts) {
-  for (size_t i = 0; i < pts.size(); i++) delete pts[i];
-}
-
-template <typename T>
-static vector<T> elemwise_sum(const vector<T> &a, const vector<T> &b) {
-  ASSERT(a.size() == b.size());
-  vector<T> ret(a.size());
-  for (size_t i = 0; i < a.size(); i++) ret[i] = a[i] + b[i];
-  return ret;
-}
-
-template <typename K, typename V>
-static void map_agg(map<K, V> &agg, const map<K, V> &m) {
-  for (typename map<K, V>::const_iterator it = m.begin(); it != m.end(); ++it)
-    agg[it->first] += it->second;
-}
 
 void bench_worker::my_work(char *) {
   const workload_desc_vec workload = get_workload();
@@ -201,9 +181,8 @@ void bench_runner::run() {
     runner_thread->join();
   }
 
-  // Get a thread to use benchmark-provided prepare(), which gathers information
-  // about
-  // index pointers created by create_file_task.
+  // Get a thread to use benchmark-provided prepare(), which gathers
+  // information about index pointers created by create_file_task.
   runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
   runner_thread->start_task(runner_task);
   runner_thread->join();
