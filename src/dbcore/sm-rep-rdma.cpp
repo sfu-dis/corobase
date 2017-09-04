@@ -32,7 +32,6 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
 
 // Helper function that brings up a backup server
 void bring_up_backup(RdmaNode* rn, int chkpt_fd, backup_start_metadata *md, LSN chkpt_start_lsn) {
-  DEFER(os_close(chkpt_fd));
   // Now can really send something, metadata first, header must fit in the
   // buffer
   ALWAYS_ASSERT(md->size() < RdmaNode::kDaemonBufferSize);
@@ -41,6 +40,7 @@ void bring_up_backup(RdmaNode* rn, int chkpt_fd, backup_start_metadata *md, LSN 
 
   uint64_t buf_offset = md->size();
   uint64_t to_send = md->chkpt_size;
+  uint64_t foff = 0;
   while (to_send) {
     // Wait for the 'go' signal from the peer
     rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
@@ -49,9 +49,10 @@ void bring_up_backup(RdmaNode* rn, int chkpt_fd, backup_start_metadata *md, LSN 
     if (buf_offset == RdmaNode::kDaemonBufferSize) {
       buf_offset = 0;
     }
-    uint64_t n =
-        read(chkpt_fd, daemon_buffer + buf_offset,
-             std::min(to_send, RdmaNode::kDaemonBufferSize - buf_offset));
+    uint64_t n = os_pread(chkpt_fd, daemon_buffer + buf_offset,
+                          std::min(to_send, RdmaNode::kDaemonBufferSize - buf_offset),
+                          foff);
+    foff += n;
     LOG_IF(FATAL, n == 0) << "Cannot read more";
     to_send -= n;
 
@@ -92,20 +93,21 @@ void primary_daemon_rdma() {
     nodes.push_back(rn);
   }
 
+  int chkpt_fd = -1;
+  LSN chkpt_start_lsn = INVALID_LSN;
+  auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
+  ALWAYS_ASSERT(chkpt_fd != -1);
+
   // Fire workers to do the real job - must do this after got all backups
   // as we need to broadcast to everyone the complete list of all backup nodes
   for (auto &rn : nodes) {
-    // chkpt_fd is closed in bring_up_backup
-    int chkpt_fd = -1;
-    LSN chkpt_start_lsn = INVALID_LSN;
-    auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
-    ALWAYS_ASSERT(chkpt_fd != -1);
     workers.push_back(new std::thread(bring_up_backup, rn, chkpt_fd, md, chkpt_start_lsn));
   }
 
   for (auto& w : workers) {
     w->join();
   }
+  os_close(chkpt_fd);
 
   // Save tmpfs (memory) space, use with caution for replication: will lose the
   // ability for 'catch' up using logs from storage. Do this here before
