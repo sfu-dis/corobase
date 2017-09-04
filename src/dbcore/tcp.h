@@ -50,7 +50,7 @@ struct server_context {
     }
   }
   inline const char* get_sock_addr() { return sock_addr; }
-  int expect_client();
+  int expect_client(char *client_addr = nullptr);
 };
 
 struct client_context {
