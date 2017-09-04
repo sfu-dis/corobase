@@ -9,6 +9,7 @@ std::vector<struct RdmaNode*> nodes CACHE_ALIGNED;
 std::vector<std::string> all_backup_nodes CACHE_ALIGNED;
 std::mutex nodes_lock CACHE_ALIGNED;
 ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
+uint64_t *global_persisted_lsn_ptr CACHE_ALIGNED;
 
 std::condition_variable backup_shutdown_trigger;
 
@@ -51,6 +52,7 @@ void bring_up_backup(RdmaNode* rn, int chkpt_fd, backup_start_metadata *md, LSN 
     uint64_t n =
         read(chkpt_fd, daemon_buffer + buf_offset,
              std::min(to_send, RdmaNode::kDaemonBufferSize - buf_offset));
+    LOG_IF(FATAL, n == 0) << "Cannot read more";
     to_send -= n;
 
     // Write it out, then wait
@@ -259,7 +261,6 @@ void BackupDaemonRdma() {
   ALWAYS_ASSERT(logmgr);
   rcu_register();
   DEFER(rcu_deregister());
-  DEFER(delete self_rdma_node);
 
   LSN start_lsn = logmgr->durable_flushed_lsn();
   std::thread flusher(LogFlushDaemon);
@@ -450,6 +451,11 @@ void start_as_backup_rdma() {
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
   LOG(INFO) << "[Backup] Received log file.";
+
+  // Now done using the daemon buffer. Use its first eight bytes to store the
+  // global persisted LSN
+  global_persisted_lsn_ptr = (uint64_t*)self_rdma_node->GetDaemonBuffer();
+  volatile_write(*global_persisted_lsn_ptr, logmgr->durable_flushed_lsn().offset());
 }
 
 void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
@@ -495,6 +501,13 @@ void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
     data_req.sync = false;
     data_req.next = nullptr;
     node->GetContext()->rdma_write_imm_n(&bounds_req);
+  }
+}
+
+void primary_rdma_set_global_persisted_lsn(uint64_t lsn) {
+  for (auto &rn : nodes) {
+    volatile_write(*(uint64_t*)rn->GetDaemonBuffer(), lsn);
+    rn->RdmaWriteDaemonBuffer(0, 0, sizeof(uint64_t));
   }
 }
 

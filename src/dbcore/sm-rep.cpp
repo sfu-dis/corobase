@@ -10,6 +10,7 @@ std::vector<int> backup_sockfds CACHE_ALIGNED;
 std::mutex backup_sockfds_mutex CACHE_ALIGNED;
 
 // For backups only
+uint64_t *global_snapshot_lsn CACHE_ALIGNED;
 uint64_t replayed_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_nvram_size CACHE_ALIGNED;
