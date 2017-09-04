@@ -37,6 +37,7 @@ const uint64_t kRdmaWaiting = 0x1;
 const uint64_t kRdmaReadyToReceive = 0x2;
 const uint64_t kRdmaPersisted = 0x4;
 
+extern uint64_t *global_persisted_lsn_ptr;
 extern uint64_t replayed_lsn_offset;
 extern uint64_t persisted_lsn_offset;
 extern uint64_t persisted_nvram_size;
@@ -174,6 +175,7 @@ void send_log_files_after_rdma(RdmaNode* node, backup_start_metadata* md,
                                LSN chkpt_start);
 void primary_rdma_poll_send_cq(uint64_t nops);
 void primary_rdma_wait_for_message(uint64_t msg, bool reset);
+void primary_rdma_set_global_persisted_lsn(uint64_t lsn);
 
 // TCP-specific functions
 void start_as_backup_tcp();

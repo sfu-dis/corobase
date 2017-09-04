@@ -103,6 +103,12 @@ class RdmaNode {
     context_->rdma_write_imm(daemon_buf_ridx_, local_offset, daemon_buf_ridx_,
                              remote_offset, size, imm, sync);
   }
+  inline void RdmaWriteDaemonBuffer(uint64_t local_offset,
+                                    uint64_t remote_offset, uint64_t size,
+                                    bool sync = true) {
+    context_->rdma_write(daemon_buf_ridx_, local_offset, daemon_buf_ridx_,
+                         remote_offset, size);
+  }
   inline void RdmaWriteImmLogBufferPartitionBounds(uint64_t local_offset,
                                                    uint64_t remote_offset,
                                                    uint64_t size, uint32_t imm,

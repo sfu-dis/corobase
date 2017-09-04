@@ -386,7 +386,7 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
         // ReadyToReceive too)
         rep::primary_rdma_wait_for_message(
             rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
-
+        rep::primary_rdma_set_global_persisted_lsn(new_offset);
         {
           util::timer t;
           dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
@@ -414,8 +414,15 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
         if (!config::pipelined_persist) {
           // Wait for the backup to persist (it might act fast and set
           // ReadyToReceive too)
-          rep::primary_rdma_wait_for_message(
-              rep::kRdmaPersisted, false);
+          rep::primary_rdma_wait_for_message(rep::kRdmaPersisted, false);
+          // All persisted, now set the global persisted LSN in each node to
+          // enable querying of the shipped data.
+          // Note: this is necessary because we don't want the replicas to
+          // return results that are not yet deemed 'durable' by the primary.
+          // If this is ignored, some replicas might return result that is
+          // not yet made durable in other replicas, i.e., returning results
+          // based on uncommitted data.
+          rep::primary_rdma_set_global_persisted_lsn(new_offset);
           {
             util::timer t;
             dequeue_committed_xcts(new_offset, t.get_start());
