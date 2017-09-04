@@ -48,7 +48,7 @@ void context::init(const char *server) {
   THROW_IF(not pd, illegal_argument, "ibv_alloc_pd() failed");
 }
 
-void context::finish_init() {
+void context::finish_init(char *client_addr) {
   struct ibv_device_attr dev_attr;
   memset(&dev_attr, 0, sizeof(dev_attr));
   int ret = ibv_query_device(ctx, &dev_attr);
@@ -133,7 +133,7 @@ void context::finish_init() {
 
   if (is_server()) {
     tcp::server_context stcp(port, 1);  // FIXME(tzwang): 1 client for now
-    exchange_ib_connection_info(stcp.expect_client());
+    exchange_ib_connection_info(stcp.expect_client(client_addr));
   } else {
     tcp::client_context ctcp(server_name, port);
     exchange_ib_connection_info(ctcp.server_sockfd);

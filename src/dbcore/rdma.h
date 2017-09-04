@@ -9,16 +9,12 @@
  * A typical usage is:
  * 1. Create an RDMA context, e.g., ctx = new rdma::context().
  * 2. Register one or more memory buffers using ctx->register_memory(...).
- *    The register_memory() function uses ibverbs to register memory regions for
- *the
- *    buffer address provided. It can be called multiple times to register
- *different
- *    buffers. The buffers are fully controlled by the user, this library
- *doesn't
- *    interpret buffer contents.
+ *    The register_memory() function uses ibverbs to register memory regions
+ *    for the buffer address provided. It can be called multiple times to
+ *    register different buffers. The buffers are fully controlled by the user,
+ *    this library doesn't interpret buffer contents.
  * 3. After registering all buffers needed, call ctx->finish_init() which
- *finishes
- *    other needed steps before changing to RTS state.
+ *    finishes other needed steps before changing to RTS state.
  *
  * TODO(tzwang): allow dynamic add/delete of buffers.
  */
@@ -146,7 +142,7 @@ struct context {
     init(nullptr);
   }
   ~context();
-  void finish_init();
+  void finish_init(char *client_addr);
   inline char *get_memory_region(uint32_t idx) { return mem_regions[idx]->buf; }
 
   inline uint32_t register_memory(char *address, uint64_t size) {

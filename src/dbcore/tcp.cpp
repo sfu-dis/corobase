@@ -46,7 +46,7 @@ server_context::server_context(std::string &port, uint32_t nclients)
   THROW_IF(true, illegal_argument, "Can't bind()");
 }
 
-int server_context::expect_client() {
+int server_context::expect_client(char *client_addr) {
   struct sockaddr addr;
   socklen_t addr_size = sizeof(struct sockaddr_storage);
 
@@ -56,6 +56,9 @@ int server_context::expect_client() {
   char s[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &((sockaddr_in *)&addr)->sin_addr, s, INET_ADDRSTRLEN);
   LOG(INFO) << "[Server] New client: " << s;
+  if (client_addr) {
+    memcpy(client_addr, s, INET_ADDRSTRLEN);
+  }
   return fd;
 }
 

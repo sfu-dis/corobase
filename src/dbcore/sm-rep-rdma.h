@@ -28,6 +28,7 @@ class RdmaNode {
   uint32_t log_buf_ridx_;
   uint32_t log_buf_partition_bounds_ridx_;
   uint32_t daemon_buf_ridx_;
+  char client_addr_[INET_ADDRSTRLEN];  // For use when as_primary is true only
 
  public:
   RdmaNode(bool as_primary)
@@ -58,12 +59,13 @@ class RdmaNode {
         context_->register_memory((char*)rep::logbuf_partition_bounds,
                                   sizeof(uint64_t) * kMaxLogBufferPartitions);
 
-    context_->finish_init();
+    context_->finish_init(client_addr_);
     LOG(INFO) << "RDMA initialized";
   }
 
   ~RdmaNode() { delete context_; }
 
+  inline char *GetClientAddress() { return client_addr_; }
   inline uint32_t GetLogBufferIndex() { return log_buf_ridx_; }
   inline uint32_t GetBoundsIndex() { return log_buf_partition_bounds_ridx_; }
 

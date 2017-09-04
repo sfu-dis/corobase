@@ -6,6 +6,7 @@
 namespace rep {
 struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes CACHE_ALIGNED;
+std::vector<std::string> all_backup_nodes CACHE_ALIGNED;
 std::mutex nodes_lock CACHE_ALIGNED;
 ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
 
@@ -29,12 +30,8 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
 }
 
 // Helper function that brings up a backup server
-void bring_up_backup(RdmaNode* rn) {
-  int chkpt_fd = -1;
-  LSN chkpt_start_lsn = INVALID_LSN;
-  auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
-  ALWAYS_ASSERT(chkpt_fd != -1);
-
+void bring_up_backup(RdmaNode* rn, int chkpt_fd, backup_start_metadata *md, LSN chkpt_start_lsn) {
+  DEFER(os_close(chkpt_fd));
   // Now can really send something, metadata first, header must fit in the
   // buffer
   ALWAYS_ASSERT(md->size() < RdmaNode::kDaemonBufferSize);
@@ -60,10 +57,19 @@ void bring_up_backup(RdmaNode* rn) {
     rn->RdmaWriteImmDaemonBuffer(0, 0, buf_offset + n, buf_offset + n);
     buf_offset = 0;
   }
-  os_close(chkpt_fd);
 
   // Done with the chkpt file, now log files
   send_log_files_after_rdma(rn, md, chkpt_start_lsn);
+
+  // Publish each node's address in the daemon buffer for backups to know, so
+  // that they know whom to talk to after a failure/take-over
+  for (uint32_t i = 0; i < nodes.size(); ++i) {
+    memcpy(daemon_buffer + i * INET_ADDRSTRLEN, nodes[i]->GetClientAddress(), INET_ADDRSTRLEN);
+    LOG(INFO) << nodes[i]->GetClientAddress();
+  }
+  rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+  rn->RdmaWriteImmDaemonBuffer(0, 0,
+    nodes.size() * INET_ADDRSTRLEN, nodes.size() * INET_ADDRSTRLEN);
 
   // Wait for the backup to become ready for receiving log records
   rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
@@ -82,8 +88,19 @@ void primary_daemon_rdma() {
     std::cout << "Expecting node " << i << std::endl;
     RdmaNode* rn = new RdmaNode(true);
     nodes.push_back(rn);
-    workers.push_back(new std::thread(bring_up_backup, rn));
   }
+
+  // Fire workers to do the real job - must do this after got all backups
+  // as we need to broadcast to everyone the complete list of all backup nodes
+  for (auto &rn : nodes) {
+    // chkpt_fd is closed in bring_up_backup
+    int chkpt_fd = -1;
+    LSN chkpt_start_lsn = INVALID_LSN;
+    auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
+    ALWAYS_ASSERT(chkpt_fd != -1);
+    workers.push_back(new std::thread(bring_up_backup, rn, chkpt_fd, md, chkpt_start_lsn));
+  }
+
   for (auto& w : workers) {
     w->join();
   }
@@ -415,6 +432,15 @@ void start_as_backup_rdma() {
     }
     os_fsync(log_fd);
     os_close(log_fd);
+  }
+
+  // Receive the list of all backup nodes
+  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
+  uint64_t received_bytes = self_rdma_node->ReceiveImm();
+  uint64_t nodes = received_bytes / INET_ADDRSTRLEN;
+  for (uint64_t i = 0; i < nodes; ++i) {
+    all_backup_nodes.emplace_back(buf + i * INET_ADDRSTRLEN);
+    LOG(INFO) << "Backup node: " << all_backup_nodes[all_backup_nodes.size()-1];
   }
 
   // Extract system config and set them before new_log
