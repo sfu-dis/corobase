@@ -9,7 +9,6 @@ std::vector<struct RdmaNode*> nodes CACHE_ALIGNED;
 std::vector<std::string> all_backup_nodes CACHE_ALIGNED;
 std::mutex nodes_lock CACHE_ALIGNED;
 ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
-uint64_t *global_persisted_lsn_ptr CACHE_ALIGNED;
 
 std::condition_variable backup_shutdown_trigger;
 
@@ -160,7 +159,7 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
 
 // Receives the bounds array sent from the primary.
 // Returns false if we should stop. The only caller is backup daemon.
-bool BackupReceiveBoundsArray(ReplayPipelineStage& pipeline_stage) {
+bool BackupReceiveBoundsArrayRdma(ReplayPipelineStage& pipeline_stage) {
   // Post an RR to get the log buffer partition bounds
   // Must post RR before setting ReadyToReceive msg (i.e., RR should be posted
   // before
@@ -265,15 +264,6 @@ void BackupDaemonRdma() {
   DEFER(rcu_deregister());
 
   LSN start_lsn = logmgr->durable_flushed_lsn();
-  std::thread flusher(LogFlushDaemon);
-  flusher.detach();
-
-  pipeline_stages = new ReplayPipelineStage[2];
-
-  if (config::replay_policy != config::kReplayNone) {
-    logmgr->start_logbuf_redoers();
-  }
-
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   uint32_t recv_idx = 0;
@@ -284,7 +274,7 @@ void BackupDaemonRdma() {
     WaitForLogBufferSpace(stage.end_lsn);
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive | kRdmaPersisted);
-    if (!BackupReceiveBoundsArray(stage)) {
+    if (!BackupReceiveBoundsArrayRdma(stage)) {
       // Actually only needed if no query workers
       rep::backup_shutdown_trigger.notify_all();
       return;
