@@ -10,12 +10,12 @@ std::vector<int> backup_sockfds CACHE_ALIGNED;
 std::mutex backup_sockfds_mutex CACHE_ALIGNED;
 
 // For backups only
-uint64_t *global_snapshot_lsn CACHE_ALIGNED;
 uint64_t replayed_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_nvram_size CACHE_ALIGNED;
 uint64_t persisted_nvram_offset CACHE_ALIGNED;
 uint64_t new_end_lsn_offset CACHE_ALIGNED;
+uint64_t *global_persisted_lsn_ptr CACHE_ALIGNED;
 
 void start_as_primary() {
   memset(logbuf_partition_bounds, 0,
@@ -58,6 +58,14 @@ void BackupStartReplication() {
   volatile_write(persisted_nvram_size, 0);
   ALWAYS_ASSERT(oidmgr);
   logmgr->recover();
+
+  pipeline_stages = new ReplayPipelineStage[2];
+  if (config::replay_policy != config::kReplayNone) {
+    logmgr->start_logbuf_redoers();
+  }
+  std::thread flusher(LogFlushDaemon);
+  flusher.detach();
+
   if (config::log_ship_by_rdma) {
     // Start a daemon to receive and persist future log records
     std::thread t(BackupDaemonRdma);
@@ -83,10 +91,8 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size, bool new_seg,
     // This is async - returns immediately. Caller should poll/wait for ack.
     primary_ship_log_buffer_rdma(buf, size, new_seg, new_seg_start_offset);
   } else {
-    ASSERT(backup_sockfds.size());
-    for (int &fd : backup_sockfds) {
-      primary_ship_log_buffer_tcp(fd, buf, size);
-    }
+    // This is blocking because of send(), but doesn't wait for backup ack.
+    primary_ship_log_buffer_tcp(buf, size);
   }
   backup_sockfds_mutex.unlock();
 }

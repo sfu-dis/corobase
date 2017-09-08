@@ -382,11 +382,20 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
       LOG_IF(FATAL, nbytes > config::group_commit_bytes + MIN_LOG_BLOCK_SIZE)
           << "Trying to ship too much: " << nbytes;
       if (config::pipelined_persist) {
-        // Wait for the backup to persist (it might act fast and set
-        // ReadyToReceive too)
-        rep::primary_rdma_wait_for_message(
-            rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
-        rep::primary_rdma_set_global_persisted_lsn(new_offset);
+        if (config::log_ship_by_rdma) {
+          // Wait for the backup to persist (it might act fast and set
+          // ReadyToReceive too)
+          rep::primary_rdma_wait_for_message(
+              rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+          rep::primary_rdma_set_global_persisted_lsn(new_offset);
+        } else {
+          // Wait for acks from backup
+          for (auto &fd : rep::backup_sockfds) {
+            uint32_t nbytes = send(fd, (char*)&new_offset, sizeof(uint64_t), 0);
+            LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
+            tcp::expect_ack(fd);
+          }
+        }
         {
           util::timer t;
           dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
@@ -432,6 +441,12 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
         // One for the log buffer partition bounds, the other for data
         rep::primary_rdma_poll_send_cq(2);
       } else {
+        // Set global persisted LSN and wait for acks from backup
+        for (auto &fd : rep::backup_sockfds) {
+          uint32_t nbytes = send(fd, (char*)&new_offset, sizeof(uint64_t), 0);
+          LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
+          tcp::expect_ack(fd);
+        }
         util::timer t;
         dequeue_committed_xcts(new_offset, t.get_start());
       }

@@ -187,6 +187,5 @@ void PrimaryShutdownTcp();
 
 /* Send a chunk of log records (still in memory log buffer) to a backup via TCP.
  */
-void primary_ship_log_buffer_tcp(int backup_sockfd, const char* buf,
-                                 uint32_t size);
+void primary_ship_log_buffer_tcp(const char* buf, uint32_t size);
 };  // namespace rep
