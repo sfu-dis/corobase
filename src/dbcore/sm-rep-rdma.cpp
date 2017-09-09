@@ -8,9 +8,6 @@ struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes CACHE_ALIGNED;
 std::vector<std::string> all_backup_nodes CACHE_ALIGNED;
 std::mutex nodes_lock CACHE_ALIGNED;
-ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
-
-std::condition_variable backup_shutdown_trigger;
 
 const static uint32_t kRdmaImmNewSeg = 1U << 31;
 const static uint32_t kRdmaImmShutdown = 1U << 30;
