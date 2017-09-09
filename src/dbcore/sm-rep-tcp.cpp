@@ -286,44 +286,7 @@ void BackupDaemonTcp() {
     // Receive bounds array
     BackupReceiveBoundsArrayTcp(stage);
 
-    // Now "notify" the flusher to write log records out, asynchronously.
-    volatile_write(new_end_lsn_offset, end_lsn.offset());
-
-    volatile_write(stage.start_lsn._val, start_lsn._val);
-    volatile_write(stage.end_lsn._val, end_lsn._val);
-
-    if (config::replay_policy == config::kReplaySync) {
-      while (volatile_read(replayed_lsn_offset) != end_lsn.offset()) {}
-      DLOG(INFO) << "[Backup] Rolled forward log " << std::hex
-                 << start_lsn.offset() << "." << start_lsn.segment() << "-"
-                 << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
-      ASSERT(start_lsn.segment() == end_lsn.segment());
-    }
-
-    if (config::nvram_log_buffer) {
-      uint64_t size = end_lsn.offset() - start_lsn.offset();
-      if (config::persist_nvram_on_replay) {
-        while (size > volatile_read(persisted_nvram_size)) {
-        }
-        volatile_write(persisted_nvram_size, 0);
-      } else {
-        // Impose delays to emulate NVRAM if needed
-        if (config::nvram_delay_type == config::kDelayClflush) {
-          segment_id* sid = logmgr->get_segment(start_lsn.segment());
-          const char* buf =
-              sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
-          config::NvramClflush(buf, size);
-        } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
-          config::NvramClwbEmu(size);
-        }
-      }
-      volatile_write(persisted_nvram_offset, end_lsn.offset());
-    } else {
-      // Now wait for the flusher to finish persisting log if we don't have
-      // NVRAM,
-      while (end_lsn.offset() > volatile_read(persisted_lsn_offset)) {
-      }
-    }
+    BackupProcessLogData(stage, start_lsn, end_lsn);
 
     // Ack the primary after persisting data
     tcp::send_ack(cctx->server_sockfd);
