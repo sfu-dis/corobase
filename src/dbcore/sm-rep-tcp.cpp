@@ -85,8 +85,6 @@ void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
 }
 
 void start_as_backup_tcp() {
-  global_persisted_lsn_ptr = &global_persisted_lsn_tcp;
-
   memset(logbuf_partition_bounds, 0,
          sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(config::is_backup_srv());
@@ -223,6 +221,9 @@ void BackupDaemonTcp() {
   rcu_register();
   DEFER(rcu_deregister());
 
+  global_persisted_lsn_ptr = &global_persisted_lsn_tcp;
+  global_persisted_lsn_tcp = logmgr->cur_lsn().offset();
+
   LSN start_lsn = logmgr->durable_flushed_lsn();
 
   // Listen to incoming log records from the primary
@@ -291,17 +292,46 @@ void BackupDaemonTcp() {
     volatile_write(stage.start_lsn._val, start_lsn._val);
     volatile_write(stage.end_lsn._val, end_lsn._val);
 
-    // Now wait for the flusher to finish persisting log if we don't have NVRAM,
-    if (!config::nvram_log_buffer) {
+    if (config::replay_policy == config::kReplaySync) {
+      while (volatile_read(replayed_lsn_offset) != end_lsn.offset()) {}
+      DLOG(INFO) << "[Backup] Rolled forward log " << std::hex
+                 << start_lsn.offset() << "." << start_lsn.segment() << "-"
+                 << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
+      ASSERT(start_lsn.segment() == end_lsn.segment());
+    }
+
+    if (config::nvram_log_buffer) {
+      uint64_t size = end_lsn.offset() - start_lsn.offset();
+      if (config::persist_nvram_on_replay) {
+        while (size > volatile_read(persisted_nvram_size)) {
+        }
+        volatile_write(persisted_nvram_size, 0);
+      } else {
+        // Impose delays to emulate NVRAM if needed
+        if (config::nvram_delay_type == config::kDelayClflush) {
+          segment_id* sid = logmgr->get_segment(start_lsn.segment());
+          const char* buf =
+              sm_log::logbuf->read_buf(sid->buf_offset(start_lsn.offset()), size);
+          config::NvramClflush(buf, size);
+        } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
+          config::NvramClwbEmu(size);
+        }
+      }
+      volatile_write(persisted_nvram_offset, end_lsn.offset());
+    } else {
+      // Now wait for the flusher to finish persisting log if we don't have
+      // NVRAM,
       while (end_lsn.offset() > volatile_read(persisted_lsn_offset)) {
       }
     }
 
-    // Get global persisted LSN
-    tcp::receive(cctx->server_sockfd, (char*)global_persisted_lsn_ptr, sizeof(uint64_t));
-
     // Ack the primary after persisting data
     tcp::send_ack(cctx->server_sockfd);
+
+    // Get global persisted LSN
+    uint64_t glsn = 0;
+    tcp::receive(cctx->server_sockfd, (char*)&glsn, sizeof(uint64_t));
+    volatile_write(*global_persisted_lsn_ptr, glsn);
 
     // Next iteration
     start_lsn = end_lsn;

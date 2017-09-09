@@ -417,38 +417,41 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     } else {
       n = os_pwrite(active_fd, buf, nbytes, file_offset);
     }
-    THROW_IF(n < nbytes, log_file_error, "Incomplete log write");
-    if (config::num_active_backups && config::IsForwardProcessing()) {
+    LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
+    if (config::num_active_backups && config::IsForwardProcessing() && !config::pipelined_persist) {
       if (config::log_ship_by_rdma) {
-        if (!config::pipelined_persist) {
-          // Wait for the backup to persist (it might act fast and set
-          // ReadyToReceive too)
-          rep::primary_rdma_wait_for_message(rep::kRdmaPersisted, false);
-          // All persisted, now set the global persisted LSN in each node to
-          // enable querying of the shipped data.
-          // Note: this is necessary because we don't want the replicas to
-          // return results that are not yet deemed 'durable' by the primary.
-          // If this is ignored, some replicas might return result that is
-          // not yet made durable in other replicas, i.e., returning results
-          // based on uncommitted data.
-          rep::primary_rdma_set_global_persisted_lsn(new_offset);
-          {
-            util::timer t;
-            dequeue_committed_xcts(new_offset, t.get_start());
-          }
+        // Wait for the backup to persist (it might act fast and set
+        // ReadyToReceive too)
+        rep::primary_rdma_wait_for_message(rep::kRdmaPersisted, false);
+        // All persisted, now set the global persisted LSN in each node to
+        // enable querying of the shipped data.
+        // Note: this is necessary because we don't want the replicas to
+        // return results that are not yet deemed 'durable' by the primary.
+        // If this is ignored, some replicas might return result that is
+        // not yet made durable in other replicas, i.e., returning results
+        // based on uncommitted data.
+        rep::primary_rdma_set_global_persisted_lsn(new_offset);
+        {
+          util::timer t;
+          dequeue_committed_xcts(new_offset, t.get_start());
         }
         // Now we need to poll to make sure the RDMA write finished
         // One for the log buffer partition bounds, the other for data
         rep::primary_rdma_poll_send_cq(2);
       } else {
+        // Wait for acks from backups
+        for (auto &fd : rep::backup_sockfds) {
+          tcp::expect_ack(fd);
+        }
         // Set global persisted LSN and wait for acks from backup
         for (auto &fd : rep::backup_sockfds) {
           uint32_t nbytes = send(fd, (char*)&new_offset, sizeof(uint64_t), 0);
           LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
-          tcp::expect_ack(fd);
         }
-        util::timer t;
-        dequeue_committed_xcts(new_offset, t.get_start());
+        {
+          util::timer t;
+          dequeue_committed_xcts(new_offset, t.get_start());
+        }
       }
     }
 
