@@ -117,8 +117,6 @@ inline backup_start_metadata* allocate_backup_start_metadata(
   return md;
 }
 
-// Common functions
-
 // Wait until the log buffer space up to [target_lsn] becomes available
 // for receiving write from the primary.
 inline void WaitForLogBufferSpace(LSN target_lsn) {
@@ -154,6 +152,7 @@ struct ReplayPipelineStage {
 };
 extern ReplayPipelineStage *pipeline_stages;
 
+void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn);
 void start_as_primary();
 void BackupStartReplication();
 void primary_ship_log_buffer_all(const char* buf, uint32_t size, bool new_seg,
