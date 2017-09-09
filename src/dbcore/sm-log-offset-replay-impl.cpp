@@ -222,7 +222,9 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
         // Just one partition
         if (--stage.num_replaying_threads == 0) {
           end_lsn = stage_end;
-          persist_logbuf_partition();
+          if (persist_first) {
+            persist_logbuf_partition();
+          }
           redo_logbuf_partition();
           DLOG(INFO) << "[Backup] Rolled forward log " << std::hex << start_lsn.offset()
                      << "." << start_lsn.segment() << "-" << end_lsn.offset() << "."

@@ -11,10 +11,8 @@
 fat_ptr sm_log_recover_impl::PrepareObject(
     sm_log_scan_mgr::record_scan* logrec) {
   // Regardless of the replay/warm-up policy (ie whether to load tuples from
-  // storage
-  // to memory), here we need a wrapper that points to the ``real'' localtion
-  // and
-  // the next version.
+  // storage to memory), here we need a wrapper that points to the ``real''
+  // localtion and the next version.
   //
   // Note: payload_size() includes the whole varstr. See do_tree_put's
   // log_update call.
