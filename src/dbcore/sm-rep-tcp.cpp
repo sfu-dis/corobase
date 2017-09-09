@@ -6,8 +6,8 @@
 #include "../benchmarks/ndb_wrapper.h"
 
 namespace rep {
-tcp::client_context* cctx;
-uint64_t global_persisted_lsn_tcp = 0;
+tcp::client_context* cctx CACHE_ALIGNED;
+uint64_t global_persisted_lsn_tcp CACHE_ALIGNED;
 
 // A daemon that runs on the primary for bringing up backups by shipping
 // the latest chkpt (if any) + the log that follows (if any).

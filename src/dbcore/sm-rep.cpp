@@ -2,7 +2,7 @@
 #include "../benchmarks/ndb_wrapper.h"
 
 namespace rep {
-
+std::condition_variable backup_shutdown_trigger;
 uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
 
 // for primary server only
@@ -10,6 +10,7 @@ std::vector<int> backup_sockfds CACHE_ALIGNED;
 std::mutex backup_sockfds_mutex CACHE_ALIGNED;
 
 // For backups only
+ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
 uint64_t replayed_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_nvram_size CACHE_ALIGNED;

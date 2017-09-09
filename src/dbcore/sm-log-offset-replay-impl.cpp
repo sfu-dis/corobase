@@ -57,9 +57,8 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
   while (true) {
     if (!scan->valid()) {
 #ifndef NDEBUG
-      // Note: it's possible that we attempt to redo a deadzone on
-      // backups as the log partition bounds dont' consider segment
-      // boundaries.
+      // Note: it's possible that we attempt to redo a deadzone on backups as
+      // the log partition bounds don't consider segment boundaries.
       auto *sid = logmgr->get_segment(start_lsn.segment());
       ASSERT(size > 0 ||
              (sid->contains(start_lsn) && sid->end_offset == end_lsn.offset()));

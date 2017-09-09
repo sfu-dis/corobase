@@ -963,8 +963,7 @@ start_over:
         if (!__sync_bool_compare_and_swap(&prev_obj->GetNextVolatilePtr()->_ptr,
                                           ptr._ptr, newptr._ptr)) {
           // If this CAS failed, then it must be somebody else who installed
-          // this
-          // immediate version
+          // this immediate version
           cur_obj = (Object *)prev_obj->GetNextVolatile().offset();
           ASSERT(cur_obj);
           ASSERT(cur_obj->GetClsn().offset() == ptr.offset());
