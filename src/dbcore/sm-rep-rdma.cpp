@@ -447,7 +447,7 @@ void start_as_backup_rdma() {
   // Now done using the daemon buffer. Use its first eight bytes to store the
   // global persisted LSN
   global_persisted_lsn_ptr = (uint64_t*)self_rdma_node->GetDaemonBuffer();
-  volatile_write(*global_persisted_lsn_ptr, logmgr->durable_flushed_lsn().offset());
+  volatile_write(*global_persisted_lsn_ptr, logmgr->cur_lsn().offset());
 }
 
 void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,

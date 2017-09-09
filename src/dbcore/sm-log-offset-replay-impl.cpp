@@ -25,28 +25,27 @@ void parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
 
 void parallel_offset_replay::redo_runner::persist_logbuf_partition() {
   ALWAYS_ASSERT(config::is_backup_srv());
+  ALWAYS_ASSERT(config::nvram_log_buffer);
+  ALWAYS_ASSERT(config::persist_nvram_on_replay);
 
-  if (config::nvram_log_buffer && config::persist_nvram_on_replay &&
-      config::nvram_delay_type != config::kDelayNone) {
-    auto *sid = logmgr->get_segment(start_lsn.segment());
-    uint64_t start_byte = sid->buf_offset(start_lsn.offset());
-    uint64_t size = end_lsn.offset() - start_lsn.offset();
-    auto *buf = sm_log::logbuf->read_buf(start_byte, size);
+  auto *sid = logmgr->get_segment(start_lsn.segment());
+  uint64_t start_byte = sid->buf_offset(start_lsn.offset());
+  uint64_t size = end_lsn.offset() - start_lsn.offset();
+  auto *buf = sm_log::logbuf->read_buf(start_byte, size);
 
-    if (config::nvram_delay_type == config::kDelayClflush) {
-      uint32_t clines = size / CACHELINE_SIZE;
-      for (uint32_t i = 0; i < clines; ++i) {
-        _mm_clflush(&buf[i * CACHELINE_SIZE]);
-      }
-    } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
-      uint64_t total_cycles = size * config::cycles_per_byte;
-      unsigned int unused = 0;
-      uint64_t cycle_end = __rdtscp(&unused) + total_cycles;
-      while (__rdtscp(&unused) < cycle_end) {
-      }
+  if (config::nvram_delay_type == config::kDelayClflush) {
+    uint32_t clines = size / CACHELINE_SIZE;
+    for (uint32_t i = 0; i < clines; ++i) {
+      _mm_clflush(&buf[i * CACHELINE_SIZE]);
     }
-    __atomic_add_fetch(&rep::persisted_nvram_size, size, __ATOMIC_SEQ_CST);
+  } else if (config::nvram_delay_type == config::kDelayClwbEmu) {
+    uint64_t total_cycles = size * config::cycles_per_byte;
+    unsigned int unused = 0;
+    uint64_t cycle_end = __rdtscp(&unused) + total_cycles;
+    while (__rdtscp(&unused) < cycle_end) {
+    }
   }
+  __atomic_add_fetch(&rep::persisted_nvram_size, size, __ATOMIC_SEQ_CST);
 }
 
 void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
@@ -139,8 +138,7 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
   // LSN offsets for redo later.
   redo_range *ranges = nullptr;
   bool persist_first = false;
-  if (config::nvram_log_buffer && config::persist_nvram_on_replay &&
-      config::nvram_delay_type != config::kDelayNone) {
+  if (config::nvram_log_buffer && config::persist_nvram_on_replay) {
     persist_first = true;
     ranges = new redo_range[config::logbuf_partitions];
   }
