@@ -807,6 +807,9 @@ dbtuple *sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc) {
 
 dbtuple *sm_oid_mgr::BackupGetVersion(oid_array *ta, oid_array *pa, OID o,
                                       xid_context *xc) {
+  if (config::full_replay) {
+    return oid_get_version(ta, o, xc);
+  }
   fat_ptr pdest_head_ptr = NULL_PTR;
 retry:
   // See if we can find a fresh enough version in the tuple array
@@ -849,7 +852,6 @@ retry:
       ASSERT(ptr.asi_type() == fat_ptr::ASI_LOG);  // Digging things out
       size_t sz = sizeof(Object) + sizeof(dbtuple) +
                   decode_size_aligned(ptr.size_code());
-      ;
       sz = align_up(sz);
       Object *obj = (Object *)MM::allocate(sz, 0);
       // FIXME(tzwang): figure out how GC/epoch works with this
