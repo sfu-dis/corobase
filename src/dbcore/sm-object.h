@@ -10,10 +10,10 @@ class sm_log_recover_mgr;
 class Object {
  private:
   typedef epoch_mgr::epoch_num epoch_num;
-  static const uint32_t kStatusMemory = 0;
-  static const uint32_t kStatusStorage = 1;
-  static const uint32_t kStatusLoading = 2;
-  static const uint32_t kStatusDeleted = 3;
+  static const uint32_t kStatusMemory = 1;
+  static const uint32_t kStatusStorage = 2;
+  static const uint32_t kStatusLoading = 3;
+  static const uint32_t kStatusDeleted = 4;
 
   // alloc_epoch_ and status_ must be the first two fields
 
@@ -43,21 +43,20 @@ class Object {
                         epoch_num epoch);
 
   Object()
-      : pdest_(NULL_PTR),
+      : alloc_epoch_(0),
+        status_(kStatusMemory),
+        pdest_(NULL_PTR),
         next_pdest_(NULL_PTR),
         next_volatile_(NULL_PTR),
-        clsn_(NULL_PTR),
-        alloc_epoch_(0),
-        status_(kStatusMemory) {}
+        clsn_(NULL_PTR) {}
 
   Object(fat_ptr pdest, fat_ptr next, epoch_num e, bool in_memory)
-      : pdest_(pdest),
+      : alloc_epoch_(e),
+        status_(in_memory ? kStatusMemory : kStatusStorage),
+        pdest_(pdest),
         next_pdest_(next),
         next_volatile_(NULL_PTR),
-        clsn_(NULL_PTR),
-        alloc_epoch_(e) {
-    status_ = in_memory ? kStatusMemory : kStatusStorage;
-  }
+        clsn_(NULL_PTR) {}
 
   inline bool IsDeleted() { return status_ == kStatusDeleted; }
   inline bool IsInMemory() { return status_ == kStatusMemory; }

@@ -79,6 +79,7 @@ void Object::Pin(bool load_from_logbuf) {
     memmove(tuple->get_value_start(),
             (char *)tuple->get_value_start() + sizeof(varstr), tuple->size);
     SetClsn(LSN::make(pdest_.offset(), 0).to_log_ptr());
+    ALWAYS_ASSERT(pdest_.offset() == clsn_.offset());
   } else {
     // Load tuple data form the chkpt file
     ASSERT(sm_chkpt_mgr::base_chkpt_fd);
