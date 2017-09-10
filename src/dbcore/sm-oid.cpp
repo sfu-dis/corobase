@@ -940,6 +940,7 @@ start_over:
     // the **real** overwritten version.
     if (config::is_backup_srv()) {
       if (prev_obj) {
+        ASSERT(prev_obj->GetClsn().offset());
         // See if we can just follow the volatile pointer without touching the
         // log
         fat_ptr prev_next_ptr = prev_obj->GetNextVolatile();
@@ -954,16 +955,18 @@ start_over:
       }
       if (ptr.asi_type() == fat_ptr::ASI_LOG) {
         ASSERT(ptr.size_code() != INVALID_SIZE_CODE);
-        size_t alloc_sz = decode_size_aligned(ptr.size_code());
+        size_t alloc_sz = align_up(decode_size_aligned(ptr.size_code()) + sizeof(Object));
         cur_obj = (Object *)MM::allocate(alloc_sz, visitor_xc->begin_epoch);
         new (cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, false);
         cur_obj->Pin();  // After this next_pdest_ is valid
         ASSERT(cur_obj->GetClsn().offset());
         ASSERT(prev_obj);
-        cur_obj->SetNextVolatile(prev_obj->GetNextVolatile());
+        ASSERT(prev_obj->GetClsn().offset());
+        fat_ptr vnext = prev_obj->GetNextVolatile();
+        cur_obj->SetNextVolatile(vnext);
         fat_ptr newptr = fat_ptr::make(cur_obj, ptr.size_code(), 0);
         if (!__sync_bool_compare_and_swap(&prev_obj->GetNextVolatilePtr()->_ptr,
-                                          ptr._ptr, newptr._ptr)) {
+                                          vnext._ptr, newptr._ptr)) {
           // If this CAS failed, then it must be somebody else who installed
           // this immediate version
           cur_obj = (Object *)prev_obj->GetNextVolatile().offset();
@@ -977,6 +980,7 @@ start_over:
         cur_obj = (Object *)ptr.offset();
       }
       ASSERT(cur_obj->GetClsn().offset());
+      ASSERT(!prev_obj || prev_obj->GetClsn().offset());
       ASSERT(!prev_obj ||
              prev_obj->GetClsn().offset() > cur_obj->GetClsn().offset());
       tentative_next = cur_obj->GetNextPersistent();
@@ -999,6 +1003,7 @@ start_over:
     }
     ptr = tentative_next;
     prev_obj = cur_obj;
+    ASSERT(prev_obj->GetClsn().offset());
   }
   return nullptr;  // No Visible records
 }
