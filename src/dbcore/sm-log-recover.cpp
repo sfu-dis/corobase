@@ -271,8 +271,7 @@ void sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr,
   ASSERT(sid);
   ASSERT(ptr.offset() >= sid->start_offset);
 
-  if (config::nvram_log_buffer &&
-      ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
+  if (ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
     return load_object_from_logbuf(buf, bufsz, ptr, align_bits);
   }
 

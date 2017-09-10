@@ -195,16 +195,12 @@ void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn
   // The role of NVRAM here is solely for making persistence faster and is
   // orthogonal to the choice of replay policy.
 
-  // The write of stage.end_lsn "notifies" redo threads
-  volatile_write(stage.start_lsn._val, start_lsn._val);
-  volatile_write(stage.end_lsn._val, end_lsn._val);
-
-  if (config::replay_policy == config::kReplaySync) {
-    while (volatile_read(replayed_lsn_offset) != end_lsn.offset()) {}
-    DLOG(INFO) << "[Backup] Rolled forward log " << std::hex
-               << start_lsn.offset() << "." << start_lsn.segment() << "-"
-               << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
-    ASSERT(start_lsn.segment() == end_lsn.segment());
+  if (config::replay_policy != config::kReplayNone) {
+    // Start replay regardless of log persistence state - we read speculatively
+    // from the log buffer always and check if the data we read is valid. The
+    // write of stage.end_lsn "notifies" redo threads to start.
+    volatile_write(stage.start_lsn._val, start_lsn._val);
+    volatile_write(stage.end_lsn._val, end_lsn._val);
   }
 
   if (config::nvram_log_buffer) {
@@ -226,10 +222,17 @@ void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn
     }
     volatile_write(persisted_nvram_offset, end_lsn.offset());
   } else {
-    // Now wait for the flusher to finish persisting log if we don't have
-    // NVRAM,
+    // Wait for the flusher to finish persisting log if we don't have NVRAM
     while (end_lsn.offset() > volatile_read(persisted_lsn_offset)) {
     }
+  }
+
+  if (config::replay_policy == config::kReplaySync) {
+    while (volatile_read(replayed_lsn_offset) != end_lsn.offset()) {}
+    DLOG(INFO) << "[Backup] Rolled forward log " << std::hex
+               << start_lsn.offset() << "." << start_lsn.segment() << "-"
+               << end_lsn.offset() << "." << end_lsn.segment() << std::dec;
+    ASSERT(start_lsn.segment() == end_lsn.segment());
   }
 }
 }  // namespace rep
