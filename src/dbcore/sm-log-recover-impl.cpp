@@ -44,6 +44,8 @@ void sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan* logrec,
       fat_ptr* entry_ptr = oa->get(o);
       if (volatile_read(entry_ptr->_ptr) == 0) {
         fat_ptr ptr = PrepareObject(logrec);
+        Object *obj = (Object*)ptr.offset();
+        obj->Pin(true);  // This will fully instantiate the version
         if (!__sync_bool_compare_and_swap(&entry_ptr->_ptr, 0, ptr._ptr)) {
           MM::deallocate(ptr);
         }
