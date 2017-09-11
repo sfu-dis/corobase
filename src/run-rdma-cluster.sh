@@ -48,12 +48,6 @@ multi_backup_replay() {
   done
 }
 
-#run 2 16 sync 0 2 none 1 0
-#run 4 16 pipelined 0 8 none 1 0
-#run 4 16 pipelined 0 8 clwb-emu 1 1
-#run 1 16 none 0 0 none 1 0
-#exit
-
 single_backup_pipelined_replay() {
   policy="pipelined"
 
@@ -91,8 +85,7 @@ single_backup_sync_replay() {
 
 no_replay() {
   for t in 1 2 4 8; do
-#    for delay in none clwb-emu clflush; do
-    for delay in none; do
+    for delay in none clwb-emu clflush; do
       echo "backups=1 no_replay threads=$t delay=$delay"
       run 1 $t none 0 0 $delay 1 0
     done
@@ -145,6 +138,11 @@ nvram_persist_on_replay() {
 }
 
 for r in 1 2 3; do
+  echo "Running no_nvram r$r"
+  no_nvram
+done
+
+for r in 1 2 3; do
   echo "Running multi_backup_replay r$r"
   multi_backup_replay
 done
@@ -164,15 +162,10 @@ for r in 1 2 3; do
   no_replay
 done
 
-for r in 1 2 3; do
-  echo "Running nvram r$r"
-  nvram
-done
-
-for r in 1 2 3; do
-  echo "Running no_nvram r$r"
-  no_nvram
-done
+#for r in 1 2 3; do
+#  echo "Running nvram r$r"
+#  nvram
+#done
 
 for r in 1 2 3; do
   echo "Running full_replay r$r"

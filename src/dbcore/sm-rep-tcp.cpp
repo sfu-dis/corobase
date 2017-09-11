@@ -296,6 +296,9 @@ void BackupDaemonTcp() {
     tcp::receive(cctx->server_sockfd, (char*)&glsn, sizeof(uint64_t));
     volatile_write(*global_persisted_lsn_ptr, glsn);
 
+    // Ack the primary after persisting data
+    tcp::send_ack(cctx->server_sockfd);
+
     // Next iteration
     start_lsn = end_lsn;
   }
