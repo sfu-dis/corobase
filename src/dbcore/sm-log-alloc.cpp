@@ -443,14 +443,17 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
         for (auto &fd : rep::backup_sockfds) {
           tcp::expect_ack(fd);
         }
+        {
+          util::timer t;
+          dequeue_committed_xcts(new_offset, t.get_start());
+        }
         // Set global persisted LSN and wait for acks from backup
         for (auto &fd : rep::backup_sockfds) {
           uint32_t nbytes = send(fd, (char*)&new_offset, sizeof(uint64_t), 0);
           LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
         }
-        {
-          util::timer t;
-          dequeue_committed_xcts(new_offset, t.get_start());
+        for (auto &fd : rep::backup_sockfds) {
+          tcp::expect_ack(fd);
         }
       }
     }
