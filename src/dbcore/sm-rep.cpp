@@ -195,13 +195,11 @@ void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn
   // The role of NVRAM here is solely for making persistence faster and is
   // orthogonal to the choice of replay policy.
 
-  if (config::replay_policy != config::kReplayNone) {
-    // Start replay regardless of log persistence state - we read speculatively
-    // from the log buffer always and check if the data we read is valid. The
-    // write of stage.end_lsn "notifies" redo threads to start.
-    volatile_write(stage.start_lsn._val, start_lsn._val);
-    volatile_write(stage.end_lsn._val, end_lsn._val);
-  }
+  // Start replay regardless of log persistence state - we read speculatively
+  // from the log buffer always and check if the data we read is valid. The
+  // write of stage.end_lsn "notifies" redo threads to start.
+  volatile_write(stage.start_lsn._val, start_lsn._val);
+  volatile_write(stage.end_lsn._val, end_lsn._val);
 
   if (config::nvram_log_buffer) {
     uint64_t size = end_lsn.offset() - start_lsn.offset();
