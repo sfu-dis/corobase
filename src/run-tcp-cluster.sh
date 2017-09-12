@@ -45,9 +45,46 @@ all_sync() {
   for num_backups in 1 2 3 4 5 6 7; do
     run $num_backups 16 sync 1 1 none 0 0
   done
+  for t in 1 2 4 8; do
+    run 1 $t sync 1 1 none 0 0
+  done
+}
+
+# Still baseline, but with parallel replay
+parallel_replay() {
+  for num_backups in 1 2 3 4 5 6 7; do
+    for nredoers in 1 2 4 8 16; do
+      run $num_backups 16 sync 1 $nredoers none 0 0
+    done
+  done
+
+  nredoers=1
+  for t in 1 2 4 8; do
+    run 1 $t sync 1 $nredoers none 0 0
+  done
+
+  nredoers=2
+  for t in 2 4 8; do
+    run 1 $t sync 1 $nredoers none 0 0
+  done
+
+  nredoers=4
+  for t in 4 8; do
+    run 1 $t sync 1 $nredoers none 0 0
+  done
+
+  nredoers=8
+  t=8
+  run 1 $t sync 1 $nredoers none 0 0
 }
 
 for r in 1 2 3; do
   echo "Running all_sync r$r"
   all_sync
 done
+
+for r in 1 2 3; do
+  echo "Running parallel_replay r$r"
+  parallel_replay
+done
+
