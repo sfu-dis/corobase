@@ -9,6 +9,8 @@
 #include <sched.h>
 #include <unistd.h>
 #include <sys/sysinfo.h>
+#include <sys/times.h>
+#include <sys/vtimes.h>
 
 #include "bench.h"
 #include "ndb_wrapper.h"
@@ -303,8 +305,48 @@ void bench_runner::start_measurement() {
   // Print some results every second
   uint64_t slept = 0;
   uint64_t last_commits = 0, last_aborts = 0;
-  printf("Sec,Commits,Aborts\n");
 
+  // Print CPU utilization as well. Code adapted from:
+  // https://stackoverflow.com/questions/63166/how-to-determine-cpu-and-memory-consumption-from-inside-a-process
+  FILE* file;
+  struct tms timeSample;
+  char line[128];
+
+  clock_t lastCPU = times(&timeSample);
+  clock_t lastSysCPU = timeSample.tms_stime;
+  clock_t lastUserCPU = timeSample.tms_utime;
+  uint32_t nprocs = std::thread::hardware_concurrency();
+
+  file = fopen("/proc/cpuinfo", "r");
+  fclose(file);
+
+  auto get_cpu_util = [&]() {
+    struct tms timeSample;
+    clock_t now;
+    double percent;
+
+    now = times(&timeSample);
+    if (now <= lastCPU || timeSample.tms_stime < lastSysCPU ||
+      timeSample.tms_utime < lastUserCPU){
+      percent = -1.0;
+    }
+    else{
+      percent = (timeSample.tms_stime - lastSysCPU) +
+      (timeSample.tms_utime - lastUserCPU);
+      percent /= (now - lastCPU);
+      percent /= nprocs;
+      percent *= 100;
+    }
+    lastCPU = now;
+    lastSysCPU = timeSample.tms_stime;
+    lastUserCPU = timeSample.tms_utime;
+    return percent;
+  };
+
+  printf("Sec,Commits,Aborts,CPU\n");
+
+  double total_util = 0;
+  double sec_util = 0;
   auto gather_stats = [&]() {
     sleep(1);
     uint64_t sec_commits = 0, sec_aborts = 0;
@@ -316,7 +358,11 @@ void bench_runner::start_measurement() {
     sec_aborts -= last_aborts;
     last_commits += sec_commits;
     last_aborts += sec_aborts;
-    printf("%lu,%lu,%lu\n", slept + 1, sec_commits, sec_aborts);
+
+    sec_util = get_cpu_util();
+    total_util += sec_util;
+
+    printf("%lu,%lu,%lu,%.2f%%\n", slept + 1, sec_commits, sec_aborts, sec_util);
     slept++;
   };
 
@@ -434,6 +480,7 @@ void bench_runner::start_measurement() {
     }
     cerr << "--- benchmark statistics ---" << endl;
     cerr << "runtime: " << elapsed_sec << " sec" << endl;
+    cerr << "cpu_util: " << total_util / elapsed_sec << "%" << endl;
     cerr << "agg_nosync_throughput: " << agg_nosync_throughput << " ops/sec"
          << endl;
     cerr << "avg_nosync_per_core_throughput: " << avg_nosync_per_core_throughput
