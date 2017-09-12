@@ -336,16 +336,7 @@ void bench_runner::start_measurement() {
   for (size_t i = 0; i < config::worker_threads; i++) {
     workers[i]->join();
   }
-  if (!config::is_backup_srv()) {
-    // Persist whatever still left in the log buffer
-    // Must do this after setting to shutdown state: the flusher will
-    // instead flush till the max tls_lsn_offset, instead of the minimum.
-    logmgr->flush();
-  }
 
-  if (config::num_backups) {
-    rep::PrimaryShutdown();
-  }
   __sync_synchronize();
 
   const unsigned long elapsed_nosync = t_nosync.lap();

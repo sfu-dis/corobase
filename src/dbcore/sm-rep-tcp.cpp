@@ -254,6 +254,7 @@ void BackupDaemonTcp() {
 
     // Zero size indicates 'shutdown' signal from the primary
     if (size == 0) {
+      tcp::send_ack(cctx->server_sockfd);
       volatile_write(config::state, config::kStateShutdown);
       LOG(INFO) << "Got shutdown signal from primary, exit.";
       rep::backup_shutdown_trigger
@@ -296,9 +297,6 @@ void BackupDaemonTcp() {
     tcp::receive(cctx->server_sockfd, (char*)&glsn, sizeof(uint64_t));
     volatile_write(*global_persisted_lsn_ptr, glsn);
 
-    // Ack the primary after persisting data
-    tcp::send_ack(cctx->server_sockfd);
-
     // Next iteration
     start_lsn = end_lsn;
   }
@@ -311,6 +309,7 @@ void PrimaryShutdownTcp() {
   for (int& fd : backup_sockfds) {
     size_t nbytes = send(fd, (char*)&kZero, sizeof(uint32_t), 0);
     ALWAYS_ASSERT(nbytes == sizeof(uint32_t));
+    tcp::expect_ack(fd);
   }
   backup_sockfds_mutex.unlock();
 }

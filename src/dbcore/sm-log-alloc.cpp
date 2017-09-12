@@ -353,7 +353,7 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // perform the write
     auto *buf = _logbuf->read_buf(durable_byte, nbytes);
     auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
-    if (config::num_active_backups && config::IsForwardProcessing()) {
+    if (config::num_active_backups && !config::IsLoading()) {
       // Ship it first, this is async for RDMA
       // Embed the segment's real begin_offset as the immediate:
       // Note that we have 32-bit immmediates only, so we only store the offset
@@ -387,18 +387,24 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
           // ReadyToReceive too)
           rep::primary_rdma_wait_for_message(
               rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
-          rep::primary_rdma_set_global_persisted_lsn(new_offset);
         } else {
           // Wait for acks from backup
           for (auto &fd : rep::backup_sockfds) {
-            uint32_t nbytes = send(fd, (char*)&new_offset, sizeof(uint64_t), 0);
-            LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
             tcp::expect_ack(fd);
           }
         }
         {
           util::timer t;
           dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
+        }
+        // Now send global persisted LSN (no need to wait for ack)
+        if (config::log_ship_by_rdma) {
+          rep::primary_rdma_set_global_persisted_lsn(_durable_flushed_lsn_offset);
+        } else {
+          for (auto &fd : rep::backup_sockfds) {
+            uint32_t nbytes = send(fd, (char*)&_durable_flushed_lsn_offset, sizeof(uint64_t), 0);
+            LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
+          }
         }
       }
       rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
@@ -412,34 +418,34 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // 'correct' setting is to ensure persistence at *all* nodes, including the
     // primary.  Note(tzwang): 20170428: the only reason I added this is due to
     // lack of DRAM space for storing log files in tmpfs.
-    if (config::null_log_device && config::IsForwardProcessing()) {
+    if (config::null_log_device && !config::IsLoading()) {
       n = nbytes;
     } else {
       n = os_pwrite(active_fd, buf, nbytes, file_offset);
     }
     LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
-    if (config::num_active_backups && config::IsForwardProcessing() && !config::pipelined_persist) {
+    if (config::num_active_backups && !config::IsLoading() && !config::pipelined_persist) {
       if (config::log_ship_by_rdma) {
         // Wait for the backup to persist (it might act fast and set
         // ReadyToReceive too)
         rep::primary_rdma_wait_for_message(rep::kRdmaPersisted, false);
-        // All persisted, now set the global persisted LSN in each node to
-        // enable querying of the shipped data.
+        {
+          // Dequeue transactions since data is persisted everywhere
+          util::timer t;
+          dequeue_committed_xcts(new_offset, t.get_start());
+        }
+        // Now set the global persisted LSN in each node to enable querying of
+        // the shipped data.
         // Note: this is necessary because we don't want the replicas to
         // return results that are not yet deemed 'durable' by the primary.
         // If this is ignored, some replicas might return result that is
         // not yet made durable in other replicas, i.e., returning results
         // based on uncommitted data.
         rep::primary_rdma_set_global_persisted_lsn(new_offset);
-        {
-          util::timer t;
-          dequeue_committed_xcts(new_offset, t.get_start());
-        }
-        // Now we need to poll to make sure the RDMA write finished
-        // One for the log buffer partition bounds, the other for data
+        // Now we need to poll to make sure the RDMA write WQEs are consumed,
+        // one for the log buffer partition bounds, the other for data
         rep::primary_rdma_poll_send_cq(2);
       } else {
-        // Wait for acks from backups
         for (auto &fd : rep::backup_sockfds) {
           tcp::expect_ack(fd);
         }
@@ -447,13 +453,10 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
           util::timer t;
           dequeue_committed_xcts(new_offset, t.get_start());
         }
-        // Set global persisted LSN and wait for acks from backup
+        // Set global persisted LSN
         for (auto &fd : rep::backup_sockfds) {
           uint32_t nbytes = send(fd, (char*)&new_offset, sizeof(uint64_t), 0);
           LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
-        }
-        for (auto &fd : rep::backup_sockfds) {
-          tcp::expect_ack(fd);
         }
       }
     }
@@ -470,7 +473,7 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // memory space but still keeps the actual 'write' syscall. Use with
     // caution when log shipping is enabled: won't be able to ship log from
     // storage (only memory), so can't really do 'catch-up'.
-    if (config::IsForwardProcessing() && config::fake_log_write) {
+    if (!config::IsLoading() && config::fake_log_write) {
       int unused = ftruncate(active_fd, 0);
     }
 
@@ -622,7 +625,7 @@ start_over:
 
   // If adding my payload, we're crossing a log buffer partition boundary,
   // make sure the flusher knows about this location (for log shipping).
-  if (config::IsForwardProcessing() && config::num_active_backups) {
+  if (!config::IsLoading() && config::num_active_backups) {
     uint64_t start_partition =
         (lsn_offset / _logbuf_partition_size) % config::logbuf_partitions;
     uint64_t next_partition =
@@ -775,11 +778,11 @@ void sm_log_alloc_mgr::_log_write_daemon() {
   // every 100 ms or so, update the durable mark on disk
   static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(5000) * 1000 * 1000;
   uint64_t last_dmark = stopwatch_t::now();
-  for (;;) {
+  while (!config::IsShutdown()) {
     uint64_t cur_offset = cur_lsn_offset();
     uint64_t min_tls = smallest_tls_lsn_offset();
     uint64_t new_dlsn_offset = min_tls;
-    if (config::IsForwardProcessing() && config::num_active_backups > 0) {
+    if (!config::IsLoading() && config::num_active_backups > 0) {
       uint64_t max_size = config::group_commit_bytes + MIN_LOG_BLOCK_SIZE;
       if (new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
         // Find the maximum that will cause us to ship at most [group_commit_size_mb]
@@ -837,7 +840,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     // time to quit? (only if everything in the log reached disk)
     if (_write_daemon_should_stop and
         cur_offset == _durable_flushed_lsn_offset) {
-      if (new_dlsn_offset == cur_offset) return;
+      if (new_dlsn_offset == cur_offset) break;
     }
 
     // time to sleep?
@@ -864,6 +867,9 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     // next loop iteration!
     volatile_write(_write_daemon_state, 0);
     rcu_enter();
+  }
+  if (config::num_backups) {
+    rep::PrimaryShutdown();
   }
 }
 
