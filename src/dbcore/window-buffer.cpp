@@ -75,10 +75,10 @@ char *window_buffer::_get_ptr(size_t offset) {
 }
 
 void window_buffer::advance_writer(size_t new_wbegin) {
-  THROW_IF(new_wbegin < write_begin(), illegal_argument,
-           "Attempt to advance writer backwards");
-  THROW_IF(write_end() < new_wbegin, illegal_argument,
-           "Cannot advance past end of write window");
+  LOG_IF(FATAL, new_wbegin < write_begin())
+         << "Attempt to advance writer backwards";
+  LOG_IF(FATAL, write_end() < new_wbegin)
+         << "Cannot advance past end of write window";
   _tail = new_wbegin;
 }
 
