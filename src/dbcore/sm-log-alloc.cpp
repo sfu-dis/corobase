@@ -857,7 +857,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
         // logbuf => nobody kicking => log buffer never flushed
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 500;
+        ts.tv_sec += 5;
         _write_daemon_cond.timedwait(_write_daemon_mutex, &ts);
       }
 
