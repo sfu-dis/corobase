@@ -39,8 +39,8 @@ uint64_t sm_log::get_tls_lsn_offset() {
   return get_impl(this)->_lm.get_tls_lsn_offset();
 }
 
-sm_log_recover_impl *sm_log::get_logbuf_redo_functor() {
-  return get_impl(this)->_lm._lm.get_logbuf_redo_functor();
+sm_log_recover_impl *sm_log::get_backup_replay_functor() {
+  return get_impl(this)->_lm._lm.get_backup_replay_functor();
 }
 
 window_buffer *sm_log::get_logbuf() { return sm_log::logbuf; }

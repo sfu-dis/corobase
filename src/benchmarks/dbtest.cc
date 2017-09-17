@@ -168,7 +168,7 @@ int main(int argc, char **argv) {
   config::log_segment_mb = FLAGS_log_segment_mb;
   config::log_buffer_mb = FLAGS_log_buffer_mb;
   config::phantom_prot = FLAGS_phantom_prot;
-  config::recover_functor = new parallel_oid_replay;
+  config::recover_functor = new parallel_oid_replay(FLAGS_threads);
   config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
 
 #if defined(SSI) || defined(SSN)

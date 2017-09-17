@@ -12,9 +12,9 @@ using namespace RCU;
 sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     : sm_log_offset_mgr(),
       scanner(new sm_log_scan_mgr_impl{this}),
-      logbuf_scanner(nullptr),
+      backup_replayer(nullptr),
       recover_functor(rf),
-      logbuf_redo_functor(nullptr),
+      backup_replay_functor(nullptr),
       recover_functor_arg(rf_arg) {
   LSN dlsn = get_durable_mark();
   bool changed = false;
@@ -29,12 +29,27 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
   if (changed) update_durable_mark(dlsn);
 
   auto *sid = get_segment(dlsn.segment());
-  if (!config::is_backup_srv()) {
+  if (config::is_backup_srv()) {
+    if (config::replay_threads > 0) {
+      switch (config::replay_policy) {
+        case config::kReplayNone:
+          break;
+        case config::kReplayBackground:
+          LOG(FATAL) << "Not implemented";
+          break;
+        case config::kReplayPipelined:
+        case config::kReplaySync:
+          backup_replay_functor = new parallel_offset_replay;
+        break;
+        default:
+          LOG(FATAL) << "Invalid replay policy";
+      }
+      if (config::replay_policy != config::kReplayNone) {
+        backup_replayer = new sm_log_scan_mgr_impl{this};
+      }
+    }
+  } else {
     truncate_after(sid->segnum, dlsn.offset());
-  }
-  if (config::replay_policy != config::kReplayNone && config::is_backup_srv()) {
-    logbuf_redo_functor = new parallel_offset_replay;
-    logbuf_scanner = new sm_log_scan_mgr_impl{this};
   }
 }
 
@@ -55,7 +70,7 @@ void sm_log_recover_mgr::redo_log(LSN start_lsn, LSN end_lsn) {
 }
 
 void sm_log_recover_mgr::start_logbuf_redoers() {
-  (*logbuf_redo_functor)(recover_functor_arg, logbuf_scanner, INVALID_LSN, INVALID_LSN);
+  (*backup_replay_functor)(recover_functor_arg, backup_replayer, INVALID_LSN, INVALID_LSN);
 }
 
 sm_log_recover_mgr::~sm_log_recover_mgr() { delete scanner; }

@@ -84,7 +84,6 @@ process:
 }
 
 void parallel_oid_replay::redo_runner::redo_partition() {
-  // util::scoped_timer t("redo_partition");
   RCU::rcu_enter();
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
   ALWAYS_ASSERT(owner->start_lsn.segment() >= 1);

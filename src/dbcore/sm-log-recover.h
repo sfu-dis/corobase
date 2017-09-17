@@ -164,18 +164,17 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
   ~sm_log_recover_mgr();
 
   sm_log_scan_mgr *scanner;
-  sm_log_scan_mgr *
-      logbuf_scanner;  // Dedicated for backup to redo from the logbuf
+  sm_log_scan_mgr *backup_replayer;  // Dedicated for backup to redo
   sm_log_recover_impl *recover_functor;
-  sm_log_recover_impl *logbuf_redo_functor;
+  sm_log_recover_impl *backup_replay_functor;
   void *recover_functor_arg;
 
   void redo_log(LSN start_lsn, LSN end_lsn);
   // For log shipping only
   void start_logbuf_redoers();
   void recover();
-  sm_log_recover_impl *get_logbuf_redo_functor() {
-    return logbuf_redo_functor;
+  sm_log_recover_impl *get_backup_replay_functor() {
+    return backup_replay_functor;
   }
 };
 

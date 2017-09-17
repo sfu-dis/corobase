@@ -448,7 +448,7 @@ void bench_runner::start_measurement() {
   uint64_t agg_latency_us = 0;
   uint64_t agg_redo_batches = 0;
   if (config::is_backup_srv()) {
-    parallel_offset_replay *f = (parallel_offset_replay *)logmgr->get_logbuf_redo_functor();
+    parallel_offset_replay *f = (parallel_offset_replay *)logmgr->get_backup_replay_functor();
     if (f) {
       for (auto &r : f->redoers) {
         if (agg_latency_us < r->redo_latency_us) {
