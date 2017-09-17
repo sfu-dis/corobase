@@ -322,7 +322,7 @@ void sm_log_alloc_mgr::PrimaryShipLog(segment_id *durable_sid,
 // pending persistence. Called only after successfully persisting the log.
 void sm_log_alloc_mgr::PrimaryCommitPersistedWork(uint64_t new_offset) {
   if (config::num_active_backups) {
-    if (!config::IsLoading() && !config::pipelined_persist) {
+    if (!config::IsLoading() && config::persist_policy == config::kPersistSync) {
       if (config::log_ship_by_rdma) {
         // Wait for the backup to persist (it might act fast and set
         // ReadyToReceive too)
@@ -456,7 +456,8 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
 
     // Ship the log to backups, unless we're doing async log shipping
-    if (config::num_active_backups && !config::IsLoading()) {
+    if (config::persist_policy != config::kPersistAsync &&
+        config::num_active_backups && !config::IsLoading()) {
       PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
       if (new_seg) {
         new_seg = false;

@@ -233,6 +233,8 @@ void BackupDaemonTcp() {
   // primary
   tcp::send_ack(cctx->server_sockfd);
 
+  bool ack_persist = config::persist_policy != config::kPersistAsync;
+
   uint32_t recv_idx = 0;
   while (true) {
     rcu_enter();
@@ -290,7 +292,9 @@ void BackupDaemonTcp() {
     BackupProcessLogData(stage, start_lsn, end_lsn);
 
     // Ack the primary after persisting data
-    tcp::send_ack(cctx->server_sockfd);
+    if (ack_persist) {
+      tcp::send_ack(cctx->server_sockfd);
+    }
 
     // Get global persisted LSN
     uint64_t glsn = 0;
