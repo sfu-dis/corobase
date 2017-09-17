@@ -75,6 +75,7 @@ struct sm_log_alloc_mgr {
                               bool update_dmark = false);
   void PrimaryShipLog(segment_id *durable_sid, uint64_t nbytes,
                       bool new_seg, uint64_t new_offset, const char *buf);
+  void PrimaryCommitPersistedWork(uint64_t new_offset);
   void BackupFlushLog(uint64_t new_dlsn_dlsn);
   uint64_t smallest_tls_lsn_offset();
   void enqueue_committed_xct(uint32_t worker_id, uint64_t start_time);
