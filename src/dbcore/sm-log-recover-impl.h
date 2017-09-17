@@ -49,7 +49,7 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   LSN start_lsn;
   LSN end_lsn;
 
-  parallel_oid_replay() : nredoers(10) {}  // config::worker_threads) {}
+  parallel_oid_replay(uint32_t threads) : nredoers(threads) {}
   virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
                           LSN to);
 };
