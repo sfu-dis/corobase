@@ -256,6 +256,68 @@ retry:
       LSN::make(_durable_flushed_lsn_offset, durable_sid->segnum));
 }
 
+void sm_log_alloc_mgr::PrimaryShipLog(segment_id *durable_sid,
+                                      uint64_t nbytes, bool new_seg,
+                                      uint64_t new_offset, const char *buf) {
+  bool have_imm = false;
+  uint32_t imm = 0;
+  if (config::log_ship_by_rdma) {
+    // Ship first, this is async for RDMA
+    // Embed the segment's real begin_offset as the immediate: Note that we
+    // have 32-bit immmediates only, so we only store the offset off the base
+    // segment size boundaries. e.g., for the second segment (segment 2) and
+    // with a segment size of 4GB: we'd encode: begin_offset - (2-1) * 4GB.
+    // This number won't usually go beyond 32-bit; the backup when received the
+    // immediate will extract and recalculate the correct segment begin/end
+    // offsets.
+    bool seg_first_ship =
+        _durable_flushed_lsn_offset == durable_sid->start_offset;
+    DLOG(INFO) << "Will ship " << std::hex << _durable_flushed_lsn_offset
+               << " " << new_offset << " " << durable_sid->byte_offset
+               << " new_seg=" << new_seg
+               << " seg_first_ship=" << seg_first_ship << " nbytes=" << nbytes
+               << std::dec;
+    // Two cases when we cross segment boundaries:
+    // 1. We will end in the new segment;
+    // 2. We end right before the new segment (ie the end of the old segment).
+    // [new_seg] covers the first case; [seg_first_ship] covers the second.
+    have_imm = new_seg || seg_first_ship;
+    if (have_imm) {
+      imm = durable_sid->start_offset -
+            (durable_sid->segnum - 1) * config::log_segment_mb * config::MB;
+    }
+  }
+  LOG_IF(FATAL, nbytes > config::group_commit_bytes + MIN_LOG_BLOCK_SIZE)
+        << "Trying to ship too much: " << nbytes;
+  if (config::persist_policy == config::kPersistPipelined) {
+    if (config::log_ship_by_rdma) {
+      // Wait for the backup to persist (it might act fast and set
+      // ReadyToReceive too)
+      rep::primary_rdma_wait_for_message(
+          rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
+    } else {
+      // Wait for acks from backup
+      for (auto &fd : rep::backup_sockfds) {
+        tcp::expect_ack(fd);
+      }
+    }
+    {
+      util::timer t;
+      dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
+    }
+    // Now send global persisted LSN (no need to wait for ack)
+    if (config::log_ship_by_rdma) {
+      rep::primary_rdma_set_global_persisted_lsn(_durable_flushed_lsn_offset);
+    } else {
+      for (auto &fd : rep::backup_sockfds) {
+        uint32_t nbytes = send(fd, (char*)&_durable_flushed_lsn_offset, sizeof(uint64_t), 0);
+        LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
+      }
+    }
+  }
+  rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
+}
+
 /* Figure out the corresponding segments in the logbuf and flush them.
  * The caller should enter/exit_rcu().
  */
@@ -346,65 +408,15 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // perform the write
     auto *buf = _logbuf->read_buf(durable_byte, nbytes);
     auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
+
+    // Ship the log to backups, unless we're doing async log shipping
     if (config::num_active_backups && !config::IsLoading()) {
-      // Ship it first, this is async for RDMA
-      // Embed the segment's real begin_offset as the immediate:
-      // Note that we have 32-bit immmediates only, so we only store the offset
-      // off the base segment size boundaries. e.g., for the second segment
-      // (segment 2) and with a segment size of 4GB: we'd encode:
-      // begin_offset - (2-1) * 4GB. This number won't usually go beyond 32-bit;
-      // the backup when received the immediate will extract and recalculate
-      // the correct segment begin/end offsets.
-      bool seg_first_ship =
-          _durable_flushed_lsn_offset == durable_sid->start_offset;
-      uint32_t imm = 0;
-      DLOG(INFO) << "Will ship " << std::hex << _durable_flushed_lsn_offset
-                 << " " << new_offset << " " << durable_sid->byte_offset
-                 << " new_seg=" << new_seg
-                 << " seg_first_ship=" << seg_first_ship << " nbytes=" << nbytes
-                 << std::dec;
-      // Two cases when we cross segment boundaries:
-      // 1. We will end in the new segment;
-      // 2. We end right before the new segment (ie the end of the old segment).
-      // [new_seg] covers the first case; [seg_first_ship] covers the second.
-      bool have_imm = new_seg || seg_first_ship;
-      if (have_imm) {
-        imm = durable_sid->start_offset -
-              (durable_sid->segnum - 1) * config::log_segment_mb * config::MB;
-      }
-      LOG_IF(FATAL, nbytes > config::group_commit_bytes + MIN_LOG_BLOCK_SIZE)
-          << "Trying to ship too much: " << nbytes;
-      if (config::pipelined_persist) {
-        if (config::log_ship_by_rdma) {
-          // Wait for the backup to persist (it might act fast and set
-          // ReadyToReceive too)
-          rep::primary_rdma_wait_for_message(
-              rep::kRdmaPersisted | rep::kRdmaReadyToReceive, false);
-        } else {
-          // Wait for acks from backup
-          for (auto &fd : rep::backup_sockfds) {
-            tcp::expect_ack(fd);
-          }
-        }
-        {
-          util::timer t;
-          dequeue_committed_xcts(_durable_flushed_lsn_offset, t.get_start());
-        }
-        // Now send global persisted LSN (no need to wait for ack)
-        if (config::log_ship_by_rdma) {
-          rep::primary_rdma_set_global_persisted_lsn(_durable_flushed_lsn_offset);
-        } else {
-          for (auto &fd : rep::backup_sockfds) {
-            uint32_t nbytes = send(fd, (char*)&_durable_flushed_lsn_offset, sizeof(uint64_t), 0);
-            LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
-          }
-        }
-      }
-      rep::primary_ship_log_buffer_all(buf, nbytes, have_imm, imm);
+      PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
       if (new_seg) {
         new_seg = false;
       }
     }
+
     uint64_t n = 0;
     // Note: Here we actually allow skip log writing on the primary node even in
     // a primary/backup setting, but for benchmarking purpose only. A fully
