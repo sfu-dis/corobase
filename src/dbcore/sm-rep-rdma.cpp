@@ -262,6 +262,7 @@ void BackupDaemonRdma() {
 
   LSN start_lsn = logmgr->durable_flushed_lsn();
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
+  bool ack_persist = config::persist_policy != config::kPersistAsync;
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   uint32_t recv_idx = 0;
   while (!config::IsShutdown()) {
@@ -282,9 +283,11 @@ void BackupDaemonRdma() {
 
     BackupProcessLogData(stage, start_lsn, end_lsn);
 
-    // Tell the primary the data is persisted, it can continue
-    ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
-    self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
+    if (ack_persist) {
+      // Tell the primary the data is persisted, it can continue
+      ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
+      self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
+    }
 
     // Next iteration
     start_lsn = end_lsn;
@@ -382,6 +385,7 @@ void start_as_backup_rdma() {
   // Extract system config and set them before new_log
   config::benchmark_scale_factor = md->system_config.scale_factor;
   config::log_segment_mb = md->system_config.log_segment_mb;
+  config::persist_policy = md->system_config.persist_policy;
 
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();

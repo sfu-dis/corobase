@@ -49,7 +49,6 @@ struct config {
   static uint32_t group_commit_queue_length;  // how much to reserve
   static uint64_t group_commit_size_mb;
   static uint64_t group_commit_bytes;
-  static bool pipelined_persist;  // wait for persistence right after shipping
 
   // Backup-specific settings
   static uint32_t benchmark_seconds;
@@ -58,6 +57,7 @@ struct config {
   static int replay_policy;
   static uint32_t replay_threads;
   static bool persist_nvram_on_replay;
+  static int persist_policy;
 
   // Create an object for each version and install directly on the main
   // indirection arrays only; for experimental purpose only to see the
@@ -82,6 +82,23 @@ struct config {
     kReplayPipelined,
     kReplayBackground,
     kReplayNone
+  };
+
+  // When should the backup ensure shipped log records from the primary are
+  // persisted?
+  // Sync - as in 'synchronous log shipping', primary waits for ack before
+  //        return;
+  // Async - as in 'asynchronous log shipping', primary doesn't ship on the
+  //         critical path as part of the commit/log flush process. Instead,
+  //         a background thread does the log shipping.
+  // Pipelined - same as Sync but wait for ack before starting to ship the next
+  //             batch, i.e., backup's persist operation of batch i is
+  //             overlapped with forward processing of batch i+1 on the
+  //             primary.
+  enum BackupPersistPolicy {
+    kPersistSync,
+    kPersistAsync,
+    kPersistPipelined
   };
 
   enum NvramDelayType { kDelayNone, kDelayClflush, kDelayClwbEmu };

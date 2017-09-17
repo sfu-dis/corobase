@@ -56,8 +56,8 @@ int config::replay_policy = config::kReplayPipelined;
 bool config::full_replay = false;
 uint32_t config::replay_threads = 0;
 uint32_t config::threads = 0;
-bool config::pipelined_persist = false;
 bool config::persist_nvram_on_replay = true;
+int config::persist_policy = config::kPersistSync;
 
 void config::init() {
   ALWAYS_ASSERT(threads);

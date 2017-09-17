@@ -93,9 +93,11 @@ DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
 DEFINE_bool(wait_for_backups, true,
             "Whether to wait for backups to become online before starting "
             "transactions.");
-DEFINE_bool(pipelined_persist, false,
-            "Whether *not* to wait for the 'persited' signal from backups "
-            "immediately after shipping.");
+DEFINE_string(persist_policy, "sync",
+              "Up to what time must the shipped log be persistent."
+              "pipelined - not persisted until the next shipping"
+              "sync - request immediate ack on persistence from backups"
+              "async - don't care at all, i.e., asynchronous log shipping");
 
 // Options specific to backups
 DEFINE_bool(nvram_log_buffer, true, "Whether to use NVRAM-based log buffer.");
@@ -279,7 +281,16 @@ int main(int argc, char **argv) {
     config::log_key_for_update = FLAGS_log_key_for_update;
     config::num_backups = FLAGS_num_backups;
     config::wait_for_backups = FLAGS_wait_for_backups;
-    config::pipelined_persist = FLAGS_pipelined_persist;
+    if (FLAGS_persist_policy == "sync") {
+      config::persist_policy = config::kPersistSync;
+    } else if (FLAGS_persist_policy == "async") {
+      config::persist_policy = config::kPersistAsync;
+    } else if (FLAGS_persist_policy == "pipelined") {
+      config::persist_policy = config::kPersistPipelined;
+    } else {
+      LOG(FATAL) << "Invalid persist policy: "
+                 << FLAGS_persist_policy;
+    }
   }
 
   config::init();
@@ -325,6 +336,7 @@ int main(int argc, char **argv) {
   cerr << "  logbuf-partitions : " << config::logbuf_partitions << endl;
   cerr << "  worker-threads    : " << config::worker_threads << endl;
   cerr << "  total-threads     : " << config::threads << endl;
+  cerr << "  persist-policy    : " << config::persist_policy << endl;
 
   cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize()
        << endl;
@@ -366,7 +378,6 @@ int main(int argc, char **argv) {
     cerr << "  fake-log-write    : " << config::fake_log_write << endl;
     cerr << "  num-backups       : " << config::num_backups << endl;
     cerr << "  wait-for-backups  : " << config::wait_for_backups << endl;
-    cerr << "  pipelined-persist : " << config::pipelined_persist << endl;
   }
 
   MM::prepare_node_memory();
