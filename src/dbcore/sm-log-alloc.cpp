@@ -73,14 +73,7 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
 }
 
 sm_log_alloc_mgr::~sm_log_alloc_mgr() {
-  {
-    _write_daemon_mutex.lock();
-    DEFER(_write_daemon_mutex.unlock());
-
-    _write_daemon_should_stop = true;
-    flush();
-  }
-
+  _write_daemon_should_stop = true;
   int err = pthread_join(_write_daemon_tid, NULL);
   THROW_IF(err, os_error, err, "Unable to join log writer daemon thread");
 }
@@ -778,7 +771,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
   // every 100 ms or so, update the durable mark on disk
   static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(5000) * 1000 * 1000;
   uint64_t last_dmark = stopwatch_t::now();
-  while (!config::IsShutdown()) {
+  while (true) {
     uint64_t cur_offset = cur_lsn_offset();
     uint64_t min_tls = smallest_tls_lsn_offset();
     uint64_t new_dlsn_offset = min_tls;
@@ -844,7 +837,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     }
 
     // time to sleep?
-    while (not(volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
+    while (!_write_daemon_should_stop && !(volatile_read(_write_daemon_state) & DAEMON_HAS_WORK)) {
       // looks like we can sleep
       auto old_state =
           __sync_fetch_and_or(&_write_daemon_state, DAEMON_SLEEPING);
@@ -867,9 +860,6 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     // next loop iteration!
     volatile_write(_write_daemon_state, 0);
     rcu_enter();
-  }
-  if (config::num_backups) {
-    rep::PrimaryShutdown();
   }
 }
 

@@ -133,8 +133,6 @@ sm_log_file_mgr::segment_array::~segment_array() {
     if (sid) {
       os_close(sid->fd);
       sid->fd = -1;
-      rcu_free(sid);
-      sid = NULL;
     }
   }
 }
