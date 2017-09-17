@@ -234,7 +234,7 @@ void BackupDaemonTcp() {
   tcp::send_ack(cctx->server_sockfd);
 
   uint32_t recv_idx = 0;
-  while (!config::IsShutdown()) {
+  while (true) {
     rcu_enter();
     DEFER(rcu_exit());
     ReplayPipelineStage& stage = pipeline_stages[recv_idx];

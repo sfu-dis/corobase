@@ -171,9 +171,10 @@ void bench_runner::run() {
 
   RCU::rcu_exit();
 
-  auto *runner_thread = thread::get_thread();
+  thread::sm_thread *runner_thread = nullptr;
   thread::sm_thread::task_t runner_task;
   if (!sm_log::need_recovery && !config::is_backup_srv()) {
+    runner_thread = thread::get_thread();
     // Get a thread to create the index and FIDs backing each table
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread.
@@ -183,12 +184,17 @@ void bench_runner::run() {
     runner_thread->join();
   }
 
-  // Get a thread to use benchmark-provided prepare(), which gathers
-  // information about index pointers created by create_file_task.
-  runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
-  runner_thread->start_task(runner_task);
-  runner_thread->join();
-  thread::put_thread(runner_thread);
+  if (config::worker_threads) {
+    // Get a thread to use benchmark-provided prepare(), which gathers
+    // information about index pointers created by create_file_task.
+    runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
+    if (!runner_thread) {
+      runner_thread = thread::get_thread();
+    }
+    runner_thread->start_task(runner_task);
+    runner_thread->join();
+    thread::put_thread(runner_thread);
+  }
 
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
@@ -383,7 +389,10 @@ void bench_runner::start_measurement() {
     workers[i]->join();
   }
 
-  __sync_synchronize();
+  if (config::num_backups) {
+    delete logmgr;
+    rep::PrimaryShutdown();
+  }
 
   const unsigned long elapsed_nosync = t_nosync.lap();
   size_t n_commits = 0;
