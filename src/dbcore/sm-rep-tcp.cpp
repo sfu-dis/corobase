@@ -294,12 +294,12 @@ void BackupDaemonTcp() {
     // Ack the primary after persisting data
     if (ack_persist) {
       tcp::send_ack(cctx->server_sockfd);
-    }
 
-    // Get global persisted LSN
-    uint64_t glsn = 0;
-    tcp::receive(cctx->server_sockfd, (char*)&glsn, sizeof(uint64_t));
-    volatile_write(*global_persisted_lsn_ptr, glsn);
+      // Get global persisted LSN
+      uint64_t glsn = 0;
+      tcp::receive(cctx->server_sockfd, (char*)&glsn, sizeof(uint64_t));
+      volatile_write(*global_persisted_lsn_ptr, glsn);
+    }
 
     // Next iteration
     start_lsn = end_lsn;
