@@ -180,25 +180,25 @@ bool BackupReceiveBoundsArrayRdma(ReplayPipelineStage& pipeline_stage) {
     LOG(INFO) << "Got shutdown signal from primary, exit.";
     return false;
   }
-  ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * config::logbuf_partitions);
+  ALWAYS_ASSERT(bounds_array_size == sizeof(uint64_t) * config::log_redo_partitions);
 
 #ifndef NDEBUG
-  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+  for (uint32_t i = 0; i < config::log_redo_partitions; ++i) {
     uint64_t s = 0;
     if (i > 0) {
-      s = (logbuf_partition_bounds[i] >> 16) -
-          (logbuf_partition_bounds[i - 1] >> 16);
+      s = (log_redo_partition_bounds[i] >> 16) -
+          (log_redo_partition_bounds[i - 1] >> 16);
     }
     LOG(INFO) << "Logbuf partition: " << i << " " << std::hex
-              << logbuf_partition_bounds[i] << std::dec << " " << s;
+              << log_redo_partition_bounds[i] << std::dec << " " << s;
   }
 #endif
 
   // Make a stable local copy for replay threads to use
-  memcpy(pipeline_stage.logbuf_partition_bounds,
-         logbuf_partition_bounds,
-         config::logbuf_partitions * sizeof(uint64_t));
-  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+  memcpy(pipeline_stage.log_redo_partition_bounds,
+         log_redo_partition_bounds,
+         config::log_redo_partitions * sizeof(uint64_t));
+  for (uint32_t i = 0; i < config::log_redo_partitions; ++i) {
     pipeline_stage.consumed[i] = false;
   }
   pipeline_stage.num_replaying_threads = config::replay_threads;
@@ -295,7 +295,7 @@ void BackupDaemonRdma() {
 }
 
 void start_as_backup_rdma() {
-  memset(logbuf_partition_bounds, 0,
+  memset(log_redo_partition_bounds, 0,
          sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(config::is_backup_srv());
   self_rdma_node = new RdmaNode(false);
@@ -400,9 +400,9 @@ void start_as_backup_rdma() {
 void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
                                   uint64_t new_seg_start_offset) {
 #ifndef NDEBUG
-  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+  for (uint32_t i = 0; i < config::log_redo_partitions; ++i) {
     LOG(INFO) << "RDMA write logbuf bounds: " << i << " " << std::hex
-              << logbuf_partition_bounds[i] << std::dec;
+              << log_redo_partition_bounds[i] << std::dec;
   }
 #endif
   for (auto& node : nodes) {
@@ -414,7 +414,7 @@ void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
     // Partition boundary information
     bounds_req.local_index = bounds_req.remote_index = node->GetBoundsIndex();
     bounds_req.local_offset = bounds_req.remote_offset = 0;
-    bounds_req.size = bounds_req.imm_data = sizeof(uint64_t) * config::logbuf_partitions;
+    bounds_req.size = bounds_req.imm_data = sizeof(uint64_t) * config::log_redo_partitions;
     bounds_req.sync = false;
     bounds_req.next = &data_req;
 

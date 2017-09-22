@@ -85,7 +85,7 @@ void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
 }
 
 void start_as_backup_tcp() {
-  memset(logbuf_partition_bounds, 0,
+  memset(log_redo_partition_bounds, 0,
          sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(config::is_backup_srv());
 
@@ -182,8 +182,8 @@ void primary_ship_log_buffer_tcp(const char* buf, uint32_t size) {
 
     // Send redo partition boundary information - after sending real data
     // because we send data size=0 to indicate primary shutdown.
-    const uint32_t bounds_size = sizeof(uint64_t) * config::logbuf_partitions;
-    nbytes = send(fd, logbuf_partition_bounds, bounds_size, 0);
+    const uint32_t bounds_size = sizeof(uint64_t) * config::log_redo_partitions;
+    nbytes = send(fd, log_redo_partition_bounds, bounds_size, 0);
     LOG_IF(FATAL, nbytes != bounds_size) << "Error sending bounds array";
   }
 }
@@ -191,26 +191,26 @@ void primary_ship_log_buffer_tcp(const char* buf, uint32_t size) {
 // Receives the bounds array sent from the primary.
 // The only caller is backup daemon.
 void BackupReceiveBoundsArrayTcp(ReplayPipelineStage& pipeline_stage) {
-    uint32_t bsize = config::logbuf_partitions * sizeof(uint64_t);
-    tcp::receive(cctx->server_sockfd, (char*)logbuf_partition_bounds, bsize);
+    uint32_t bsize = config::log_redo_partitions * sizeof(uint64_t);
+    tcp::receive(cctx->server_sockfd, (char*)log_redo_partition_bounds, bsize);
 
 #ifndef NDEBUG
-  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+  for (uint32_t i = 0; i < config::log_redo_partitions; ++i) {
     uint64_t s = 0;
     if (i > 0) {
-      s = (logbuf_partition_bounds[i] >> 16) -
-          (logbuf_partition_bounds[i - 1] >> 16);
+      s = (log_redo_partition_bounds[i] >> 16) -
+          (log_redo_partition_bounds[i - 1] >> 16);
     }
     LOG(INFO) << "Logbuf partition: " << i << " " << std::hex
-              << logbuf_partition_bounds[i] << std::dec << " " << s;
+              << log_redo_partition_bounds[i] << std::dec << " " << s;
   }
 #endif
 
   // Make a stable local copy for replay threads to use
-  memcpy(pipeline_stage.logbuf_partition_bounds,
-         logbuf_partition_bounds,
-         config::logbuf_partitions * sizeof(uint64_t));
-  for (uint32_t i = 0; i < config::logbuf_partitions; ++i) {
+  memcpy(pipeline_stage.log_redo_partition_bounds,
+         log_redo_partition_bounds,
+         config::log_redo_partitions * sizeof(uint64_t));
+  for (uint32_t i = 0; i < config::log_redo_partitions; ++i) {
     pipeline_stage.consumed[i] = false;
   }
   pipeline_stage.num_replaying_threads = config::replay_threads;
