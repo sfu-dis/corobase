@@ -17,6 +17,7 @@ uint64_t persisted_nvram_size CACHE_ALIGNED;
 uint64_t persisted_nvram_offset CACHE_ALIGNED;
 uint64_t new_end_lsn_offset CACHE_ALIGNED;
 uint64_t *global_persisted_lsn_ptr CACHE_ALIGNED;
+uint64_t received_log_size CACHE_ALIGNED;
 
 void start_as_primary() {
   memset(log_redo_partition_bounds, 0,
