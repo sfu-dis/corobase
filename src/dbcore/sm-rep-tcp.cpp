@@ -232,9 +232,8 @@ void BackupDaemonTcp() {
   // Done with receiving files and they should all be persisted, now ack the
   // primary
   tcp::send_ack(cctx->server_sockfd);
-
   bool ack_persist = config::persist_policy != config::kPersistAsync;
-
+  uint64_t received_log_size = 0;
   uint32_t recv_idx = 0;
   while (true) {
     rcu_enter();
@@ -261,8 +260,10 @@ void BackupDaemonTcp() {
       LOG(INFO) << "Got shutdown signal from primary, exit.";
       rep::backup_shutdown_trigger
           .notify_all();  // Actually only needed if no query workers
-      return;
+      break;
     }
+
+    received_log_size += size;
 
     // prepare segment if needed
     uint64_t end_lsn_offset = start_lsn.offset() + size;
@@ -304,6 +305,8 @@ void BackupDaemonTcp() {
     // Next iteration
     start_lsn = end_lsn;
   }
+  std::cerr << "[Log shipping daemon] received log: "
+            << received_log_size << " bytes";
 }
 
 void PrimaryShutdownTcp() {

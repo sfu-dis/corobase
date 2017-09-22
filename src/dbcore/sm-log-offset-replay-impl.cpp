@@ -77,13 +77,11 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
     switch (scan->type()) {
       case sm_log_scan_mgr::LOG_UPDATE_KEY:
         owner->recover_update_key(scan);
-        size += scan->payload_size();
         break;
       case sm_log_scan_mgr::LOG_UPDATE:
       case sm_log_scan_mgr::LOG_RELOCATE:
         ucount++;
         owner->recover_update(scan, false, true);
-        size += scan->payload_size();
         break;
       case sm_log_scan_mgr::LOG_ENHANCED_DELETE:
         dcount++;
@@ -96,7 +94,6 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
       case sm_log_scan_mgr::LOG_INSERT:
         icount++;
         owner->recover_insert(scan, true);
-        size += scan->payload_size();
         break;
       case sm_log_scan_mgr::LOG_FID:
         // The main recover function should have already did this
@@ -105,9 +102,11 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
       default:
         DIE("unreachable");
     }
+    size += scan->payload_size();
     scan->next();
   }
   redo_latency_us += t.lap();
+  redo_size += size;
   ++redo_batches;
   DLOG(INFO) << "[Recovery.log] 0x" << std::hex << start_lsn.offset() << "-"
              << end_lsn.offset()

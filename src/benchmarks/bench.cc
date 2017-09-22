@@ -447,6 +447,7 @@ void bench_runner::start_measurement() {
 
   uint64_t agg_latency_us = 0;
   uint64_t agg_redo_batches = 0;
+  uint64_t agg_redo_size = 0;
   if (config::is_backup_srv()) {
     parallel_offset_replay *f = (parallel_offset_replay *)logmgr->get_backup_replay_functor();
     if (f) {
@@ -455,6 +456,7 @@ void bench_runner::start_measurement() {
           agg_latency_us = r->redo_latency_us;
         }
         agg_redo_batches += r->redo_batches;
+        agg_redo_size += r->redo_size;
       }
     }
   }
@@ -507,6 +509,7 @@ void bench_runner::start_measurement() {
       cerr << "agg_replay_time: " << agg_replay_latency_ms << " ms" << endl;
       cerr << "agg_redo_batches: " << agg_redo_batches << endl;
       cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << endl;
+      cerr << "agg_redo_size: " << agg_redo_size << " bytes" << endl;
     }
   }
 

@@ -206,12 +206,12 @@ bool BackupReceiveBoundsArrayRdma(ReplayPipelineStage& pipeline_stage) {
 }
 
 // Receive log data from the primary. The only caller is the backup daemon.
-LSN BackupReceiveLogData(LSN& start_lsn) {
+LSN BackupReceiveLogData(LSN& start_lsn, uint64_t &size) {
   // post an RR to get the data and the chunk's begin LSN embedded as an the
   // wr_id
   uint32_t imm = 0;
-  uint32_t size = self_rdma_node->ReceiveImm(&imm);
-  THROW_IF(not size, illegal_argument, "Invalid data size");
+  size = self_rdma_node->ReceiveImm(&imm);
+  LOG_IF(FATAL, size == 0) << "Invalid data size";
   segment_id* sid = logmgr->get_segment(start_lsn.segment());
   ASSERT(sid->segnum == start_lsn.segment());
   if (imm & kRdmaImmNewSeg) {
@@ -264,6 +264,7 @@ void BackupDaemonRdma() {
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
   bool ack_persist = config::persist_policy != config::kPersistAsync;
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
+  uint64_t received_log_size = 0;
   uint32_t recv_idx = 0;
   while (!config::IsShutdown()) {
     rcu_enter();
@@ -275,11 +276,13 @@ void BackupDaemonRdma() {
     if (!BackupReceiveBoundsArrayRdma(stage)) {
       // Actually only needed if no query workers
       rep::backup_shutdown_trigger.notify_all();
-      return;
+      break;
     }
 
-    LSN end_lsn = BackupReceiveLogData(start_lsn);
+    uint64_t size = 0;
+    LSN end_lsn = BackupReceiveLogData(start_lsn, size);
     recv_idx = (recv_idx + 1) % 2;
+    received_log_size += size;
 
     BackupProcessLogData(stage, start_lsn, end_lsn);
 
@@ -292,6 +295,8 @@ void BackupDaemonRdma() {
     // Next iteration
     start_lsn = end_lsn;
   }
+  std::cerr << "[Log shipping daemon] received log: "
+            << received_log_size << " bytes";
 }
 
 void start_as_backup_rdma() {

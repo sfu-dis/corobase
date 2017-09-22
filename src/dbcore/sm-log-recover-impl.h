@@ -64,11 +64,12 @@ struct parallel_offset_replay : public sm_log_recover_impl {
     LSN start_lsn;
     LSN end_lsn;
     uint64_t redo_latency_us;
+    uint64_t redo_size;
     uint64_t redo_batches;
 
     redo_runner(parallel_offset_replay *o, LSN start, LSN end)
         : thread::sm_runner(), owner(o), start_lsn(start),
-          end_lsn(end), redo_latency_us(0), redo_batches(0) {}
+          end_lsn(end), redo_latency_us(0), redo_size(0), redo_batches(0) {}
     virtual void my_work(char *);
     void redo_logbuf_partition();
     void persist_logbuf_partition();
