@@ -43,6 +43,7 @@ extern uint64_t persisted_lsn_offset;
 extern uint64_t persisted_nvram_size;
 extern uint64_t persisted_nvram_offset;
 extern uint64_t new_end_lsn_offset;
+extern uint64_t received_log_size;
 
 extern std::condition_variable backup_shutdown_trigger;
 

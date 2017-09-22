@@ -510,6 +510,7 @@ void bench_runner::start_measurement() {
       cerr << "agg_redo_batches: " << agg_redo_batches << endl;
       cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << endl;
       cerr << "agg_redo_size: " << agg_redo_size << " bytes" << endl;
+      cerr << "received_log_size: " << rep::received_log_size << " bytes" << endl;
     }
   }
 

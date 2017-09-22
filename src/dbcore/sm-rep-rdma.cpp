@@ -264,7 +264,7 @@ void BackupDaemonRdma() {
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
   bool ack_persist = config::persist_policy != config::kPersistAsync;
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
-  uint64_t received_log_size = 0;
+  received_log_size = 0;
   uint32_t recv_idx = 0;
   while (!config::IsShutdown()) {
     rcu_enter();
@@ -295,8 +295,6 @@ void BackupDaemonRdma() {
     // Next iteration
     start_lsn = end_lsn;
   }
-  std::cerr << "[Log shipping daemon] received log: "
-            << received_log_size << " bytes";
 }
 
 void start_as_backup_rdma() {
