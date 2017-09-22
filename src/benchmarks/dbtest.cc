@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
   config::primary_srv = FLAGS_primary_host;
   config::primary_port = FLAGS_primary_port;
 
-  config::logbuf_partitions = rep::kMaxLogBufferPartitions;
+  config::log_redo_partitions = rep::kMaxLogBufferPartitions;
 
   // Backup specific arguments
   if (config::is_backup_srv()) {
@@ -333,7 +333,7 @@ int main(int argc, char **argv) {
   cerr << "  tmpfs-dir         : " << config::tmpfs_dir << endl;
   cerr << "  log-buffer-mb     : " << config::log_buffer_mb << endl;
   cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << endl;
-  cerr << "  logbuf-partitions : " << config::logbuf_partitions << endl;
+  cerr << "  logbuf-partitions : " << config::log_redo_partitions << endl;
   cerr << "  worker-threads    : " << config::worker_threads << endl;
   cerr << "  total-threads     : " << config::threads << endl;
   cerr << "  persist-policy    : " << config::persist_policy << endl;

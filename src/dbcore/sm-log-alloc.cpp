@@ -48,9 +48,9 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
       _write_daemon_should_stop(false),
       _lsn_offset(_lm.get_durable_mark().offset()) {
   _logbuf_partition_size =
-      config::log_buffer_mb * config::MB / config::logbuf_partitions;
+      config::log_buffer_mb * config::MB / config::log_redo_partitions;
   ALWAYS_ASSERT(
-      config::log_buffer_mb * config::MB % config::logbuf_partitions == 0);
+      config::log_buffer_mb * config::MB % config::log_redo_partitions == 0);
   _logbuf = sm_log::get_logbuf();
   _logbuf->_head = _logbuf->_tail = get_starting_byte_offset(&_lm);
   if (!config::is_backup_srv()) {
@@ -641,18 +641,18 @@ start_over:
   // make sure the flusher knows about this location (for log shipping).
   if (!config::IsLoading() && config::num_active_backups) {
     uint64_t start_partition =
-        (lsn_offset / _logbuf_partition_size) % config::logbuf_partitions;
+        (lsn_offset / _logbuf_partition_size) % config::log_redo_partitions;
     uint64_t next_partition =
-        (next_lsn_offset / _logbuf_partition_size) % config::logbuf_partitions;
+        (next_lsn_offset / _logbuf_partition_size) % config::log_redo_partitions;
     if (start_partition != next_partition) {
-      ALWAYS_ASSERT((start_partition + 1) % config::logbuf_partitions ==
+      ALWAYS_ASSERT((start_partition + 1) % config::log_redo_partitions ==
                     next_partition);
-      volatile_write(rep::logbuf_partition_bounds[start_partition],
+      volatile_write(rep::log_redo_partition_bounds[start_partition],
                      rval.next_lsn._val);
       DLOG(INFO) << "Log buffer partition: " << start_partition << " "
-                 << std::hex << rep::logbuf_partition_bounds[start_partition] << std::dec
+                 << std::hex << rep::log_redo_partition_bounds[start_partition] << std::dec
                  << " "
-                 << next_lsn_offset - LSN{rep::logbuf_partition_bounds[(start_partition-1) % config::logbuf_partitions]}.offset();
+                 << next_lsn_offset - LSN{rep::log_redo_partition_bounds[(start_partition-1) % config::log_redo_partitions]}.offset();
     }
   }
 
@@ -801,8 +801,8 @@ void sm_log_alloc_mgr::_log_write_daemon() {
       if (new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
         // Find the maximum that will cause us to ship at most [group_commit_size_mb]
         uint64_t max = 0;
-        for (uint64_t i = 0; i < config::logbuf_partitions; ++i) {
-          uint64_t off = LSN{rep::logbuf_partition_bounds[i]}.offset();
+        for (uint64_t i = 0; i < config::log_redo_partitions; ++i) {
+          uint64_t off = LSN{rep::log_redo_partition_bounds[i]}.offset();
           if (off <= min_tls && off > max && (off - _durable_flushed_lsn_offset <= max_size)) {
             max = off;
           }

@@ -139,7 +139,7 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
   bool persist_first = false;
   if (config::nvram_log_buffer && config::persist_nvram_on_replay) {
     persist_first = true;
-    ranges = new redo_range[config::logbuf_partitions];
+    ranges = new redo_range[config::log_redo_partitions];
   }
 
   rcu_register();
@@ -165,8 +165,8 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
       // Find myself a partition
       uint64_t min_offset = ~uint64_t{0};
       uint64_t idx = -1;
-      for (uint32_t j = 0; j < config::logbuf_partitions; ++j) {
-        LSN bound = LSN{stage.logbuf_partition_bounds[j]};
+      for (uint32_t j = 0; j < config::log_redo_partitions; ++j) {
+        LSN bound = LSN{stage.log_redo_partition_bounds[j]};
         if (bound.offset() < min_offset && bound.offset() > stage_start.offset()) {
           min_offset = bound.offset();
           idx = j;
@@ -176,7 +176,7 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
         start_lsn = stage_start;
         bool done = false;
         while (!done) {
-          end_lsn = LSN{stage.logbuf_partition_bounds[idx]};
+          end_lsn = LSN{stage.log_redo_partition_bounds[idx]};
           if (end_lsn.offset() < stage_start.offset() || end_lsn.offset() > stage.end_lsn.offset()) {
               end_lsn = stage_end;
               done = true;
@@ -202,7 +202,7 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
             }
           }
           start_lsn = end_lsn;
-          idx = (idx + 1) % config::logbuf_partitions;
+          idx = (idx + 1) % config::log_redo_partitions;
         }
         LOG_IF(FATAL, end_lsn.offset() != stage_end.offset());
         if (persist_first) {

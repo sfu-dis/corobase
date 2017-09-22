@@ -26,7 +26,7 @@ class RdmaNode {
   // same order (which is handled totally by RdmaNode).
   uint32_t msg_buf_ridx_;
   uint32_t log_buf_ridx_;
-  uint32_t log_buf_partition_bounds_ridx_;
+  uint32_t log_redo_partition_bounds_ridx_;
   uint32_t daemon_buf_ridx_;
   char client_addr_[INET_ADDRSTRLEN];  // For use when as_primary is true only
 
@@ -35,7 +35,7 @@ class RdmaNode {
       : context_(nullptr),
         msg_buf_ridx_(-1),
         log_buf_ridx_(-1),
-        log_buf_partition_bounds_ridx_(-1),
+        log_redo_partition_bounds_ridx_(-1),
         daemon_buf_ridx_(-1) {
     if (as_primary) {
       context_ = new rdma::context(config::primary_port, 1);
@@ -55,8 +55,8 @@ class RdmaNode {
     auto* logbuf = sm_log::get_logbuf();
     log_buf_ridx_ =
         context_->register_memory(logbuf->_data, logbuf->window_size() * 2);
-    log_buf_partition_bounds_ridx_ =
-        context_->register_memory((char*)rep::logbuf_partition_bounds,
+    log_redo_partition_bounds_ridx_ =
+        context_->register_memory((char*)rep::log_redo_partition_bounds,
                                   sizeof(uint64_t) * kMaxLogBufferPartitions);
 
     context_->finish_init(client_addr_);
@@ -67,7 +67,7 @@ class RdmaNode {
 
   inline char *GetClientAddress() { return client_addr_; }
   inline uint32_t GetLogBufferIndex() { return log_buf_ridx_; }
-  inline uint32_t GetBoundsIndex() { return log_buf_partition_bounds_ridx_; }
+  inline uint32_t GetBoundsIndex() { return log_redo_partition_bounds_ridx_; }
 
   inline void WaitForMessageAsPrimary(uint64_t msg, bool reset = true) {
     ALWAYS_ASSERT(!config::is_backup_srv());
@@ -113,8 +113,8 @@ class RdmaNode {
                                                    uint64_t remote_offset,
                                                    uint64_t size, uint32_t imm,
                                                    bool sync = true) {
-    context_->rdma_write_imm(log_buf_partition_bounds_ridx_, local_offset,
-                             log_buf_partition_bounds_ridx_, remote_offset,
+    context_->rdma_write_imm(log_redo_partition_bounds_ridx_, local_offset,
+                             log_redo_partition_bounds_ridx_, remote_offset,
                              size, imm, sync);
   }
   inline void RdmaWriteImmLogBuffer(uint64_t local_offset,

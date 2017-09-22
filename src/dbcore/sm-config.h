@@ -41,7 +41,7 @@ struct config {
   static bool retry_aborted_transactions;
   static int backoff_aborted_transactions;
   static int enable_gc;
-  static uint32_t logbuf_partitions;
+  static uint32_t log_redo_partitions;
   static bool null_log_device;
   static bool fake_log_write;
   static bool group_commit;

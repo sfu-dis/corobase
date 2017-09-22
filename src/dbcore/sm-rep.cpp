@@ -3,7 +3,7 @@
 
 namespace rep {
 std::condition_variable backup_shutdown_trigger;
-uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
+uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
 
 // for primary server only
 std::vector<int> backup_sockfds CACHE_ALIGNED;
@@ -19,7 +19,7 @@ uint64_t new_end_lsn_offset CACHE_ALIGNED;
 uint64_t *global_persisted_lsn_ptr CACHE_ALIGNED;
 
 void start_as_primary() {
-  memset(logbuf_partition_bounds, 0,
+  memset(log_redo_partition_bounds, 0,
          sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(not config::is_backup_srv());
   if (config::log_ship_by_rdma) {

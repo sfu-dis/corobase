@@ -47,7 +47,7 @@ extern uint64_t new_end_lsn_offset;
 extern std::condition_variable backup_shutdown_trigger;
 
 static const uint32_t kMaxLogBufferPartitions = 64;
-extern uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];
+extern uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions];
 
 extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
@@ -145,11 +145,11 @@ inline void WaitForLogBufferSpace(LSN target_lsn) {
 struct ReplayPipelineStage {
   LSN start_lsn;
   LSN end_lsn;
-  uint64_t logbuf_partition_bounds[kMaxLogBufferPartitions];
+  uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions];
   std::atomic<bool> consumed[kMaxLogBufferPartitions];
   std::atomic<uint32_t> num_replaying_threads;
   ReplayPipelineStage() : start_lsn(INVALID_LSN), end_lsn(INVALID_LSN), num_replaying_threads(0) {
-    memset(logbuf_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
+    memset(log_redo_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
   }
 };
 extern ReplayPipelineStage *pipeline_stages;
