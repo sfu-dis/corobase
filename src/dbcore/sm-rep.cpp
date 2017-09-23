@@ -8,6 +8,8 @@ uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
 // for primary server only
 std::vector<int> backup_sockfds CACHE_ALIGNED;
 std::mutex backup_sockfds_mutex CACHE_ALIGNED;
+uint64_t shipped_log_size CACHE_ALIGNED;
+uint64_t log_size_for_ship CACHE_ALIGNED;
 
 // For backups only
 ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
@@ -21,10 +23,10 @@ int replay_bounds_fd CACHE_ALIGNED;
 std::condition_variable bg_replay_cond CACHE_ALIGNED;
 std::mutex bg_replay_mutex CACHE_ALIGNED;
 uint64_t received_log_size CACHE_ALIGNED;
-uint64_t shipped_log_size CACHE_ALIGNED;
 
 void start_as_primary() {
   shipped_log_size = 0;
+  log_size_for_ship = 0;
   memset(log_redo_partition_bounds, 0,
          sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(not config::is_backup_srv());
@@ -151,6 +153,18 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size, bool new_seg,
   }
   backup_sockfds_mutex.unlock();
   shipped_log_size += size;
+}
+
+void TruncateFilesInLogDir() {
+  dirent_iterator dir(config::log_dir.c_str());
+  int dfd = dir.dup();
+  for (char const *fname : dir) {
+    if (fname[0] == 'o' || fname[0] == 'l') {
+      int fd = os_openat(dfd, fname, O_RDWR);
+      int unused = ftruncate(fd, 0);
+      os_close(fd);
+    }
+  }
 }
 
 // Generate a metadata structure for sending to the new backup.

@@ -54,6 +54,13 @@ void primary_daemon_tcp() {
     ++config::num_active_backups;
     __sync_synchronize();
   }
+
+  // Save tmpfs (memory) space, use with caution for replication: will lose the
+  // ability for 'catch' up using logs from storage. Do this here before
+  // benchmark begins so we don't get hit by ftruncate-ing a large file.
+  if (config::fake_log_write) {
+    TruncateFilesInLogDir(); 
+  }
 }
 
 void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
@@ -161,6 +168,7 @@ void start_as_backup_tcp() {
   // Extract system config and set them before new_log
   config::benchmark_scale_factor = md->system_config.scale_factor;
   config::log_segment_mb = md->system_config.log_segment_mb;
+  config::persist_policy = md->system_config.persist_policy;
 
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
