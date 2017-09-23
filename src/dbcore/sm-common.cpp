@@ -39,7 +39,7 @@ int os_open(char const *path, int flags) {
 
 int os_openat(int dfd, char const *fname, int flags) {
   int fd = openat(dfd, fname, flags, S_IRUSR | S_IWUSR);
-  LOG_IF(FATAL, fd < 0) << "Unable to open file " << fname;
+  LOG_IF(FATAL, fd < 0) << "Unable to open file " << fname << "(" << fd << "(";
   return fd;
 }
 
