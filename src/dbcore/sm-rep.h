@@ -47,6 +47,7 @@ extern std::condition_variable bg_replay_cond;
 extern uint64_t received_log_size;
 extern uint64_t shipped_log_size;
 extern uint64_t log_size_for_ship;
+extern std::thread primary_async_ship_daemon;
 
 extern std::condition_variable backup_shutdown_trigger;
 
@@ -170,6 +171,7 @@ void primary_ship_log_buffer_all(const char* buf, uint32_t size, bool new_seg,
                                  uint64_t new_seg_start_offset);
 backup_start_metadata* prepare_start_metadata(int& chkpt_fd,
                                               LSN& chkpt_start_lsn);
+void PrimaryAsyncShippingDaemon();
 void PrimaryShutdown();
 void LogFlushDaemon();
 void TruncateFilesInLogDir(); 

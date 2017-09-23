@@ -111,6 +111,12 @@ void primary_daemon_rdma() {
   if (config::fake_log_write) {
     TruncateFilesInLogDir(); 
   }
+
+  // All done, start async shipping daemon if needed
+  if (config::persist_policy == config::kPersistAsync) {
+    std::thread t(PrimaryAsyncShippingDaemon);
+    t.detach();
+  }
 }
 
 void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
@@ -254,7 +260,6 @@ void BackupDaemonRdma() {
 
   LSN start_lsn = logmgr->durable_flushed_lsn();
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
-  bool ack_persist = config::persist_policy != config::kPersistAsync;
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   received_log_size = 0;
   uint32_t recv_idx = 0;
@@ -278,11 +283,9 @@ void BackupDaemonRdma() {
 
     BackupProcessLogData(stage, start_lsn, end_lsn);
 
-    if (ack_persist) {
-      // Tell the primary the data is persisted, it can continue
-      ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
-      self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
-    }
+    // Tell the primary the data is persisted, it can continue
+    ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
+    self_rdma_node->SetMessageAsBackup(kRdmaPersisted);
 
     // Next iteration
     start_lsn = end_lsn;

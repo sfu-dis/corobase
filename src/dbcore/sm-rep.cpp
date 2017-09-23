@@ -8,6 +8,7 @@ uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
 // for primary server only
 std::vector<int> backup_sockfds CACHE_ALIGNED;
 std::mutex backup_sockfds_mutex CACHE_ALIGNED;
+std::thread primary_async_ship_daemon;
 uint64_t shipped_log_size CACHE_ALIGNED;
 uint64_t log_size_for_ship CACHE_ALIGNED;
 
@@ -56,6 +57,29 @@ void LogFlushDaemon() {
     if (lsn > volatile_read(persisted_lsn_offset)) {
       logmgr->BackupFlushLog(lsn);
       volatile_write(persisted_lsn_offset, lsn);
+    }
+  }
+}
+
+// Daemon for shipping log out of the commit path (ie async log shipping)
+void PrimaryAsyncShippingDaemon() {
+  ALWAYS_ASSERT(config::persist_policy == config::kPersistAsync);
+  uint64_t start_offset = logmgr->durable_flushed_lsn().offset();
+  char *buf = new char[config::group_commit_bytes];
+  int fd = -1;
+  while (!config::IsShutdown()) {
+    // FIXME(tzwang): support segment boundary crossing
+    auto* sid = logmgr->get_offset_segment(start_offset);
+    if (fd < 0) {
+      fd = logmgr->open_segment_for_read(sid);
+    }
+    auto off = sid->offset(start_offset);
+    if (logmgr->durable_flushed_lsn().offset() > start_offset) {
+      uint32_t size = os_pread(fd, buf, config::group_commit_bytes, off);
+      if (size) {
+        start_offset += size;
+        rep::primary_ship_log_buffer_all(buf, size, false, 0);
+      }
     }
   }
 }
@@ -134,6 +158,9 @@ void BackupStartReplication() {
 }
 
 void PrimaryShutdown() {
+  if (config::persist_policy == config::kPersistAsync && !config::log_ship_by_rdma) {
+    primary_async_ship_daemon.join();
+  }
   if (config::log_ship_by_rdma) {
     PrimaryShutdownRdma();
   } else {

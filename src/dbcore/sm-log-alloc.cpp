@@ -357,6 +357,9 @@ void sm_log_alloc_mgr::PrimaryCommitPersistedWork(uint64_t new_offset) {
           LOG_IF(FATAL, nbytes != sizeof(uint64_t)) << "Error sending global persisted lsn";
         }
       }
+    } else if (config::persist_policy == config::kPersistAsync) {
+      util::timer t;
+      dequeue_committed_xcts(new_offset, t.get_start());
     }
   } else if (config::group_commit) {
     util::timer t;
