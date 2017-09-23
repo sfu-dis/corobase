@@ -347,6 +347,10 @@ sm_log_file_mgr::sm_log_file_mgr() {
         // OID array chkpt file
         continue;
       }
+      case 'r': {
+        // Background async replay bounds file
+        continue;
+      }
       default:
         break;
     }

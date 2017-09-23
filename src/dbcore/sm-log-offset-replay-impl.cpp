@@ -50,8 +50,10 @@ void parallel_offset_replay::redo_runner::persist_logbuf_partition() {
 
 void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
   uint64_t icount = 0, ucount = 0, size = 0, iicount = 0, dcount = 0;
+  // FIXME(tzwang): must read from storage for background async replay
   auto *scan =
-      owner->scanner->new_log_scan(start_lsn, config::eager_warm_up(), true);
+      owner->scanner->new_log_scan(start_lsn, config::eager_warm_up(),
+         config::replay_policy != config::kReplayBackground);
 
   util::timer t;
   while (true) {
@@ -155,6 +157,10 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
         stage_end = volatile_read(stage.end_lsn);
       } while (stage_end.offset() <= volatile_read(rep::replayed_lsn_offset));
 
+      if (config::replay_policy == config::kReplayBackground) {
+        while (!stage.ready) {}
+      }
+
       LSN stage_start = volatile_read(stage.start_lsn);
       ASSERT(stage_start.segment() == stage_end.segment());
 
@@ -171,6 +177,7 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
           idx = j;
         }
       }
+      bool is_last_thread = false;
       if (idx != -1) {
         start_lsn = stage_start;
         bool done = false;
@@ -214,8 +221,13 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
           }
         }
         if (--stage.num_replaying_threads == 0) {
+          if (config::replay_policy == config::kReplayBackground) {
+            // Reset it before setting replayed LSN
+            stage.ready = false;
+          }
           volatile_write(rep::replayed_lsn_offset, stage.end_lsn.offset());
           DLOG(INFO) << "replayed_lsn_offset=" << std::hex << rep::replayed_lsn_offset << std::dec;
+          is_last_thread = true;
         }
       } else {
         // Just one partition
@@ -228,11 +240,19 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
           DLOG(INFO) << "[Backup] Rolled forward log " << std::hex << start_lsn.offset()
                      << "." << start_lsn.segment() << "-" << end_lsn.offset() << "."
                      << end_lsn.segment() << std::dec;
+          if (config::replay_policy == config::kReplayBackground) {
+            // Reset it before setting replayed LSN
+            stage.ready = false;
+          }
           volatile_write(rep::replayed_lsn_offset, stage.end_lsn.offset());
+          is_last_thread = true;
         }
       }
       // Make sure everyone is finished before we look at the next stage
       while (volatile_read(rep::replayed_lsn_offset) != stage.end_lsn.offset()) {}
+      if (config::replay_policy == config::kReplayBackground && is_last_thread) {
+        rep::bg_replay_cond.notify_all();
+      }
     }
   }
 }

@@ -240,7 +240,7 @@ void BackupDaemonTcp() {
     DEFER(rcu_exit());
     ReplayPipelineStage& stage = pipeline_stages[recv_idx];
     recv_idx = (recv_idx + 1) % 2;
-    WaitForLogBufferSpace(stage.end_lsn);
+    WaitForLogBufferSpace(start_lsn);
 
     // expect an integer indicating data size
     tcp::receive(cctx->server_sockfd, (char*)&size, sizeof(size));

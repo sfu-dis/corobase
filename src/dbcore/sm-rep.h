@@ -43,6 +43,7 @@ extern uint64_t persisted_lsn_offset;
 extern uint64_t persisted_nvram_size;
 extern uint64_t persisted_nvram_offset;
 extern uint64_t new_end_lsn_offset;
+extern std::condition_variable bg_replay_cond;
 extern uint64_t received_log_size;
 
 extern std::condition_variable backup_shutdown_trigger;
@@ -129,7 +130,8 @@ inline void WaitForLogBufferSpace(LSN target_lsn) {
   if (off) {
     while (off > volatile_read(persisted_lsn_offset)) {
     }
-    if (config::replay_policy != config::kReplayNone) {
+    if (config::replay_policy != config::kReplayNone &&
+        config::replay_policy != config::kReplayBackground) {
       while (off > volatile_read(replayed_lsn_offset)) {
       }
     }
@@ -149,7 +151,11 @@ struct ReplayPipelineStage {
   uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions];
   std::atomic<bool> consumed[kMaxLogBufferPartitions];
   std::atomic<uint32_t> num_replaying_threads;
-  ReplayPipelineStage() : start_lsn(INVALID_LSN), end_lsn(INVALID_LSN), num_replaying_threads(0) {
+  std::atomic<bool> ready;
+  ReplayPipelineStage() : start_lsn(INVALID_LSN),
+                          end_lsn(INVALID_LSN),
+                          num_replaying_threads(0),
+                          ready(false) {
     memset(log_redo_partition_bounds, 0, sizeof(uint64_t) * kMaxLogBufferPartitions);
   }
 };

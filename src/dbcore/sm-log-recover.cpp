@@ -30,23 +30,9 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
 
   auto *sid = get_segment(dlsn.segment());
   if (config::is_backup_srv()) {
-    if (config::replay_threads > 0) {
-      switch (config::replay_policy) {
-        case config::kReplayNone:
-          break;
-        case config::kReplayBackground:
-          LOG(FATAL) << "Not implemented";
-          break;
-        case config::kReplayPipelined:
-        case config::kReplaySync:
-          backup_replay_functor = new parallel_offset_replay;
-        break;
-        default:
-          LOG(FATAL) << "Invalid replay policy";
-      }
-      if (config::replay_policy != config::kReplayNone) {
+    if (config::replay_threads > 0 && config::replay_policy != config::kReplayNone) {
+        backup_replay_functor = new parallel_offset_replay;
         backup_replayer = new sm_log_scan_mgr_impl{this};
-      }
     }
   } else {
     truncate_after(sid->segnum, dlsn.offset());
