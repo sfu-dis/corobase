@@ -61,6 +61,11 @@ void primary_daemon_tcp() {
   if (config::fake_log_write) {
     TruncateFilesInLogDir(); 
   }
+
+  // All done, start async shipping daemon if needed
+  if (config::persist_policy == config::kPersistAsync) {
+    primary_async_ship_daemon = std::move(std::thread(PrimaryAsyncShippingDaemon));
+  }
 }
 
 void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
@@ -188,11 +193,18 @@ void primary_ship_log_buffer_tcp(const char* buf, uint32_t size) {
     LOG_IF(FATAL, nbytes != size) << "Incomplete log shipping: " << nbytes << "/"
                                   << size;
 
-    // Send redo partition boundary information - after sending real data
-    // because we send data size=0 to indicate primary shutdown.
-    const uint32_t bounds_size = sizeof(uint64_t) * config::log_redo_partitions;
-    nbytes = send(fd, log_redo_partition_bounds, bounds_size, 0);
-    LOG_IF(FATAL, nbytes != bounds_size) << "Error sending bounds array";
+    if (config::persist_policy != config::kPersistAsync) {
+      // Send redo partition boundary information - after sending real data
+      // because we send data size=0 to indicate primary shutdown.
+      const uint32_t bounds_size = sizeof(uint64_t) * config::log_redo_partitions;
+      nbytes = send(fd, log_redo_partition_bounds, bounds_size, 0);
+      LOG_IF(FATAL, nbytes != bounds_size) << "Error sending bounds array";
+    }
+  }
+  if (config::persist_policy == config::kPersistAsync) {
+    for (int &fd : backup_sockfds) {
+      tcp::expect_ack(fd);
+    }
   }
 }
 
@@ -240,7 +252,6 @@ void BackupDaemonTcp() {
   // Done with receiving files and they should all be persisted, now ack the
   // primary
   tcp::send_ack(cctx->server_sockfd);
-  bool ack_persist = config::persist_policy != config::kPersistAsync;
   received_log_size = 0;
   uint32_t recv_idx = 0;
   while (true) {
@@ -295,15 +306,17 @@ void BackupDaemonTcp() {
     sm_log::logbuf->advance_writer(new_byte);  // Extends reader_end too
     ASSERT(sm_log::logbuf->available_to_read() >= size);
 
-    // Receive bounds array
-    BackupReceiveBoundsArrayTcp(stage);
+    if (config::persist_policy != config::kPersistAsync) {
+      // Receive bounds array
+      BackupReceiveBoundsArrayTcp(stage);
+    }
 
     BackupProcessLogData(stage, start_lsn, end_lsn);
 
     // Ack the primary after persisting data
-    if (ack_persist) {
-      tcp::send_ack(cctx->server_sockfd);
+    tcp::send_ack(cctx->server_sockfd);
 
+    if (config::persist_policy != config::kPersistAsync) {
       // Get global persisted LSN
       uint64_t glsn = 0;
       tcp::receive(cctx->server_sockfd, (char*)&glsn, sizeof(uint64_t));
