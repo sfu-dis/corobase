@@ -400,6 +400,7 @@ struct sm_log {
   void create_segment_file(segment_id *sid);
   uint64_t durable_flushed_lsn_offset();
   sm_log_recover_impl *get_backup_replay_functor();
+  int open_segment_for_read(segment_id *sid);
 
   virtual ~sm_log() {}
 

@@ -511,6 +511,15 @@ int sm_log_file_mgr::open_for_write(segment_id *sid) {
   return os_openat(dfd, sname, O_WRONLY | O_SYNC);
 }
 
+int sm_log_file_mgr::open_for_read(segment_id *sid) {
+  file_mutex.lock();
+  DEFER(file_mutex.unlock());
+  _create_nxt_seg_file(false);
+
+  segment_file_name sname(sid);
+  return os_openat(dfd, sname, O_RDONLY | O_SYNC);
+}
+
 segment_id *sm_log_file_mgr::prepare_new_segment(uint64_t start) {
   auto *psid = _newest_segment();
   if (start + MIN_LOG_BLOCK_SIZE < psid->end_offset) return 0;

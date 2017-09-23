@@ -364,6 +364,10 @@ void sm_log_alloc_mgr::PrimaryCommitPersistedWork(uint64_t new_offset) {
   }
 }
 
+int sm_log_alloc_mgr::open_segment_for_read(segment_id *sid) {
+  return _lm.open_for_read(sid);
+}
+
 /* Figure out the corresponding segments in the logbuf and flush them.
  * The caller should enter/exit_rcu().
  */
