@@ -511,6 +511,10 @@ void bench_runner::start_measurement() {
       cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << endl;
       cerr << "agg_redo_size: " << agg_redo_size << " bytes" << endl;
       cerr << "received_log_size: " << rep::received_log_size << " bytes" << endl;
+    } else {
+      if (config::num_active_backups) {
+        cerr << "shipped_log_size: " << rep::shipped_log_size << " bytes" << endl;
+      }
     }
   }
 

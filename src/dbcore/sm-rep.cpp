@@ -21,8 +21,10 @@ int replay_bounds_fd CACHE_ALIGNED;
 std::condition_variable bg_replay_cond CACHE_ALIGNED;
 std::mutex bg_replay_mutex CACHE_ALIGNED;
 uint64_t received_log_size CACHE_ALIGNED;
+uint64_t shipped_log_size CACHE_ALIGNED;
 
 void start_as_primary() {
+  shipped_log_size = 0;
   memset(log_redo_partition_bounds, 0,
          sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(not config::is_backup_srv());
@@ -148,6 +150,7 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size, bool new_seg,
     primary_ship_log_buffer_tcp(buf, size);
   }
   backup_sockfds_mutex.unlock();
+  shipped_log_size += size;
 }
 
 // Generate a metadata structure for sending to the new backup.
