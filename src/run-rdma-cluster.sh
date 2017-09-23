@@ -31,7 +31,7 @@ run() {
   echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram group_commit_size_mb=$group_commit_size_mb
   echo "----------"
   ./run-cluster.sh SI $t 10 $t $logbuf_mb tpcc_org tpccr \
-    "-group_commit -group_commit_size_mb=$group_commit_size_mb -chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma -fake_log_write -wait_for_backups -num_backups=$num_backups -pipelined_persist=0" \
+    "-group_commit -group_commit_size_mb=$group_commit_size_mb -chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma -fake_log_write -wait_for_backups -num_backups=$num_backups -persist_policy=sync" \
     "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -persist_nvram_on_replay=$persist_nvram_on_replay" \
     "${backups[@]:0:$num_backups}"
   echo
