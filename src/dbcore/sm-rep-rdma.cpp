@@ -109,15 +109,7 @@ void primary_daemon_rdma() {
   // ability for 'catch' up using logs from storage. Do this here before
   // benchmark begins so we don't get hit by ftruncate-ing a large file.
   if (config::fake_log_write) {
-    dirent_iterator dir(config::log_dir.c_str());
-    int dfd = dir.dup();
-    for (char const *fname : dir) {
-      if (fname[0] == 'o' || fname[0] == 'l') {
-        int fd = os_openat(dfd, fname, O_RDWR);
-        int unused = ftruncate(fd, 0);
-        os_close(fd);
-      }
-    }
+    TruncateFilesInLogDir(); 
   }
 }
 

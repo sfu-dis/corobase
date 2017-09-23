@@ -513,6 +513,7 @@ void bench_runner::start_measurement() {
       cerr << "received_log_size: " << rep::received_log_size << " bytes" << endl;
     } else {
       if (config::num_active_backups) {
+        cerr << "log_size_for_ship: " << rep::log_size_for_ship << " bytes" << endl;
         cerr << "shipped_log_size: " << rep::shipped_log_size << " bytes" << endl;
       }
     }

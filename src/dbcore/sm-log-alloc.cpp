@@ -481,6 +481,10 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     }
     LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
 
+    if (config::IsForwardProcessing() && config::num_active_backups) {
+      rep::log_size_for_ship += nbytes;
+    }
+
     // Dequeue transactions pending persistence (if pipelined group commit is on)
     PrimaryCommitPersistedWork(new_offset);
 
