@@ -89,6 +89,10 @@ fat_ptr sm_log::load_ext_pointer(fat_ptr ptr) {
   return get_impl(this)->_lm._lm.load_ext_pointer(ptr);
 }
 
+int sm_log::open_segment_for_read(segment_id *sid) {
+  return get_impl(this)->_lm._lm.open_for_read(sid);
+}
+
 sm_log *sm_log::new_log(sm_log_recover_impl *recover_functor, void *rarg) {
   need_recovery = false;
   if (config::null_log_device) {

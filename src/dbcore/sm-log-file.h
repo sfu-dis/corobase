@@ -181,6 +181,7 @@ struct sm_log_file_mgr {
      segment. The segment must already exist.
    */
   int open_for_write(segment_id *sid);
+  int open_for_read(segment_id *sid);
 
   /* Create a new log segment file, with segment number one higher
      than the current highest segnum.
