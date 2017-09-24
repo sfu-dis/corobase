@@ -66,21 +66,19 @@ void PrimaryAsyncShippingDaemon() {
   ALWAYS_ASSERT(config::persist_policy == config::kPersistAsync);
   uint64_t start_offset = logmgr->durable_flushed_lsn().offset();
   char *buf = new char[config::group_commit_bytes];
-  int fd = -1;
   while (!config::IsShutdown()) {
     // FIXME(tzwang): support segment boundary crossing
     auto* sid = logmgr->get_offset_segment(start_offset);
-    if (fd < 0) {
-      fd = logmgr->open_segment_for_read(sid);
-    }
+    int fd = logmgr->open_segment_for_read(sid);
     auto off = sid->offset(start_offset);
-    if (logmgr->durable_flushed_lsn().offset() > start_offset) {
+    if (logmgr->durable_flushed_lsn().offset() > start_offset - sid->start_offset) {
       uint32_t size = os_pread(fd, buf, config::group_commit_bytes, off);
-      if (size) {
+      if (size == config::group_commit_bytes) {
         start_offset += size;
         rep::primary_ship_log_buffer_all(buf, size, false, 0);
       }
     }
+    os_close(fd);
   }
   delete buf;
 }
@@ -181,7 +179,7 @@ void BackupStartReplication() {
 }
 
 void PrimaryShutdown() {
-  if (config::persist_policy == config::kPersistAsync && !config::log_ship_by_rdma) {
+  if (config::persist_policy == config::kPersistAsync) {
     primary_async_ship_daemon.join();
   }
   if (config::log_ship_by_rdma) {
