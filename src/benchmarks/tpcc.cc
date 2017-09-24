@@ -570,7 +570,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
         w = hot_whs[r.next() % hot_whs.size()];
       else
         w = cold_whs[r.next() % cold_whs.size()];
-      ALWAYS_ASSERT(w >= 1 and w <= NumWarehouses());
+      LOG_IF(FATAL, w < 1 || w > NumWarehouses());
       return w;
     } else {
       ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);

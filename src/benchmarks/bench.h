@@ -322,7 +322,8 @@ class limit_callback : public OrderedIndex::scan_callback {
 #define try_verify_relax(oper)                          \
   {                                                     \
     rc_t r = oper;                                      \
-    ALWAYS_ASSERT(r._val == RC_TRUE or rc_is_abort(r)); \
+    LOG_IF(FATAL, r._val != RC_TRUE && !rc_is_abort(r)) \
+      << "Wrong return value " << r._val;               \
     if (rc_is_abort(r)) __abort_txn(r);                 \
   }
 
@@ -330,5 +331,6 @@ class limit_callback : public OrderedIndex::scan_callback {
 #define try_verify_strict(oper)        \
   {                                    \
     rc_t rc = oper;                    \
-    ALWAYS_ASSERT(rc._val == RC_TRUE); \
+    LOG_IF(FATAL, rc._val != RC_TRUE)      \
+      << "Wrong return value " << rc._val; \
   }
