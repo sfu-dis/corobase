@@ -23,7 +23,7 @@ int config::enable_ssi_read_only_opt = 0;
 uint64_t config::ssn_read_opt_threshold = config::SSN_READ_OPT_DISABLED;
 int config::wait_for_backups = 0;
 int config::num_backups = 0;
-int config::num_active_backups = 0;
+std::atomic<uint32_t> config::num_active_backups(0);
 uint64_t config::log_buffer_mb = 512;
 uint64_t config::log_segment_mb = 8192;
 uint32_t config::log_redo_partitions = 0;
