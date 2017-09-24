@@ -103,17 +103,18 @@ void parallel_oid_replay::redo_runner::redo_partition() {
     switch (scan->type()) {
       case sm_log_scan_mgr::LOG_UPDATE_KEY:
         owner->recover_update_key(scan);
-        size += scan->payload_size();
         break;
       case sm_log_scan_mgr::LOG_UPDATE:
       case sm_log_scan_mgr::LOG_RELOCATE:
         ucount++;
         owner->recover_update(scan, false, false);
-        size += scan->payload_size();
         break;
       case sm_log_scan_mgr::LOG_DELETE:
       case sm_log_scan_mgr::LOG_ENHANCED_DELETE:
         // Ignore delete on primary server
+        if (config::is_backup_srv()) {
+          owner->recover_update(scan, true, true);
+        }
         dcount++;
         break;
       case sm_log_scan_mgr::LOG_INSERT_INDEX:
@@ -122,8 +123,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
         break;
       case sm_log_scan_mgr::LOG_INSERT:
         icount++;
-        owner->recover_insert(scan);
-        size += scan->payload_size();
+        owner->recover_insert(scan, config::is_backup_srv());
         break;
       case sm_log_scan_mgr::LOG_FID:
         // The main recover function should have already did this
@@ -132,6 +132,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
       default:
         DIE("unreachable");
     }
+    size += scan->payload_size();
   }
   ASSERT(icount <= iicount);  // No insert log record for 2nd index
   DLOG(INFO) << "[Recovery.log] OID partition " << oid_partition
