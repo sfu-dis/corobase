@@ -233,6 +233,7 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
         // Just one partition
         if (--stage.num_replaying_threads == 0) {
           end_lsn = stage_end;
+          start_lsn = stage_start;
           if (persist_first) {
             persist_logbuf_partition();
           }

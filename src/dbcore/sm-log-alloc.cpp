@@ -498,7 +498,9 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // memory space but still keeps the actual 'write' syscall. Use with
     // caution when log shipping is enabled: won't be able to ship log from
     // storage (only memory), so can't really do 'catch-up'.
-    if (!config::IsLoading() && config::fake_log_write) {
+    if (!config::IsLoading() &&
+        config::persist_policy != config::kPersistAsync &&
+        config::fake_log_write) {
       int unused = ftruncate(active_fd, 0);
     }
 
