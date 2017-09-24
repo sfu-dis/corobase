@@ -187,6 +187,8 @@ struct sm_log_scan_mgr {
 
     LSN payload_lsn();
 
+    LSN block_lsn();
+
     /* Copy the current record's payload into [buf]. Throw
        illegal_argument if the record has no payload, or the payload
        is larger than [bufsz], or the record does not reside in the
