@@ -86,32 +86,52 @@ void PrimaryAsyncShippingDaemon() {
 
 // The major routine that controls background async replay
 void BackupBackgroundReplay() {
+  rcu_register();
+  DEFER(rcu_deregister());
   ALWAYS_ASSERT(replay_bounds_fd);
   const uint32_t read_size = config::log_redo_partitions * sizeof(uint64_t);
   off_t off = 0;
-  while (true) {
-    for (uint32_t i = 0; i < 2; ++i) {
-      ReplayPipelineStage& stage = rep::pipeline_stages[i];
-      // Load up ranges from storage
-      uint32_t nbytes = 0;
-      while (true) {
-        nbytes = os_pread(replay_bounds_fd, (char*)&stage, sizeof(ReplayPipelineStage), off);
-        DLOG(INFO) << "Read " << nbytes << "/" << sizeof(ReplayPipelineStage);
-        if (nbytes != sizeof(ReplayPipelineStage)) {
-          std::unique_lock<std::mutex> lock(bg_replay_mutex);
-          bg_replay_cond.wait(lock);
-          continue;
-        }
-        DLOG(INFO) << "To replay " << std::hex << stage.start_lsn.offset()
-                   << "-" << stage.end_lsn.offset() << std::endl;
-        // FIXME(tzwang): no read-from-logbuf for now
-        while (stage.end_lsn.offset() > volatile_read(persisted_lsn_offset)) {
-        }
-        stage.ready = true;
-        break;
+  LSN start_lsn = logmgr->durable_flushed_lsn();
+  LOG_IF(FATAL, start_lsn == INVALID_LSN) << "Invalid start LSN";
+
+  if (config::persist_policy == config::kPersistAsync) {
+    while (!config::IsShutdown()) {
+      rcu_enter();
+      DEFER(rcu_exit());
+      LSN end_lsn = logmgr->durable_flushed_lsn();
+      if (end_lsn.offset() > start_lsn.offset()) {
+        logmgr->backup_redo_log_by_oid(start_lsn, end_lsn);
+        start_lsn = end_lsn;
       }
-      off += nbytes;
-      while (stage.end_lsn.offset() < replayed_lsn_offset) {
+    }
+  } else {
+    while (!config::IsShutdown()) {
+      ReplayPipelineStage& stage = rep::pipeline_stages[0];
+      for (uint32_t i = 0; i < 2; ++i) {
+        ReplayPipelineStage& stage = rep::pipeline_stages[i];
+        while (stage.end_lsn.offset() > volatile_read(replayed_lsn_offset)) {}
+        // Load up ranges from storage
+        while (true) {
+          uint32_t nbytes = os_pread(replay_bounds_fd, (char*)&stage,
+                                     sizeof(ReplayPipelineStage), off);
+          DLOG(INFO) << "Read " << nbytes << "/" << sizeof(ReplayPipelineStage);
+          if (nbytes != sizeof(ReplayPipelineStage)) {
+            std::unique_lock<std::mutex> lock(bg_replay_mutex);
+            bg_replay_cond.wait(lock);
+            continue;
+          }
+          off += nbytes;
+          break;
+        }
+      }
+      DLOG(INFO) << "To replay " << std::hex << stage.start_lsn.offset()
+                 << "-" << stage.end_lsn.offset() << std::endl;
+      // FIXME(tzwang): no read-from-logbuf for now
+      while (stage.end_lsn.offset() > logmgr->durable_flushed_lsn().offset()) {}
+      stage.num_replaying_threads = config::replay_threads;
+      ALWAYS_ASSERT(!stage.ready);
+      stage.ready = true;
+      while (stage.end_lsn.offset() < volatile_read(replayed_lsn_offset)) {
         std::unique_lock<std::mutex> lock(bg_replay_mutex);
         bg_replay_cond.wait(lock);
       }
@@ -142,7 +162,9 @@ void BackupStartReplication() {
       std::thread bg_redoer(BackupBackgroundReplay);
       bg_redoer.detach();
     }
-    logmgr->start_logbuf_redoers();
+    if (config::persist_policy != config::kPersistAsync) {
+      logmgr->start_logbuf_redoers();
+    }
   }
   std::thread flusher(LogFlushDaemon);
   flusher.detach();
@@ -280,31 +302,32 @@ void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn
   // "notifies" redo threads to start.  We can start replay regardless of log
   // persistence state - we read speculatively from the log buffer always and
   // check if the data we read is valid.
-  volatile_write(stage.start_lsn._val, start_lsn._val);
-  volatile_write(stage.end_lsn._val, end_lsn._val);
+  if (config::persist_policy != config::kPersistAsync) {
+    volatile_write(stage.start_lsn._val, start_lsn._val);
+    volatile_write(stage.end_lsn._val, end_lsn._val);
 
-  // Now handle replay policies:
-  // 1. Sync - replay immediately; then when finished ack persitence
-  //    immediately if NVRAM is present, otherwise ack persistence when
-  //    data is flushed.
-  // 2. Pipelined - notify replay daemon to start; then ack persitence
-  //    immediately if NVRAM is present, otherwise ack persistence when
-  //    data is flushed.
-  //
-  // Both synchronous and pipelined replay ensure log flush is out of
-  // the critical path. The difference is whether log replay is on/out of
-  // the critical path, i.e., before ack-ing persistence. The primary can't
-  // continue unless it received persistence ack.
-  //
-  // The role of NVRAM here is solely for making persistence faster and is
-  // orthogonal to the choice of replay policy.
-  if (config::replay_policy == config::kReplayBackground) {
-    stage.ready = false;
-    // Spill out to storage for futher use by the background replayer
-    // FIXME(tzwang): we have only used tmpfs as 'storage' so the performance
-    // impact should be very small). Add some in-memory caching if needed.
-    os_write(replay_bounds_fd, (char*)&stage, sizeof(ReplayPipelineStage));
-    bg_replay_cond.notify_all();
+    // Now handle replay policies:
+    // 1. Sync - replay immediately; then when finished ack persitence
+    //    immediately if NVRAM is present, otherwise ack persistence when
+    //    data is flushed.
+    // 2. Pipelined - notify replay daemon to start; then ack persitence
+    //    immediately if NVRAM is present, otherwise ack persistence when
+    //    data is flushed.
+    //
+    // Both synchronous and pipelined replay ensure log flush is out of
+    // the critical path. The difference is whether log replay is on/out of
+    // the critical path, i.e., before ack-ing persistence. The primary can't
+    // continue unless it received persistence ack.
+    //
+    // The role of NVRAM here is solely for making persistence faster and is
+    // orthogonal to the choice of replay policy.
+    if (config::replay_policy == config::kReplayBackground) {
+      // Spill out to storage for futher use by the background replayer
+      // FIXME(tzwang): we have only used tmpfs as 'storage' so the performance
+      // impact should be very small). Add some in-memory caching if needed.
+      os_write(replay_bounds_fd, (char*)&stage, sizeof(ReplayPipelineStage));
+      bg_replay_cond.notify_all();
+    }
   }
 
   if (config::nvram_log_buffer) {
