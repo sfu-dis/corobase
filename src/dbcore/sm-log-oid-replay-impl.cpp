@@ -9,7 +9,7 @@
 
 void parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
                                      LSN to) {
-  util::scoped_timer t("parallel_oid_replay");
+  //util::scoped_timer t("parallel_oid_replay");
   scanner = s;
   start_lsn = from;
   end_lsn = to;

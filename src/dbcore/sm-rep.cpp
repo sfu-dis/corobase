@@ -82,6 +82,7 @@ void PrimaryAsyncShippingDaemon() {
       }
     }
   }
+  delete buf;
 }
 
 // The major routine that controls background async replay
