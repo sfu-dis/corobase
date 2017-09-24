@@ -9,7 +9,7 @@
 #include "sm-rep.h"
 #include "sm-rep-rdma.h"
 
-void parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
+LSN parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
                                         LSN to) {
   scanner = s;
   RCU::rcu_enter();
@@ -21,6 +21,7 @@ void parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
     r->start();
   }
   RCU::rcu_exit();
+  return to;
 }
 
 void parallel_offset_replay::redo_runner::persist_logbuf_partition() {

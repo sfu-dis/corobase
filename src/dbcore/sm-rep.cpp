@@ -99,8 +99,20 @@ void BackupBackgroundReplay() {
       DEFER(rcu_exit());
       LSN end_lsn = logmgr->durable_flushed_lsn();
       if (end_lsn.offset() > start_lsn.offset()) {
-        logmgr->backup_redo_log_by_oid(start_lsn, end_lsn);
-        start_lsn = end_lsn;
+        if (end_lsn.offset() - start_lsn.offset() > config::group_commit_bytes) {
+          uint64_t end_offset = start_lsn.offset() + config::group_commit_bytes;
+          end_lsn = LSN::make(end_offset, start_lsn.segment(), INVALID_SIZE_CODE);
+        }
+        DLOG(INFO) << "To replay "  << std::hex << start_lsn.offset() << "-"
+          << end_lsn.offset() << std::dec;
+        // backup_redo_log_by_oid returns the last log block's starting LSN, so
+        // that when we hit an incomplete log block we know where to start in
+        // the next round. This is needed only for OID parallel replay (the
+        // offset based replay already have primary generated boundaries to
+        // follow).
+        LSN next_start_lsn = logmgr->backup_redo_log_by_oid(start_lsn, end_lsn);
+        LOG_IF(FATAL, next_start_lsn.offset() <= start_lsn.offset());
+        start_lsn = next_start_lsn;
       }
     }
   } else {

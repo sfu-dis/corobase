@@ -27,8 +27,8 @@ struct sm_log_recover_impl {
   // no more and no less; this is important for async log replay on backups.
   // Recovery at startup however can give [from]=chkpt_begin, and [to]=+inf
   // to replay the whole log.
-  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
-                          LSN to) = 0;
+  virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
+                         LSN to) = 0;
 };
 
 struct parallel_oid_replay : public sm_log_recover_impl {
@@ -36,9 +36,10 @@ struct parallel_oid_replay : public sm_log_recover_impl {
     parallel_oid_replay *owner;
     OID oid_partition;
     bool done;
+    LSN replayed_lsn;
 
     redo_runner(parallel_oid_replay *o, OID part)
-        : thread::sm_runner(), owner(o), oid_partition(part), done(false) {}
+        : thread::sm_runner(), owner(o), oid_partition(part), done(false), replayed_lsn(INVALID_LSN) {}
     virtual void my_work(char *);
     void redo_partition();
   };
@@ -50,8 +51,8 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   LSN end_lsn;
 
   parallel_oid_replay(uint32_t threads) : nredoers(threads) {}
-  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
-                          LSN to);
+  virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
+                         LSN to);
 };
 
 // A special case that each thread will replay a given range of LSN offsets
@@ -82,6 +83,6 @@ struct parallel_offset_replay : public sm_log_recover_impl {
   parallel_offset_replay() : nredoers(config::replay_threads) {
     LOG(INFO) << "[Backup] " << nredoers << " replay threads";
   }
-  virtual void operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
-                          LSN to);
+  virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
+                         LSN to);
 };

@@ -49,8 +49,8 @@ void sm_log::redo_log(LSN start_lsn, LSN end_lsn) {
   get_impl(this)->_lm._lm.redo_log(start_lsn, end_lsn);
 }
 
-void sm_log::backup_redo_log_by_oid(LSN start_lsn, LSN end_lsn) {
-  get_impl(this)->_lm._lm.backup_redo_log_by_oid(start_lsn, end_lsn);
+LSN sm_log::backup_redo_log_by_oid(LSN start_lsn, LSN end_lsn) {
+  return get_impl(this)->_lm._lm.backup_redo_log_by_oid(start_lsn, end_lsn);
 }
 
 void sm_log::start_logbuf_redoers() {
