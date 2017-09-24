@@ -338,6 +338,10 @@ bool sm_log_scan_mgr::record_scan::valid() {
   return valid;
 }
 
+LSN sm_log_scan_mgr::record_scan::block_lsn() {
+  return get_impl(this)->scan._bscan->lsn;
+}
+
 // same!
 void sm_log_scan_mgr::header_scan::next() { ++get_impl(this)->scan; }
 void sm_log_scan_mgr::record_scan::next() { ++get_impl(this)->scan; }
