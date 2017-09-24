@@ -285,6 +285,8 @@ int main(int argc, char **argv) {
       config::persist_policy = config::kPersistSync;
     } else if (FLAGS_persist_policy == "async") {
       config::persist_policy = config::kPersistAsync;
+      LOG_IF(FATAL, config::nvram_log_buffer)
+        << "Not supported: NVRAM + async ship";
     } else if (FLAGS_persist_policy == "pipelined") {
       config::persist_policy = config::kPersistPipelined;
     } else {
