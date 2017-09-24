@@ -27,7 +27,8 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
 }
 
 // Helper function that brings up a backup server
-void bring_up_backup(RdmaNode* rn, int chkpt_fd, backup_start_metadata *md, LSN chkpt_start_lsn) {
+void bring_up_backup_rdma(RdmaNode* rn, int chkpt_fd,
+                          backup_start_metadata *md, LSN chkpt_start_lsn) {
   // Now can really send something, metadata first, header must fit in the
   // buffer
   ALWAYS_ASSERT(md->size() < RdmaNode::kDaemonBufferSize);
@@ -73,7 +74,6 @@ void bring_up_backup(RdmaNode* rn, int chkpt_fd, backup_start_metadata *md, LSN 
   // Wait for the backup to become ready for receiving log records
   rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
 
-  __sync_synchronize();
   ++config::num_active_backups;
 }
 
@@ -97,7 +97,7 @@ void primary_daemon_rdma() {
   // Fire workers to do the real job - must do this after got all backups
   // as we need to broadcast to everyone the complete list of all backup nodes
   for (auto &rn : nodes) {
-    workers.push_back(new std::thread(bring_up_backup, rn, chkpt_fd, md, chkpt_start_lsn));
+    workers.push_back(new std::thread(bring_up_backup_rdma, rn, chkpt_fd, md, chkpt_start_lsn));
   }
 
   for (auto& w : workers) {
@@ -114,8 +114,7 @@ void primary_daemon_rdma() {
 
   // All done, start async shipping daemon if needed
   if (config::persist_policy == config::kPersistAsync) {
-    std::thread t(PrimaryAsyncShippingDaemon);
-    t.detach();
+    primary_async_ship_daemon = std::move(std::thread(PrimaryAsyncShippingDaemon));
   }
 }
 

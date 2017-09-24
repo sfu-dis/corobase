@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cpuid.h>
 #include <x86intrin.h>
 #include <iostream>
@@ -150,7 +151,7 @@ struct config {
   /* Log shipping related options */
   static int wait_for_backups;
   static int num_backups;
-  static int num_active_backups;
+  static std::atomic<uint32_t> num_active_backups;
   static std::string primary_srv;
   static std::string primary_port;
   static int log_ship_warm_up_policy;

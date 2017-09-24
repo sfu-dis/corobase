@@ -9,6 +9,39 @@ namespace rep {
 tcp::client_context* cctx CACHE_ALIGNED;
 uint64_t global_persisted_lsn_tcp CACHE_ALIGNED;
 
+void bring_up_backup_tcp(int backup_sockfd, backup_start_metadata *md, LSN chkpt_start_lsn) {
+  auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
+  ALWAYS_ASSERT(sent_bytes == md->size());
+
+  int chkpt_fd = -1;
+  dirent_iterator dir(config::log_dir.c_str());
+  int dfd = dir.dup();
+  for (char const *fname : dir) {
+    if (fname[0] == 'o') {
+      chkpt_fd = os_openat(dfd, fname, O_RDONLY);
+      break;
+    }
+  }
+  // TODO(tzwang): support log-only bootstrap
+  LOG_IF(FATAL, chkpt_fd == -1) << "Unable to open chkpt";
+
+  off_t offset = 0;
+  uint64_t to_send = md->chkpt_size;
+  while (to_send > 0) {
+    sent_bytes = sendfile(backup_sockfd, chkpt_fd, &offset, to_send);
+    ALWAYS_ASSERT(sent_bytes);
+    to_send -= sent_bytes;
+  }
+  os_close(chkpt_fd);
+
+  // Now send the log after chkpt
+  send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn);
+
+  // Wait for the backup to notify me that it persisted the logs
+  tcp::expect_ack(backup_sockfd);
+  ++config::num_active_backups;
+}
+
 // A daemon that runs on the primary for bringing up backups by shipping
 // the latest chkpt (if any) + the log that follows (if any).
 void primary_daemon_tcp() {
@@ -16,43 +49,29 @@ void primary_daemon_tcp() {
   tcp::server_context primary_tcp_ctx(config::primary_port,
                                       config::num_backups);
 
+  // Got a new backup, send out the latest chkpt (if any)
+  // Scan the whole log dir, and send chkpt (if any) + the log that follows,
+  // or all the logs if a chkpt doesn't exist.
+  int chkpt_fd = -1;
+  LSN chkpt_start_lsn = INVALID_LSN;
+  auto *md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
+  os_close(chkpt_fd);
+
+  std::vector<std::thread*> workers;
   for (uint32_t i = 0; i < config::num_backups; ++i) {
     std::cout << "Expecting node " << i << std::endl;
     int backup_sockfd = primary_tcp_ctx.expect_client();
-
-    // Got a new backup, send out the latest chkpt (if any)
-    // Scan the whole log dir, and send chkpt (if any) + the log that follows,
-    // or all the logs if a chkpt doesn't exist.
-    int chkpt_fd = -1;
-    LSN chkpt_start_lsn = INVALID_LSN;
-    backup_start_metadata* md =
-        prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
-    auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
-    ALWAYS_ASSERT(sent_bytes == md->size());
-
-    // TODO(tzwang): support log-only bootstrap
-    ALWAYS_ASSERT(chkpt_fd != -1);
-    if (chkpt_fd != -1) {
-      off_t offset = 0;
-      while (md->chkpt_size > 0) {
-        sent_bytes = sendfile(backup_sockfd, chkpt_fd, &offset, md->chkpt_size);
-        ALWAYS_ASSERT(sent_bytes);
-        md->chkpt_size -= sent_bytes;
-      }
-      os_close(chkpt_fd);
-    }
-
-    // Now send the log after chkpt
-    send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn);
-
-    // Wait for the backup to notify me that it persisted the logs
-    tcp::expect_ack(backup_sockfd);
-
-    // Surely backup is alive and ready after we got ack'ed, make it visible to
-    // the shipping thread
     backup_sockfds.push_back(backup_sockfd);
-    ++config::num_active_backups;
-    __sync_synchronize();
+  }
+
+  // Fire workers to do the real job - must do this after got all backups
+  // as we need to broadcast to everyone the complete list of all backup nodes
+  for (auto &fd : backup_sockfds) {
+    workers.push_back(new std::thread(bring_up_backup_tcp, fd, md, chkpt_start_lsn));
+  }
+
+  for (auto &w : workers) {
+    w->join();
   }
 
   // Save tmpfs (memory) space, use with caution for replication: will lose the
