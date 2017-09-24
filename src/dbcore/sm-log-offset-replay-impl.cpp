@@ -67,7 +67,7 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
 #endif
       break;
     }
-    if (scan->payload_lsn() >= end_lsn) {
+    if (scan->payload_lsn().offset() >= end_lsn.offset()) {
       break;
     }
     LSN payload_lsn = scan->payload_lsn();
