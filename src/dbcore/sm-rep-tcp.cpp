@@ -72,6 +72,7 @@ void primary_daemon_tcp() {
 
   for (auto &w : workers) {
     w->join();
+    delete w;
   }
 
   // Save tmpfs (memory) space, use with caution for replication: will lose the
