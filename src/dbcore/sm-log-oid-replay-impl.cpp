@@ -7,7 +7,7 @@
 #include "sm-oid-alloc-impl.h"
 #include "sm-rep.h"
 
-void parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
+LSN parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
                                      LSN to) {
   //util::scoped_timer t("parallel_oid_replay");
   scanner = s;
@@ -46,6 +46,7 @@ void parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
   // oidmgr->recreate_allocator(sm_oid_mgr_impl::METADATA_FID, max_fid);
 
   uint32_t done = 0;
+  LSN replayed_lsn = INVALID_LSN;
 process:
   for (auto &r : redoers) {
     // Scan the rest of the log
@@ -58,6 +59,9 @@ process:
   while (done < redoers.size()) {
     for (auto &r : redoers) {
       if (r.is_impersonated() and r.try_join()) {
+        if (r.replayed_lsn > replayed_lsn) {
+          replayed_lsn = r.replayed_lsn;
+        }
         if (++done < redoers.size()) {
           goto process;
         } else {
@@ -81,6 +85,8 @@ process:
   if (config::lazy_warm_up()) {
     oidmgr->start_warm_up();
   }
+
+  return replayed_lsn;
 }
 
 void parallel_oid_replay::redo_runner::redo_partition() {
@@ -90,8 +96,17 @@ void parallel_oid_replay::redo_runner::redo_partition() {
   auto *scan = owner->scanner->new_log_scan(owner->start_lsn,
                                             config::eager_warm_up(), false);
   static __thread std::unordered_map<FID, OID> max_oid;
+  replayed_lsn = INVALID_LSN;
 
-  for (; scan->valid() and scan->payload_lsn() < owner->end_lsn; scan->next()) {
+  for (; scan->valid() and scan->payload_lsn().offset() < owner->end_lsn.offset(); scan->next()) {
+    // During replay on backups we might encounter incomplete log blocks,
+    // because the primary might just ship X bytes without considering
+    // log block boundaries. So here we remember the log block's starting
+    // LSN and return it to the caller, so it will know where to continue
+    // for the next batch of replay (ie starting from the last incomplete
+    // log block).
+    replayed_lsn = scan->block_lsn();
+
     auto oid = scan->oid();
     if (oid % owner->redoers.size() != oid_partition) continue;
 
