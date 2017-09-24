@@ -31,7 +31,11 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
   auto *sid = get_segment(dlsn.segment());
   if (config::is_backup_srv()) {
     if (config::replay_threads > 0 && config::replay_policy != config::kReplayNone) {
-      backup_replay_functor = new parallel_offset_replay;
+      if (config::persist_policy == config::kPersistAsync) {
+        backup_replay_functor = new parallel_oid_replay(config::replay_threads);
+      } else {
+        backup_replay_functor = new parallel_offset_replay;
+      }
       backup_replayer = new sm_log_scan_mgr_impl{this};
     }
   } else {
@@ -53,6 +57,10 @@ void sm_log_recover_mgr::recover() {
 
 void sm_log_recover_mgr::redo_log(LSN start_lsn, LSN end_lsn) {
   (*recover_functor)(recover_functor_arg, scanner, start_lsn, end_lsn);
+}
+
+void sm_log_recover_mgr::backup_redo_log_by_oid(LSN start_lsn, LSN end_lsn) {
+  (*backup_replay_functor)(recover_functor_arg, backup_replayer, start_lsn, end_lsn);
 }
 
 void sm_log_recover_mgr::start_logbuf_redoers() {

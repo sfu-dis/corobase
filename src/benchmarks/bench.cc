@@ -448,7 +448,7 @@ void bench_runner::start_measurement() {
   uint64_t agg_latency_us = 0;
   uint64_t agg_redo_batches = 0;
   uint64_t agg_redo_size = 0;
-  if (config::is_backup_srv()) {
+  if (config::is_backup_srv() && config::persist_policy != config::kPersistAsync) {
     parallel_offset_replay *f = (parallel_offset_replay *)logmgr->get_backup_replay_functor();
     if (f) {
       for (auto &r : f->redoers) {
