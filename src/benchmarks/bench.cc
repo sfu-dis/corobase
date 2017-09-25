@@ -274,10 +274,14 @@ void bench_runner::run() {
     std::mutex trigger_lock;
     std::unique_lock<std::mutex> lock(trigger_lock);
     rep::backup_shutdown_trigger.wait(lock);
-    if (config::replay_policy != config::kReplayNone) {
+    if (config::replay_policy != config::kReplayNone &&
+        config::replay_policy != config::kReplayBackground) {
       while (volatile_read(rep::replayed_lsn_offset) <
              volatile_read(rep::new_end_lsn_offset)) {
       }
+    }
+    if (config::replay_policy == config::kReplayBackground) {
+      rep::background_replay_thread.join();
     }
     cerr << "Shutdown successfully" << std::endl;
   }

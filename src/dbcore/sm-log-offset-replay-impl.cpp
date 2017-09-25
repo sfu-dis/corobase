@@ -57,7 +57,7 @@ void parallel_offset_replay::redo_runner::redo_logbuf_partition() {
          config::replay_policy != config::kReplayBackground);
 
   util::timer t;
-  while (true) {
+  while (!config::IsShutdown()) {
     if (!scan->valid()) {
 #ifndef NDEBUG
       // Note: it's possible that we attempt to redo a deadzone on backups as

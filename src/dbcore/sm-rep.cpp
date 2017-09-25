@@ -24,6 +24,7 @@ int replay_bounds_fd CACHE_ALIGNED;
 std::condition_variable bg_replay_cond CACHE_ALIGNED;
 std::mutex bg_replay_mutex CACHE_ALIGNED;
 uint64_t received_log_size CACHE_ALIGNED;
+std::thread background_replay_thread CACHE_ALIGNED;
 
 void start_as_primary() {
   shipped_log_size = 0;
@@ -46,7 +47,7 @@ void LogFlushDaemon() {
   DEFER(rcu_deregister());
   rcu_enter();
   DEFER(rcu_exit());
-  while (true) {
+  while (!config::IsShutdown()) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
     // Use another variable to record the durable flushed LSN offset
     // here, as the backup daemon might change a new sgment ID's
@@ -111,7 +112,7 @@ void BackupBackgroundReplay() {
         // offset based replay already have primary generated boundaries to
         // follow).
         LSN next_start_lsn = logmgr->backup_redo_log_by_oid(start_lsn, end_lsn);
-        LOG_IF(FATAL, next_start_lsn.offset() <= start_lsn.offset());
+        LOG_IF(FATAL, next_start_lsn.offset() < start_lsn.offset());
         volatile_write(replayed_lsn_offset, next_start_lsn.offset());
         start_lsn = next_start_lsn;
       }
@@ -171,8 +172,7 @@ void BackupStartReplication() {
   pipeline_stages = new ReplayPipelineStage[2];
   if (config::replay_policy != config::kReplayNone) {
     if (config::replay_policy == config::kReplayBackground) {
-      std::thread bg_redoer(BackupBackgroundReplay);
-      bg_redoer.detach();
+      background_replay_thread = std::move(std::thread(BackupBackgroundReplay));
     }
     if (config::persist_policy != config::kPersistAsync) {
       logmgr->start_logbuf_redoers();
