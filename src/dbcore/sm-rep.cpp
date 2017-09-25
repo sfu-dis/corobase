@@ -112,6 +112,7 @@ void BackupBackgroundReplay() {
         // follow).
         LSN next_start_lsn = logmgr->backup_redo_log_by_oid(start_lsn, end_lsn);
         LOG_IF(FATAL, next_start_lsn.offset() <= start_lsn.offset());
+        volatile_write(replayed_lsn_offset, next_start_lsn.offset());
         start_lsn = next_start_lsn;
       }
     }

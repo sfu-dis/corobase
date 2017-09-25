@@ -939,17 +939,19 @@ start_over:
     // If this is a backup server, then must see persistent_next to find out
     // the **real** overwritten version.
     if (config::is_backup_srv()) {
+      fat_ptr prev_next_ptr = NULL_PTR;
+      Object *prev_next_obj = NULL_PTR;
       if (prev_obj) {
         ASSERT(prev_obj->GetClsn().offset());
         // See if we can just follow the volatile pointer without touching the
         // log
-        fat_ptr prev_next_ptr = prev_obj->GetNextVolatile();
-        Object *prev_next_obj = (Object *)prev_next_ptr.offset();
+        prev_next_ptr = prev_obj->GetNextVolatile();
+        prev_next_obj = (Object *)prev_next_ptr.offset();
         ASSERT(prev_next_obj->GetClsn().offset() ==
                prev_next_obj->GetPersistentAddress().offset());
-        if (prev_next_obj->GetClsn().offset() ==
-            prev_obj->GetNextPersistent().offset()) {
-          // No gap
+        if (prev_next_obj->GetClsn().offset() == prev_obj->GetNextPersistent().offset() ||
+            prev_next_obj->GetClsn().offset() >= visitor_xc->begin) {
+          // No gap or not visible
           ptr = prev_next_ptr;
         }
       }
@@ -962,6 +964,7 @@ start_over:
         ASSERT(cur_obj->GetClsn().offset());
         ASSERT(prev_obj);
         ASSERT(prev_obj->GetClsn().offset());
+        ASSERT(prev_obj->GetClsn().offset() != cur_obj->GetClsn().offset());
         fat_ptr vnext = prev_obj->GetNextVolatile();
         cur_obj->SetNextVolatile(vnext);
         fat_ptr newptr = fat_ptr::make(cur_obj, ptr.size_code(), 0);
