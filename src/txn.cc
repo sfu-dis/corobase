@@ -28,8 +28,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     }
     xc = ctx;
     RCU::rcu_enter();
-    xc->begin = std::min<uint64_t>(volatile_read(rep::replayed_lsn_offset),
-                                   volatile_read(*rep::global_persisted_lsn_ptr));
+    xc->begin = rep::GetReadView();
     ASSERT(xc->begin);
   } else {
     initialize_read_write();

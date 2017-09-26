@@ -15,7 +15,6 @@ uint64_t log_size_for_ship CACHE_ALIGNED;
 // For backups only
 ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
 uint64_t replayed_lsn_offset CACHE_ALIGNED;
-uint64_t persisted_lsn_offset CACHE_ALIGNED;
 uint64_t persisted_nvram_size CACHE_ALIGNED;
 uint64_t persisted_nvram_offset CACHE_ALIGNED;
 uint64_t new_end_lsn_offset CACHE_ALIGNED;
@@ -46,6 +45,7 @@ void LogFlushDaemon() {
   DEFER(rcu_deregister());
   rcu_enter();
   DEFER(rcu_exit());
+  uint64_t dlsn = logmgr->durable_flushed_lsn().offset();
   while (!config::IsShutdown()) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
     // Use another variable to record the durable flushed LSN offset
@@ -54,9 +54,9 @@ void LogFlushDaemon() {
     // data from the primary. That might cause the durable_flushed_lsn
     // call to fail when the adjusted start_offset makes the sid think
     // it doesn't contain the LSN.
-    if (lsn > volatile_read(persisted_lsn_offset)) {
+    if (lsn > dlsn) {
       logmgr->BackupFlushLog(lsn);
-      volatile_write(persisted_lsn_offset, lsn);
+      dlsn = lsn;
     }
   }
 }
@@ -98,12 +98,13 @@ void BackupBackgroundReplay() {
     while (!config::IsShutdown()) {
       rcu_enter();
       DEFER(rcu_exit());
+      end_lsn = logmgr->durable_flushed_lsn();
       if (end_lsn.offset() > start_lsn.offset()) {
         if (end_lsn.offset() - start_lsn.offset() > config::group_commit_bytes) {
           uint64_t end_offset = start_lsn.offset() + config::group_commit_bytes;
           end_lsn = LSN::make(end_offset, start_lsn.segment(), INVALID_SIZE_CODE);
         }
-        DLOG(INFO) << "To replay "  << std::hex << start_lsn.offset() << "-"
+        LOG(INFO) << "To replay "  << std::hex << start_lsn.offset() << "-"
           << end_lsn.offset() << std::dec;
         // backup_redo_log_by_oid returns the last log block's starting LSN, so
         // that when we hit an incomplete log block we know where to start in
@@ -151,7 +152,7 @@ void BackupBackgroundReplay() {
         volatile_write(stage.start_lsn._val, start_lsn._val);
 
         // No read-from-logbuf, at least for now
-        while (tmp_stage.end_lsn.offset() > volatile_read(persisted_lsn_offset)) {}
+        while (tmp_stage.end_lsn.offset() > logmgr->durable_flushed_lsn().offset()) {}
         volatile_write(stage.end_lsn._val, tmp_stage.end_lsn._val);
 
         start_lsn = tmp_stage.end_lsn;
@@ -163,7 +164,6 @@ void BackupBackgroundReplay() {
 
 void BackupStartReplication() {
   volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
-  volatile_write(persisted_lsn_offset, logmgr->durable_flushed_lsn().offset());
   volatile_write(persisted_nvram_offset, logmgr->durable_flushed_lsn().offset());
   volatile_write(persisted_nvram_size, 0);
   ALWAYS_ASSERT(oidmgr);
@@ -376,7 +376,7 @@ void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn
     volatile_write(persisted_nvram_offset, end_lsn.offset());
   } else {
     // Wait for the flusher to finish persisting log if we don't have NVRAM
-    while (end_lsn.offset() > volatile_read(persisted_lsn_offset)) {
+    while (end_lsn.offset() > logmgr->durable_flushed_lsn().offset()) {
     }
   }
 
