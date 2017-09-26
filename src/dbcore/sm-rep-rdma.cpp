@@ -190,8 +190,11 @@ bool BackupReceiveBoundsArrayRdma(ReplayPipelineStage& pipeline_stage) {
               << log_redo_partition_bounds[i] << std::dec << " " << s;
   }
 #endif
-
   // Make a stable local copy for replay threads to use
+  // Note: for non-background replay, [pipeline_stage] should be
+  // one of the two global stages used by redo threads;
+  // for background replay, however, it should be a temporary
+  // one which will be later copied to the two global stages.
   memcpy(pipeline_stage.log_redo_partition_bounds,
          log_redo_partition_bounds,
          config::log_redo_partitions * sizeof(uint64_t));
@@ -262,17 +265,25 @@ void BackupDaemonRdma() {
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   received_log_size = 0;
   uint32_t recv_idx = 0;
+  ReplayPipelineStage *stage = nullptr;
+  if (config::replay_policy == config::kReplayBackground) {
+    stage = new ReplayPipelineStage;
+  }
   while (!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
-    ReplayPipelineStage& stage = pipeline_stages[recv_idx];
-    WaitForLogBufferSpace(stage.end_lsn);
+    if (config::replay_policy != config::kReplayBackground) {
+      stage = &pipeline_stages[recv_idx];
+    }
+    WaitForLogBufferSpace(stage->end_lsn);
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive | kRdmaPersisted);
-    if (!BackupReceiveBoundsArrayRdma(stage)) {
-      // Actually only needed if no query workers
-      rep::backup_shutdown_trigger.notify_all();
-      break;
+    if (config::persist_policy != config::kPersistAsync) {
+      if (!BackupReceiveBoundsArrayRdma(*stage)) {
+        // Actually only needed if no query workers
+        rep::backup_shutdown_trigger.notify_all();
+        break;
+      }
     }
 
     uint64_t size = 0;
@@ -280,7 +291,7 @@ void BackupDaemonRdma() {
     recv_idx = (recv_idx + 1) % 2;
     received_log_size += size;
 
-    BackupProcessLogData(stage, start_lsn, end_lsn);
+    BackupProcessLogData(*stage, start_lsn, end_lsn);
 
     // Tell the primary the data is persisted, it can continue
     ASSERT(logmgr->durable_flushed_lsn().offset() <= end_lsn.offset());
@@ -288,6 +299,9 @@ void BackupDaemonRdma() {
 
     // Next iteration
     start_lsn = end_lsn;
+  }
+  if (config::replay_policy == config::kReplayBackground) {
+    delete stage;
   }
 }
 
