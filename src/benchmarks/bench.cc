@@ -280,9 +280,6 @@ void bench_runner::run() {
              volatile_read(rep::new_end_lsn_offset)) {
       }
     }
-    if (config::replay_policy == config::kReplayBackground) {
-      rep::background_replay_thread.join();
-    }
     cerr << "Shutdown successfully" << std::endl;
   }
 }
