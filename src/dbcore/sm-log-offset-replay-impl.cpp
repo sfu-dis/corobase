@@ -158,15 +158,11 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
         stage_end = volatile_read(stage.end_lsn);
       } while (stage_end.offset() <= volatile_read(rep::replayed_lsn_offset));
 
-      if (config::replay_policy == config::kReplayBackground) {
-        while (!stage.ready) {}
-      }
-
       LSN stage_start = volatile_read(stage.start_lsn);
       ASSERT(stage_start.segment() == stage_end.segment());
 
       DLOG(INFO) << "Start to roll " << std::hex << stage_start.offset()
-        << "-" << stage_end.offset() << std::dec;
+        << "-" << stage_end.offset() << std::dec << " " << i;
 
       // Find myself a partition
       uint64_t min_offset = ~uint64_t{0};
@@ -222,10 +218,6 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
           }
         }
         if (--stage.num_replaying_threads == 0) {
-          if (config::replay_policy == config::kReplayBackground) {
-            // Reset it before setting replayed LSN
-            stage.ready = false;
-          }
           volatile_write(rep::replayed_lsn_offset, stage.end_lsn.offset());
           DLOG(INFO) << "replayed_lsn_offset=" << std::hex << rep::replayed_lsn_offset << std::dec;
           is_last_thread = true;
@@ -242,19 +234,12 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
           DLOG(INFO) << "[Backup] Rolled forward log " << std::hex << start_lsn.offset()
                      << "." << start_lsn.segment() << "-" << end_lsn.offset() << "."
                      << end_lsn.segment() << std::dec;
-          if (config::replay_policy == config::kReplayBackground) {
-            // Reset it before setting replayed LSN
-            stage.ready = false;
-          }
           volatile_write(rep::replayed_lsn_offset, stage.end_lsn.offset());
           is_last_thread = true;
         }
       }
       // Make sure everyone is finished before we look at the next stage
-      while (volatile_read(rep::replayed_lsn_offset) != stage.end_lsn.offset()) {}
-      if (config::replay_policy == config::kReplayBackground && is_last_thread) {
-        rep::bg_replay_cond.notify_all();
-      }
+      while (volatile_read(rep::replayed_lsn_offset) != stage_end.offset()) {}
     }
   }
 }

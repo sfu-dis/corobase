@@ -245,8 +245,11 @@ void BackupReceiveBoundsArrayTcp(ReplayPipelineStage& pipeline_stage) {
               << log_redo_partition_bounds[i] << std::dec << " " << s;
   }
 #endif
-
   // Make a stable local copy for replay threads to use
+  // Note: for non-background replay, [pipeline_stage] should be
+  // one of the two global stages used by redo threads;
+  // for background replay, however, it should be a temporary
+  // one which will be later copied to the two global stages.
   memcpy(pipeline_stage.log_redo_partition_bounds,
          log_redo_partition_bounds,
          config::log_redo_partitions * sizeof(uint64_t));
@@ -274,11 +277,17 @@ void BackupDaemonTcp() {
   tcp::send_ack(cctx->server_sockfd);
   received_log_size = 0;
   uint32_t recv_idx = 0;
+  ReplayPipelineStage *stage = nullptr;
+  if (config::replay_policy == config::kReplayBackground) {
+    stage = new ReplayPipelineStage;
+  }
   while (true) {
     rcu_enter();
     DEFER(rcu_exit());
-    ReplayPipelineStage& stage = pipeline_stages[recv_idx];
-    recv_idx = (recv_idx + 1) % 2;
+    if (config::replay_policy != config::kReplayBackground) {
+      stage = &pipeline_stages[recv_idx];
+      recv_idx = (recv_idx + 1) % 2;
+    }
     WaitForLogBufferSpace(start_lsn);
 
     // expect an integer indicating data size
@@ -328,10 +337,10 @@ void BackupDaemonTcp() {
 
     if (config::persist_policy != config::kPersistAsync) {
       // Receive bounds array
-      BackupReceiveBoundsArrayTcp(stage);
+      BackupReceiveBoundsArrayTcp(*stage);
     }
 
-    BackupProcessLogData(stage, start_lsn, end_lsn);
+    BackupProcessLogData(*stage, start_lsn, end_lsn);
 
     // Ack the primary after persisting data
     tcp::send_ack(cctx->server_sockfd);
@@ -345,6 +354,9 @@ void BackupDaemonTcp() {
 
     // Next iteration
     start_lsn = end_lsn;
+  }
+  if (config::replay_policy == config::kReplayBackground) {
+    delete stage;
   }
 }
 
