@@ -58,6 +58,8 @@ uint32_t config::replay_threads = 0;
 uint32_t config::threads = 0;
 bool config::persist_nvram_on_replay = true;
 int config::persist_policy = config::kPersistSync;
+uint32_t config::read_view_stat_interval_ms;
+std::string config::read_view_stat_file;
 
 void config::init() {
   ALWAYS_ASSERT(threads);

@@ -33,7 +33,7 @@ char *os_asprintf(char const *fmt, ...) {
 
 int os_open(char const *path, int flags) {
   int fd = open(path, flags);
-  THROW_IF(fd < 0, os_error, errno, "Unable to open file: %s", path);
+  LOG_IF(FATAL, fd < 0) << "Unable to open file " << path << "(" << fd << ")";
   return fd;
 }
 

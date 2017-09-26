@@ -287,6 +287,32 @@ void bench_runner::run() {
   }
 }
 
+void bench_runner::measure_read_view_lsn() {
+  rcu_register();
+  DEFER(rcu_deregister());
+  std::ofstream out_file(config::read_view_stat_file, std::ios::out | std::ios::trunc);
+  LOG_IF(FATAL, !out_file.is_open()) << "Read view stat file not open";
+  DEFER(out_file.close());
+  out_file << "Time,LSN" << std::endl;
+  while (!config::IsShutdown()) {
+    while (config::IsForwardProcessing()) {
+      rcu_enter();
+      DEFER(rcu_exit());
+      uint64_t lsn = 0;
+      if (config::is_backup_srv()) {
+        lsn = std::min<uint64_t>(volatile_read(rep::replayed_lsn_offset),
+                                 volatile_read(*rep::global_persisted_lsn_ptr));
+      } else {
+        lsn = logmgr->cur_lsn().offset();
+      }
+      uint64_t t = std::chrono::system_clock::now().time_since_epoch() /
+                   std::chrono::milliseconds(1);
+      out_file << t << "," << std::hex << lsn << std::dec << std::endl;
+      usleep(config::read_view_stat_interval_ms * 1000);
+    }
+  }
+}
+
 void bench_runner::start_measurement() {
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
@@ -309,8 +335,6 @@ void bench_runner::start_measurement() {
     }
     cerr << "starting benchmark..." << endl;
   }
-  timer t, t_nosync;
-  barrier_b.count_down();  // bombs away!
 
   // Print some results every second
   uint64_t slept = 0;
@@ -353,6 +377,14 @@ void bench_runner::start_measurement() {
     return percent;
   };
 
+  // Start a thread that dumps read view LSN
+  std::thread read_view_observer;
+  if (config::read_view_stat_interval_ms) {
+    read_view_observer = std::move(std::thread(measure_read_view_lsn));
+  }
+
+  timer t, t_nosync;
+  barrier_b.count_down();  // bombs away!
   printf("Sec,Commits,Aborts,CPU\n");
 
   double total_util = 0;
@@ -389,6 +421,9 @@ void bench_runner::start_measurement() {
   running = false;
 
   volatile_write(config::state, config::kStateShutdown);
+  if (config::read_view_stat_interval_ms) {
+    read_view_observer.join();
+  }
   for (size_t i = 0; i < config::worker_threads; i++) {
     workers[i]->join();
   }

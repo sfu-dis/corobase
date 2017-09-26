@@ -227,6 +227,7 @@ class bench_runner {
   void start_measurement();
 
   static std::vector<bench_worker *> workers;
+  static void measure_read_view_lsn();
 
  protected:
   // only called once

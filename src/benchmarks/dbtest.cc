@@ -41,6 +41,11 @@ DEFINE_uint64(log_segment_mb, 8192, "Log segment size in MB.");
 DEFINE_uint64(log_buffer_mb, 16, "Log buffer size in MB.");
 DEFINE_bool(log_ship_by_rdma, false, "Whether to use RDMA for log shipping.");
 DEFINE_bool(phantom_prot, false, "Whether to enable phantom protection.");
+DEFINE_uint64(read_view_stat_interval_ms, 0,
+  "Time interval between two outputs of read view LSN in milliseconds."
+  "0 means do not output");
+DEFINE_string(read_view_stat_file, "/dev/shm/ermia_read_view_stat",
+  "Where to store all the read view LSN outputs. Recommend tmpfs.");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false,
             "Whether to use the safe snapshot (for SSI and SSN only).");
@@ -186,6 +191,8 @@ int main(int argc, char **argv) {
   config::primary_port = FLAGS_primary_port;
 
   config::log_redo_partitions = rep::kMaxLogBufferPartitions;
+  config::read_view_stat_interval_ms = FLAGS_read_view_stat_interval_ms;
+  config::read_view_stat_file = FLAGS_read_view_stat_file;
 
   // Backup specific arguments
   if (config::is_backup_srv()) {
@@ -344,6 +351,9 @@ int main(int argc, char **argv) {
        << endl;
   cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize()
        << endl;
+  cerr << "  read_view_stat_interval : " << config::read_view_stat_interval_ms
+       << "ms" << endl;
+  cerr << "  read_view_stat_file     : " << config::read_view_stat_file << endl;
 
   if (config::is_backup_srv()) {
     cerr << "  nvram-log-buffer  : " << config::nvram_log_buffer << endl;

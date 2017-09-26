@@ -29,6 +29,8 @@ struct config {
   static uint64_t log_buffer_mb;
   static uint64_t log_segment_mb;
   static std::string log_dir;
+  static uint32_t read_view_stat_interval_ms;
+  static std::string read_view_stat_file;
 
   // NVRAM settings - for backup servers only, the primary doesn't care.
   static bool nvram_log_buffer;
