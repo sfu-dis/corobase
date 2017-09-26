@@ -138,7 +138,7 @@ void BackupBackgroundReplay() {
         }
 
         while (stage.end_lsn.offset() > volatile_read(replayed_lsn_offset)) {}
-        LOG(INFO) << "To replay " << std::hex << tmp_stage.start_lsn.offset()
+        DLOG(INFO) << "To replay " << std::hex << tmp_stage.start_lsn.offset()
                    << "-" << tmp_stage.end_lsn.offset() << std::endl;
         memcpy(stage.log_redo_partition_bounds,
                tmp_stage.log_redo_partition_bounds,
