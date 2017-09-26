@@ -24,7 +24,6 @@ int replay_bounds_fd CACHE_ALIGNED;
 std::condition_variable bg_replay_cond CACHE_ALIGNED;
 std::mutex bg_replay_mutex CACHE_ALIGNED;
 uint64_t received_log_size CACHE_ALIGNED;
-std::thread background_replay_thread CACHE_ALIGNED;
 
 void start_as_primary() {
   shipped_log_size = 0;
@@ -93,12 +92,12 @@ void BackupBackgroundReplay() {
   off_t off = 0;
   LSN start_lsn = logmgr->durable_flushed_lsn();
   LOG_IF(FATAL, start_lsn == INVALID_LSN) << "Invalid start LSN";
+  LSN end_lsn = logmgr->durable_flushed_lsn();
 
   if (config::persist_policy == config::kPersistAsync) {
     while (!config::IsShutdown()) {
       rcu_enter();
       DEFER(rcu_exit());
-      LSN end_lsn = logmgr->durable_flushed_lsn();
       if (end_lsn.offset() > start_lsn.offset()) {
         if (end_lsn.offset() - start_lsn.offset() > config::group_commit_bytes) {
           uint64_t end_offset = start_lsn.offset() + config::group_commit_bytes;
@@ -134,6 +133,7 @@ void BackupBackgroundReplay() {
           off += nbytes;
           DLOG(INFO) << "Read " << std::hex << tmp_stage.start_lsn.offset()
                      << "-" << tmp_stage.end_lsn.offset() << std::endl;
+          end_lsn = tmp_stage.end_lsn;
           break;
         }
 
@@ -158,6 +158,7 @@ void BackupBackgroundReplay() {
       }
     }
   }
+  while (volatile_read(replayed_lsn_offset) < end_lsn.offset()) {};
 }
 
 void BackupStartReplication() {
@@ -180,7 +181,8 @@ void BackupStartReplication() {
   pipeline_stages = new ReplayPipelineStage[2];
   if (config::replay_policy != config::kReplayNone) {
     if (config::replay_policy == config::kReplayBackground) {
-      background_replay_thread = std::move(std::thread(BackupBackgroundReplay));
+      std::thread t(BackupBackgroundReplay);
+      t.detach();
     }
     if (config::persist_policy != config::kPersistAsync) {
       logmgr->start_logbuf_redoers();

@@ -48,7 +48,6 @@ extern uint64_t received_log_size;
 extern uint64_t shipped_log_size;
 extern uint64_t log_size_for_ship;
 extern std::thread primary_async_ship_daemon;
-extern std::thread background_replay_thread;
 extern std::condition_variable backup_shutdown_trigger;
 
 static const uint32_t kMaxLogBufferPartitions = 64;
