@@ -39,7 +39,6 @@ const uint64_t kRdmaPersisted = 0x4;
 
 extern uint64_t *global_persisted_lsn_ptr;
 extern uint64_t replayed_lsn_offset;
-extern uint64_t persisted_lsn_offset;
 extern uint64_t persisted_nvram_size;
 extern uint64_t persisted_nvram_offset;
 extern uint64_t new_end_lsn_offset;
@@ -55,6 +54,20 @@ extern uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions];
 extern int replay_bounds_fd CACHE_ALIGNED;
 extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
+
+inline uint64_t GetReadView() {
+  uint64_t lsn = 0;
+  if (config::persist_policy == config::kPersistAsync) {
+    lsn = volatile_read(rep::replayed_lsn_offset);
+  } else {
+    lsn = std::min<uint64_t>(volatile_read(rep::replayed_lsn_offset),
+                             volatile_read(*rep::global_persisted_lsn_ptr));
+  }
+  if (config::nvram_log_buffer) {
+    lsn = std::min<uint64_t>(lsn, volatile_read(rep::persisted_nvram_offset));
+  }
+  return lsn;
+}
 
 struct backup_start_metadata {
   struct log_segment {
@@ -130,7 +143,7 @@ inline void WaitForLogBufferSpace(LSN target_lsn) {
   // and replayed (if needed).
   uint64_t off = target_lsn.offset();
   if (off) {
-    while (off > volatile_read(persisted_lsn_offset)) {
+    while (off > logmgr->durable_flushed_lsn().offset()) {
     }
     if (config::replay_policy != config::kReplayNone &&
         config::replay_policy != config::kReplayBackground) {

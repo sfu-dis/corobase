@@ -297,8 +297,7 @@ void bench_runner::measure_read_view_lsn() {
       DEFER(rcu_exit());
       uint64_t lsn = 0;
       if (config::is_backup_srv()) {
-        lsn = std::min<uint64_t>(volatile_read(rep::replayed_lsn_offset),
-                                 volatile_read(*rep::global_persisted_lsn_ptr));
+        lsn = rep::GetReadView();
       } else {
         lsn = logmgr->cur_lsn().offset();
       }
