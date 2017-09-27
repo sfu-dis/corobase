@@ -259,7 +259,7 @@ void sm_log_recover_mgr::load_object_from_logbuf(char *buf, size_t bufsz,
       return;
     }
   }
-  while (ptr.offset() >= logmgr->durable_flushed_lsn().offset()) {
+  while (ptr.offset() + nbytes > logmgr->durable_flushed_lsn().offset()) {
   }
   load_object(buf, bufsz, ptr, align_bits);
 }
@@ -280,15 +280,15 @@ void sm_log_recover_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr,
   ASSERT(sid);
   ASSERT(ptr.offset() >= sid->start_offset);
 
-  if (ptr.offset() > logmgr->durable_flushed_lsn().offset()) {
+  if (config::is_backup_srv() && config::persist_policy != config::kPersistAsync &&
+    ptr.offset() + nbytes > logmgr->durable_flushed_lsn().offset()) {
     return load_object_from_logbuf(buf, bufsz, ptr, align_bits);
   }
 
   size_t m = os_pread(sid->fd, buf, nbytes, ptr.offset() - sid->start_offset);
-  ALWAYS_ASSERT(m == nbytes);
-  THROW_IF(m != nbytes, log_file_error,
-           "Unable to read full object (%zd bytes needed, %zd read)", nbytes,
-           m);
+  LOG_IF(FATAL, m != nbytes) << "Unable to read full object ("
+    << nbytes << " bytes needed, " << m << " read) at " << std::hex << ptr.offset()
+    << " ,durable offset " << logmgr->durable_flushed_lsn().offset() << std::dec;
 }
 
 fat_ptr sm_log_recover_mgr::load_ext_pointer(fat_ptr ext_ptr) {

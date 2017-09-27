@@ -98,7 +98,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
   static __thread std::unordered_map<FID, OID> max_oid;
   replayed_lsn = INVALID_LSN;
 
-  for (; scan->valid() and scan->payload_lsn().offset() < owner->end_lsn.offset(); scan->next()) {
+  for (; scan->valid() and scan->payload_lsn().offset() + scan->payload_size() <= owner->end_lsn.offset(); scan->next()) {
     // During replay on backups we might encounter incomplete log blocks,
     // because the primary might just ship X bytes without considering
     // log block boundaries. So here we remember the log block's starting
