@@ -19,6 +19,7 @@ scale_factor=$1; shift
 duration=$1; shift
 threads=$1; shift
 export logbuf_mb=$1; shift
+read_view_stat=$1; shift
 primary_bench=$1; shift
 backup_bench=$1; shift
 primary_args="$1"; shift
@@ -67,6 +68,7 @@ echo "Started all backups"
 
 # Wait for the primary to finish
 wait
+mv $read_view_stat $output_dir/primary.read_view.txt &> /dev/null
 echo "Primary exited"
 
 # See if the backups are done as well
@@ -77,6 +79,7 @@ for backup in "$@"; do
       sleep 2
     else
       echo "Backup $backup exited"
+      ssh -o StrictHostKeyChecking=no $backup "mv $read_view_stat $output_dir/backup.$backup.read_view.txt &> /dev/null"
       break
     fi
   done
