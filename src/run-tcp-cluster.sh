@@ -28,8 +28,10 @@ run() {
   read_view_ms=${10}
   read_view_stat=${11}
 
-  logbuf_mb=16 #$9
-  group_commit_size_mb=4 #${10}
+  logbuf_mb=16
+  group_commit_size_mb=4
+
+  duration=10
 
   unset GLOG_logtostderr
 
