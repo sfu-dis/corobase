@@ -24,6 +24,9 @@ run() {
   delay=$6
   nvram=$7
   persist_nvram_on_replay=$8
+  persist_policy=$9
+  read_view_ms=${10}
+  read_view_stat=${11}
 
   logbuf_mb=16 #$9
   group_commit_size_mb=4 #${10}
@@ -33,58 +36,43 @@ run() {
   echo "----------"
   echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram group_commit_size_mb=$group_commit_size_mb
   echo "----------"
-  ./run-cluster.sh SI $t 10 $t $logbuf_mb tpcc_org tpccr \
-    "-group_commit -group_commit_size_mb=$group_commit_size_mb -chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma=0 -fake_log_write -wait_for_backups -num_backups=$num_backups -persist_policy=sync" \
-    "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma=0 -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -persist_nvram_on_replay=$persist_nvram_on_replay" \
+  ./run-cluster.sh SI $t $duration $t $logbuf_mb $read_view_stat tpcc_org tpccr \
+    "-group_commit -group_commit_size_mb=$group_commit_size_mb -chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma=0 -fake_log_write -wait_for_backups -num_backups=$num_backups -persist_policy=$persist_policy -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
+    "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma=0 -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
     "${backups[@]:0:$num_backups}"
   echo
 }
 
-# Absolute the baseline - sync shipping, sync replay, single replay thread, full replay, no NVRAM
-all_sync() {
+read_view_stat="/dev/shm/ermia_read_view.txt"
+# Synchronous shipping
+sync_ship() {
+  # Sync time
   for num_backups in 1 2 3 4 5 6 7; do
-    run $num_backups 16 sync 1 1 none 0 0
-  done
-  for t in 1 2 4 8; do
-    run 1 $t sync 1 1 none 0 0
-  done
-}
-
-# Still baseline, but with parallel replay
-parallel_replay() {
-  for num_backups in 1 2 3 4 5 6 7; do
-    for nredoers in 1 2 4 8 16; do
-      run $num_backups 16 sync 1 $nredoers none 0 0
+    sudo ntpd -gq &> /dev/null
+    for redoers in 1 2 4 8 16; do
+      run $num_backups 16 sync 1 $redoers none 0 0 sync 50 $read_view_stat
+      run $num_backups 16 "bg" 1 $redoers none 0 0 sync 50 $read_view_stat
     done
+    run $num_backups 16 none 1 0 none 0 0 sync 50 $read_view_stat
   done
+}
 
-  nredoers=1
-  for t in 1 2 4 8; do
-    run 1 $t sync 1 $nredoers none 0 0
+async_ship() {
+  # Sync time
+  for num_backups in 1 2 3 4 5 6 7; do
+    sudo ntpd -gq &> /dev/null
+    for redoers in 1 2 4 8 16; do
+      run $num_backups 16 "bg" 1 $redoers none 0 0 async 50 $read_view_stat
+    done
+    run $num_backups 16 none 1 0 none 0 0 async 50 $read_view_stat
   done
-
-  nredoers=2
-  for t in 2 4 8; do
-    run 1 $t sync 1 $nredoers none 0 0
-  done
-
-  nredoers=4
-  for t in 4 8; do
-    run 1 $t sync 1 $nredoers none 0 0
-  done
-
-  nredoers=8
-  t=8
-  run 1 $t sync 1 $nredoers none 0 0
 }
 
 for r in 1 2 3; do
-  echo "Running all_sync r$r"
-  all_sync
-done
+  echo "Running async_ship r$r"
+  async_ship
 
-for r in 1 2 3; do
-  echo "Running parallel_replay r$r"
-  parallel_replay
+  echo "Running sync_ship r$r"
+  sync_ship
 done
 
