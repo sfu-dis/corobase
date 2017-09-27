@@ -290,12 +290,13 @@ void bench_runner::measure_read_view_lsn() {
   std::ofstream out_file(config::read_view_stat_file, std::ios::out | std::ios::trunc);
   LOG_IF(FATAL, !out_file.is_open()) << "Read view stat file not open";
   DEFER(out_file.close());
-  out_file << "Time,LSN" << std::endl;
+  out_file << "Time,LSN,DLSN" << std::endl;
   while (!config::IsShutdown()) {
     while (config::IsForwardProcessing()) {
       rcu_enter();
       DEFER(rcu_exit());
       uint64_t lsn = 0;
+      uint64_t dlsn = logmgr->durable_flushed_lsn().offset();
       if (config::is_backup_srv()) {
         lsn = rep::GetReadView();
       } else {
@@ -303,7 +304,7 @@ void bench_runner::measure_read_view_lsn() {
       }
       uint64_t t = std::chrono::system_clock::now().time_since_epoch() /
                    std::chrono::milliseconds(1);
-      out_file << t << "," << std::hex << lsn << std::dec << std::endl;
+      out_file << t << "," << std::hex << lsn << "," << dlsn << std::dec << std::endl;
       usleep(config::read_view_stat_interval_ms * 1000);
     }
   }
