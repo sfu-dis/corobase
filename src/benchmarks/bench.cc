@@ -286,9 +286,6 @@ void bench_runner::run() {
     }
     cerr << "Shutdown successfully" << std::endl;
   }
-  if (config::command_log) {
-    delete CommandLog::cmd_log;
-  }
 }
 
 void bench_runner::measure_read_view_lsn() {
@@ -434,6 +431,9 @@ void bench_runner::start_measurement() {
 
   if (config::num_backups) {
     delete logmgr;
+    if (config::command_log) {
+      delete CommandLog::cmd_log;
+    }
     rep::PrimaryShutdown();
   }
 
