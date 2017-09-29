@@ -351,6 +351,10 @@ sm_log_file_mgr::sm_log_file_mgr() {
         // Background async replay bounds file
         continue;
       }
+      case 'm': {
+        // Command log. TODO(tzwang): recovery
+        continue;
+      }
       default:
         break;
     }
