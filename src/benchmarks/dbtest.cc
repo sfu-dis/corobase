@@ -352,6 +352,7 @@ int main(int argc, char **argv) {
   cerr << "  total-threads     : " << config::threads << endl;
   cerr << "  persist-policy    : " << config::persist_policy << endl;
   cerr << "  command-log       : " << config::command_log << endl;
+  cerr << "  command-logbuf    : " << config::command_log_buffer_mb << "MB" << endl;
 
   cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize()
        << endl;

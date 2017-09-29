@@ -262,6 +262,7 @@ retry:
 void sm_log_alloc_mgr::PrimaryShipLog(segment_id *durable_sid,
                                       uint64_t nbytes, bool new_seg,
                                       uint64_t new_offset, const char *buf) {
+  ASSERT(!config::command_log);
   bool have_imm = false;
   uint32_t imm = 0;
   if (config::log_ship_by_rdma) {
@@ -466,8 +467,10 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     auto file_offset = durable_sid->offset(_durable_flushed_lsn_offset);
 
     // Ship the log to backups, unless we're doing async log shipping
-    if (config::persist_policy != config::kPersistAsync &&
-        config::num_active_backups && !config::IsLoading()) {
+    if (!config::command_log &&
+        config::persist_policy != config::kPersistAsync &&
+        config::num_active_backups &&
+        !config::IsLoading()) {
       PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
       if (new_seg) {
         new_seg = false;
@@ -487,12 +490,14 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     }
     LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
 
-    if (config::IsForwardProcessing() && config::num_active_backups) {
-      rep::log_size_for_ship += nbytes;
-    }
+    if (!config::command_log) {
+      if (config::IsForwardProcessing() && config::num_active_backups) {
+        rep::log_size_for_ship += nbytes;
+      }
 
-    // Dequeue transactions pending persistence (if pipelined group commit is on)
-    PrimaryCommitPersistedWork(new_offset);
+      // Dequeue transactions pending persistence (if pipelined group commit is on)
+      PrimaryCommitPersistedWork(new_offset);
+    }
 
     // After this the buffer space will become available for consumption
     _logbuf->advance_reader(new_byte);

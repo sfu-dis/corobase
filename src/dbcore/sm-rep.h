@@ -80,6 +80,7 @@ struct backup_start_metadata {
     uint32_t scale_factor;
     uint64_t log_segment_mb;
     uint32_t persist_policy;
+    uint32_t command_log_buffer_mb;
   };
 
   struct backup_config system_config;
@@ -95,6 +96,8 @@ struct backup_start_metadata {
     system_config.scale_factor = config::benchmark_scale_factor;
     system_config.log_segment_mb = config::log_segment_mb;
     system_config.persist_policy = config::persist_policy;
+    system_config.command_log_buffer_mb = config::command_log ?
+                                          config::command_log_buffer_mb : 0;
   }
 
   inline void add_log_segment(unsigned int segment, uint64_t start_offset,
