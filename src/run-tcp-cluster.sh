@@ -25,13 +25,12 @@ run() {
   nvram=$7
   persist_nvram_on_replay=$8
   persist_policy=$9
-  read_view_ms=${10}
-  read_view_stat=${11}
 
   logbuf_mb=16
   group_commit_size_mb=4
 
-  duration=10
+  read_view_ms=10
+  read_view_stat="/dev/shm/ermia_read_view.txt"
 
   unset GLOG_logtostderr
 
@@ -45,17 +44,16 @@ run() {
   echo
 }
 
-read_view_stat="/dev/shm/ermia_read_view.txt"
 # Synchronous shipping
 sync_ship() {
   # Sync time
   for num_backups in 1 2 3 4 5 6 7; do
     sudo ntpd -gq &> /dev/null
     for redoers in 1 2 4 8 16; do
-      run $num_backups 16 sync 1 $redoers none 0 0 sync 50 $read_view_stat
-      run $num_backups 16 "bg" 1 $redoers none 0 0 sync 50 $read_view_stat
+      run $num_backups 16 sync 1 $redoers none 0 0 sync
+      run $num_backups 16 "bg" 1 $redoers none 0 0 sync
     done
-    run $num_backups 16 none 1 0 none 0 0 sync 50 $read_view_stat
+    run $num_backups 16 none 1 0 none 0 0 sync
   done
 }
 
@@ -64,9 +62,9 @@ async_ship() {
   for num_backups in 1 2 3 4 5 6 7; do
     sudo ntpd -gq &> /dev/null
     for redoers in 1 2 4 8 16; do
-      run $num_backups 16 "bg" 1 $redoers none 0 0 async 50 $read_view_stat
+      run $num_backups 16 "bg" 1 $redoers none 0 0 async
     done
-    run $num_backups 16 none 1 0 none 0 0 async 50 $read_view_stat
+    run $num_backups 16 none 1 0 none 0 0 async
   done
 }
 
