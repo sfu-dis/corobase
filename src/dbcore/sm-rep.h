@@ -203,6 +203,7 @@ void primary_rdma_set_global_persisted_lsn(uint64_t lsn);
 // TCP-specific functions
 void start_as_backup_tcp();
 void BackupDaemonTcp();
+void BackupDaemonTcpCommandLog();
 void primary_daemon_tcp();
 void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
                               LSN chkpt_start);
