@@ -320,7 +320,7 @@ backup_start_metadata *prepare_start_metadata(int &chkpt_fd,
       uint64_t size = st.st_size - chkpt_start_lsn.offset();
       md->add_log_segment(seg, start, end, size);
       LOG(INFO) << "Will ship segment " << seg << ", " << size << " bytes";
-    } else if (l == 'c' || l == 'o' || l == '.') {
+    } else if (l == 'c' || l == 'o' || l == '.' || l == 'm') {
       // Nothing to do or already handled
     } else {
       LOG(FATAL) << "Unrecognized file name";

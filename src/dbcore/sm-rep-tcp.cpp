@@ -1,5 +1,6 @@
 #include <sys/stat.h>
 
+#include "sm-cmd-log.h"
 #include "sm-index.h"
 #include "sm-log-file.h"
 #include "sm-rep.h"
@@ -194,9 +195,15 @@ void start_as_backup_tcp() {
   config::benchmark_scale_factor = md->system_config.scale_factor;
   config::log_segment_mb = md->system_config.log_segment_mb;
   config::persist_policy = md->system_config.persist_policy;
+  config::command_log_buffer_mb = md->system_config.command_log_buffer_mb;
+  config::command_log = config::command_log_buffer_mb > 0;
 
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();
+
+  if (config::command_log) {
+    CommandLog::cmd_log = new CommandLog::CommandLogManager();
+  }
   LOG(INFO) << "[Backup] Received log file.";
 }
 
@@ -373,5 +380,56 @@ void PrimaryShutdownTcp() {
 }
 
 void BackupDaemonTcpCommandLog() {
+  ALWAYS_ASSERT(CommandLog::cmd_log);
+  ALWAYS_ASSERT(cctx);
+  rcu_register();
+  DEFER(rcu_deregister());
+  tcp::send_ack(cctx->server_sockfd);
+
+  uint32_t size = 0;
+  while (true) {
+    // expect an integer indicating data size
+    tcp::receive(cctx->server_sockfd, (char*)&size, sizeof(size));
+
+    if (!config::IsForwardProcessing()) {
+      // Received the first batch, for sure the backup can start benchmarks.
+      // FIXME(tzwang): this is not optimal - ideally we should start after
+      // the primary starts, instead of when the primary *shipped* the first
+      // batch.
+      volatile_write(config::state, config::kStateForwardProcessing);
+    }
+
+    // Zero size indicates 'shutdown' signal from the primary
+    if (size == 0) {
+      tcp::send_ack(cctx->server_sockfd);
+      volatile_write(config::state, config::kStateShutdown);
+      LOG(INFO) << "Got shutdown signal from primary, exit.";
+      rep::backup_shutdown_trigger
+          .notify_all();  // Actually only needed if no query workers
+      break;
+    }
+
+    uint64_t durable_offset = CommandLog::cmd_log->DurableOffset();
+    uint64_t off = durable_offset % CommandLog::cmd_log->Size();
+    char *buf = CommandLog::cmd_log->GetBuffer() + off;
+    tcp::receive(cctx->server_sockfd, buf, size);
+
+    if (config::replay_policy == config::kReplaySync) {
+
+    } else if (config::replay_policy == config::kReplayNone) {
+    } else {
+      LOG(FATAL) << "Unspported replay policy";
+    }
+
+    // Flush it
+    CommandLog::cmd_log->BackupFlush(size + durable_offset);
+
+    if (config::replay_policy == config::kReplaySync) {
+      //while (volatile_read(replayed_lsn_offset) != end_lsn.offset()) {}
+    }
+
+    // Ack the primary after persisting data
+    tcp::send_ack(cctx->server_sockfd);
+  }
 }
 }  // namespace rep

@@ -40,8 +40,8 @@ private:
   std::mutex flush_mutex_;
   int fd_;
 
-  void Flush(bool check_tls = true);
   void ShipLog(char *buf, uint32_t size);
+  void Flush(bool check_tls = true);
 
 public:
   CommandLogManager()
@@ -61,7 +61,7 @@ public:
 
     dirent_iterator dir(config::log_dir.c_str());
     int dfd = dir.dup();
-    std::string fname = config::log_dir + std::string("/cmd-log");
+    std::string fname = config::log_dir + std::string("/mlog");
     fd_ = os_openat(dfd, + fname.c_str(), O_CREAT | O_WRONLY | O_SYNC);
     flusher_ = std::thread(&CommandLogManager::FlushDaemon, this);
   }
@@ -74,12 +74,16 @@ public:
     os_close(fd_);
   }
 
+  uint32_t Size() { return buffer_size_; }
   void StartBackupRedoers();
+  void BackupFlush(uint64_t new_off);
   void FlushDaemon();
   uint64_t Insert(uint32_t partition_id, uint32_t xct_type);
   inline uint64_t GetTlsOffset() {
     return volatile_read(tls_offsets_[thread::my_id()]);
   }
+  inline char *GetBuffer() { return buffer_; }
+  inline uint64_t DurableOffset() { return volatile_read(durable_offset_); }
 };
 
 extern CommandLogManager *cmd_log;

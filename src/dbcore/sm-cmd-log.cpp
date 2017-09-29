@@ -24,6 +24,11 @@ uint64_t CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type) {
   volatile_write(tls_offsets_[thread::my_id()], end_off);
 }
 
+void CommandLogManager::BackupFlush(uint64_t new_off) {
+  allocated_ = new_off;
+  Flush(false);
+}
+
 void CommandLogManager::Flush(bool check_tls) {
   uint64_t filled_off = allocated_;
   if (check_tls) {
@@ -51,6 +56,12 @@ void CommandLogManager::Flush(bool check_tls) {
   }
 }
 
+/*
+void CommandLogManager::BackupRedo() {
+
+}
+*/
+
 void CommandLogManager::StartBackupRedoers() {
 }
 
@@ -58,6 +69,7 @@ void CommandLogManager::ShipLog(char *buf, uint32_t size) {
   // TCP based synchronous shipping
   LOG_IF(FATAL, config::log_ship_by_rdma) << "RDMA not supported for logical log shipping";
   ASSERT(rep::backup_sockfds.size());
+  LOG(INFO) << "Shipping " << size << " bytes";
   for (int &fd : rep::backup_sockfds) {
     uint32_t nbytes = send(fd, (char*)&size, sizeof(uint32_t), 0);
     LOG_IF(FATAL, nbytes != sizeof(uint32_t)) << "Incomplete log shipping (header)";

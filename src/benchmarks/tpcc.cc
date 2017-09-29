@@ -1264,7 +1264,7 @@ rc_t tpcc_worker::txn_new_order() {
   }
   ASSERT(!g_disable_xpartition_txn || allLocal);
 
-  if (config::command_log) {
+  if (config::command_log && !config::is_backup_srv()) {
     CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER);
   }
 
@@ -1480,7 +1480,7 @@ rc_t tpcc_worker::txn_delivery() {
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
 
-  if (config::command_log) {
+  if (config::command_log && !config::is_backup_srv()) {
     CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY);
   }
 
@@ -1759,7 +1759,7 @@ rc_t tpcc_worker::txn_payment() {
   const uint32_t ts = GetCurrentTimeMillis();
   ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
-  if (config::command_log) {
+  if (config::command_log && !config::is_backup_srv()) {
     CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT);
   }
 
