@@ -16,6 +16,8 @@
 #include <set>
 #include <vector>
 
+#include "../dbcore/sm-cmd-log.h"
+
 #include "../txn.h"
 #include "../macros.h"
 #include "../small_unordered_map.h"
@@ -1262,6 +1264,10 @@ rc_t tpcc_worker::txn_new_order() {
   }
   ASSERT(!g_disable_xpartition_txn || allLocal);
 
+  if (config::command_log) {
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER);
+  }
+
   // XXX(stephentu): implement rollback
   //
   // worst case txn profile:
@@ -1473,6 +1479,10 @@ rc_t tpcc_worker::txn_delivery() {
   const uint warehouse_id = pick_wh(r);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
+
+  if (config::command_log) {
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY);
+  }
 
   // worst case txn profile:
   //   10 times:
@@ -1748,6 +1758,10 @@ rc_t tpcc_worker::txn_payment() {
   const float paymentAmount = (float)(RandomNumber(r, 100, 500000) / 100.0);
   const uint32_t ts = GetCurrentTimeMillis();
   ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+  if (config::command_log) {
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT);
+  }
 
   // output from txn counters:
   //   max_absent_range_set_size : 0
