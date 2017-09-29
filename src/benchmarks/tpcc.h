@@ -5,6 +5,10 @@
 #include "../record/inline_str.h"
 #include "../macros.h"
 
+#define TPCC_CLID_NEW_ORDER 1
+#define TPCC_CLID_PAYMENT   2
+#define TPCC_CLID_DELIVERY  3
+
 #define CUSTOMER_KEY_FIELDS(x, y) \
   x(int32_t, c_w_id) y(int32_t, c_d_id) y(int32_t, c_id)
 #define CUSTOMER_VALUE_FIELDS(x, y)                                           \

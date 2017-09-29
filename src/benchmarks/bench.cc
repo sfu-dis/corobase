@@ -43,9 +43,6 @@ void bench_worker::my_work(char *) {
         timer t;
         const unsigned long old_seed = r.get_seed();
         const auto ret = workload[i].fn(this);
-        if (config::command_log) {
-          CommandLog::cmd_log->Insert(0, 1);
-        }
 
         if (!rc_is_abort(ret)) {
           ++ntxn_commits;
