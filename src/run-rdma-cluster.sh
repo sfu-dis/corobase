@@ -21,11 +21,12 @@ run() {
   delay=$6
   nvram=$7
   persist_nvram_on_replay=$8
-  read_view_ms=$9
-  read_view_stat=${10}
 
   logbuf_mb=16
   group_commit_size_mb=4
+
+  read_view_ms=10
+  read_view_stat="/dev/shm/ermia_read_view.txt"
 
   unset GLOG_logtostderr
 
@@ -39,7 +40,14 @@ run() {
   echo
 }
 
-read_view_stat="/dev/shm/ermia_read_view.txt"
+#run 2 16 sync 0 2 none 1 0
+#run 2 16 pipelined 0 4 none 1 0
+#run 4 16 pipelined 0 8 clwb-emu 1 1
+#run 4 16 pipelined 0 4 none 1 0
+#run 1 16 pipelined 1 4 none 1 0
+#run 2 16 pipelined 0 4 clwb-emu 1 1
+#run 1 16 none 0 0 none 0 0
+#exit
 
 multi_backup_replay() {
   for policy in pipelined sync; do
@@ -47,7 +55,7 @@ multi_backup_replay() {
       sudo ntpd -gq &> /dev/null
       for num_backups in 1 2 3 4 5 6 7; do
         echo "backups=$num_backups $policy redoers=$redoers"
-        run $num_backups 16 $policy 0 $redoers none 1 0 50 $read_view_stat
+        run $num_backups 16 $policy 0 $redoers none 1 0
       done
     done
   done
@@ -60,13 +68,13 @@ single_backup_pipelined_replay() {
   redoers=1
   for t in 1 2 4; do
     echo "backups=1 thread=$t $policy redoers=$redoers"
-    run 1 $t $policy 0 $redoers none 1 0 50 $read_view_stat
+    run 1 $t $policy 0 $redoers none 1 0
   done
 
   t=8
   redoers=2
   echo "backups=1 thread=$t $policy redoers=$redoers"
-  run 1 $t $policy 0 $redoers none 1 0 50 $read_view_stat
+  run 1 $t $policy 0 $redoers none 1 0
 }
 
 single_backup_sync_replay() {
@@ -76,18 +84,18 @@ single_backup_sync_replay() {
   redoers=1
   for t in 1 2; do
     echo "backups=1 thread=$t $policy redoers=$redoers"
-    run 1 $t $policy 0 $redoers none 1 0 50 $read_view_stat
+    run 1 $t $policy 0 $redoers none 1 0
   done
 
   t=4
   redoers=2
   echo "backups=1 thread=$t $policy redoers=$redoers"
-  run 1 $t $policy 0 $redoers none 1 0 50 $read_view_stat
+  run 1 $t $policy 0 $redoers none 1 0
 
   t=8
   redoers=4
   echo "backups=1 thread=$t $policy redoers=$redoers"
-  run 1 $t $policy 0 $redoers none 1 0 50 $read_view_stat
+  run 1 $t $policy 0 $redoers none 1 0
 }
 
 no_replay() {
@@ -95,7 +103,7 @@ no_replay() {
   for t in 1 2 4 8; do
     for delay in none clwb-emu clflush; do
       echo "backups=1 no_replay threads=$t delay=$delay"
-      run 1 $t none 0 0 $delay 1 0 50 $read_view_stat
+      run 1 $t none 0 0 $delay 1 0
     done
   done
 
@@ -103,7 +111,7 @@ no_replay() {
     sudo ntpd -gq &> /dev/null
     for num_backups in 1 2 3 4 5 6 7; do
       echo "backups=$num_backups no_replay delay=$delay"
-      run $num_backups 16 none 0 0 $delay 1 0 50 $read_view_stat
+      run $num_backups 16 none 0 0 $delay 1 0
     done
   done
 }
@@ -114,7 +122,7 @@ no_replay() {
 #    for num_backups in 1 2 3 4 5 6 7; do
 #      for redoers in 4 8; do
 #        echo "backups:$num_backups pipelined redoers=$redoers delay=$delay"
-#        run $num_backups 16 pipelined 0 $redoers $delay 1 0 50 $read_view_stat
+#        run $num_backups 16 pipelined 0 $redoers $delay 1 0
 #      done
 #    done
 #  done
@@ -124,10 +132,10 @@ no_nvram() {
   sudo ntpd -gq &> /dev/null
   for num_backups in 1 2 3 4 5 6 7; do
     echo "backups:$num_backups thread:16 pipelined full_redo=0 redoers=4 delay=none nvram_log_buffer=0"
-    run $num_backups 16 pipelined 0 4 none 0 0 50 $read_view_stat
+    run $num_backups 16 pipelined 0 4 none 0 0
 
     echo "backups:$num_backups thread:16 none full_redo=0 redoers=0 delay=none nvram_log_buffer=0"
-    run $num_backups 16 none 0 0 none 0 0 50 $read_view_stat
+    run $num_backups 16 none 0 0 none 0 0
   done
 }
 
@@ -135,7 +143,7 @@ full_replay() {
   sudo ntpd -gq &> /dev/null
   for num_backups in 1 2 3 4 5 6 7; do
     echo "backups:$num_backups pipelined full_redo redoers=4 delay=none"
-    run $num_backups 16 pipelined 1 4 none 1 0 50 $read_view_stat
+    run $num_backups 16 pipelined 1 4 none 1 0
   done
 }
 
@@ -143,8 +151,8 @@ nvram_persist_on_replay() {
   for delay in clwb-emu clflush; do
     sudo ntpd -gq &> /dev/null
     for num_backups in 1 2 3 4 5 6 7; do
-      run $num_backups 16 pipelined 0 4 $delay 1 1 50 $read_view_stat
-      run $num_backups 16 pipelined 0 8 $delay 1 1 50 $read_view_stat
+      run $num_backups 16 pipelined 0 4 $delay 1 1
+      run $num_backups 16 pipelined 0 8 $delay 1 1
     done
   done
 }
