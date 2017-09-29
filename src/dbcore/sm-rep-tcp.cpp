@@ -83,7 +83,7 @@ void primary_daemon_tcp() {
   }
 
   // All done, start async shipping daemon if needed
-  if (config::persist_policy == config::kPersistAsync) {
+  if (!config::command_log && config::persist_policy == config::kPersistAsync) {
     primary_async_ship_daemon = std::move(std::thread(PrimaryAsyncShippingDaemon));
   }
 }
@@ -370,5 +370,8 @@ void PrimaryShutdownTcp() {
     tcp::expect_ack(fd);
   }
   backup_sockfds_mutex.unlock();
+}
+
+void BackupDaemonTcpCommandLog() {
 }
 }  // namespace rep

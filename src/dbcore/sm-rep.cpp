@@ -1,3 +1,4 @@
+#include "sm-cmd-log.h"
 #include "sm-rep.h"
 #include "../benchmarks/ndb_wrapper.h"
 
@@ -162,42 +163,55 @@ void BackupBackgroundReplay() {
   while (volatile_read(replayed_lsn_offset) < end_lsn.offset()) {};
 }
 
+void CommandLogFlushDaemon() {
+}
+
 void BackupStartReplication() {
   volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
-  volatile_write(persisted_nvram_offset, logmgr->durable_flushed_lsn().offset());
-  volatile_write(persisted_nvram_size, 0);
   ALWAYS_ASSERT(oidmgr);
   logmgr->recover();
 
-  if (config::replay_policy == config::kReplayBackground) {
-    dirent_iterator dir(config::log_dir.c_str());
-    int dfd = dir.dup();
-    replay_bounds_fd = openat(dfd, "replay_bounds", O_SYNC|O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
-    LOG_IF(FATAL, replay_bounds_fd <= 2) << "Unable to open bounds file: " << replay_bounds_fd;
-  } else {
-    replay_bounds_fd = -1;
-  }
+  if (config::command_log) {
+    CommandLog::cmd_log->StartBackupRedoers();
+    std::thread flusher(CommandLogFlushDaemon);
+    flusher.detach();
 
-  pipeline_stages = new ReplayPipelineStage[2];
-  if (config::replay_policy != config::kReplayNone) {
+    std::thread t(BackupDaemonTcpCommandLog);
+    t.detach();
+  } else {
+    volatile_write(persisted_nvram_offset, logmgr->durable_flushed_lsn().offset());
+    volatile_write(persisted_nvram_size, 0);
+
     if (config::replay_policy == config::kReplayBackground) {
-      std::thread t(BackupBackgroundReplay);
+      dirent_iterator dir(config::log_dir.c_str());
+      int dfd = dir.dup();
+      replay_bounds_fd = openat(dfd, "replay_bounds", O_SYNC|O_CREAT|O_RDWR, S_IRUSR|S_IWUSR);
+      LOG_IF(FATAL, replay_bounds_fd <= 2) << "Unable to open bounds file: " << replay_bounds_fd;
+    } else {
+      replay_bounds_fd = -1;
+    }
+
+    pipeline_stages = new ReplayPipelineStage[2];
+    if (config::replay_policy != config::kReplayNone) {
+      if (config::replay_policy == config::kReplayBackground) {
+        std::thread t(BackupBackgroundReplay);
+        t.detach();
+      }
+      if (config::persist_policy != config::kPersistAsync) {
+        logmgr->start_logbuf_redoers();
+      }
+    }
+    std::thread flusher(LogFlushDaemon);
+    flusher.detach();
+
+    if (config::log_ship_by_rdma) {
+      // Start a daemon to receive and persist future log records
+      std::thread t(BackupDaemonRdma);
+      t.detach();
+    } else {
+      std::thread t(BackupDaemonTcp);
       t.detach();
     }
-    if (config::persist_policy != config::kPersistAsync) {
-      logmgr->start_logbuf_redoers();
-    }
-  }
-  std::thread flusher(LogFlushDaemon);
-  flusher.detach();
-
-  if (config::log_ship_by_rdma) {
-    // Start a daemon to receive and persist future log records
-    std::thread t(BackupDaemonRdma);
-    t.detach();
-  } else {
-    std::thread t(BackupDaemonTcp);
-    t.detach();
   }
 }
 
