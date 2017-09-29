@@ -103,6 +103,8 @@ DEFINE_string(persist_policy, "sync",
               "pipelined - not persisted until the next shipping"
               "sync - request immediate ack on persistence from backups"
               "async - don't care at all, i.e., asynchronous log shipping");
+DEFINE_bool(command_log, false, "Whether to use command logging.");
+DEFINE_uint64(command_log_buffer_mb, 16, "Size of command log buffer.");
 
 // Options specific to backups
 DEFINE_bool(nvram_log_buffer, true, "Whether to use NVRAM-based log buffer.");
@@ -193,6 +195,9 @@ int main(int argc, char **argv) {
   config::log_redo_partitions = rep::kMaxLogBufferPartitions;
   config::read_view_stat_interval_ms = FLAGS_read_view_stat_interval_ms;
   config::read_view_stat_file = FLAGS_read_view_stat_file;
+
+  config::command_log = FLAGS_command_log;
+  config::command_log_buffer_mb = FLAGS_command_log_buffer_mb;
 
   // Backup specific arguments
   if (config::is_backup_srv()) {
@@ -346,6 +351,7 @@ int main(int argc, char **argv) {
   cerr << "  worker-threads    : " << config::worker_threads << endl;
   cerr << "  total-threads     : " << config::threads << endl;
   cerr << "  persist-policy    : " << config::persist_policy << endl;
+  cerr << "  command-log       : " << config::command_log << endl;
 
   cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize()
        << endl;

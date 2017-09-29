@@ -18,6 +18,7 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/size-encode.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-alloc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-chkpt.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-cmd-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-common.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-config.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-exceptions.cpp

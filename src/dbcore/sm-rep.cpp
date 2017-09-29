@@ -46,7 +46,7 @@ void LogFlushDaemon() {
   rcu_enter();
   DEFER(rcu_exit());
   uint64_t dlsn = logmgr->durable_flushed_lsn().offset();
-  while (!config::IsShutdown()) {
+  while (true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
     // Use another variable to record the durable flushed LSN offset
     // here, as the backup daemon might change a new sgment ID's

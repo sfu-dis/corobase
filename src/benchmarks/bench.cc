@@ -17,6 +17,7 @@
 
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-chkpt.h"
+#include "../dbcore/sm-cmd-log.h"
 #include "../dbcore/sm-config.h"
 #include "../dbcore/sm-index.h"
 #include "../dbcore/sm-log.h"
@@ -42,12 +43,17 @@ void bench_worker::my_work(char *) {
         timer t;
         const unsigned long old_seed = r.get_seed();
         const auto ret = workload[i].fn(this);
+        if (config::command_log) {
+          CommandLog::cmd_log->Insert(0, 1);
+        }
 
         if (!rc_is_abort(ret)) {
           ++ntxn_commits;
           std::get<0>(txn_counts[i])++;
           if (config::num_active_backups > 0 || config::group_commit) {
-            logmgr->enqueue_committed_xct(worker_id, t.get_start());
+            if (!config::command_log) {
+              logmgr->enqueue_committed_xct(worker_id, t.get_start());
+            }
           } else {
             latency_numer_us += t.lap();
           }
@@ -153,6 +159,9 @@ void bench_runner::run() {
     sm_log::allocate_log_buffer();
     logmgr = sm_log::new_log(config::recover_functor, nullptr);
     sm_oid_mgr::create();
+    if (config::command_log) {
+      CommandLog::cmd_log = new CommandLog::CommandLogManager();
+    }
   }
   ALWAYS_ASSERT(logmgr);
   ALWAYS_ASSERT(oidmgr);
@@ -281,6 +290,9 @@ void bench_runner::run() {
       }
     }
     cerr << "Shutdown successfully" << std::endl;
+  }
+  if (config::command_log) {
+    delete CommandLog::cmd_log;
   }
 }
 
