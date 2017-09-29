@@ -45,8 +45,7 @@ int os_openat(int dfd, char const *fname, int flags) {
 
 void os_write(int fd, void const *buf, size_t bufsz) {
   size_t err = write(fd, buf, bufsz);
-  THROW_IF(err != bufsz, os_error, errno, "Error writing %zd bytes to file",
-           bufsz);
+  LOG_IF(FATAL, err != bufsz) << "Error writing " << bufsz << " bytes to file";
 }
 
 size_t os_pwrite(int fd, char const *buf, size_t bufsz, off_t offset) {
