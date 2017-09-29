@@ -404,6 +404,7 @@ struct sm_log {
   uint64_t durable_flushed_lsn_offset();
   sm_log_recover_impl *get_backup_replay_functor();
   int open_segment_for_read(segment_id *sid);
+  void dequeue_committed_xcts(uint64_t upto, uint64_t end_time);
 
   virtual ~sm_log() {}
 

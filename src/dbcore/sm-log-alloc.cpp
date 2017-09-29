@@ -1,4 +1,4 @@
-#include "sm-config.h"
+#include "sm-cmd-log.h"
 #include "sm-log-alloc.h"
 #include "sm-rep.h"
 #include "stopwatch.h"
@@ -81,7 +81,10 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr() {
 void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,
                                              uint64_t start_time) {
   ALWAYS_ASSERT(worker_id < config::worker_threads);
-  _commit_queue[worker_id].push_back(get_tls_lsn_offset() & ~kDirtyTlsLsnOffset, start_time);
+  uint64_t lsn = config::command_log ?
+                 CommandLog::cmd_log->GetTlsOffset() :
+                 get_tls_lsn_offset() & ~kDirtyTlsLsnOffset;
+  _commit_queue[worker_id].push_back(lsn, start_time);
 }
 
 void sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn,

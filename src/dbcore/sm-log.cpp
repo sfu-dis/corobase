@@ -154,6 +154,12 @@ LSN sm_log::cur_lsn() {
   return sid->make_lsn(offset);
 }
 
+void sm_log::dequeue_committed_xcts(uint64_t upto, uint64_t end_time) {
+  LOG_IF(FATAL, !config::command_log) << "For command logging only";
+  auto *log = &get_impl(this)->_lm;
+  log->dequeue_committed_xcts(upto, end_time);
+}
+
 LSN sm_log::durable_flushed_lsn() {
   auto *log = &get_impl(this)->_lm;
   auto offset = log->dur_flushed_lsn_offset();
