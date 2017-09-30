@@ -28,14 +28,13 @@ struct xid_context {
 #ifdef SSN
   uint64_t pstamp;               // youngest predecessor (\eta)
   std::atomic<uint64_t> sstamp;  // oldest successor (\pi)
-  transaction *xct;
   bool set_sstamp(uint64_t s);
 #endif
 #ifdef SSI
   uint64_t ct3;  // smallest commit stamp of T3 in the dangerous structure
   uint64_t last_safesnap;
-  transaction *xct;
 #endif
+  transaction *xct;
   txn_state state;
 
 #ifdef SSN
@@ -133,6 +132,7 @@ inline XID take_one(thread_data *t) {
   contexts[id].end = 0;
   ASSERT(contexts[id].state != TXN_COMMITTING);
   contexts[id].state = TXN_ACTIVE;
+  contexts[id].xct = nullptr;
   return x;
 }
 #if defined(SSN) or defined(SSI)

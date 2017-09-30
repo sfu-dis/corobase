@@ -30,6 +30,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     RCU::rcu_enter();
     xc->begin = rep::GetReadView();
     ASSERT(xc->begin);
+    xc->xct = this;
   } else {
     initialize_read_write();
   }
@@ -52,8 +53,8 @@ void transaction::initialize_read_write() {
   xid = TXN::xid_alloc();
   xc = xid_get_context(xid);
   xc->begin_epoch = MM::epoch_enter();
-#if defined(SSN) || defined(SSI)
   xc->xct = this;
+#if defined(SSN) || defined(SSI)
   // If there's a safesnap, then SSN treats the snapshot as a transaction
   // that has read all the versions, which means every update transaction
   // should have a initial pstamp of the safesnap.
