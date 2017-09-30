@@ -52,7 +52,7 @@ struct config {
   static bool group_commit;
   static uint32_t group_commit_timeout;
   static uint32_t group_commit_queue_length;  // how much to reserve
-  static uint64_t group_commit_size_mb;
+  static uint64_t group_commit_size_kb;
   static uint64_t group_commit_bytes;
 
   // Backup-specific settings

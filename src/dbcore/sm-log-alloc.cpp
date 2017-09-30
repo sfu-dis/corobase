@@ -821,7 +821,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     if (!config::IsLoading() && config::num_active_backups > 0 && !config::command_log) {
       uint64_t max_size = config::group_commit_bytes + MIN_LOG_BLOCK_SIZE;
       if (new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
-        // Find the maximum that will cause us to ship at most [group_commit_size_mb]
+        // Find the maximum that will cause us to ship at most [group_commit_size_kb]
         uint64_t max = 0;
         for (uint64_t i = 0; i < config::log_redo_partitions; ++i) {
           uint64_t off = LSN{rep::log_redo_partition_bounds[i]}.offset();

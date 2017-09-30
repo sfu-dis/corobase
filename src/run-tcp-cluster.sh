@@ -27,7 +27,7 @@ run() {
   persist_policy=$9
 
   logbuf_mb=16
-  group_commit_size_mb=4
+  group_commit_size_kb=4096
 
   read_view_ms=10
   read_view_stat="/dev/shm/ermia_read_view.txt"
@@ -35,10 +35,10 @@ run() {
   unset GLOG_logtostderr
 
   echo "----------"
-  echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram group_commit_size_mb=$group_commit_size_mb
+  echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram group_commit_size_kb=$group_commit_size_kb
   echo "----------"
   ./run-cluster.sh SI $t $duration $t $logbuf_mb $read_view_stat tpcc_org tpccr \
-    "-group_commit -group_commit_size_mb=$group_commit_size_mb -chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma=0 -fake_log_write -wait_for_backups -num_backups=$num_backups -persist_policy=$persist_policy -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
+    "-group_commit -group_commit_size_kb=$group_commit_size_kb -chkpt_interval=1000000 -node_memory_gb=19 -log_ship_by_rdma=0 -fake_log_write -wait_for_backups -num_backups=$num_backups -persist_policy=$persist_policy -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
     "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma=0 -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
     "${backups[@]:0:$num_backups}"
   echo

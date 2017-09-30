@@ -91,8 +91,8 @@ DEFINE_bool(group_commit, false, "Whether to enable group commit.");
 DEFINE_uint64(group_commit_queue_length, 25000, "Group commit queue length");
 DEFINE_uint64(group_commit_timeout, 5,
               "Group commit flush interval (in seconds).");
-DEFINE_uint64(group_commit_size_mb, 4,
-              "Group commit flush size interval in MB.");
+DEFINE_uint64(group_commit_size_kb, 4,
+              "Group commit flush size interval in KB.");
 DEFINE_bool(enable_gc, false, "Whether to enable garbage collection.");
 DEFINE_uint64(num_backups, 0, "Number of backup servers. For primary only.");
 DEFINE_bool(wait_for_backups, true,
@@ -272,8 +272,8 @@ int main(int argc, char **argv) {
     config::group_commit = FLAGS_group_commit;
     config::group_commit_queue_length = FLAGS_group_commit_queue_length;
     config::group_commit_timeout = FLAGS_group_commit_timeout;
-    config::group_commit_size_mb = FLAGS_group_commit_size_mb;
-    config::group_commit_bytes = FLAGS_group_commit_size_mb * config::MB;
+    config::group_commit_size_kb = FLAGS_group_commit_size_kb;
+    config::group_commit_bytes = FLAGS_group_commit_size_kb * 1024;
     config::enable_chkpt = FLAGS_enable_chkpt;
     config::chkpt_interval = FLAGS_chkpt_interval;
     config::parallel_loading = FLAGS_parallel_loading;
@@ -384,7 +384,7 @@ int main(int argc, char **argv) {
     cerr << "  group-commit      : " << config::group_commit << endl;
     cerr << "  commit-queue      : " << config::group_commit_queue_length
          << endl;
-    cerr << "  group-commit-size : " << config::group_commit_size_mb << "MB"
+    cerr << "  group-commit-size : " << config::group_commit_size_kb << "KB"
          << endl;
     cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << endl;
     cerr << "  log-key-for-update: " << config::log_key_for_update << endl;
