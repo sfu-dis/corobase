@@ -13,7 +13,6 @@
  * is fixed-size (8 bytes) containing a partition ID and a transaction
  * type (support TPCC so far only).
  */
-
 namespace CommandLog {
 extern uint64_t replayed_offset;
 
@@ -31,6 +30,7 @@ struct LogRecord {
 class CommandLogManager {
 private:
   uint32_t buffer_size_;
+  std::atomic<bool> shutdown_;
   std::atomic<uint64_t> allocated_;
   uint64_t durable_offset_;
   char *buffer_;
@@ -49,6 +49,7 @@ private:
 public:
   CommandLogManager()
     : buffer_size_(config::command_log_buffer_mb * config::MB)
+    , shutdown_(false)
     , allocated_(0)
     , durable_offset_(0) {
     // FIXME(tzwang): allow more flexibility
@@ -68,17 +69,7 @@ public:
     fd_ = os_openat(dfd, + fname.c_str(), O_CREAT | O_WRONLY | O_SYNC);
     flusher_ = std::thread(&CommandLogManager::FlushDaemon, this);
   }
-  ~CommandLogManager() {
-    {
-      std::unique_lock<std::mutex> lock(flush_mutex_);
-      flush_cond_.notify_all();
-    }
-    flusher_.join();
-    for (auto &t : backup_redoers) {
-      t.join();
-    }
-    os_close(fd_);
-  }
+  ~CommandLogManager();
 
   uint32_t Size() { return buffer_size_; }
   void StartBackupRedoers();

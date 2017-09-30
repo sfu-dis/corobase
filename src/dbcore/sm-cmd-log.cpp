@@ -141,7 +141,7 @@ void CommandLogManager::ShipLog(char *buf, uint32_t size) {
 }
 
 void CommandLogManager::FlushDaemon() {
-  while (!config::IsShutdown()) {
+  while (!shutdown_) {
     std::unique_lock<std::mutex> lock(flush_mutex_);
     flush_cond_.wait(lock);
     Flush();
@@ -149,4 +149,16 @@ void CommandLogManager::FlushDaemon() {
   Flush(false);
 }
 
+CommandLogManager::~CommandLogManager() {
+  shutdown_ = true;
+  {
+    std::unique_lock<std::mutex> lock(flush_mutex_);
+    flush_cond_.notify_all();
+  }
+  flusher_.join();
+  for (auto &t : backup_redoers) {
+    t.join();
+  }
+  os_close(fd_);
+}
 }  // namespace CommandLog
