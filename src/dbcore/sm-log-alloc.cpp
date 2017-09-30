@@ -660,7 +660,8 @@ start_over:
 
   // If adding my payload, we're crossing a log buffer partition boundary,
   // make sure the flusher knows about this location (for log shipping).
-  if (!config::IsLoading() && config::num_active_backups) {
+  if (!config::IsLoading() && config::num_active_backups &&
+      !config::command_log) {
     uint64_t start_partition =
         (lsn_offset / _logbuf_partition_size) % config::log_redo_partitions;
     uint64_t next_partition =
@@ -817,7 +818,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     uint64_t cur_offset = cur_lsn_offset();
     uint64_t min_tls = smallest_tls_lsn_offset();
     uint64_t new_dlsn_offset = min_tls;
-    if (!config::IsLoading() && config::num_active_backups > 0) {
+    if (!config::IsLoading() && config::num_active_backups > 0 && !config::command_log) {
       uint64_t max_size = config::group_commit_bytes + MIN_LOG_BLOCK_SIZE;
       if (new_dlsn_offset - _durable_flushed_lsn_offset > max_size) {
         // Find the maximum that will cause us to ship at most [group_commit_size_mb]
