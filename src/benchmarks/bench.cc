@@ -29,6 +29,68 @@ using namespace util;
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
+void bench_worker::do_workload_function(uint32_t i) {
+  const workload_desc_vec workload = get_workload();
+retry:
+  timer t;
+  const unsigned long old_seed = r.get_seed();
+  const auto ret = workload[i].fn(this);
+
+  if (!rc_is_abort(ret)) {
+    ++ntxn_commits;
+    std::get<0>(txn_counts[i])++;
+    if (config::num_active_backups > 0 || config::group_commit) {
+      logmgr->enqueue_committed_xct(worker_id, t.get_start());
+    } else {
+      latency_numer_us += t.lap();
+    }
+    backoff_shifts >>= 1;
+  } else {
+    ++ntxn_aborts;
+    std::get<1>(txn_counts[i])++;
+    if (ret._val == RC_ABORT_USER) {
+      std::get<3>(txn_counts[i])++;
+    } else {
+      std::get<2>(txn_counts[i])++;
+    }
+    switch (ret._val) {
+      case RC_ABORT_SERIAL:
+        inc_ntxn_serial_aborts();
+        break;
+      case RC_ABORT_SI_CONFLICT:
+        inc_ntxn_si_aborts();
+        break;
+      case RC_ABORT_RW_CONFLICT:
+        inc_ntxn_rw_aborts();
+        break;
+      case RC_ABORT_INTERNAL:
+        inc_ntxn_int_aborts();
+        break;
+      case RC_ABORT_PHANTOM:
+        inc_ntxn_phantom_aborts();
+        break;
+      case RC_ABORT_USER:
+        inc_ntxn_user_aborts();
+        break;
+      default:
+        ALWAYS_ASSERT(false);
+    }
+    if (config::retry_aborted_transactions && !rc_is_user_abort(ret) &&
+        running) {
+      if (config::backoff_aborted_transactions) {
+        if (backoff_shifts < 63) backoff_shifts++;
+        uint64_t spins = 1UL << backoff_shifts;
+        spins *= 100;  // XXX: tuned pretty arbitrarily
+        while (spins) {
+          NOP_PAUSE;
+          spins--;
+        }
+      }
+      r.set_seed(old_seed);
+      goto retry;
+    }
+  }
+}
 
 void bench_worker::my_work(char *) {
   const workload_desc_vec workload = get_workload();
@@ -39,65 +101,7 @@ void bench_worker::my_work(char *) {
     double d = r.next_uniform();
     for (size_t i = 0; i < workload.size(); i++) {
       if ((i + 1) == workload.size() || d < workload[i].frequency) {
-      retry:
-        timer t;
-        const unsigned long old_seed = r.get_seed();
-        const auto ret = workload[i].fn(this);
-
-        if (!rc_is_abort(ret)) {
-          ++ntxn_commits;
-          std::get<0>(txn_counts[i])++;
-          if (config::num_active_backups > 0 || config::group_commit) {
-            logmgr->enqueue_committed_xct(worker_id, t.get_start());
-          } else {
-            latency_numer_us += t.lap();
-          }
-          backoff_shifts >>= 1;
-        } else {
-          ++ntxn_aborts;
-          std::get<1>(txn_counts[i])++;
-          if (ret._val == RC_ABORT_USER) {
-            std::get<3>(txn_counts[i])++;
-          } else {
-            std::get<2>(txn_counts[i])++;
-          }
-          switch (ret._val) {
-            case RC_ABORT_SERIAL:
-              inc_ntxn_serial_aborts();
-              break;
-            case RC_ABORT_SI_CONFLICT:
-              inc_ntxn_si_aborts();
-              break;
-            case RC_ABORT_RW_CONFLICT:
-              inc_ntxn_rw_aborts();
-              break;
-            case RC_ABORT_INTERNAL:
-              inc_ntxn_int_aborts();
-              break;
-            case RC_ABORT_PHANTOM:
-              inc_ntxn_phantom_aborts();
-              break;
-            case RC_ABORT_USER:
-              inc_ntxn_user_aborts();
-              break;
-            default:
-              ALWAYS_ASSERT(false);
-          }
-          if (config::retry_aborted_transactions && !rc_is_user_abort(ret) &&
-              running) {
-            if (config::backoff_aborted_transactions) {
-              if (backoff_shifts < 63) backoff_shifts++;
-              uint64_t spins = 1UL << backoff_shifts;
-              spins *= 100;  // XXX: tuned pretty arbitrarily
-              while (spins) {
-                NOP_PAUSE;
-                spins--;
-              }
-            }
-            r.set_seed(old_seed);
-            goto retry;
-          }
-        }
+        do_workload_function(i);
         break;
       }
       d -= workload[i].frequency;
