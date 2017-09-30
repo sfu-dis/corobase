@@ -59,7 +59,7 @@ YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U,
                            0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
 
-YcsbWorkload workload = YcsbWorkloadF;
+YcsbWorkload ycsb_workload = YcsbWorkloadF;
 
 fast_random rnd_record_select(477377);
 
@@ -86,21 +86,21 @@ class ycsb_worker : public bench_worker {
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
-    if (workload.insert_percent())
+    if (ycsb_workload.insert_percent())
       w.push_back(workload_desc(
-          "Insert", double(workload.insert_percent()) / 100.0, TxnInsert));
-    if (workload.read_percent())
-      w.push_back(workload_desc("Read", double(workload.read_percent()) / 100.0,
+          "Insert", double(ycsb_workload.insert_percent()) / 100.0, TxnInsert));
+    if (ycsb_workload.read_percent())
+      w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0,
                                 TxnRead));
-    if (workload.update_percent())
+    if (ycsb_workload.update_percent())
       w.push_back(workload_desc(
-          "Update", double(workload.update_percent()) / 100.0, TxnUpdate));
-    if (workload.scan_percent())
-      w.push_back(workload_desc("Scan", double(workload.scan_percent()) / 100.0,
+          "Update", double(ycsb_workload.update_percent()) / 100.0, TxnUpdate));
+    if (ycsb_workload.scan_percent())
+      w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0,
                                 TxnScan));
-    if (workload.rmw_percent())
+    if (ycsb_workload.rmw_percent())
       w.push_back(
-          workload_desc("RMW", double(workload.rmw_percent()) / 100.0, TxnRMW));
+          workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
     return w;
   }
 
@@ -278,21 +278,21 @@ void ycsb_do_test(ndb_wrapper *db, int argc, char **argv) {
       case 'w':
         g_workload = optarg[0];
         if (g_workload == 'A')
-          workload = YcsbWorkloadA;
+          ycsb_workload = YcsbWorkloadA;
         else if (g_workload == 'B')
-          workload = YcsbWorkloadB;
+          ycsb_workload = YcsbWorkloadB;
         else if (g_workload == 'C')
-          workload = YcsbWorkloadC;
+          ycsb_workload = YcsbWorkloadC;
         else if (g_workload == 'D')
-          workload = YcsbWorkloadD;
+          ycsb_workload = YcsbWorkloadD;
         else if (g_workload == 'E')
-          workload = YcsbWorkloadE;
+          ycsb_workload = YcsbWorkloadE;
         else if (g_workload == 'F')
-          workload = YcsbWorkloadF;
+          ycsb_workload = YcsbWorkloadF;
         else if (g_workload == 'G')
-          workload = YcsbWorkloadG;
+          ycsb_workload = YcsbWorkloadG;
         else if (g_workload == 'H')
-          workload = YcsbWorkloadH;
+          ycsb_workload = YcsbWorkloadH;
         else {
           cerr << "Wrong workload type: " << g_workload << endl;
           abort();
