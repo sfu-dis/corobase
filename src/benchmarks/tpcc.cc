@@ -1249,7 +1249,7 @@ rc_t tpcc_worker::txn_new_order() {
   ASSERT(!g_disable_xpartition_txn || allLocal);
 
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER, 64);
   }
 
   // XXX(stephentu): implement rollback
@@ -1465,7 +1465,7 @@ rc_t tpcc_worker::txn_delivery() {
   const uint32_t ts = GetCurrentTimeMillis();
 
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY, 64);
   }
 
   // worst case txn profile:
@@ -1744,7 +1744,7 @@ rc_t tpcc_worker::txn_payment() {
   ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT, 64);
   }
 
   // output from txn counters:

@@ -10,19 +10,22 @@ CommandLogManager *cmd_log CACHE_ALIGNED;
 // For log shipping
 uint64_t replayed_offset CACHE_ALIGNED;
 
-uint64_t CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type) {
-  uint32_t alloc_size = sizeof(LogRecord);
-  uint64_t off = allocated_.fetch_add(alloc_size);
-  uint64_t end_off = off + alloc_size;
+uint64_t CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type, uint32_t size) {
+  ASSERT(size >= sizeof(LogRecord));
+  uint64_t off = allocated_.fetch_add(size);
+  uint64_t end_off = off + size;
 
   if (end_off - volatile_read(durable_offset_) >= config::group_commit_bytes) {
     // Issue a flush
     std::unique_lock<std::mutex> lock(flush_mutex_);
-    flush_cond_.notify_all();
+    if (end_off - volatile_read(durable_offset_) >= config::group_commit_bytes) {
+      flush_cond_.notify_all();
+    }
   }
   while (end_off - volatile_read(durable_offset_) >= buffer_size_) {}
 
-  LogRecord *r = (LogRecord*)&buffer_[off];
+  LogRecord *r = (LogRecord*)&buffer_[off % buffer_size_];
+  LOG_IF(FATAL, off % buffer_size_ + size > buffer_size_);
   new (r) LogRecord(partition_id, xct_type);
   volatile_write(tls_offsets_[thread::my_id()], end_off);
 }
@@ -46,15 +49,33 @@ void CommandLogManager::Flush(bool check_tls) {
   uint64_t durable_off = volatile_read(durable_offset_);
   if (filled_off > durable_off) {
     uint32_t size = filled_off - durable_off;
-    char *buf = buffer_ + durable_off % buffer_size_;
-    os_write(fd_, buf, size);
-    volatile_write(durable_offset_, filled_off);
+    uint32_t start = durable_off % buffer_size_;
+    char *buf = buffer_ + start;
+    uint32_t to_write = std::min<uint32_t>(size, buffer_size_ - start);
+    os_write(fd_, buf, to_write);
+    volatile_write(durable_offset_, durable_off + to_write);
+
     if (config::num_active_backups && !config::is_backup_srv()) {
-      ShipLog(buf, size);
+      ShipLog(buf, to_write);
+      {
+        util::timer t;
+        logmgr->dequeue_committed_xcts(durable_off + to_write, t.get_start());
+      }
     }
-    {
-      util::timer t;
-      logmgr->dequeue_committed_xcts(filled_off, t.get_start());
+
+    if (to_write < size) {
+      to_write = size - to_write;
+      buf = buffer_;
+      LOG_IF(FATAL, to_write != filled_off % buffer_size_);
+      os_write(fd_, buf, to_write);;
+      volatile_write(durable_offset_, durable_off + size);
+      if (config::num_active_backups && !config::is_backup_srv()) {
+        ShipLog(buf, to_write);
+        {
+          util::timer t;
+          logmgr->dequeue_committed_xcts(durable_off + to_write, t.get_start());
+        }
+      }
     }
   }
 }
