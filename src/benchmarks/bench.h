@@ -169,6 +169,7 @@ class bench_worker : public thread::sm_runner {
 
  private:
   virtual void my_work(char *);
+  void do_workload_function(uint32_t i);
 
  protected:
   inline transaction *txn_buf() { return txn_obj_buf; }
