@@ -59,8 +59,8 @@ void CommandLogManager::Flush(bool check_tls) {
   }
 }
 
-void CommandLogManager::BackupRedo(uint32_t part_id) {
-  LOG(INFO) << "Started redo thread for partition " << part_id;
+void CommandLogManager::BackupRedo(uint32_t redoer_id) {
+  LOG(INFO) << "Started redo thread " << redoer_id;
   uint64_t doff = 0;
   while (!config::IsShutdown()) {
     uint64_t start_off = volatile_read(durable_offset_);
@@ -76,18 +76,18 @@ void CommandLogManager::BackupRedo(uint32_t part_id) {
       continue;
     }
     uint32_t size = 0;
-    DLOG(INFO) << "Partition " << part_id << ": to redo " << std::hex
+    DLOG(INFO) << "Redoer " << redoer_id << ": to redo " << std::hex
       << roff << "-" << doff << std::dec;
     while (roff < doff) {
       uint32_t off = roff % buffer_size_;
       LogRecord *r = (LogRecord*)&buffer_[off];
       roff += sizeof(LogRecord);
-      if (r->partition_id == part_id) {
+      if (r->partition_id % config::replay_threads == redoer_id) {
         // REDO IT
         size += sizeof(LogRecord);
       }
     }
-    DLOG(INFO) << "Partition " << part_id << ": replayed " << size << " bytes, "
+    DLOG(INFO) << "Redoer " << redoer_id << ": replayed " << size << " bytes, "
       << size / sizeof(LogRecord) << " records";
     __atomic_add_fetch(&replayed_offset, size, __ATOMIC_SEQ_CST);
   }
@@ -97,8 +97,7 @@ void CommandLogManager::StartBackupRedoers() {
   LOG_IF(FATAL, config::replay_policy != config::kReplaySync);
   replayed_offset = 0;
   for (uint32_t i = 0; i < config::replay_threads; ++i) {
-    // Partition IDs are always >= 1. For TPCC it matches warehouse ID
-    backup_redoers.emplace_back(&CommandLogManager::BackupRedo, this, i + 1);
+    backup_redoers.emplace_back(&CommandLogManager::BackupRedo, this, i);
   }
 }
 
