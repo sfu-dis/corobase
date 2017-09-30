@@ -181,22 +181,6 @@ static unsigned g_txn_workload_mix[] = {
 
 static aligned_padded_elem<atomic<uint64_t>> *g_district_ids = nullptr;
 
-// maps a wid => partition id
-static inline ALWAYS_INLINE unsigned int PartitionId(unsigned int wid) {
-  ASSERT(wid >= 1 && wid <= NumWarehouses());
-  wid -= 1;  // 0-idx
-  if (NumWarehouses() <= config::worker_threads) {
-    // more workers than partitions, so its easy
-    return wid;
-  }
-  const unsigned nwhse_per_partition = NumWarehouses() / config::worker_threads;
-  const unsigned partid = wid / nwhse_per_partition;
-  if (partid >= config::worker_threads) {
-    return config::worker_threads - 1;
-  }
-  return partid;
-}
-
 static inline atomic<uint64_t> &NewOrderIdHolder(unsigned warehouse,
                                                  unsigned district) {
   ASSERT(warehouse >= 1 && warehouse <= NumWarehouses());
