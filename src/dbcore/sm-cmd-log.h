@@ -15,6 +15,7 @@
  */
 
 namespace CommandLog {
+extern uint64_t replayed_offset;
 
 struct LogRecord {
   static const uint32_t kInvalidPartition = ~uint32_t{0};
@@ -39,9 +40,11 @@ private:
   std::condition_variable flush_cond_;
   std::mutex flush_mutex_;
   int fd_;
+  std::vector<std::thread> backup_redoers;
 
   void ShipLog(char *buf, uint32_t size);
   void Flush(bool check_tls = true);
+  void BackupRedo(uint32_t part_id);
 
 public:
   CommandLogManager()
@@ -71,6 +74,9 @@ public:
       flush_cond_.notify_all();
     }
     flusher_.join();
+    for (auto &t : backup_redoers) {
+      t.join();
+    }
     os_close(fd_);
   }
 

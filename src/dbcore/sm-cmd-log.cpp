@@ -7,6 +7,9 @@ namespace CommandLog {
 
 CommandLogManager *cmd_log CACHE_ALIGNED;
 
+// For log shipping
+uint64_t replayed_offset CACHE_ALIGNED;
+
 uint64_t CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type) {
   uint32_t alloc_size = sizeof(LogRecord);
   uint64_t off = allocated_.fetch_add(alloc_size);
@@ -56,16 +59,51 @@ void CommandLogManager::Flush(bool check_tls) {
   }
 }
 
-/*
-void CommandLogManager::BackupRedo() {
-
+void CommandLogManager::BackupRedo(uint32_t part_id) {
+  LOG(INFO) << "Started redo thread for partition " << part_id;
+  uint64_t doff = 0;
+  while (!config::IsShutdown()) {
+    uint64_t start_off = volatile_read(durable_offset_);
+    if (start_off == doff) {
+      // Already replayed
+      continue;
+    }
+    doff = start_off;
+    uint64_t roff = volatile_read(replayed_offset);
+    DLOG_IF(FATAL, doff < roff) << "Durable offset smaller than replayed offset: "
+      << std::hex << doff << "/" << roff << std::dec;
+    if (doff == roff) {
+      continue;
+    }
+    uint32_t size = 0;
+    DLOG(INFO) << "Partition " << part_id << ": to redo " << std::hex
+      << roff << "-" << doff << std::dec;
+    while (roff < doff) {
+      uint32_t off = roff % buffer_size_;
+      LogRecord *r = (LogRecord*)&buffer_[off];
+      roff += sizeof(LogRecord);
+      if (r->partition_id == part_id) {
+        // REDO IT
+        size += sizeof(LogRecord);
+      }
+    }
+    DLOG(INFO) << "Partition " << part_id << ": replayed " << size << " bytes, "
+      << size / sizeof(LogRecord) << " records";
+    __atomic_add_fetch(&replayed_offset, size, __ATOMIC_SEQ_CST);
+  }
 }
-*/
 
 void CommandLogManager::StartBackupRedoers() {
+  LOG_IF(FATAL, config::replay_policy != config::kReplaySync);
+  replayed_offset = 0;
+  for (uint32_t i = 0; i < config::replay_threads; ++i) {
+    // Partition IDs are always >= 1. For TPCC it matches warehouse ID
+    backup_redoers.emplace_back(&CommandLogManager::BackupRedo, this, i + 1);
+  }
 }
 
 void CommandLogManager::ShipLog(char *buf, uint32_t size) {
+  ASSERT(config::persist_policy == config::kPersistSync);
   // TCP based synchronous shipping
   LOG_IF(FATAL, config::log_ship_by_rdma) << "RDMA not supported for logical log shipping";
   ASSERT(rep::backup_sockfds.size());

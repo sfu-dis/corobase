@@ -385,8 +385,10 @@ void BackupDaemonTcpCommandLog() {
   rcu_register();
   DEFER(rcu_deregister());
   tcp::send_ack(cctx->server_sockfd);
+  uint32_t buf_size = CommandLog::cmd_log->Size();
 
   uint32_t size = 0;
+  uint64_t doff = CommandLog::cmd_log->DurableOffset();
   while (true) {
     // expect an integer indicating data size
     tcp::receive(cctx->server_sockfd, (char*)&size, sizeof(size));
@@ -410,22 +412,30 @@ void BackupDaemonTcpCommandLog() {
     }
 
     uint64_t durable_offset = CommandLog::cmd_log->DurableOffset();
-    uint64_t off = durable_offset % CommandLog::cmd_log->Size();
+    ASSERT(durable_offset == doff);
+    uint64_t off = durable_offset % buf_size;
+    LOG_IF(FATAL, durable_offset < volatile_read(CommandLog::replayed_offset))
+      << "Wrong durable/replayed offset";
+
+    if (config::replay_policy != config::kReplayNone) {
+      while (buf_size - (durable_offset - volatile_read(CommandLog::replayed_offset)) < size) {}
+    }
     char *buf = CommandLog::cmd_log->GetBuffer() + off;
     tcp::receive(cctx->server_sockfd, buf, size);
 
-    if (config::replay_policy == config::kReplaySync) {
+    LOG_IF(FATAL, config::replay_policy != config::kReplaySync)
+      << "Unspported replay policy";
 
-    } else if (config::replay_policy == config::kReplayNone) {
-    } else {
-      LOG(FATAL) << "Unspported replay policy";
-    }
-
-    // Flush it
+    // Flush it first so redoers know to start
     CommandLog::cmd_log->BackupFlush(size + durable_offset);
+    doff += size;
 
     if (config::replay_policy == config::kReplaySync) {
-      //while (volatile_read(replayed_lsn_offset) != end_lsn.offset()) {}
+      while (volatile_read(CommandLog::replayed_offset) != durable_offset + size) {}
+      // Essentially this is a 'two-copy' database, so persist it
+      logmgr->BackupFlushLog(logmgr->cur_lsn().offset());
+      // Advance read view
+      volatile_write(replayed_lsn_offset, logmgr->durable_flushed_lsn().offset());
     }
 
     // Ack the primary after persisting data
