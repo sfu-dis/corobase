@@ -57,6 +57,9 @@ extern std::mutex backup_sockfds_mutex;
 
 inline uint64_t GetReadView() {
   uint64_t lsn = 0;
+  if (config::command_log) {
+    return volatile_read(rep::replayed_lsn_offset);
+  }
   if (config::persist_policy == config::kPersistAsync) {
     lsn = volatile_read(rep::replayed_lsn_offset);
   } else {
