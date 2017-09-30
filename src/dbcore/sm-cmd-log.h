@@ -84,7 +84,7 @@ public:
   void StartBackupRedoers();
   void BackupFlush(uint64_t new_off);
   void FlushDaemon();
-  uint64_t Insert(uint32_t partition_id, uint32_t xct_type);
+  uint64_t Insert(uint32_t partition_id, uint32_t xct_type, uint32_t size);
   inline uint64_t GetTlsOffset() {
     return volatile_read(tls_offsets_[thread::my_id()]);
   }
