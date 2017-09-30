@@ -423,7 +423,8 @@ void BackupDaemonTcpCommandLog() {
     char *buf = CommandLog::cmd_log->GetBuffer() + off;
     tcp::receive(cctx->server_sockfd, buf, size);
 
-    LOG_IF(FATAL, config::replay_policy != config::kReplaySync)
+    LOG_IF(FATAL, config::replay_policy != config::kReplaySync &&
+                  config::replay_policy != config::kReplayNone)
       << "Unspported replay policy";
 
     // Flush it first so redoers know to start
@@ -432,8 +433,8 @@ void BackupDaemonTcpCommandLog() {
 
     if (config::replay_policy == config::kReplaySync) {
       while (volatile_read(CommandLog::replayed_offset) != durable_offset + size) {}
-      // Essentially this is a 'two-copy' database, so persist it
-      logmgr->BackupFlushLog(logmgr->cur_lsn().offset());
+      // Essentially this is a 'two-copy' database, so persist it (as if I'm primary)
+      logmgr->flush();
       // Advance read view
       volatile_write(replayed_lsn_offset, logmgr->durable_flushed_lsn().offset());
     }
