@@ -20,9 +20,6 @@
 #include "bench.h"
 #include "ycsb.h"
 
-using namespace std;
-using namespace util;
-
 YcsbRecord::YcsbRecord(char value) {
   memset(data_, value, kFields * kFieldLength * sizeof(char));
 }
@@ -61,7 +58,7 @@ YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
 
 YcsbWorkload ycsb_workload = YcsbWorkloadF;
 
-fast_random rnd_record_select(477377);
+util::fast_random rnd_record_select(477377);
 
 YcsbKey key_arena;
 YcsbKey &build_rmw_key(int worker_id) {
@@ -79,7 +76,7 @@ YcsbKey &build_rmw_key(int worker_id) {
 class ycsb_worker : public bench_worker {
  public:
   ycsb_worker(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
-              const map<string, OrderedIndex *> &open_tables,
+              const std::map<std::string, OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tbl(open_tables.at("USERTABLE")) {}
@@ -154,7 +151,7 @@ class ycsb_worker : public bench_worker {
 class ycsb_usertable_loader : public bench_loader {
  public:
   ycsb_usertable_loader(unsigned long seed, ndb_wrapper *db,
-                        const map<string, OrderedIndex *> &open_tables)
+                        const std::map<std::string, OrderedIndex *> &open_tables)
       : bench_loader(seed, db, open_tables) {}
 
  protected:
@@ -174,9 +171,9 @@ class ycsb_usertable_loader : public bench_loader {
     }
 
     if (config::verbose) {
-      cerr << "[INFO] requested for " << g_initial_table_size
+      std::cerr << "[INFO] requested for " << g_initial_table_size
            << " records, will load "
-           << records_per_thread *config::worker_threads << endl;
+           << records_per_thread *config::worker_threads << std::endl;
     }
 
     // insert an equal number of records on behalf of each worker
@@ -213,7 +210,7 @@ class ycsb_usertable_loader : public bench_loader {
     }
 
     if (config::verbose)
-      cerr << "[INFO] loaded " << inserted << " kyes in USERTABLE" << endl;
+      std::cerr << "[INFO] loaded " << inserted << " kyes in USERTABLE" << std::endl;
   }
 };
 
@@ -228,20 +225,20 @@ class ycsb_bench_runner : public bench_runner {
   }
 
  protected:
-  virtual vector<bench_loader *> make_loaders() {
-    vector<bench_loader *> ret;
+  virtual std::vector<bench_loader *> make_loaders() {
+    std::vector<bench_loader *> ret;
     ret.push_back(new ycsb_usertable_loader(0, db, open_tables));
     return ret;
   }
 
-  virtual vector<bench_worker *> make_cmdlog_redoers() {
+  virtual std::vector<bench_worker *> make_cmdlog_redoers() {
     // Not implemented
-    vector<bench_worker *> ret;
+    std::vector<bench_worker *> ret;
     return ret;
   }
-  virtual vector<bench_worker *> make_workers() {
-    fast_random r(8544290);
-    vector<bench_worker *> ret;
+  virtual std::vector<bench_worker *> make_workers() {
+    util::fast_random r(8544290);
+    std::vector<bench_worker *> ret;
     for (size_t i = 0; i < config::worker_threads; i++) {
       ret.push_back(new ycsb_worker(i, r.next(), db, open_tables, &barrier_a,
                                     &barrier_b));
@@ -302,7 +299,7 @@ void ycsb_do_test(ndb_wrapper *db, int argc, char **argv) {
         else if (g_workload == 'H')
           ycsb_workload = YcsbWorkloadH;
         else {
-          cerr << "Wrong workload type: " << g_workload << endl;
+          std::cerr << "Wrong workload type: " << g_workload << std::endl;
           abort();
         }
         break;
@@ -319,12 +316,12 @@ void ycsb_do_test(ndb_wrapper *db, int argc, char **argv) {
   ALWAYS_ASSERT(g_initial_table_size);
 
   if (config::verbose) {
-    cerr << "ycsb settings:" << endl
-         << "  workload:                   " << g_workload << endl
-         << "  initial user table size:    " << g_initial_table_size << endl
-         << "  operations per transaction: " << g_reps_per_tx << endl
-         << "  additional reads after RMW: " << g_rmw_additional_reads << endl
-         << "  sort load keys:             " << g_sort_load_keys << endl;
+    std::cerr << "ycsb settings:" << std::endl
+         << "  workload:                   " << g_workload << std::endl
+         << "  initial user table size:    " << g_initial_table_size << std::endl
+         << "  operations per transaction: " << g_reps_per_tx << std::endl
+         << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
+         << "  sort load keys:             " << g_sort_load_keys << std::endl;
   }
 
   ycsb_bench_runner r(db);

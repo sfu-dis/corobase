@@ -1,8 +1,6 @@
 #include <string>
 #include "sm-log-impl.h"
 
-using namespace RCU;
-
 namespace {
 /* No point allocating these individually or repeatedly---they're
    thread-private with a reasonably small maximum size (~10kB).

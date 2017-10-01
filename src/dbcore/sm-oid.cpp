@@ -675,7 +675,7 @@ void sm_oid_mgr::oid_put_new_if_absent(FID f, OID o, fat_ptr p) {
 }
 
 fat_ptr sm_oid_mgr::PrimaryTupleUpdate(FID f, OID o, const varstr *value,
-                                       xid_context *updater_xc,
+                                       TXN::xid_context *updater_xc,
                                        fat_ptr *new_obj_ptr) {
   return PrimaryTupleUpdate(get_impl(this)->get_array(f), o, value, updater_xc,
                             new_obj_ptr);
@@ -685,7 +685,7 @@ fat_ptr sm_oid_mgr::PrimaryTupleUpdate(FID f, OID o, const varstr *value,
 // i.e., pdest_next_ matches volatile_next_.
 fat_ptr sm_oid_mgr::PrimaryTupleUpdate(oid_array *oa, OID o,
                                        const varstr *value,
-                                       xid_context *updater_xc,
+                                       TXN::xid_context *updater_xc,
                                        fat_ptr *new_obj_ptr) {
   ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
   auto *ptr = oa->get(o);
@@ -722,7 +722,7 @@ start_over:
       goto install;
     }
 
-    xid_context *holder = xid_get_context(holder_xid);
+    TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
     if (not holder) {
 #ifndef NDEBUG
       auto t = old_desc->GetClsn().asi_type();
@@ -740,7 +740,7 @@ start_over:
       goto start_over;
     }
     ASSERT(holder_xid != updater_xid);
-    if (state == TXN_CMMTD) {
+    if (state == TXN::TXN_CMMTD) {
       // Allow installing a new version if the tx committed (might
       // still hasn't finished post-commit). Note that the caller
       // (ie do_tree_put) should look at the clsn field of the
@@ -800,13 +800,13 @@ dbtuple *sm_oid_mgr::oid_get_latest_version(FID f, OID o) {
   return oid_get_latest_version(get_impl(this)->get_array(f), o);
 }
 
-dbtuple *sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc) {
+dbtuple *sm_oid_mgr::oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc) {
   ASSERT(f);
   return oid_get_version(get_impl(this)->get_array(f), o, visitor_xc);
 }
 
 dbtuple *sm_oid_mgr::BackupGetVersion(oid_array *ta, oid_array *pa, OID o,
-                                      xid_context *xc) {
+                                      TXN::xid_context *xc) {
   if (config::full_replay || config::command_log) {
     return oid_get_version(ta, o, xc);
   }
@@ -912,7 +912,7 @@ retry:
 
 // For tuple arrays only, i.e., entries are guaranteed to point to Objects.
 dbtuple *sm_oid_mgr::oid_get_version(oid_array *oa, OID o,
-                                     xid_context *visitor_xc) {
+                                     TXN::xid_context *visitor_xc) {
   fat_ptr *entry = oa->get(o);
 start_over:
   fat_ptr ptr = volatile_read(*entry);
@@ -1011,7 +1011,7 @@ start_over:
   return nullptr;  // No Visible records
 }
 
-bool sm_oid_mgr::TestVisibility(Object *object, xid_context *xc, bool &retry) {
+bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retry) {
   fat_ptr clsn = object->GetClsn();
   uint16_t asi_type = clsn.asi_type();
   if (clsn == NULL_PTR) {
@@ -1036,7 +1036,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, xid_context *xc, bool &retry) {
       ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
       return true;
     }
-    auto *holder = xid_get_context(holder_xid);
+    auto *holder = TXN::xid_get_context(holder_xid);
     if (!holder) {  // invalid XID (dead tuple, must retry than goto next in the
                     // chain)
       retry = true;
@@ -1053,7 +1053,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, xid_context *xc, bool &retry) {
       return false;
     }
 
-    if (state == TXN_CMMTD) {
+    if (state == TXN::TXN_CMMTD) {
       ASSERT(volatile_read(holder->end));
       ASSERT(owner == holder_xid);
 #if defined(RC) || defined(RC_SPIN)

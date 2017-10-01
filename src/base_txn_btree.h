@@ -7,8 +7,6 @@
 #include <string>
 #include <map>
 
-using namespace TXN;
-
 class base_txn_btree {
   friend class sm_log_recover_impl;
   friend class sm_chkpt_mgr;

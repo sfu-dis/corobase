@@ -8,8 +8,6 @@
 #include "dbcore/sm-alloc.h"
 #include "dbcore/serial.h"
 
-using namespace TXN;
-
 #ifdef SSN
 // Indicate somebody has read this tuple and thought it was an old one
 #define PERSISTENT_READER_MARK 0x1
@@ -23,7 +21,7 @@ using namespace TXN;
 struct dbtuple {
  public:
 #if defined(SSN) || defined(SSI)
-  readers_list::bitmap_t readers_bitmap;  // bitmap of in-flight readers
+  TXN::readers_list::bitmap_t readers_bitmap;  // bitmap of in-flight readers
   fat_ptr sstamp;  // successor (overwriter) stamp (\pi in ssn), set to writer
                    // XID during
   // normal write to indicate its existence; become writer cstamp at commit
@@ -76,7 +74,7 @@ struct dbtuple {
    * and we need to check the type of clsn because a "committed" tx might
    * change the clsn to ASI_LOG type after changing state.
    */
-  inline ALWAYS_INLINE uint64_t age(xid_context *visitor) {
+  inline ALWAYS_INLINE uint64_t age(TXN::xid_context *visitor) {
     uint64_t end = 0;
     XID owner = volatile_read(visitor->owner);
 
@@ -87,7 +85,7 @@ struct dbtuple {
       XID xid = XID::from_ptr(cstamp);
       if (xid == owner)  // my own update
         return 0;
-      xid_context *xc = xid_get_context(xid);
+      TXN::xid_context *xc = TXN::xid_get_context(xid);
       end = volatile_read(xc->end);
       if (not xc or xc->owner != xid) goto retry;
     } else {
@@ -98,7 +96,7 @@ struct dbtuple {
     // the caller must be alive...
     return volatile_read(visitor->begin) - end;
   }
-  bool is_old(xid_context *visitor);  // FOR READERS ONLY!
+  bool is_old(TXN::xid_context *visitor);  // FOR READERS ONLY!
   inline ALWAYS_INLINE bool set_persistent_reader() {
     uint64_t pr = 0;
     do {

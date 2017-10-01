@@ -99,20 +99,20 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
         // begin ts
         // is before ct3.
         if (config::enable_ssi_read_only_opt) {
-          readers_bitmap_iterator readers_iter(&prev->readers_bitmap);
+          TXN::readers_bitmap_iterator readers_iter(&prev->readers_bitmap);
           while (true) {
             int32_t xid_idx = readers_iter.next(true);
             if (xid_idx == -1) break;
 
-            XID rxid = volatile_read(rlist.xids[xid_idx]);
+            XID rxid = volatile_read(TXN::rlist.xids[xid_idx]);
             ASSERT(rxid != t.xc->owner);
             if (rxid == INVALID_XID)  // reader is gone, check xstamp in the end
               continue;
 
             XID reader_owner = INVALID_XID;
             uint64_t reader_begin = 0;
-            xid_context *reader_xc = NULL;
-            reader_xc = xid_get_context(rxid);
+            TXN::xid_context *reader_xc = NULL;
+            reader_xc = TXN::xid_get_context(rxid);
             if (not reader_xc)  // context change, consult xstamp later
               continue;
 

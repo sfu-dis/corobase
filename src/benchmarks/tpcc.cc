@@ -24,8 +24,6 @@
 
 #include "bench.h"
 #include "tpcc.h"
-using namespace std;
-using namespace util;
 
 typedef std::vector<std::vector<std::pair<int32_t, int32_t>>> SuppStockMap;
 SuppStockMap supp_stock_map(10000);  // value ranges 0 ~ 9999 ( modulo by 10k )
@@ -179,9 +177,9 @@ static double g_wh_spread = 0;
 static unsigned g_txn_workload_mix[] = {
     45, 43, 0, 4, 4, 4, 0, 0};  // default TPC-C workload mix
 
-static aligned_padded_elem<atomic<uint64_t>> *g_district_ids = nullptr;
+static util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids = nullptr;
 
-static inline atomic<uint64_t> &NewOrderIdHolder(unsigned warehouse,
+static inline std::atomic<uint64_t> &NewOrderIdHolder(unsigned warehouse,
                                                  unsigned district) {
   ASSERT(warehouse >= 1 && warehouse <= NumWarehouses());
   ASSERT(district >= 1 && district <= NumDistrictsPerWarehouse());
@@ -193,7 +191,7 @@ static inline atomic<uint64_t> &NewOrderIdHolder(unsigned warehouse,
 static inline uint64_t FastNewOrderIdGen(unsigned warehouse,
                                          unsigned district) {
   return NewOrderIdHolder(warehouse, district)
-      .fetch_add(1, memory_order_acq_rel);
+      .fetch_add(1, std::memory_order_acq_rel);
 }
 
 struct checker {
@@ -278,7 +276,7 @@ class tpcc_worker_mixin : private _dummy {
 #define DEFN_TBL_INIT_X(name) , tbl_##name##_vec(partitions.at(#name))
 
  public:
-  tpcc_worker_mixin(const map<string, vector<OrderedIndex *>> &partitions)
+  tpcc_worker_mixin(const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
       : _dummy()  // so hacky...
         TPCC_TABLE_LIST(DEFN_TBL_INIT_X) {
     ALWAYS_ASSERT(NumWarehouses() >= 1);
@@ -289,7 +287,7 @@ class tpcc_worker_mixin : private _dummy {
  protected:
 #define DEFN_TBL_ACCESSOR_X(name)                                   \
  private:                                                           \
-  vector<OrderedIndex *> tbl_##name##_vec;                          \
+  std::vector<OrderedIndex *> tbl_##name##_vec;                     \
                                                                     \
  protected:                                                         \
   inline ALWAYS_INLINE OrderedIndex *tbl_##name(unsigned int wid) { \
@@ -324,42 +322,42 @@ class tpcc_worker_mixin : private _dummy {
     return v;
   }
 
-  static inline ALWAYS_INLINE int RandomNumber(fast_random &r, int min,
+  static inline ALWAYS_INLINE int RandomNumber(util::fast_random &r, int min,
                                                int max) {
     return CheckBetweenInclusive(
         (int)(r.next_uniform() * (max - min + 1) + min), min, max);
   }
 
-  static inline ALWAYS_INLINE int NonUniformRandom(fast_random &r, int A, int C,
+  static inline ALWAYS_INLINE int NonUniformRandom(util::fast_random &r, int A, int C,
                                                    int min, int max) {
     return (((RandomNumber(r, 0, A) | RandomNumber(r, min, max)) + C) %
             (max - min + 1)) +
            min;
   }
 
-  static inline ALWAYS_INLINE int GetItemId(fast_random &r) {
+  static inline ALWAYS_INLINE int GetItemId(util::fast_random &r) {
     return CheckBetweenInclusive(
         g_uniform_item_dist ? RandomNumber(r, 1, NumItems())
                             : NonUniformRandom(r, 8191, 7911, 1, NumItems()),
         1, NumItems());
   }
 
-  static inline ALWAYS_INLINE int GetCustomerId(fast_random &r) {
+  static inline ALWAYS_INLINE int GetCustomerId(util::fast_random &r) {
     return CheckBetweenInclusive(
         NonUniformRandom(r, 1023, 259, 1, NumCustomersPerDistrict()), 1,
         NumCustomersPerDistrict());
   }
 
-  static string NameTokens[];
+  static std::string NameTokens[];
 
   // all tokens are at most 5 chars long
   static const size_t CustomerLastNameMaxSize = 5 * 3;
 
-  static inline size_t GetCustomerLastName(uint8_t *buf, fast_random &r,
+  static inline size_t GetCustomerLastName(uint8_t *buf, util::fast_random &r,
                                            int num) {
-    const string &s0 = NameTokens[num / 100];
-    const string &s1 = NameTokens[(num / 10) % 10];
-    const string &s2 = NameTokens[num % 10];
+    const std::string &s0 = NameTokens[num / 100];
+    const std::string &s1 = NameTokens[(num / 10) % 10];
+    const std::string &s2 = NameTokens[num % 10];
     uint8_t *const begin = buf;
     const size_t s0_sz = s0.size();
     const size_t s1_sz = s1.size();
@@ -374,44 +372,44 @@ class tpcc_worker_mixin : private _dummy {
   }
 
   static inline ALWAYS_INLINE size_t
-  GetCustomerLastName(char *buf, fast_random &r, int num) {
+  GetCustomerLastName(char *buf, util::fast_random &r, int num) {
     return GetCustomerLastName((uint8_t *)buf, r, num);
   }
 
-  static inline string GetCustomerLastName(fast_random &r, int num) {
-    string ret;
+  static inline std::string GetCustomerLastName(util::fast_random &r, int num) {
+    std::string ret;
     ret.resize(CustomerLastNameMaxSize);
     ret.resize(GetCustomerLastName((uint8_t *)&ret[0], r, num));
     return ret;
   }
 
-  static inline ALWAYS_INLINE string
-  GetNonUniformCustomerLastNameLoad(fast_random &r) {
+  static inline ALWAYS_INLINE std::string
+  GetNonUniformCustomerLastNameLoad(util::fast_random &r) {
     return GetCustomerLastName(r, NonUniformRandom(r, 255, 157, 0, 999));
   }
 
   static inline ALWAYS_INLINE size_t
-  GetNonUniformCustomerLastNameRun(uint8_t *buf, fast_random &r) {
+  GetNonUniformCustomerLastNameRun(uint8_t *buf, util::fast_random &r) {
     return GetCustomerLastName(buf, r, NonUniformRandom(r, 255, 223, 0, 999));
   }
 
   static inline ALWAYS_INLINE size_t
-  GetNonUniformCustomerLastNameRun(char *buf, fast_random &r) {
+  GetNonUniformCustomerLastNameRun(char *buf, util::fast_random &r) {
     return GetNonUniformCustomerLastNameRun((uint8_t *)buf, r);
   }
 
-  static inline ALWAYS_INLINE string
-  GetNonUniformCustomerLastNameRun(fast_random &r) {
+  static inline ALWAYS_INLINE std::string
+  GetNonUniformCustomerLastNameRun(util::fast_random &r) {
     return GetCustomerLastName(r, NonUniformRandom(r, 255, 223, 0, 999));
   }
 
   // following oltpbench, we really generate strings of len - 1...
-  static inline string RandomStr(fast_random &r, uint len) {
+  static inline std::string RandomStr(util::fast_random &r, uint len) {
     // this is a property of the oltpbench implementation...
     if (!len) return "";
 
     uint i = 0;
-    string buf(len - 1, 0);
+    std::string buf(len - 1, 0);
     while (i < (len - 1)) {
       const char c = (char)r.next_char();
       // XXX(stephentu): oltpbench uses java's Character.isLetter(), which
@@ -422,26 +420,26 @@ class tpcc_worker_mixin : private _dummy {
     return buf;
   }
 
-  // RandomNStr() actually produces a string of length len
-  static inline string RandomNStr(fast_random &r, uint len) {
+  // RandomNStr() actually produces a std::string of length len
+  static inline std::string RandomNStr(util::fast_random &r, uint len) {
     const char base = '0';
-    string buf(len, 0);
+    std::string buf(len, 0);
     for (uint i = 0; i < len; i++) buf[i] = (char)(base + (r.next() % 10));
     return buf;
   }
 };
 
-string tpcc_worker_mixin::NameTokens[] = {
-    string("BAR"),   string("OUGHT"), string("ABLE"), string("PRI"),
-    string("PRES"),  string("ESE"),   string("ANTI"), string("CALLY"),
-    string("ATION"), string("EING"),
+std::string tpcc_worker_mixin::NameTokens[] = {
+    std::string("BAR"),   std::string("OUGHT"), std::string("ABLE"), std::string("PRI"),
+    std::string("PRES"),  std::string("ESE"),   std::string("ANTI"), std::string("CALLY"),
+    std::string("ATION"), std::string("EING"),
 };
 
 class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
  public:
   tpcc_cmdlog_redoer(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
-              const map<string, OrderedIndex *> &open_tables,
-              const map<string, vector<OrderedIndex *>> &partitions,
+              const std::map<std::string, OrderedIndex *> &open_tables,
+              const std::map<std::string, std::vector<OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, false, seed, db, open_tables, barrier_a, barrier_b),
         tpcc_worker_mixin(partitions) {
@@ -491,8 +489,8 @@ class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  public:
   tpcc_worker(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
-              const map<string, OrderedIndex *> &open_tables,
-              const map<string, vector<OrderedIndex *>> &partitions,
+              const std::map<std::string, OrderedIndex *> &open_tables,
+              const std::map<std::string, std::vector<OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint home_warehouse_id)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
@@ -605,7 +603,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
-  inline ALWAYS_INLINE unsigned pick_wh(fast_random &r) {
+  inline ALWAYS_INLINE unsigned pick_wh(util::fast_random &r) {
     if (g_wh_temperature) {  // do it 80/20 way
       uint w = 0;
       if (r.next_uniform() >= 0.2)  // 80% access
@@ -628,35 +626,35 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   // 80/20 access: 80% of all accesses touch 20% of WHs (randmonly
   // choose one from hot_whs), while the 20% of accesses touch the
   // remaining 80% of WHs.
-  static vector<uint> hot_whs;
-  static vector<uint> cold_whs;
+  static std::vector<uint> hot_whs;
+  static std::vector<uint> cold_whs;
 
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
 };
 
-vector<uint> tpcc_worker::hot_whs;
-vector<uint> tpcc_worker::cold_whs;
+std::vector<uint> tpcc_worker::hot_whs;
+std::vector<uint> tpcc_worker::cold_whs;
 
 class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_nation_loader(unsigned long seed, ndb_wrapper *db,
-                     const map<string, OrderedIndex *> &open_tables,
-                     const map<string, vector<OrderedIndex *>> &partitions)
+                     const std::map<std::string, OrderedIndex *> &open_tables,
+                     const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
     transaction *txn = db->new_txn(0, arena, txn_buf());
     uint i;
     for (i = 0; i < 62; i++) {
       const nation::key k(nations[i].id);
       nation::value v;
 
-      const string n_comment = RandomStr(r, RandomNumber(r, 10, 20));
-      v.n_name = string(nations[i].name);
+      const std::string n_comment = RandomStr(r, RandomNumber(r, 10, 20));
+      v.n_name = std::string(nations[i].name);
       v.n_regionkey = nations[i].rId;
       v.n_comment.assign(n_comment);
       try_verify_strict(tbl_nation(1)->insert(txn, Encode(str(Size(k)), k),
@@ -669,20 +667,20 @@ class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_region_loader(unsigned long seed, ndb_wrapper *db,
-                     const map<string, OrderedIndex *> &open_tables,
-                     const map<string, vector<OrderedIndex *>> &partitions)
+                     const std::map<std::string, OrderedIndex *> &open_tables,
+                     const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
     transaction *txn = db->new_txn(0, arena, txn_buf());
     for (uint i = 0; i < 5; i++) {
       const region::key k(i);
       region::value v;
 
-      v.r_name = string(regions[i]);
-      const string r_comment = RandomStr(r, RandomNumber(r, 10, 20));
+      v.r_name = std::string(regions[i]);
+      const std::string r_comment = RandomStr(r, RandomNumber(r, 10, 20));
       v.r_comment.assign(r_comment);
       try_verify_strict(tbl_region(1)->insert(txn, Encode(str(Size(k)), k),
                                               Encode(str(Size(v)), v)));
@@ -694,19 +692,19 @@ class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_supplier_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<string, OrderedIndex *> &open_tables,
-                       const map<string, vector<OrderedIndex *>> &partitions)
+                       const std::map<std::string, OrderedIndex *> &open_tables,
+                       const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
     for (uint i = 0; i < 10000; i++) {
       transaction *txn = db->new_txn(0, arena, txn_buf());
       const supplier::key k(i);
       supplier::value v;
 
-      v.su_name = string("Supplier#") + string("000000000") + to_string(i);
+      v.su_name = std::string("Supplier#") + std::string("000000000") + std::to_string(i);
       v.su_address = RandomStr(r, RandomNumber(r, 10, 40));
 
       auto rand = 0;
@@ -714,7 +712,7 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
              (rand > 'Z' && rand < 'a'))
         rand = RandomNumber(r, '0', 'z');
       v.su_nationkey = rand;
-      //		  v.su_phone = string("911");			//
+      //		  v.su_phone = std::string("911");			//
       //XXX. nobody wants this field
       //		  v.su_acctbal = 0;
       //		  v.su_comment = RandomStr(r, RandomNumber(r,10,39));
@@ -731,26 +729,26 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_warehouse_loader(unsigned long seed, ndb_wrapper *db,
-                        const map<string, OrderedIndex *> &open_tables,
-                        const map<string, vector<OrderedIndex *>> &partitions)
+                        const std::map<std::string, OrderedIndex *> &open_tables,
+                        const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
     uint64_t warehouse_total_sz = 0, n_warehouses = 0;
-    vector<warehouse::value> warehouses;
+    std::vector<warehouse::value> warehouses;
     for (uint i = 1; i <= NumWarehouses(); i++) {
       arena.reset();
       transaction *txn = db->new_txn(0, arena, txn_buf());
       const warehouse::key k(i);
 
-      const string w_name = RandomStr(r, RandomNumber(r, 6, 10));
-      const string w_street_1 = RandomStr(r, RandomNumber(r, 10, 20));
-      const string w_street_2 = RandomStr(r, RandomNumber(r, 10, 20));
-      const string w_city = RandomStr(r, RandomNumber(r, 10, 20));
-      const string w_state = RandomStr(r, 3);
-      const string w_zip = "123456789";
+      const std::string w_name = RandomStr(r, RandomNumber(r, 6, 10));
+      const std::string w_street_1 = RandomStr(r, RandomNumber(r, 10, 20));
+      const std::string w_street_2 = RandomStr(r, RandomNumber(r, 10, 20));
+      const std::string w_city = RandomStr(r, RandomNumber(r, 10, 20));
+      const std::string w_state = RandomStr(r, 3);
+      const std::string w_zip = "123456789";
 
       warehouse::value v;
       v.w_ytd = 300000;
@@ -793,10 +791,10 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
         supp_stock_map[w * i % 10000].push_back(std::make_pair(w, i));
 
     if (config::verbose) {
-      cerr << "[INFO] finished loading warehouse" << endl;
-      cerr << "[INFO]   * average warehouse record length: "
+      std::cerr << "[INFO] finished loading warehouse" << std::endl;
+      std::cerr << "[INFO]   * average warehouse record length: "
            << (double(warehouse_total_sz) / double(n_warehouses)) << " bytes"
-           << endl;
+           << std::endl;
     }
   }
 };
@@ -804,13 +802,13 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_item_loader(unsigned long seed, ndb_wrapper *db,
-                   const map<string, OrderedIndex *> &open_tables,
-                   const map<string, vector<OrderedIndex *>> &partitions)
+                   const std::map<std::string, OrderedIndex *> &open_tables,
+                   const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
     uint64_t total_sz = 0;
     for (uint i = 1; i <= NumItems(); i++) {
       arena.reset();
@@ -819,16 +817,16 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
       const item::key k(i);
 
       item::value v;
-      const string i_name = RandomStr(r, RandomNumber(r, 14, 24));
+      const std::string i_name = RandomStr(r, RandomNumber(r, 14, 24));
       v.i_name.assign(i_name);
       v.i_price = (float)RandomNumber(r, 100, 10000) / 100.0;
       const int len = RandomNumber(r, 26, 50);
       if (RandomNumber(r, 1, 100) > 10) {
-        const string i_data = RandomStr(r, len);
+        const std::string i_data = RandomStr(r, len);
         v.i_data.assign(i_data);
       } else {
         const int startOriginal = RandomNumber(r, 2, (len - 8));
-        const string i_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
+        const std::string i_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
                               RandomStr(r, len - startOriginal - 7);
         v.i_data.assign(i_data);
       }
@@ -843,9 +841,9 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
       try_verify_strict(db->commit_txn(txn));
     }
     if (config::verbose) {
-      cerr << "[INFO] finished loading item" << endl;
-      cerr << "[INFO]   * average item record length: "
-           << (double(total_sz) / double(NumItems())) << " bytes" << endl;
+      std::cerr << "[INFO] finished loading item" << std::endl;
+      std::cerr << "[INFO]   * average item record length: "
+           << (double(total_sz) / double(NumItems())) << " bytes" << std::endl;
     }
   }
 };
@@ -853,8 +851,8 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_stock_loader(unsigned long seed, ndb_wrapper *db,
-                    const map<string, OrderedIndex *> &open_tables,
-                    const map<string, vector<OrderedIndex *>> &partitions,
+                    const std::map<std::string, OrderedIndex *> &open_tables,
+                    const std::map<std::string, std::vector<OrderedIndex *>> &partitions,
                     ssize_t warehouse_id)
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
@@ -866,7 +864,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
 
  protected:
   virtual void load() {
-    string obj_buf, obj_buf1;
+    std::string obj_buf, obj_buf1;
 
     uint64_t stock_total_sz = 0, n_stocks = 0;
     const uint w_start =
@@ -897,11 +895,11 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           stock_data::value v_data;
           const int len = RandomNumber(r, 26, 50);
           if (RandomNumber(r, 1, 100) > 10) {
-            const string s_data = RandomStr(r, len);
+            const std::string s_data = RandomStr(r, len);
             v_data.s_data.assign(s_data);
           } else {
             const int startOriginal = RandomNumber(r, 2, (len - 8));
-            const string s_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
+            const std::string s_data = RandomStr(r, startOriginal + 1) + "ORIGINAL" +
                                   RandomStr(r, len - startOriginal - 7);
             v_data.s_data.assign(s_data);
           }
@@ -934,12 +932,12 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (config::verbose) {
       if (warehouse_id == -1) {
-        cerr << "[INFO] finished loading stock" << endl;
-        cerr << "[INFO]   * average stock record length: "
-             << (double(stock_total_sz) / double(n_stocks)) << " bytes" << endl;
+        std::cerr << "[INFO] finished loading stock" << std::endl;
+        std::cerr << "[INFO]   * average stock record length: "
+             << (double(stock_total_sz) / double(n_stocks)) << " bytes" << std::endl;
       } else {
-        cerr << "[INFO] finished loading stock (w=" << warehouse_id << ")"
-             << endl;
+        std::cerr << "[INFO] finished loading stock (w=" << warehouse_id << ")"
+             << std::endl;
       }
     }
   }
@@ -951,13 +949,13 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_district_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<string, OrderedIndex *> &open_tables,
-                       const map<string, vector<OrderedIndex *>> &partitions)
+                       const std::map<std::string, OrderedIndex *> &open_tables,
+                       const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
 
  protected:
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
 
     const ssize_t bsize = db->txn_max_batch_size();
     uint64_t district_total_sz = 0, n_districts = 0;
@@ -990,10 +988,10 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
       }
     }
     if (config::verbose) {
-      cerr << "[INFO] finished loading district" << endl;
-      cerr << "[INFO]   * average district record length: "
+      std::cerr << "[INFO] finished loading district" << std::endl;
+      std::cerr << "[INFO]   * average district record length: "
            << (double(district_total_sz) / double(n_districts)) << " bytes"
-           << endl;
+           << std::endl;
     }
   }
 };
@@ -1001,8 +999,8 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_customer_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<string, OrderedIndex *> &open_tables,
-                       const map<string, vector<OrderedIndex *>> &partitions,
+                       const std::map<std::string, OrderedIndex *> &open_tables,
+                       const std::map<std::string, std::vector<OrderedIndex *>> &partitions,
                        ssize_t warehouse_id)
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
@@ -1014,7 +1012,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
  protected:
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
 
     const uint w_start =
         (warehouse_id == -1) ? 1 : static_cast<uint>(warehouse_id);
@@ -1121,14 +1119,14 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (config::verbose) {
       if (warehouse_id == -1) {
-        cerr << "[INFO] finished loading customer" << endl;
-        cerr << "[INFO]   * average customer record length: "
+        std::cerr << "[INFO] finished loading customer" << std::endl;
+        std::cerr << "[INFO]   * average customer record length: "
              << (double(total_sz) /
                  double(NumWarehouses() * NumDistrictsPerWarehouse() *
-                        NumCustomersPerDistrict())) << " bytes " << endl;
+                        NumCustomersPerDistrict())) << " bytes " << std::endl;
       } else {
-        cerr << "[INFO] finished loading customer (w=" << warehouse_id << ")"
-             << endl;
+        std::cerr << "[INFO] finished loading customer (w=" << warehouse_id << ")"
+             << std::endl;
       }
     }
   }
@@ -1140,8 +1138,8 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
  public:
   tpcc_order_loader(unsigned long seed, ndb_wrapper *db,
-                    const map<string, OrderedIndex *> &open_tables,
-                    const map<string, vector<OrderedIndex *>> &partitions,
+                    const std::map<std::string, OrderedIndex *> &open_tables,
+                    const std::map<std::string, std::vector<OrderedIndex *>> &partitions,
                     ssize_t warehouse_id)
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
@@ -1155,7 +1153,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
   size_t NumOrderLinesPerCustomer() { return RandomNumber(r, 5, 15); }
 
   virtual void load() {
-    string obj_buf;
+    std::string obj_buf;
 
     uint64_t order_line_total_sz = 0, n_order_lines = 0;
     uint64_t oorder_total_sz = 0, n_oorders = 0;
@@ -1168,8 +1166,8 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 
     for (uint w = w_start; w <= w_end; w++) {
       for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
-        set<uint> c_ids_s;
-        vector<uint> c_ids;
+        std::set<uint> c_ids_s;
+        std::vector<uint> c_ids;
         while (c_ids.size() != NumCustomersPerDistrict()) {
           const auto x = (r.next() % NumCustomersPerDistrict()) + 1;
           if (c_ids_s.count(x)) continue;
@@ -1261,19 +1259,19 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 
     if (config::verbose) {
       if (warehouse_id == -1) {
-        cerr << "[INFO] finished loading order" << endl;
-        cerr << "[INFO]   * average order_line record length: "
+        std::cerr << "[INFO] finished loading order" << std::endl;
+        std::cerr << "[INFO]   * average order_line record length: "
              << (double(order_line_total_sz) / double(n_order_lines))
-             << " bytes" << endl;
-        cerr << "[INFO]   * average oorder record length: "
+             << " bytes" << std::endl;
+        std::cerr << "[INFO]   * average oorder record length: "
              << (double(oorder_total_sz) / double(n_oorders)) << " bytes"
-             << endl;
-        cerr << "[INFO]   * average new_order record length: "
+             << std::endl;
+        std::cerr << "[INFO]   * average new_order record length: "
              << (double(new_order_total_sz) / double(n_new_orders)) << " bytes"
-             << endl;
+             << std::endl;
       } else {
-        cerr << "[INFO] finished loading order (w=" << warehouse_id << ")"
-             << endl;
+        std::cerr << "[INFO] finished loading order (w=" << warehouse_id << ")"
+             << std::endl;
       }
     }
   }
@@ -1547,7 +1545,7 @@ rc_t tpcc_worker::txn_delivery() {
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
-                                numeric_limits<int32_t>::max());
+                                std::numeric_limits<int32_t>::max());
     new_order_scan_callback new_order_c;
     {
       try_catch(tbl_new_order(warehouse_id)
@@ -1576,7 +1574,7 @@ rc_t tpcc_worker::txn_delivery() {
         s_arena.get(), false);  // never more than 15 order_lines per order
     const order_line::key k_oo_0(warehouse_id, d, k_no->no_o_id, 0);
     const order_line::key k_oo_1(warehouse_id, d, k_no->no_o_id,
-                                 numeric_limits<int32_t>::max());
+                                 std::numeric_limits<int32_t>::max());
 
     // XXX(stephentu): mutable scans would help here
     try_catch(tbl_order_line(warehouse_id)
@@ -1724,7 +1722,7 @@ rc_t tpcc_worker::txn_credit_check() {
   credit_check_order_scan_callback c_no(s_arena.get());
   const new_order::key k_no_0(warehouse_id, districtID, 0);
   const new_order::key k_no_1(warehouse_id, districtID,
-                              numeric_limits<int32_t>::max());
+                              std::numeric_limits<int32_t>::max());
   try_catch(tbl_new_order(warehouse_id)
                 ->scan(txn, Encode(str(Size(k_no_0)), k_no_0),
                        &Encode(str(Size(k_no_1)), k_no_1), c_no,
@@ -1851,8 +1849,8 @@ rc_t tpcc_worker::txn_payment() {
     memset(lastname_buf, 0, sizeof(lastname_buf));
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
-    static const string zeros(16, 0);
-    static const string ones(16, 255);
+    static const std::string zeros(16, 0);
+    static const std::string ones(16, 255);
 
     customer_name_idx::key k_c_idx_0;
     k_c_idx_0.c_w_id = customerWarehouseID;
@@ -1999,8 +1997,8 @@ rc_t tpcc_worker::txn_order_status() {
     memset(lastname_buf, 0, sizeof(lastname_buf));
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
-    static const string zeros(16, 0);
-    static const string ones(16, 255);
+    static const std::string zeros(16, 0);
+    static const std::string ones(16, 255);
 
     customer_name_idx::key k_c_idx_0;
     k_c_idx_0.c_w_id = warehouse_id;
@@ -2057,7 +2055,7 @@ rc_t tpcc_worker::txn_order_status() {
     const oorder_c_id_idx::key k_oo_idx_0(warehouse_id, districtID, k_c.c_id,
                                           0);
     const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id,
-                                          numeric_limits<int32_t>::max());
+                                          std::numeric_limits<int32_t>::max());
     {
       try_catch(tbl_oorder_c_id_idx(warehouse_id)
                     ->scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
@@ -2068,7 +2066,7 @@ rc_t tpcc_worker::txn_order_status() {
   } else {
     latest_key_callback c_oorder(*newest_o_c_id, 1);
     const oorder_c_id_idx::key k_oo_idx_hi(warehouse_id, districtID, k_c.c_id,
-                                           numeric_limits<int32_t>::max());
+                                           std::numeric_limits<int32_t>::max());
     try_catch(tbl_oorder_c_id_idx(warehouse_id)
                   ->rscan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
                           nullptr, c_oorder, s_arena.get()));
@@ -2082,7 +2080,7 @@ rc_t tpcc_worker::txn_order_status() {
   order_line_nop_callback c_order_line;
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
-                               numeric_limits<int32_t>::max());
+                               std::numeric_limits<int32_t>::max());
   try_catch(tbl_order_line(warehouse_id)
                 ->scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line,
@@ -2147,7 +2145,7 @@ rc_t tpcc_worker::txn_stock_level() {
   const uint64_t cur_next_o_id =
       g_new_order_fast_id_gen
           ? NewOrderIdHolder(warehouse_id, districtID)
-                .load(memory_order_acquire)
+                .load(std::memory_order_acquire)
           : v_d->d_next_o_id;
 
   // manual joins are fun!
@@ -2198,7 +2196,7 @@ rc_t tpcc_worker::txn_query2() {
   static __thread tpcc_table_scanner n_scanner(&arena);
   n_scanner.clear();
   const nation::key k_n_0(0);
-  const nation::key k_n_1(numeric_limits<int32_t>::max());
+  const nation::key k_n_1(std::numeric_limits<int32_t>::max());
   try_catch(tbl_nation(1)->scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
                                 &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
                                 s_arena.get()));
@@ -2217,7 +2215,7 @@ rc_t tpcc_worker::txn_query2() {
     const region::value *v_r = Decode(*r_r.second, v_r_temp);
 
     // filtering region
-    if (v_r->r_name != string(regions[target_region])) continue;
+    if (v_r->r_name != std::string(regions[target_region])) continue;
 
     // Scan nation
     for (auto &r_n : n_scanner.output) {
@@ -2303,7 +2301,7 @@ rc_t tpcc_worker::txn_query2() {
                 << v_su->su_name                << ","
                 << v_n->n_name                  << ","
                 << k_i.i_id                     << ","
-                << v_i->i_name                  << endl;
+                << v_i->i_name                  << std::endl;
                 */
       }
     }
@@ -2329,7 +2327,7 @@ rc_t tpcc_worker::txn_microbench_random() {
   varstr sv = str(Size(v));
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
-    ASSERT(cout << "rd " << w << " " << s << endl);
+    ASSERT(cout << "rd " << w << " " << s << std::endl);
     try_catch(tbl_stock(w)->get(txn, Encode(str(Size(k_s)), k_s), sv));
 
     if (++s > NumItems()) {
@@ -2352,9 +2350,9 @@ rc_t tpcc_worker::txn_microbench_random() {
     const uint ww = idx / NumItems() + 1;
     const uint ss = idx % NumItems() + 1;
 
-    ASSERT(cout << (ww - 1) * NumItems() + ss - 1 << endl);
+    ASSERT(cout << (ww - 1) * NumItems() + ss - 1 << std::endl);
     ASSERT(cout << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) %
-                       (NumItems() * (NumWarehouses())) << endl);
+                       (NumItems() * (NumWarehouses())) << std::endl);
     ASSERT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
     ASSERT((ww - 1) * NumItems() + ss - 1 ==
            ((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) %
@@ -2362,7 +2360,7 @@ rc_t tpcc_worker::txn_microbench_random() {
 
     // TODO. more plausible update needed
     const stock::key k_s(ww, ss);
-    ASSERT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << endl);
+    ASSERT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << std::endl);
 
     stock::value v;
     v.s_quantity = RandomNumber(r, 10, 100);
@@ -2375,7 +2373,7 @@ rc_t tpcc_worker::txn_microbench_random() {
                                  Encode(str(Size(v)), v)));
   }
 
-  ASSERT(cout << "micro-random finished" << endl);
+  ASSERT(cout << "micro-random finished" << std::endl);
 #ifndef NDEBUG
   abort();
 #endif
@@ -2395,16 +2393,16 @@ class tpcc_bench_runner : public bench_runner {
     return strcmp("history", name) == 0 || strcmp("oorder_c_id_idx", name) == 0;
   }
 
-  static vector<OrderedIndex *> OpenTablesForTablespace(ndb_wrapper *db,
+  static std::vector<OrderedIndex *> OpenTablesForTablespace(ndb_wrapper *db,
                                                         const char *name) {
     const bool is_read_only = IsTableReadOnly(name);
     const bool is_append_only = IsTableAppendOnly(name);
-    const string s_name(name);
-    vector<OrderedIndex *> ret(NumWarehouses());
+    const std::string s_name(name);
+    std::vector<OrderedIndex *> ret(NumWarehouses());
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++)
-          ret[i] = IndexDescriptor::GetIndex(s_name + "_" + to_string(i));
+          ret[i] = IndexDescriptor::GetIndex(s_name + "_" + std::to_string(i));
       } else {
         const unsigned nwhse_per_partition =
             NumWarehouses() / config::worker_threads;
@@ -2414,7 +2412,7 @@ class tpcc_bench_runner : public bench_runner {
                                     ? NumWarehouses()
                                     : (partid + 1) * nwhse_per_partition;
           OrderedIndex *idx =
-              IndexDescriptor::GetIndex(s_name + "_" + to_string(partid));
+              IndexDescriptor::GetIndex(s_name + "_" + std::to_string(partid));
           for (size_t i = wstart; i < wend; i++) ret[i] = idx;
         }
       }
@@ -2428,16 +2426,16 @@ class tpcc_bench_runner : public bench_runner {
   static void RegisterTable(ndb_wrapper *db, const char *name,
                             const char *primary_idx_name = nullptr) {
     const bool is_read_only = IsTableReadOnly(name);
-    string s_name(name);
+    std::string s_name(name);
     if (g_enable_separate_tree_per_partition && !is_read_only) {
       if (config::is_backup_srv() ||
           NumWarehouses() <= config::worker_threads) {
         for (size_t i = 0; i < NumWarehouses(); i++) {
-          string s_primary_name("");
+          std::string s_primary_name("");
           if (primary_idx_name) {
-            s_primary_name = std::string(primary_idx_name) + "_" + to_string(i);
+            s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(i);
           }
-          auto ss_name = s_name + "_" + to_string(i);
+          auto ss_name = s_name + "_" + std::to_string(i);
           IndexDescriptor::New(ss_name, s_primary_name.c_str());
         }
       } else {
@@ -2448,16 +2446,16 @@ class tpcc_bench_runner : public bench_runner {
           const unsigned wend = (partid + 1 == config::worker_threads)
                                     ? NumWarehouses()
                                     : (partid + 1) * nwhse_per_partition;
-          string s_primary_name("");
+          std::string s_primary_name("");
           if (primary_idx_name) {
-            s_primary_name = string(primary_idx_name) + "_" + to_string(partid);
+            s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(partid);
           }
-          IndexDescriptor::New(s_name + string("_") + to_string(partid),
+          IndexDescriptor::New(s_name + std::string("_") + std::to_string(partid),
                                s_primary_name.c_str());
         }
       }
     } else {
-      string s_primary_name("");
+      std::string s_primary_name("");
       if (primary_idx_name) {
         s_primary_name = std::string(primary_idx_name);
       }
@@ -2495,23 +2493,23 @@ class tpcc_bench_runner : public bench_runner {
     for (auto &t : partitions) {
       auto v = unique_filter(t.second);
       for (size_t i = 0; i < v.size(); i++)
-        open_tables[t.first + "_" + to_string(i)] = v[i];
+        open_tables[t.first + "_" + std::to_string(i)] = v[i];
     }
 
     if (g_new_order_fast_id_gen) {
       void *const px = memalign(
-          CACHELINE_SIZE, sizeof(aligned_padded_elem<atomic<uint64_t>>) *
+          CACHELINE_SIZE, sizeof(util::aligned_padded_elem<std::atomic<uint64_t>>) *
                               NumWarehouses() * NumDistrictsPerWarehouse());
       g_district_ids =
-          reinterpret_cast<aligned_padded_elem<atomic<uint64_t>> *>(px);
+          reinterpret_cast<util::aligned_padded_elem<std::atomic<uint64_t>> *>(px);
       for (size_t i = 0; i < NumWarehouses() * NumDistrictsPerWarehouse(); i++)
-        new (&g_district_ids[i]) atomic<uint64_t>(3001);
+        new (&g_district_ids[i]) std::atomic<uint64_t>(3001);
     }
   }
 
  protected:
-  virtual vector<bench_loader *> make_loaders() {
-    vector<bench_loader *> ret;
+  virtual std::vector<bench_loader *> make_loaders() {
+    std::vector<bench_loader *> ret;
     ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
     ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
     ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
@@ -2519,7 +2517,7 @@ class tpcc_bench_runner : public bench_runner {
         new tpcc_supplier_loader(51271928, db, open_tables, partitions));
     ret.push_back(new tpcc_item_loader(235443, db, open_tables, partitions));
     if (config::parallel_loading) {
-      fast_random r(89785943);
+      util::fast_random r(89785943);
       for (uint i = 1; i <= NumWarehouses(); i++)
         ret.push_back(
             new tpcc_stock_loader(r.next(), db, open_tables, partitions, i));
@@ -2530,7 +2528,7 @@ class tpcc_bench_runner : public bench_runner {
     ret.push_back(
         new tpcc_district_loader(129856349, db, open_tables, partitions));
     if (config::parallel_loading) {
-      fast_random r(923587856425);
+      util::fast_random r(923587856425);
       for (uint i = 1; i <= NumWarehouses(); i++)
         ret.push_back(
             new tpcc_customer_loader(r.next(), db, open_tables, partitions, i));
@@ -2539,7 +2537,7 @@ class tpcc_bench_runner : public bench_runner {
                                              partitions, -1));
     }
     if (config::parallel_loading) {
-      fast_random r(2343352);
+      util::fast_random r(2343352);
       for (uint i = 1; i <= NumWarehouses(); i++)
         ret.push_back(
             new tpcc_order_loader(r.next(), db, open_tables, partitions, i));
@@ -2550,9 +2548,9 @@ class tpcc_bench_runner : public bench_runner {
     return ret;
   }
 
-  virtual vector<bench_worker *> make_workers() {
-    fast_random r(23984543);
-    vector<bench_worker *> ret;
+  virtual std::vector<bench_worker *> make_workers() {
+    util::fast_random r(23984543);
+    std::vector<bench_worker *> ret;
     if (NumWarehouses() <= config::worker_threads) {
       for (size_t i = 0; i < config::worker_threads; i++)
         ret.push_back(new tpcc_worker(i, r.next(), db, open_tables, partitions,
@@ -2567,10 +2565,10 @@ class tpcc_bench_runner : public bench_runner {
     return ret;
   }
 
-  virtual vector<bench_worker *> make_cmdlog_redoers() {
+  virtual std::vector<bench_worker *> make_cmdlog_redoers() {
     ALWAYS_ASSERT(config::is_backup_srv() && config::command_log);
-    fast_random r(23984543);
-    vector<bench_worker *> ret;
+    util::fast_random r(23984543);
+    std::vector<bench_worker *> ret;
     for (size_t i = 0; i < config::replay_threads; i++) {
       ret.push_back(new tpcc_cmdlog_redoer(i, r.next(), db, open_tables,
                                            partitions, &barrier_a, &barrier_b));
@@ -2579,7 +2577,7 @@ class tpcc_bench_runner : public bench_runner {
   }
 
  private:
-  map<string, vector<OrderedIndex *>> partitions;
+  std::map<std::string, std::vector<OrderedIndex *>> partitions;
 };
 
 void tpcc_do_test(ndb_wrapper *db, int argc, char **argv) {
@@ -2635,7 +2633,7 @@ void tpcc_do_test(ndb_wrapper *db, int argc, char **argv) {
         break;
 
       case 'w': {
-        const vector<string> toks = split(optarg, ',');
+        const std::vector<std::string> toks = util::split(optarg, ',');
         ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
         unsigned s = 0;
         for (size_t i = 0; i < toks.size(); i++) {
@@ -2661,16 +2659,16 @@ void tpcc_do_test(ndb_wrapper *db, int argc, char **argv) {
   }
 
   if (did_spec_remote_pct && g_disable_xpartition_txn) {
-    cerr << "WARNING: --new-order-remote-item-pct given with "
-            "--disable-cross-partition-transactions" << endl;
-    cerr << "  --new-order-remote-item-pct will have no effect" << endl;
+    std::cerr << "WARNING: --new-order-remote-item-pct given with "
+            "--disable-cross-partition-transactions" << std::endl;
+    std::cerr << "  --new-order-remote-item-pct will have no effect" << std::endl;
   }
 
   if (g_wh_temperature) {
     // set up hot and cold WHs
     ALWAYS_ASSERT(NumWarehouses() * 0.2 >= 1);
     uint num_hot_whs = NumWarehouses() * 0.2;
-    fast_random r(23984543);
+    util::fast_random r(23984543);
     for (uint i = 1; i <= num_hot_whs; i++) {
     try_push:
       uint w = r.next() % NumWarehouses() + 1;
@@ -2691,34 +2689,35 @@ void tpcc_do_test(ndb_wrapper *db, int argc, char **argv) {
   }
 
   if (config::verbose) {
-    cerr << "tpcc settings:" << endl;
+    std::cerr << "tpcc settings:" << std::endl;
     if (g_wh_temperature) {
-      cerr << "  hot whs for 80% accesses     :";
+      std::cerr << "  hot whs for 80% accesses     :";
       for (uint i = 0; i < tpcc_worker::hot_whs.size(); i++)
-        cerr << " " << tpcc_worker::hot_whs[i];
-      cerr << endl;
-    } else
-      cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << endl;
-    cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn
-         << endl;
-    cerr << "  separate_tree_per_partition  : "
-         << g_enable_separate_tree_per_partition << endl;
-    cerr << "  new_order_remote_item_pct    : " << g_new_order_remote_item_pct
-         << endl;
-    cerr << "  new_order_fast_id_gen        : " << g_new_order_fast_id_gen
-         << endl;
-    cerr << "  uniform_item_dist            : " << g_uniform_item_dist << endl;
-    cerr << "  order_status_scan_hack       : " << g_order_status_scan_hack
-         << endl;
-    cerr << "  microbench rows            : " << g_microbench_rows << endl;
-    cerr << "  microbench wr ratio (%)    : "
-         << g_microbench_wr_rows / g_microbench_rows << endl;
-    cerr << "  microbench wr rows         : " << g_microbench_wr_rows << endl;
-    cerr << "  number of suppliers : " << g_nr_suppliers << endl;
-    cerr << "  workload_mix                 : "
-         << format_list(g_txn_workload_mix,
+        std::cerr << " " << tpcc_worker::hot_whs[i];
+      std::cerr << std::endl;
+    } else {
+      std::cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << std::endl;
+    }
+    std::cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn
+         << std::endl;
+    std::cerr << "  separate_tree_per_partition  : "
+         << g_enable_separate_tree_per_partition << std::endl;
+    std::cerr << "  new_order_remote_item_pct    : " << g_new_order_remote_item_pct
+         << std::endl;
+    std::cerr << "  new_order_fast_id_gen        : " << g_new_order_fast_id_gen
+         << std::endl;
+    std::cerr << "  uniform_item_dist            : " << g_uniform_item_dist << std::endl;
+    std::cerr << "  order_status_scan_hack       : " << g_order_status_scan_hack
+         << std::endl;
+    std::cerr << "  microbench rows            : " << g_microbench_rows << std::endl;
+    std::cerr << "  microbench wr ratio (%)    : "
+         << g_microbench_wr_rows / g_microbench_rows << std::endl;
+    std::cerr << "  microbench wr rows         : " << g_microbench_wr_rows << std::endl;
+    std::cerr << "  number of suppliers : " << g_nr_suppliers << std::endl;
+    std::cerr << "  workload_mix                 : "
+         << util::format_list(g_txn_workload_mix,
                         g_txn_workload_mix + ARRAY_NELEMS(g_txn_workload_mix))
-         << endl;
+         << std::endl;
   }
 
   tpcc_bench_runner r(db);
@@ -2951,8 +2950,8 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
     memset(lastname_buf, 0, sizeof(lastname_buf));
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
-    static const string zeros(16, 0);
-    static const string ones(16, 255);
+    static const std::string zeros(16, 0);
+    static const std::string ones(16, 255);
 
     customer_name_idx::key k_c_idx_0;
     k_c_idx_0.c_w_id = customerWarehouseID;
@@ -3057,7 +3056,7 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
-                                numeric_limits<int32_t>::max());
+                                std::numeric_limits<int32_t>::max());
     new_order_scan_callback new_order_c;
     {
       try_catch(tbl_new_order(warehouse_id)
@@ -3086,7 +3085,7 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
         s_arena.get(), false);  // never more than 15 order_lines per order
     const order_line::key k_oo_0(warehouse_id, d, k_no->no_o_id, 0);
     const order_line::key k_oo_1(warehouse_id, d, k_no->no_o_id,
-                                 numeric_limits<int32_t>::max());
+                                 std::numeric_limits<int32_t>::max());
 
     // XXX(stephentu): mutable scans would help here
     try_catch(tbl_order_line(warehouse_id)

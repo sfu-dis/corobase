@@ -91,10 +91,10 @@ class basic_table {
   bool get(Str key, value_type& value, threadinfo& ti) const;
 
   template <typename F>
-  int scan(Str firstkey, bool matchfirst, F& scanner, xid_context* xc,
+  int scan(Str firstkey, bool matchfirst, F& scanner, TXN::xid_context* xc,
            threadinfo& ti) const;
   template <typename F>
-  int rscan(Str firstkey, bool matchfirst, F& scanner, xid_context* xc,
+  int rscan(Str firstkey, bool matchfirst, F& scanner, TXN::xid_context* xc,
             threadinfo& ti) const;
 
   template <typename F>
@@ -112,7 +112,7 @@ class basic_table {
   oid_array* pdest_array_;
 
   template <typename H, typename F>
-  int scan(H helper, Str firstkey, bool matchfirst, F& scanner, xid_context* xc,
+  int scan(H helper, Str firstkey, bool matchfirst, F& scanner, TXN::xid_context* xc,
            threadinfo& ti) const;
 
   friend class unlocked_tcursor<P>;
