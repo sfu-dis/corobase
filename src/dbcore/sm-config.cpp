@@ -93,4 +93,12 @@ void config::sanity_check() {
   ALWAYS_ASSERT(recover_functor || is_backup_srv());
   ALWAYS_ASSERT(numa_nodes);
   ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
+  if (is_backup_srv()) {
+    // Must have replay threads if replay is wanted
+    ALWAYS_ASSERT(replay_policy == kReplayNone || replay_threads > 0);
+    if (log_ship_by_rdma) {
+      // No RDMA based cmdlog for now
+      ALWAYS_ASSERT(!command_log);
+    }
+  }
 }
