@@ -24,8 +24,6 @@
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
 
-using namespace std;
-
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
 std::vector<bench_worker *> bench_runner::cmdlog_redoers;
@@ -233,7 +231,7 @@ void bench_runner::run() {
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
   if (not sm_log::need_recovery && not config::is_backup_srv()) {
-    vector<bench_loader *> loaders = make_loaders();
+    std::vector<bench_loader *> loaders = make_loaders();
     {
       util::scoped_timer t("dataloading", config::verbose);
       uint32_t done = 0;
@@ -327,7 +325,7 @@ void bench_runner::run() {
              volatile_read(rep::new_end_lsn_offset)) {
       }
     }
-    cerr << "Shutdown successfully" << std::endl;
+    std::cerr << "Shutdown successfully" << std::endl;
   }
 }
 
@@ -360,7 +358,7 @@ void bench_runner::measure_read_view_lsn() {
 void bench_runner::start_measurement() {
   workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());
-  for (vector<bench_worker *>::const_iterator it = workers.begin();
+  for (std::vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it) {
     while (!(*it)->is_impersonated()) {
       (*it)->try_impersonate();
@@ -369,15 +367,15 @@ void bench_runner::start_measurement() {
   }
 
   barrier_a.wait_for();  // wait for all threads to start up
-  map<string, size_t> table_sizes_before;
+  std::map<std::string, size_t> table_sizes_before;
   if (config::verbose) {
-    for (map<string, OrderedIndex *>::iterator it = open_tables.begin();
+    for (std::map<std::string, OrderedIndex *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->size();
-      cerr << "table " << it->first << " size " << s << endl;
+      std::cerr << "table " << it->first << " size " << s << std::endl;
       table_sizes_before[it->first] = s;
     }
-    cerr << "starting benchmark..." << endl;
+    std::cerr << "starting benchmark..." << std::endl;
   }
 
   // Print some results every second
@@ -580,78 +578,78 @@ void bench_runner::start_measurement() {
   if (config::enable_chkpt) delete chkptmgr;
 
   if (config::verbose) {
-    cerr << "--- table statistics ---" << endl;
-    for (map<string, OrderedIndex *>::iterator it = open_tables.begin();
+    std::cerr << "--- table statistics ---" << std::endl;
+    for (std::map<std::string, OrderedIndex *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
       const size_t s = it->second->size();
       const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
-      cerr << "table " << it->first << " size " << it->second->size();
+      std::cerr << "table " << it->first << " size " << it->second->size();
       if (delta < 0)
-        cerr << " (" << delta << " records)" << endl;
+        std::cerr << " (" << delta << " records)" << std::endl;
       else
-        cerr << " (+" << delta << " records)" << endl;
+        std::cerr << " (+" << delta << " records)" << std::endl;
     }
-    cerr << "--- benchmark statistics ---" << endl;
-    cerr << "runtime: " << elapsed_sec << " sec" << endl;
-    cerr << "cpu_util: " << total_util / elapsed_sec << "%" << endl;
-    cerr << "agg_nosync_throughput: " << agg_nosync_throughput << " ops/sec"
-         << endl;
-    cerr << "avg_nosync_per_core_throughput: " << avg_nosync_per_core_throughput
-         << " ops/sec/core" << endl;
-    cerr << "agg_throughput: " << agg_throughput << " ops/sec" << std::endl;
-    cerr << "avg_per_core_throughput: " << avg_per_core_throughput
+    std::cerr << "--- benchmark statistics ---" << std::endl;
+    std::cerr << "runtime: " << elapsed_sec << " sec" << std::endl;
+    std::cerr << "cpu_util: " << total_util / elapsed_sec << "%" << std::endl;
+    std::cerr << "agg_nosync_throughput: " << agg_nosync_throughput << " ops/sec"
+         << std::endl;
+    std::cerr << "avg_nosync_per_core_throughput: " << avg_nosync_per_core_throughput
          << " ops/sec/core" << std::endl;
-    cerr << "avg_latency: " << avg_latency_ms << " ms" << std::endl;
-    cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << std::endl;
-    cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate
-         << " aborts/sec/core" << endl;
-    cerr << "txn breakdown: " << util::format_list(agg_txn_counts.begin(),
+    std::cerr << "agg_throughput: " << agg_throughput << " ops/sec" << std::endl;
+    std::cerr << "avg_per_core_throughput: " << avg_per_core_throughput
+         << " ops/sec/core" << std::endl;
+    std::cerr << "avg_latency: " << avg_latency_ms << " ms" << std::endl;
+    std::cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << std::endl;
+    std::cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate
+         << " aborts/sec/core" << std::endl;
+    std::cerr << "txn breakdown: " << util::format_list(agg_txn_counts.begin(),
                                                    agg_txn_counts.end()) << std::endl;
     if (config::is_backup_srv()) {
-      cerr << "agg_replay_time: " << agg_replay_latency_ms << " ms" << endl;
-      cerr << "agg_redo_batches: " << agg_redo_batches << endl;
-      cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << endl;
-      cerr << "agg_redo_size: " << agg_redo_size << " bytes" << endl;
-      cerr << "received_log_size: " << rep::received_log_size << " bytes" << endl;
+      std::cerr << "agg_replay_time: " << agg_replay_latency_ms << " ms" << std::endl;
+      std::cerr << "agg_redo_batches: " << agg_redo_batches << std::endl;
+      std::cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << std::endl;
+      std::cerr << "agg_redo_size: " << agg_redo_size << " bytes" << std::endl;
+      std::cerr << "received_log_size: " << rep::received_log_size << " bytes" << std::endl;
     } else {
       if (config::num_active_backups) {
-        cerr << "log_size_for_ship: " << rep::log_size_for_ship << " bytes" << endl;
-        cerr << "shipped_log_size: " << rep::shipped_log_size << " bytes" << endl;
+        std::cerr << "log_size_for_ship: " << rep::log_size_for_ship << " bytes" << std::endl;
+        std::cerr << "shipped_log_size: " << rep::shipped_log_size << " bytes" << std::endl;
       }
     }
   }
 
   // output for plotting script
-  cout << "---------------------------------------\n";
-  cout << agg_throughput << " commits/s, "
+  std::cout << "---------------------------------------\n";
+  std::cout << agg_throughput << " commits/s, "
        //       << avg_latency_ms << " "
        << agg_abort_rate << " total_aborts/s, " << agg_system_abort_rate
        << " system_aborts/s, " << agg_user_abort_rate << " user_aborts/s, "
        << agg_int_abort_rate << " internal aborts/s, " << agg_si_abort_rate
        << " si_aborts/s, " << agg_serial_abort_rate << " serial_aborts/s, "
        << agg_rw_abort_rate << " rw_aborts/s, " << agg_phantom_abort_rate
-       << " phantom aborts/s." << endl;
-  cout << n_commits << " commits, " << n_query_commits << " query_commits, "
+       << " phantom aborts/s." << std::endl;
+  std::cout << n_commits << " commits, " << n_query_commits << " query_commits, "
        << n_aborts << " total_aborts, " << n_aborts - n_user_aborts
        << " system_aborts, " << n_user_aborts << " user_aborts, "
        << n_int_aborts << " internal_aborts, " << n_si_aborts << " si_aborts, "
        << n_serial_aborts << " serial_aborts, " << n_rw_aborts << " rw_aborts, "
-       << n_phantom_aborts << " phantom_aborts" << endl;
+       << n_phantom_aborts << " phantom_aborts" << std::endl;
 
-  cout << "---------------------------------------\n";
+  std::cout << "---------------------------------------\n";
   for (auto &c : agg_txn_counts) {
-    cout << c.first << "\t" << std::get<0>(c.second) / (double)elapsed_sec
+    std::cout << c.first << "\t" << std::get<0>(c.second) / (double)elapsed_sec
          << " commits/s\t" << std::get<1>(c.second) / (double)elapsed_sec
          << " aborts/s\t" << std::get<2>(c.second) / (double)elapsed_sec
          << " system aborts/s\t" << std::get<3>(c.second) / (double)elapsed_sec
          << " user aborts/s\n";
   }
-  cout.flush();
+  std::cout.flush();
 }
 
 template <typename K, typename V>
 struct map_maxer {
-  typedef map<K, V> map_type;
+  typedef std::map<K, V> map_type;
   void operator()(map_type &agg, const map_type &m) const {
     for (typename map_type::const_iterator it = m.begin(); it != m.end(); ++it)
       agg[it->first] = std::max(agg[it->first], it->second);

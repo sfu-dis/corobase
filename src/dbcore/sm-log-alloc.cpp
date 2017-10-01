@@ -6,8 +6,6 @@
 #include "../macros.h"
 #include "../util.h"
 
-using namespace RCU;
-
 namespace {
 
 uint64_t get_starting_byte_offset(sm_log_recover_mgr *lm) {
@@ -728,7 +726,7 @@ grab_buffer:
     goto start_over;
   }
 
-  log_allocation *x = rcu_alloc();
+  log_allocation *x = RCU::rcu_alloc();
   x->lsn_offset = lsn_offset;
   x->block = b;
 
@@ -744,7 +742,7 @@ void sm_log_alloc_mgr::release(log_allocation *x) {
     // backups don't do updates
     set_tls_lsn_offset(x->block->next_lsn().offset());
   }
-  rcu_free(x);
+  RCU::rcu_free(x);
   bool should_kick = config::group_commit ?
       cur_lsn_offset() - _durable_flushed_lsn_offset >= config::group_commit_bytes :
       cur_lsn_offset() - _durable_flushed_lsn_offset >= config::log_buffer_mb * config::MB / 2;
@@ -809,9 +807,9 @@ uint64_t sm_log_alloc_mgr::smallest_tls_lsn_offset() {
    raised while new log records might still be generated.
  */
 void sm_log_alloc_mgr::_log_write_daemon() {
-  rcu_register();
-  rcu_enter();
-  DEFER(rcu_exit());
+  RCU::rcu_register();
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
 
   // every 100 ms or so, update the durable mark on disk
   static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(5000) * 1000 * 1000;
@@ -839,7 +837,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
       durable_sid = PrimaryFlushLog(new_dlsn_offset);
     }
 
-    rcu_exit();
+    RCU::rcu_exit();
 
     /* Having completed a round of writes, notify waiting threads
        and take care of special cases
@@ -904,7 +902,7 @@ void sm_log_alloc_mgr::_log_write_daemon() {
 
     // next loop iteration!
     volatile_write(_write_daemon_state, 0);
-    rcu_enter();
+    RCU::rcu_enter();
   }
 }
 

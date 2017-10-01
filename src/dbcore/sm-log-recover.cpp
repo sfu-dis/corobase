@@ -7,8 +7,6 @@
 #include <cstring>
 #include <unistd.h>
 
-using namespace RCU;
-
 sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     : sm_log_offset_mgr(),
       scanner(new sm_log_scan_mgr_impl{this}),
@@ -78,12 +76,12 @@ sm_log_recover_mgr::block_scanner::block_scanner(sm_log_recover_mgr *lm,
       _follow_overflow(follow_overflow),
       _fetch_payloads(fetch_payloads),
       _force_fetch_from_logbuf(force_fetch_from_logbuf),
-      _buf((log_block *)rcu_alloc(fetch_payloads ? MAX_BLOCK_SIZE
+      _buf((log_block *)RCU::rcu_alloc(fetch_payloads ? MAX_BLOCK_SIZE
                                                  : MIN_BLOCK_FETCH)) {
   _load_block(start, _follow_overflow);
 }
 
-sm_log_recover_mgr::block_scanner::~block_scanner() { rcu_free(_buf); };
+sm_log_recover_mgr::block_scanner::~block_scanner() { RCU::rcu_free(_buf); };
 
 void sm_log_recover_mgr::block_scanner::operator++() {
   /* If there are any remembered overflow blocks, process them

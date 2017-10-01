@@ -5,8 +5,6 @@
 #include "sm-thread.h"
 #include <cstring>
 
-using namespace RCU;
-
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 window_buffer *sm_log::logbuf = nullptr;

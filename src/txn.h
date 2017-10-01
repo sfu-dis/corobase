@@ -29,8 +29,6 @@
 #include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
 
-using namespace TXN;
-
 // A write-set entry is essentially a pointer to the OID array entry
 // begin updated. The write-set is naturally de-duplicated: repetitive
 // updates will leave only one entry by the first update. Dereferencing
@@ -160,8 +158,8 @@ class transaction {
 
   // only fires during invariant checking
   inline void ensure_active() {
-    volatile_write(xc->state, TXN_ACTIVE);
-    ASSERT(state() == TXN_ACTIVE);
+    volatile_write(xc->state, TXN::TXN_ACTIVE);
+    ASSERT(state() == TXN::TXN_ACTIVE);
   }
   // the absent set is a mapping from (btree_node -> version_number).
   struct absent_record_t {
@@ -219,7 +217,7 @@ class transaction {
  protected:
   const uint64_t flags;
   XID xid;
-  xid_context *xc;
+  TXN::xid_context *xc;
   sm_tx_log *log;
   str_arena *sa;
   write_set_t &write_set;

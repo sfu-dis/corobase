@@ -210,7 +210,7 @@ class mbtree {
   /** NOTE: the public interface assumes that the caller has taken care
    * of setting up RCU */
 
-  inline bool search(const key_type &k, OID &o, dbtuple *&v, xid_context *xc,
+  inline bool search(const key_type &k, OID &o, dbtuple *&v, TXN::xid_context *xc,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -288,12 +288,12 @@ class mbtree {
    */
   void search_range_call(const key_type &lower, const key_type *upper,
                          low_level_search_range_callback &callback,
-                         xid_context *xc) const;
+                         TXN::xid_context *xc) const;
 
   // (lower, upper]
   void rsearch_range_call(const key_type &upper, const key_type *lower,
                           low_level_search_range_callback &callback,
-                          xid_context *xc) const;
+                          TXN::xid_context *xc) const;
 
   class search_range_callback : public low_level_search_range_callback {
    public:
@@ -316,7 +316,7 @@ class mbtree {
    */
   template <typename F>
   inline void search_range(const key_type &lower, const key_type *upper,
-                           F &callback, xid_context *xc) const;
+                           F &callback, TXN::xid_context *xc) const;
 
   /**
    * (*lower, upper]
@@ -327,7 +327,7 @@ class mbtree {
    */
   template <typename F>
   inline void rsearch_range(const key_type &upper, const key_type *lower,
-                            F &callback, xid_context *xc) const;
+                            F &callback, TXN::xid_context *xc) const;
 
   /**
    * returns true if key k did not already exist, false otherwise
@@ -336,7 +336,7 @@ class mbtree {
    * If false and old_v is not NULL, then the overwritten value of v
    * is written into old_v
    */
-  inline bool insert(const key_type &k, OID o, xid_context *xc,
+  inline bool insert(const key_type &k, OID o, TXN::xid_context *xc,
                      value_type *old_oid = NULL,
                      insert_info_t *insert_info = NULL);
 
@@ -344,7 +344,7 @@ class mbtree {
    * Only puts k=>v if k does not exist in map. returns true
    * if k inserted, false otherwise (k exists already)
    */
-  inline bool insert_if_absent(const key_type &k, OID o, xid_context *xc,
+  inline bool insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
                                insert_info_t *insert_info = NULL);
 
   /**
@@ -353,7 +353,7 @@ class mbtree {
    * if true and old_v is not NULL, then the removed value of v
    * is written into old_v
    */
-  inline bool remove(const key_type &k, xid_context *xc,
+  inline bool remove(const key_type &k, TXN::xid_context *xc,
                      dbtuple **old_v = NULL);
 
   /**
@@ -510,7 +510,7 @@ inline size_t mbtree<P>::size() const {
 
 template <typename P>
 inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple *&v,
-                              xid_context *xc,
+                              TXN::xid_context *xc,
                               versioned_node_t *search_info) const {
   threadinfo ti(xc->begin_epoch);
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
@@ -530,7 +530,7 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple *&v,
 }
 
 template <typename P>
-inline bool mbtree<P>::insert(const key_type &k, OID o, xid_context *xc,
+inline bool mbtree<P>::insert(const key_type &k, OID o, TXN::xid_context *xc,
                               value_type *old_oid, insert_info_t *insert_info) {
   threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
@@ -549,7 +549,7 @@ inline bool mbtree<P>::insert(const key_type &k, OID o, xid_context *xc,
 
 template <typename P>
 inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
-                                        xid_context *xc,
+                                        TXN::xid_context *xc,
                                         insert_info_t *insert_info) {
   // Recovery will give a null xc, use epoch 0 for the memory allocated
   epoch_num e = 0;
@@ -591,7 +591,7 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
  * is written into old_v
  */
 template <typename P>
-inline bool mbtree<P>::remove(const key_type &k, xid_context *xc,
+inline bool mbtree<P>::remove(const key_type &k, TXN::xid_context *xc,
                               dbtuple **old_v) {
   threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
@@ -691,7 +691,7 @@ class mbtree<P>::low_level_search_range_callback_wrapper
 template <typename P>
 inline void mbtree<P>::search_range_call(
     const key_type &lower, const key_type *upper,
-    low_level_search_range_callback &callback, xid_context *xc) const {
+    low_level_search_range_callback &callback, TXN::xid_context *xc) const {
   low_level_search_range_scanner<false> scanner(this, upper, callback);
   threadinfo ti(xc->begin_epoch);
   table_.scan(lcdf::Str(lower.data(), lower.size()), true, scanner, xc, ti);
@@ -700,7 +700,7 @@ inline void mbtree<P>::search_range_call(
 template <typename P>
 inline void mbtree<P>::rsearch_range_call(
     const key_type &upper, const key_type *lower,
-    low_level_search_range_callback &callback, xid_context *xc) const {
+    low_level_search_range_callback &callback, TXN::xid_context *xc) const {
   low_level_search_range_scanner<true> scanner(this, lower, callback);
   threadinfo ti(xc->begin_epoch);
   table_.rscan(lcdf::Str(upper.data(), upper.size()), true, scanner, xc, ti);
@@ -710,7 +710,7 @@ template <typename P>
 template <typename F>
 inline void mbtree<P>::search_range(const key_type &lower,
                                     const key_type *upper, F &callback,
-                                    xid_context *xc) const {
+                                    TXN::xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(this, upper, wrapper);
   threadinfo ti(xc->begin_epoch);
@@ -721,7 +721,7 @@ template <typename P>
 template <typename F>
 inline void mbtree<P>::rsearch_range(const key_type &upper,
                                      const key_type *lower, F &callback,
-                                     xid_context *xc) const {
+                                     TXN::xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti(xc->begin_epoch);

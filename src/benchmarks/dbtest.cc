@@ -23,8 +23,6 @@
 #error "SSI + SSN?"
 #endif
 
-using namespace std;
-
 // Options that are shared by the primary and backup servers
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
@@ -147,19 +145,19 @@ DEFINE_uint64(replay_threads, 0, "How many replay threads to use.");
 DEFINE_bool(persist_nvram_on_replay, true,
             "Whether to issue clwb/clflush (if specified) during replay.");
 
-static vector<string> split_ws(const string &s) {
-  vector<string> r;
-  istringstream iss(s);
-  copy(istream_iterator<string>(iss), istream_iterator<string>(),
-       back_inserter<vector<string>>(r));
+static std::vector<std::string> split_ws(const std::string &s) {
+  std::vector<std::string> r;
+  std::istringstream iss(s);
+  copy(std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(),
+       std::back_inserter<std::vector<std::string>>(r));
   return r;
 }
 
 int main(int argc, char **argv) {
 #ifndef NDEBUG
-  cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
+  std::cerr << "WARNING: benchmark built in DEBUG mode!!!" << std::endl;
 #endif
-  cerr << "PID: " << getpid() << endl;
+  std::cerr << "PID: " << getpid() << std::endl;
 
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
@@ -308,98 +306,98 @@ int main(int argc, char **argv) {
 
   config::init();
 
-  cerr << "CC: ";
+  std::cerr << "CC: ";
 #ifdef SSI
-  cerr << "SSI";
-  cerr << "  safe snapshot          : " << config::enable_safesnap << endl;
-  cerr << "  read-only optimization : " << config::enable_ssi_read_only_opt
-       << endl;
+  std::cerr << "SSI";
+  std::cerr << "  safe snapshot          : " << config::enable_safesnap << std::endl;
+  std::cerr << "  read-only optimization : " << config::enable_ssi_read_only_opt
+       << std::endl;
 #elif defined(SSN)
 #ifdef RC
-  cerr << "RC+SSN";
-  cerr << "  safe snapshot          : " << config::enable_safesnap << endl;
-  cerr << "  read opt threshold     : 0x" << hex
-       << config::ssn_read_opt_threshold << dec << endl;
+  std::cerr << "RC+SSN";
+  std::cerr << "  safe snapshot          : " << config::enable_safesnap << std::endl;
+  std::cerr << "  read opt threshold     : 0x" << std::hex
+       << config::ssn_read_opt_threshold << std::dec << std::endl;
 #else
-  cerr << "SI+SSN";
-  cerr << "  safe snapshot          : " << config::enable_safesnap << endl;
-  cerr << "  read opt threshold     : 0x" << hex
-       << config::ssn_read_opt_threshold << dec << endl;
+  std::cerr << "SI+SSN";
+  std::cerr << "  safe snapshot          : " << config::enable_safesnap << std::endl;
+  std::cerr << "  read opt threshold     : 0x" << std::hex
+       << config::ssn_read_opt_threshold << std::dec << std::endl;
 #endif
 #else
-  cerr << "SI";
+  std::cerr << "SI";
 #endif
-  cerr << endl;
-  cerr << "  phantom-protection: " << config::phantom_prot << endl;
+  std::cerr << std::endl;
+  std::cerr << "  phantom-protection: " << config::phantom_prot << std::endl;
 
-  cerr << "Settings and properties" << endl;
-  cerr << "  node-memory       : " << config::node_memory_gb << "GB" << endl;
-  cerr << "  num-threads       : " << config::worker_threads << endl;
-  cerr << "  numa-nodes        : " << config::numa_nodes << endl;
-  cerr << "  benchmark         : " << FLAGS_benchmark << endl;
+  std::cerr << "Settings and properties" << std::endl;
+  std::cerr << "  node-memory       : " << config::node_memory_gb << "GB" << std::endl;
+  std::cerr << "  num-threads       : " << config::worker_threads << std::endl;
+  std::cerr << "  numa-nodes        : " << config::numa_nodes << std::endl;
+  std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
 #ifdef USE_VARINT_ENCODING
-  cerr << "  var-encode        : yes" << endl;
+  std::cerr << "  var-encode        : yes" << std::endl;
 #else
-  cerr << "  var-encode        : no" << endl;
+  std::cerr << "  var-encode        : no" << std::endl;
 #endif
-  cerr << "  log-dir           : " << config::log_dir << endl;
-  cerr << "  tmpfs-dir         : " << config::tmpfs_dir << endl;
-  cerr << "  log-buffer-mb     : " << config::log_buffer_mb << endl;
-  cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << endl;
-  cerr << "  logbuf-partitions : " << config::log_redo_partitions << endl;
-  cerr << "  worker-threads    : " << config::worker_threads << endl;
-  cerr << "  total-threads     : " << config::threads << endl;
-  cerr << "  persist-policy    : " << config::persist_policy << endl;
-  cerr << "  command-log       : " << config::command_log << endl;
-  cerr << "  command-logbuf    : " << config::command_log_buffer_mb << "MB" << endl;
+  std::cerr << "  log-dir           : " << config::log_dir << std::endl;
+  std::cerr << "  tmpfs-dir         : " << config::tmpfs_dir << std::endl;
+  std::cerr << "  log-buffer-mb     : " << config::log_buffer_mb << std::endl;
+  std::cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << std::endl;
+  std::cerr << "  logbuf-partitions : " << config::log_redo_partitions << std::endl;
+  std::cerr << "  worker-threads    : " << config::worker_threads << std::endl;
+  std::cerr << "  total-threads     : " << config::threads << std::endl;
+  std::cerr << "  persist-policy    : " << config::persist_policy << std::endl;
+  std::cerr << "  command-log       : " << config::command_log << std::endl;
+  std::cerr << "  command-logbuf    : " << config::command_log_buffer_mb << "MB" << std::endl;
 
-  cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize()
-       << endl;
-  cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize()
-       << endl;
-  cerr << "  read_view_stat_interval : " << config::read_view_stat_interval_ms
-       << "ms" << endl;
-  cerr << "  read_view_stat_file     : " << config::read_view_stat_file << endl;
+  std::cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize()
+       << std::endl;
+  std::cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize()
+       << std::endl;
+  std::cerr << "  read_view_stat_interval : " << config::read_view_stat_interval_ms
+       << "ms" << std::endl;
+  std::cerr << "  read_view_stat_file     : " << config::read_view_stat_file << std::endl;
 
   if (config::is_backup_srv()) {
-    cerr << "  nvram-log-buffer  : " << config::nvram_log_buffer << endl;
-    cerr << "  nvram-delay-type  : " << FLAGS_nvram_delay_type << endl;
-    cerr << "  cycles-per-byte   : " << config::cycles_per_byte << endl;
-    cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << endl;
-    cerr << "  replay-policy     : " << FLAGS_replay_policy << endl;
-    cerr << "  full-replay       : " << config::full_replay << endl;
-    cerr << "  quick-bench-start : " << config::quick_bench_start << endl;
-    cerr << "  wait-for-primary  : " << config::wait_for_primary << endl;
-    cerr << "  replay-threads    : " << config::replay_threads << endl;
-    cerr << "  persist-nvram-on-replay : " << config::persist_nvram_on_replay
-         << endl;
+    std::cerr << "  nvram-log-buffer  : " << config::nvram_log_buffer << std::endl;
+    std::cerr << "  nvram-delay-type  : " << FLAGS_nvram_delay_type << std::endl;
+    std::cerr << "  cycles-per-byte   : " << config::cycles_per_byte << std::endl;
+    std::cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << std::endl;
+    std::cerr << "  replay-policy     : " << FLAGS_replay_policy << std::endl;
+    std::cerr << "  full-replay       : " << config::full_replay << std::endl;
+    std::cerr << "  quick-bench-start : " << config::quick_bench_start << std::endl;
+    std::cerr << "  wait-for-primary  : " << config::wait_for_primary << std::endl;
+    std::cerr << "  replay-threads    : " << config::replay_threads << std::endl;
+    std::cerr << "  persist-nvram-on-replay : " << config::persist_nvram_on_replay
+         << std::endl;
   } else {
-    cerr << "  parallel-loading: " << FLAGS_parallel_loading << endl;
-    cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions
-         << endl;
-    cerr << "  backoff-txns      : " << FLAGS_backoff_aborted_transactions
-         << endl;
-    cerr << "  scale-factor      : " << FLAGS_scale_factor << endl;
-    cerr << "  group-commit      : " << config::group_commit << endl;
-    cerr << "  commit-queue      : " << config::group_commit_queue_length
-         << endl;
-    cerr << "  group-commit-size : " << config::group_commit_size_kb << "KB"
-         << endl;
-    cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << endl;
-    cerr << "  log-key-for-update: " << config::log_key_for_update << endl;
-    cerr << "  enable-chkpt      : " << config::enable_chkpt << endl;
+    std::cerr << "  parallel-loading: " << FLAGS_parallel_loading << std::endl;
+    std::cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions
+         << std::endl;
+    std::cerr << "  backoff-txns      : " << FLAGS_backoff_aborted_transactions
+         << std::endl;
+    std::cerr << "  scale-factor      : " << FLAGS_scale_factor << std::endl;
+    std::cerr << "  group-commit      : " << config::group_commit << std::endl;
+    std::cerr << "  commit-queue      : " << config::group_commit_queue_length
+         << std::endl;
+    std::cerr << "  group-commit-size : " << config::group_commit_size_kb << "KB"
+         << std::endl;
+    std::cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << std::endl;
+    std::cerr << "  log-key-for-update: " << config::log_key_for_update << std::endl;
+    std::cerr << "  enable-chkpt      : " << config::enable_chkpt << std::endl;
     if (config::enable_chkpt) {
-      cerr << "  chkpt-interval    : " << config::chkpt_interval << endl;
+      std::cerr << "  chkpt-interval    : " << config::chkpt_interval << std::endl;
     }
-    cerr << "  enable-gc         : " << config::enable_gc << endl;
-    cerr << "  null-log-device   : " << config::null_log_device << endl;
-    cerr << "  fake-log-write    : " << config::fake_log_write << endl;
-    cerr << "  num-backups       : " << config::num_backups << endl;
-    cerr << "  wait-for-backups  : " << config::wait_for_backups << endl;
+    std::cerr << "  enable-gc         : " << config::enable_gc << std::endl;
+    std::cerr << "  null-log-device   : " << config::null_log_device << std::endl;
+    std::cerr << "  fake-log-write    : " << config::fake_log_write << std::endl;
+    std::cerr << "  num-backups       : " << config::num_backups << std::endl;
+    std::cerr << "  wait-for-backups  : " << config::wait_for_backups << std::endl;
   }
 
   MM::prepare_node_memory();
-  vector<string> bench_toks = split_ws(FLAGS_benchmark_options);
+  std::vector<std::string> bench_toks = split_ws(FLAGS_benchmark_options);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];
   new_argv[0] = (char *)FLAGS_benchmark.c_str();

@@ -172,28 +172,28 @@ struct sm_oid_mgr {
   /* Return a fat_ptr to the overwritten object (could be an in-flight version!)
    */
   fat_ptr PrimaryTupleUpdate(FID f, OID o, const varstr *value,
-                             xid_context *updater_xc, fat_ptr *new_obj_ptr);
+                             TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr);
   fat_ptr PrimaryTupleUpdate(oid_array *oa, OID o, const varstr *value,
-                             xid_context *updater_xc, fat_ptr *new_obj_ptr);
+                             TXN::xid_context *updater_xc, fat_ptr *new_obj_ptr);
 
   dbtuple *oid_get_latest_version(FID f, OID o);
 
-  dbtuple *oid_get_version(FID f, OID o, xid_context *visitor_xc);
-  dbtuple *oid_get_version(oid_array *oa, OID o, xid_context *visitor_xc);
+  dbtuple *oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc);
+  dbtuple *oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
 
   /* Return the latest visible version, for backups only. Check first the pedest
    * array and install new Objects on the tuple array if needed.
    */
   dbtuple *BackupGetVersion(oid_array *ta, oid_array *pa, OID o,
-                            xid_context *xc);
+                            TXN::xid_context *xc);
 
   /* Helper function for oid_get_version to test visibility. Returns true if the
    * version ([object]) is visible to the given transaction ([xc]). Sets [retry]
    * to true if the caller needs to retry the search from the head of the chain.
    */
-  bool TestVisibility(Object *object, xid_context *xc, bool &retry);
+  bool TestVisibility(Object *object, TXN::xid_context *xc, bool &retry);
 
-  inline void oid_check_phantom(xid_context *visitor_xc, uint64_t vcstamp) {
+  inline void oid_check_phantom(TXN::xid_context *visitor_xc, uint64_t vcstamp) {
     if (!config::phantom_prot) {
       return;
     }
