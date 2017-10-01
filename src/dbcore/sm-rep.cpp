@@ -172,7 +172,6 @@ void BackupStartReplication() {
   logmgr->recover();
 
   if (config::command_log) {
-    CommandLog::cmd_log->StartBackupRedoers();
     std::thread flusher(CommandLogFlushDaemon);
     flusher.detach();
 

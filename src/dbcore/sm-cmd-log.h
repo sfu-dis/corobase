@@ -8,6 +8,8 @@
 #include "sm-thread.h"
 #include "../macros.h"
 
+class bench_worker;
+
 /* 
  * A very simple implementation of command logging. Each log record
  * is fixed-size (8 bytes) containing a partition ID and a transaction
@@ -40,11 +42,9 @@ private:
   std::condition_variable flush_cond_;
   std::mutex flush_mutex_;
   int fd_;
-  std::vector<std::thread> backup_redoers;
 
   void ShipLog(char *buf, uint32_t size);
   void Flush(bool check_tls = true);
-  void BackupRedo(uint32_t part_id);
 
 public:
   CommandLogManager()
@@ -71,8 +71,8 @@ public:
   }
   ~CommandLogManager();
 
+  void BackupRedo(uint32_t part_id, bench_worker *worker);
   uint32_t Size() { return buffer_size_; }
-  void StartBackupRedoers();
   void BackupFlush(uint64_t new_off);
   void FlushDaemon();
   uint64_t Insert(uint32_t partition_id, uint32_t xct_type, uint32_t size);

@@ -85,7 +85,8 @@ class transaction {
 
     TXN_FLAG_READ_MOSTLY = 0x3,
 
-    // XXX: more flags in the future, things like consistency levels
+    // A redo transaction running on a backup server using command logging.
+    TXN_FLAG_CMD_REDO = 0x4,
   };
 
   inline bool is_read_mostly() { return flags & TXN_FLAG_READ_MOSTLY; }

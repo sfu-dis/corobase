@@ -287,7 +287,7 @@ class tpce_worker : public bench_worker,
               const map<string, vector<OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint partition_id_start, uint partition_id_end)
-      : bench_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b),
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tpce_worker_mixin(partitions),
         partition_id_start(partition_id_start),
         partition_id_end(partition_id_end) {
@@ -588,6 +588,9 @@ class tpce_worker : public bench_worker,
   }
   rc_t DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn);
 
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
+    LOG(FATAL) << "Not applicable";
+  }
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
     double m = 0;
@@ -5163,6 +5166,11 @@ class tpce_bench_runner : public bench_runner {
     return ret;
   }
 
+  virtual vector<bench_worker *> make_cmdlog_redoers() {
+    // Not implemented
+    vector<bench_worker *> ret;
+    return ret;
+  }
   virtual vector<bench_worker *> make_workers() {
     fast_random r(23984543);
     vector<bench_worker *> ret;
