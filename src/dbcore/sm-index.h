@@ -62,11 +62,11 @@ class IndexDescriptor {
   inline OrderedIndex* GetIndex() { return index_; }
   inline FID GetTupleFid() { return tuple_fid_; }
   inline FID GetKeyFid() {
-    ASSERT(!config::is_backup_srv());
+    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
     return aux_fid_;
   }
   inline oid_array* GetKeyArray() {
-    ASSERT(!config::is_backup_srv());
+    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
     return aux_array_;
   }
   inline FID GetPersistentAddressFid() {

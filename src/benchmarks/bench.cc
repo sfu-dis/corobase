@@ -25,20 +25,39 @@
 #include "../dbcore/sm-rep.h"
 
 using namespace std;
-using namespace util;
 
 volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
+std::vector<bench_worker *> bench_runner::cmdlog_redoers;
+
 void bench_worker::do_workload_function(uint32_t i) {
-  const workload_desc_vec workload = get_workload();
+  ASSERT(workload.size() && cmdlog_redo_workload.size() == 0);
 retry:
-  timer t;
+  util::timer t;
   const unsigned long old_seed = r.get_seed();
   const auto ret = workload[i].fn(this);
+  if (finish_workload(ret, i, t)) {
+    r.set_seed(old_seed);
+    goto retry;
+  }
+}
 
+void bench_worker::do_cmdlog_redo_workload_function(uint32_t i, void *param) {
+  ASSERT(workload.size() == 0 && cmdlog_redo_workload.size());
+retry:
+  util::timer t;
+  const unsigned long old_seed = r.get_seed();
+  const auto ret = cmdlog_redo_workload[i].fn(this, param);
+  if (finish_workload(ret, i, t)) {
+    r.set_seed(old_seed);
+    goto retry;
+  }
+}
+
+bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t) {
   if (!rc_is_abort(ret)) {
     ++ntxn_commits;
-    std::get<0>(txn_counts[i])++;
+    std::get<0>(txn_counts[workload_idx])++;
     if (config::num_active_backups > 0 || config::group_commit) {
       logmgr->enqueue_committed_xct(worker_id, t.get_start());
     } else {
@@ -47,11 +66,11 @@ retry:
     backoff_shifts >>= 1;
   } else {
     ++ntxn_aborts;
-    std::get<1>(txn_counts[i])++;
+    std::get<1>(txn_counts[workload_idx])++;
     if (ret._val == RC_ABORT_USER) {
-      std::get<3>(txn_counts[i])++;
+      std::get<3>(txn_counts[workload_idx])++;
     } else {
-      std::get<2>(txn_counts[i])++;
+      std::get<2>(txn_counts[workload_idx])++;
     }
     switch (ret._val) {
       case RC_ABORT_SERIAL:
@@ -86,26 +105,32 @@ retry:
           spins--;
         }
       }
-      r.set_seed(old_seed);
-      goto retry;
+      return true;
     }
   }
+  return false;
 }
 
 void bench_worker::my_work(char *) {
-  const workload_desc_vec workload = get_workload();
-  txn_counts.resize(workload.size());
-  barrier_a->count_down();
-  barrier_b->wait_for();
-  while (running) {
-    double d = r.next_uniform();
-    for (size_t i = 0; i < workload.size(); i++) {
-      if ((i + 1) == workload.size() || d < workload[i].frequency) {
-        do_workload_function(i);
-        break;
+  if (is_worker) {
+    workload = get_workload();
+    txn_counts.resize(workload.size());
+    barrier_a->count_down();
+    barrier_b->wait_for();
+    while (running) {
+      double d = r.next_uniform();
+      for (size_t i = 0; i < workload.size(); i++) {
+        if ((i + 1) == workload.size() || d < workload[i].frequency) {
+          do_workload_function(i);
+          break;
+        }
+        d -= workload[i].frequency;
       }
-      d -= workload[i].frequency;
     }
+  } else {
+    cmdlog_redo_workload = get_cmdlog_redo_workload();
+    txn_counts.resize(cmdlog_redo_workload.size());
+    CommandLog::cmd_log->BackupRedo(worker_id, (bench_worker*)this);
   }
 }
 
@@ -192,7 +217,8 @@ void bench_runner::run() {
     runner_thread->join();
   }
 
-  if (config::worker_threads) {
+  if (config::worker_threads ||
+      (config::is_backup_srv() && config::replay_threads && config::command_log)) {
     // Get a thread to use benchmark-provided prepare(), which gathers
     // information about index pointers created by create_file_task.
     runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
@@ -209,7 +235,7 @@ void bench_runner::run() {
   if (not sm_log::need_recovery && not config::is_backup_srv()) {
     vector<bench_loader *> loaders = make_loaders();
     {
-      scoped_timer t("dataloading", config::verbose);
+      util::scoped_timer t("dataloading", config::verbose);
       uint32_t done = 0;
     process:
       for (uint i = 0; i < loaders.size(); i++) {
@@ -273,6 +299,19 @@ void bench_runner::run() {
       chkptmgr->start_chkpt_thread();
     }
     volatile_write(config::state, config::kStateForwardProcessing);
+  }
+
+  if (config::is_backup_srv() && config::command_log &&
+      config::replay_policy != config::kReplayNone &&
+      config::replay_threads) {
+    cmdlog_redoers = make_cmdlog_redoers();
+    for (auto &r : cmdlog_redoers) {
+      while (!r->is_impersonated()) {
+        r->try_impersonate();
+      }
+      r->start();
+    }
+    LOG(INFO) << "Started all redoers";
   }
 
   if (config::worker_threads) {
@@ -388,7 +427,7 @@ void bench_runner::start_measurement() {
     read_view_observer = std::move(std::thread(measure_read_view_lsn));
   }
 
-  timer t, t_nosync;
+  util::timer t, t_nosync;
   barrier_b.count_down();  // bombs away!
   printf("Sec,Commits,Aborts,CPU\n");
 
@@ -522,6 +561,22 @@ void bench_runner::start_measurement() {
     workers[i]->~bench_worker();
   }
 
+  if (config::is_backup_srv() && config::command_log && cmdlog_redoers.size()) {
+    tx_stat_map agg = cmdlog_redoers[0]->get_cmdlog_txn_counts();
+    for (size_t i = 1; i < cmdlog_redoers.size(); i++) {
+      auto &c = cmdlog_redoers[i]->get_cmdlog_txn_counts();
+      for (auto &t : c) {
+        std::get<0>(agg[t.first]) += std::get<0>(t.second);
+        std::get<1>(agg[t.first]) += std::get<1>(t.second);
+        std::get<2>(agg[t.first]) += std::get<2>(t.second);
+        std::get<3>(agg[t.first]) += std::get<3>(t.second);
+      }
+      cmdlog_redoers[i]->~bench_worker();
+    }
+    std::cerr << "cmdlog txn breakdown: "
+      << util::format_list(agg.begin(), agg.end()) << std::endl;
+  }
+
   if (config::enable_chkpt) delete chkptmgr;
 
   if (config::verbose) {
@@ -543,15 +598,15 @@ void bench_runner::start_measurement() {
          << endl;
     cerr << "avg_nosync_per_core_throughput: " << avg_nosync_per_core_throughput
          << " ops/sec/core" << endl;
-    cerr << "agg_throughput: " << agg_throughput << " ops/sec" << endl;
+    cerr << "agg_throughput: " << agg_throughput << " ops/sec" << std::endl;
     cerr << "avg_per_core_throughput: " << avg_per_core_throughput
-         << " ops/sec/core" << endl;
-    cerr << "avg_latency: " << avg_latency_ms << " ms" << endl;
-    cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << endl;
+         << " ops/sec/core" << std::endl;
+    cerr << "avg_latency: " << avg_latency_ms << " ms" << std::endl;
+    cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << std::endl;
     cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate
          << " aborts/sec/core" << endl;
-    cerr << "txn breakdown: " << format_list(agg_txn_counts.begin(),
-                                             agg_txn_counts.end()) << endl;
+    cerr << "txn breakdown: " << util::format_list(agg_txn_counts.begin(),
+                                                   agg_txn_counts.end()) << std::endl;
     if (config::is_backup_srv()) {
       cerr << "agg_replay_time: " << agg_replay_latency_ms << " ms" << endl;
       cerr << "agg_redo_batches: " << agg_redo_batches << endl;
@@ -606,6 +661,14 @@ struct map_maxer {
 const tx_stat_map bench_worker::get_txn_counts() const {
   tx_stat_map m;
   const workload_desc_vec workload = get_workload();
+  for (size_t i = 0; i < txn_counts.size(); i++)
+    m[workload[i].name] = txn_counts[i];
+  return m;
+}
+
+const tx_stat_map bench_worker::get_cmdlog_txn_counts() const {
+  tx_stat_map m;
+  const cmdlog_redo_workload_desc_vec workload = get_cmdlog_redo_workload();
   for (size_t i = 0; i < txn_counts.size(); i++)
     m[workload[i].name] = txn_counts[i];
   return m;

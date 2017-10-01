@@ -88,11 +88,12 @@ class bench_worker : public thread::sm_runner {
   friend class sm_log_alloc_mgr;
 
  public:
-  bench_worker(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
-               const std::map<std::string, OrderedIndex *> &open_tables,
+  bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
+               ndb_wrapper *db, const std::map<std::string, OrderedIndex *> &open_tables,
                spin_barrier *barrier_a, spin_barrier *barrier_b)
       : sm_runner(),
         worker_id(worker_id),
+        is_worker(is_worker),
         r(seed),
         db(db),
         open_tables(open_tables),
@@ -115,8 +116,20 @@ class bench_worker : public thread::sm_runner {
     try_impersonate();
   }
 
-  typedef rc_t (*txn_fn_t)(bench_worker *);
+  /* For the r/w workload using command log shipping on backups */
+  typedef rc_t (*cmdlog_redo_fn_t)(bench_worker *, void * /* parameters */);
+  struct cmdlog_redo_workload_desc {
+    cmdlog_redo_workload_desc() {}
+    cmdlog_redo_workload_desc(const std::string &name, cmdlog_redo_fn_t fn)
+      : name(name), fn(fn) {}
+    std::string name;
+    cmdlog_redo_fn_t fn;
+  };
+  typedef std::vector<cmdlog_redo_workload_desc> cmdlog_redo_workload_desc_vec;
+  cmdlog_redo_workload_desc_vec cmdlog_redo_workload;
 
+  /* For 'normal' workload (r/w on primary, r/o on backups) */
+  typedef rc_t (*txn_fn_t)(bench_worker *);
   struct workload_desc {
     workload_desc() {}
     workload_desc(const std::string &name, double frequency, txn_fn_t fn)
@@ -130,6 +143,8 @@ class bench_worker : public thread::sm_runner {
   };
   typedef std::vector<workload_desc> workload_desc_vec;
   virtual workload_desc_vec get_workload() const = 0;
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const = 0;
+  workload_desc_vec workload;
 
   inline size_t get_ntxn_commits() const { return ntxn_commits; }
   inline size_t get_ntxn_aborts() const { return ntxn_aborts; }
@@ -157,6 +172,7 @@ class bench_worker : public thread::sm_runner {
   }
 
   const tx_stat_map get_txn_counts() const;
+  const tx_stat_map get_cmdlog_txn_counts() const;
 
   typedef ndb_wrapper::counter_map counter_map;
   typedef ndb_wrapper::txn_counter_map txn_counter_map;
@@ -167,14 +183,18 @@ class bench_worker : public thread::sm_runner {
   }
 #endif
 
+  void do_workload_function(uint32_t i);
+  void do_cmdlog_redo_workload_function(uint32_t i, void *param);
+  bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t);
+
  private:
   virtual void my_work(char *);
-  void do_workload_function(uint32_t i);
 
  protected:
   inline transaction *txn_buf() { return txn_obj_buf; }
 
   unsigned int worker_id;
+  bool is_worker;
   util::fast_random r;
   ndb_wrapper *const db;
   std::map<std::string, OrderedIndex *> open_tables;
@@ -228,6 +248,10 @@ class bench_runner {
   void start_measurement();
 
   static std::vector<bench_worker *> workers;
+
+  // For command log shipping only
+  static std::vector<bench_worker *> cmdlog_redoers;
+
   static void measure_read_view_lsn();
 
  protected:
@@ -236,6 +260,7 @@ class bench_runner {
 
   // only called once
   virtual std::vector<bench_worker *> make_workers() = 0;
+  virtual std::vector<bench_worker *> make_cmdlog_redoers() = 0;
 
   ndb_wrapper *const db;
   std::map<std::string, OrderedIndex *> open_tables;

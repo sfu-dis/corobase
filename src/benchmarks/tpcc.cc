@@ -437,6 +437,57 @@ string tpcc_worker_mixin::NameTokens[] = {
     string("ATION"), string("EING"),
 };
 
+class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
+ public:
+  tpcc_cmdlog_redoer(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
+              const map<string, OrderedIndex *> &open_tables,
+              const map<string, vector<OrderedIndex *>> &partitions,
+              spin_barrier *barrier_a, spin_barrier *barrier_b)
+      : bench_worker(worker_id, false, seed, db, open_tables, barrier_a, barrier_b),
+        tpcc_worker_mixin(partitions) {
+    memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+  }
+
+  // XXX(stephentu): tune this
+  static const size_t NMaxCustomerIdxScanElems = 512;
+
+  rc_t txn_new_order(uint wh);
+  static rc_t TxnNewOrder(bench_worker *w, void *param) {
+    uint64_t wh = (uint64_t)param;
+    return static_cast<tpcc_cmdlog_redoer *>(w)->txn_new_order((uint)wh);
+  }
+
+  rc_t txn_delivery(uint32_t warehouse_id);
+  static rc_t TxnDelivery(bench_worker *w, void *param) {
+    uint64_t wh = (uint64_t)param;
+    return static_cast<tpcc_cmdlog_redoer *>(w)->txn_delivery((uint)wh);
+  }
+
+  rc_t txn_payment(uint32_t warehouse_id);
+  static rc_t TxnPayment(bench_worker *w, void *param) {
+    uint64_t wh = (uint64_t)param;
+    return static_cast<tpcc_cmdlog_redoer *>(w)->txn_payment((uint)wh);
+  }
+
+  virtual workload_desc_vec get_workload() const {
+    LOG(FATAL) << "Not applicable";
+  }
+
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
+    cmdlog_redo_workload_desc_vec w;
+    w.push_back(cmdlog_redo_workload_desc("NewOrder", TxnNewOrder));
+    w.push_back(cmdlog_redo_workload_desc("Payment", TxnPayment));
+    w.push_back(cmdlog_redo_workload_desc("Delivery", TxnDelivery));
+    return w;
+  }
+
+ protected:
+  inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
+
+ private:
+  int32_t last_no_o_ids[10];  // XXX(stephentu): hack
+};
+
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  public:
   tpcc_worker(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
@@ -444,7 +495,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
               const map<string, vector<OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint home_warehouse_id)
-      : bench_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b),
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tpcc_worker_mixin(partitions),
         home_warehouse_id(home_warehouse_id) {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
@@ -500,6 +551,11 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   static rc_t TxnQuery2(bench_worker *w) {
     return static_cast<tpcc_worker *>(w)->txn_query2();
   }
+
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
+    LOG(FATAL) << "Not applicable";
+  }
+
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
     // numbers from sigmod.csail.mit.edu:
@@ -2511,6 +2567,17 @@ class tpcc_bench_runner : public bench_runner {
     return ret;
   }
 
+  virtual vector<bench_worker *> make_cmdlog_redoers() {
+    ALWAYS_ASSERT(config::is_backup_srv() && config::command_log);
+    fast_random r(23984543);
+    vector<bench_worker *> ret;
+    for (size_t i = 0; i < config::replay_threads; i++) {
+      ret.push_back(new tpcc_cmdlog_redoer(i, r.next(), db, open_tables,
+                                           partitions, &barrier_a, &barrier_b));
+    }
+    return ret;
+  }
+
  private:
   map<string, vector<OrderedIndex *>> partitions;
 };
@@ -2656,4 +2723,424 @@ void tpcc_do_test(ndb_wrapper *db, int argc, char **argv) {
 
   tpcc_bench_runner r(db);
   r.run();
+}
+
+rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
+  const uint districtID = RandomNumber(r, 1, 10);
+  const uint customerID = GetCustomerId(r);
+  const uint numItems = RandomNumber(r, 5, 15);
+  uint itemIDs[15], supplierWarehouseIDs[15], orderQuantities[15];
+  bool allLocal = true;
+  for (uint i = 0; i < numItems; i++) {
+    itemIDs[i] = GetItemId(r);
+    if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
+               RandomNumber(r, 1, 100) > g_new_order_remote_item_pct)) {
+      supplierWarehouseIDs[i] = warehouse_id;
+    } else {
+      do {
+        supplierWarehouseIDs[i] = RandomNumber(r, 1, NumWarehouses());
+      } while (supplierWarehouseIDs[i] == warehouse_id);
+      allLocal = false;
+    }
+    orderQuantities[i] = RandomNumber(r, 1, 10);
+  }
+  ASSERT(!g_disable_xpartition_txn || allLocal);
+
+  // XXX(stephentu): implement rollback
+  //
+  // worst case txn profile:
+  //   1 customer get
+  //   1 warehouse get
+  //   1 district get
+  //   1 new_order insert
+  //   1 district put
+  //   1 oorder insert
+  //   1 oorder_cid_idx insert
+  //   15 times:
+  //      1 item get
+  //      1 stock get
+  //      1 stock put
+  //      1 order_line insert
+  //
+  // output from txn counters:
+  //   max_absent_range_set_size : 0
+  //   max_absent_set_size : 0
+  //   max_node_scan_size : 0
+  //   max_read_set_size : 15
+  //   max_write_set_size : 15
+  //   num_txn_contexts : 9
+  transaction *txn = db->new_txn(transaction::TXN_FLAG_CMD_REDO, arena, txn_buf());
+  scoped_str_arena s_arena(arena);
+  const customer::key k_c(warehouse_id, districtID, customerID);
+  customer::value v_c_temp;
+  varstr sv_c_temp = str(Size(v_c_temp));
+  try_verify_relax(tbl_customer(warehouse_id)
+                       ->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
+  const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+  checker::SanityCheckCustomer(&k_c, v_c);
+
+  const warehouse::key k_w(warehouse_id);
+  warehouse::value v_w_temp;
+  varstr sv_w_temp = str(Size(v_w_temp));
+  try_verify_relax(tbl_warehouse(warehouse_id)
+                       ->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
+  const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+  checker::SanityCheckWarehouse(&k_w, v_w);
+
+  const district::key k_d(warehouse_id, districtID);
+  district::value v_d_temp;
+  varstr sv_d_temp = str(Size(v_d_temp));
+  try_verify_relax(tbl_district(warehouse_id)
+                       ->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
+  const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+  checker::SanityCheckDistrict(&k_d, v_d);
+
+  const uint64_t my_next_o_id =
+      g_new_order_fast_id_gen ? FastNewOrderIdGen(warehouse_id, districtID)
+                              : v_d->d_next_o_id;
+
+  const new_order::key k_no(warehouse_id, districtID, my_next_o_id);
+  const new_order::value v_no;
+  const size_t new_order_sz = Size(v_no);
+  try_catch(tbl_new_order(warehouse_id)
+                ->insert(txn, Encode(str(Size(k_no)), k_no),
+                         Encode(str(new_order_sz), v_no)));
+
+  if (!g_new_order_fast_id_gen) {
+    district::value v_d_new(*v_d);
+    v_d_new.d_next_o_id++;
+    try_catch(tbl_district(warehouse_id)
+                  ->put(txn, Encode(str(Size(k_d)), k_d),
+                        Encode(str(Size(v_d_new)), v_d_new)));
+  }
+
+  const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
+  oorder::value v_oo;
+  v_oo.o_c_id = int32_t(customerID);
+  v_oo.o_carrier_id = 0;  // seems to be ignored
+  v_oo.o_ol_cnt = int8_t(numItems);
+  v_oo.o_all_local = allLocal;
+  v_oo.o_entry_d = GetCurrentTimeMillis();
+
+  const size_t oorder_sz = Size(v_oo);
+  OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+  try_catch(tbl_oorder(warehouse_id)
+                ->insert(txn, Encode(str(Size(k_oo)), k_oo),
+                         Encode(str(oorder_sz), v_oo), &v_oo_oid));
+
+  const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
+                                      k_no.no_o_id);
+  try_catch(tbl_oorder_c_id_idx(warehouse_id)
+                ->insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
+
+  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+    const uint ol_i_id = itemIDs[ol_number - 1];
+    const uint ol_quantity = orderQuantities[ol_number - 1];
+
+    const item::key k_i(ol_i_id);
+    item::value v_i_temp;
+    varstr sv_i_temp = str(Size(v_i_temp));
+    try_verify_relax(
+        tbl_item(1)->get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
+    const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+    checker::SanityCheckItem(&k_i, v_i);
+
+    const stock::key k_s(ol_supply_w_id, ol_i_id);
+    stock::value v_s_temp;
+    varstr sv_s_temp = str(Size(v_s_temp));
+    try_verify_relax(tbl_stock(ol_supply_w_id)
+                         ->get(txn, Encode(str(Size(k_s)), k_s), sv_s_temp));
+    const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
+    checker::SanityCheckStock(&k_s, v_s);
+
+    stock::value v_s_new(*v_s);
+    if (v_s_new.s_quantity - ol_quantity >= 10)
+      v_s_new.s_quantity -= ol_quantity;
+    else
+      v_s_new.s_quantity += -int32_t(ol_quantity) + 91;
+    v_s_new.s_ytd += ol_quantity;
+    v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
+
+    try_catch(tbl_stock(ol_supply_w_id)
+                  ->put(txn, Encode(str(Size(k_s)), k_s),
+                        Encode(str(Size(v_s_new)), v_s_new)));
+
+    const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
+                               ol_number);
+    order_line::value v_ol;
+    v_ol.ol_i_id = int32_t(ol_i_id);
+    v_ol.ol_delivery_d = 0;  // not delivered yet
+    v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
+    v_ol.ol_supply_w_id = int32_t(ol_supply_w_id);
+    v_ol.ol_quantity = int8_t(ol_quantity);
+
+    const size_t order_line_sz = Size(v_ol);
+    try_catch(tbl_order_line(warehouse_id)
+                  ->insert(txn, Encode(str(Size(k_ol)), k_ol),
+                           Encode(str(order_line_sz), v_ol)));
+  }
+
+  measure_txn_counters(txn, "txn_new_order");
+  try_catch(db->commit_txn(txn));
+  return {RC_TRUE};
+}
+
+rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
+  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  uint customerDistrictID, customerWarehouseID;
+  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
+             RandomNumber(r, 1, 100) <= 85)) {
+    customerDistrictID = districtID;
+    customerWarehouseID = warehouse_id;
+  } else {
+    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+    do {
+      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
+    } while (customerWarehouseID == warehouse_id);
+  }
+  const float paymentAmount = (float)(RandomNumber(r, 100, 500000) / 100.0);
+  const uint32_t ts = GetCurrentTimeMillis();
+  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+  // output from txn counters:
+  //   max_absent_range_set_size : 0
+  //   max_absent_set_size : 0
+  //   max_node_scan_size : 10
+  //   max_read_set_size : 71
+  //   max_write_set_size : 1
+  //   num_txn_contexts : 5
+  transaction *txn = db->new_txn(transaction::TXN_FLAG_CMD_REDO, arena, txn_buf());
+  scoped_str_arena s_arena(arena);
+
+  const warehouse::key k_w(warehouse_id);
+  warehouse::value v_w_temp;
+  varstr sv_w_temp = str(Size(v_w_temp));
+  try_verify_relax(tbl_warehouse(warehouse_id)
+                       ->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
+  const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+  checker::SanityCheckWarehouse(&k_w, v_w);
+
+  warehouse::value v_w_new(*v_w);
+  v_w_new.w_ytd += paymentAmount;
+  try_catch(tbl_warehouse(warehouse_id)
+                ->put(txn, Encode(str(Size(k_w)), k_w),
+                      Encode(str(Size(v_w_new)), v_w_new)));
+
+  const district::key k_d(warehouse_id, districtID);
+  district::value v_d_temp;
+  varstr sv_d_temp = str(Size(v_d_temp));
+  try_verify_relax(tbl_district(warehouse_id)
+                       ->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
+  const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+  checker::SanityCheckDistrict(&k_d, v_d);
+
+  district::value v_d_new(*v_d);
+  v_d_new.d_ytd += paymentAmount;
+  try_catch(tbl_district(warehouse_id)
+                ->put(txn, Encode(str(Size(k_d)), k_d),
+                      Encode(str(Size(v_d_new)), v_d_new)));
+
+  customer::key k_c;
+  customer::value v_c;
+  varstr sv_c = str(Size(v_c));
+  if (RandomNumber(r, 1, 100) <= 60) {
+    // cust by name
+    uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
+    static_assert(sizeof(lastname_buf) == 16, "xx");
+    memset(lastname_buf, 0, sizeof(lastname_buf));
+    GetNonUniformCustomerLastNameRun(lastname_buf, r);
+
+    static const string zeros(16, 0);
+    static const string ones(16, 255);
+
+    customer_name_idx::key k_c_idx_0;
+    k_c_idx_0.c_w_id = customerWarehouseID;
+    k_c_idx_0.c_d_id = customerDistrictID;
+    k_c_idx_0.c_last.assign((const char *)lastname_buf, 16);
+    k_c_idx_0.c_first.assign(zeros);
+
+    customer_name_idx::key k_c_idx_1;
+    k_c_idx_1.c_w_id = customerWarehouseID;
+    k_c_idx_1.c_d_id = customerDistrictID;
+    k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
+    k_c_idx_1.c_first.assign(ones);
+
+    static_limit_callback<NMaxCustomerIdxScanElems> c(
+        s_arena.get(), true);  // probably a safe bet for now
+    try_catch(tbl_customer_name_idx(customerWarehouseID)
+                  ->scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
+                         s_arena.get()));
+    ALWAYS_ASSERT(c.size() > 0);
+    ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
+    int index = c.size() / 2;
+    if (c.size() % 2 == 0) index--;
+
+    Decode(*c.values[index].second, v_c);
+    k_c.c_w_id = customerWarehouseID;
+    k_c.c_d_id = customerDistrictID;
+    k_c.c_id = v_c.c_id;
+  } else {
+    // cust by ID
+    const uint customerID = GetCustomerId(r);
+    k_c.c_w_id = customerWarehouseID;
+    k_c.c_d_id = customerDistrictID;
+    k_c.c_id = customerID;
+    try_verify_relax(tbl_customer(customerWarehouseID)
+                         ->get(txn, Encode(str(Size(k_c)), k_c), sv_c));
+    Decode(sv_c, v_c);
+  }
+  checker::SanityCheckCustomer(&k_c, &v_c);
+  customer::value v_c_new(v_c);
+
+  v_c_new.c_balance -= paymentAmount;
+  v_c_new.c_ytd_payment += paymentAmount;
+  v_c_new.c_payment_cnt++;
+  if (strncmp(v_c.c_credit.data(), "BC", 2) == 0) {
+    char buf[501];
+    int n = snprintf(buf, sizeof(buf), "%d %d %d %d %d %f | %s", k_c.c_id,
+                     k_c.c_d_id, k_c.c_w_id, districtID, warehouse_id,
+                     paymentAmount, v_c.c_data.c_str());
+    v_c_new.c_data.resize_junk(
+        std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
+    memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
+  }
+
+  try_catch(tbl_customer(customerWarehouseID)
+                ->put(txn, Encode(str(Size(k_c)), k_c),
+                      Encode(str(Size(v_c_new)), v_c_new)));
+
+  const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
+                         warehouse_id, ts);
+  history::value v_h;
+  v_h.h_amount = paymentAmount;
+  v_h.h_data.resize_junk(v_h.h_data.max_size());
+  int n = snprintf((char *)v_h.h_data.data(), v_h.h_data.max_size() + 1,
+                   "%.10s    %.10s", v_w->w_name.c_str(), v_d->d_name.c_str());
+  v_h.h_data.resize_junk(
+      std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
+
+  try_catch(tbl_history(warehouse_id)
+                ->insert(txn, Encode(str(Size(k_h)), k_h),
+                         Encode(str(Size(v_h)), v_h)));
+
+  measure_txn_counters(txn, "txn_payment");
+  try_catch(db->commit_txn(txn));
+  return {RC_TRUE};
+}
+
+rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
+  const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  const uint32_t ts = GetCurrentTimeMillis();
+
+  // worst case txn profile:
+  //   10 times:
+  //     1 new_order scan node
+  //     1 oorder get
+  //     2 order_line scan nodes
+  //     15 order_line puts
+  //     1 new_order remove
+  //     1 oorder put
+  //     1 customer get
+  //     1 customer put
+  //
+  // output from counters:
+  //   max_absent_range_set_size : 0
+  //   max_absent_set_size : 0
+  //   max_node_scan_size : 21
+  //   max_read_set_size : 133
+  //   max_write_set_size : 133
+  //   num_txn_contexts : 4
+  transaction *txn = db->new_txn(transaction::TXN_FLAG_CMD_REDO, arena, txn_buf());
+  scoped_str_arena s_arena(arena);
+  for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
+    const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
+    const new_order::key k_no_1(warehouse_id, d,
+                                numeric_limits<int32_t>::max());
+    new_order_scan_callback new_order_c;
+    {
+      try_catch(tbl_new_order(warehouse_id)
+                    ->scan(txn, Encode(str(Size(k_no_0)), k_no_0),
+                           &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
+                           s_arena.get()));
+    }
+
+    const new_order::key *k_no = new_order_c.get_key();
+    if (unlikely(!k_no)) continue;
+    last_no_o_ids[d - 1] = k_no->no_o_id + 1;  // XXX: update last seen
+
+    const oorder::key k_oo(warehouse_id, d, k_no->no_o_id);
+    // even if we read the new order entry, there's no guarantee
+    // we will read the oorder entry: in this case the txn will abort,
+    // but we're simply bailing out early
+    oorder::value v_oo_temp;
+    varstr sv_oo_temp = str(Size(v_oo_temp));
+    try_catch_cond_abort(
+        tbl_oorder(warehouse_id)
+            ->get(txn, Encode(str(Size(k_oo)), k_oo), sv_oo_temp));
+    const oorder::value *v_oo = Decode(sv_oo_temp, v_oo_temp);
+    checker::SanityCheckOOrder(&k_oo, v_oo);
+
+    static_limit_callback<15> c(
+        s_arena.get(), false);  // never more than 15 order_lines per order
+    const order_line::key k_oo_0(warehouse_id, d, k_no->no_o_id, 0);
+    const order_line::key k_oo_1(warehouse_id, d, k_no->no_o_id,
+                                 numeric_limits<int32_t>::max());
+
+    // XXX(stephentu): mutable scans would help here
+    try_catch(tbl_order_line(warehouse_id)
+                  ->scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
+                         &Encode(str(Size(k_oo_1)), k_oo_1), c, s_arena.get()));
+    float sum = 0.0;
+    for (size_t i = 0; i < c.size(); i++) {
+      order_line::value v_ol_temp;
+      const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
+
+#ifndef NDEBUG
+      order_line::key k_ol_temp;
+      const order_line::key *k_ol = Decode(*c.values[i].first, k_ol_temp);
+      checker::SanityCheckOrderLine(k_ol, v_ol);
+#endif
+
+      sum += v_ol->ol_amount;
+      order_line::value v_ol_new(*v_ol);
+      v_ol_new.ol_delivery_d = ts;
+      ASSERT(s_arena.get()->manages(c.values[i].first));
+      try_catch(tbl_order_line(warehouse_id)
+                    ->put(txn, *c.values[i].first,
+                          Encode(str(Size(v_ol_new)), v_ol_new)));
+    }
+
+    // delete new order
+    try_catch(tbl_new_order(warehouse_id)
+                  ->remove(txn, Encode(str(Size(*k_no)), *k_no)));
+
+    // update oorder
+    oorder::value v_oo_new(*v_oo);
+    v_oo_new.o_carrier_id = o_carrier_id;
+    try_catch(tbl_oorder(warehouse_id)
+                  ->put(txn, Encode(str(Size(k_oo)), k_oo),
+                        Encode(str(Size(v_oo_new)), v_oo_new)));
+
+    const uint c_id = v_oo->o_c_id;
+    const float ol_total = sum;
+
+    // update customer
+    const customer::key k_c(warehouse_id, d, c_id);
+    customer::value v_c_temp;
+    varstr sv_c_temp = str(Size(v_c_temp));
+    try_verify_relax(tbl_customer(warehouse_id)
+                         ->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
+
+    const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+    customer::value v_c_new(*v_c);
+    v_c_new.c_balance += ol_total;
+    try_catch(tbl_customer(warehouse_id)
+                  ->put(txn, Encode(str(Size(k_c)), k_c),
+                        Encode(str(Size(v_c_new)), v_c_new)));
+  }
+  measure_txn_counters(txn, "txn_delivery");
+  try_catch(db->commit_txn(txn));
+  return {RC_TRUE};
 }

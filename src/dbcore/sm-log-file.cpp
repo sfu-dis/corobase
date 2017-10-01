@@ -452,7 +452,7 @@ void sm_log_file_mgr::_create_nxt_seg_file(bool force) {
 
       // The backup will create the real file after it got the
       // correct begin_offset value.
-      if (config::is_backup_srv()) {
+      if (config::is_backup_srv() && !config::command_log) {
         return;
       }
       nxt_seg_file_name oldname(sid->segnum);
@@ -463,7 +463,7 @@ void sm_log_file_mgr::_create_nxt_seg_file(bool force) {
     }
   }
   if (doit) {
-    ALWAYS_ASSERT(!config::is_backup_srv());
+    ALWAYS_ASSERT(!config::is_backup_srv() || config::command_log);
     nxt_seg_file_name sname(segnum);
     uint64_t fd = os_openat(dfd, sname, O_CREAT | O_EXCL | O_RDONLY);
     nxt_segment_fd = (fd << 32) | segnum;

@@ -687,7 +687,7 @@ fat_ptr sm_oid_mgr::PrimaryTupleUpdate(oid_array *oa, OID o,
                                        const varstr *value,
                                        xid_context *updater_xc,
                                        fat_ptr *new_obj_ptr) {
-  ASSERT(!config::is_backup_srv());
+  ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
   auto *ptr = oa->get(o);
 start_over:
   fat_ptr head = volatile_read(*ptr);
@@ -807,7 +807,7 @@ dbtuple *sm_oid_mgr::oid_get_version(FID f, OID o, xid_context *visitor_xc) {
 
 dbtuple *sm_oid_mgr::BackupGetVersion(oid_array *ta, oid_array *pa, OID o,
                                       xid_context *xc) {
-  if (config::full_replay) {
+  if (config::full_replay || config::command_log) {
     return oid_get_version(ta, o, xc);
   }
   fat_ptr pdest_head_ptr = NULL_PTR;
@@ -938,7 +938,7 @@ start_over:
     fat_ptr tentative_next = NULL_PTR;
     // If this is a backup server, then must see persistent_next to find out
     // the **real** overwritten version.
-    if (config::is_backup_srv()) {
+    if (config::is_backup_srv() && !config::command_log) {
       fat_ptr prev_next_ptr = NULL_PTR;
       Object *prev_next_obj = NULL_PTR;
       if (prev_obj) {
@@ -1015,7 +1015,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, xid_context *xc, bool &retry) {
   fat_ptr clsn = object->GetClsn();
   uint16_t asi_type = clsn.asi_type();
   if (clsn == NULL_PTR) {
-    ASSERT(!config::is_backup_srv());
+    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
     // dead tuple that was (or about to be) unlinked, start over
     retry = true;
     return false;
@@ -1023,8 +1023,8 @@ bool sm_oid_mgr::TestVisibility(Object *object, xid_context *xc, bool &retry) {
 
   ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
   if (asi_type == fat_ptr::ASI_XID) {  // in-flight
-    // Backups don't write
-    ASSERT(!config::is_backup_srv());
+    // Backups don't write unless for command logging
+    ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
 
     XID holder_xid = XID::from_ptr(clsn);
     // Dirty data made by me is visible!
@@ -1033,7 +1033,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, xid_context *xc, bool &retry) {
              ((Object *)object->GetNextVolatile().offset())
                      ->GetClsn()
                      .asi_type() == fat_ptr::ASI_LOG);
-      ASSERT(!config::is_backup_srv());
+      ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
       return true;
     }
     auto *holder = xid_get_context(holder_xid);
@@ -1048,7 +1048,7 @@ bool sm_oid_mgr::TestVisibility(Object *object, xid_context *xc, bool &retry) {
 
     // context still valid for this XID?
     if (owner != holder_xid) {
-      ASSERT(!config::is_backup_srv());
+      ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
       retry = true;
       return false;
     }

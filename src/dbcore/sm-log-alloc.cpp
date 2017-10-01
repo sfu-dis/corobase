@@ -53,12 +53,14 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
       config::log_buffer_mb * config::MB % config::log_redo_partitions == 0);
   _logbuf = sm_log::get_logbuf();
   _logbuf->_head = _logbuf->_tail = get_starting_byte_offset(&_lm);
-  if (!config::is_backup_srv()) {
+  if (!config::is_backup_srv() || (config::command_log && config::replay_threads)) {
     _tls_lsn_offset =
         (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
     memset(_tls_lsn_offset, 0, sizeof(uint64_t) * config::MAX_THREADS);
-    _commit_queue = new commit_queue[config::worker_threads];
-    for (uint32_t i = 0; i < config::worker_threads; ++i) {
+
+    uint32_t n = config::is_backup_srv() ? config::replay_threads : config::worker_threads;
+    _commit_queue = new commit_queue[n];
+    for (uint32_t i = 0; i < n; ++i) {
       _commit_queue[i].lm = this;
     }
 
@@ -80,7 +82,6 @@ sm_log_alloc_mgr::~sm_log_alloc_mgr() {
 
 void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,
                                              uint64_t start_time) {
-  ALWAYS_ASSERT(worker_id < config::worker_threads);
   uint64_t lsn = config::command_log ?
                  CommandLog::cmd_log->GetTlsOffset() :
                  get_tls_lsn_offset() & ~kDirtyTlsLsnOffset;
@@ -112,7 +113,8 @@ retry :
 
 void sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto,
                                               uint64_t end_time) {
-  for (uint32_t i = 0; i < config::worker_threads; i++) {
+  uint32_t n = config::is_backup_srv() ? config::replay_threads : config::worker_threads;
+  for (uint32_t i = 0; i < n; i++) {
     CRITICAL_SECTION(cs, _commit_queue[i].lock);
     uint32_t n = volatile_read(_commit_queue[i].start);
     uint32_t size = _commit_queue[i].size();
@@ -380,7 +382,7 @@ int sm_log_alloc_mgr::open_segment_for_read(segment_id *sid) {
  */
 segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
                                               bool update_dmark) {
-  ASSERT(!config::is_backup_srv());
+  ASSERT(!config::is_backup_srv() || config::command_log);
   /* The primary ships log records at log buffer flush boundaries, and log
    * flushing respects segment boundaries. Threads trying to carve out a range
    * of LSN offset also need to respect segment boundaries, boundary-crossing
@@ -737,7 +739,7 @@ grab_buffer:
 void sm_log_alloc_mgr::release(log_allocation *x) {
   // Include the size of our allocation, indicated by next_lsn.
   // Otherwise we might lose committed work.
-  if (!config::is_backup_srv()) {
+  if (!config::is_backup_srv() || (config::command_log && config::replay_threads)) {
     // Only need to do this for the primary server - worker threads on
     // backups don't do updates
     set_tls_lsn_offset(x->block->next_lsn().offset());

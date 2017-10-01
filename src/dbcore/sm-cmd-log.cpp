@@ -2,6 +2,7 @@
 #include "sm-log.h"
 #include "sm-rep.h"
 #include "../util.h"
+#include "../benchmarks/bench.h"
 
 namespace CommandLog {
 
@@ -80,7 +81,7 @@ void CommandLogManager::Flush(bool check_tls) {
   }
 }
 
-void CommandLogManager::BackupRedo(uint32_t redoer_id) {
+void CommandLogManager::BackupRedo(uint32_t redoer_id, bench_worker *worker) {
   LOG(INFO) << "Started redo thread " << redoer_id;
   uint64_t doff = 0;
   while (!config::IsShutdown()) {
@@ -103,22 +104,19 @@ void CommandLogManager::BackupRedo(uint32_t redoer_id) {
       uint32_t off = roff % buffer_size_;
       LogRecord *r = (LogRecord*)&buffer_[off];
       roff += sizeof(LogRecord);
-      if (r->partition_id % config::replay_threads == redoer_id) {
-        // REDO IT
+      uint64_t id = r->partition_id % config::replay_threads;
+      if (id == redoer_id) {
+        // "Redo" it
+        id = r->partition_id;  // Pass the actual partition (warehouse for TPCC)
+        if (r->partition_id) {
+          worker->do_cmdlog_redo_workload_function(r->transaction_type, (void*)id);
+        }
         size += sizeof(LogRecord);
       }
     }
     DLOG(INFO) << "Redoer " << redoer_id << ": replayed " << size << " bytes, "
       << size / sizeof(LogRecord) << " records";
     __atomic_add_fetch(&replayed_offset, size, __ATOMIC_SEQ_CST);
-  }
-}
-
-void CommandLogManager::StartBackupRedoers() {
-  LOG_IF(FATAL, config::replay_policy != config::kReplaySync);
-  replayed_offset = 0;
-  for (uint32_t i = 0; i < config::replay_threads; ++i) {
-    backup_redoers.emplace_back(&CommandLogManager::BackupRedo, this, i);
   }
 }
 
@@ -156,8 +154,8 @@ CommandLogManager::~CommandLogManager() {
     flush_cond_.notify_all();
   }
   flusher_.join();
-  for (auto &t : backup_redoers) {
-    t.join();
+  for (auto &t : bench_runner::cmdlog_redoers) {
+    t->join();
   }
   os_close(fd_);
 }

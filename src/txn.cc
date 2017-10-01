@@ -18,7 +18,7 @@ extern write_set_t tls_write_set[config::MAX_THREADS];
 
 transaction::transaction(uint64_t flags, str_arena &sa)
     : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()]) {
-  if (config::is_backup_srv()) {
+  if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a
     // consistent snapshot back in time. No CC involved.
@@ -95,7 +95,7 @@ void transaction::initialize_read_write() {
 }
 
 transaction::~transaction() {
-  if (config::is_backup_srv()) {
+  if (config::is_backup_srv() && !(flags & TXN_FLAG_CMD_REDO)) {
     RCU::rcu_exit();
     return;
   }
@@ -1018,7 +1018,7 @@ rc_t transaction::parallel_ssi_commit() {
 }
 #else
 rc_t transaction::si_commit() {
-  if (config::is_backup_srv()) {
+  if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
     return rc_t{RC_TRUE};
   }
 

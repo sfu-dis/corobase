@@ -81,9 +81,12 @@ class ycsb_worker : public bench_worker {
   ycsb_worker(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
               const map<string, OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : bench_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b),
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tbl(open_tables.at("USERTABLE")) {}
 
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
+    LOG(FATAL) << "Not applicable";
+  }
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
     if (ycsb_workload.insert_percent())
@@ -231,6 +234,11 @@ class ycsb_bench_runner : public bench_runner {
     return ret;
   }
 
+  virtual vector<bench_worker *> make_cmdlog_redoers() {
+    // Not implemented
+    vector<bench_worker *> ret;
+    return ret;
+  }
   virtual vector<bench_worker *> make_workers() {
     fast_random r(8544290);
     vector<bench_worker *> ret;

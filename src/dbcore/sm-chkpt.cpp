@@ -244,7 +244,9 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
 
 void sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr* lm) {
   util::scoped_timer t("chkpt_recovery");
-  num_recovery_threads = config::worker_threads;
+  // Take the sum to make sure we have threads to to the work
+  num_recovery_threads = config::worker_threads + config::replay_threads;
+  LOG_IF(FATAL, num_recovery_threads < 1) << "No threads for chkpt recovery";
   // Find the chkpt file and recover from there
   char buf[CHKPT_DATA_FILE_NAME_BUFSZ];
   uint64_t n =

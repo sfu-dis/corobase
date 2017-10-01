@@ -24,7 +24,6 @@
 #endif
 
 using namespace std;
-using namespace util;
 
 // Options that are shared by the primary and backup servers
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
