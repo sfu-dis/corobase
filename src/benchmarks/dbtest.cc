@@ -347,7 +347,7 @@ int main(int argc, char **argv) {
   std::cerr << "  logbuf-partitions : " << config::log_redo_partitions << std::endl;
   std::cerr << "  worker-threads    : " << config::worker_threads << std::endl;
   std::cerr << "  total-threads     : " << config::threads << std::endl;
-  std::cerr << "  persist-policy    : " << config::persist_policy << std::endl;
+  std::cerr << "  persist-policy    : " << FLAGS_persist_policy << std::endl;
   std::cerr << "  command-log       : " << config::command_log << std::endl;
   std::cerr << "  command-logbuf    : " << config::command_log_buffer_mb << "MB" << std::endl;
 
