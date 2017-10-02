@@ -90,7 +90,7 @@ class bench_worker : public thread::sm_runner {
  public:
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
                ndb_wrapper *db, const std::map<std::string, OrderedIndex *> &open_tables,
-               spin_barrier *barrier_a, spin_barrier *barrier_b)
+               spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
       : sm_runner(),
         worker_id(worker_id),
         is_worker(is_worker),

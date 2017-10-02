@@ -56,7 +56,7 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
   if (!rc_is_abort(ret)) {
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
-    if (config::num_active_backups > 0 || config::group_commit) {
+    if (!config::is_backup_srv() && config::group_commit) {
       logmgr->enqueue_committed_xct(worker_id, t.get_start());
     } else {
       latency_numer_us += t.lap();
@@ -303,6 +303,7 @@ void bench_runner::run() {
       config::replay_policy != config::kReplayNone &&
       config::replay_threads) {
     cmdlog_redoers = make_cmdlog_redoers();
+    CommandLog::redoer_barrier = new spin_barrier(config::replay_threads);
     for (auto &r : cmdlog_redoers) {
       while (!r->is_impersonated()) {
         r->try_impersonate();
@@ -326,6 +327,21 @@ void bench_runner::run() {
       }
     }
     std::cerr << "Shutdown successfully" << std::endl;
+  }
+  if (config::is_backup_srv() && config::command_log && cmdlog_redoers.size()) {
+    tx_stat_map agg = cmdlog_redoers[0]->get_cmdlog_txn_counts();
+    for (size_t i = 1; i < cmdlog_redoers.size(); i++) {
+      auto &c = cmdlog_redoers[i]->get_cmdlog_txn_counts();
+      for (auto &t : c) {
+        std::get<0>(agg[t.first]) += std::get<0>(t.second);
+        std::get<1>(agg[t.first]) += std::get<1>(t.second);
+        std::get<2>(agg[t.first]) += std::get<2>(t.second);
+        std::get<3>(agg[t.first]) += std::get<3>(t.second);
+      }
+      cmdlog_redoers[i]->~bench_worker();
+    }
+    std::cerr << "cmdlog txn breakdown: "
+      << util::format_list(agg.begin(), agg.end()) << std::endl;
   }
 }
 
@@ -557,22 +573,6 @@ void bench_runner::start_measurement() {
       std::get<3>(agg_txn_counts[t.first]) += std::get<3>(t.second);
     }
     workers[i]->~bench_worker();
-  }
-
-  if (config::is_backup_srv() && config::command_log && cmdlog_redoers.size()) {
-    tx_stat_map agg = cmdlog_redoers[0]->get_cmdlog_txn_counts();
-    for (size_t i = 1; i < cmdlog_redoers.size(); i++) {
-      auto &c = cmdlog_redoers[i]->get_cmdlog_txn_counts();
-      for (auto &t : c) {
-        std::get<0>(agg[t.first]) += std::get<0>(t.second);
-        std::get<1>(agg[t.first]) += std::get<1>(t.second);
-        std::get<2>(agg[t.first]) += std::get<2>(t.second);
-        std::get<3>(agg[t.first]) += std::get<3>(t.second);
-      }
-      cmdlog_redoers[i]->~bench_worker();
-    }
-    std::cerr << "cmdlog txn breakdown: "
-      << util::format_list(agg.begin(), agg.end()) << std::endl;
   }
 
   if (config::enable_chkpt) delete chkptmgr;

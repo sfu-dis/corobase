@@ -55,6 +55,9 @@ extern int replay_bounds_fd CACHE_ALIGNED;
 extern std::vector<int> backup_sockfds;
 extern std::mutex backup_sockfds_mutex;
 
+extern std::mutex async_ship_mutex;
+extern std::condition_variable async_ship_cond;
+
 inline uint64_t GetReadView() {
   uint64_t lsn = 0;
   if (config::command_log) {

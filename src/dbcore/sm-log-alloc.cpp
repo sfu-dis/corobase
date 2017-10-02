@@ -91,7 +91,11 @@ void sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn,
   bool flush = false;
 retry :
   if (flush) {
-    lm->flush();
+    if (config::command_log) {
+      CommandLog::cmd_log->TryFlush();
+    } else {
+      lm->flush();
+    }
     flush = false;
   }
 {
@@ -470,7 +474,8 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     if (!config::command_log &&
         config::persist_policy != config::kPersistAsync &&
         config::num_active_backups &&
-        !config::IsLoading()) {
+        !config::IsLoading() &&
+        !config::command_log) {
       PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
       if (new_seg) {
         new_seg = false;
@@ -487,6 +492,9 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
       n = nbytes;
     } else {
       n = os_pwrite(active_fd, buf, nbytes, file_offset);
+      if (!config::command_log && config::persist_policy == config::kPersistAsync) {
+        rep::async_ship_cond.notify_all();
+      }
     }
     LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
 

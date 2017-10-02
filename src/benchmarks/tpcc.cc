@@ -439,9 +439,8 @@ class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
  public:
   tpcc_cmdlog_redoer(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
               const std::map<std::string, OrderedIndex *> &open_tables,
-              const std::map<std::string, std::vector<OrderedIndex *>> &partitions,
-              spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : bench_worker(worker_id, false, seed, db, open_tables, barrier_a, barrier_b),
+              const std::map<std::string, std::vector<OrderedIndex *>> &partitions)
+      : bench_worker(worker_id, false, seed, db, open_tables),
         tpcc_worker_mixin(partitions) {
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
   }
@@ -616,7 +615,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
       ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
       // wh_spread = 0: always use home wh
       // wh_spread = 1: always use random wh
-      if (g_wh_spread == 0 or r.next_uniform() >= g_wh_spread)
+      if (config::command_log || g_wh_spread == 0 || r.next_uniform() >= g_wh_spread)
         return home_warehouse_id;
       return r.next() % NumWarehouses() + 1;
     }
@@ -2570,8 +2569,7 @@ class tpcc_bench_runner : public bench_runner {
     util::fast_random r(23984543);
     std::vector<bench_worker *> ret;
     for (size_t i = 0; i < config::replay_threads; i++) {
-      ret.push_back(new tpcc_cmdlog_redoer(i, r.next(), db, open_tables,
-                                           partitions, &barrier_a, &barrier_b));
+      ret.push_back(new tpcc_cmdlog_redoer(i, r.next(), db, open_tables, partitions));
     }
     return ret;
   }
