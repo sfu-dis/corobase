@@ -32,6 +32,8 @@ run() {
   read_view_ms=10
   read_view_stat="/dev/shm/ermia_read_view.txt"
 
+  duration=10
+
   unset GLOG_logtostderr
 
   echo "----------"

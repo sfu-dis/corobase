@@ -1303,7 +1303,7 @@ rc_t tpcc_worker::txn_new_order() {
   ASSERT(!g_disable_xpartition_txn || allLocal);
 
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER, 64);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER, 256);
   }
 
   // XXX(stephentu): implement rollback
@@ -1519,7 +1519,7 @@ rc_t tpcc_worker::txn_delivery() {
   const uint32_t ts = GetCurrentTimeMillis();
 
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY, 64);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY, 256);
   }
 
   // worst case txn profile:
@@ -1798,7 +1798,7 @@ rc_t tpcc_worker::txn_payment() {
   ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT, 64);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT, 256);
   }
 
   // output from txn counters:
@@ -2327,7 +2327,7 @@ rc_t tpcc_worker::txn_microbench_random() {
   varstr sv = str(Size(v));
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
-    ASSERT(cout << "rd " << w << " " << s << std::endl);
+    DLOG(INFO) << "rd " << w << " " << s;
     try_catch(tbl_stock(w)->get(txn, Encode(str(Size(k_s)), k_s), sv));
 
     if (++s > NumItems()) {
@@ -2350,9 +2350,9 @@ rc_t tpcc_worker::txn_microbench_random() {
     const uint ww = idx / NumItems() + 1;
     const uint ss = idx % NumItems() + 1;
 
-    ASSERT(cout << (ww - 1) * NumItems() + ss - 1 << std::endl);
-    ASSERT(cout << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) %
-                       (NumItems() * (NumWarehouses())) << std::endl);
+    DLOG(INFO) << (ww - 1) * NumItems() + ss - 1;
+    DLOG(INFO) << ((start_w - 1) * NumItems() + start_s - 1 + row_nr) %
+                       (NumItems() * (NumWarehouses()));
     ASSERT((ww - 1) * NumItems() + ss - 1 < NumItems() * NumWarehouses());
     ASSERT((ww - 1) * NumItems() + ss - 1 ==
            ((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) %
@@ -2360,7 +2360,7 @@ rc_t tpcc_worker::txn_microbench_random() {
 
     // TODO. more plausible update needed
     const stock::key k_s(ww, ss);
-    ASSERT(cout << "wr " << ww << " " << ss << " row_nr=" << row_nr << std::endl);
+    DLOG(INFO) << "wr " << ww << " " << ss << " row_nr=" << row_nr;
 
     stock::value v;
     v.s_quantity = RandomNumber(r, 10, 100);
@@ -2373,7 +2373,7 @@ rc_t tpcc_worker::txn_microbench_random() {
                                  Encode(str(Size(v)), v)));
   }
 
-  ASSERT(cout << "micro-random finished" << std::endl);
+  DLOG(INFO) << "micro-random finished";
 #ifndef NDEBUG
   abort();
 #endif
