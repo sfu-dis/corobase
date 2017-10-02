@@ -24,6 +24,8 @@ int replay_bounds_fd CACHE_ALIGNED;
 std::condition_variable bg_replay_cond CACHE_ALIGNED;
 std::mutex bg_replay_mutex CACHE_ALIGNED;
 uint64_t received_log_size CACHE_ALIGNED;
+std::mutex async_ship_mutex CACHE_ALIGNED;
+std::condition_variable async_ship_cond CACHE_ALIGNED;
 
 void start_as_primary() {
   shipped_log_size = 0;
@@ -66,22 +68,22 @@ void LogFlushDaemon() {
 void PrimaryAsyncShippingDaemon() {
   ALWAYS_ASSERT(config::persist_policy == config::kPersistAsync);
   uint64_t start_offset = logmgr->durable_flushed_lsn().offset();
-  char *buf = new char[config::group_commit_bytes];
+  char *buf = (char*)malloc(config::group_commit_bytes);
+  // FIXME(tzwang): support segment boundary crossing
+  auto* sid = logmgr->get_offset_segment(start_offset);
+  int fd = logmgr->open_segment_for_read(sid);
   while (!config::IsShutdown()) {
-    // FIXME(tzwang): support segment boundary crossing
-    auto* sid = logmgr->get_offset_segment(start_offset);
-    int fd = logmgr->open_segment_for_read(sid);
-    auto off = sid->offset(start_offset);
-    if (logmgr->durable_flushed_lsn().offset() > start_offset - sid->start_offset) {
-      uint32_t size = os_pread(fd, buf, config::group_commit_bytes, off);
-      if (size == config::group_commit_bytes) {
-        start_offset += size;
-        rep::primary_ship_log_buffer_all(buf, size, false, 0);
-      }
+    while (logmgr->durable_flushed_lsn().offset() - start_offset < config::group_commit_bytes) {
+      std::unique_lock<std::mutex> lock(async_ship_mutex);
+      async_ship_cond.wait(lock);
     }
-    os_close(fd);
+    auto off = sid->offset(start_offset);
+    uint32_t size = os_pread(fd, buf, config::group_commit_bytes, off);
+    start_offset += size;
+    rep::primary_ship_log_buffer_all(buf, size, false, 0);
   }
-  delete buf;
+  os_close(fd);
+  free(buf);
 }
 
 // The major routine that controls background async replay

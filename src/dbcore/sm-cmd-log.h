@@ -7,6 +7,7 @@
 #include "sm-common.h"
 #include "sm-thread.h"
 #include "../macros.h"
+#include "../spinbarrier.h"
 
 class bench_worker;
 
@@ -17,6 +18,7 @@ class bench_worker;
  */
 namespace CommandLog {
 extern uint64_t replayed_offset;
+extern spin_barrier *redoer_barrier;
 
 struct LogRecord {
   static const uint32_t kInvalidPartition = ~uint32_t{0};
@@ -71,6 +73,7 @@ public:
   }
   ~CommandLogManager();
 
+  void TryFlush();
   void BackupRedo(uint32_t part_id, bench_worker *worker);
   uint32_t Size() { return buffer_size_; }
   void BackupFlush(uint64_t new_off);

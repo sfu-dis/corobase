@@ -434,9 +434,10 @@ void BackupDaemonTcpCommandLog() {
     if (config::replay_policy == config::kReplaySync) {
       while (volatile_read(CommandLog::replayed_offset) != durable_offset + size) {}
       // Essentially this is a 'two-copy' database, so persist it (as if I'm primary)
-      logmgr->flush();
+      //logmgr->flush();
       // Advance read view
       volatile_write(replayed_lsn_offset, logmgr->durable_flushed_lsn().offset());
+    } else {
     }
 
     // Ack the primary after persisting data
