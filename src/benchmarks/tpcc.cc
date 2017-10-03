@@ -1301,10 +1301,6 @@ rc_t tpcc_worker::txn_new_order() {
   }
   ASSERT(!g_disable_xpartition_txn || allLocal);
 
-  if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER, 256);
-  }
-
   // XXX(stephentu): implement rollback
   //
   // worst case txn profile:
@@ -1442,6 +1438,9 @@ rc_t tpcc_worker::txn_new_order() {
 
   measure_txn_counters(txn, "txn_new_order");
   try_catch(db->commit_txn(txn));
+  if (config::command_log && !config::is_backup_srv()) {
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER, 256);
+  }
   return {RC_TRUE};
 }
 
@@ -1516,10 +1515,6 @@ rc_t tpcc_worker::txn_delivery() {
   const uint warehouse_id = pick_wh(r);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
-
-  if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY, 256);
-  }
 
   // worst case txn profile:
   //   10 times:
@@ -1629,6 +1624,9 @@ rc_t tpcc_worker::txn_delivery() {
   }
   measure_txn_counters(txn, "txn_delivery");
   try_catch(db->commit_txn(txn));
+  if (config::command_log && !config::is_backup_srv()) {
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY, 256);
+  }
   return {RC_TRUE};
 }
 
@@ -1796,10 +1794,6 @@ rc_t tpcc_worker::txn_payment() {
   const uint32_t ts = GetCurrentTimeMillis();
   ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
-  if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT, 256);
-  }
-
   // output from txn counters:
   //   max_absent_range_set_size : 0
   //   max_absent_set_size : 0
@@ -1924,6 +1918,9 @@ rc_t tpcc_worker::txn_payment() {
 
   measure_txn_counters(txn, "txn_payment");
   try_catch(db->commit_txn(txn));
+  if (config::command_log && !config::is_backup_srv()) {
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT, 256);
+  }
   return {RC_TRUE};
 }
 
