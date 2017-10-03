@@ -67,8 +67,8 @@ size_t os_pread(int fd, char *buf, size_t bufsz, off_t offset) {
   while (n < bufsz) {
     ssize_t m = pread(fd, buf + n, bufsz - n, offset + n);
     if (not m) break;
-    THROW_IF(m < 0, os_error, errno,
-             "Error reading %zd bytes from file at offset %zd", bufsz, offset);
+    LOG_IF(FATAL, m < 0)
+      << "Error reading " << bufsz << " bytes from file at offset " << offset;
     n += m;
   }
   return n;

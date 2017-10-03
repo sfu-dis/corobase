@@ -418,7 +418,7 @@ void BackupDaemonTcpCommandLog() {
     LOG_IF(FATAL, durable_offset < CommandLog::replayed_offset)
       << "Wrong durable/replayed offset: " << durable_offset << "/" << CommandLog::replayed_offset;
 
-    if (config::replay_policy != config::kReplayNone) {
+    if (config::replay_policy == config::kReplayPipelined) {
       // Wait for buffer space
       while (volatile_read(CommandLog::next_replay_offset[idx]) > CommandLog::replayed_offset) {}
     }
@@ -427,7 +427,9 @@ void BackupDaemonTcpCommandLog() {
     tcp::receive(cctx->server_sockfd, buf, size);
 
     DLOG(INFO) << "Received " << std::hex << durable_offset << "-" << size + durable_offset;
-    volatile_write(CommandLog::next_replay_offset[idx], durable_offset + size);
+    if (config::replay_policy != config::kReplayBackground) {
+      volatile_write(CommandLog::next_replay_offset[idx], durable_offset + size);
+    }
     idx = (idx + 1) % 2;
     CommandLog::cmd_log->BackupFlush(size + durable_offset);
     doff += size;

@@ -81,6 +81,8 @@ public:
 
   void TryFlush();
   void BackupRedo(uint32_t part_id, bench_worker *worker);
+  void BackgroundReplayDaemon();
+  void BackgroundReplay(uint32_t redoer_id, bench_worker *worker);
   uint32_t Size() { return buffer_size_; }
   void BackupFlush(uint64_t new_off);
   void FlushDaemon();

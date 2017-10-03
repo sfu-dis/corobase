@@ -14,6 +14,7 @@ spin_barrier *redoer_barrier = nullptr;
 std::condition_variable redo_cond;
 std::mutex redo_mutex;
 uint64_t next_replay_offset[2] CACHE_ALIGNED;
+char *bg_buffer = nullptr;
 
 void CommandLogManager::TryFlush() {
   flush_cond_.notify_all();
@@ -60,7 +61,7 @@ void CommandLogManager::Flush(bool check_tls) {
     if (!config::is_backup_srv()) {
       to_write = std::min<uint32_t>(to_write, config::group_commit_bytes);
     }
-    os_write(fd_, buf, to_write);
+    os_pwrite(fd_, buf, to_write, durable_off);
 
     if (config::num_active_backups && !config::is_backup_srv()) {
       DLOG(INFO) << "Shipping " << std::hex << durable_off << "-"
@@ -79,7 +80,81 @@ void CommandLogManager::Flush(bool check_tls) {
   redo_cond.notify_all();
 }
 
+void CommandLogManager::BackgroundReplayDaemon() {
+  bg_buffer = (char*)malloc(config::group_commit_bytes);
+  dirent_iterator dir(config::log_dir.c_str());
+  int dfd = dir.dup();
+  std::string fname = config::log_dir + std::string("/mlog");
+  int fd = os_openat(dfd, + fname.c_str(), O_RDWR);
+
+  // Keep notifying threads to replay a specified range
+  uint64_t off = 0;
+  uint32_t idx = 0;
+  while (true) {
+    if (durable_offset_ >= off + config::group_commit_bytes) {
+      uint32_t size = pread(fd, bg_buffer, config::group_commit_bytes, off);
+      off += size;
+      if (size) {
+        volatile_write(next_replay_offset[idx], off);
+        while (replayed_offset < off) {}
+        idx = (idx + 1) % 2;
+      }
+    }
+  }
+}
+
+void CommandLogManager::BackgroundReplay(uint32_t redoer_id, bench_worker *worker) {
+  uint64_t last_replayed = replayed_offset;
+  ALWAYS_ASSERT(redoer_barrier);
+  redoer_barrier->count_down();
+  redoer_barrier->wait_for();
+  uint32_t idx = 0;
+  uint32_t buf_off = 0;
+  while (!config::IsShutdown()) {
+    uint64_t target_offset = volatile_read(next_replay_offset[idx]);
+    while (target_offset <= last_replayed) {
+      target_offset = volatile_read(next_replay_offset[idx]);
+    }
+    idx = (idx + 1) % 2;
+
+    static const uint32_t kRecordSize = 256;
+    int64_t to_replay = target_offset - last_replayed;
+    uint32_t off = 0;
+    uint32_t size = 0;
+    while (to_replay > 0) {
+      LogRecord *r = (LogRecord*)&bg_buffer[off];
+      LOG_IF(FATAL, bg_buffer + off > bg_buffer + config::group_commit_bytes);
+      off += kRecordSize;
+      uint64_t id = r->partition_id % config::replay_threads;
+      if (id == redoer_id) {
+        // "Redo" it
+        id = r->partition_id;  // Pass the actual partition (warehouse for TPCC)
+        LOG_IF(FATAL, r->partition_id < 1);
+        worker->do_cmdlog_redo_workload_function(r->transaction_type, (void*)id);
+        size += kRecordSize;
+      }
+      to_replay -= kRecordSize;
+      LOG_IF(FATAL, to_replay < 0);
+    }
+    DLOG(INFO) << "Redoer " << redoer_id << ": replayed "
+      << size << " bytes, " << size / kRecordSize << " records";
+    last_replayed = target_offset;
+    uint64_t n = replayed_offset.fetch_add(size);
+    if (n + size == target_offset) {
+      logmgr->flush();
+      volatile_write(rep::replayed_lsn_offset, logmgr->durable_flushed_lsn().offset());
+    }
+    while (replayed_offset < target_offset) {}
+    DLOG(INFO) << "Redoer " << redoer_id << " " << std::hex << n << "+" << size;
+  }
+}
+
+// For synchronous and pipelined redo only
 void CommandLogManager::BackupRedo(uint32_t redoer_id, bench_worker *worker) {
+  if (config::replay_policy == config::kReplayBackground) {
+    BackgroundReplay(redoer_id, worker);
+    return;
+  }
   LOG(INFO) << "Started redo thread " << redoer_id;
   uint64_t last_replayed = replayed_offset;
   ALWAYS_ASSERT(redoer_barrier);
