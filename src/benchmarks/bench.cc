@@ -128,7 +128,11 @@ void bench_worker::my_work(char *) {
   } else {
     cmdlog_redo_workload = get_cmdlog_redo_workload();
     txn_counts.resize(cmdlog_redo_workload.size());
-    CommandLog::cmd_log->BackupRedo(worker_id, (bench_worker*)this);
+    if (config::replay_policy == config::kReplayBackground) {
+      CommandLog::cmd_log->BackgroundReplay(worker_id, (bench_worker*)this);
+    } else if (config::replay_policy != config::kReplayNone) {
+      CommandLog::cmd_log->BackupRedo(worker_id, (bench_worker*)this);
+    }
   }
 }
 
@@ -272,6 +276,24 @@ void bench_runner::run() {
 
   // Start checkpointer after database is ready
   if (config::is_backup_srv()) {
+    if (config::command_log &&
+        config::replay_policy != config::kReplayNone &&
+        config::replay_threads) {
+      cmdlog_redoers = make_cmdlog_redoers();
+      CommandLog::redoer_barrier = new spin_barrier(config::replay_threads);
+      if (config::replay_policy == config::kReplayBackground) {
+        std::thread bg(&CommandLog::CommandLogManager::BackgroundReplayDaemon, CommandLog::cmd_log);
+        bg.detach();
+      }
+      for (auto &r : cmdlog_redoers) {
+        while (!r->is_impersonated()) {
+          r->try_impersonate();
+        }
+        r->start();
+      }
+      LOG(INFO) << "Started all redoers";
+    }
+
     // See if we need to wait for the 'go' signal from the primary
     if (config::wait_for_primary) {
       while (!config::IsForwardProcessing()) {
@@ -299,20 +321,6 @@ void bench_runner::run() {
     volatile_write(config::state, config::kStateForwardProcessing);
   }
 
-  if (config::is_backup_srv() && config::command_log &&
-      config::replay_policy != config::kReplayNone &&
-      config::replay_threads) {
-    cmdlog_redoers = make_cmdlog_redoers();
-    CommandLog::redoer_barrier = new spin_barrier(config::replay_threads);
-    for (auto &r : cmdlog_redoers) {
-      while (!r->is_impersonated()) {
-        r->try_impersonate();
-      }
-      r->start();
-    }
-    LOG(INFO) << "Started all redoers";
-  }
-
   if (config::worker_threads) {
     start_measurement();
   } else {
@@ -338,7 +346,7 @@ void bench_runner::run() {
         std::get<2>(agg[t.first]) += std::get<2>(t.second);
         std::get<3>(agg[t.first]) += std::get<3>(t.second);
       }
-      cmdlog_redoers[i]->~bench_worker();
+      cmdlog_redoers[i]->join();
     }
     std::cerr << "cmdlog txn breakdown: "
       << util::format_list(agg.begin(), agg.end()) << std::endl;

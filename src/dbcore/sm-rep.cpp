@@ -88,6 +88,7 @@ void PrimaryAsyncShippingDaemon() {
 
 // The major routine that controls background async replay
 void BackupBackgroundReplay() {
+  LOG_IF(FATAL, config::command_log);
   rcu_register();
   DEFER(rcu_deregister());
   LOG_IF(FATAL, replay_bounds_fd <= 0);
