@@ -17,8 +17,11 @@ class bench_worker;
  * type (support TPCC so far only).
  */
 namespace CommandLog {
-extern uint64_t replayed_offset;
+extern std::atomic<uint64_t> replayed_offset;
 extern spin_barrier *redoer_barrier;
+extern std::condition_variable redo_cond;
+extern std::mutex redo_mutex;
+extern uint64_t next_replay_offset[2];
 
 struct LogRecord {
   static const uint32_t kInvalidPartition = ~uint32_t{0};
@@ -36,7 +39,7 @@ private:
   uint32_t buffer_size_;
   std::atomic<bool> shutdown_;
   std::atomic<uint64_t> allocated_;
-  uint64_t durable_offset_;
+  std::atomic<uint64_t> durable_offset_;
   char *buffer_;
   uint64_t *tls_offsets_;
 
@@ -65,6 +68,9 @@ public:
     tls_offsets_ = (uint64_t *)malloc(sizeof(uint64_t) * config::MAX_THREADS);
     memset(tls_offsets_, 0, sizeof(uint64_t) * config::MAX_THREADS);
 
+    replayed_offset = 0;
+    next_replay_offset[0] = next_replay_offset[1] = 0;
+
     dirent_iterator dir(config::log_dir.c_str());
     int dfd = dir.dup();
     std::string fname = config::log_dir + std::string("/mlog");
@@ -83,7 +89,7 @@ public:
     return volatile_read(tls_offsets_[thread::my_id()]);
   }
   inline char *GetBuffer() { return buffer_; }
-  inline uint64_t DurableOffset() { return volatile_read(durable_offset_); }
+  inline uint64_t DurableOffset() { return durable_offset_; }
 };
 
 extern CommandLogManager *cmd_log;

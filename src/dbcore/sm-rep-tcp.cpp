@@ -389,6 +389,7 @@ void BackupDaemonTcpCommandLog() {
 
   uint32_t size = 0;
   uint64_t doff = CommandLog::cmd_log->DurableOffset();
+  uint32_t idx = 0;
   while (true) {
     // expect an integer indicating data size
     tcp::receive(cctx->server_sockfd, (char*)&size, sizeof(size));
@@ -412,32 +413,31 @@ void BackupDaemonTcpCommandLog() {
     }
 
     uint64_t durable_offset = CommandLog::cmd_log->DurableOffset();
-    ASSERT(durable_offset == doff);
+    LOG_IF(FATAL, durable_offset != doff);
     uint64_t off = durable_offset % buf_size;
-    LOG_IF(FATAL, durable_offset < volatile_read(CommandLog::replayed_offset))
-      << "Wrong durable/replayed offset";
+    LOG_IF(FATAL, durable_offset < CommandLog::replayed_offset)
+      << "Wrong durable/replayed offset: " << durable_offset << "/" << CommandLog::replayed_offset;
 
     if (config::replay_policy != config::kReplayNone) {
-      while (buf_size - (durable_offset - volatile_read(CommandLog::replayed_offset)) < size) {}
+      // Wait for buffer space
+      while (volatile_read(CommandLog::next_replay_offset[idx]) > CommandLog::replayed_offset) {}
     }
+
     char *buf = CommandLog::cmd_log->GetBuffer() + off;
     tcp::receive(cctx->server_sockfd, buf, size);
 
-    LOG_IF(FATAL, config::replay_policy != config::kReplaySync &&
-                  config::replay_policy != config::kReplayNone)
-      << "Unspported replay policy";
-
-    // Flush it first so redoers know to start
+    DLOG(INFO) << "Received " << std::hex << durable_offset << "-" << size + durable_offset;
+    volatile_write(CommandLog::next_replay_offset[idx], durable_offset + size);
+    idx = (idx + 1) % 2;
     CommandLog::cmd_log->BackupFlush(size + durable_offset);
     doff += size;
 
     if (config::replay_policy == config::kReplaySync) {
-      while (volatile_read(CommandLog::replayed_offset) != durable_offset + size) {}
+      while (CommandLog::replayed_offset != durable_offset + size) {}
       // Essentially this is a 'two-copy' database, so persist it (as if I'm primary)
-      //logmgr->flush();
+      logmgr->flush();
       // Advance read view
       volatile_write(replayed_lsn_offset, logmgr->durable_flushed_lsn().offset());
-    } else {
     }
 
     // Ack the primary after persisting data
