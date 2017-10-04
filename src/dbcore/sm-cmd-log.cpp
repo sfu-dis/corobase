@@ -90,7 +90,7 @@ void CommandLogManager::BackgroundReplayDaemon() {
   // Keep notifying threads to replay a specified range
   uint64_t off = 0;
   uint32_t idx = 0;
-  while (true) {
+  while (!config::IsShutdown()) {
     if (durable_offset_ >= off + config::group_commit_bytes) {
       uint32_t size = pread(fd, bg_buffer, config::group_commit_bytes, off);
       off += size;
@@ -206,8 +206,6 @@ void CommandLogManager::BackupRedo(uint32_t redoer_id, bench_worker *worker) {
 
 void CommandLogManager::ShipLog(char *buf, uint32_t size) {
   ASSERT(config::persist_policy == config::kPersistSync);
-  // TCP based synchronous shipping
-  LOG_IF(FATAL, config::log_ship_by_rdma) << "RDMA not supported for logical log shipping";
   ASSERT(rep::backup_sockfds.size());
   DLOG(INFO) << "Shipping " << size << " bytes";
   for (int &fd : rep::backup_sockfds) {
