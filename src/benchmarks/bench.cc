@@ -336,9 +336,11 @@ void bench_runner::run() {
     }
     std::cerr << "Shutdown successfully" << std::endl;
   }
+
   if (config::is_backup_srv() && config::command_log && cmdlog_redoers.size()) {
     tx_stat_map agg = cmdlog_redoers[0]->get_cmdlog_txn_counts();
     for (size_t i = 1; i < cmdlog_redoers.size(); i++) {
+      cmdlog_redoers[i]->join();
       auto &c = cmdlog_redoers[i]->get_cmdlog_txn_counts();
       for (auto &t : c) {
         std::get<0>(agg[t.first]) += std::get<0>(t.second);
@@ -346,7 +348,6 @@ void bench_runner::run() {
         std::get<2>(agg[t.first]) += std::get<2>(t.second);
         std::get<3>(agg[t.first]) += std::get<3>(t.second);
       }
-      cmdlog_redoers[i]->join();
     }
     std::cerr << "cmdlog txn breakdown: "
       << util::format_list(agg.begin(), agg.end()) << std::endl;
@@ -447,6 +448,10 @@ void bench_runner::start_measurement() {
   std::thread read_view_observer;
   if (config::read_view_stat_interval_ms) {
     read_view_observer = std::move(std::thread(measure_read_view_lsn));
+  }
+
+  if (config::fake_log_write) {
+    rep::TruncateFilesInLogDir();
   }
 
   util::timer t, t_nosync;
