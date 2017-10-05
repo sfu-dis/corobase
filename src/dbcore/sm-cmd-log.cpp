@@ -16,23 +16,34 @@ std::mutex redo_mutex;
 uint64_t next_replay_offset[2] CACHE_ALIGNED;
 char *bg_buffer = nullptr;
 
+static const uint32_t kRecordSize = 256;
+
 void CommandLogManager::TryFlush() {
-  flush_cond_.notify_all();
-}
-
-uint64_t CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type, uint32_t size) {
-  ASSERT(size >= sizeof(LogRecord));
-  uint64_t off = allocated_.fetch_add(size);
-  uint64_t end_off = off + size;
-
-  if (end_off - durable_offset_ >= config::group_commit_bytes) {
+  if ((flush_status_.fetch_or(1) & 2) == 2) {
+    // First to arrive, and it's sleeping, poke it
+    std::unique_lock<std::mutex> lock(flush_mutex_);
     flush_cond_.notify_all();
   }
+}
+
+uint64_t CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type) {
+  uint64_t off = allocated_.fetch_add(kRecordSize);
+  uint64_t end_off = off + kRecordSize;
 
   LogRecord *r = (LogRecord*)&buffer_[off % buffer_size_];
-  LOG_IF(FATAL, off % buffer_size_ + size > buffer_size_);
+  LOG_IF(FATAL, off % buffer_size_ + kRecordSize > buffer_size_);
+  while (end_off - durable_offset_ > buffer_size_) {
+    TryFlush();
+  }
+  uint64_t *myoff = &tls_offsets_[thread::my_id()];
+  volatile_write(*myoff, *myoff | (1UL << 63));
+
   new (r) LogRecord(partition_id, xct_type);
   volatile_write(tls_offsets_[thread::my_id()], end_off);
+
+  if (end_off - durable_offset_ >= config::group_commit_bytes) {
+    TryFlush();
+  }
 }
 
 void CommandLogManager::BackupFlush(uint64_t new_off) {
@@ -44,12 +55,23 @@ void CommandLogManager::BackupFlush(uint64_t new_off) {
 void CommandLogManager::Flush(bool check_tls) {
   uint64_t filled_off = allocated_;
   if (check_tls) {
+    bool found = false;
+    uint64_t dirty_min = filled_off;
+    uint64_t clean_max = 0;
     for (uint32_t i = 0; i < thread::next_thread_id; i++) {
       uint64_t off = volatile_read(tls_offsets_[i]);
-      if (off && off < filled_off) {
-        filled_off = off;
+      if (!off) {
+        continue;
+      }
+      if (off >> 63) {
+        off &= ~(1UL << 63);
+        dirty_min = std::min<uint64_t>(dirty_min, off);
+        found = true;
+      } else {
+        clean_max = std::max<uint64_t>(clean_max, off);
       }
     }
+    filled_off = found ? dirty_min : clean_max;
   }
 
   uint64_t durable_off = durable_offset_;
@@ -58,22 +80,28 @@ void CommandLogManager::Flush(bool check_tls) {
     uint32_t start = durable_off % buffer_size_;
     char *buf = buffer_ + start;
     uint32_t to_write = std::min<uint32_t>(size, buffer_size_ - start);
-    if (!config::is_backup_srv()) {
-      to_write = std::min<uint32_t>(to_write, config::group_commit_bytes);
-    }
-    os_pwrite(fd_, buf, to_write, durable_off);
 
-    if (config::num_active_backups && !config::is_backup_srv()) {
-      DLOG(INFO) << "Shipping " << std::hex << durable_off << "-"
-        << durable_off + to_write << std::dec;
-      ShipLog(buf, to_write);
+    if (config::is_backup_srv()) {
+      os_pwrite(fd_, buf, to_write, durable_off);
+    } else {
+      if (config::num_active_backups > 0) {
+        DLOG(INFO) << "Shipping " << std::hex << durable_off << "-"
+          << durable_off + to_write << std::dec;
+        ShipLog(buf, to_write);
+        {
+          util::timer t;
+          logmgr->dequeue_committed_xcts(durable_off + to_write, t.get_start());
+        }
+      } else {
+        os_pwrite(fd_, buf, to_write, durable_off);
+        if (config::group_commit) {
+          util::timer t;
+          logmgr->dequeue_committed_xcts(durable_off + to_write, t.get_start());
+        }
+      }
     }
     durable_off += to_write;
     durable_offset_ = durable_off;
-    if (!config::is_backup_srv() && config::group_commit) {
-      util::timer t;
-      logmgr->dequeue_committed_xcts(durable_offset_, t.get_start());
-    }
   }
 
   std::unique_lock<std::mutex> lock(redo_mutex);
@@ -117,7 +145,6 @@ void CommandLogManager::BackgroundReplay(uint32_t redoer_id, bench_worker *worke
     }
     idx = (idx + 1) % 2;
 
-    static const uint32_t kRecordSize = 256;
     int64_t to_replay = target_offset - last_replayed;
     uint32_t off = 0;
     uint32_t size = 0;
@@ -172,7 +199,6 @@ void CommandLogManager::BackupRedo(uint32_t redoer_id, bench_worker *worker) {
 
     int64_t to_replay = target_offset - last_replayed;
     uint64_t off = volatile_read(last_replayed) % buffer_size_;
-    static const uint32_t kRecordSize = 256;
     uint32_t size = 0;
     DLOG(INFO) << "Redoer " << redoer_id << std::hex << " to replay "
       << last_replayed << "-" << target_offset << std::dec;
@@ -215,6 +241,7 @@ void CommandLogManager::ShipLog(char *buf, uint32_t size) {
     LOG_IF(FATAL, nbytes != size) << "Incomplete log shipping: " << nbytes << "/"
                                   << size;
   }
+  os_pwrite(fd_, buf, size, durable_offset_);
   for (int &fd : rep::backup_sockfds) {
     tcp::expect_ack(fd);
   }
@@ -222,17 +249,15 @@ void CommandLogManager::ShipLog(char *buf, uint32_t size) {
 
 void CommandLogManager::FlushDaemon() {
   while (!shutdown_) {
-    std::unique_lock<std::mutex> lock(flush_mutex_);
-    uint64_t filled_off = allocated_;
-    for (uint32_t i = 0; i < thread::next_thread_id; i++) {
-      uint64_t off = volatile_read(tls_offsets_[i]);
-      if (off && off < filled_off) {
-        filled_off = off;
+    while (!shutdown && !(flush_status_ & 1)) {
+      // Maybe can sleep
+      if (!(flush_status_.fetch_or(2) & 1)) {
+        std::unique_lock<std::mutex> lock(flush_mutex_);
+        const std::chrono::nanoseconds timeout(5000);
+        flush_cond_.wait_for(lock, timeout);
       }
     }
-    if (filled_off - durable_offset_ < config::group_commit_bytes) {
-      flush_cond_.wait(lock);
-    }
+    flush_status_ = 0;
     Flush();
   }
   Flush(false);

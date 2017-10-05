@@ -46,6 +46,7 @@ private:
   std::thread flusher_;
   std::condition_variable flush_cond_;
   std::mutex flush_mutex_;
+  std::atomic<uint32_t> flush_status_;
   int fd_;
 
   void ShipLog(char *buf, uint32_t size);
@@ -57,6 +58,7 @@ public:
     , shutdown_(false)
     , allocated_(0)
     , durable_offset_(0) {
+    flush_status_ = 2;
     // FIXME(tzwang): allow more flexibility
     // Ensure this so we can blindly flush the whole buffer without worrying
     // about boundaries.
@@ -86,7 +88,7 @@ public:
   uint32_t Size() { return buffer_size_; }
   void BackupFlush(uint64_t new_off);
   void FlushDaemon();
-  uint64_t Insert(uint32_t partition_id, uint32_t xct_type, uint32_t size);
+  uint64_t Insert(uint32_t partition_id, uint32_t xct_type);
   inline uint64_t GetTlsOffset() {
     return volatile_read(tls_offsets_[thread::my_id()]);
   }
