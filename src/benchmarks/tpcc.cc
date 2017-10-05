@@ -1439,7 +1439,7 @@ rc_t tpcc_worker::txn_new_order() {
   measure_txn_counters(txn, "txn_new_order");
   try_catch(db->commit_txn(txn));
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER, 256);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER);
   }
   return {RC_TRUE};
 }
@@ -1625,7 +1625,7 @@ rc_t tpcc_worker::txn_delivery() {
   measure_txn_counters(txn, "txn_delivery");
   try_catch(db->commit_txn(txn));
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY, 256);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_DELIVERY);
   }
   return {RC_TRUE};
 }
@@ -1919,7 +1919,7 @@ rc_t tpcc_worker::txn_payment() {
   measure_txn_counters(txn, "txn_payment");
   try_catch(db->commit_txn(txn));
   if (config::command_log && !config::is_backup_srv()) {
-    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT, 256);
+    CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT);
   }
   return {RC_TRUE};
 }

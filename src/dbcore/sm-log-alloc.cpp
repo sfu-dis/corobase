@@ -89,6 +89,7 @@ void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,
 void sm_log_alloc_mgr::commit_queue::push_back(uint64_t lsn,
                                                uint64_t start_time) {
   bool flush = false;
+  bool insert = true;
 retry :
   if (flush) {
     if (config::command_log) {
@@ -98,19 +99,23 @@ retry :
     }
     flush = false;
   }
-{
-  CRITICAL_SECTION(cs, lock);
-  if (items == config::group_commit_queue_length) {
-    // max_queue_length is too small?
-    flush = true;
-    goto retry;
+  if (insert) {
+    CRITICAL_SECTION(cs, lock);
+    if (items >= config::group_commit_queue_length * 0.8) {
+      flush = true;
+    }
+    if (items < config::group_commit_queue_length) {
+      uint32_t idx = (start + items) % config::group_commit_queue_length;
+      volatile_write(queue[idx].lsn, lsn);
+      volatile_write(queue[idx].start_time, start_time);
+      volatile_write(items, items + 1);
+      ASSERT(items == size());
+      insert = false;
+    }
+    if (flush) {
+      goto retry;
+    }
   }
-  uint32_t idx = (start + items) % config::group_commit_queue_length;
-  volatile_write(queue[idx].lsn, lsn);
-  volatile_write(queue[idx].start_time, start_time);
-  volatile_write(items, items + 1);
-  ASSERT(items == size());
-}
 }
 
 void sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto,
@@ -514,10 +519,10 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // memory space but still keeps the actual 'write' syscall. Use with
     // caution when log shipping is enabled: won't be able to ship log from
     // storage (only memory), so can't really do 'catch-up'.
-    if (!config::IsLoading() &&
-        config::persist_policy != config::kPersistAsync &&
-        config::fake_log_write) {
-      int unused = ftruncate(active_fd, 0);
+    if (!config::IsLoading() && config::fake_log_write) {
+      if (config::persist_policy != config::kPersistAsync || new_offset > 9 * config::GB) {
+        int unused = ftruncate(active_fd, 9 * config::GB);
+      }
     }
 
     // segment change?
