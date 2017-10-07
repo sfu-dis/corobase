@@ -33,6 +33,7 @@ struct config {
   static std::string read_view_stat_file;
   static bool command_log;
   static uint32_t command_log_buffer_mb;
+  static bool print_cpu_util;
 
   // NVRAM settings - for backup servers only, the primary doesn't care.
   static bool nvram_log_buffer;

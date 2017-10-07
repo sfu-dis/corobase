@@ -43,6 +43,7 @@ DEFINE_uint64(read_view_stat_interval_ms, 0,
   "0 means do not output");
 DEFINE_string(read_view_stat_file, "/dev/shm/ermia_read_view_stat",
   "Where to store all the read view LSN outputs. Recommend tmpfs.");
+DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false,
             "Whether to use the safe snapshot (for SSI and SSN only).");
@@ -163,6 +164,7 @@ int main(int argc, char **argv) {
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   config::state = config::kStateLoading;
+  config::print_cpu_util = FLAGS_print_cpu_util;
   config::htt_is_on = FLAGS_htt;
   config::verbose = FLAGS_verbose;
   config::node_memory_gb = FLAGS_node_memory_gb;
@@ -340,6 +342,7 @@ int main(int argc, char **argv) {
 #else
   std::cerr << "  var-encode        : no" << std::endl;
 #endif
+  std::cerr << "  print-cpu-util    : " << config::print_cpu_util << std::endl;
   std::cerr << "  log-dir           : " << config::log_dir << std::endl;
   std::cerr << "  tmpfs-dir         : " << config::tmpfs_dir << std::endl;
   std::cerr << "  log-buffer-mb     : " << config::log_buffer_mb << std::endl;
