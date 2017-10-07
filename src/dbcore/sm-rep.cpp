@@ -111,30 +111,7 @@ void BackupBackgroundReplay() {
   LOG_IF(FATAL, start_lsn == INVALID_LSN) << "Invalid start LSN";
   LSN end_lsn = logmgr->durable_flushed_lsn();
 
-  if (config::persist_policy == config::kPersistAsync) {
-    while (!config::IsShutdown()) {
-      rcu_enter();
-      DEFER(rcu_exit());
-      end_lsn = logmgr->durable_flushed_lsn();
-      if (end_lsn.offset() > start_lsn.offset()) {
-        if (end_lsn.offset() - start_lsn.offset() > config::group_commit_bytes) {
-          uint64_t end_offset = start_lsn.offset() + config::group_commit_bytes;
-          end_lsn = LSN::make(end_offset, start_lsn.segment(), INVALID_SIZE_CODE);
-        }
-        DLOG(INFO) << "To replay "  << std::hex << start_lsn.offset() << "-"
-          << end_lsn.offset() << std::dec;
-        // backup_redo_log_by_oid returns the last log block's starting LSN, so
-        // that when we hit an incomplete log block we know where to start in
-        // the next round. This is needed only for OID parallel replay (the
-        // offset based replay already have primary generated boundaries to
-        // follow).
-        LSN next_start_lsn = logmgr->backup_redo_log_by_oid(start_lsn, end_lsn);
-        LOG_IF(FATAL, next_start_lsn.offset() < start_lsn.offset());
-        volatile_write(replayed_lsn_offset, next_start_lsn.offset());
-        start_lsn = next_start_lsn;
-      }
-    }
-  } else {
+  if (config::log_ship_offset_replay) {
     while (!config::IsShutdown()) {
       for (uint32_t i = 0; i < 2; ++i) {
         ReplayPipelineStage &stage = rep::pipeline_stages[i];
@@ -175,6 +152,29 @@ void BackupBackgroundReplay() {
         start_lsn = tmp_stage.end_lsn;
       }
     }
+  } else {
+    while (!config::IsShutdown()) {
+      rcu_enter();
+      DEFER(rcu_exit());
+      end_lsn = logmgr->durable_flushed_lsn();
+      if (end_lsn.offset() > start_lsn.offset()) {
+        if (end_lsn.offset() - start_lsn.offset() > config::group_commit_bytes) {
+          uint64_t end_offset = start_lsn.offset() + config::group_commit_bytes;
+          end_lsn = LSN::make(end_offset, start_lsn.segment(), INVALID_SIZE_CODE);
+        }
+        DLOG(INFO) << "To replay "  << std::hex << start_lsn.offset() << "-"
+          << end_lsn.offset() << std::dec;
+        // backup_redo_log_by_oid returns the last log block's starting LSN, so
+        // that when we hit an incomplete log block we know where to start in
+        // the next round. This is needed only for OID parallel replay (the
+        // offset based replay already have primary generated boundaries to
+        // follow).
+        LSN next_start_lsn = logmgr->backup_redo_log_by_oid(start_lsn, end_lsn);
+        LOG_IF(FATAL, next_start_lsn.offset() < start_lsn.offset());
+        volatile_write(replayed_lsn_offset, next_start_lsn.offset());
+        start_lsn = next_start_lsn;
+      }
+    }
   }
   while (volatile_read(replayed_lsn_offset) < end_lsn.offset()) {};
 }
@@ -206,7 +206,7 @@ void BackupStartReplication() {
         std::thread t(BackupBackgroundReplay);
         t.detach();
       }
-      if (config::persist_policy != config::kPersistAsync) {
+      if (config::log_ship_offset_replay) {
         logmgr->start_logbuf_redoers();
       }
     }
@@ -355,7 +355,8 @@ void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn
   volatile_write(stage.end_lsn._val, end_lsn._val);
 
   if (config::persist_policy != config::kPersistAsync &&
-      config::replay_policy == config::kReplayBackground) {
+      config::replay_policy == config::kReplayBackground &&
+      config::log_ship_offset_replay) {
     // Spill out to storage for futher use by the background replayer
     // FIXME(tzwang): we have only used tmpfs as 'storage' so the performance
     // impact should be very small). Add some in-memory caching if needed.

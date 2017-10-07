@@ -29,10 +29,10 @@ sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
   auto *sid = get_segment(dlsn.segment());
   if (config::is_backup_srv()) {
     if (config::replay_threads > 0 && config::replay_policy != config::kReplayNone) {
-      if (config::persist_policy == config::kPersistAsync) {
-        backup_replay_functor = new parallel_oid_replay(config::replay_threads);
-      } else {
+      if (config::log_ship_offset_replay) {
         backup_replay_functor = new parallel_offset_replay;
+      } else {
+        backup_replay_functor = new parallel_oid_replay(config::replay_threads);
       }
       backup_replayer = new sm_log_scan_mgr_impl{this};
     }

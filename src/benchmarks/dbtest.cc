@@ -103,6 +103,7 @@ DEFINE_string(persist_policy, "sync",
               "async - don't care at all, i.e., asynchronous log shipping");
 DEFINE_bool(command_log, false, "Whether to use command logging.");
 DEFINE_uint64(command_log_buffer_mb, 16, "Size of command log buffer.");
+DEFINE_bool(log_ship_offset_replay, false, "Whether to parallel offset based replay.");
 
 // Options specific to backups
 DEFINE_bool(nvram_log_buffer, true, "Whether to use NVRAM-based log buffer.");
@@ -289,6 +290,7 @@ int main(int argc, char **argv) {
                  << FLAGS_recovery_warm_up;
     }
 
+    config::log_ship_offset_replay = FLAGS_log_ship_offset_replay;
     config::log_key_for_update = FLAGS_log_key_for_update;
     config::num_backups = FLAGS_num_backups;
     config::wait_for_backups = FLAGS_wait_for_backups;
@@ -361,6 +363,7 @@ int main(int argc, char **argv) {
   std::cerr << "  read_view_stat_interval : " << config::read_view_stat_interval_ms
        << "ms" << std::endl;
   std::cerr << "  read_view_stat_file     : " << config::read_view_stat_file << std::endl;
+  std::cerr << "  log_ship_offset_replay  : " << config::log_ship_offset_replay << std::endl;
 
   if (config::is_backup_srv()) {
     std::cerr << "  nvram-log-buffer  : " << config::nvram_log_buffer << std::endl;

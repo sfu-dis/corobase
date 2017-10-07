@@ -479,8 +479,7 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     if (!config::command_log &&
         config::persist_policy != config::kPersistAsync &&
         config::num_active_backups &&
-        !config::IsLoading() &&
-        !config::command_log) {
+        !config::IsLoading()) {
       PrimaryShipLog(durable_sid, nbytes, new_seg, new_offset, buf);
       if (new_seg) {
         new_seg = false;
@@ -663,8 +662,9 @@ start_over:
 
   // If adding my payload, we're crossing a log buffer partition boundary,
   // make sure the flusher knows about this location (for log shipping).
-  if (!config::IsLoading() && config::num_active_backups &&
-      !config::command_log) {
+  // Still needed even for oid-parallel replay because we need it to determine
+  // how much to ship.
+  if (!config::IsLoading() && config::num_active_backups && !config::command_log) {
     uint64_t start_partition =
         (lsn_offset / _logbuf_partition_size) % config::log_redo_partitions;
     uint64_t next_partition =
