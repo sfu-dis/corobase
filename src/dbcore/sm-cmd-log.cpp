@@ -140,8 +140,11 @@ void CommandLogManager::BackgroundReplay(uint32_t redoer_id, bench_worker *worke
   uint32_t buf_off = 0;
   while (!config::IsShutdown()) {
     uint64_t target_offset = volatile_read(next_replay_offset[idx]);
-    while (target_offset <= last_replayed) {
+    while (!config::IsShutdown() && target_offset <= last_replayed) {
       target_offset = volatile_read(next_replay_offset[idx]);
+    }
+    if (config::IsShutdown()) {
+      break;
     }
     idx = (idx + 1) % 2;
 
