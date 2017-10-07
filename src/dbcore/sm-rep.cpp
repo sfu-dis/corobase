@@ -68,22 +68,35 @@ void LogFlushDaemon() {
 void PrimaryAsyncShippingDaemon() {
   ALWAYS_ASSERT(config::persist_policy == config::kPersistAsync);
   uint64_t start_offset = logmgr->durable_flushed_lsn().offset();
-  char *buf = (char*)malloc(config::group_commit_bytes);
   // FIXME(tzwang): support segment boundary crossing
   auto* sid = logmgr->get_offset_segment(start_offset);
-  int fd = logmgr->open_segment_for_read(sid);
+  int log_fd = logmgr->open_segment_for_read(sid);
   while (!config::IsShutdown()) {
     while (logmgr->durable_flushed_lsn().offset() - start_offset < config::group_commit_bytes) {
       std::unique_lock<std::mutex> lock(async_ship_mutex);
       async_ship_cond.wait(lock);
     }
-    auto off = sid->offset(start_offset);
-    uint32_t size = os_pread(fd, buf, config::group_commit_bytes, off);
+    uint32_t size = std::min<uint64_t>(config::group_commit_bytes,
+      logmgr->durable_flushed_lsn().offset() - start_offset);
+    ALWAYS_ASSERT(size);
+    shipped_log_size += size;
+    for (int &fd : backup_sockfds) {
+      // Send real log data, size first
+      uint32_t nbytes = send(fd, (char*)&size, sizeof(uint32_t), 0);
+      LOG_IF(FATAL, nbytes != sizeof(uint32_t)) << "Incomplete log shipping (header)";
+      uint32_t to_send = size;
+      auto off = sid->offset(start_offset);
+      while (to_send) {
+        nbytes = sendfile(fd, log_fd, (off_t*)&off, to_send);
+        to_send -= nbytes;
+      }
+    }
     start_offset += size;
-    rep::primary_ship_log_buffer_all(buf, size, false, 0);
+    for (int &fd : backup_sockfds) {
+      tcp::expect_ack(fd);
+    }
   }
-  os_close(fd);
-  free(buf);
+  os_close(log_fd);
 }
 
 // The major routine that controls background async replay

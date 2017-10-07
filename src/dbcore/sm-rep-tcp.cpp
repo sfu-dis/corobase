@@ -221,11 +221,6 @@ void primary_ship_log_buffer_tcp(const char* buf, uint32_t size) {
       LOG_IF(FATAL, nbytes != bounds_size) << "Error sending bounds array";
     }
   }
-  if (config::persist_policy == config::kPersistAsync) {
-    for (int &fd : backup_sockfds) {
-      tcp::expect_ack(fd);
-    }
-  }
 }
 
 // Receives the bounds array sent from the primary.
