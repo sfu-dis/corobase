@@ -271,7 +271,7 @@ void BackupDaemonRdma() {
     WaitForLogBufferSpace(stage->end_lsn);
 
     self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive | kRdmaPersisted);
-    if (config::persist_policy != config::kPersistAsync) {
+    if (config::log_ship_offset_replay) {
       if (!BackupReceiveBoundsArrayRdma(*stage)) {
         // Actually only needed if no query workers
         rep::backup_shutdown_trigger.notify_all();
@@ -390,6 +390,8 @@ void start_as_backup_rdma() {
   config::benchmark_scale_factor = md->system_config.scale_factor;
   config::log_segment_mb = md->system_config.log_segment_mb;
   config::persist_policy = md->system_config.persist_policy;
+  config::log_ship_offset_replay = md->system_config.offset_replay;
+  LOG_IF(FATAL, md->system_config.command_log_buffer_mb > 0);
 
   logmgr = sm_log::new_log(config::recover_functor, nullptr);
   sm_oid_mgr::create();

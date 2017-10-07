@@ -188,6 +188,7 @@ void start_as_backup_tcp() {
   config::benchmark_scale_factor = md->system_config.scale_factor;
   config::log_segment_mb = md->system_config.log_segment_mb;
   config::persist_policy = md->system_config.persist_policy;
+  config::log_ship_offset_replay = md->system_config.offset_replay;
   config::command_log_buffer_mb = md->system_config.command_log_buffer_mb;
   config::command_log = config::command_log_buffer_mb > 0;
 
@@ -213,7 +214,7 @@ void primary_ship_log_buffer_tcp(const char* buf, uint32_t size) {
     LOG_IF(FATAL, nbytes != size) << "Incomplete log shipping: " << nbytes << "/"
                                   << size;
 
-    if (config::persist_policy != config::kPersistAsync) {
+    if (config::log_ship_offset_replay) {
       // Send redo partition boundary information - after sending real data
       // because we send data size=0 to indicate primary shutdown.
       const uint32_t bounds_size = sizeof(uint64_t) * config::log_redo_partitions;
@@ -330,7 +331,7 @@ void BackupDaemonTcp() {
     sm_log::logbuf->advance_writer(new_byte);  // Extends reader_end too
     ASSERT(sm_log::logbuf->available_to_read() >= size);
 
-    if (config::persist_policy != config::kPersistAsync) {
+    if (config::log_ship_offset_replay) {
       // Receive bounds array
       BackupReceiveBoundsArrayTcp(*stage);
     }

@@ -35,6 +35,7 @@ std::string config::primary_port("10000");
 bool config::htt_is_on = true;
 bool config::print_cpu_util = false;
 uint64_t config::node_memory_gb = 12;
+bool config::log_ship_offset_replay = false;
 int config::recovery_warm_up_policy = config::WARM_UP_NONE;
 int config::log_ship_warm_up_policy = config::WARM_UP_NONE;
 bool config::nvram_log_buffer = false;

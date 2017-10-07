@@ -70,6 +70,8 @@ struct config {
   // difference between pipelined/sync replay which use the pdest array.
   static bool full_replay;
 
+  static bool log_ship_offset_replay;
+
   // How does the backup replay log records?
   // Sync - replay in the critical path; ack 'persisted' only after replaying
   //        **and** persisted log records

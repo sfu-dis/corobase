@@ -87,6 +87,7 @@ struct backup_start_metadata {
     uint64_t log_segment_mb;
     uint32_t persist_policy;
     uint32_t command_log_buffer_mb;
+    bool offset_replay;
   };
 
   struct backup_config system_config;
@@ -101,6 +102,7 @@ struct backup_start_metadata {
   backup_start_metadata() : chkpt_size(0), log_size(0), num_log_files(0) {
     system_config.scale_factor = config::benchmark_scale_factor;
     system_config.log_segment_mb = config::log_segment_mb;
+    system_config.offset_replay = config::log_ship_offset_replay;
     system_config.persist_policy = config::persist_policy;
     system_config.command_log_buffer_mb = config::command_log ?
                                           config::command_log_buffer_mb : 0;
