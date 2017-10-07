@@ -791,6 +791,8 @@ install:
         MM::gc_version_chain(ptr);
       }
       return head;
+    } else {
+      MM::deallocate(*new_obj_ptr);
     }
   }
   return NULL_PTR;
