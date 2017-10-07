@@ -166,18 +166,12 @@ void BackupBackgroundReplay() {
   while (volatile_read(replayed_lsn_offset) < end_lsn.offset()) {};
 }
 
-void CommandLogFlushDaemon() {
-}
-
 void BackupStartReplication() {
   volatile_write(replayed_lsn_offset, logmgr->cur_lsn().offset());
   ALWAYS_ASSERT(oidmgr);
   logmgr->recover();
 
   if (config::command_log) {
-    std::thread flusher(CommandLogFlushDaemon);
-    flusher.detach();
-
     std::thread t(BackupDaemonTcpCommandLog);
     t.detach();
   } else {
