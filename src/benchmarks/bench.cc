@@ -450,7 +450,7 @@ void bench_runner::start_measurement() {
     read_view_observer = std::move(std::thread(measure_read_view_lsn));
   }
 
-  if (config::fake_log_write) {
+  if (config::truncate_at_bench_start) {
     rep::TruncateFilesInLogDir();
   }
 

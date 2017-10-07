@@ -76,8 +76,8 @@ DEFINE_bool(enable_chkpt, false, "Whether to enable checkpointing.");
 DEFINE_uint64(chkpt_interval, 10, "Checkpoint interval in seconds.");
 DEFINE_bool(null_log_device, false, "Whether to skip writing log records.");
 DEFINE_bool(
-    fake_log_write, false,
-    "Whether truncate the log file after writing to it (save tmpfs space).");
+    truncate_at_bench_start, false,
+    "Whether truncate the log/chkpt file written before starting benchmark (save tmpfs space).");
 DEFINE_bool(log_key_for_update, false,
             "Whether to store the key in update log records.");
 // Group (pipelined) commit related settings. The daemon will flush the log
@@ -261,7 +261,7 @@ int main(int argc, char **argv) {
     config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
     config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
     config::null_log_device = FLAGS_null_log_device;
-    config::fake_log_write = FLAGS_fake_log_write;
+    config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
 
     config::replay_threads = 0;
     config::worker_threads = FLAGS_threads;
@@ -391,7 +391,7 @@ int main(int argc, char **argv) {
     }
     std::cerr << "  enable-gc         : " << config::enable_gc << std::endl;
     std::cerr << "  null-log-device   : " << config::null_log_device << std::endl;
-    std::cerr << "  fake-log-write    : " << config::fake_log_write << std::endl;
+    std::cerr << "  truncate-at-bench-start : " << config::truncate_at_bench_start << std::endl;
     std::cerr << "  num-backups       : " << config::num_backups << std::endl;
     std::cerr << "  wait-for-backups  : " << config::wait_for_backups << std::endl;
   }

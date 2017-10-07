@@ -48,7 +48,7 @@ struct config {
   static int enable_gc;
   static uint32_t log_redo_partitions;
   static bool null_log_device;
-  static bool fake_log_write;
+  static bool truncate_at_bench_start;
   static bool group_commit;
   static uint32_t group_commit_timeout;
   static uint32_t group_commit_queue_length;  // how much to reserve

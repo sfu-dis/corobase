@@ -105,13 +105,6 @@ void primary_daemon_rdma() {
   }
   os_close(chkpt_fd);
 
-  // Save tmpfs (memory) space, use with caution for replication: will lose the
-  // ability for 'catch' up using logs from storage. Do this here before
-  // benchmark begins so we don't get hit by ftruncate-ing a large file.
-  if (config::fake_log_write) {
-    TruncateFilesInLogDir(); 
-  }
-
   // All done, start async shipping daemon if needed
   if (config::persist_policy == config::kPersistAsync) {
     primary_async_ship_daemon = std::move(std::thread(PrimaryAsyncShippingDaemon));
