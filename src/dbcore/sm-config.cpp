@@ -33,6 +33,7 @@ bool config::truncate_at_bench_start = false;
 std::string config::primary_srv("");
 std::string config::primary_port("10000");
 bool config::htt_is_on = true;
+bool config::print_cpu_util = false;
 uint64_t config::node_memory_gb = 12;
 int config::recovery_warm_up_policy = config::WARM_UP_NONE;
 int config::log_ship_warm_up_policy = config::WARM_UP_NONE;

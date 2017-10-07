@@ -422,6 +422,7 @@ void bench_runner::start_measurement() {
   fclose(file);
 
   auto get_cpu_util = [&]() {
+    ASSERT(config::print_cpu_util);
     struct tms timeSample;
     clock_t now;
     double percent;
@@ -454,9 +455,14 @@ void bench_runner::start_measurement() {
     rep::TruncateFilesInLogDir();
   }
 
+  if (config::print_cpu_util) {
+    printf("Sec,Commits,Aborts,CPU\n");
+  } else {
+    printf("Sec,Commits,Aborts\n");
+  }
+
   util::timer t, t_nosync;
   barrier_b.count_down();  // bombs away!
-  printf("Sec,Commits,Aborts,CPU\n");
 
   double total_util = 0;
   double sec_util = 0;
@@ -472,10 +478,13 @@ void bench_runner::start_measurement() {
     last_commits += sec_commits;
     last_aborts += sec_aborts;
 
-    sec_util = get_cpu_util();
-    total_util += sec_util;
-
-    printf("%lu,%lu,%lu,%.2f%%\n", slept + 1, sec_commits, sec_aborts, sec_util);
+    if (config::print_cpu_util) {
+      sec_util = get_cpu_util();
+      total_util += sec_util;
+      printf("%lu,%lu,%lu,%.2f%%\n", slept + 1, sec_commits, sec_aborts, sec_util);
+    } else {
+      printf("%lu,%lu,%lu\n", slept + 1, sec_commits, sec_aborts);
+    }
     slept++;
   };
 
