@@ -374,7 +374,7 @@ void bench_runner::measure_read_view_lsn() {
       }
       uint64_t t = std::chrono::system_clock::now().time_since_epoch() /
                    std::chrono::milliseconds(1);
-      out_file << t << "," << std::hex << lsn << "," << dlsn << std::dec << std::endl;
+      out_file << t << "," << lsn << "," << dlsn << std::endl;
       usleep(config::read_view_stat_interval_ms * 1000);
     }
   }
