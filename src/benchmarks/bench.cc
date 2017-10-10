@@ -321,6 +321,12 @@ void bench_runner::run() {
     volatile_write(config::state, config::kStateForwardProcessing);
   }
 
+  // Start a thread that dumps read view LSN
+  std::thread read_view_observer;
+  if (config::read_view_stat_interval_ms) {
+    read_view_observer = std::move(std::thread(measure_read_view_lsn));
+  }
+
   if (config::worker_threads) {
     start_measurement();
   } else {
@@ -351,6 +357,9 @@ void bench_runner::run() {
     }
     std::cerr << "cmdlog txn breakdown: "
       << util::format_list(agg.begin(), agg.end()) << std::endl;
+  }
+  if (config::read_view_stat_interval_ms) {
+    read_view_observer.join();
   }
 }
 
@@ -445,12 +454,6 @@ void bench_runner::start_measurement() {
     return percent;
   };
 
-  // Start a thread that dumps read view LSN
-  std::thread read_view_observer;
-  if (config::read_view_stat_interval_ms) {
-    read_view_observer = std::move(std::thread(measure_read_view_lsn));
-  }
-
   if (config::truncate_at_bench_start) {
     rep::TruncateFilesInLogDir();
   }
@@ -501,9 +504,6 @@ void bench_runner::start_measurement() {
   running = false;
 
   volatile_write(config::state, config::kStateShutdown);
-  if (config::read_view_stat_interval_ms) {
-    read_view_observer.join();
-  }
   for (size_t i = 0; i < config::worker_threads; i++) {
     workers[i]->join();
   }
