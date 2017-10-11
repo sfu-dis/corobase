@@ -78,6 +78,7 @@ inline uint64_t GetReadView() {
 struct backup_start_metadata {
   struct log_segment {
     segment_file_name file_name;
+    uint64_t data_start;
     uint64_t size;
   };
 
@@ -109,7 +110,7 @@ struct backup_start_metadata {
   }
 
   inline void add_log_segment(unsigned int segment, uint64_t start_offset,
-                              uint64_t end_offset, uint64_t size) {
+                              uint64_t end_offset, uint64_t data_start, uint64_t size) {
     // The filename; start_offset should already be adjusted according to
     // chkpt_start
     // so we only ship the part needed
@@ -118,6 +119,10 @@ struct backup_start_metadata {
 
     // The real size we're going to send
     segments[num_log_files].size = size;
+
+    // The actual offset in the file that will have log data
+    segments[num_log_files].data_start = data_start;
+
     ++num_log_files;
     log_size += size;
   }
