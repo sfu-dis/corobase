@@ -15,9 +15,14 @@ class RdmaNode {
   const static uint64_t kDaemonBufferSize = 128 * config::MB;
 
  private:
+  const static uint8_t kStatusBooting = 0;
+  const static uint8_t kStatusInitialized = 1;
+  const static uint8_t kStatusActive = 2;
+
   char msg_buf_[kMessageSize] CACHE_ALIGNED;
   char daemon_buf_[kDaemonBufferSize] CACHE_ALIGNED;
   rdma::context* context_;
+  uint8_t status_;
 
   // Memory region indexes - these are specific and local to the underlying
   // rdma::context; since we use a dedicated rdma::context per pair of
@@ -33,6 +38,7 @@ class RdmaNode {
  public:
   RdmaNode(bool as_primary)
       : context_(nullptr),
+        status_(kStatusBooting),
         msg_buf_ridx_(-1),
         log_buf_ridx_(-1),
         log_redo_partition_bounds_ridx_(-1),
@@ -65,6 +71,10 @@ class RdmaNode {
 
   ~RdmaNode() { delete context_; }
 
+  inline bool IsActive() { return status_ == kStatusActive; }
+  inline bool IsInitialized() { return status_ == kStatusInitialized; }
+  inline void SetActive() { status_ = kStatusActive; }
+  inline void SetInitialized() { status_ = kStatusInitialized; }
   inline char *GetClientAddress() { return client_addr_; }
   inline uint32_t GetLogBufferIndex() { return log_buf_ridx_; }
   inline uint32_t GetBoundsIndex() { return log_redo_partition_bounds_ridx_; }
