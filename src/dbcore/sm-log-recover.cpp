@@ -50,7 +50,12 @@ void sm_log_recover_mgr::recover() {
   if (chkpt_lsn.offset()) {
     sm_chkpt_mgr::recover(chkpt_lsn, this);
   }
-  redo_log(chkpt_lsn, get_durable_mark());  // till end of log
+
+  LOG(INFO) << "Will recover till " << std::hex << get_durable_mark().offset();
+  {
+    util::scoped_timer t("log_recovery", config::verbose);
+    redo_log(chkpt_lsn, get_durable_mark());  // till end of log
+  }
 }
 
 void sm_log_recover_mgr::redo_log(LSN start_lsn, LSN end_lsn) {

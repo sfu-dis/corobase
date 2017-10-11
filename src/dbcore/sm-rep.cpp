@@ -312,6 +312,7 @@ backup_start_metadata *prepare_start_metadata(int &chkpt_fd,
     if (l == 'd') {
       // durable lsn marker
       memcpy(md->durable_marker, fname, DURABLE_FILE_NAME_BUFSZ);
+      LOG(INFO) << "Will ship durable marker " << fname;
     } else if (l == 'n') {
       // nxt segment
       memcpy(md->nxt_marker, fname, NXT_SEG_FILE_NAME_BUFSZ);
