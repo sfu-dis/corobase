@@ -328,7 +328,8 @@ backup_start_metadata *prepare_start_metadata(int &chkpt_fd,
       os_close(log_fd);
       ASSERT(st.st_size);
       uint64_t size = st.st_size - chkpt_start_lsn.offset();
-      md->add_log_segment(seg, start, end, size);
+      // FIXME(tzwang): handle multiple segments
+      md->add_log_segment(seg, start, end, chkpt_start_lsn.offset(), size);
       LOG(INFO) << "Will ship segment " << seg << ", " << size << " bytes";
     } else if (l == 'c' || l == 'o' || l == '.' || l == 'm') {
       // Nothing to do or already handled

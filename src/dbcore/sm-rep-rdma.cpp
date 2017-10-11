@@ -157,15 +157,16 @@ void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
       // Ship only the part after chkpt start
       auto* seg = logmgr->get_offset_segment(start_offset);
       int log_fd = os_openat(dfd, ls->file_name.buf, O_RDONLY);
-      lseek(log_fd, start_offset - seg->start_offset, SEEK_SET);
+      uint64_t off = ls->data_start;
       while (to_send) {
         uint64_t n =
-            read(log_fd, daemon_buffer,
-                 std::min((uint64_t)RdmaNode::kDaemonBufferSize, to_send));
+            os_pread(log_fd, daemon_buffer,
+                 std::min((uint64_t)RdmaNode::kDaemonBufferSize, to_send), off);
         ALWAYS_ASSERT(n);
         self->WaitForMessageAsPrimary(kRdmaReadyToReceive);
         self->RdmaWriteImmDaemonBuffer(0, 0, n, n);
         to_send -= n;
+        off += n;
       }
       os_close(log_fd);
     }
@@ -391,7 +392,10 @@ void start_as_backup_rdma() {
   int dfd = dir.dup();
   for (uint64_t i = 0; i < md->num_log_files; ++i) {
     backup_start_metadata::log_segment* ls = md->get_log_segment(i);
+    LOG(INFO) << "Getting log segment " << ls->file_name.buf << ", "
+              << ls->size << " bytes, start at " << ls->data_start;
     uint64_t file_size = ls->size;
+    uint64_t off = ls->data_start;
     int log_fd = os_openat(dfd, ls->file_name.buf, O_CREAT | O_WRONLY);
     ALWAYS_ASSERT(log_fd > 0);
     while (file_size > 0) {
@@ -399,7 +403,8 @@ void start_as_backup_rdma() {
       uint64_t received_bytes = self_rdma_node->ReceiveImm();
       ALWAYS_ASSERT(received_bytes);
       file_size -= received_bytes;
-      os_write(log_fd, buf, received_bytes);
+      os_pwrite(log_fd, buf, received_bytes, off);
+      off += received_bytes;
     }
     os_fsync(log_fd);
     os_close(log_fd);
