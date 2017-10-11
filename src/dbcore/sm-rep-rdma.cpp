@@ -14,15 +14,21 @@ const static uint32_t kRdmaImmShutdown = 1U << 30;
 
 void primary_rdma_poll_send_cq(uint64_t nops) {
   ALWAYS_ASSERT(!config::is_backup_srv());
+  std::unique_lock<std::mutex> lock(nodes_lock);
   for (auto& n : nodes) {
-    n->PollSendCompletionAsPrimary(nops);
+    if (n->IsActive()) {
+      n->PollSendCompletionAsPrimary(nops);
+    }
   }
 }
 
 void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
   ALWAYS_ASSERT(!config::is_backup_srv());
+  std::unique_lock<std::mutex> lock(nodes_lock);
   for (auto& n : nodes) {
-    n->WaitForMessageAsPrimary(msg, reset);
+    if (n->IsActive()) {
+      n->WaitForMessageAsPrimary(msg, reset);
+    }
   }
 }
 
@@ -71,8 +77,9 @@ void bring_up_backup_rdma(RdmaNode* rn, int chkpt_fd,
   rn->RdmaWriteImmDaemonBuffer(0, 0,
     nodes.size() * INET_ADDRSTRLEN, nodes.size() * INET_ADDRSTRLEN);
 
-  // Wait for the backup to become ready for receiving log records
-  rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+  // Wait for the backup to become ready for receiving log records,
+  // but don't reset so when start to ship we still get ReadyToReceive
+  rn->WaitForMessageAsPrimary(kRdmaReadyToReceive, false);
 
   ++config::num_active_backups;
 }
@@ -105,9 +112,30 @@ void primary_daemon_rdma() {
   }
   os_close(chkpt_fd);
 
+  for (auto &rn : nodes) {
+    rn->SetActive();
+  }
+
   // All done, start async shipping daemon if needed
   if (config::persist_policy == config::kPersistAsync) {
     primary_async_ship_daemon = std::move(std::thread(PrimaryAsyncShippingDaemon));
+  }
+
+  // Expect more in case there is someone who wants to join during benchmark run
+  while (!config::IsShutdown()) {
+    RdmaNode *rn = new RdmaNode(true);
+    {
+      std::unique_lock<std::mutex> lock(nodes_lock);
+      nodes.push_back(rn);
+    }
+    auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
+    bring_up_backup_rdma(rn, chkpt_fd, md, chkpt_start_lsn);
+    // Set the node to be active after shipping the first batch for correct
+    // control flow poll
+    //rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
+    rn->SetInitialized();
+    DLOG(INFO) << "New node " << rn->GetClientAddress() << " ready to receive";
+    os_close(chkpt_fd);
   }
 }
 
@@ -253,15 +281,15 @@ void BackupDaemonRdma() {
   rcu_register();
   DEFER(rcu_deregister());
 
-  LSN start_lsn = logmgr->durable_flushed_lsn();
-  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive);
-  LOG(INFO) << "[Backup] Start to wait for logs from primary";
   received_log_size = 0;
   uint32_t recv_idx = 0;
   ReplayPipelineStage *stage = nullptr;
   if (config::replay_policy == config::kReplayBackground) {
     stage = new ReplayPipelineStage;
   }
+  LSN start_lsn = logmgr->durable_flushed_lsn();
+  self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive | kRdmaPersisted);
+  LOG(INFO) << "[Backup] Start to wait for logs from primary";
   while (!config::IsShutdown()) {
     rcu_enter();
     DEFER(rcu_exit());
@@ -411,7 +439,13 @@ void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
               << log_redo_partition_bounds[i] << std::dec;
   }
 #endif
+  std::unique_lock<std::mutex> lock(nodes_lock);
   for (auto& node : nodes) {
+    if (node->IsInitialized()) {
+      node->SetActive();
+    } else if (!node->IsActive()) {
+      continue;
+    }
     node->WaitForMessageAsPrimary(kRdmaReadyToReceive);
 
     rdma::context::write_request bounds_req;
@@ -450,14 +484,22 @@ void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
 }
 
 void primary_rdma_set_global_persisted_lsn(uint64_t lsn) {
+  std::unique_lock<std::mutex> lock(nodes_lock);
   for (auto &rn : nodes) {
+    if (!rn->IsActive()) {
+      continue;
+    }
     volatile_write(*(uint64_t*)rn->GetDaemonBuffer(), lsn);
     rn->RdmaWriteDaemonBuffer(0, 0, sizeof(uint64_t));
   }
 }
 
 void PrimaryShutdownRdma() {
+  std::unique_lock<std::mutex> lock(nodes_lock);
   for (auto& node : nodes) {
+    if (!node->IsActive()) {
+      continue;
+    }
     node->WaitForMessageAsPrimary(kRdmaReadyToReceive);
 
     // Send the shutdown signal using the bounds buffer
