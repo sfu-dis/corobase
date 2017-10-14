@@ -105,7 +105,7 @@ read_view() {
   for num_backups in 1; do
     for persist_policy in sync async; do
       sync_clock $num_backups
-      for redoers in 16; do
+      for redoers in 1 4 16; do
         for full_redo in 1; do
           run $num_backups 16 "bg" $full_redo $redoers none 0 0 $persist_policy 0 20
         done
@@ -114,7 +114,7 @@ read_view() {
 
     # cmdlog
     sync_clock $num_backups
-    for redoers in 16; do
+    for redoers in 1 4 16; do
       run $num_backups 16 "bg" 1 $redoers none 0 0 sync 1 20
     done
   done
