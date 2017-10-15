@@ -10,8 +10,6 @@ uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
 std::vector<int> backup_sockfds CACHE_ALIGNED;
 std::mutex backup_sockfds_mutex CACHE_ALIGNED;
 std::thread primary_async_ship_daemon;
-uint64_t shipped_log_size CACHE_ALIGNED;
-uint64_t log_size_for_ship CACHE_ALIGNED;
 
 // For backups only
 ReplayPipelineStage *pipeline_stages CACHE_ALIGNED;
@@ -28,8 +26,6 @@ std::mutex async_ship_mutex CACHE_ALIGNED;
 std::condition_variable async_ship_cond CACHE_ALIGNED;
 
 void start_as_primary() {
-  shipped_log_size = 0;
-  log_size_for_ship = 0;
   memset(log_redo_partition_bounds, 0,
          sizeof(uint64_t) * kMaxLogBufferPartitions);
   ALWAYS_ASSERT(not config::is_backup_srv());
@@ -79,7 +75,6 @@ void PrimaryAsyncShippingDaemon() {
     uint32_t size = std::min<uint64_t>(config::group_commit_bytes,
       logmgr->durable_flushed_lsn().offset() - start_offset);
     ALWAYS_ASSERT(size);
-    shipped_log_size += size;
     for (int &fd : backup_sockfds) {
       // Send real log data, size first
       uint32_t nbytes = send(fd, (char*)&size, sizeof(uint32_t), 0);
@@ -246,7 +241,6 @@ void primary_ship_log_buffer_all(const char *buf, uint32_t size, bool new_seg,
     primary_ship_log_buffer_tcp(buf, size);
   }
   backup_sockfds_mutex.unlock();
-  shipped_log_size += size;
 }
 
 void TruncateFilesInLogDir() {
