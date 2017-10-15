@@ -632,12 +632,6 @@ void bench_runner::start_measurement() {
       std::cerr << "agg_redo_batches: " << agg_redo_batches << std::endl;
       std::cerr << "ms_per_redo_batch: " << agg_replay_latency_ms / (double)agg_redo_batches << std::endl;
       std::cerr << "agg_redo_size: " << agg_redo_size << " bytes" << std::endl;
-      std::cerr << "received_log_size: " << rep::received_log_size << " bytes" << std::endl;
-    } else {
-      if (config::num_active_backups) {
-        std::cerr << "log_size_for_ship: " << rep::log_size_for_ship << " bytes" << std::endl;
-        std::cerr << "shipped_log_size: " << rep::shipped_log_size << " bytes" << std::endl;
-      }
     }
   }
 
