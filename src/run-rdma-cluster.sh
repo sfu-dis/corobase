@@ -36,7 +36,7 @@ run() {
   echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram group_commit_size_kb=$group_commit_size_kb
   echo "----------"
   ./run-cluster.sh SI $t 10 $t $logbuf_mb $read_view_stat tpcc_org tpccr \
-    "-log_ship_offset_replay=$offset_replay -group_commit -group_commit_queue_length=$group_commit_queue_length -group_commit_size_kb=$group_commit_size_kb -chkpt_interval=1000000 -node_memory_gb=17 -log_ship_by_rdma -truncate_at_bench_start -wait_for_backups -num_backups=$num_backups -persist_policy=sync -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
+    "-log_ship_offset_replay=$offset_replay -group_commit -group_commit_queue_length=$group_commit_queue_length -group_commit_size_kb=$group_commit_size_kb -chkpt_interval=1000000 -node_memory_gb=16 -log_ship_by_rdma -truncate_at_bench_start -wait_for_backups -num_backups=$num_backups -persist_policy=sync -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
     "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -persist_nvram_on_replay=$persist_nvram_on_replay -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat" \
     "${backups[@]:0:$num_backups}"
   echo

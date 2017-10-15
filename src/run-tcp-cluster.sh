@@ -50,7 +50,7 @@ run() {
   echo backups:$num_backups thread:$t $policy full_redo=$full redoers=$redoers delay=$delay nvram_log_buffer=$nvram group_commit_size_kb=$group_commit_size_kb command_log=$command_log
   echo "----------"
   ./run-cluster.sh SI $t $duration $t $logbuf_mb $read_view_stat tpcc_org tpccr \
-    "-log_ship_offset_replay=$offset_replay -group_commit -group_commit_size_kb=$group_commit_size_kb -chkpt_interval=1000000 -node_memory_gb=17 -log_ship_by_rdma=0 -null_log_device=$null_log_device -truncate_at_bench_start -wait_for_backups -num_backups=$num_backups -persist_policy=$persist_policy -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat -command_log=$command_log -command_log_buffer_mb=16 -group_commit_queue_length=$group_commit_queue_length" \
+    "-log_ship_offset_replay=$offset_replay -group_commit -group_commit_size_kb=$group_commit_size_kb -chkpt_interval=1000000 -node_memory_gb=16 -log_ship_by_rdma=0 -null_log_device=$null_log_device -truncate_at_bench_start -wait_for_backups -num_backups=$num_backups -persist_policy=$persist_policy -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat -command_log=$command_log -command_log_buffer_mb=16 -group_commit_queue_length=$group_commit_queue_length" \
     "-primary_host=$primary -node_memory_gb=20 -log_ship_by_rdma=0 -nvram_log_buffer=$nvram -quick_bench_start -wait_for_primary -replay_policy=$policy -full_replay=$full -replay_threads=$redoers -nvram_delay_type=$delay -read_view_stat_interval_ms=$read_view_ms -read_view_stat_file=$read_view_stat -command_log=$command_log -command_log_buffer_mb=16" \
     "${backups[@]:0:$num_backups}"
   echo
@@ -105,7 +105,7 @@ read_view() {
   for num_backups in 1; do
     for persist_policy in sync async; do
       sync_clock $num_backups
-      for redoers in 1 4 16; do
+      for redoers in 4; do
         for full_redo in 1; do
           run $num_backups 16 "bg" $full_redo $redoers none 0 0 $persist_policy 0 20
         done
