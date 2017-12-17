@@ -301,8 +301,8 @@ struct XID {
   }
 
   static XID from_ptr(fat_ptr const &p) {
-    THROW_IF(p.asi_type() != fat_ptr::ASI_XID, illegal_argument,
-             "Attempt to convert non-XID fat_ptr to XID");
+    LOG_IF(FATAL, p.asi_type() != fat_ptr::ASI_XID)
+      << "Attempt to convert non-XID fat_ptr to XID";
     return XID{p._ptr};
   }
 
