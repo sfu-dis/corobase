@@ -158,7 +158,9 @@ void transaction::abort_impl() {
   }
 
   // Read-only tx on a safesnap won't have log
-  if (log) log->discard();
+  if (log) {
+    log->discard();
+  }
 }
 
 namespace {
@@ -278,17 +280,12 @@ rc_t transaction::parallel_ssn_commit() {
       }
 
       // Note the race between reading the successor's cstamp and the successor
-      // setting
-      // its cstamp after got one from the log: the successor could have got a
-      // cstamp but
-      // hasn't stored it in its cstamp field, so here must rely on the
-      // successor's state
-      // (set before obtaining cstamp) and then spin on successor's cstamp if
-      // necessary
-      // (state is not committing). Directly reading successor's cstamp might
-      // miss
-      // successors that have already got cstamp but hasn't stored it in
-      // successor_xc->end
+      // setting its cstamp after got one from the log: the successor could
+      // have got a cstamp but hasn't stored it in its cstamp field, so here
+      // must rely on the successor's state (set before obtaining cstamp) and
+      // then spin on successor's cstamp if necessary (state is not
+      // committing). Directly reading successor's cstamp might miss successors
+      // that have already got cstamp but hasn't stored it in successor_xc->end
       // (esp. dangerous if its cstamp is smaller than mine - could miss
       // successor).
       if (successor_state == TXN::TXN_ACTIVE) {

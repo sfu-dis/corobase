@@ -100,9 +100,13 @@ inline xid_context *xid_get_context(XID x) {
   // read a consistent copy of owner (in case xid_free is destroying
   // it while we're trying to use the epoch() fields)
   XID owner = volatile_read(ctx->owner);
-  if (not owner._val) return NULL;
+  if (!owner._val) {
+    return nullptr;
+  }
   ASSERT(owner.local() == x.local());
-  if (owner.epoch() < x.epoch() or owner.epoch() >= x.epoch() + 3) return NULL;
+  if (owner.epoch() < x.epoch() or owner.epoch() >= x.epoch() + 3) {
+    return nullptr;
+  }
   return ctx;
 }
 
@@ -140,7 +144,9 @@ inline txn_state spin_for_cstamp(XID xid, xid_context *xc) {
   txn_state state;
   do {
     state = volatile_read(xc->state);
-    if (volatile_read(xc->owner) != xid) return TXN_INVALID;
+    if (volatile_read(xc->owner) != xid) {
+      return TXN_INVALID;
+    }
   } while (state != TXN_CMMTD and state != TXN_ABRTD);
   return state;
 }
