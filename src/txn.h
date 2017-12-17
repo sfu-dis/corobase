@@ -67,7 +67,7 @@ class transaction {
  public:
   typedef TXN::txn_state txn_state;
 
-#if defined(SSN) || defined(SSI)
+#if defined(SSN) || defined(SSI) || defined(MVOCC)
   typedef std::vector<dbtuple *> read_set_t;
 #endif
 
@@ -181,6 +181,9 @@ class transaction {
 #elif defined SSI
   rc_t parallel_ssi_commit();
   rc_t ssi_read(dbtuple *tuple);
+#elif defined MVOCC
+  rc_t mvocc_commit();
+  rc_t mvocc_read(dbtuple *tuple);
 #else
   rc_t si_commit();
 #endif
@@ -221,7 +224,7 @@ class transaction {
   sm_tx_log *log;
   str_arena *sa;
   write_set_t &write_set;
-#if defined(SSN) || defined(SSI)
+#if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t *read_set;
 #endif
 };
