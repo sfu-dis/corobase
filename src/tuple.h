@@ -149,8 +149,8 @@ struct dbtuple {
     ALWAYS_ASSERT(!config::is_backup_srv());
     Object *myobj = GetObject();
     ASSERT(myobj->GetPayload() == (char *)this);
-    uint64_t next_off = myobj->GetNextVolatile().offset();
-    return next_off ? GetObject()->GetPinnedTuple() : nullptr;
+    Object *next_obj = (Object*)myobj->GetNextVolatile().offset();
+    return next_obj ? next_obj->GetPinnedTuple() : nullptr;
   }
 
  private:
