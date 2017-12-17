@@ -28,6 +28,11 @@ struct dbtuple {
   uint64_t xstamp;  // access (reader) stamp (\eta), updated when reader commits
   uint64_t preader;  // did I have some reader thinking I'm old?
 #endif
+
+#ifdef MVOCC
+  fat_ptr sstamp;
+#endif
+
 #ifdef SSI
   uint64_t s2;  // smallest successor stamp of all reads performed by the tx
                 // that clobbered this version

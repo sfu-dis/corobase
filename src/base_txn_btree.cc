@@ -175,8 +175,11 @@ rc_t base_txn_btree::do_tree_put(transaction &t, const varstr *k, varstr *v,
       prev_persistent_ptr = prev_obj->GetNextPersistent();
       MM::deallocate(prev_obj_ptr);
     } else {  // prev is committed (or precommitted but in post-commit now) head
-#if defined(SSI) || defined(SSN)
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
       volatile_write(prev->sstamp, t.xc->owner.to_ptr());
+      ASSERT(prev->sstamp.asi_type() == fat_ptr::ASI_XID);
+      ASSERT(XID::from_ptr(prev->sstamp) == t.xc->owner);
+      ASSERT(tuple->NextVolatile() == prev);
 #endif
       t.add_to_write_set(tuple_array->get(oid));
       prev_persistent_ptr = prev_obj->GetPersistentAddress();

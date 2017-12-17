@@ -10,7 +10,7 @@
 #include <vector>
 #include <utility>
 
-#if defined(SSN) || defined(SSI)
+#if defined(SSN) || defined(SSI) || defined(MVOCC)
 static __thread transaction::read_set_t *tls_read_set;
 #endif
 
@@ -42,7 +42,7 @@ void transaction::initialize_read_write() {
     absent_set.clear();
   }
   write_set.clear();
-#if defined(SSN) || defined(SSI)
+#if defined(SSN) || defined(SSI) || defined(MVOCC)
   if (unlikely(not tls_read_set)) {
     tls_read_set = new read_set_t;
     tls_read_set->reserve(2000);
@@ -141,7 +141,7 @@ void transaction::abort_impl() {
     dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
     ASSERT(tuple);
     ASSERT(XID::from_ptr(tuple->GetObject()->GetClsn()) == xid);
-#if defined(SSI) || defined(SSN)
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
     if (tuple->NextVolatile()) {
       volatile_write(tuple->NextVolatile()->sstamp, NULL_PTR);
 #ifdef SSN
@@ -199,13 +199,17 @@ rc_t transaction::commit() {
   } else {
     ASSERT(log);
     xc->end = log->pre_commit().offset();
-    if (xc->end == 0) return rc_t{RC_ABORT_INTERNAL};
+    if (xc->end == 0) {
+      return rc_t{RC_ABORT_INTERNAL};
+    }
 #ifdef SSN
     return parallel_ssn_commit();
 #elif defined SSI
     return parallel_ssi_commit();
 #endif
   }
+#elif defined(MVOCC)
+  return mvocc_commit();
 #else
   return si_commit();
 #endif
@@ -998,6 +1002,121 @@ rc_t transaction::parallel_ssi_commit() {
   }
   return rc_t{RC_TRUE};
 }
+#elif defined(MVOCC)
+rc_t transaction::mvocc_commit() {
+  if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
+    return rc_t{RC_TRUE};
+  }
+
+  ASSERT(log);
+  // get clsn, abort if failed
+  xc->end = log->pre_commit().offset();
+  if (xc->end == 0) {
+    return rc_t{RC_ABORT_INTERNAL};
+  }
+
+  if (config::phantom_prot && !check_phantom()) {
+    return rc_t{RC_ABORT_PHANTOM};
+  }
+
+  // Just need to check read-set
+  for (uint32_t i = 0; i < read_set->size(); ++i) {
+    auto &r = (*read_set)[i];
+  check_backedge:
+    fat_ptr successor_clsn = volatile_read(r->sstamp);
+    if (!successor_clsn.offset()) {
+      continue;
+    }
+
+    // Already overwritten, see if this is a back-edge, i.e., committed before
+    // me
+    if (successor_clsn.asi_type() == fat_ptr::ASI_LOG) {
+      if (successor_clsn.offset() < xc->end) {
+        return rc_t{RC_ABORT_SERIAL};
+      }
+    } else {
+      XID successor_xid = XID::from_ptr(successor_clsn);
+      TXN::xid_context *successor_xc = TXN::xid_get_context(successor_xid);
+      if (!successor_xc) {
+        goto check_backedge;
+      }
+      if (volatile_read(successor_xc->owner) == xc->owner) {  // myself
+        continue;
+      }
+      auto successor_state = volatile_read(successor_xc->state);
+      if (!successor_xc->verify_owner(successor_xid)) {
+        goto check_backedge;
+      }
+      if (successor_state == TXN::TXN_ACTIVE) {
+        // Not yet in pre-commit, skip
+        continue;
+      }
+      // Already in pre-commit or committed, definitely has (or will have)
+      // cstamp
+      uint64_t successor_end = 0;
+      bool should_continue = false;
+      while (!successor_end) {
+        auto s = volatile_read(successor_xc->end);
+        successor_state = volatile_read(successor_xc->state);
+        if (not successor_xc->verify_owner(successor_xid)) {
+          goto check_backedge;
+        }
+        if (successor_state == TXN::TXN_ABRTD) {
+          // If there's a new overwriter, it must have a cstamp larger than mine
+          should_continue = true;
+          break;
+        }
+        ALWAYS_ASSERT(successor_state == TXN::TXN_CMMTD ||
+                      successor_state == TXN::TXN_COMMITTING);
+        successor_end = s;
+      }
+      if (should_continue) {
+        continue;
+      }
+      if (successor_end < xc->end) {
+        return rc_t{RC_ABORT_SERIAL};
+      }
+    }
+  }
+
+  log->commit(NULL);  // will populate log block
+
+  // post-commit cleanup: install clsn to tuples
+  // (traverse write-tuple)
+  // stuff clsn in tuples in write-set
+  auto clsn = xc->end;
+  for (uint32_t i = 0; i < write_set.size(); ++i) {
+    auto &w = write_set[i];
+    Object *object = w.get_object();
+    dbtuple *tuple = (dbtuple *)object->GetPayload();
+    ASSERT(w.entry);
+    tuple->do_write();
+    dbtuple *overwritten_tuple = tuple->NextVolatile();
+    fat_ptr clsn_ptr =
+        LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
+    if (overwritten_tuple) {
+      ASSERT(overwritten_tuple->sstamp.asi_type() == fat_ptr::ASI_XID);
+      ASSERT(XID::from_ptr(overwritten_tuple->sstamp) == xid);
+      volatile_write(overwritten_tuple->sstamp, clsn_ptr);
+      ASSERT(overwritten_tuple->sstamp.asi_type() == fat_ptr::ASI_LOG);
+      ASSERT(overwritten_tuple->sstamp.offset() == clsn_ptr.offset());
+    }
+    object->SetClsn(clsn_ptr);
+    ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+#ifndef NDEBUG
+    Object *obj = tuple->GetObject();
+    fat_ptr pdest = obj->GetPersistentAddress();
+    ASSERT((pdest == NULL_PTR and not tuple->size) or
+           (pdest.asi_type() == fat_ptr::ASI_LOG));
+#endif
+  }
+
+  // NOTE: make sure this happens after populating log block,
+  // otherwise readers will see inconsistent data!
+  // This is where (committed) tuple data are made visible to readers
+  volatile_write(xc->state, TXN::TXN_CMMTD);
+  return rc_t{RC_TRUE};
+}
 #else
 rc_t transaction::si_commit() {
   if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
@@ -1173,16 +1292,22 @@ rc_t transaction::do_tuple_read(dbtuple *tuple, varstr *out_v) {
           XID::from_ptr(tuple->GetObject()->GetClsn()) == xc->owner));
   ASSERT(not read_my_own or not(flags & TXN_FLAG_READ_ONLY));
 
-#if defined(SSI) || defined(SSN)
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
   if (not read_my_own) {
     rc_t rc = {RC_INVALID};
-    if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY))
-      rc = {RC_TRUE};
-    else {
+    if (flags & TXN_FLAG_READ_ONLY) {
+#if defined(SSI) || defined(SSN)
+      if (config::enable_safesnap) {
+        return rc_t{RC_TRUE};
+      }
+#endif
+    } else {
 #ifdef SSN
       rc = ssn_read(tuple);
-#else
+#elif defined(SSI)
       rc = ssi_read(tuple);
+#else
+      rc = mvocc_read(tuple);
 #endif
     }
     if (rc_is_abort(rc)) return rc;
@@ -1302,5 +1427,11 @@ rc_t transaction::ssi_read(dbtuple *tuple) {
     read_set->emplace_back(tuple);
   }
   return {RC_TRUE};
+}
+#endif
+
+#ifdef MVOCC
+rc_t transaction::mvocc_read(dbtuple *tuple) {
+  read_set->emplace_back(tuple);
 }
 #endif
