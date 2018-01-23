@@ -2,7 +2,13 @@
 
 Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
 
-For more information, you may refer to our SIGMOD'16 paper (https://github.com/ermia-db/ermia/raw/master/ermia.pdf)
+See our SIGMOD'16 paper [1] for a description of the system, our VLDBJ paper [2] for details in concurrency control, and our VLDB paper for replication.
+
+\[1\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://github.com/ermia-db/ermia/raw/master/ermia.pdf). SIGMOD 2016.
+
+\[2\] Tianzheng Wang, Ryan Johnson, Alan Fekete and Ippokratis Pandis. [Efficiently making (almost) any concurrency control mechanism serializable](https://link.springer.com/article/10.1007/s00778-017-0463-8). The VLDB Journal, Volume 26, Issue 4. 2017. [preprint](https://arxiv.org/pdf/1605.04292.pdf).
+
+\[3\] Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [Query Fresh: Log Shipping on Steroids](http://www.vldb.org/pvldb/vol11/p406-wang.pdf). VLDB 2018.
 
 #### Environment configurations
 
