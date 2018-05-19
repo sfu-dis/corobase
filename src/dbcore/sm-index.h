@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-//#include "../txn.h"
 #include "sm-common.h"
 #include "sm-oid.h"
 
