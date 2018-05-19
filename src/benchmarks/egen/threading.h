@@ -70,14 +70,14 @@ template<typename T>
 class Thread : public ThreadBase
 {
     private:
-        std::auto_ptr<T> obj_;
+        std::unique_ptr<T> obj_;
         TThread tid_;
 #ifndef WIN32
         TThreadAttr attr_;
 #endif
         int stacksize_;
     public:
-        Thread(std::auto_ptr<T> throbj)
+        Thread(std::unique_ptr<T> throbj)
         : obj_(throbj)
         , tid_()
 #ifndef WIN32
@@ -89,7 +89,7 @@ class Thread : public ThreadBase
 	    pthread_attr_init(&attr_);
 #endif
         }
-        Thread(std::auto_ptr<T> throbj, int stacksize)
+        Thread(std::unique_ptr<T> throbj, int stacksize)
         : obj_(throbj)
         , tid_()
 #ifndef WIN32
