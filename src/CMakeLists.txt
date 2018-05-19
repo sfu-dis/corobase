@@ -38,29 +38,32 @@ set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/base_txn_btree.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tuple.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/varint.cc
 )
 
 get_property(TMP_ALL_ERMIA_SRC GLOBAL PROPERTY ALL_ERMIA_SRC)
 
 # SI
-add_executable(ermia_SI ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-target_link_libraries(ermia_SI ${LINK_FLAGS})
+add_library(ermia_si SHARED ${TMP_ALL_ERMIA_SRC})
+add_executable(ermia_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+target_link_libraries(ermia_SI ermia_si ${LINK_FLAGS})
 
 # SI+SSN
+add_library(ermia_si_ssn SHARED ${TMP_ALL_ERMIA_SRC})
 add_executable(ermia_SI_SSN ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(ermia_SI_SSN ${LINK_FLAGS})
+target_link_libraries(ermia_SI_SSN ermia_si_ssn ${LINK_FLAGS})
 
 # SSI
 add_executable(ermia_SSI ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+add_library(ermia_ssi SHARED ${TMP_ALL_ERMIA_SRC})
 set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
-target_link_libraries(ermia_SSI ${LINK_FLAGS})
+target_link_libraries(ermia_SSI ermia_ssi ${LINK_FLAGS})
 
 # MVOCC
 add_executable(ermia_MVOCC ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+add_library(ermia_mvocc SHARED ${TMP_ALL_ERMIA_SRC})
 set_target_properties(ermia_MVOCC PROPERTIES COMPILE_FLAGS "-DMVOCC")
-target_link_libraries(ermia_MVOCC ${LINK_FLAGS})
+target_link_libraries(ermia_MVOCC ermia_mvocc ${LINK_FLAGS})
 
 # Benchmark scripts
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
