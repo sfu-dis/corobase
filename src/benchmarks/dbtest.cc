@@ -11,13 +11,7 @@
 #include <unistd.h>
 #include <sys/sysinfo.h>
 
-#include "../dbcore/sm-alloc.h"
-#include "../dbcore/sm-config.h"
-#include "../dbcore/sm-log-recover-impl.h"
-#include "../dbcore/sm-rep.h"
-#include "../dbcore/sm-thread.h"
 #include "bench.h"
-#include "ndb_wrapper.h"
 
 #if defined(SSI) && defined(SSN)
 #error "SSI + SSN?"
