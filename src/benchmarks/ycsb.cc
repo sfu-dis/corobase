@@ -13,10 +13,6 @@
 #include <getopt.h>
 #include <numa.h>
 
-#include "../macros.h"
-#include "../util.h"
-#include "../spinbarrier.h"
-
 #include "bench.h"
 #include "ycsb.h"
 
