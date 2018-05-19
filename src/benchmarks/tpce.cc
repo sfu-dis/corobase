@@ -9,9 +9,6 @@
 #include <getopt.h>
 #include <vector>
 
-#include "../txn.h"
-#include "../macros.h"
-
 #include "bench.h"
 #include "tpce.h"
 

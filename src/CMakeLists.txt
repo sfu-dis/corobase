@@ -62,7 +62,9 @@ add_executable(ermia_MVOCC ${TMP_ALL_ERMIA_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/benc
 set_target_properties(ermia_MVOCC PROPERTIES COMPILE_FLAGS "-DMVOCC")
 target_link_libraries(ermia_MVOCC ${LINK_FLAGS})
 
-# run script
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/run2.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/run-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
+# Benchmark scripts
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run2.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-rdma-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-tcp-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})

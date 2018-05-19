@@ -16,12 +16,6 @@
 #include <set>
 #include <vector>
 
-#include "../dbcore/sm-cmd-log.h"
-
-#include "../txn.h"
-#include "../macros.h"
-#include "../small_unordered_map.h"
-
 #include "bench.h"
 #include "tpcc.h"
 

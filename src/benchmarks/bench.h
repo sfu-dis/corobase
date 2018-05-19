@@ -11,6 +11,8 @@
 
 #include "ndb_wrapper.h"
 #include "ordered_index.h"
+#include "../small_unordered_map.h"
+
 #include "../macros.h"
 #include "../txn.h"
 #include "../util.h"
@@ -18,6 +20,7 @@
 #include "../dbcore/sm-config.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/serial.h"
+#include "../dbcore/sm-cmd-log.h"
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/sm-oid.h"
