@@ -279,8 +279,8 @@ LSN BackupReceiveLogData(LSN& start_lsn, uint64_t &size) {
 
 void BackupDaemonRdma() {
   ALWAYS_ASSERT(logmgr);
-  rcu_register();
-  DEFER(rcu_deregister());
+  RCU::rcu_register();
+  DEFER(RCU::rcu_deregister());
 
   received_log_size = 0;
   uint32_t recv_idx = 0;
@@ -292,8 +292,8 @@ void BackupDaemonRdma() {
   self_rdma_node->SetMessageAsBackup(kRdmaReadyToReceive | kRdmaPersisted);
   LOG(INFO) << "[Backup] Start to wait for logs from primary";
   while (!config::IsShutdown()) {
-    rcu_enter();
-    DEFER(rcu_exit());
+    RCU::rcu_enter();
+    DEFER(RCU::rcu_exit());
     if (config::replay_policy != config::kReplayBackground) {
       stage = &pipeline_stages[recv_idx];
     }

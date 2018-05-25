@@ -257,8 +257,8 @@ void BackupReceiveBoundsArrayTcp(ReplayPipelineStage& pipeline_stage) {
 
 void BackupDaemonTcp() {
   ALWAYS_ASSERT(logmgr);
-  rcu_register();
-  DEFER(rcu_deregister());
+  RCU::rcu_register();
+  DEFER(RCU::rcu_deregister());
 
   global_persisted_lsn_ptr = &global_persisted_lsn_tcp;
   global_persisted_lsn_tcp = logmgr->cur_lsn().offset();
@@ -278,8 +278,8 @@ void BackupDaemonTcp() {
     stage = new ReplayPipelineStage;
   }
   while (true) {
-    rcu_enter();
-    DEFER(rcu_exit());
+    RCU::rcu_enter();
+    DEFER(RCU::rcu_exit());
     if (config::replay_policy != config::kReplayBackground) {
       stage = &pipeline_stages[recv_idx];
       recv_idx = (recv_idx + 1) % 2;
@@ -371,8 +371,8 @@ void PrimaryShutdownTcp() {
 void BackupDaemonTcpCommandLog() {
   ALWAYS_ASSERT(CommandLog::cmd_log);
   ALWAYS_ASSERT(cctx);
-  rcu_register();
-  DEFER(rcu_deregister());
+  RCU::rcu_register();
+  DEFER(RCU::rcu_deregister());
   tcp::send_ack(cctx->server_sockfd);
   uint32_t buf_size = CommandLog::cmd_log->Size();
 
