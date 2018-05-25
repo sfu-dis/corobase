@@ -20,9 +20,9 @@
 #include "dbcore/sm-oid.h"
 
 #include "macros.h"
-#include "prefetch.h"
 #include "util.h"
 
+#include "masstree/compiler.hh"
 #include "masstree/masstree_insert.hh"
 #include "masstree/masstree_remove.hh"
 #include "masstree/masstree_scan.hh"
@@ -40,12 +40,6 @@ class simple_threadinfo {
    public:
     virtual void operator()(simple_threadinfo &ti) = 0;
   };
-
- private:
-  static inline void rcu_callback_function(void *p) {
-    simple_threadinfo ti(0);  // FIXME(tzwang): put a meaningful epoch here
-    static_cast<rcu_callback *>(p)->operator()(ti);
-  }
 
  public:
   // XXX Correct node timstamps are needed for recovery, but for no other

@@ -2,9 +2,9 @@
 
 #include "macros.h"
 #include "dbcore/sm-common.h"
+#include "util.h"
 
 #ifdef MASSTREE
-#include "prefetch.h"
 #include "masstree/string_slice.hh"
 #endif
 

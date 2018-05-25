@@ -539,7 +539,6 @@ inline void atomic_or(unsigned long* object, int addend) {
 }
 
 // prefetch instruction
-#if !PREFETCH_DEFINED
 inline void prefetch(const void* ptr) {
 #ifdef NOPREFETCH
   (void)ptr;
@@ -548,7 +547,6 @@ inline void prefetch(const void* ptr) {
   asm volatile("prefetcht0 %0" : : "m"(*(const cacheline_t*)ptr));
 #endif
 }
-#endif
 
 inline void prefetchnta(const void* ptr) {
 #ifdef NOPREFETCH

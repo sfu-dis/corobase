@@ -5,7 +5,6 @@
 #include <stdint.h>
 #include "serializer.h"
 #include "../util.h"
-#include "../ndb_type_traits.h"
 
 #ifdef MASSTREE
 #include "../masstree/str.hh"
@@ -88,10 +87,10 @@ static inline size_t Size(const T &t) {
   if (this->name != other.name) return false;
 
 #define STRUCT_PARAM_FIRST_X(tpe, name) \
-  typename private_::typeutil<tpe>::func_param_type name
+  const tpe& name
 
 #define STRUCT_PARAM_REST_X(tpe, name) \
-  , typename private_::typeutil<tpe>::func_param_type name
+  , const tpe& name
 
 #define STRUCT_INITLIST_FIRST_X(tpe, name) name(name)
 
@@ -419,12 +418,6 @@ static inline size_t Size(const T &t) {
       << "}";                                                                  \
     return o;                                                                  \
   }                                                                            \
-  namespace private_ {                                                         \
-  template <>                                                                  \
-  struct is_trivially_destructible<name::key> {                                \
-    static const bool value = true;                                            \
-  };                                                                           \
-  }                                                                            \
   template <>                                                                  \
   struct encoder<name::key> {                                                  \
     inline void encode_write(uint8_t *buf,                                     \
@@ -464,12 +457,6 @@ static inline size_t Size(const T &t) {
     DO_STRUCT_COMMON(name::key)                                                \
     DO_STRUCT_ENCODE_REST(name::key)                                           \
   };                                                                           \
-  namespace private_ {                                                         \
-  template <>                                                                  \
-  struct is_trivially_destructible<name::value> {                              \
-    static const bool value = true;                                            \
-  };                                                                           \
-  }                                                                            \
   template <>                                                                  \
   struct encoder<name::value> {                                                \
     inline void encode_write(uint8_t *buf,                                     \
