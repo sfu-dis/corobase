@@ -2,7 +2,6 @@
 
 #include "benchmarks/ndb_wrapper.h"
 #include "benchmarks/ordered_index.h"
-#include "small_unordered_map.h"
 
 #include "txn.h"
 #include "util.h"

@@ -2101,7 +2101,7 @@ class order_line_scan_callback : public OrderedIndex::scan_callback {
     return true;
   }
   size_t n;
-  small_unordered_map<uint, bool, 512> s_i_ids;
+  std::unordered_map<uint, bool> s_i_ids;
 };
 
 rc_t tpcc_worker::txn_stock_level() {
@@ -2149,7 +2149,7 @@ rc_t tpcc_worker::txn_stock_level() {
                          &Encode(str(Size(k_ol_1)), k_ol_1), c, s_arena.get()));
   }
   {
-    small_unordered_map<uint, bool, 512> s_i_ids_distinct;
+    std::unordered_map<uint, bool> s_i_ids_distinct;
     for (auto &p : c.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
       stock::value v_s;
