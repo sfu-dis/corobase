@@ -11,8 +11,6 @@
 #include "sm-log.h"
 
 #include "adler.h"
-#include "cslist.h"
-#include "rcu-slist.h"
 #include "stub-impl.h"
 #include "window-buffer.h"
 

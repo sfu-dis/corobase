@@ -364,16 +364,16 @@ void bench_runner::run() {
 }
 
 void bench_runner::measure_read_view_lsn() {
-  rcu_register();
-  DEFER(rcu_deregister());
+  RCU::rcu_register();
+  DEFER(RCU::rcu_deregister());
   std::ofstream out_file(config::read_view_stat_file, std::ios::out | std::ios::trunc);
   LOG_IF(FATAL, !out_file.is_open()) << "Read view stat file not open";
   DEFER(out_file.close());
   out_file << "Time,LSN,DLSN" << std::endl;
   while (!config::IsShutdown()) {
     while (config::IsForwardProcessing()) {
-      rcu_enter();
-      DEFER(rcu_exit());
+      RCU::rcu_enter();
+      DEFER(RCU::rcu_exit());
       uint64_t lsn = 0;
       uint64_t dlsn = logmgr->durable_flushed_lsn().offset();
       if (config::is_backup_srv()) {

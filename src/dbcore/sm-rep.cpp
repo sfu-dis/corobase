@@ -40,10 +40,10 @@ void start_as_primary() {
 
 void LogFlushDaemon() {
   new_end_lsn_offset = 0;
-  rcu_register();
-  DEFER(rcu_deregister());
-  rcu_enter();
-  DEFER(rcu_exit());
+  RCU::rcu_register();
+  DEFER(RCU::rcu_deregister());
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
   uint64_t dlsn = logmgr->durable_flushed_lsn().offset();
   while (true) {
     uint64_t lsn = volatile_read(new_end_lsn_offset);
@@ -97,8 +97,8 @@ void PrimaryAsyncShippingDaemon() {
 // The major routine that controls background async replay
 void BackupBackgroundReplay() {
   LOG_IF(FATAL, config::command_log);
-  rcu_register();
-  DEFER(rcu_deregister());
+  RCU::rcu_register();
+  DEFER(RCU::rcu_deregister());
   LOG_IF(FATAL, replay_bounds_fd <= 0);
   const uint32_t read_size = config::log_redo_partitions * sizeof(uint64_t);
   off_t off = 0;
@@ -149,8 +149,8 @@ void BackupBackgroundReplay() {
     }
   } else {
     while (!config::IsShutdown()) {
-      rcu_enter();
-      DEFER(rcu_exit());
+      RCU::rcu_enter();
+      DEFER(RCU::rcu_exit());
       end_lsn = logmgr->durable_flushed_lsn();
       if (end_lsn.offset() > start_lsn.offset()) {
         if (end_lsn.offset() - start_lsn.offset() > config::group_commit_bytes) {

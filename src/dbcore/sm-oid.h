@@ -4,7 +4,6 @@
 #include "epoch.h"
 #include "sm-common.h"
 #include "sm-oid-alloc-impl.h"
-#include "sm-heap.h"
 #include "sm-log.h"
 
 #include "dynarray.h"

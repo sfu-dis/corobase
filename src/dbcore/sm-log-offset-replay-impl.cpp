@@ -144,10 +144,10 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
     ranges = new redo_range[config::log_redo_partitions];
   }
 
-  rcu_register();
-  DEFER(rcu_deregister());
-  rcu_enter();
-  DEFER(rcu_exit());
+  RCU::rcu_register();
+  DEFER(RCU::rcu_deregister());
+  RCU::rcu_enter();
+  DEFER(RCU::rcu_exit());
 
   while (true) {
     for (uint32_t i = 0; i < 2; ++i) {
