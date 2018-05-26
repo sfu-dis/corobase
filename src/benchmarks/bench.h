@@ -1,23 +1,12 @@
 #pragma once
 
-#include <stdint.h>
-
-#include <map>
+#include <set>
 #include <vector>
 #include <utility>
 #include <string>
 
-#include <gflags/gflags.h>
-
 #include "../ermia.h"
-
-#include <stdio.h>
-#include <sys/mman.h>      // Needed for mlockall()
-#include <sys/time.h>      // needed for getrusage
-#include <sys/resource.h>  // needed for getrusage
-#include <numa.h>
-#include <vector>
-#include <set>
+#include "../dbcore/sm-log-alloc.h"
 
 extern void ycsb_do_test(ermia::Database *db, int argc, char **argv);
 extern void tpcc_do_test(ermia::Database *db, int argc, char **argv);

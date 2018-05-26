@@ -1,14 +1,6 @@
 #pragma once
 
 #include <map>
-#include <unordered_map>
-
-#include "dbcore/rcu.h"
-#include "dbcore/serial.h"
-#include "dbcore/sm-cmd-log.h"
-#include "dbcore/sm-alloc.h"
-#include "dbcore/sm-rep.h"
-#include "dbcore/sm-thread.h"
 
 #include "base_txn_btree.h"
 #include "spinbarrier.h"
@@ -149,6 +141,4 @@ class OrderedIndex {
   base_txn_btree tree_;
   IndexDescriptor *descriptor_;
 };
-
-
 }  // namespace ermia
