@@ -16,6 +16,8 @@
 #include <set>
 #include <vector>
 
+#include "../dbcore/sm-cmd-log.h"
+
 #include "bench.h"
 #include "tpcc.h"
 

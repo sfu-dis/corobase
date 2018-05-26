@@ -1,17 +1,14 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <vector>
 #include <utility>
 #include <string>
-#include <set>
 
-#include <getopt.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/sysinfo.h>
+#include <gflags/gflags.h>
 
 #include "bench.h"
+#include "../dbcore/sm-log-recover-impl.h"
+#include "../dbcore/sm-rep.h"
 
 #if defined(SSI) && defined(SSN)
 #error "SSI + SSN?"
