@@ -1,4 +1,3 @@
-// -*- mode:c++ -*-
 #pragma once
 
 #include "epoch.h"
@@ -9,6 +8,8 @@
 #include "dynarray.h"
 
 #include "../tuple.h"
+
+namespace ermia {
 
 typedef epoch_mgr::epoch_num epoch_num;
 
@@ -293,3 +294,4 @@ struct sm_oid_mgr {
 };
 
 extern sm_oid_mgr *oidmgr;
+}  // namespace ermia

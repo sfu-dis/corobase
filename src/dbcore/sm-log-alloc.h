@@ -3,6 +3,8 @@
 #include <deque>
 #include "sm-log-recover.h"
 
+namespace ermia {
+
 /* The log block allocator.
 
    Once an LSN has been generated, we need to allocate buffer space
@@ -168,3 +170,4 @@ struct sm_log_alloc_mgr {
   };
   commit_queue *_commit_queue CACHE_ALIGNED;
 };
+}  // namespace ermia

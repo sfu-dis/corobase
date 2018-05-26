@@ -7,6 +7,8 @@
 #include <cstring>
 #include <unistd.h>
 
+namespace ermia {
+
 sm_log_recover_mgr::sm_log_recover_mgr(sm_log_recover_impl *rf, void *rf_arg)
     : sm_log_offset_mgr(),
       scanner(new sm_log_scan_mgr_impl{this}),
@@ -488,12 +490,12 @@ static bool load_object(sm_log_recover_mgr *lm,
 bool sm_log_scan_mgr::header_scan::load_object(fat_ptr &pdest, char *buf,
                                                size_t bufsz) {
   auto *impl = get_impl(this);
-  return ::load_object(impl->lm, impl->scan, pdest, buf, bufsz);
+  return ermia::load_object(impl->lm, impl->scan, pdest, buf, bufsz);
 }
 void sm_log_scan_mgr::record_scan::load_object(char *buf, size_t bufsz) {
   fat_ptr dummy;
   auto *impl = get_impl(this);
-  auto rval = ::load_object(impl->lm, impl->scan, dummy, buf, bufsz);
+  auto rval = ermia::load_object(impl->lm, impl->scan, dummy, buf, bufsz);
   THROW_IF(not rval, illegal_argument,
            "Request to load object not resident in the log");
 }
@@ -542,3 +544,4 @@ void sm_log_scan_mgr::load_object(char *buf, size_t bufsz, fat_ptr ptr,
 fat_ptr sm_log_scan_mgr::load_ext_pointer(fat_ptr ptr) {
   return get_impl(this)->lm->load_ext_pointer(ptr);
 }
+}  // namespace ermia

@@ -1,5 +1,7 @@
 #include "sm-index.h"
-#include "../benchmarks/ordered_index.h"
+#include "../ermia.h"
+
+namespace ermia {
 
 std::unordered_map<std::string, IndexDescriptor*> IndexDescriptor::name_map;
 std::unordered_map<FID, IndexDescriptor*> IndexDescriptor::fid_map;
@@ -72,3 +74,4 @@ void IndexDescriptor::Recover(FID tuple_fid, FID aux_fid, OID himark) {
   // Refresh the array pointers in the tree (for conveinence only)
   index_->SetArrays();
 }
+}  // namespace ermia

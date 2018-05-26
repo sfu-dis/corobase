@@ -1,6 +1,4 @@
-// -*- mode:c++ -*-
-#ifndef __WINDOW_BUFFER_H
-#define __WINDOW_BUFFER_H
+#pragma once
 
 #include <cstddef>
 #include <stdint.h>
@@ -8,6 +6,8 @@
 #include <glog/logging.h>
 
 #include "sm-exceptions.h"
+
+namespace ermia {
 
 /* A window buffer implementation that maintains a fixed-size
    sliding window over a large or infinite stream of data.
@@ -145,4 +145,4 @@ struct window_buffer {
   char *_data;
 };
 
-#endif
+}  // namespace ermia

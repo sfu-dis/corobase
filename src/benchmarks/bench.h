@@ -19,9 +19,9 @@
 #include <vector>
 #include <set>
 
-extern void ycsb_do_test(ndb_wrapper *db, int argc, char **argv);
-extern void tpcc_do_test(ndb_wrapper *db, int argc, char **argv);
-extern void tpce_do_test(ndb_wrapper *db, int argc, char **argv);
+extern void ycsb_do_test(ermia::Database *db, int argc, char **argv);
+extern void tpcc_do_test(ermia::Database *db, int argc, char **argv);
+extern void tpce_do_test(ermia::Database *db, int argc, char **argv);
 
 enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
 
@@ -40,15 +40,15 @@ static std::vector<T> unique_filter(const std::vector<T> &v) {
   return ret;
 }
 
-class bench_loader : public thread::sm_runner {
+class bench_loader : public ermia::thread::sm_runner {
  public:
-  bench_loader(unsigned long seed, ndb_wrapper *db,
-               const std::map<std::string, OrderedIndex *> &open_tables)
+  bench_loader(unsigned long seed, ermia::Database *db,
+               const std::map<std::string, ermia::OrderedIndex *> &open_tables)
       : sm_runner(), r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load. The way we
     // reuse
     // threads relies on this fact (see bench_runner::run()).
-    txn_obj_buf = (transaction *)malloc(sizeof(transaction));
+    txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
   }
 
   virtual ~bench_loader() {}
@@ -58,25 +58,25 @@ class bench_loader : public thread::sm_runner {
   virtual void my_work(char *) { load(); }
 
  protected:
-  inline transaction *txn_buf() { return txn_obj_buf; }
+  inline ermia::transaction *txn_buf() { return txn_obj_buf; }
   virtual void load() = 0;
 
   util::fast_random r;
-  ndb_wrapper *const db;
-  std::map<std::string, OrderedIndex *> open_tables;
-  transaction *txn_obj_buf;
+  ermia::Database *const db;
+  std::map<std::string, ermia::OrderedIndex *> open_tables;
+  ermia::transaction *txn_obj_buf;
   str_arena arena;
 };
 
 typedef std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tx_stat;
 typedef std::map<std::string, tx_stat> tx_stat_map;
 
-class bench_worker : public thread::sm_runner {
-  friend class sm_log_alloc_mgr;
+class bench_worker : public ermia::thread::sm_runner {
+  friend class ermia::sm_log_alloc_mgr;
 
  public:
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
-               ndb_wrapper *db, const std::map<std::string, OrderedIndex *> &open_tables,
+               ermia::Database *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
       : sm_runner(),
         worker_id(worker_id),
@@ -99,7 +99,7 @@ class bench_worker : public thread::sm_runner {
         ntxn_rw_aborts(0),
         ntxn_phantom_aborts(0),
         ntxn_query_commits(0) {
-    txn_obj_buf = (transaction *)malloc(sizeof(transaction));
+    txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
     try_impersonate();
   }
 
@@ -161,15 +161,6 @@ class bench_worker : public thread::sm_runner {
   const tx_stat_map get_txn_counts() const;
   const tx_stat_map get_cmdlog_txn_counts() const;
 
-  typedef ndb_wrapper::counter_map counter_map;
-  typedef ndb_wrapper::txn_counter_map txn_counter_map;
-
-#ifdef ENABLE_BENCH_TXN_COUNTERS
-  inline txn_counter_map get_local_txn_counters() const {
-    return local_txn_counters;
-  }
-#endif
-
   void do_workload_function(uint32_t i);
   void do_cmdlog_redo_workload_function(uint32_t i, void *param);
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t);
@@ -178,13 +169,13 @@ class bench_worker : public thread::sm_runner {
   virtual void my_work(char *);
 
  protected:
-  inline transaction *txn_buf() { return txn_obj_buf; }
+  inline ermia::transaction *txn_buf() { return txn_obj_buf; }
 
   unsigned int worker_id;
   bool is_worker;
   util::fast_random r;
-  ndb_wrapper *const db;
-  std::map<std::string, OrderedIndex *> open_tables;
+  ermia::Database *const db;
+  std::map<std::string, ermia::OrderedIndex *> open_tables;
   spin_barrier *const barrier_a;
   spin_barrier *const barrier_b;
 
@@ -204,17 +195,9 @@ class bench_worker : public thread::sm_runner {
   size_t ntxn_query_commits;
 
  protected:
-#ifdef ENABLE_BENCH_TXN_COUNTERS
-  txn_counter_map local_txn_counters;
-  void measure_txn_counters(void *txn, const char *txn_name);
-#else
-  inline ALWAYS_INLINE void measure_txn_counters(void *txn,
-                                                 const char *txn_name) {}
-#endif
-
   std::vector<tx_stat> txn_counts;  // commits and aborts breakdown
 
-  transaction *txn_obj_buf;
+  ermia::transaction *txn_obj_buf;
   str_arena arena;
 };
 
@@ -224,10 +207,10 @@ class bench_runner {
   bench_runner(bench_runner &&) = delete;
   bench_runner &operator=(const bench_runner &) = delete;
 
-  bench_runner(ndb_wrapper *db)
+  bench_runner(ermia::Database *db)
       : db(db),
-        barrier_a(config::worker_threads),
-        barrier_b(config::worker_threads > 0 ? 1 : 0) {}
+        barrier_a(ermia::config::worker_threads),
+        barrier_b(ermia::config::worker_threads > 0 ? 1 : 0) {}
   virtual ~bench_runner() {}
   virtual void prepare(char *) = 0;
   void run();
@@ -249,8 +232,8 @@ class bench_runner {
   virtual std::vector<bench_worker *> make_workers() = 0;
   virtual std::vector<bench_worker *> make_cmdlog_redoers() = 0;
 
-  ndb_wrapper *const db;
-  std::map<std::string, OrderedIndex *> open_tables;
+  ermia::Database *const db;
+  std::map<std::string, ermia::OrderedIndex *> open_tables;
 
   // barriers for actual benchmark execution
   spin_barrier barrier_a;
@@ -259,7 +242,7 @@ class bench_runner {
 
 // XXX(stephentu): limit_callback is not optimal, should use
 // static_limit_callback if possible
-class limit_callback : public OrderedIndex::scan_callback {
+class limit_callback : public ermia::OrderedIndex::scan_callback {
  public:
   limit_callback(ssize_t limit = -1) : limit(limit), n(0) {
     ALWAYS_ASSERT(limit == -1 || limit > 0);

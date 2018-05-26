@@ -5,6 +5,9 @@
 #include "sm-oid-alloc-impl.h"
 
 #include "stub-impl.h"
+
+namespace ermia {
+
 struct sm_oid_mgr_impl : sm_oid_mgr {
   /* The object array for each file resides in the OID array for
      file 0; allocators go in file 1 (including the file allocator,
@@ -74,3 +77,4 @@ static_assert(sm_oid_mgr::METADATA_FID == sm_oid_mgr_impl::METADATA_FID,
               "Go fix sm_oid_mgr::METADATA_FID");
 
 DEF_IMPL(sm_oid_mgr);
+}  // namespace ermia

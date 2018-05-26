@@ -28,6 +28,8 @@
 #include <sparsehash/dense_hash_map>
 using google::dense_hash_map;
 
+namespace ermia {
+
 // A write-set entry is essentially a pointer to the OID array entry
 // begin updated. The write-set is naturally de-duplicated: repetitive
 // updates will leave only one entry by the first update. Dereferencing
@@ -59,7 +61,6 @@ struct write_set_t {
 class base_txn_btree;
 
 class transaction {
-  // XXX: weaker than necessary
   friend class base_txn_btree;
   friend class sm_oid_mgr;
 
@@ -227,3 +228,5 @@ class transaction {
   read_set_t *read_set;
 #endif
 };
+
+}  // namespace ermia

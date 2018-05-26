@@ -30,6 +30,8 @@
 
 #include <sys/mman.h>
 
+namespace ermia {
+
 /* Handy to know this is true, but I'm not aware of any code that
    depends on it yet.
  */
@@ -158,3 +160,4 @@ void dynarray::_adjust_mapping(size_t begin, size_t end, size_t new_size,
     _size = new_size >> page_bits();
   }
 }
+}  // namespace ermia

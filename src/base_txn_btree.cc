@@ -2,6 +2,8 @@
 #include "masstree_btree.h"
 #include "txn.h"
 
+namespace ermia {
+
 write_set_t tls_write_set[config::MAX_THREADS];
 
 rc_t base_txn_btree::do_search(transaction &t, const varstr &k, varstr *out_v,
@@ -310,3 +312,4 @@ void base_txn_btree::do_rsearch_range_call(transaction &t, const varstr &upper,
   this->underlying_btree.rsearch_range_call(upper, lower ? &lowervk : nullptr,
                                             c, t.xc);
 }
+}  // namespace ermia

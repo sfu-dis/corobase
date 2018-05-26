@@ -13,6 +13,7 @@
 #include "xid.h"
 #include "../macros.h"
 
+namespace ermia {
 namespace thread {
 
 bool detect_phys_cores();
@@ -241,3 +242,4 @@ struct sm_runner {
   sm_thread *me;
 };
 }  // namespace thread
+}  // namespace ermia

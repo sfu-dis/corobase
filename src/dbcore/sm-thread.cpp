@@ -3,6 +3,7 @@
 #include "sm-log.h"
 #include "sm-thread.h"
 
+namespace ermia {
 namespace thread {
 
 uint32_t next_thread_id = 0;
@@ -119,3 +120,4 @@ void sm_thread::idle_task() {
 }
 
 }  // namespace thread
+}  // namespace ermia

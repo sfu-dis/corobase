@@ -30,7 +30,6 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-oid-replay-impl.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-recover-impl.cpp
-  #${CMAKE_CURRENT_SOURCE_DIR}/sm-log-segments.cpp  # belongs to test cases only
   #${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc.cpp     # belongs to test cases only
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-object.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-oid-alloc-impl.cpp
@@ -59,7 +58,6 @@ set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC ${DBCORE_SRC})
 #${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log.cpp
 #${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log-file.cpp
 #${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log-offset.cpp
-#${CMAKE_CURRENT_SOURCE_DIR}/test-sm-log-segments.cpp
 #${CMAKE_CURRENT_SOURCE_DIR}/test-sm-oid-alloc-impl.cpp
 #${CMAKE_CURRENT_SOURCE_DIR}/test-sm-oid.cpp
 #${CMAKE_CURRENT_SOURCE_DIR}/test-window-buffer.cpp

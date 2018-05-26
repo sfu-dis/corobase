@@ -1,11 +1,11 @@
-// -*- mode: c++ -*-
-#ifndef __STUB_IMPL_H
-#define __STUB_IMPL_H
+#pragma once
 
 #include "sm-defs.h"
 
 #include <typeinfo>
 #include <type_traits>
+
+namespace ermia {
 
 /* This file provides support for a "stub-impl" idiom, where a "stub"
    class contains all world-facing members of an object, and an "impl"
@@ -111,4 +111,4 @@ typename _impl_of<T>::type const *get_impl(T const *ptr) {
   return (typename _impl_of<T>::type *)ptr;
 }
 
-#endif
+}  // namespace ermia

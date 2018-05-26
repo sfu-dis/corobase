@@ -7,6 +7,7 @@
 #include "sm-config.h"
 #include "tcp.h"
 
+namespace ermia {
 namespace rdma {
 
 static const uint64_t kPollOps = 64;
@@ -454,3 +455,4 @@ ib_connection::ib_connection(struct context *ctx) {
   }
 }
 }  // namespace rdma
+}  // namespace ermia

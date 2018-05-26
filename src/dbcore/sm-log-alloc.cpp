@@ -8,20 +8,22 @@
 
 namespace {
 
-uint64_t get_starting_byte_offset(sm_log_recover_mgr *lm) {
+uint64_t get_starting_byte_offset(ermia::sm_log_recover_mgr *lm) {
   auto dlsn = lm->get_durable_mark();
   auto *sid = lm->get_segment(dlsn.segment());
   return sid->offset(dlsn);
 }
 
 extern "C" void *log_write_daemon_thunk(void *arg) {
-  ((sm_log_alloc_mgr *)arg)->_log_write_daemon();
+  ((ermia::sm_log_alloc_mgr *)arg)->_log_write_daemon();
   return NULL;
 }
 
 enum { DAEMON_HAS_WORK = 0x1, DAEMON_SLEEPING = 0x2 };
 
 }  // end anonymous namespace
+
+namespace ermia {
 
 void sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset) {
   volatile_write(_tls_lsn_offset[thread::my_id()], offset);
@@ -913,3 +915,4 @@ void sm_log_alloc_mgr::_kick_log_write_daemon() {
   _write_daemon_should_wake = true;
   _write_daemon_cond.signal();
 }
+}  // namespace ermia

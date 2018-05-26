@@ -19,6 +19,8 @@
 #include <cerrno>
 #endif
 
+namespace ermia {
+
 /* Implementation details:
 
    We create a mappable object the size of the buffer window, and
@@ -171,3 +173,4 @@ window_buffer::~window_buffer() {
   munmap(_data, 2 * window_size());
 #endif
 }
+}  // namespace ermia

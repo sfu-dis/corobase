@@ -1,3 +1,5 @@
+#pragma once
+
 #include "xid.h"
 #include "sm-log.h"
 #include "epoch.h"
@@ -6,6 +8,7 @@
 #include <atomic>
 #include <unistd.h>
 
+namespace ermia {
 namespace TXN {
 
 #if 0
@@ -185,4 +188,5 @@ bool xid_context::set_sstamp(uint64_t s) {
   return true;
 }
 #endif
-}  // end of namespace
+}  // namespace TXN
+}  // namespace ermia

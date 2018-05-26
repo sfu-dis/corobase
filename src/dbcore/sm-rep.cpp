@@ -1,7 +1,8 @@
 #include "sm-cmd-log.h"
 #include "sm-rep.h"
-#include "../benchmarks/ndb_wrapper.h"
+#include "../ermia.h"
 
+namespace ermia {
 namespace rep {
 std::condition_variable backup_shutdown_trigger;
 uint64_t log_redo_partition_bounds[kMaxLogBufferPartitions] CACHE_ALIGNED;
@@ -409,3 +410,4 @@ void BackupProcessLogData(ReplayPipelineStage &stage, LSN start_lsn, LSN end_lsn
   }
 }
 }  // namespace rep
+}  // namespace ermia

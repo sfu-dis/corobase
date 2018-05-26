@@ -1,8 +1,9 @@
 #include <x86intrin.h>
 #include "sm-rep.h"
 #include "sm-rep-rdma.h"
-#include "../benchmarks/ndb_wrapper.h"
+#include "../ermia.h"
 
+namespace ermia {
 namespace rep {
 struct RdmaNode* self_rdma_node CACHE_ALIGNED;
 std::vector<struct RdmaNode*> nodes CACHE_ALIGNED;
@@ -512,3 +513,4 @@ void PrimaryShutdownRdma() {
   }
 }
 }  // namespace rep
+}  // namespace ermia

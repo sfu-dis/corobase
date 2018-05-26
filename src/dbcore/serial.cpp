@@ -1,4 +1,6 @@
 #include "serial.h"
+namespace ermia {
+
 #if defined(SSN) || defined(SSI)
 namespace TXN {
 
@@ -283,5 +285,6 @@ int32_t readers_bitmap_iterator::next(bool skip_self) {
   }
 }
 
-};  // end of namespace
+}  // namespace TXN
 #endif
+}  // namespace ermia

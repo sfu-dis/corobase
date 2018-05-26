@@ -9,6 +9,8 @@
 #include "sm-config.h"
 #include "../macros.h"
 
+namespace ermia {
+
 class transaction;
 namespace TXN {
 
@@ -151,4 +153,5 @@ inline txn_state spin_for_cstamp(XID xid, xid_context *xc) {
   return state;
 }
 #endif
-};  // end of namespace
+}  // namespace TXN
+}  // namespace ermia

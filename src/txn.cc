@@ -10,6 +10,8 @@
 #include <vector>
 #include <utility>
 
+namespace ermia {
+
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
 static __thread transaction::read_set_t *tls_read_set;
 #endif
@@ -1435,3 +1437,4 @@ rc_t transaction::mvocc_read(dbtuple *tuple) {
   read_set->emplace_back(tuple);
 }
 #endif
+}  // namespace ermia
