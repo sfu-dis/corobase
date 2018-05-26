@@ -158,218 +158,218 @@ int main(int argc, char **argv) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
-  config::state = config::kStateLoading;
-  config::print_cpu_util = FLAGS_print_cpu_util;
-  config::htt_is_on = FLAGS_htt;
-  config::verbose = FLAGS_verbose;
-  config::node_memory_gb = FLAGS_node_memory_gb;
-  config::threads = FLAGS_threads;
-  config::tmpfs_dir = FLAGS_tmpfs_dir;
-  config::log_dir = FLAGS_log_data_dir;
-  config::log_segment_mb = FLAGS_log_segment_mb;
-  config::log_buffer_mb = FLAGS_log_buffer_mb;
-  config::phantom_prot = FLAGS_phantom_prot;
-  config::recover_functor = new parallel_oid_replay(FLAGS_threads);
-  config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
+  ermia::config::state = ermia::config::kStateLoading;
+  ermia::config::print_cpu_util = FLAGS_print_cpu_util;
+  ermia::config::htt_is_on = FLAGS_htt;
+  ermia::config::verbose = FLAGS_verbose;
+  ermia::config::node_memory_gb = FLAGS_node_memory_gb;
+  ermia::config::threads = FLAGS_threads;
+  ermia::config::tmpfs_dir = FLAGS_tmpfs_dir;
+  ermia::config::log_dir = FLAGS_log_data_dir;
+  ermia::config::log_segment_mb = FLAGS_log_segment_mb;
+  ermia::config::log_buffer_mb = FLAGS_log_buffer_mb;
+  ermia::config::phantom_prot = FLAGS_phantom_prot;
+  ermia::config::recover_functor = new ermia::parallel_oid_replay(FLAGS_threads);
+  ermia::config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
 
 #if defined(SSI) || defined(SSN)
-  config::enable_safesnap = FLAGS_safesnap;
+  ermia::config::enable_safesnap = FLAGS_safesnap;
 #endif
 #ifdef SSI
-  config::enable_ssi_read_only_opt = FLAGS_ssi_read_only_opt;
+  ermia::config::enable_ssi_read_only_opt = FLAGS_ssi_read_only_opt;
 #endif
 #ifdef SSN
-  config::ssn_read_opt_threshold =
+  ermia::config::ssn_read_opt_threshold =
       strtoul(FLAGS_ssn_read_opt_threshold.c_str(), nullptr, 16);
 #endif
 
-  config::primary_srv = FLAGS_primary_host;
-  config::primary_port = FLAGS_primary_port;
+  ermia::config::primary_srv = FLAGS_primary_host;
+  ermia::config::primary_port = FLAGS_primary_port;
 
-  config::log_redo_partitions = rep::kMaxLogBufferPartitions;
-  config::read_view_stat_interval_ms = FLAGS_read_view_stat_interval_ms;
-  config::read_view_stat_file = FLAGS_read_view_stat_file;
+  ermia::config::log_redo_partitions = ermia::rep::kMaxLogBufferPartitions;
+  ermia::config::read_view_stat_interval_ms = FLAGS_read_view_stat_interval_ms;
+  ermia::config::read_view_stat_file = FLAGS_read_view_stat_file;
 
-  config::command_log = FLAGS_command_log;
-  config::command_log_buffer_mb = FLAGS_command_log_buffer_mb;
+  ermia::config::command_log = FLAGS_command_log;
+  ermia::config::command_log_buffer_mb = FLAGS_command_log_buffer_mb;
 
   // Backup specific arguments
-  if (config::is_backup_srv()) {
-    config::nvram_log_buffer = FLAGS_nvram_log_buffer;
+  if (ermia::config::is_backup_srv()) {
+    ermia::config::nvram_log_buffer = FLAGS_nvram_log_buffer;
     if (FLAGS_nvram_delay_type == "clwb-emu") {
-      config::CalibrateNvramDelay();
-      config::nvram_delay_type = config::kDelayClwbEmu;
+      ermia::config::CalibrateNvramDelay();
+      ermia::config::nvram_delay_type = ermia::config::kDelayClwbEmu;
     } else if (FLAGS_nvram_delay_type == "clflush") {
-      config::nvram_delay_type = config::kDelayClflush;
-      config::cycles_per_byte = 0;
+      ermia::config::nvram_delay_type = ermia::config::kDelayClflush;
+      ermia::config::cycles_per_byte = 0;
     } else {
       ALWAYS_ASSERT(FLAGS_nvram_delay_type == "none");
-      config::nvram_delay_type = config::kDelayNone;
-      config::cycles_per_byte = 0;
+      ermia::config::nvram_delay_type = ermia::config::kDelayNone;
+      ermia::config::cycles_per_byte = 0;
     }
 
-    config::benchmark_seconds = ~uint32_t{0};  // Backups run forever
-    config::quick_bench_start = FLAGS_quick_bench_start;
-    config::wait_for_primary = FLAGS_wait_for_primary;
-    config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
-    config::persist_nvram_on_replay = FLAGS_persist_nvram_on_replay;
+    ermia::config::benchmark_seconds = ~uint32_t{0};  // Backups run forever
+    ermia::config::quick_bench_start = FLAGS_quick_bench_start;
+    ermia::config::wait_for_primary = FLAGS_wait_for_primary;
+    ermia::config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
+    ermia::config::persist_nvram_on_replay = FLAGS_persist_nvram_on_replay;
     if (FLAGS_log_ship_warm_up == "none") {
-      config::log_ship_warm_up_policy = config::WARM_UP_NONE;
+      ermia::config::log_ship_warm_up_policy = ermia::config::WARM_UP_NONE;
     } else if (FLAGS_log_ship_warm_up == "lazy") {
-      config::log_ship_warm_up_policy = config::WARM_UP_LAZY;
+      ermia::config::log_ship_warm_up_policy = ermia::config::WARM_UP_LAZY;
     } else if (FLAGS_log_ship_warm_up == "eager") {
-      config::log_ship_warm_up_policy = config::WARM_UP_EAGER;
+      ermia::config::log_ship_warm_up_policy = ermia::config::WARM_UP_EAGER;
     } else {
       LOG(FATAL) << "Invalid log shipping warm up policy: "
                  << FLAGS_log_ship_warm_up;
     }
     if (FLAGS_replay_policy == "bg") {
-      config::replay_policy = config::kReplayBackground;
+      ermia::config::replay_policy = ermia::config::kReplayBackground;
     } else if (FLAGS_replay_policy == "sync") {
-      config::replay_policy = config::kReplaySync;
+      ermia::config::replay_policy = ermia::config::kReplaySync;
     } else if (FLAGS_replay_policy == "pipelined") {
-      config::replay_policy = config::kReplayPipelined;
+      ermia::config::replay_policy = ermia::config::kReplayPipelined;
     } else if (FLAGS_replay_policy == "none") {
-      config::replay_policy = config::kReplayNone;
+      ermia::config::replay_policy = ermia::config::kReplayNone;
     } else {
       LOG(FATAL) << "Invalid log shipping replay policy: "
                  << FLAGS_replay_policy;
     }
-    config::full_replay = FLAGS_full_replay;
+    ermia::config::full_replay = FLAGS_full_replay;
 
-    config::replay_threads = FLAGS_replay_threads;
-    LOG_IF(FATAL, config::threads < config::replay_threads);
-    config::worker_threads = config::threads - config::replay_threads;
+    ermia::config::replay_threads = FLAGS_replay_threads;
+    LOG_IF(FATAL, ermia::config::threads < ermia::config::replay_threads);
+    ermia::config::worker_threads = ermia::config::threads - ermia::config::replay_threads;
 
     RCU::rcu_register();
-    ALWAYS_ASSERT(config::log_dir.size());
-    ALWAYS_ASSERT(not logmgr);
-    ALWAYS_ASSERT(not oidmgr);
+    ALWAYS_ASSERT(ermia::config::log_dir.size());
+    ALWAYS_ASSERT(not ermia::logmgr);
+    ALWAYS_ASSERT(not ermia::oidmgr);
     RCU::rcu_enter();
-    sm_log::allocate_log_buffer();
-    if (config::log_ship_by_rdma) {
-      rep::start_as_backup_rdma();
+    ermia::sm_log::allocate_log_buffer();
+    if (ermia::config::log_ship_by_rdma) {
+      ermia::rep::start_as_backup_rdma();
     } else {
-      rep::start_as_backup_tcp();
+      ermia::rep::start_as_backup_tcp();
     }
   } else {
-    config::benchmark_seconds = FLAGS_seconds;
-    config::benchmark_scale_factor = FLAGS_scale_factor;
-    config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
-    config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
-    config::null_log_device = FLAGS_null_log_device;
-    config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
+    ermia::config::benchmark_seconds = FLAGS_seconds;
+    ermia::config::benchmark_scale_factor = FLAGS_scale_factor;
+    ermia::config::retry_aborted_transactions = FLAGS_retry_aborted_transactions;
+    ermia::config::backoff_aborted_transactions = FLAGS_backoff_aborted_transactions;
+    ermia::config::null_log_device = FLAGS_null_log_device;
+    ermia::config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
 
-    config::replay_threads = 0;
-    config::worker_threads = FLAGS_threads;
+    ermia::config::replay_threads = 0;
+    ermia::config::worker_threads = FLAGS_threads;
 
-    config::group_commit = FLAGS_group_commit;
-    config::group_commit_queue_length = FLAGS_group_commit_queue_length;
-    config::group_commit_timeout = FLAGS_group_commit_timeout;
-    config::group_commit_size_kb = FLAGS_group_commit_size_kb;
-    config::group_commit_bytes = FLAGS_group_commit_size_kb * 1024;
-    config::enable_chkpt = FLAGS_enable_chkpt;
-    config::chkpt_interval = FLAGS_chkpt_interval;
-    config::parallel_loading = FLAGS_parallel_loading;
-    config::enable_gc = FLAGS_enable_gc;
+    ermia::config::group_commit = FLAGS_group_commit;
+    ermia::config::group_commit_queue_length = FLAGS_group_commit_queue_length;
+    ermia::config::group_commit_timeout = FLAGS_group_commit_timeout;
+    ermia::config::group_commit_size_kb = FLAGS_group_commit_size_kb;
+    ermia::config::group_commit_bytes = FLAGS_group_commit_size_kb * 1024;
+    ermia::config::enable_chkpt = FLAGS_enable_chkpt;
+    ermia::config::chkpt_interval = FLAGS_chkpt_interval;
+    ermia::config::parallel_loading = FLAGS_parallel_loading;
+    ermia::config::enable_gc = FLAGS_enable_gc;
 
     if (FLAGS_recovery_warm_up == "none") {
-      config::recovery_warm_up_policy = config::WARM_UP_NONE;
+      ermia::config::recovery_warm_up_policy = ermia::config::WARM_UP_NONE;
     } else if (FLAGS_recovery_warm_up == "lazy") {
-      config::recovery_warm_up_policy = config::WARM_UP_LAZY;
+      ermia::config::recovery_warm_up_policy = ermia::config::WARM_UP_LAZY;
     } else if (FLAGS_recovery_warm_up == "eager") {
-      config::recovery_warm_up_policy = config::WARM_UP_EAGER;
+      ermia::config::recovery_warm_up_policy = ermia::config::WARM_UP_EAGER;
     } else {
       LOG(FATAL) << "Invalid recovery warm up policy: "
                  << FLAGS_recovery_warm_up;
     }
 
-    config::log_ship_offset_replay = FLAGS_log_ship_offset_replay;
-    config::log_key_for_update = FLAGS_log_key_for_update;
-    config::num_backups = FLAGS_num_backups;
-    config::wait_for_backups = FLAGS_wait_for_backups;
+    ermia::config::log_ship_offset_replay = FLAGS_log_ship_offset_replay;
+    ermia::config::log_key_for_update = FLAGS_log_key_for_update;
+    ermia::config::num_backups = FLAGS_num_backups;
+    ermia::config::wait_for_backups = FLAGS_wait_for_backups;
     if (FLAGS_persist_policy == "sync") {
-      config::persist_policy = config::kPersistSync;
+      ermia::config::persist_policy = ermia::config::kPersistSync;
     } else if (FLAGS_persist_policy == "async") {
-      config::persist_policy = config::kPersistAsync;
-      LOG_IF(FATAL, config::nvram_log_buffer)
+      ermia::config::persist_policy = ermia::config::kPersistAsync;
+      LOG_IF(FATAL, ermia::config::nvram_log_buffer)
         << "Not supported: NVRAM + async ship";
     } else if (FLAGS_persist_policy == "pipelined") {
-      config::persist_policy = config::kPersistPipelined;
+      ermia::config::persist_policy = ermia::config::kPersistPipelined;
     } else {
       LOG(FATAL) << "Invalid persist policy: "
                  << FLAGS_persist_policy;
     }
   }
 
-  config::init();
+  ermia::config::init();
 
   std::cerr << "CC: ";
 #ifdef SSI
   std::cerr << "SSI";
-  std::cerr << "  safe snapshot          : " << config::enable_safesnap << std::endl;
-  std::cerr << "  read-only optimization : " << config::enable_ssi_read_only_opt
+  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap << std::endl;
+  std::cerr << "  read-only optimization : " << ermia::config::enable_ssi_read_only_opt
        << std::endl;
 #elif defined(SSN)
 #ifdef RC
   std::cerr << "RC+SSN";
-  std::cerr << "  safe snapshot          : " << config::enable_safesnap << std::endl;
+  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap << std::endl;
   std::cerr << "  read opt threshold     : 0x" << std::hex
-       << config::ssn_read_opt_threshold << std::dec << std::endl;
+       << ermia::config::ssn_read_opt_threshold << std::dec << std::endl;
 #else
   std::cerr << "SI+SSN";
-  std::cerr << "  safe snapshot          : " << config::enable_safesnap << std::endl;
+  std::cerr << "  safe snapshot          : " << ermia::config::enable_safesnap << std::endl;
   std::cerr << "  read opt threshold     : 0x" << std::hex
-       << config::ssn_read_opt_threshold << std::dec << std::endl;
+       << ermia::config::ssn_read_opt_threshold << std::dec << std::endl;
 #endif
 #else
   std::cerr << "SI";
 #endif
   std::cerr << std::endl;
-  std::cerr << "  phantom-protection: " << config::phantom_prot << std::endl;
+  std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
-  std::cerr << "  node-memory       : " << config::node_memory_gb << "GB" << std::endl;
-  std::cerr << "  num-threads       : " << config::worker_threads << std::endl;
-  std::cerr << "  numa-nodes        : " << config::numa_nodes << std::endl;
+  std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
+  std::cerr << "  num-threads       : " << ermia::config::worker_threads << std::endl;
+  std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
 #ifdef USE_VARINT_ENCODING
   std::cerr << "  var-encode        : yes" << std::endl;
 #else
   std::cerr << "  var-encode        : no" << std::endl;
 #endif
-  std::cerr << "  print-cpu-util    : " << config::print_cpu_util << std::endl;
-  std::cerr << "  log-dir           : " << config::log_dir << std::endl;
-  std::cerr << "  tmpfs-dir         : " << config::tmpfs_dir << std::endl;
-  std::cerr << "  log-buffer-mb     : " << config::log_buffer_mb << std::endl;
-  std::cerr << "  log-ship-by-rdma  : " << config::log_ship_by_rdma << std::endl;
-  std::cerr << "  logbuf-partitions : " << config::log_redo_partitions << std::endl;
-  std::cerr << "  worker-threads    : " << config::worker_threads << std::endl;
-  std::cerr << "  total-threads     : " << config::threads << std::endl;
+  std::cerr << "  print-cpu-util    : " << ermia::config::print_cpu_util << std::endl;
+  std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
+  std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir << std::endl;
+  std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
+  std::cerr << "  log-ship-by-rdma  : " << ermia::config::log_ship_by_rdma << std::endl;
+  std::cerr << "  logbuf-partitions : " << ermia::config::log_redo_partitions << std::endl;
+  std::cerr << "  worker-threads    : " << ermia::config::worker_threads << std::endl;
+  std::cerr << "  total-threads     : " << ermia::config::threads << std::endl;
   std::cerr << "  persist-policy    : " << FLAGS_persist_policy << std::endl;
-  std::cerr << "  command-log       : " << config::command_log << std::endl;
-  std::cerr << "  command-logbuf    : " << config::command_log_buffer_mb << "MB" << std::endl;
+  std::cerr << "  command-log       : " << ermia::config::command_log << std::endl;
+  std::cerr << "  command-logbuf    : " << ermia::config::command_log_buffer_mb << "MB" << std::endl;
 
-  std::cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize()
+  std::cerr << "  btree_internal_node_size: " << ermia::concurrent_btree::InternalNodeSize()
        << std::endl;
-  std::cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize()
+  std::cerr << "  btree_leaf_node_size    : " << ermia::concurrent_btree::LeafNodeSize()
        << std::endl;
-  std::cerr << "  read_view_stat_interval : " << config::read_view_stat_interval_ms
+  std::cerr << "  read_view_stat_interval : " << ermia::config::read_view_stat_interval_ms
        << "ms" << std::endl;
-  std::cerr << "  read_view_stat_file     : " << config::read_view_stat_file << std::endl;
-  std::cerr << "  log_ship_offset_replay  : " << config::log_ship_offset_replay << std::endl;
+  std::cerr << "  read_view_stat_file     : " << ermia::config::read_view_stat_file << std::endl;
+  std::cerr << "  log_ship_offset_replay  : " << ermia::config::log_ship_offset_replay << std::endl;
 
-  if (config::is_backup_srv()) {
-    std::cerr << "  nvram-log-buffer  : " << config::nvram_log_buffer << std::endl;
+  if (ermia::config::is_backup_srv()) {
+    std::cerr << "  nvram-log-buffer  : " << ermia::config::nvram_log_buffer << std::endl;
     std::cerr << "  nvram-delay-type  : " << FLAGS_nvram_delay_type << std::endl;
-    std::cerr << "  cycles-per-byte   : " << config::cycles_per_byte << std::endl;
+    std::cerr << "  cycles-per-byte   : " << ermia::config::cycles_per_byte << std::endl;
     std::cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << std::endl;
     std::cerr << "  replay-policy     : " << FLAGS_replay_policy << std::endl;
-    std::cerr << "  full-replay       : " << config::full_replay << std::endl;
-    std::cerr << "  quick-bench-start : " << config::quick_bench_start << std::endl;
-    std::cerr << "  wait-for-primary  : " << config::wait_for_primary << std::endl;
-    std::cerr << "  replay-threads    : " << config::replay_threads << std::endl;
-    std::cerr << "  persist-nvram-on-replay : " << config::persist_nvram_on_replay
+    std::cerr << "  full-replay       : " << ermia::config::full_replay << std::endl;
+    std::cerr << "  quick-bench-start : " << ermia::config::quick_bench_start << std::endl;
+    std::cerr << "  wait-for-primary  : " << ermia::config::wait_for_primary << std::endl;
+    std::cerr << "  replay-threads    : " << ermia::config::replay_threads << std::endl;
+    std::cerr << "  persist-nvram-on-replay : " << ermia::config::persist_nvram_on_replay
          << std::endl;
   } else {
     std::cerr << "  parallel-loading: " << FLAGS_parallel_loading << std::endl;
@@ -378,25 +378,25 @@ int main(int argc, char **argv) {
     std::cerr << "  backoff-txns      : " << FLAGS_backoff_aborted_transactions
          << std::endl;
     std::cerr << "  scale-factor      : " << FLAGS_scale_factor << std::endl;
-    std::cerr << "  group-commit      : " << config::group_commit << std::endl;
-    std::cerr << "  commit-queue      : " << config::group_commit_queue_length
+    std::cerr << "  group-commit      : " << ermia::config::group_commit << std::endl;
+    std::cerr << "  commit-queue      : " << ermia::config::group_commit_queue_length
          << std::endl;
-    std::cerr << "  group-commit-size : " << config::group_commit_size_kb << "KB"
+    std::cerr << "  group-commit-size : " << ermia::config::group_commit_size_kb << "KB"
          << std::endl;
     std::cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << std::endl;
-    std::cerr << "  log-key-for-update: " << config::log_key_for_update << std::endl;
-    std::cerr << "  enable-chkpt      : " << config::enable_chkpt << std::endl;
-    if (config::enable_chkpt) {
-      std::cerr << "  chkpt-interval    : " << config::chkpt_interval << std::endl;
+    std::cerr << "  log-key-for-update: " << ermia::config::log_key_for_update << std::endl;
+    std::cerr << "  enable-chkpt      : " << ermia::config::enable_chkpt << std::endl;
+    if (ermia::config::enable_chkpt) {
+      std::cerr << "  chkpt-interval    : " << ermia::config::chkpt_interval << std::endl;
     }
-    std::cerr << "  enable-gc         : " << config::enable_gc << std::endl;
-    std::cerr << "  null-log-device   : " << config::null_log_device << std::endl;
-    std::cerr << "  truncate-at-bench-start : " << config::truncate_at_bench_start << std::endl;
-    std::cerr << "  num-backups       : " << config::num_backups << std::endl;
-    std::cerr << "  wait-for-backups  : " << config::wait_for_backups << std::endl;
+    std::cerr << "  enable-gc         : " << ermia::config::enable_gc << std::endl;
+    std::cerr << "  null-log-device   : " << ermia::config::null_log_device << std::endl;
+    std::cerr << "  truncate-at-bench-start : " << ermia::config::truncate_at_bench_start << std::endl;
+    std::cerr << "  num-backups       : " << ermia::config::num_backups << std::endl;
+    std::cerr << "  wait-for-backups  : " << ermia::config::wait_for_backups << std::endl;
   }
 
-  MM::prepare_node_memory();
+  ermia::MM::prepare_node_memory();
   std::vector<std::string> bench_toks = split_ws(FLAGS_benchmark_options);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];
@@ -405,10 +405,10 @@ int main(int argc, char **argv) {
     new_argv[i] = (char *)bench_toks[i - 1].c_str();
 
   // Must have everything in config ready by this point
-  config::sanity_check();
-  ndb_wrapper *db = NULL;
-  db = new ndb_wrapper();
-  void (*test_fn)(ndb_wrapper *, int argc, char **argv) = NULL;
+  ermia::config::sanity_check();
+  ermia::Database *db = NULL;
+  db = new ermia::Database();
+  void (*test_fn)(ermia::Database *, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
     test_fn = ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {

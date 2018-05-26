@@ -7,6 +7,10 @@
 #include <string>
 #include <map>
 
+namespace ermia {
+
+class transaction;
+
 class base_txn_btree {
   friend class sm_log_recover_impl;
   friend class sm_chkpt_mgr;
@@ -96,3 +100,4 @@ class base_txn_btree {
         spec_values;
   };
 };
+}  // namespace ermia

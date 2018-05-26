@@ -1,11 +1,10 @@
-// -*- mode:c++ -*-
-#ifndef __SM_LOG_RECOVER_H
-#define __SM_LOG_RECOVER_H
+#pragma once
 
 #include "sm-log-offset.h"
 
 #include <vector>
 
+namespace ermia {
 /* The log recovery manager.
 
    To avoid confusion and errors, we have to recover the existing log
@@ -179,4 +178,4 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
   }
 };
 
-#endif
+}  // namespace ermia

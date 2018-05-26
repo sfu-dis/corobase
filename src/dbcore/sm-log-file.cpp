@@ -7,6 +7,8 @@
 #include <sys/fcntl.h>
 #include <algorithm>
 
+namespace ermia {
+
 #warning Crash durability is NOT fully guaranteed by this implementation
 /* ^^^
 
@@ -648,3 +650,4 @@ again:
 
   os_fsync(dfd);
 }
+}  // namespace ermia

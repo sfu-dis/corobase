@@ -1,6 +1,4 @@
-// -*- mode:c++ -*-
-#ifndef __SM_LOG_FILE_H
-#define __SM_LOG_FILE_H
+#pragma once
 
 // start, end LSN
 #define CHKPT_FILE_NAME_FMT "chk-%016zx-%016zx"
@@ -21,6 +19,8 @@
 #include "sm-log-defs.h"
 
 #include <deque>
+
+namespace ermia {
 
 struct nxt_seg_file_name {
   char buf[NXT_SEG_FILE_NAME_BUFSZ];
@@ -256,4 +256,4 @@ struct sm_log_file_mgr {
   os_mutex file_mutex;
 };
 
-#endif
+}  // namespace ermia

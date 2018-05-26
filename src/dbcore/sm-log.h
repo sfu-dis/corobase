@@ -1,6 +1,4 @@
-// -*- mode:c++ -*-
-#ifndef __SM_LOG_H
-#define __SM_LOG_H
+#pragma once
 
 /* A high-performance log manager for an append-only system.
 
@@ -19,7 +17,7 @@
 #include "sm-thread.h"
 #include "window-buffer.h"
 
-class ndb_ordered_index;
+namespace ermia {
 class object;
 class sm_log_file_mgr;
 class segment_id;
@@ -414,4 +412,4 @@ struct sm_log {
 };
 
 extern sm_log *logmgr;
-#endif
+}  // namespace ermia

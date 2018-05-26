@@ -1,10 +1,12 @@
 #include <unistd.h>
 #include <fcntl.h>
+#include "../ermia.h"
+
 #include "sm-chkpt.h"
 #include "sm-index.h"
 #include "sm-thread.h"
 
-#include "../benchmarks/ordered_index.h"
+namespace ermia {
 
 sm_chkpt_mgr* chkptmgr;
 
@@ -337,3 +339,5 @@ void sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr* lm) {
   }
   LOG(INFO) << "[Checkpoint] Recovered";
 }
+
+}  // namespace ermia

@@ -33,6 +33,8 @@
 
 #include "tuple.h"
 
+namespace ermia {
+
 class simple_threadinfo {
  public:
   simple_threadinfo(epoch_num e) : ts_(0), epoch_(e) {}
@@ -121,9 +123,6 @@ struct masstree_params : public Masstree::nodeparams<> {
   typedef OID value_type;
   typedef Masstree::value_print<value_type> value_print_type;
   typedef simple_threadinfo threadinfo_type;
-  enum {
-    RcuRespCaller = true
-  };  // FIXME: tzwang: OK, silo's original code also set it to true
 };
 
 struct masstree_single_threaded_params : public masstree_params {
@@ -749,3 +748,4 @@ void mbtree<P>::print() {
 
 typedef mbtree<masstree_params> concurrent_btree;
 typedef mbtree<masstree_single_threaded_params> single_threaded_btree;
+}  // namespace ermia

@@ -1,6 +1,5 @@
 #include <x86intrin.h>
-#include "../benchmarks/ndb_wrapper.h"
-#include "../util.h"
+#include "../ermia.h"
 #include "sm-index.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
@@ -8,6 +7,8 @@
 #include "sm-oid-alloc-impl.h"
 #include "sm-rep.h"
 #include "sm-rep-rdma.h"
+
+namespace ermia {
 
 LSN parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
                                         LSN to) {
@@ -243,3 +244,4 @@ void parallel_offset_replay::redo_runner::my_work(char *) {
     }
   }
 }
+}  // namespace ermia

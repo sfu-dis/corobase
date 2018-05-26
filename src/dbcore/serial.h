@@ -4,6 +4,8 @@
 #include "sm-rc.h"
 #include "xid.h"
 
+namespace ermia {
+
 #if defined(SSN) || defined(SSI)
 namespace TXN {
 void assign_reader_bitmap_entry();
@@ -81,5 +83,6 @@ struct readers_bitmap_iterator {
   uint32_t cur_entry_index;
   uint64_t cur_entry;
 };
-};  // end of namespace
+}  // namespace TXN
 #endif
+}  // namespace ermia

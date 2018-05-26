@@ -3,7 +3,7 @@
 
 #include <map>
 
-#include "../benchmarks/ndb_wrapper.h"
+#include "../ermia.h"
 #include "../txn.h"
 #include "../util.h"
 
@@ -17,12 +17,9 @@
 #include "sm-object.h"
 #include "sm-oid-impl.h"
 
-sm_oid_mgr *oidmgr = NULL;
+namespace ermia {
 
-namespace {
-#if 0
-} // enter namespace, disable autoindent
-#endif
+sm_oid_mgr *oidmgr = NULL;
 
 struct thread_data {
   /* Use a 64-entry hash table to store OID caches. That may sound
@@ -186,11 +183,6 @@ void thread_free(sm_oid_mgr_impl *om, FID f, OID o) {
   }
 
   it->entries[it->nentries++] = o;
-}
-
-#if 0
-{ // exit namespace, disable autoindent
-#endif
 }
 
 fat_ptr oid_array::make() {
@@ -1110,3 +1102,4 @@ bool sm_oid_mgr::TestVisibility(Object *object, TXN::xid_context *xc, bool &retr
   }
   return false;
 }
+}  // namespace ermia

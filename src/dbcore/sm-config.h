@@ -8,6 +8,8 @@
 #include "sm-defs.h"
 #include "../macros.h"
 
+namespace ermia {
+
 class sm_log_recover_impl;
 
 struct config {
@@ -244,3 +246,4 @@ struct config {
     }
   }
 };
+}  // namespace ermia

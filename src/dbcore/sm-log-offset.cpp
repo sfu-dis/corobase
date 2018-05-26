@@ -1,5 +1,7 @@
 #include "sm-log-offset.h"
 
+namespace ermia {
+
 /* Convert an LSN into the fat_ptr that can be used to access the
    log record at that LSN. Normally the LSN should point to the
    payload section of a record.
@@ -272,3 +274,4 @@ segment_id *sm_log_offset_mgr::_install_segment(segment_id *sid,
   ASSERT(nsid and nsid->segnum == sid->segnum + 1);
   return nsid;
 }
+}  // namespace ermia

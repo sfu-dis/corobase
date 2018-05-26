@@ -73,7 +73,7 @@ TaxrateBuffer taxrateBuffer(325);
 ZipCodeBuffer zipCodeBuffer(14850);
 
 // Utils
-class tpce_table_scanner : public OrderedIndex::scan_callback {
+class tpce_table_scanner : public ermia::OrderedIndex::scan_callback {
  public:
   tpce_table_scanner(str_arena *arena) : _arena(arena) {}
   virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
@@ -106,7 +106,7 @@ int64_t GetLastTradeID() {
 }
 
 static inline ALWAYS_INLINE size_t NumPartitions() {
-  return (size_t)config::benchmark_scale_factor;
+  return (size_t)ermia::config::benchmark_scale_factor;
 }
 
 void setRNGSeeds(CCETxnInputGenerator *gen, unsigned int UniqueId) {
@@ -171,7 +171,7 @@ class tpce_worker_mixin : private _dummy {
 #define DEFN_TBL_INIT_X(name) , tbl_##name##_vec(partitions.at(#name))
 
  public:
-  tpce_worker_mixin(const map<std::string, std::vector<OrderedIndex *>> &partitions)
+  tpce_worker_mixin(const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : _dummy()  // so hacky...
         TPCE_TABLE_LIST(DEFN_TBL_INIT_X) {}
 
@@ -180,10 +180,10 @@ class tpce_worker_mixin : private _dummy {
  protected:
 #define DEFN_TBL_ACCESSOR_X(name)                                   \
  private:                                                           \
-  std::vector<OrderedIndex *> tbl_##name##_vec;                          \
+  std::vector<ermia::OrderedIndex *> tbl_##name##_vec;                          \
                                                                     \
  protected:                                                         \
-  inline ALWAYS_INLINE OrderedIndex *tbl_##name(unsigned int pid) { \
+  inline ALWAYS_INLINE ermia::OrderedIndex *tbl_##name(unsigned int pid) { \
     return tbl_##name##_vec[pid - 1];                               \
   }
 
@@ -277,9 +277,9 @@ class tpce_worker : public bench_worker,
                     public CSendToMarketInterface {
  public:
   // resp for [partition_id_start, partition_id_end)
-  tpce_worker(unsigned int worker_id, unsigned long seed, ndb_wrapper *db,
-              const map<std::string, OrderedIndex *> &open_tables,
-              const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_worker(unsigned int worker_id, unsigned long seed, ermia::Database *db,
+              const map<std::string, ermia::OrderedIndex *> &open_tables,
+              const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
               uint partition_id_start, uint partition_id_end)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
@@ -290,12 +290,12 @@ class tpce_worker : public bench_worker,
     ASSERT(partition_id_start <= NumPartitions());
     ASSERT(partition_id_end > partition_id_start);
     ASSERT(partition_id_end <= (NumPartitions() + 1));
-    if (config::verbose) {
+    if (ermia::config::verbose) {
       cerr << "tpce: worker id " << worker_id << " => partitions ["
            << partition_id_start << ", " << partition_id_end << ")" << endl;
     }
 
-    auto i = worker_id % config::worker_threads;
+    auto i = worker_id % ermia::config::worker_threads;
     mee = mees[i];
     ALWAYS_ASSERT(i >= 0 and i < mees.size());
     MarketFeedInputBuffer = MarketFeedInputBuffers[i];
@@ -640,7 +640,7 @@ class tpce_worker : public bench_worker,
   inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
-  transaction *txn;
+  ermia::transaction *txn;
   const uint partition_id_start;
   const uint partition_id_end;
   varstr obj_v;
@@ -684,7 +684,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
   */
 
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   std::vector<std::pair<varstr *, const varstr *>> brokers;
@@ -800,7 +800,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
     const TCustomerPositionFrame1Input *pIn,
     TCustomerPositionFrame1Output *pOut) {
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   // Get c_id;
@@ -1155,7 +1155,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
 rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
                                       TMarketWatchFrame1Output *pOut) {
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   std::vector<inline_str_fixed<cSYMBOL_len>> stock_list_cursor;
@@ -1300,7 +1300,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
 rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
                                          TSecurityDetailFrame1Output *pOut) {
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   int64_t co_id;
@@ -1540,7 +1540,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn,
   int i;
 
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   pOut->num_found = 0;
@@ -1626,7 +1626,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn,
 rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
                                       TTradeLookupFrame2Output *pOut) {
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   const t_ca_id_index::key k_t_0(
@@ -1732,7 +1732,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
 rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
                                       TTradeLookupFrame3Output *pOut) {
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   const t_s_symb_index::key k_t_0(
@@ -1842,7 +1842,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
 rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn,
                                       TTradeLookupFrame4Output *pOut) {
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   const t_ca_id_index::key k_t_0(
@@ -2897,7 +2897,7 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn,
 rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn,
                                       TTradeStatusFrame1Output *pOut) {
   auto read_only_mask =
-      config::enable_safesnap ? transaction::TXN_FLAG_READ_ONLY : 0;
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
   const t_ca_id_index::key k_t_0(pIn->acct_id, MIN_VAL(k_t_0.t_dts),
@@ -3373,7 +3373,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
 }
 
 rc_t tpce_worker::DoLongQueryFrame1() {
-  txn = db->new_txn(transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
+  txn = db->new_txn(ermia::transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
 
   auto total_range = max_ca_id - min_ca_id;
   auto scan_range_size = (max_ca_id - min_ca_id) / 100 * long_query_scan_range;
@@ -3446,9 +3446,9 @@ rc_t tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn) {
 
 class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_charge_loader(unsigned long seed, ndb_wrapper *db,
-                     const map<std::string, OrderedIndex *> &open_tables,
-                     const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_charge_loader(unsigned long seed, ermia::Database *db,
+                     const map<std::string, ermia::OrderedIndex *> &open_tables,
+                     const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                      ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3478,7 +3478,7 @@ class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
       k.ch_c_tier = record->CH_C_TIER;
       v.ch_chrg = record->CH_CHRG;
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_charge(1)->insert(txn, Encode(str(sizeof(k)), k),
                                               Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3499,9 +3499,9 @@ class tpce_commission_rate_loader : public bench_loader,
                                     public tpce_worker_mixin {
  public:
   tpce_commission_rate_loader(
-      unsigned long seed, ndb_wrapper *db,
-      const map<std::string, OrderedIndex *> &open_tables,
-      const map<std::string, std::vector<OrderedIndex *>> &partitions,
+      unsigned long seed, ermia::Database *db,
+      const map<std::string, ermia::OrderedIndex *> &open_tables,
+      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3534,7 +3534,7 @@ class tpce_commission_rate_loader : public bench_loader,
       v.cr_to_qty = record->CR_TO_QTY;
       v.cr_rate = record->CR_RATE;
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_commission_rate(1)->insert(
           txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3550,9 +3550,9 @@ class tpce_commission_rate_loader : public bench_loader,
 
 class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_exchange_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<std::string, OrderedIndex *> &open_tables,
-                       const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_exchange_loader(unsigned long seed, ermia::Database *db,
+                       const map<std::string, ermia::OrderedIndex *> &open_tables,
+                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
       : bench_loader(seed, db, open_tables), tpce_worker_mixin(partitions) {}
 
@@ -3580,7 +3580,7 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
       v.ex_desc = std::string(record->EX_DESC);
       v.ex_ad_id = record->EX_AD_ID;
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_exchange(1)->insert(txn, Encode(str(sizeof(k)), k),
                                                 Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3593,9 +3593,9 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_industry_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<std::string, OrderedIndex *> &open_tables,
-                       const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_industry_loader(unsigned long seed, ermia::Database *db,
+                       const map<std::string, ermia::OrderedIndex *> &open_tables,
+                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3633,7 +3633,7 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
       k_in_idx2.in_sc_id = std::string(record->IN_SC_ID);
       k_in_idx2.in_id = std::string(record->IN_ID);
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       OID i_oid = 0;
       try_verify_strict(
           tbl_industry(1)->insert(txn, Encode(str(sizeof(k_in)), k_in),
@@ -3655,9 +3655,9 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_sector_loader(unsigned long seed, ndb_wrapper *db,
-                     const map<std::string, OrderedIndex *> &open_tables,
-                     const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_sector_loader(unsigned long seed, ermia::Database *db,
+                     const map<std::string, ermia::OrderedIndex *> &open_tables,
+                     const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                      ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3689,7 +3689,7 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
       k.sc_id = std::string(record->SC_ID);
       v.dummy = true;
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_sector(1)->insert(txn, Encode(str(sizeof(k)), k),
                                               Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3705,9 +3705,9 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_status_type_loader(unsigned long seed, ndb_wrapper *db,
-                          const map<std::string, OrderedIndex *> &open_tables,
-                          const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_status_type_loader(unsigned long seed, ermia::Database *db,
+                          const map<std::string, ermia::OrderedIndex *> &open_tables,
+                          const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                           ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3738,7 +3738,7 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
       k.st_id = std::string(record->ST_ID);
       v.st_name = std::string(record->ST_NAME);
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_status_type(1)->insert(
           txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3754,9 +3754,9 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_tax_rate_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<std::string, OrderedIndex *> &open_tables,
-                       const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_tax_rate_loader(unsigned long seed, ermia::Database *db,
+                       const map<std::string, ermia::OrderedIndex *> &open_tables,
+                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3788,7 +3788,7 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
       v.tx_name = std::string(record->TX_NAME);
       v.tx_rate = record->TX_RATE;
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_tax_rate(1)->insert(txn, Encode(str(sizeof(k)), k),
                                                 Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3804,9 +3804,9 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_trade_type_loader(unsigned long seed, ndb_wrapper *db,
-                         const map<std::string, OrderedIndex *> &open_tables,
-                         const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_trade_type_loader(unsigned long seed, ermia::Database *db,
+                         const map<std::string, ermia::OrderedIndex *> &open_tables,
+                         const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                          ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3839,7 +3839,7 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
       v.tt_is_sell = record->TT_IS_SELL;
       v.tt_is_mrkt = record->TT_IS_MRKT;
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_trade_type(1)->insert(
           txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3855,9 +3855,9 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_zip_code_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<std::string, OrderedIndex *> &open_tables,
-                       const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_zip_code_loader(unsigned long seed, ermia::Database *db,
+                       const map<std::string, ermia::OrderedIndex *> &open_tables,
+                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3887,7 +3887,7 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
       v.zc_town = std::string(record->ZC_TOWN);
       v.zc_div = std::string(record->ZC_DIV);
 
-      transaction *txn = db->new_txn(0, arena, txn_buf());
+      ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       try_verify_strict(tbl_zip_code(1)->insert(txn, Encode(str(sizeof(k)), k),
                                                 Encode(str(sizeof(v)), v)));
       try_verify_strict(db->commit_txn(txn));
@@ -3903,9 +3903,9 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_address_loader(unsigned long seed, ndb_wrapper *db,
-                      const map<std::string, OrderedIndex *> &open_tables,
-                      const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_address_loader(unsigned long seed, ermia::Database *db,
+                      const map<std::string, ermia::OrderedIndex *> &open_tables,
+                      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                       ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -3940,7 +3940,7 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
         v.ad_zc_code = std::string(record->AD_ZC_CODE);
         v.ad_ctry = std::string(record->AD_CTRY);
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_address(1)->insert(txn, Encode(str(sizeof(k)), k),
                                                  Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -3957,9 +3957,9 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_customer_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<std::string, OrderedIndex *> &open_tables,
-                       const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_customer_loader(unsigned long seed, ermia::Database *db,
+                       const map<std::string, ermia::OrderedIndex *> &open_tables,
+                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4018,7 +4018,7 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
         k_idx_tax_id.c_id = record->C_ID;
         k_idx_tax_id.c_tax_id = std::string(record->C_TAX_ID);
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         OID c_oid = 0;
         try_verify_strict(tbl_customers(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &c_oid));
@@ -4038,9 +4038,9 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_ca_and_ap_loader(unsigned long seed, ndb_wrapper *db,
-                        const map<std::string, OrderedIndex *> &open_tables,
-                        const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_ca_and_ap_loader(unsigned long seed, ermia::Database *db,
+                        const map<std::string, ermia::OrderedIndex *> &open_tables,
+                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4091,7 +4091,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
         k_idx1.ca_id = record->CA_ID;
         k_idx1.ca_c_id = record->CA_C_ID;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         OID ca_oid = 0;
         try_verify_strict(tbl_customer_account(1)
                               ->insert(txn, Encode(str(sizeof(k)), k),
@@ -4113,7 +4113,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
         v.ap_l_name = std::string(record->AP_L_NAME);
         v.ap_f_name = std::string(record->AP_F_NAME);
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_account_permission(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4133,9 +4133,9 @@ class tpce_customer_taxrate_loader : public bench_loader,
                                      public tpce_worker_mixin {
  public:
   tpce_customer_taxrate_loader(
-      unsigned long seed, ndb_wrapper *db,
-      const map<std::string, OrderedIndex *> &open_tables,
-      const map<std::string, std::vector<OrderedIndex *>> &partitions,
+      unsigned long seed, ermia::Database *db,
+      const map<std::string, ermia::OrderedIndex *> &open_tables,
+      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4172,7 +4172,7 @@ class tpce_customer_taxrate_loader : public bench_loader,
         k.cx_tx_id = std::string(record->CX_TX_ID);
         v.dummy = true;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_customer_taxrate(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4189,9 +4189,9 @@ class tpce_customer_taxrate_loader : public bench_loader,
 
 class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_wl_and_wi_loader(unsigned long seed, ndb_wrapper *db,
-                        const map<std::string, OrderedIndex *> &open_tables,
-                        const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_wl_and_wi_loader(unsigned long seed, ermia::Database *db,
+                        const map<std::string, ermia::OrderedIndex *> &open_tables,
+                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4230,7 +4230,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
         k.wl_id = record->WL_ID;
         v.dummy = true;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_watch_list(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4245,7 +4245,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
         k.wi_wl_id = record->WI_WL_ID;
         k.wi_s_symb = record->WI_S_SYMB;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_watch_item(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4263,9 +4263,9 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_company_loader(unsigned long seed, ndb_wrapper *db,
-                      const map<std::string, OrderedIndex *> &open_tables,
-                      const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_company_loader(unsigned long seed, ermia::Database *db,
+                      const map<std::string, ermia::OrderedIndex *> &open_tables,
+                      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                       ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4311,7 +4311,7 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
         k_idx2.co_in_id = std::string(record->CO_IN_ID);
         k_idx2.co_id = record->CO_ID;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         OID c_oid;
         try_verify_strict(tbl_company(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &c_oid));
@@ -4335,9 +4335,9 @@ class tpce_company_competitor_loader : public bench_loader,
                                        public tpce_worker_mixin {
  public:
   tpce_company_competitor_loader(
-      unsigned long seed, ndb_wrapper *db,
-      const map<std::string, OrderedIndex *> &open_tables,
-      const map<std::string, std::vector<OrderedIndex *>> &partitions,
+      unsigned long seed, ermia::Database *db,
+      const map<std::string, ermia::OrderedIndex *> &open_tables,
+      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4372,7 +4372,7 @@ class tpce_company_competitor_loader : public bench_loader,
         k.cp_in_id = std::string(record->CP_IN_ID);
         v.dummy = true;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_company_competitor(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4390,9 +4390,9 @@ class tpce_company_competitor_loader : public bench_loader,
 class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_daily_market_loader(
-      unsigned long seed, ndb_wrapper *db,
-      const map<std::string, OrderedIndex *> &open_tables,
-      const map<std::string, std::vector<OrderedIndex *>> &partitions,
+      unsigned long seed, ermia::Database *db,
+      const map<std::string, ermia::OrderedIndex *> &open_tables,
+      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4428,7 +4428,7 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
         v.dm_low = record->DM_HIGH;
         v.dm_vol = record->DM_VOL;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_daily_market(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4445,9 +4445,9 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_financial_loader(unsigned long seed, ndb_wrapper *db,
-                        const map<std::string, OrderedIndex *> &open_tables,
-                        const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_financial_loader(unsigned long seed, ermia::Database *db,
+                        const map<std::string, ermia::OrderedIndex *> &open_tables,
+                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4492,7 +4492,7 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
         v.fi_out_basic = record->FI_OUT_BASIC;
         v.fi_out_dilut = record->FI_OUT_DILUT;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_financial(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4509,9 +4509,9 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_last_trade_loader(unsigned long seed, ndb_wrapper *db,
-                         const map<std::string, OrderedIndex *> &open_tables,
-                         const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_last_trade_loader(unsigned long seed, ermia::Database *db,
+                         const map<std::string, ermia::OrderedIndex *> &open_tables,
+                         const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                          ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4546,7 +4546,7 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
         v.lt_open_price = record->LT_OPEN_PRICE;
         v.lt_vol = record->LT_VOL;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_last_trade(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4563,9 +4563,9 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_ni_and_nx_loader(unsigned long seed, ndb_wrapper *db,
-                        const map<std::string, OrderedIndex *> &open_tables,
-                        const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_ni_and_nx_loader(unsigned long seed, ermia::Database *db,
+                        const map<std::string, ermia::OrderedIndex *> &open_tables,
+                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4603,7 +4603,7 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 
         v.dummy = true;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_news_xref(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4624,7 +4624,7 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
         v.ni_source = std::string(record->NI_SOURCE);
         v.ni_author = std::string(record->NI_AUTHOR);
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_news_item(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4642,9 +4642,9 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_security_loader(unsigned long seed, ndb_wrapper *db,
-                       const map<std::string, OrderedIndex *> &open_tables,
-                       const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_security_loader(unsigned long seed, ermia::Database *db,
+                       const map<std::string, ermia::OrderedIndex *> &open_tables,
+                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4695,7 +4695,7 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
         k_idx.s_issue = std::string(record->S_ISSUE);
         k_idx.s_symb = std::string(record->S_SYMB);
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         OID s_oid = 0;
         try_verify_strict(tbl_security(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &s_oid));
@@ -4715,9 +4715,9 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_growing_loader(unsigned long seed, ndb_wrapper *db,
-                      const map<std::string, OrderedIndex *> &open_tables,
-                      const map<std::string, std::vector<OrderedIndex *>> &partitions,
+  tpce_growing_loader(unsigned long seed, ermia::Database *db,
+                      const map<std::string, ermia::OrderedIndex *> &open_tables,
+                      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                       ssize_t partition_id)
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
@@ -4827,7 +4827,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         k_idx2.t_dts = record->T_DTS.GetDate();
         k_idx2.t_id = record->T_ID;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         OID t_oid = 0;
         try_verify_strict(tbl_trade(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &t_oid));
@@ -4849,7 +4849,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         k.th_dts = record->TH_DTS.GetDate();
         k.th_st_id = std::string(record->TH_ST_ID);
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_trade_history(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4868,7 +4868,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         v.se_cash_due_date = record->SE_CASH_DUE_DATE.GetDate();
         v.se_amt = record->SE_AMT;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_settlement(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4887,7 +4887,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         v.ct_amt = record->CT_AMT;
         v.ct_name = std::string(record->CT_NAME);
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_cash_transaction(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4905,7 +4905,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         v.hh_before_qty = record->HH_BEFORE_QTY;
         v.hh_after_qty = record->HH_AFTER_QTY;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_holding_history(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -4940,7 +4940,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         k_idx.b_name = std::string(record->B_NAME);
         k_idx.b_id = record->B_ID;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         OID b_oid = 0;
         try_verify_strict(tbl_broker(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &b_oid));
@@ -4972,7 +4972,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         k.hs_s_symb = std::string(record->HS_S_SYMB);
         v.hs_qty = record->HS_QTY;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_holding_summary(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -5005,7 +5005,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         v.h_price = record->H_PRICE;
         v.h_qty = record->H_QTY;
 
-        transaction *txn = db->new_txn(0, arena, txn_buf());
+        ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
         try_verify_strict(tbl_holding(1)->insert(txn, Encode(str(sizeof(k)), k),
                                                  Encode(str(sizeof(v)), v)));
         try_verify_strict(db->commit_txn(txn));
@@ -5030,24 +5030,24 @@ class tpce_bench_runner : public bench_runner {
     return true;
   }
 
-  static std::vector<OrderedIndex *> OpenTablesForTablespace(ndb_wrapper *db,
+  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(ermia::Database *db,
                                                         const char *name) {
     const std::string s_name(name);
-    std::vector<OrderedIndex *> ret(NumPartitions());
-    OrderedIndex *idx = IndexDescriptor::GetIndex(s_name);
+    std::vector<ermia::OrderedIndex *> ret(NumPartitions());
+    ermia::OrderedIndex *idx = ermia::IndexDescriptor::GetIndex(s_name);
     for (size_t i = 0; i < NumPartitions(); i++) ret[i] = idx;
     return ret;
   }
 
-  static void RegisterTable(ndb_wrapper *db, const char *name,
+  static void RegisterTable(ermia::Database *db, const char *name,
                             const char *primary_idx_name = nullptr) {
     const std::string s_name(name);
-    std::vector<OrderedIndex *> ret(NumPartitions());
-    IndexDescriptor::New(std::string(name), primary_idx_name);
+    std::vector<ermia::OrderedIndex *> ret(NumPartitions());
+    ermia::IndexDescriptor::New(std::string(name), primary_idx_name);
   }
 
  public:
-  tpce_bench_runner(ndb_wrapper *db) : bench_runner(db) {
+  tpce_bench_runner(ermia::Database *db) : bench_runner(db) {
     RegisterTable(db, "charge");
     RegisterTable(db, "commission_rate");
     RegisterTable(db, "exchange");
@@ -5171,22 +5171,22 @@ class tpce_bench_runner : public bench_runner {
     std::vector<bench_worker *> ret;
     static bool const NO_PIN_WH = false;
     if (NO_PIN_WH) {
-      for (size_t i = 0; i < config::worker_threads; i++) {
+      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
         ret.push_back(new tpce_worker(i, r.next(), db, open_tables, partitions,
                                       &barrier_a, &barrier_b, 1,
                                       NumPartitions() + 1));
       }
-    } else if (NumPartitions() <= config::worker_threads) {
-      for (size_t i = 0; i < config::worker_threads; i++) {
+    } else if (NumPartitions() <= ermia::config::worker_threads) {
+      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
         ret.push_back(new tpce_worker(
             i, r.next(), db, open_tables, partitions, &barrier_a, &barrier_b,
             (i % NumPartitions()) + 1, (i % NumPartitions()) + 2));
       }
     } else {
       auto N = NumPartitions();
-      auto T = config::worker_threads;
+      auto T = ermia::config::worker_threads;
       // try this in python: [i*N//T for i in range(T+1)]
-      for (size_t i = 0; i < config::worker_threads; i++) {
+      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
         const unsigned wstart = i * N / T;
         const unsigned wend = (i + 1) * N / T;
         ret.push_back(new tpce_worker(i, r.next(), db, open_tables, partitions,
@@ -5198,14 +5198,14 @@ class tpce_bench_runner : public bench_runner {
   }
 
  private:
-  map<std::string, std::vector<OrderedIndex *>> partitions;
+  map<std::string, std::vector<ermia::OrderedIndex *>> partitions;
 };
 
 // Benchmark entry function
-void tpce_do_test(ndb_wrapper *db, int argc, char **argv) {
+void tpce_do_test(ermia::Database *db, int argc, char **argv) {
   int customers = 0;
   int working_days = 0;
-  int scaling_factor_tpce = config::benchmark_scale_factor;
+  int scaling_factor_tpce = ermia::config::benchmark_scale_factor;
   char *egen_dir = NULL;
   char sfe_str[8], wd_str[8], cust_str[8];
   memset(sfe_str, 0, 8);
@@ -5287,7 +5287,7 @@ void tpce_do_test(ndb_wrapper *db, int argc, char **argv) {
 
   // Initialize Market side
 
-  for (unsigned int i = 0; i < config::worker_threads; i++) {
+  for (unsigned int i = 0; i < ermia::config::worker_threads; i++) {
     auto mf_buf = new MFBuffer();
     auto tr_buf = new TRBuffer();
     MarketFeedInputBuffers.emplace_back(mf_buf);
@@ -5299,7 +5299,7 @@ void tpce_do_test(ndb_wrapper *db, int argc, char **argv) {
     mees.emplace_back(mee);
   }
 
-  if (config::verbose) {
+  if (ermia::config::verbose) {
     cerr << "tpce settings:" << endl;
     cerr << "  workload_mix         : "
          << util::format_list(g_txn_workload_mix,

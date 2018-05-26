@@ -5,6 +5,8 @@
 #include "sm-thread.h"
 #include <cstring>
 
+namespace ermia {
+
 sm_log *logmgr = NULL;
 bool sm_log::need_recovery = false;
 window_buffer *sm_log::logbuf = nullptr;
@@ -187,3 +189,4 @@ void sm_log::wait_for_durable_flushed_lsn_offset(uint64_t offset) {
   auto *self = get_impl(this);
   self->_lm.wait_for_durable(offset);
 }
+}  // namespace ermia

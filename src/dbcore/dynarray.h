@@ -21,11 +21,12 @@
    RESULTING FROM THE USE OF THIS SOFTWARE.
 */
 
-#ifndef __DYNARRAY_H
-#define __DYNARRAY_H
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
+
+namespace ermia {
 
 /**\cond skip */
 
@@ -134,5 +135,4 @@ struct dynarray {
   friend void swap(dynarray &a, dynarray &b) noexcept;
 };
 
-/**\endcond skip */
-#endif
+}  // namespace ermia

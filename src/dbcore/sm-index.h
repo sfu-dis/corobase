@@ -4,6 +4,8 @@
 #include "sm-common.h"
 #include "sm-oid.h"
 
+namespace ermia {
+
 class OrderedIndex;
 
 class IndexDescriptor {
@@ -78,3 +80,4 @@ class IndexDescriptor {
   }
   inline oid_array* GetTupleArray() { return tuple_array_; }
 };
+}  // namespace ermia

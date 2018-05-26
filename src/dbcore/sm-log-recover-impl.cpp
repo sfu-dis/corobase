@@ -1,4 +1,4 @@
-#include "../benchmarks/ndb_wrapper.h"
+#include "../ermia.h"
 #include "../util.h"
 #include "sm-index.h"
 #include "sm-log-recover-impl.h"
@@ -6,6 +6,8 @@
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
 #include "sm-rep.h"
+
+namespace ermia {
 
 // Returns something that we will install on the OID entry.
 fat_ptr sm_log_recover_impl::PrepareObject(
@@ -287,3 +289,4 @@ OrderedIndex* sm_log_recover_impl::recover_fid(
             << ")";
   return IndexDescriptor::GetIndex(name);
 }
+}  // namespace ermia

@@ -6,6 +6,8 @@
 #include "sm-thread.h"
 #include <iostream>
 
+namespace ermia {
+
 bool config::verbose = true;
 uint32_t config::worker_threads = 0;
 uint32_t config::benchmark_seconds = 30;
@@ -104,3 +106,5 @@ void config::sanity_check() {
     }
   }
 }
+
+}  // namespace ermia

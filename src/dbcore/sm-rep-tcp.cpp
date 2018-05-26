@@ -4,8 +4,9 @@
 #include "sm-index.h"
 #include "sm-log-file.h"
 #include "sm-rep.h"
-#include "../benchmarks/ndb_wrapper.h"
+#include "../ermia.h"
 
+namespace ermia {
 namespace rep {
 tcp::client_context* cctx CACHE_ALIGNED;
 uint64_t global_persisted_lsn_tcp CACHE_ALIGNED;
@@ -436,3 +437,4 @@ void BackupDaemonTcpCommandLog() {
   }
 }
 }  // namespace rep
+}  // namespace ermia

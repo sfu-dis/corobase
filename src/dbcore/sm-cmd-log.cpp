@@ -4,6 +4,7 @@
 #include "../util.h"
 #include "../benchmarks/bench.h"
 
+namespace ermia {
 namespace CommandLog {
 
 CommandLogManager *cmd_log CACHE_ALIGNED;
@@ -279,3 +280,4 @@ CommandLogManager::~CommandLogManager() {
   os_close(fd_);
 }
 }  // namespace CommandLog
+}  // namespace ermia

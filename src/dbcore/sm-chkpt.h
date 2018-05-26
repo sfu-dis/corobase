@@ -11,6 +11,8 @@
 #define CHKPT_DATA_FILE_NAME_FMT "oac-%016zx"
 #define CHKPT_DATA_FILE_NAME_BUFSZ sizeof("chd-0123456789abcdef")
 
+namespace ermia {
+
 class sm_chkpt_mgr {
  public:
   sm_chkpt_mgr(LSN chkpt_begin)
@@ -84,3 +86,4 @@ class sm_chkpt_mgr {
 };
 
 extern sm_chkpt_mgr* chkptmgr;
+}  // namespace ermia

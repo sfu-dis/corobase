@@ -10,15 +10,15 @@ namespace {
    DORA we'll have to be more clever, because transactions would
    change threads frequently, but for now it works great.
  */
-static __thread log_request
-    tls_log_requests[sm_log_recover_mgr::MAX_BLOCK_RECORDS];
+static __thread ermia::log_request
+    tls_log_requests[ermia::sm_log_recover_mgr::MAX_BLOCK_RECORDS];
 
 /* Same goes for the sm_tx_log_impl object we give the caller, for that matter
  */
-static __thread char LOG_ALIGN tls_log_space[sizeof(sm_tx_log_impl)];
+static __thread char LOG_ALIGN tls_log_space[sizeof(ermia::sm_tx_log_impl)];
 static __thread bool tls_log_space_used = false;
 
-static sm_tx_log_impl *get_log_impl(sm_tx_log *x) {
+static ermia::sm_tx_log_impl *get_log_impl(ermia::sm_tx_log *x) {
   DIE_IF(
       x != (void *)tls_log_space,
       "sm_tx_log object can only be safely used by the thread that created it");
@@ -26,6 +26,8 @@ static sm_tx_log_impl *get_log_impl(sm_tx_log *x) {
   return get_impl(x);
 }
 }
+
+namespace ermia {
 
 void sm_tx_log::log_insert_index(FID f, OID o, fat_ptr ptr, int abits,
                                  fat_ptr *pdest) {
@@ -361,3 +363,4 @@ void sm_tx_log_impl::enter_precommit() {
   // do this late to give races plenty of time to show up
   ASSERT(_commit_block == a);
 }
+}  // namespace ermia

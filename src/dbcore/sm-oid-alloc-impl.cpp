@@ -1,4 +1,9 @@
+#include <vector>
+#include <algorithm>
+
 #include "sm-oid-alloc-impl.h"
+
+namespace ermia {
 
 sm_allocator *sm_allocator::make() {
   dynarray d(l3_alloc_size(), l1_alloc_size());
@@ -463,9 +468,6 @@ int32_t sm_allocator::_scavenge_l3(uint32_t n) {
   return _scavenge_l3(n, filter, sink);
 }
 
-#include <vector>
-#include <algorithm>
-
 void sm_allocator::sanity_check() {
   /* First, are there duplicates in L1?
    */
@@ -564,3 +566,4 @@ void sm_allocator::sanity_check() {
   DIE_IF(values.size() and not(values.back() < head.hiwater_mark),
          "Supposedly free OID is past the high water mark");
 }
+}  // namespace ermia

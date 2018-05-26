@@ -1,4 +1,3 @@
-// -*- mode:c++ -*-
 #pragma once
 
 #include "sm-common.h"
@@ -11,6 +10,8 @@
 
 // used for sparse bitmaps
 typedef __v8hi v8hi;
+
+namespace ermia {
 
 struct sparse_bitset {
   static size_t const GAMUT = size_t(1) + UINT16_MAX;
@@ -572,3 +573,4 @@ static_assert(sm_allocator::l1_alloc_size() == sm_allocator::ASSUMED_PAGE_SIZE,
 static_assert(is_aligned(sm_allocator::l2_alloc_size(),
                          sm_allocator::ASSUMED_PAGE_SIZE),
               "Something went wrong with L2 sizing");
+}  // namespace ermia

@@ -11,6 +11,7 @@
 #include "sm-object.h"
 #include "../txn.h"
 
+namespace ermia {
 namespace MM {
 
 // tzwang (2015-11-01):
@@ -321,4 +322,5 @@ void epoch_exit(uint64_t s, epoch_num e) {
   }
   mm_epochs.thread_exit();
 }
-};  // end of namespace
+}  // namespace MM
+}  // namespace ermia

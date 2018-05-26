@@ -1,11 +1,12 @@
-#include "../benchmarks/ndb_wrapper.h"
-#include "../util.h"
+#include "../ermia.h"
 #include "sm-index.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
 #include "sm-oid-alloc-impl.h"
 #include "sm-rep.h"
+
+namespace ermia {
 
 LSN parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
                                      LSN to) {
@@ -169,3 +170,4 @@ void parallel_oid_replay::redo_runner::my_work(char *) {
   done = true;
   __sync_synchronize();
 }
+}  // namespace ermia

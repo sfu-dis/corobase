@@ -1,6 +1,4 @@
-// -*- mode:c++ -*-
-#ifndef __SM_LOG_DEFS_H
-#define __SM_LOG_DEFS_H
+#pragma once
 
 /***
     Internal definitions used by the various bits of the log manager.
@@ -15,6 +13,8 @@
 #include "window-buffer.h"
 
 #include <pthread.h>
+
+namespace ermia {
 
 /* The system's storage management strategy assumes that space becomes
    free for one of two reasons: "young" allocations are freed because
@@ -391,4 +391,4 @@ static inline void fill_skip_record(log_record *r, LSN next_lsn,
   r->next_lsn = next_lsn;
 }
 
-#endif
+}  // namespace ermia

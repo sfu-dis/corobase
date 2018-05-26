@@ -1,11 +1,11 @@
-// -*- mode:c++ -*-
-#ifndef __SM_LOG_IMPL_H
-#define __SM_LOG_IMPL_H
+#pragma once
 
 #include "../varstr.h"
 
 #include "sm-log-defs.h"
 #include "sm-log-alloc.h"
+
+namespace ermia {
 
 struct sm_log_impl : sm_log {
   sm_log_impl(sm_log_recover_impl *rf, void *rarg) : _lm(rf, rarg) {}
@@ -97,4 +97,4 @@ DEF_IMPL2(sm_log_scan_mgr::record_scan, sm_log_record_scan_impl);
 DEF_IMPL2(sm_log_scan_mgr::header_scan, sm_log_header_scan_impl);
 DEF_IMPL(sm_tx_log);
 
-#endif
+}  // namespace ermia

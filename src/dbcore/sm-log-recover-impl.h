@@ -1,9 +1,11 @@
 #pragma once
 
-#include "../benchmarks/ordered_index.h"
+#include "../ermia.h"
 #include "sm-config.h"
 #include "sm-thread.h"
 #include "sm-log-recover.h"
+
+namespace ermia {
 
 /* The base functor class that implements common methods needed
  * by most recovery methods. The specific recovery method can
@@ -86,3 +88,4 @@ struct parallel_offset_replay : public sm_log_recover_impl {
   virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
                          LSN to);
 };
+}  // namespace ermia

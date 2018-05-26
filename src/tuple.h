@@ -1,5 +1,4 @@
-#ifndef _NDB_TUPLE_H_
-#define _NDB_TUPLE_H_
+#pragma once
 
 #include "macros.h"
 #include "util.h"
@@ -12,6 +11,8 @@
 // Indicate somebody has read this tuple and thought it was an old one
 #define PERSISTENT_READER_MARK 0x1
 #endif
+
+namespace ermia {
 
 /**
  * A dbtuple is the type of value which we stick
@@ -193,4 +194,4 @@ struct dbtuple {
   }
 };
 
-#endif /* _NDB_TUPLE_H_ */
+}  // namespace ermia

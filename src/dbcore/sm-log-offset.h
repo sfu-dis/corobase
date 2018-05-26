@@ -1,8 +1,8 @@
-// -*- mode:c++ -*-
-#ifndef __SM_LOG_OFFSET_H
-#define __SM_LOG_OFFSET_H
+#pragma once
 
 #include "sm-log-file.h"
+
+namespace ermia {
 
 /* The LSN generator of the log.
 
@@ -91,4 +91,4 @@ struct sm_log_offset_mgr : sm_log_file_mgr {
   segment_id *_install_segment(segment_id *sid, uint64_t lsn_offset);
 };
 
-#endif
+}  // namespace ermia

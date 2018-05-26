@@ -11,6 +11,8 @@
 
 class bench_worker;
 
+namespace ermia {
+
 /* 
  * A very simple implementation of command logging. Each log record
  * is fixed-size (8 bytes) containing a partition ID and a transaction
@@ -99,4 +101,4 @@ public:
 extern CommandLogManager *cmd_log;
 
 }  // namespace CommandLog
-
+}  // namespace ermia

@@ -2,6 +2,7 @@
 #include "rdma.h"
 #include "sm-rep.h"
 
+namespace ermia {
 namespace rep {
 
 // Describes a node that uses RDMA for log shipping. Both the primary and
@@ -145,3 +146,4 @@ class RdmaNode {
 };
 
 }  // namespace rep
+}  // namespace ermia

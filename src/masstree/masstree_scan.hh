@@ -288,7 +288,7 @@ changed:
 template <typename P>
 template <typename H, typename F>
 int basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
-                         TXN::xid_context *xc, threadinfo &ti) const {
+                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
   typedef typename P::ikey_type ikey_type;
   typedef typename node_type::key_type key_type;
   typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
@@ -323,12 +323,12 @@ int basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
     switch (state) {
       case mystack_type::scan_emit: {  // surpress cross init warning about v
         ++scancount;
-        dbtuple *v = NULL;
+        ermia::dbtuple *v = NULL;
         OID o = entry.value();
-        if (config::is_backup_srv()) {
-          v = oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
+        if (ermia::config::is_backup_srv()) {
+          v = ermia::oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
         } else {
-          v = oidmgr->oid_get_version(tuple_array_, o, xc);
+          v = ermia::oidmgr->oid_get_version(tuple_array_, o, xc);
         }
         if (v) {
           if (!scanner.visit_value(ka, v)) goto done;
@@ -371,14 +371,14 @@ done:
 template <typename P>
 template <typename F>
 int basic_table<P>::scan(Str firstkey, bool emit_firstkey, F &scanner,
-                         TXN::xid_context *xc, threadinfo &ti) const {
+                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
   return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename F>
 int basic_table<P>::rscan(Str firstkey, bool emit_firstkey, F &scanner,
-                          TXN::xid_context *xc, threadinfo &ti) const {
+                          ermia::TXN::xid_context *xc, threadinfo &ti) const {
   return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 

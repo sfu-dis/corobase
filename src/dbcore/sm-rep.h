@@ -27,6 +27,8 @@
 #include "sm-config.h"
 #include "sm-log.h"
 
+namespace ermia {
+
 struct write_record_t;
 
 namespace rep {
@@ -226,4 +228,5 @@ void PrimaryShutdownTcp();
 /* Send a chunk of log records (still in memory log buffer) to a backup via TCP.
  */
 void primary_ship_log_buffer_tcp(const char* buf, uint32_t size);
-};  // namespace rep
+}  // namespace rep
+}  // namespace ermia

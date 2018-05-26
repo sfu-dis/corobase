@@ -91,10 +91,10 @@ class basic_table {
   bool get(Str key, value_type& value, threadinfo& ti) const;
 
   template <typename F>
-  int scan(Str firstkey, bool matchfirst, F& scanner, TXN::xid_context* xc,
+  int scan(Str firstkey, bool matchfirst, F& scanner, ermia::TXN::xid_context* xc,
            threadinfo& ti) const;
   template <typename F>
-  int rscan(Str firstkey, bool matchfirst, F& scanner, TXN::xid_context* xc,
+  int rscan(Str firstkey, bool matchfirst, F& scanner, ermia::TXN::xid_context* xc,
             threadinfo& ti) const;
 
   template <typename F>
@@ -103,16 +103,16 @@ class basic_table {
   inline int modify_insert(Str key, F& f, threadinfo& ti);
 
   inline void print(FILE* f = 0, int indent = 0) const;
-  inline void set_tuple_array(oid_array* oa) { tuple_array_ = oa; }
-  inline void set_pdest_array(oid_array* oa) { pdest_array_ = oa; }
+  inline void set_tuple_array(ermia::oid_array* oa) { tuple_array_ = oa; }
+  inline void set_pdest_array(ermia::oid_array* oa) { pdest_array_ = oa; }
 
  private:
   node_type* root_;
-  oid_array* tuple_array_;
-  oid_array* pdest_array_;
+  ermia::oid_array* tuple_array_;
+  ermia::oid_array* pdest_array_;
 
   template <typename H, typename F>
-  int scan(H helper, Str firstkey, bool matchfirst, F& scanner, TXN::xid_context* xc,
+  int scan(H helper, Str firstkey, bool matchfirst, F& scanner, ermia::TXN::xid_context* xc,
            threadinfo& ti) const;
 
   friend class unlocked_tcursor<P>;
