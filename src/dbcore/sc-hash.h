@@ -1,7 +1,8 @@
-// -*- mode:c++ -*-
 #pragma once
 
 #include "sm-defs.h"
+
+namespace ermia {
 
 /* An implementation of second-chance hashing, courtesy of Kirsch and
    Mitzenmacher [1].
@@ -426,3 +427,4 @@ struct sc_hash_set {
     return (h >> i) & HP_MASK;
   }
 };
+}  // namespace ermia

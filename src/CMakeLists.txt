@@ -30,7 +30,6 @@ include_directories(third-party/sparsehash/src)
 add_subdirectory(benchmarks)
 add_subdirectory(dbcore)
 add_subdirectory(masstree)
-add_subdirectory(record)
 
 set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/base_txn_btree.cc

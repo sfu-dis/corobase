@@ -16,7 +16,6 @@
 #ifndef MASSTREE_COMPILER_HH
 #define MASSTREE_COMPILER_HH 1
 #include <stdint.h>
-#define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 #include <arpa/inet.h>
 #if HAVE_TYPE_TRAITS
@@ -36,31 +35,14 @@
 #define constexpr const
 #endif
 
-#if HAVE_OFF_T_IS_LONG_LONG
-#define PRIdOFF_T "lld"
-#else
-#define PRIdOFF_T "ld"
-#endif
-
-#if HAVE_SIZE_T_IS_UNSIGNED_LONG_LONG
-#define PRIdSIZE_T "llu"
-#define PRIdSSIZE_T "lld"
-#elif HAVE_SIZE_T_IS_UNSIGNED_LONG
-#define PRIdSIZE_T "lu"
-#define PRIdSSIZE_T "ld"
-#else
-#define PRIdSIZE_T "u"
-#define PRIdSSIZE_T "d"
-#endif
-
-#if (__i386__ || __x86_64__) && !defined(__x86__)
+#if __x86_64__ && !defined(__x86__)
 #define __x86__ 1
 #endif
 #define PREFER_X86 1
 #define ALLOW___SYNC_BUILTINS 1
 
 #if !defined(HAVE_INDIFFERENT_ALIGMENT) && \
-    (__i386__ || __x86_64__ || __arch_um__)
+    (__x86_64__ || __arch_um__)
 #define HAVE_INDIFFERENT_ALIGNMENT 1
 #endif
 
@@ -313,25 +295,7 @@ struct sized_compiler_operations<8, B> {
   }
 #endif
   static inline type val_cmpxchg(type* object, type expected, type desired) {
-#if __x86_64__ && (PREFER_X86 || !HAVE___SYNC_VAL_COMPARE_AND_SWAP_8)
-    asm volatile("lock; cmpxchgq %2,%1"
-                 : "+a"(expected), "+m"(*object)
-                 : "r"(desired)
-                 : "cc");
-    B()();
-    return expected;
-#elif __i386__ && (PREFER_X86 || !HAVE___SYNC_VAL_COMPARE_AND_SWAP_8)
-    uint32_t expected_low(expected), expected_high(expected >> 32),
-        desired_low(desired), desired_high(desired >> 32);
-    asm volatile("lock; cmpxchg8b %2"
-                 : "+a"(expected_low), "+d"(expected_high), "+m"(*object)
-                 : "b"(desired_low), "c"(desired_high)
-                 : "cc");
-    B()();
-    return ((uint64_t)expected_high << 32) | expected_low;
-#elif HAVE___SYNC_VAL_COMPARE_AND_SWAP_8
     return __sync_val_compare_and_swap(object, expected, desired);
-#endif
   }
   static inline bool bool_cmpxchg(type* object, type expected, type desired) {
 #if HAVE___SYNC_BOOL_COMPARE_AND_SWAP_8 && ALLOW___SYNC_BUILTINS
@@ -569,21 +533,8 @@ struct value_prefetcher<T*> {
 
 // stolen from Linux
 inline uint64_t ntohq(uint64_t val) {
-#ifdef __i386__
-  union {
-    struct {
-      uint32_t a;
-      uint32_t b;
-    } s;
-    uint64_t u;
-  } v;
-  v.u = val;
-  asm("bswapl %0; bswapl %1; xchgl %0,%1" : "+r"(v.s.a), "+r"(v.s.b));
-  return v.u;
-#else /* __i386__ */
   asm("bswapq %0" : "+r"(val));
   return val;
-#endif
 }
 
 inline uint64_t htonq(uint64_t val) { return ntohq(val); }
@@ -853,18 +804,6 @@ inline T read_in_net_order(const uint8_t* s) {
   return read_in_net_order<T>(reinterpret_cast<const char*>(s));
 }
 
-inline uint64_t read_pmc(uint32_t ecx) {
-  uint32_t a, d;
-  __asm __volatile("rdpmc" : "=a"(a), "=d"(d) : "c"(ecx));
-  return ((uint64_t)a) | (((uint64_t)d) << 32);
-}
-
-inline uint64_t read_tsc(void) {
-  uint32_t low, high;
-  asm volatile("rdtsc" : "=a"(low), "=d"(high));
-  return ((uint64_t)low) | (((uint64_t)high) << 32);
-}
-
 template <typename T>
 inline int compare(T a, T b) {
   if (a == b)
@@ -872,267 +811,6 @@ inline int compare(T a, T b) {
   else
     return a < b ? -1 : 1;
 }
-
-/** Type traits **/
-namespace mass {
-
-template <typename T>
-struct type_synonym {
-  typedef T type;
-};
-
-#if HAVE_CXX_TEMPLATE_ALIAS && HAVE_TYPE_TRAITS
-template <typename T, T V>
-using integral_constant = std::integral_constant<T, V>;
-typedef std::true_type true_type;
-typedef std::false_type false_type;
-#else
-template <typename T, T V>
-struct integral_constant {
-  typedef integral_constant<T, V> type;
-  typedef T value_type;
-  static constexpr T value = V;
-};
-template <typename T, T V>
-constexpr T integral_constant<T, V>::value;
-typedef integral_constant<bool, true> true_type;
-typedef integral_constant<bool, false> false_type;
-#endif
-
-#if HAVE_CXX_TEMPLATE_ALIAS && HAVE_TYPE_TRAITS
-template <bool B, typename T, typename F>
-using conditional = std::conditional<B, T, F>;
-#else
-template <bool B, typename T, typename F>
-struct conditional {};
-template <typename T, typename F>
-struct conditional<true, T, F> {
-  typedef T type;
-};
-template <typename T, typename F>
-struct conditional<false, T, F> {
-  typedef F type;
-};
-#endif
-
-#if HAVE_CXX_TEMPLATE_ALIAS && HAVE_TYPE_TRAITS
-template <typename T>
-using remove_const = std::remove_const<T>;
-template <typename T>
-using remove_volatile = std::remove_volatile<T>;
-template <typename T>
-using remove_cv = std::remove_cv<T>;
-#else
-template <typename T>
-struct remove_const : public type_synonym<T> {};
-template <typename T>
-struct remove_const<const T> : public type_synonym<T> {};
-template <typename T>
-struct remove_volatile : public type_synonym<T> {};
-template <typename T>
-struct remove_volatile<volatile T> : public type_synonym<T> {};
-template <typename T>
-struct remove_cv {
-  typedef typename remove_const<typename remove_volatile<T>::type>::type type;
-};
-#endif
-
-#if HAVE_CXX_TEMPLATE_ALIAS && HAVE_TYPE_TRAITS
-template <typename T>
-using is_pointer = std::is_pointer<T>;
-#else
-template <typename T>
-struct is_pointer_helper : public false_type {};
-template <typename T>
-struct is_pointer_helper<T*> : public true_type {};
-template <typename T>
-struct is_pointer
-    : public integral_constant<
-          bool, is_pointer_helper<typename remove_cv<T>::type>::value> {};
-#endif
-
-#if HAVE_CXX_TEMPLATE_ALIAS && HAVE_TYPE_TRAITS
-template <typename T>
-using is_reference = std::is_reference<T>;
-#else
-template <typename T>
-struct is_reference_helper : public false_type {};
-template <typename T>
-struct is_reference_helper<T&> : public true_type {};
-#if HAVE_CXX_RVALUE_REFERENCES
-template <typename T>
-struct is_reference_helper<T&&> : public true_type {};
-#endif
-template <typename T>
-struct is_reference
-    : public integral_constant<
-          bool, is_reference_helper<typename remove_cv<T>::type>::value> {};
-#endif
-
-#if HAVE_CXX_TEMPLATE_ALIAS && HAVE_TYPE_TRAITS
-template <typename T>
-using make_unsigned = std::make_unsigned<T>;
-template <typename T>
-using make_signed = std::make_signed<T>;
-#else
-template <typename T>
-struct make_unsigned {};
-template <>
-struct make_unsigned<char> : public type_synonym<unsigned char> {};
-template <>
-struct make_unsigned<signed char> : public type_synonym<unsigned char> {};
-template <>
-struct make_unsigned<unsigned char> : public type_synonym<unsigned char> {};
-template <>
-struct make_unsigned<short> : public type_synonym<unsigned short> {};
-template <>
-struct make_unsigned<unsigned short> : public type_synonym<unsigned short> {};
-template <>
-struct make_unsigned<int> : public type_synonym<unsigned> {};
-template <>
-struct make_unsigned<unsigned> : public type_synonym<unsigned> {};
-template <>
-struct make_unsigned<long> : public type_synonym<unsigned long> {};
-template <>
-struct make_unsigned<unsigned long> : public type_synonym<unsigned long> {};
-template <>
-struct make_unsigned<long long> : public type_synonym<unsigned long long> {};
-template <>
-struct make_unsigned<unsigned long long>
-    : public type_synonym<unsigned long long> {};
-
-template <typename T>
-struct make_signed {};
-template <>
-struct make_signed<char> : public type_synonym<signed char> {};
-template <>
-struct make_signed<signed char> : public type_synonym<signed char> {};
-template <>
-struct make_signed<unsigned char> : public type_synonym<signed char> {};
-template <>
-struct make_signed<short> : public type_synonym<short> {};
-template <>
-struct make_signed<unsigned short> : public type_synonym<short> {};
-template <>
-struct make_signed<int> : public type_synonym<int> {};
-template <>
-struct make_signed<unsigned> : public type_synonym<int> {};
-template <>
-struct make_signed<long> : public type_synonym<long> {};
-template <>
-struct make_signed<unsigned long> : public type_synonym<long> {};
-template <>
-struct make_signed<long long> : public type_synonym<long long> {};
-template <>
-struct make_signed<unsigned long long> : public type_synonym<long long> {};
-#endif
-
-/** @class is_trivially_copyable
-  @brief Template determining whether T may be copied by memcpy.
-
-  is_trivially_copyable<T> is equivalent to true_type if T has a trivial
-  copy constructor, false_type if it does not. */
-
-#if HAVE_CXX_TEMPLATE_ALIAS && HAVE_TYPE_TRAITS && \
-    HAVE_STD_IS_TRIVIALLY_COPYABLE
-template <typename T>
-using is_trivially_copyable = std::is_trivially_copyable<T>;
-#elif HAVE___HAS_TRIVIAL_COPY
-template <typename T>
-struct is_trivially_copyable
-    : public integral_constant<bool, __has_trivial_copy(T)> {};
-#else
-template <typename T>
-struct is_trivially_copyable : public false_type {};
-template <>
-struct is_trivially_copyable<unsigned char> : public true_type {};
-template <>
-struct is_trivially_copyable<signed char> : public true_type {};
-template <>
-struct is_trivially_copyable<char> : public true_type {};
-template <>
-struct is_trivially_copyable<unsigned short> : public true_type {};
-template <>
-struct is_trivially_copyable<short> : public true_type {};
-template <>
-struct is_trivially_copyable<unsigned> : public true_type {};
-template <>
-struct is_trivially_copyable<int> : public true_type {};
-template <>
-struct is_trivially_copyable<unsigned long> : public true_type {};
-template <>
-struct is_trivially_copyable<long> : public true_type {};
-template <>
-struct is_trivially_copyable<unsigned long long> : public true_type {};
-template <>
-struct is_trivially_copyable<long long> : public true_type {};
-template <typename T>
-struct is_trivially_copyable<T*> : public true_type {};
-#endif
-
-/** @class fast_argument
-  @brief Template defining a fast argument type for objects of type T.
-
-  fast_argument<T>::type equals either "const T &" or "T".
-  fast_argument<T>::is_reference is true iff fast_argument<T>::type is
-  a reference. If fast_argument<T>::is_reference is true, then
-  fast_argument<T>::enable_rvalue_reference is a typedef to void; otherwise
-  it is not defined. */
-template <typename T, bool use_reference = (!is_reference<T>::value &&
-                                            (!is_trivially_copyable<T>::value ||
-                                             sizeof(T) > sizeof(void*)))>
-struct fast_argument;
-
-template <typename T>
-struct fast_argument<T, true> {
-  static constexpr bool is_reference = true;
-  typedef const T& type;
-#if HAVE_CXX_RVALUE_REFERENCES
-  typedef void enable_rvalue_reference;
-#endif
-};
-template <typename T>
-struct fast_argument<T, false> {
-  static constexpr bool is_reference = false;
-  typedef T type;
-};
-template <typename T>
-constexpr bool fast_argument<T, true>::is_reference;
-template <typename T>
-constexpr bool fast_argument<T, false>::is_reference;
-}
-
-template <typename T>
-struct has_fast_int_multiply : public mass::false_type {
-  // enum { check_t_integral = mass::integer_traits<T>::is_signed };
-};
-
-#if defined(__i386__) || defined(__x86_64__)
-inline void int_multiply(unsigned a, unsigned b, unsigned& xlow,
-                         unsigned& xhigh) {
-  __asm__("mul %2" : "=a"(xlow), "=d"(xhigh) : "r"(a), "a"(b) : "cc");
-}
-template <>
-struct has_fast_int_multiply<unsigned> : public mass::true_type {};
-
-#if SIZEOF_LONG == 4 || (defined(__x86_64__) && SIZEOF_LONG == 8)
-inline void int_multiply(unsigned long a, unsigned long b, unsigned long& xlow,
-                         unsigned long& xhigh) {
-  __asm__("mul %2" : "=a"(xlow), "=d"(xhigh) : "r"(a), "a"(b) : "cc");
-}
-template <>
-struct has_fast_int_multiply<unsigned long> : public mass::true_type {};
-#endif
-
-#if defined(__x86_64__) && SIZEOF_LONG_LONG == 8
-inline void int_multiply(unsigned long long a, unsigned long long b,
-                         unsigned long long& xlow, unsigned long long& xhigh) {
-  __asm__("mul %2" : "=a"(xlow), "=d"(xhigh) : "r"(a), "a"(b) : "cc");
-}
-template <>
-struct has_fast_int_multiply<unsigned long long> : public mass::true_type {};
-#endif
-#endif
 
 struct uninitialized_type {};
 

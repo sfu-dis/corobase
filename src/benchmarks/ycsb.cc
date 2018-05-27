@@ -117,8 +117,8 @@ class ycsb_worker : public bench_worker {
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &key = build_rmw_key(worker_id);
-      varstr k((char *)&key.data_, sizeof(key));
-      varstr v = str(sizeof(YcsbRecord));
+      ermia::varstr k((char *)&key.data_, sizeof(key));
+      ermia::varstr v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       try_catch(tbl->get(txn, k, v));  // Read
       memset(v.data(), 'a', v.size());
@@ -128,8 +128,8 @@ class ycsb_worker : public bench_worker {
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       auto &key = build_rmw_key(worker_id);
-      varstr k((char *)&key.data_, sizeof(key));
-      varstr v = str(sizeof(YcsbRecord));
+      ermia::varstr k((char *)&key.data_, sizeof(key));
+      ermia::varstr v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       try_catch(tbl->get(txn, k, v));  // Read
     }
@@ -138,7 +138,7 @@ class ycsb_worker : public bench_worker {
   }
 
  protected:
-  inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
+  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   ermia::OrderedIndex *tbl;
@@ -197,8 +197,8 @@ class ycsb_usertable_loader : public bench_loader {
     // start a transaction and insert all the records
     for (auto &key : keys) {
       YcsbRecord r('a');
-      varstr k((char *)&key.data_, sizeof(key));
-      varstr v(r.data_, sizeof(r));
+      ermia::varstr k((char *)&key.data_, sizeof(key));
+      ermia::varstr v(r.data_, sizeof(r));
       ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       arena.reset();
       try_verify_strict(tbl->insert(txn, k, v));

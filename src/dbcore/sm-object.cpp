@@ -1,3 +1,4 @@
+#include "sm-alloc.h"
 #include "sm-chkpt.h"
 #include "sm-log.h"
 #include "sm-log-recover.h"

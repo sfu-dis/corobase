@@ -14,10 +14,8 @@
 #include <new>
 #include <algorithm>
 
+namespace ermia {
 namespace RCU {
-#if 0
-} // for emacs
-#endif
 
 #ifdef RCU_LOGGING
 #define RCU_LOG(msg, ...) fprintf(stderr, msg, ##__VA_ARGS__)
@@ -294,11 +292,6 @@ epoch_mgr rcu_epochs{{nullptr, rcu_global_init, rcu_get_tls,
                       rcu_thread_registered, rcu_thread_deregistered,
                       rcu_epoch_ended, rcu_epoch_ended_thread,
                       rcu_epoch_reclaimed}};
-
-#if 0
-{ // for emacs
-#endif
-//}
 
 void rcu_set_gc_threshold(size_t nobj, size_t nbytes) {
   rcu_gc_threshold_nobj = std::max(nobj, RCU_THREAD_GC_THRESHOLD_NOBJ);
@@ -579,4 +572,5 @@ void rcu_unwind(char const *msg) {
 }
 #endif
 #endif
-}
+}  // namespace RCU
+}  // namespace ermia

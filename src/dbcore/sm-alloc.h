@@ -5,7 +5,6 @@
 #include "sm-defs.h"
 #include "sm-object.h"
 #include "epoch.h"
-#include "../macros.h"
 
 namespace ermia {
 

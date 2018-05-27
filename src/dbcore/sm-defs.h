@@ -1,6 +1,4 @@
-// -*- mode:c++ -*-
-#ifndef __SM_DEFS_H
-#define __SM_DEFS_H
+#pragma once
 
 #include <cstdio>
 #include <cstdlib>
@@ -10,6 +8,8 @@
 #include <utility>
 
 #include <glog/logging.h>
+
+namespace ermia {
 
 /* Low-level definitions that can be used anywhere. This file must be
    the root of any #include dependency tree it is part of.
@@ -338,4 +338,4 @@ auto make_new(Args &&... args) ->
   return std::forward_as_tuple(args...);
 }
 
-#endif
+}  // namespace ermia

@@ -3,9 +3,7 @@
 #include <map>
 
 #include "base_txn_btree.h"
-#include "spinbarrier.h"
 #include "txn.h"
-#include "util.h"
 
 namespace ermia {
 

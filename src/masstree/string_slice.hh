@@ -137,7 +137,7 @@ struct string_slice {
   static bool equals_sloppy(const char *a, const char *b, int len) {
 #if HAVE_UNALIGNED_ACCESS
     if (len <= size) {
-      typename mass::make_unsigned<T>::type delta =
+      typename std::make_unsigned<T>::type delta =
           *reinterpret_cast<const T *>(a) ^ *reinterpret_cast<const T *>(b);
       if (unlikely(len <= 0)) return true;
 #if WORDS_BIGENDIAN

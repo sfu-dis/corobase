@@ -1,6 +1,4 @@
-// -*- mode:c++ -*-
-#ifndef __SM_COMMON_H
-#define __SM_COMMON_H
+#pragma once
 
 /* Common definitions for the storage manager.
  */
@@ -10,7 +8,6 @@
 
 #include "size-encode.h"
 #include "defer.h"
-#include "rcu.h"
 
 #include <cstddef>
 #include <stdarg.h>
@@ -20,6 +17,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cerrno>
+
+namespace ermia {
 
 typedef uint32_t OID;
 typedef uint32_t FID;
@@ -510,4 +509,4 @@ struct tmp_dir {
   char const *operator*() { return *this; }
 };
 
-#endif
+}  // namespace ermia

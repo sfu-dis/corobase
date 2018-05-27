@@ -1,4 +1,5 @@
 #include <x86intrin.h>
+#include "rcu.h"
 #include "sm-rep.h"
 #include "sm-rep-rdma.h"
 #include "../ermia.h"

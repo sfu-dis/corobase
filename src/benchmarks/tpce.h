@@ -1,8 +1,7 @@
-#ifndef _NDB_BENCH_TPCE_H_
-#define _NDB_BENCH_TPCE_H_
+#pragma once
 
-#include "../record/encoder.h"
-#include "../record/inline_str.h"
+#include "record/encoder.h"
+#include "record/inline_str.h"
 #include "../macros.h"
 #include "egen/EGenLoader_stdafx.h"
 #include "egen/EGenStandardTypes.h"
@@ -365,4 +364,3 @@ DO_STRUCT(zip_code, ZIP_CODE_KEY_FIELDS, ZIP_CODE_VALUE_FIELDS)
                                               x(holding_history)              \
                                                   x(holding_summary)          \
                                                       x(holding)
-#endif

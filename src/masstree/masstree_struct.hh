@@ -24,13 +24,13 @@ namespace Masstree {
 
 template <typename P>
 struct make_nodeversion {
-  typedef typename mass::conditional<P::concurrent, nodeversion,
+  typedef typename std::conditional<P::concurrent, nodeversion,
                                      singlethreaded_nodeversion>::type type;
 };
 
 template <typename P>
 struct make_prefetcher {
-  typedef typename mass::conditional<P::prefetch,
+  typedef typename std::conditional<P::prefetch,
                                      value_prefetcher<typename P::value_type>,
                                      do_nothing>::type type;
 };

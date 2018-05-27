@@ -1,8 +1,6 @@
 #pragma once
 
-#include "dbcore/sm-index.h"
 #include "masstree_btree.h"
-#include "util.h"
 
 #include <string>
 #include <map>

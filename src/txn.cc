@@ -1,5 +1,6 @@
 #include "macros.h"
 #include "txn.h"
+#include "dbcore/rcu.h"
 #include "dbcore/sm-rep.h"
 #include "dbcore/serial.h"
 

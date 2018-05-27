@@ -1,4 +1,5 @@
 add_subdirectory(egen)
+add_subdirectory(record)
 
 set_property(GLOBAL APPEND PROPERTY BENCHMARK_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/tpcc.cc

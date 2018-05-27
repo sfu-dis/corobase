@@ -11,7 +11,7 @@
 
 #include "sm-defs.h"
 #include "xid.h"
-#include "../macros.h"
+#include "../util.h"
 
 namespace ermia {
 namespace thread {

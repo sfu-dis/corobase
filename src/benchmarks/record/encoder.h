@@ -28,7 +28,7 @@ static inline const char *Encode(uint8_t *buf, const T &t) {
 }
 
 template <typename T>
-static inline varstr &Encode(varstr &s, const T &t) {
+static inline ermia::varstr &Encode(ermia::varstr &s, const T &t) {
   const encoder<T> enc;
   enc.write(s.data(), &t);
   return s;
@@ -53,7 +53,7 @@ static inline const T *Decode(const char *buf, T &obj) {
 }
 
 template <typename T>
-static inline const T *Decode(const varstr &str, T &obj) {
+static inline const T *Decode(const ermia::varstr &str, T &obj) {
   const encoder<T> enc;
   return enc.read(str.data(), &obj);
 }

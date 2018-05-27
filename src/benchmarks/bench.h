@@ -6,6 +6,7 @@
 #include <string>
 
 #include "../ermia.h"
+#include "../spinbarrier.h"
 #include "../dbcore/sm-log-alloc.h"
 
 extern void ycsb_do_test(ermia::Database *db, int argc, char **argv);
@@ -41,7 +42,7 @@ class bench_loader : public ermia::thread::sm_runner {
   }
 
   virtual ~bench_loader() {}
-  inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
+  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   virtual void my_work(char *) { load(); }
@@ -54,7 +55,7 @@ class bench_loader : public ermia::thread::sm_runner {
   ermia::Database *const db;
   std::map<std::string, ermia::OrderedIndex *> open_tables;
   ermia::transaction *txn_obj_buf;
-  str_arena arena;
+  ermia::str_arena arena;
 };
 
 typedef std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tx_stat;
@@ -140,7 +141,7 @@ class bench_worker : public ermia::thread::sm_runner {
   inline void inc_ntxn_query_commits() { ++ntxn_query_commits; }
 
   inline uint64_t get_latency_numer_us() const {
-    return volatile_read(latency_numer_us);
+    return ermia::volatile_read(latency_numer_us);
   }
 
   inline double get_avg_latency_us() const {
@@ -187,7 +188,7 @@ class bench_worker : public ermia::thread::sm_runner {
   std::vector<tx_stat> txn_counts;  // commits and aborts breakdown
 
   ermia::transaction *txn_obj_buf;
-  str_arena arena;
+  ermia::str_arena arena;
 };
 
 class bench_runner {
@@ -237,13 +238,13 @@ class limit_callback : public ermia::OrderedIndex::scan_callback {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
 
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ASSERT(limit == -1 || n < size_t(limit));
-    values.emplace_back(varstr(keyp, keylen), value);
+    values.emplace_back(ermia::varstr(keyp, keylen), value);
     return (limit == -1) || (++n < size_t(limit));
   }
 
-  typedef std::pair<varstr, varstr> kv_pair;
+  typedef std::pair<ermia::varstr, ermia::varstr> kv_pair;
   std::vector<kv_pair> values;
 
   const ssize_t limit;

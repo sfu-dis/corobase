@@ -110,9 +110,9 @@ const char *regions[] = {"AFRICA", "AMERICA", "ASIA", "EUROPE", "MIDDLE EAST"};
 
 class tpcc_table_scanner : public ermia::OrderedIndex::scan_callback {
  public:
-  tpcc_table_scanner(str_arena *arena) : _arena(arena) {}
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
-    varstr *const k = _arena->next(keylen);
+  tpcc_table_scanner(ermia::str_arena *arena) : _arena(arena) {}
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    ermia::varstr *const k = _arena->next(keylen);
     ASSERT(k);
     k->copy_from(keyp, keylen);
     output.emplace_back(k, &value);
@@ -120,8 +120,8 @@ class tpcc_table_scanner : public ermia::OrderedIndex::scan_callback {
   }
 
   void clear() { output.clear(); }
-  std::vector<std::pair<varstr *, const varstr *>> output;
-  str_arena *_arena;
+  std::vector<std::pair<ermia::varstr *, const ermia::varstr *>> output;
+  ermia::str_arena *_arena;
 };
 
 static inline ALWAYS_INLINE size_t NumWarehouses() {
@@ -475,7 +475,7 @@ class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
   }
 
  protected:
-  inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
+  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
@@ -595,7 +595,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
  protected:
-  inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
+  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   inline ALWAYS_INLINE unsigned pick_wh(util::fast_random &r) {
@@ -770,7 +770,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       const warehouse::key k(i);
       warehouse::value warehouse_temp;
-      varstr warehouse_v = str(Size(warehouse_temp));
+      ermia::varstr warehouse_v = str(Size(warehouse_temp));
       try_verify_strict(
           tbl_warehouse(i)->get(txn, Encode(str(Size(k)), k), warehouse_v));
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
@@ -871,7 +871,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
       const size_t batchsize = 10;
       for (size_t i = 0; i < NumItems();) {
         size_t iend = std::min(i + batchsize, NumItems());
-        scoped_str_arena s_arena(arena);
+        ermia::scoped_str_arena s_arena(arena);
         for (uint j = i + 1; j <= iend; j++) {
           arena.reset();
           ermia::transaction *const txn = db->new_txn(0, arena, txn_buf());
@@ -1024,7 +1024,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
           const size_t cend =
               std::min((batch + 1) * batchsize, NumCustomersPerDistrict());
           for (uint cidx0 = cstart; cidx0 < cend; cidx0++) {
-            scoped_str_arena s_arena(arena);
+            ermia::scoped_str_arena s_arena(arena);
             arena.reset();
             ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
             const uint c = cidx0 + 1;
@@ -1065,7 +1065,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             checker::SanityCheckCustomer(&k, &v);
             const size_t sz = Size(v);
             total_sz += sz;
-            OID c_oid = 0;  // Get the OID and put in customer_name_idx later
+            ermia::OID c_oid = 0;  // Get the OID and put in customer_name_idx later
             try_verify_strict(tbl_customer(w)->insert(
                 txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid));
             try_verify_strict(db->commit_txn(txn));
@@ -1165,7 +1165,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
           c_ids.emplace_back(x);
         }
         for (uint c = 1; c <= NumCustomersPerDistrict();) {
-          scoped_str_arena s_arena(arena);
+          ermia::scoped_str_arena s_arena(arena);
           arena.reset();
           ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
           const oorder::key k_oo(w, d, c);
@@ -1184,7 +1184,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
           const size_t sz = Size(v_oo);
           oorder_total_sz += sz;
           n_oorders++;
-          OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+          ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
           try_verify_strict(
               tbl_oorder(w)->insert(txn, Encode(str(Size(k_oo)), k_oo),
                                     Encode(str(sz), v_oo), &v_oo_oid));
@@ -1316,10 +1316,10 @@ rc_t tpcc_worker::txn_new_order() {
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
   ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
-  varstr sv_c_temp = str(Size(v_c_temp));
+  ermia::varstr sv_c_temp = str(Size(v_c_temp));
   try_verify_relax(tbl_customer(warehouse_id)
                        ->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
   const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
@@ -1327,7 +1327,7 @@ rc_t tpcc_worker::txn_new_order() {
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  varstr sv_w_temp = str(Size(v_w_temp));
+  ermia::varstr sv_w_temp = str(Size(v_w_temp));
   try_verify_relax(tbl_warehouse(warehouse_id)
                        ->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
@@ -1335,7 +1335,7 @@ rc_t tpcc_worker::txn_new_order() {
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  varstr sv_d_temp = str(Size(v_d_temp));
+  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   try_verify_relax(tbl_district(warehouse_id)
                        ->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
@@ -1369,7 +1369,7 @@ rc_t tpcc_worker::txn_new_order() {
   v_oo.o_entry_d = GetCurrentTimeMillis();
 
   const size_t oorder_sz = Size(v_oo);
-  OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+  ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
   try_catch(tbl_oorder(warehouse_id)
                 ->insert(txn, Encode(str(Size(k_oo)), k_oo),
                          Encode(str(oorder_sz), v_oo), &v_oo_oid));
@@ -1386,7 +1386,7 @@ rc_t tpcc_worker::txn_new_order() {
 
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
-    varstr sv_i_temp = str(Size(v_i_temp));
+    ermia::varstr sv_i_temp = str(Size(v_i_temp));
     try_verify_relax(
         tbl_item(1)->get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
     const item::value *v_i = Decode(sv_i_temp, v_i_temp);
@@ -1394,7 +1394,7 @@ rc_t tpcc_worker::txn_new_order() {
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
-    varstr sv_s_temp = str(Size(v_s_temp));
+    ermia::varstr sv_s_temp = str(Size(v_s_temp));
     try_verify_relax(tbl_stock(ol_supply_w_id)
                          ->get(txn, Encode(str(Size(k_s)), k_s), sv_s_temp));
     const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
@@ -1437,7 +1437,7 @@ rc_t tpcc_worker::txn_new_order() {
 class new_order_scan_callback : public ermia::OrderedIndex::scan_callback {
  public:
   new_order_scan_callback() : k_no(0) {}
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ASSERT(keylen == sizeof(new_order::key));
     ASSERT(value.size() == sizeof(new_order::value));
     k_no = Decode(keyp, k_no_temp);
@@ -1461,28 +1461,28 @@ class new_order_scan_callback : public ermia::OrderedIndex::scan_callback {
 //
 // this isn't done for values, because all values are read-only in a
 // multi-version
-// system. varstrs for values only point to the real data in the database, but
-// still we need to allocate a varstr header for each value. Internally it's
-// just a varstr in the stack.
+// system. ermia::varstrs for values only point to the real data in the database, but
+// still we need to allocate a ermia::varstr header for each value. Internally it's
+// just a ermia::varstr in the stack.
 template <size_t N>
 class static_limit_callback : public ermia::OrderedIndex::scan_callback {
  public:
   // XXX: push ignore_key into lower layer
-  static_limit_callback(str_arena *arena, bool ignore_key)
+  static_limit_callback(ermia::str_arena *arena, bool ignore_key)
       : n(0), arena(arena), ignore_key(ignore_key) {
     static_assert(N > 0, "xx");
     values.reserve(N);
   }
 
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ASSERT(n < N);
-    varstr *pv = arena->next(0);  // header only
+    ermia::varstr *pv = arena->next(0);  // header only
     pv->p = value.p;
     pv->l = value.l;
     if (ignore_key) {
       values.emplace_back(nullptr, pv);
     } else {
-      varstr *const s_px = arena->next(keylen);
+      ermia::varstr *const s_px = arena->next(keylen);
       ASSERT(s_px);
       s_px->copy_from(keyp, keylen);
       values.emplace_back(s_px, pv);
@@ -1492,12 +1492,12 @@ class static_limit_callback : public ermia::OrderedIndex::scan_callback {
 
   inline size_t size() const { return values.size(); }
 
-  typedef std::pair<const varstr *, const varstr *> kv_pair;
+  typedef std::pair<const ermia::varstr *, const ermia::varstr *> kv_pair;
   typename std::vector<kv_pair> values;
 
  private:
   size_t n;
-  str_arena *arena;
+  ermia::str_arena *arena;
   bool ignore_key;
 };
 
@@ -1525,7 +1525,7 @@ rc_t tpcc_worker::txn_delivery() {
   //   max_write_set_size : 133
   //   num_txn_contexts : 4
   ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
@@ -1547,7 +1547,7 @@ rc_t tpcc_worker::txn_delivery() {
     // we will read the oorder entry: in this case the txn will abort,
     // but we're simply bailing out early
     oorder::value v_oo_temp;
-    varstr sv_oo_temp = str(Size(v_oo_temp));
+    ermia::varstr sv_oo_temp = str(Size(v_oo_temp));
     try_catch_cond_abort(
         tbl_oorder(warehouse_id)
             ->get(txn, Encode(str(Size(k_oo)), k_oo), sv_oo_temp));
@@ -1601,7 +1601,7 @@ rc_t tpcc_worker::txn_delivery() {
     // update customer
     const customer::key k_c(warehouse_id, d, c_id);
     customer::value v_c_temp;
-    varstr sv_c_temp = str(Size(v_c_temp));
+    ermia::varstr sv_c_temp = str(Size(v_c_temp));
     try_verify_relax(tbl_customer(warehouse_id)
                          ->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
 
@@ -1621,27 +1621,27 @@ rc_t tpcc_worker::txn_delivery() {
 
 class credit_check_order_scan_callback : public ermia::OrderedIndex::scan_callback {
  public:
-  credit_check_order_scan_callback(str_arena *arena) : _arena(arena) {}
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
-    varstr *const k = _arena->next(keylen);
+  credit_check_order_scan_callback(ermia::str_arena *arena) : _arena(arena) {}
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    ermia::varstr *const k = _arena->next(keylen);
     ASSERT(k);
     k->copy_from(keyp, keylen);
     output.emplace_back(k);
     return true;
   }
-  std::vector<varstr *> output;
-  str_arena *_arena;
+  std::vector<ermia::varstr *> output;
+  ermia::str_arena *_arena;
 };
 
 class credit_check_order_line_scan_callback
     : public ermia::OrderedIndex::scan_callback {
  public:
-  credit_check_order_line_scan_callback(str_arena *arena) {}
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
+  credit_check_order_line_scan_callback(ermia::str_arena *arena) {}
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     _v_ol.emplace_back(&value);
     return true;
   }
-  std::vector<const varstr *> _v_ol;
+  std::vector<const ermia::varstr *> _v_ol;
 };
 
 rc_t tpcc_worker::txn_credit_check() {
@@ -1686,12 +1686,12 @@ rc_t tpcc_worker::txn_credit_check() {
   ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
   ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
 
   // select * from customer with random C_ID
   customer::key k_c;
   customer::value v_c_temp;
-  varstr sv_c_temp = str(Size(v_c_temp));
+  ermia::varstr sv_c_temp = str(Size(v_c_temp));
   const uint customerID = GetCustomerId(r);
   k_c.c_w_id = customerWarehouseID;
   k_c.c_d_id = customerDistrictID;
@@ -1722,7 +1722,7 @@ rc_t tpcc_worker::txn_credit_check() {
 
     const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
     oorder::value v;
-    varstr sv = str(Size(v));
+    ermia::varstr sv = str(Size(v));
     try_catch_cond(
         tbl_oorder(warehouse_id)->get(txn, Encode(str(Size(k_oo)), k_oo), sv),
         continue);
@@ -1790,11 +1790,11 @@ rc_t tpcc_worker::txn_payment() {
   //   max_write_set_size : 1
   //   num_txn_contexts : 5
   ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  varstr sv_w_temp = str(Size(v_w_temp));
+  ermia::varstr sv_w_temp = str(Size(v_w_temp));
   try_verify_relax(tbl_warehouse(warehouse_id)
                        ->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
@@ -1808,7 +1808,7 @@ rc_t tpcc_worker::txn_payment() {
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  varstr sv_d_temp = str(Size(v_d_temp));
+  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   try_verify_relax(tbl_district(warehouse_id)
                        ->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
@@ -1822,7 +1822,7 @@ rc_t tpcc_worker::txn_payment() {
 
   customer::key k_c;
   customer::value v_c;
-  varstr sv_c = str(Size(v_c));
+  ermia::varstr sv_c = str(Size(v_c));
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -1914,10 +1914,10 @@ rc_t tpcc_worker::txn_payment() {
 class order_line_nop_callback : public ermia::OrderedIndex::scan_callback {
  public:
   order_line_nop_callback() : n(0) {}
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ASSERT(keylen == sizeof(order_line::key));
     order_line::value v_ol_temp;
-    const order_line::value *v_ol UNUSED = Decode(value, v_ol_temp);
+    const order_line::value *v_ol = Decode(value, v_ol_temp);
 #ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
@@ -1931,12 +1931,12 @@ class order_line_nop_callback : public ermia::OrderedIndex::scan_callback {
 
 class latest_key_callback : public ermia::OrderedIndex::scan_callback {
  public:
-  latest_key_callback(varstr &k, int32_t limit = -1)
+  latest_key_callback(ermia::varstr &k, int32_t limit = -1)
       : limit(limit), n(0), k(&k) {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
 
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ASSERT(limit == -1 || n < limit);
     k->copy_from(keyp, keylen);
     ++n;
@@ -1944,12 +1944,12 @@ class latest_key_callback : public ermia::OrderedIndex::scan_callback {
   }
 
   inline size_t size() const { return n; }
-  inline varstr &kstr() { return *k; }
+  inline ermia::varstr &kstr() { return *k; }
 
  private:
   int32_t limit;
   int32_t n;
-  varstr *k;
+  ermia::varstr *k;
 };
 
 rc_t tpcc_worker::txn_order_status() {
@@ -1966,13 +1966,13 @@ rc_t tpcc_worker::txn_order_status() {
   const uint64_t read_only_mask =
       ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   ermia::transaction *txn = db->new_txn(read_only_mask, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
 
   customer::key k_c;
   customer::value v_c;
-  varstr sv_c = str(Size(v_c));
+  ermia::varstr sv_c = str(Size(v_c));
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -2023,7 +2023,7 @@ rc_t tpcc_worker::txn_order_status() {
   checker::SanityCheckCustomer(&k_c, &v_c);
 
   oorder_c_id_idx::value sv;
-  varstr *newest_o_c_id = s_arena.get()->next(Size(sv));
+  ermia::varstr *newest_o_c_id = s_arena.get()->next(Size(sv));
   if (g_order_status_scan_hack) {
     // XXX(stephentu): HACK- we bound the # of elems returned by this scan to
     // 15- this is because we don't have reverse scans. In an ideal system, a
@@ -2077,7 +2077,7 @@ rc_t tpcc_worker::txn_order_status() {
 class order_line_scan_callback : public ermia::OrderedIndex::scan_callback {
  public:
   order_line_scan_callback() : n(0) {}
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ASSERT(keylen == sizeof(order_line::key));
     order_line::value v_ol_temp;
     const order_line::value *v_ol = Decode(value, v_ol_temp);
@@ -2113,12 +2113,12 @@ rc_t tpcc_worker::txn_stock_level() {
   const uint64_t read_only_mask =
       ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   ermia::transaction *txn = db->new_txn(read_only_mask, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
   // NB: since txn_stock_level() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  varstr sv_d_temp = str(Size(v_d_temp));
+  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   try_verify_relax(tbl_district(warehouse_id)
                        ->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
@@ -2145,7 +2145,7 @@ rc_t tpcc_worker::txn_stock_level() {
     for (auto &p : c.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
       stock::value v_s;
-      varstr sv_s = str(Size(v_s));
+      ermia::varstr sv_s = str(Size(v_s));
       ASSERT(p.first >= 1 && p.first <= NumItems());
       try_verify_relax(
           tbl_stock(warehouse_id)->get(txn, Encode(str(Size(k_s)), k_s), sv_s));
@@ -2163,7 +2163,7 @@ rc_t tpcc_worker::txn_stock_level() {
 rc_t tpcc_worker::txn_query2() {
   ermia::transaction *txn =
       db->new_txn(ermia::transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
 
   static __thread tpcc_table_scanner r_scanner(&arena);
   r_scanner.clear();
@@ -2212,7 +2212,7 @@ rc_t tpcc_worker::txn_query2() {
       for (auto i = 0; i < g_nr_suppliers; i++) {
         const supplier::key k_su(i);
         supplier::value v_su_tmp;
-        varstr buf_su = str(Size(v_su_tmp));
+        ermia::varstr buf_su = str(Size(v_su_tmp));
         try_verify_relax(
             tbl_supplier(1)->get(txn, Encode(str(Size(k_su)), k_su), buf_su));
         const supplier::value *v_su = Decode(buf_su, v_su_tmp);
@@ -2232,7 +2232,7 @@ rc_t tpcc_worker::txn_query2() {
         {
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
-          varstr sv = str(Size(v_s_tmp));
+          ermia::varstr sv = str(Size(v_s_tmp));
           try_verify_relax(
               tbl_stock(it.first)->get(txn, Encode(str(Size(k_s)), k_s), sv));
           const stock::value *v_s = Decode(sv, v_s_tmp);
@@ -2251,7 +2251,7 @@ rc_t tpcc_worker::txn_query2() {
         // fetch the (lowest stock level) item info
         const item::key k_i(min_k_s.s_i_id);
         item::value v_i_temp;
-        varstr sv_i_temp = str(Size(v_i_temp));
+        ermia::varstr sv_i_temp = str(Size(v_i_temp));
         try_verify_relax(
             tbl_item(1)->get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
         const item::value *v_i = Decode(sv_i_temp, v_i_temp);
@@ -2294,7 +2294,7 @@ rc_t tpcc_worker::txn_query2() {
 
 rc_t tpcc_worker::txn_microbench_random() {
   ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
   uint start_w = 0, start_s = 0;
   ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);
 
@@ -2304,7 +2304,7 @@ rc_t tpcc_worker::txn_microbench_random() {
 
   // read rows
   stock::value v;
-  varstr sv = str(Size(v));
+  ermia::varstr sv = str(Size(v));
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
     DLOG(INFO) << "rd " << w << " " << s;
@@ -2747,10 +2747,10 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
   ermia::transaction *txn = db->new_txn(ermia::transaction::TXN_FLAG_CMD_REDO, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
-  varstr sv_c_temp = str(Size(v_c_temp));
+  ermia::varstr sv_c_temp = str(Size(v_c_temp));
   try_verify_relax(tbl_customer(warehouse_id)
                        ->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
   const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
@@ -2758,7 +2758,7 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  varstr sv_w_temp = str(Size(v_w_temp));
+  ermia::varstr sv_w_temp = str(Size(v_w_temp));
   try_verify_relax(tbl_warehouse(warehouse_id)
                        ->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
@@ -2766,7 +2766,7 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  varstr sv_d_temp = str(Size(v_d_temp));
+  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   try_verify_relax(tbl_district(warehouse_id)
                        ->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
@@ -2800,7 +2800,7 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   v_oo.o_entry_d = GetCurrentTimeMillis();
 
   const size_t oorder_sz = Size(v_oo);
-  OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
+  ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
   try_catch(tbl_oorder(warehouse_id)
                 ->insert(txn, Encode(str(Size(k_oo)), k_oo),
                          Encode(str(oorder_sz), v_oo), &v_oo_oid));
@@ -2817,7 +2817,7 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
 
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
-    varstr sv_i_temp = str(Size(v_i_temp));
+    ermia::varstr sv_i_temp = str(Size(v_i_temp));
     try_verify_relax(
         tbl_item(1)->get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
     const item::value *v_i = Decode(sv_i_temp, v_i_temp);
@@ -2825,7 +2825,7 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
-    varstr sv_s_temp = str(Size(v_s_temp));
+    ermia::varstr sv_s_temp = str(Size(v_s_temp));
     try_verify_relax(tbl_stock(ol_supply_w_id)
                          ->get(txn, Encode(str(Size(k_s)), k_s), sv_s_temp));
     const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
@@ -2887,11 +2887,11 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
   //   max_write_set_size : 1
   //   num_txn_contexts : 5
   ermia::transaction *txn = db->new_txn(ermia::transaction::TXN_FLAG_CMD_REDO, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  varstr sv_w_temp = str(Size(v_w_temp));
+  ermia::varstr sv_w_temp = str(Size(v_w_temp));
   try_verify_relax(tbl_warehouse(warehouse_id)
                        ->get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
@@ -2905,7 +2905,7 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  varstr sv_d_temp = str(Size(v_d_temp));
+  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   try_verify_relax(tbl_district(warehouse_id)
                        ->get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
@@ -2919,7 +2919,7 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
 
   customer::key k_c;
   customer::value v_c;
-  varstr sv_c = str(Size(v_c));
+  ermia::varstr sv_c = str(Size(v_c));
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -3028,7 +3028,7 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
   //   max_write_set_size : 133
   //   num_txn_contexts : 4
   ermia::transaction *txn = db->new_txn(ermia::transaction::TXN_FLAG_CMD_REDO, arena, txn_buf());
-  scoped_str_arena s_arena(arena);
+  ermia::scoped_str_arena s_arena(arena);
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
@@ -3050,7 +3050,7 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     // we will read the oorder entry: in this case the txn will abort,
     // but we're simply bailing out early
     oorder::value v_oo_temp;
-    varstr sv_oo_temp = str(Size(v_oo_temp));
+    ermia::varstr sv_oo_temp = str(Size(v_oo_temp));
     try_catch_cond_abort(
         tbl_oorder(warehouse_id)
             ->get(txn, Encode(str(Size(k_oo)), k_oo), sv_oo_temp));
@@ -3104,7 +3104,7 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     // update customer
     const customer::key k_c(warehouse_id, d, c_id);
     customer::value v_c_temp;
-    varstr sv_c_temp = str(Size(v_c_temp));
+    ermia::varstr sv_c_temp = str(Size(v_c_temp));
     try_verify_relax(tbl_customer(warehouse_id)
                          ->get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
 

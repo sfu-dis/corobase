@@ -372,9 +372,6 @@ struct default_string_allocator {
     strs.emplace_back(new std::string);
     return strs.back().get();
   }
-  inline void return_last(std::string *px) {
-    // XXX: check px in strs
-  }
 
  private:
   std::vector<std::shared_ptr<std::string>> strs;

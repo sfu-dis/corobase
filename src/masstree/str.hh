@@ -15,6 +15,7 @@
  */
 #ifndef STR_HH
 #define STR_HH
+#include "compiler.hh"
 #include "string_base.hh"
 #include <stdarg.h>
 #include <stdio.h>

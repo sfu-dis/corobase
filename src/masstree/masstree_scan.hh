@@ -17,8 +17,6 @@
 #define MASSTREE_SCAN_HH
 #include "masstree_tcursor.hh"
 #include "masstree_struct.hh"
-#include "../dbcore/sm-index.h"
-#include "../dbcore/xid.h"
 
 namespace Masstree {
 
@@ -324,7 +322,7 @@ int basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
       case mystack_type::scan_emit: {  // surpress cross init warning about v
         ++scancount;
         ermia::dbtuple *v = NULL;
-        OID o = entry.value();
+        ermia::OID o = entry.value();
         if (ermia::config::is_backup_srv()) {
           v = ermia::oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
         } else {

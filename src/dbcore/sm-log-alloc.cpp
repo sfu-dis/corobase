@@ -1,9 +1,9 @@
+#include "rcu.h"
 #include "sm-cmd-log.h"
 #include "sm-log-alloc.h"
 #include "sm-rep.h"
 #include "stopwatch.h"
 #include "../benchmarks/bench.h"
-#include "../macros.h"
 #include "../util.h"
 
 namespace {

@@ -15,14 +15,10 @@
  */
 #ifndef MASSTREE_HH
 #define MASSTREE_HH
-#include "compiler.hh"
 #include "str.hh"
 #include "ksearch.hh"
 
-#include "../dbcore/sm-alloc.h"
-#include "../dbcore/sm-index.h"
 #include "../dbcore/sm-oid.h"
-#include "../tuple.h"
 #include "../dbcore/xid.h"
 #include "../macros.h"
 

@@ -4,6 +4,13 @@
 #ifndef MASSTREE_CONFIG_H_INCLUDED
 #define MASSTREE_CONFIG_H_INCLUDED 1
 
+#define HAVE_STRING_PROFILING 0
+#define HAVE_OPTIMIZE_SIZE 0
+#define __OPTIMIZE_SIZE__ 0
+#define HAVE_CXX_USER_LITERALS 0
+#define WORDS_BIGENDIAN 0
+#define HAVE_INT64_T_IS_LONG_LONG 0
+
 /* Define if building universal (internal helper macro) */
 /* #undef AC_APPLE_UNIVERSAL_BUILD */
 
@@ -237,21 +244,6 @@
 /* Define to the address where bug reports for this package should be sent. */
 #define PACKAGE_BUGREPORT ""
 
-/* Define to the full name of this package. */
-#define PACKAGE_NAME "masstree-beta"
-
-/* Define to the full name and version of this package. */
-#define PACKAGE_STRING "masstree-beta 0.1"
-
-/* Define to the one symbol short name of this package. */
-#define PACKAGE_TARNAME "masstree-beta"
-
-/* Define to the home page for this package. */
-#define PACKAGE_URL ""
-
-/* Define to the version of this package. */
-#define PACKAGE_VERSION "0.1"
-
 /* The size of `int', as computed by sizeof. */
 #define SIZEOF_INT 4
 
@@ -285,10 +277,6 @@
 /* Define if WORDS_BIGENDIAN has been set. */
 #define WORDS_BIGENDIAN_SET 1
 
-#if !FORCE_ENABLE_ASSERTIONS && !ENABLE_ASSERTIONS
-# define NDEBUG 1
-#endif
-
 /** @brief Assert macro that always runs. */
 extern void fail_always_assert(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
 #define always_assert(x, ...) do { if (!(x)) fail_always_assert(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
@@ -299,7 +287,7 @@ extern void fail_always_assert(const char* file, int line, const char* assertion
     masstree_invariant(x) is executed if --enable-invariants or
     --enable-assertions. */
 extern void fail_masstree_invariant(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
-#if FORCE_ENABLE_ASSERTIONS || (!defined(ENABLE_INVARIANTS) && ENABLE_ASSERTIONS) || ENABLE_INVARIANTS
+#if (!defined(ENABLE_INVARIANTS) && ENABLE_ASSERTIONS) || ENABLE_INVARIANTS
 #define masstree_invariant(x, ...) do { if (!(x)) fail_masstree_invariant(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
 #else
 #define masstree_invariant(x, ...) do { } while (0)
@@ -310,7 +298,7 @@ extern void fail_masstree_invariant(const char* file, int line, const char* asse
     masstree_precondition(x) is executed if --enable-preconditions or
     --enable-assertions. */
 extern void fail_masstree_precondition(const char* file, int line, const char* assertion, const char* message = 0) __attribute__((noreturn));
-#if FORCE_ENABLE_ASSERTIONS || (!defined(ENABLE_PRECONDITIONS) && ENABLE_ASSERTIONS) || ENABLE_PRECONDITIONS
+#if (!defined(ENABLE_PRECONDITIONS) && ENABLE_ASSERTIONS) || ENABLE_PRECONDITIONS
 #define masstree_precondition(x, ...) do { if (!(x)) fail_masstree_precondition(__FILE__, __LINE__, #x, ## __VA_ARGS__); } while (0)
 #else
 #define masstree_precondition(x, ...) do { } while (0)

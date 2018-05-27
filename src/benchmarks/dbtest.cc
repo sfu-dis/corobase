@@ -7,6 +7,7 @@
 #include <gflags/gflags.h>
 
 #include "bench.h"
+#include "../dbcore/rcu.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
 
@@ -238,11 +239,11 @@ int main(int argc, char **argv) {
     LOG_IF(FATAL, ermia::config::threads < ermia::config::replay_threads);
     ermia::config::worker_threads = ermia::config::threads - ermia::config::replay_threads;
 
-    RCU::rcu_register();
+    ermia::RCU::rcu_register();
     ALWAYS_ASSERT(ermia::config::log_dir.size());
     ALWAYS_ASSERT(not ermia::logmgr);
     ALWAYS_ASSERT(not ermia::oidmgr);
-    RCU::rcu_enter();
+    ermia::RCU::rcu_enter();
     ermia::sm_log::allocate_log_buffer();
     if (ermia::config::log_ship_by_rdma) {
       ermia::rep::start_as_backup_rdma();

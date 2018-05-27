@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include "../ermia.h"
 
+#include "rcu.h"
 #include "sm-chkpt.h"
 #include "sm-index.h"
 #include "sm-thread.h"

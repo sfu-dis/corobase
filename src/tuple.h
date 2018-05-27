@@ -1,11 +1,11 @@
 #pragma once
 
 #include "macros.h"
-#include "util.h"
+#include "varstr.h"
 
-#include "dbcore/xid.h"
-#include "dbcore/sm-alloc.h"
 #include "dbcore/serial.h"
+#include "dbcore/sm-object.h"
+#include "dbcore/xid.h"
 
 #ifdef SSN
 // Indicate somebody has read this tuple and thought it was an old one

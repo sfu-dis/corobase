@@ -1,6 +1,5 @@
 #pragma once
 
-#include "macros.h"
 #include "dbcore/sm-common.h"
 #include "util.h"
 
@@ -8,6 +7,7 @@
 #include "masstree/string_slice.hh"
 #endif
 
+namespace ermia {
 struct varstr {
   friend std::ostream &operator<<(std::ostream &o, const varstr &k);
 
@@ -96,3 +96,4 @@ struct varstr {
   fat_ptr ptr;
   const uint8_t *p;  // must be the last field
 };
+}  // namespace ermia
