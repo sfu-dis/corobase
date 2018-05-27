@@ -1,5 +1,7 @@
 #include "size-encode.h"
 
+namespace ermia {
+
 #define B(e) (size_t(16) - (size_t(15) >> (e)))
 static uint8_t constexpr decode_table[] = {
     B(0x0), B(0x1), B(0x2), B(0x3), B(0x4), B(0x5), B(0x6), B(0x7),
@@ -157,3 +159,4 @@ uint8_t encode_size_aligned(size_t &size, size_t align_bits) {
 
 // use the table-based approach?
 //#define encode_size encode_size_tab
+}  // namespace ermia

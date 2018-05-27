@@ -140,7 +140,7 @@ void bench_runner::create_files_task(char *) {
   // Allocate an FID for each index, set 2nd indexes to use
   // the primary index's record FID/array
   ASSERT(ermia::logmgr);
-  RCU::rcu_enter();
+  ermia::RCU::rcu_enter();
   ermia::sm_tx_log *log = ermia::logmgr->new_tx_log();
 
   for (auto &nm : ermia::IndexDescriptor::name_map) {
@@ -164,7 +164,7 @@ void bench_runner::create_files_task(char *) {
   }
 
   log->commit(nullptr);
-  RCU::rcu_exit();
+  ermia::RCU::rcu_exit();
 }
 
 void bench_runner::run() {
@@ -176,11 +176,11 @@ void bench_runner::run() {
     // empty; only the table name is available.  Create the ermia::logmgr here,
     // instead of in an sm-thread: recovery might want to utilize all the
     // worker_threads specified in config.
-    RCU::rcu_register();
+    ermia::RCU::rcu_register();
     ALWAYS_ASSERT(ermia::config::log_dir.size());
     ALWAYS_ASSERT(not ermia::logmgr);
     ALWAYS_ASSERT(not ermia::oidmgr);
-    RCU::rcu_enter();
+    ermia::RCU::rcu_enter();
     ermia::sm_log::allocate_log_buffer();
     ermia::logmgr = ermia::sm_log::new_log(ermia::config::recover_functor, nullptr);
     ermia::sm_oid_mgr::create();
@@ -191,7 +191,7 @@ void bench_runner::run() {
   ALWAYS_ASSERT(ermia::logmgr);
   ALWAYS_ASSERT(ermia::oidmgr);
 
-  LSN chkpt_lsn = ermia::logmgr->get_chkpt_start();
+  ermia::LSN chkpt_lsn = ermia::logmgr->get_chkpt_start();
   if (ermia::config::enable_chkpt) {
     ermia::chkptmgr = new ermia::sm_chkpt_mgr(chkpt_lsn);
   } else {
@@ -203,7 +203,7 @@ void bench_runner::run() {
     ermia::logmgr->recover();
   }
 
-  RCU::rcu_exit();
+  ermia::RCU::rcu_exit();
 
   ermia::thread::sm_thread *runner_thread = nullptr;
   ermia::thread::sm_thread::task_t runner_task;
@@ -260,8 +260,8 @@ void bench_runner::run() {
         }
       }
     }
-    RCU::rcu_enter();
-    volatile_write(ermia::MM::safesnap_lsn, ermia::logmgr->cur_lsn().offset());
+    ermia::RCU::rcu_enter();
+    ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::logmgr->cur_lsn().offset());
     ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
     // Persist the database
@@ -269,9 +269,9 @@ void bench_runner::run() {
     if (ermia::config::enable_chkpt) {
       ermia::chkptmgr->do_chkpt();  // this is synchronous
     }
-    RCU::rcu_exit();
+    ermia::RCU::rcu_exit();
   }
-  RCU::rcu_deregister();
+  ermia::RCU::rcu_deregister();
 
   // Start checkpointer after database is ready
   if (ermia::config::is_backup_srv()) {
@@ -307,8 +307,8 @@ void bench_runner::run() {
       ALWAYS_ASSERT(not ermia::config::is_backup_srv());
       ermia::rep::start_as_primary();
       if (ermia::config::wait_for_backups) {
-        while (volatile_read(ermia::config::num_active_backups) !=
-               volatile_read(ermia::config::num_backups)) {
+        while (ermia::volatile_read(ermia::config::num_active_backups) !=
+               ermia::volatile_read(ermia::config::num_backups)) {
         }
       }
       std::cout << "[Primary] " << ermia::config::num_backups << " backups\n";
@@ -335,8 +335,8 @@ void bench_runner::run() {
     ermia::rep::backup_shutdown_trigger.wait(lock);
     if (ermia::config::replay_policy != ermia::config::kReplayNone &&
         ermia::config::replay_policy != ermia::config::kReplayBackground) {
-      while (volatile_read(ermia::rep::replayed_lsn_offset) <
-             volatile_read(ermia::rep::new_end_lsn_offset)) {
+      while (ermia::volatile_read(ermia::rep::replayed_lsn_offset) <
+             ermia::volatile_read(ermia::rep::new_end_lsn_offset)) {
       }
     }
     std::cerr << "Shutdown successfully" << std::endl;
@@ -363,16 +363,16 @@ void bench_runner::run() {
 }
 
 void bench_runner::measure_read_view_lsn() {
-  RCU::rcu_register();
-  DEFER(RCU::rcu_deregister());
+  ermia::RCU::rcu_register();
+  DEFER(ermia::RCU::rcu_deregister());
   std::ofstream out_file(ermia::config::read_view_stat_file, std::ios::out | std::ios::trunc);
   LOG_IF(FATAL, !out_file.is_open()) << "Read view stat file not open";
   DEFER(out_file.close());
   out_file << "Time,LSN,DLSN" << std::endl;
   while (!ermia::config::IsShutdown()) {
     while (ermia::config::IsForwardProcessing()) {
-      RCU::rcu_enter();
-      DEFER(RCU::rcu_exit());
+      ermia::RCU::rcu_enter();
+      DEFER(ermia::RCU::rcu_exit());
       uint64_t lsn = 0;
       uint64_t dlsn = ermia::logmgr->durable_flushed_lsn().offset();
       if (ermia::config::is_backup_srv()) {

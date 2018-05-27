@@ -7,7 +7,6 @@
 #include "epoch.h"
 #include "sm-common.h"
 #include "sm-config.h"
-#include "../macros.h"
 
 namespace ermia {
 

@@ -75,20 +75,20 @@ ZipCodeBuffer zipCodeBuffer(14850);
 // Utils
 class tpce_table_scanner : public ermia::OrderedIndex::scan_callback {
  public:
-  tpce_table_scanner(str_arena *arena) : _arena(arena) {}
-  virtual bool invoke(const char *keyp, size_t keylen, const varstr &value) {
-    varstr *const k = _arena->next(keylen);
+  tpce_table_scanner(ermia::str_arena *arena) : _arena(arena) {}
+  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    ermia::varstr *const k = _arena->next(keylen);
     ASSERT(k);
     k->copy_from(keyp, keylen);
 
-    varstr *v = _arena->next(0);
+    ermia::varstr *v = _arena->next(0);
     v->p = value.p;
     v->l = value.l;
     output.emplace_back(k, v);
     return true;
   }
-  std::vector<std::pair<varstr *, varstr *>> output;
-  str_arena *_arena;
+  std::vector<std::pair<ermia::varstr *, ermia::varstr *>> output;
+  ermia::str_arena *_arena;
 };
 
 int64_t GetLastListID() {
@@ -314,7 +314,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->broker_volume();
   }
   rc_t broker_volume() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TBrokerVolumeTxnInput input;
     TBrokerVolumeTxnOutput output;
     m_TxnInputGenerator->GenerateBrokerVolumeInput(input);
@@ -331,7 +331,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->customer_position();
   }
   rc_t customer_position() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TCustomerPositionTxnInput input;
     TCustomerPositionTxnOutput output;
     m_TxnInputGenerator->GenerateCustomerPositionInput(input);
@@ -351,7 +351,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->market_feed();
   }
   rc_t market_feed() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TMarketFeedTxnInput *input = MarketFeedInputBuffer->get();
     if (not input) {
       return {RC_ABORT_USER};  // XXX. do we have to do this? MFQueue is empty,
@@ -383,7 +383,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->market_watch();
   }
   rc_t market_watch() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TMarketWatchTxnInput input;
     TMarketWatchTxnOutput output;
     m_TxnInputGenerator->GenerateMarketWatchInput(input);
@@ -400,7 +400,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->security_detail();
   }
   rc_t security_detail() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TSecurityDetailTxnInput input;
     TSecurityDetailTxnOutput output;
     m_TxnInputGenerator->GenerateSecurityDetailInput(input);
@@ -417,7 +417,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->trade_lookup();
   }
   rc_t trade_lookup() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TTradeLookupTxnInput input;
     TTradeLookupTxnOutput output;
     m_TxnInputGenerator->GenerateTradeLookupInput(input);
@@ -440,7 +440,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->trade_order();
   }
   rc_t trade_order() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TTradeOrderTxnInput input;
     TTradeOrderTxnOutput output;
     bool bExecutorIsAccountOwner;
@@ -468,7 +468,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->trade_result();
   }
   rc_t trade_result() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TTradeResultTxnInput *input = TradeResultInputBuffer->get();
     if (not input) {
       return {RC_ABORT_USER};  // XXX. do we have to do this? TRQueue is empty,
@@ -507,7 +507,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->trade_status();
   }
   rc_t trade_status() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TTradeStatusTxnInput input;
     TTradeStatusTxnOutput output;
     m_TxnInputGenerator->GenerateTradeStatusInput(input);
@@ -524,7 +524,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->trade_update();
   }
   rc_t trade_update() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     TTradeUpdateTxnInput input;
     TTradeUpdateTxnOutput output;
     m_TxnInputGenerator->GenerateTradeUpdateInput(input);
@@ -546,7 +546,7 @@ class tpce_worker : public bench_worker,
   }
 
   rc_t long_query() {
-    scoped_str_arena s_arena(arena);
+    ermia::scoped_str_arena s_arena(arena);
     return DoLongQueryFrame1();
   }
   rc_t DoLongQueryFrame1();
@@ -556,7 +556,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->data_maintenance();
   }
   rc_t data_maintenance() {
-    // scoped_str_arena s_arena(arena);
+    // ermia::scoped_str_arena s_arena(arena);
     // TDataMaintenanceTxnInput* input = m_CDM->createDMInput();
     // TDataMaintenanceTxnOutput output;
     // CDataMaintenance* harness= new CDataMaintenance(this);
@@ -572,7 +572,7 @@ class tpce_worker : public bench_worker,
     return static_cast<tpce_worker *>(w)->trade_cleanup();
   }
   rc_t trade_cleanup() {
-    // scoped_str_arena s_arena(arena);
+    // ermia::scoped_str_arena s_arena(arena);
     // TTradeCleanupTxnInput*  input = m_CDM->createTCInput();
     // TTradeCleanupTxnOutput output;
     // CTradeCleanup* harness= new CTradeCleanup(this);
@@ -637,13 +637,13 @@ class tpce_worker : public bench_worker,
   }
 
  protected:
-  inline ALWAYS_INLINE varstr &str(uint64_t size) { return *arena.next(size); }
+  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   ermia::transaction *txn;
   const uint partition_id_start;
   const uint partition_id_end;
-  varstr obj_v;
+  ermia::varstr obj_v;
   CMEE *mee;  // thread-local MEE
   MFBuffer *MarketFeedInputBuffer;
   TRBuffer *TradeResultInputBuffer;
@@ -687,7 +687,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
       ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   txn = db->new_txn(read_only_mask, arena, txn_buf());
 
-  std::vector<std::pair<varstr *, const varstr *>> brokers;
+  std::vector<std::pair<ermia::varstr *, const ermia::varstr *>> brokers;
   for (auto i = 0; i < max_broker_list_len and pIn->broker_list[i]; i++) {
     const b_name_index::key k_b_0(std::string(pIn->broker_list[i]),
                                   MIN_VAL(k_b_0.b_id));
@@ -934,7 +934,7 @@ rc_t tpce_worker::DoCustomerPositionFrame2(
                                        t_scanner, &arena));
   ALWAYS_ASSERT(t_scanner.output.size());
 
-  std::vector<std::pair<varstr *, const varstr *>> tids;
+  std::vector<std::pair<ermia::varstr *, const ermia::varstr *>> tids;
   for (auto &r_t : t_scanner.output) {
     t_ca_id_index::key k_t_temp;
     trade::value v_t_temp;
@@ -1059,7 +1059,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
     // trade, this can happen. Higher initial trading days would enlarge this
     // scan set
 
-    std::vector<std::pair<varstr *, const varstr *>> request_list_cursor;
+    std::vector<std::pair<ermia::varstr *, const ermia::varstr *>> request_list_cursor;
     for (auto &r_tr : tr_scanner.output) {
       trade_request::value v_tr_temp;
       const trade_request::value *v_tr = Decode(*r_tr.second, v_tr_temp);
@@ -1087,7 +1087,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
 
       const trade::key k_t(req_trade_id);
       trade::value v_t_temp;
-      OID t_oid = 0;
+      ermia::OID t_oid = 0;
       try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t),
                                          obj_v = str(sizeof(v_t_temp)),
                                          &t_oid));
@@ -2294,7 +2294,7 @@ rc_t tpce_worker::DoTradeOrderFrame4(const TTradeOrderFrame4Input *pIn,
   v_t.t_comm = pIn->comm_amount;
   v_t.t_tax = 0;
   v_t.t_lifo = pIn->is_lifo;
-  OID t_oid = 0;
+  ermia::OID t_oid = 0;
   try_catch(tbl_trade(1)->insert(txn, Encode(str(sizeof(k_t)), k_t),
                                  Encode(str(sizeof(v_t)), v_t), &t_oid));
 
@@ -2789,7 +2789,7 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn,
 rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
-  OID t_oid = 0;
+  ermia::OID t_oid = 0;
   try_verify_relax(tbl_trade(1)->get(txn, Encode(str(sizeof(k_t)), k_t),
                                      obj_v = str(sizeof(v_t_temp)), &t_oid));
   const trade::value *v_t = Decode(obj_v, v_t_temp);
@@ -3634,7 +3634,7 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
       k_in_idx2.in_id = std::string(record->IN_ID);
 
       ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-      OID i_oid = 0;
+      ermia::OID i_oid = 0;
       try_verify_strict(
           tbl_industry(1)->insert(txn, Encode(str(sizeof(k_in)), k_in),
                                   Encode(str(sizeof(v_in)), v_in), &i_oid));
@@ -4019,7 +4019,7 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
         k_idx_tax_id.c_tax_id = std::string(record->C_TAX_ID);
 
         ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-        OID c_oid = 0;
+        ermia::OID c_oid = 0;
         try_verify_strict(tbl_customers(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &c_oid));
         try_verify_strict(tbl_c_tax_id_index(1)->insert(
@@ -4092,7 +4092,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
         k_idx1.ca_c_id = record->CA_C_ID;
 
         ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-        OID ca_oid = 0;
+        ermia::OID ca_oid = 0;
         try_verify_strict(tbl_customer_account(1)
                               ->insert(txn, Encode(str(sizeof(k)), k),
                                        Encode(str(sizeof(v)), v), &ca_oid));
@@ -4312,7 +4312,7 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
         k_idx2.co_id = record->CO_ID;
 
         ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-        OID c_oid;
+        ermia::OID c_oid;
         try_verify_strict(tbl_company(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &c_oid));
         try_verify_strict(tbl_co_name_index(1)->insert(
@@ -4696,7 +4696,7 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
         k_idx.s_symb = std::string(record->S_SYMB);
 
         ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-        OID s_oid = 0;
+        ermia::OID s_oid = 0;
         try_verify_strict(tbl_security(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &s_oid));
         try_verify_strict(tbl_security_index(1)->insert(
@@ -4828,7 +4828,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         k_idx2.t_id = record->T_ID;
 
         ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-        OID t_oid = 0;
+        ermia::OID t_oid = 0;
         try_verify_strict(tbl_trade(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &t_oid));
         try_verify_strict(tbl_t_ca_id_index(1)->insert(
@@ -4941,7 +4941,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
         k_idx.b_id = record->B_ID;
 
         ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
-        OID b_oid = 0;
+        ermia::OID b_oid = 0;
         try_verify_strict(tbl_broker(1)->insert(
             txn, Encode(str(sizeof(k)), k), Encode(str(sizeof(v)), v), &b_oid));
         try_verify_strict(tbl_b_name_index(1)->insert(

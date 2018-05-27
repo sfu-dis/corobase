@@ -11,6 +11,8 @@
 #include <sys/fcntl.h>
 #include <vector>
 
+namespace ermia {
+
 void die(char const *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
@@ -195,3 +197,4 @@ tmp_dir::~tmp_dir() {
   fprintf(stderr, "Deleting directory %s/\n", dname);
   rmdir(dname);
 }
+}  // namespace ermia

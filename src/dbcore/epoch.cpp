@@ -3,6 +3,8 @@
 #include <map>
 #include <type_traits>
 
+namespace ermia {
+
 /* A traditional epoch design tracks up to three epochs at a time:
 
    active -- new transactions always join the active epoch
@@ -454,3 +456,4 @@ void epoch_mgr::thread_exit() {
   // might be a straggler
   straggler_check(this, self, tmp);
 }
+}  // namespace ermia

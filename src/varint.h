@@ -2,7 +2,6 @@
 #define _VARINT_H_
 
 #include <stdint.h>
-#include "macros.h"
 
 // read unsigned varint32 from buffer. assumes the buffer will have enough size
 inline const uint8_t *read_uvint32_slow(const uint8_t *buf, uint32_t *value) {

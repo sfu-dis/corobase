@@ -1,3 +1,4 @@
+#include "rcu.h"
 #include "sm-cmd-log.h"
 #include "sm-rep.h"
 #include "../ermia.h"

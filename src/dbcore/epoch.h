@@ -1,10 +1,11 @@
-// -*- mode:c++ -*-
 #pragma once
 
 #include "mcs_lock.h"
 #include "sm-common.h"
 
 #include <type_traits>
+
+namespace ermia {
 
 /* A customizable epoch manager, suitable for implementing services
    such as RCU. This class is POD, and so can be placed in statically
@@ -153,3 +154,4 @@ struct epoch_mgr {
   callbacks cb;
   mcs_lock mutex;
 };
+}  // namespace ermia

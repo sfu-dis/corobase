@@ -1,8 +1,10 @@
 #pragma once
+#include <stdint.h>
+
+// txn operation (e.g., r/w) return code
 struct rc_t {
   uint16_t _val;
 };
-// typedef uint8_t rc_t;   // txn operation (e.g., r/w) return code
 
 // 8 bits for return code:
 // bit  meaning

@@ -2,10 +2,8 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-#include <pthread.h>
 
 #include <map>
-#include <iostream>
 #include <vector>
 #include <string>
 #include <utility>
@@ -21,7 +19,6 @@
 #include "dbcore/sm-rc.h"
 #include "masstree_btree.h"
 #include "macros.h"
-#include "util.h"
 #include "str_arena.h"
 #include "tuple.h"
 

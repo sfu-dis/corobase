@@ -1,4 +1,3 @@
-// -*- c-basic-offset: 2 -*-
 #pragma once
 
 #include <assert.h>
@@ -14,15 +13,6 @@
 #include <utility>
 #include <atomic>
 
-#include "dbcore/sm-alloc.h"
-#include "dbcore/sm-index.h"
-#include "dbcore/sm-object.h"
-#include "dbcore/sm-oid.h"
-
-#include "macros.h"
-#include "util.h"
-
-#include "masstree/compiler.hh"
 #include "masstree/masstree_insert.hh"
 #include "masstree/masstree_remove.hh"
 #include "masstree/masstree_scan.hh"
@@ -31,6 +21,8 @@
 #include "masstree/mtcounters.hh"
 #include "masstree/circular_int.hh"
 
+#include "../dbcore/sm-alloc.h"
+#include "../dbcore/sm-index.h"
 #include "tuple.h"
 
 namespace ermia {

@@ -1,3 +1,4 @@
+#include "rcu.h"
 #include "sm-chkpt.h"
 #include "sm-log-recover.h"
 #include "sm-log-recover-impl.h"

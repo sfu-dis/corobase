@@ -1,3 +1,4 @@
+#include "sm-alloc.h"
 #include "sm-cmd-log.h"
 #include "sm-log.h"
 #include "sm-rep.h"

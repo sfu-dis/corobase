@@ -1,3 +1,4 @@
+#include "rcu.h"
 #include "serial.h"
 #include "sm-alloc.h"
 #include "sm-log.h"

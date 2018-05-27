@@ -1,12 +1,11 @@
-// -*- mode: c++ -*-
-#ifndef __RCU_H
-#define __RCU_H
+#pragma once
 
 #include "sm-defs.h"
 
 #include <cstddef>
 #include <cstdarg>
 
+namespace ermia {
 namespace RCU {
 #define RCU_UNWIND
 
@@ -305,14 +304,14 @@ static inline T *rcu_read(T *ptr) {
 #else
 #define RCU_READ(ptr) (ptr)
 #endif
+}  // namespace RCU
+}  // namespace ermia
+
+inline void *operator new(size_t nbytes, ermia::RCU::rcu_new_sentinel const &) {
+  return ermia::RCU::rcu_alloc(nbytes);
 }
 
-inline void *operator new(size_t nbytes, RCU::rcu_new_sentinel const &) {
-  return RCU::rcu_alloc(nbytes);
+inline void operator delete(void *ptr, ermia::RCU::rcu_new_sentinel const &) {
+  ermia::RCU::rcu_free(ptr);
 }
 
-inline void operator delete(void *ptr, RCU::rcu_new_sentinel const &) {
-  RCU::rcu_free(ptr);
-}
-
-#endif

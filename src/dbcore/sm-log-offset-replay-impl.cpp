@@ -1,5 +1,6 @@
 #include <x86intrin.h>
 #include "../ermia.h"
+#include "rcu.h"
 #include "sm-index.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"

@@ -4,6 +4,7 @@
 #include "varstr.h"
 #include "dbcore/sm-common.h"
 
+namespace ermia {
 class str_arena {
  public:
   static const uint64_t ReserveBytes = 128 * 1024 * 1024;
@@ -67,3 +68,4 @@ class scoped_str_arena {
  private:
   str_arena *arena;
 };
+}  // namespace ermia

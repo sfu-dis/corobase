@@ -4,6 +4,13 @@
 #ifndef MASSTREE_CONFIG_H_INCLUDED
 #define MASSTREE_CONFIG_H_INCLUDED 1
 
+#define HAVE_STRING_PROFILING 0
+#define HAVE_OPTIMIZE_SIZE 0
+#define __OPTIMIZE_SIZE__ 0
+#define HAVE_CXX_USER_LITERALS 0
+#define WORDS_BIGENDIAN 0
+#define HAVE_INT64_T_IS_LONG_LONG 0
+
 /* Define if building universal (internal helper macro) */
 /* #undef AC_APPLE_UNIVERSAL_BUILD */
 

@@ -1,5 +1,3 @@
-#pragma once
-
 #include "xid.h"
 #include "sm-log.h"
 #include "epoch.h"
@@ -10,10 +8,6 @@
 
 namespace ermia {
 namespace TXN {
-
-#if 0
-} // disable autoindent
-#endif
 
 /* There are a fixed number of transaction contexts in the system
    (some thousands of them), and our primary task is to create unique

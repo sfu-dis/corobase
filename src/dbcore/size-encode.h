@@ -1,11 +1,11 @@
-// -*- mode:c++ -*-
-#ifndef __SIZE_ENCODE_H
-#define __SIZE_ENCODE_H
+#pragma once
 
 #include "sm-defs.h"
 
 #include <cstddef>
 #include <cstdint>
+
+namespace ermia {
 
 /*
   Encode a non-negative size in 8 bits, using a format similar to
@@ -61,4 +61,4 @@ static uint8_t const INVALID_SIZE_CODE = 0xff;
 static size_t const MAX_ENCODABLE_SIZE = 950272;
 static size_t const INVALID_SIZE = -1;
 
-#endif
+}  // namespace ermia

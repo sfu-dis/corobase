@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#include "../macros.h"
+#include "../util.h"
 #include "sm-common.h"
 
 namespace tcp {

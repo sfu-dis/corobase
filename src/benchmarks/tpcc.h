@@ -1,8 +1,7 @@
-#ifndef _NDB_BENCH_TPCC_H_
-#define _NDB_BENCH_TPCC_H_
+#pragma once
 
-#include "../record/encoder.h"
-#include "../record/inline_str.h"
+#include "record/encoder.h"
+#include "record/inline_str.h"
 #include "../macros.h"
 
 // These correspond to the their index in the workload desc vector
@@ -126,5 +125,3 @@ DO_STRUCT(region, REGION_KEY_FIELDS, REGION_VALUE_FIELDS)
       y(int32_t, su_nationkey) y(inline_str_fixed<15>, su_phone)       \
           y(int32_t, su_acctbal) y(inline_str_fixed<40>, su_comment)
 DO_STRUCT(supplier, SUPPLIER_KEY_FIELDS, SUPPLIER_VALUE_FIELDS)
-
-#endif

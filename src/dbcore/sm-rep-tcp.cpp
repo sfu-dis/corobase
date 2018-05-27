@@ -1,5 +1,6 @@
 #include <sys/stat.h>
 
+#include "rcu.h"
 #include "sm-cmd-log.h"
 #include "sm-index.h"
 #include "sm-log-file.h"

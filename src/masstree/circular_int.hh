@@ -20,8 +20,8 @@
 template <typename T>
 class circular_int {
  public:
-  typedef typename mass::make_unsigned<T>::type value_type;
-  typedef typename mass::make_signed<T>::type difference_type;
+  typedef typename std::make_unsigned<T>::type value_type;
+  typedef typename std::make_signed<T>::type difference_type;
 
   circular_int() : v_() {}
   circular_int(T x) : v_(x) {}
