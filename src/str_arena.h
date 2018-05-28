@@ -63,7 +63,7 @@ class scoped_str_arena {
     if (arena) arena->reset();
   }
 
-  inline ALWAYS_INLINE str_arena *get() { return arena; }
+  ALWAYS_INLINE str_arena *get() { return arena; }
 
  private:
   str_arena *arena;

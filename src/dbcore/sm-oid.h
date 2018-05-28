@@ -7,6 +7,7 @@
 
 #include "dynarray.h"
 
+#include "../macros.h"
 #include "../tuple.h"
 
 namespace ermia {
@@ -194,6 +195,10 @@ struct sm_oid_mgr {
   bool TestVisibility(Object *object, TXN::xid_context *xc, bool &retry);
 
   inline void oid_check_phantom(TXN::xid_context *visitor_xc, uint64_t vcstamp) {
+#if !defined(SSI) && !defined(SSN)
+    MARK_REFERENCED(visitor_xc);
+    MARK_REFERENCED(vcstamp);
+#endif
     if (!config::phantom_prot) {
       return;
     }

@@ -138,7 +138,7 @@ class ycsb_worker : public bench_worker {
   }
 
  protected:
-  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   ermia::OrderedIndex *tbl;

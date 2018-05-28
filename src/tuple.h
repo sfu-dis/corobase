@@ -80,7 +80,7 @@ struct dbtuple {
    * and we need to check the type of clsn because a "committed" tx might
    * change the clsn to ASI_LOG type after changing state.
    */
-  inline ALWAYS_INLINE uint64_t age(TXN::xid_context *visitor) {
+  ALWAYS_INLINE uint64_t age(TXN::xid_context *visitor) {
     uint64_t end = 0;
     XID owner = volatile_read(visitor->owner);
 
@@ -103,7 +103,7 @@ struct dbtuple {
     return volatile_read(visitor->begin) - end;
   }
   bool is_old(TXN::xid_context *visitor);  // FOR READERS ONLY!
-  inline ALWAYS_INLINE bool set_persistent_reader() {
+  ALWAYS_INLINE bool set_persistent_reader() {
     uint64_t pr = 0;
     do {
       pr = volatile_read(preader);
@@ -116,11 +116,11 @@ struct dbtuple {
   }
 #endif
 #if defined(SSN)
-  inline ALWAYS_INLINE bool has_persistent_reader() {
+  ALWAYS_INLINE bool has_persistent_reader() {
     return volatile_read(preader) & PERSISTENT_READER_MARK;
   }
   // XXX: for the writer who's updating this tuple only
-  inline ALWAYS_INLINE void lockout_read_mostly_tx() {
+  ALWAYS_INLINE void lockout_read_mostly_tx() {
     if (config::ssn_read_opt_enabled()) {
       if (not(volatile_read(preader) >> 7))
         __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
@@ -129,7 +129,7 @@ struct dbtuple {
   }
 
   // XXX: for the writer who's updating this tuple only
-  inline ALWAYS_INLINE void welcome_read_mostly_tx() {
+  ALWAYS_INLINE void welcome_read_mostly_tx() {
     if (config::ssn_read_opt_enabled()) {
       if (volatile_read(preader) >> 7)
         __sync_fetch_and_xor(&preader, uint64_t{1} << 7);
@@ -138,9 +138,9 @@ struct dbtuple {
   }
 #endif
 
-  inline ALWAYS_INLINE uint8_t *get_value_start() { return &value_start[0]; }
+  ALWAYS_INLINE uint8_t *get_value_start() { return &value_start[0]; }
 
-  inline ALWAYS_INLINE const uint8_t *get_value_start() const {
+  ALWAYS_INLINE const uint8_t *get_value_start() const {
     return &value_start[0];
   }
 
@@ -160,13 +160,13 @@ struct dbtuple {
   }
 
  private:
-  static inline ALWAYS_INLINE uint32_t CheckBounds(uint32_t s) {
+  static ALWAYS_INLINE uint32_t CheckBounds(uint32_t s) {
     ASSERT(s <= std::numeric_limits<uint32_t>::max());
     return s;
   }
 
  public:
-  inline ALWAYS_INLINE ReadStatus
+  ALWAYS_INLINE ReadStatus
       // Note: the stable=false option will try to read from pvalue,
       // instead of the real data area; so giving stable=false is only
       // safe for the updating transaction itself to read its own write.
@@ -186,7 +186,7 @@ struct dbtuple {
   }
 
   // move data from the user's varstr pvalue to this tuple
-  inline ALWAYS_INLINE void do_write() const {
+  ALWAYS_INLINE void do_write() const {
     if (pvalue) {
       ASSERT(pvalue->size() == size);
       memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());
