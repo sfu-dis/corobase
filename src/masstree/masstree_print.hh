@@ -27,6 +27,13 @@ class value_print {
                     kvtimestamp_t initial_timestamp, char *suffix) {
     // FIXME(tzwang): doesn't if T is of OID type...
     // value->print(f, prefix, indent, key, initial_timestamp, suffix);
+    MARK_REFERENCED(value);
+    MARK_REFERENCED(f);
+    MARK_REFERENCED(prefix);
+    MARK_REFERENCED(indent);
+    MARK_REFERENCED(key);
+    MARK_REFERENCED(initial_timestamp);
+    MARK_REFERENCED(suffix);
   }
 };
 

@@ -41,7 +41,6 @@ forward:
   } else
     match = 0;
   if (n_->has_changed(v_)) {
-    ti.mark(threadcounter(tc_stable_leaf_insert + n_->simple_has_split(v_)));
     n_ = n_->advance_to_key(ka_, v_, ti);
     goto forward;
   }
@@ -93,7 +92,6 @@ forward:
 
   n_->lock(v, ti.lock_fence(tc_leaf_lock));
   if (n_->has_changed(v) || n_->permutation() != perm) {
-    ti.mark(threadcounter(tc_stable_leaf_insert + n_->simple_has_split(v)));
     n_->unlock();
     n_ = n_->advance_to_key(ka_, v, ti);
     goto forward;

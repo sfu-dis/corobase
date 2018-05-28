@@ -558,7 +558,6 @@ retry:
   while (1) {
     v[sense] = n[sense]->stable_annotated(ti.stable_fence());
     if (!v[sense].has_split()) break;
-    ti.mark(tc_root_retry);
     n[sense] = n[sense]->unsplit_ancestor();
   }
 
@@ -580,10 +579,8 @@ retry:
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(ka, v[sense], ti) > 0) {
-      ti.mark(tc_root_retry);
       goto retry;
-    } else
-      ti.mark(tc_internode_retry);
+    }
   }
 
   version = v[sense];
@@ -604,7 +601,6 @@ leaf<P>* leaf<P>::advance_to_key(const key_type& ka, nodeversion_type& v,
   v = n->stable_annotated(ti.stable_fence());
   if (v.has_split(oldv) && n->stable_last_key_compare(ka, v, ti) > 0) {
     leaf<P>* next;
-    ti.mark(tc_leaf_walk);
     while (likely(!v.deleted()) && (next = n->safe_next()) &&
            compare(ka.ikey(), next->ikey_bound()) >= 0) {
       n = next;

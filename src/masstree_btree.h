@@ -58,12 +58,6 @@ class simple_threadinfo {
     if (circular_int<kvtimestamp_t>::less(ts_, x)) ts_ = x;
   }
 
-  // event counters
-  void mark(threadcounter) {}
-  void mark(threadcounter, int64_t) {}
-  bool has_counter(threadcounter) const { return false; }
-  uint64_t counter(threadcounter ci) const { return 0; }
-
   /** @brief Return a function object that calls mark(ci); relax_fence().
    *
    * This function object can be used to count the number of relax_fence()s
@@ -104,7 +98,7 @@ class simple_threadinfo {
   void deallocate_rcu(void *p, size_t sz, memtag m) {
     deallocate(p, sz, m);  // FIXME(tzwang): add rcu callback support
   }
-  void rcu_register(rcu_callback *cb) {}
+  void rcu_register(rcu_callback *cb) { MARK_REFERENCED(cb); }
 
  private:
   mutable kvtimestamp_t ts_;
