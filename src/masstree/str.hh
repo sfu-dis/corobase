@@ -104,14 +104,6 @@ struct Str : public String_base<Str> {
       x = (x * 10) + s[p] - '0';
     return p == len && p != 0 ? x : -1;
   }
-
-  static Str snprintf(char *buf, size_t size, const char *fmt, ...) {
-    va_list val;
-    va_start(val, fmt);
-    int n = vsnprintf(buf, size, fmt, val);
-    va_end(val);
-    return Str(buf, n);
-  }
 };
 
 struct inline_string : public String_base<inline_string> {
