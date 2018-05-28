@@ -14,12 +14,14 @@
 #define PACKED __attribute__((packed))
 
 #ifndef ALWAYS_INLINE
-#define ALWAYS_INLINE __attribute__((always_inline))
+#define ALWAYS_INLINE __attribute__((always_inline)) inline
 #endif
 
 #ifndef ALWAYS_ASSERT
 #define ALWAYS_ASSERT(expr) (likely((expr)) ? (void)0 : abort())
 #endif
+
+#define MARK_REFERENCED(x) (void)x
 
 #define likely(x)   __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)

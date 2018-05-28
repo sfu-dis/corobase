@@ -169,11 +169,11 @@ struct serializer<int32_t, true> {
   // zig-zag encoding from:
   // http://code.google.com/p/protobuf/source/browse/trunk/src/google/protobuf/wire_format_lite.h
 
-  static inline ALWAYS_INLINE constexpr uint32_t encode(int32_t value) {
+  static ALWAYS_INLINE constexpr uint32_t encode(int32_t value) {
     return (value << 1) ^ (value >> 31);
   }
 
-  static inline ALWAYS_INLINE constexpr int32_t decode(uint32_t value) {
+  static ALWAYS_INLINE constexpr int32_t decode(uint32_t value) {
     return (value >> 1) ^ -static_cast<int32_t>(value & 1);
   }
 };

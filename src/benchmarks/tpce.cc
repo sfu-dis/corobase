@@ -105,7 +105,7 @@ int64_t GetLastTradeID() {
   return ret;
 }
 
-static inline ALWAYS_INLINE size_t NumPartitions() {
+static ALWAYS_INLINE size_t NumPartitions() {
   return (size_t)ermia::config::benchmark_scale_factor;
 }
 
@@ -183,7 +183,7 @@ class tpce_worker_mixin : private _dummy {
   std::vector<ermia::OrderedIndex *> tbl_##name##_vec;                          \
                                                                     \
  protected:                                                         \
-  inline ALWAYS_INLINE ermia::OrderedIndex *tbl_##name(unsigned int pid) { \
+  ALWAYS_INLINE ermia::OrderedIndex *tbl_##name(unsigned int pid) { \
     return tbl_##name##_vec[pid - 1];                               \
   }
 
@@ -213,20 +213,20 @@ class tpce_worker_mixin : private _dummy {
 
   // utils for generating random #s and strings
 
-  static inline ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
+  static ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
                                                         int upper) {
     ASSERT(v >= lower);
     ASSERT(v <= upper);
     return v;
   }
 
-  static inline ALWAYS_INLINE int RandomNumber(util::fast_random &r, int min,
+  static ALWAYS_INLINE int RandomNumber(util::fast_random &r, int min,
                                                int max) {
     return CheckBetweenInclusive(
         (int)(r.next_uniform() * (max - min + 1) + min), min, max);
   }
 
-  static inline ALWAYS_INLINE int NonUniformRandom(util::fast_random &r, int A, int C,
+  static ALWAYS_INLINE int NonUniformRandom(util::fast_random &r, int A, int C,
                                                    int min, int max) {
     return (((RandomNumber(r, 0, A) | RandomNumber(r, min, max)) + C) %
             (max - min + 1)) +
@@ -637,7 +637,7 @@ class tpce_worker : public bench_worker,
   }
 
  protected:
-  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   ermia::transaction *txn;

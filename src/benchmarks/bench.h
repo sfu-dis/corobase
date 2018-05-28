@@ -42,7 +42,7 @@ class bench_loader : public ermia::thread::sm_runner {
   }
 
   virtual ~bench_loader() {}
-  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   virtual void my_work(char *) { load(); }

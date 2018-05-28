@@ -124,19 +124,19 @@ class tpcc_table_scanner : public ermia::OrderedIndex::scan_callback {
   ermia::str_arena *_arena;
 };
 
-static inline ALWAYS_INLINE size_t NumWarehouses() {
+static ALWAYS_INLINE size_t NumWarehouses() {
   return (size_t)ermia::config::benchmark_scale_factor;
 }
 
 // config constants
 
-static constexpr inline ALWAYS_INLINE size_t NumItems() { return 100000; }
+static constexpr ALWAYS_INLINE size_t NumItems() { return 100000; }
 
-static constexpr inline ALWAYS_INLINE size_t NumDistrictsPerWarehouse() {
+static constexpr ALWAYS_INLINE size_t NumDistrictsPerWarehouse() {
   return 10;
 }
 
-static constexpr inline ALWAYS_INLINE size_t NumCustomersPerDistrict() {
+static constexpr ALWAYS_INLINE size_t NumCustomersPerDistrict() {
   return 3000;
 }
 
@@ -194,7 +194,7 @@ struct checker {
   // these sanity checks are just a few simple checks to make sure
   // the data is not entirely corrupted
 
-  static inline ALWAYS_INLINE void SanityCheckCustomer(
+  static ALWAYS_INLINE void SanityCheckCustomer(
       const customer::key *k, const customer::value *v) {
     ASSERT(v->c_credit == "BC" || v->c_credit == "GC");
     ASSERT(v->c_middle == "OE");
@@ -205,14 +205,14 @@ struct checker {
            static_cast<size_t>(k->c_id) <= NumCustomersPerDistrict());
   }
 
-  static inline ALWAYS_INLINE void SanityCheckWarehouse(
+  static ALWAYS_INLINE void SanityCheckWarehouse(
       const warehouse::key *k, const warehouse::value *v) {
     ASSERT(k->w_id >= 1 && static_cast<size_t>(k->w_id) <= NumWarehouses());
     ASSERT(v->w_state.size() == 2);
     ASSERT(v->w_zip == "123456789");
   }
 
-  static inline ALWAYS_INLINE void SanityCheckDistrict(
+  static ALWAYS_INLINE void SanityCheckDistrict(
       const district::key *k, const district::value *v) {
     ASSERT(k->d_w_id >= 1 && static_cast<size_t>(k->d_w_id) <= NumWarehouses());
     ASSERT(k->d_id >= 1 &&
@@ -222,19 +222,19 @@ struct checker {
     ASSERT(v->d_zip == "123456789");
   }
 
-  static inline ALWAYS_INLINE void SanityCheckItem(const item::key *k,
+  static ALWAYS_INLINE void SanityCheckItem(const item::key *k,
                                                    const item::value *v) {
     ASSERT(k->i_id >= 1 && static_cast<size_t>(k->i_id) <= NumItems());
     ASSERT(v->i_price >= 1.0 && v->i_price <= 100.0);
   }
 
-  static inline ALWAYS_INLINE void SanityCheckStock(const stock::key *k,
+  static ALWAYS_INLINE void SanityCheckStock(const stock::key *k,
                                                     const stock::value *v) {
     ASSERT(k->s_w_id >= 1 && static_cast<size_t>(k->s_w_id) <= NumWarehouses());
     ASSERT(k->s_i_id >= 1 && static_cast<size_t>(k->s_i_id) <= NumItems());
   }
 
-  static inline ALWAYS_INLINE void SanityCheckNewOrder(
+  static ALWAYS_INLINE void SanityCheckNewOrder(
       const new_order::key *k, const new_order::value *v) {
     ASSERT(k->no_w_id >= 1 &&
            static_cast<size_t>(k->no_w_id) <= NumWarehouses());
@@ -242,7 +242,7 @@ struct checker {
            static_cast<size_t>(k->no_d_id) <= NumDistrictsPerWarehouse());
   }
 
-  static inline ALWAYS_INLINE void SanityCheckOOrder(const oorder::key *k,
+  static ALWAYS_INLINE void SanityCheckOOrder(const oorder::key *k,
                                                      const oorder::value *v) {
     ASSERT(k->o_w_id >= 1 && static_cast<size_t>(k->o_w_id) <= NumWarehouses());
     ASSERT(k->o_d_id >= 1 &&
@@ -254,7 +254,7 @@ struct checker {
     ASSERT(v->o_ol_cnt >= 5 && v->o_ol_cnt <= 15);
   }
 
-  static inline ALWAYS_INLINE void SanityCheckOrderLine(
+  static ALWAYS_INLINE void SanityCheckOrderLine(
       const order_line::key *k, const order_line::value *v) {
     ASSERT(k->ol_w_id >= 1 &&
            static_cast<size_t>(k->ol_w_id) <= NumWarehouses());
@@ -286,7 +286,7 @@ class tpcc_worker_mixin : private _dummy {
   std::vector<ermia::OrderedIndex *> tbl_##name##_vec;                     \
                                                                     \
  protected:                                                         \
-  inline ALWAYS_INLINE ermia::OrderedIndex *tbl_##name(unsigned int wid) { \
+  ALWAYS_INLINE ermia::OrderedIndex *tbl_##name(unsigned int wid) { \
     ASSERT(wid >= 1 && wid <= NumWarehouses());                     \
     ASSERT(tbl_##name##_vec.size() == NumWarehouses());             \
     return tbl_##name##_vec[wid - 1];                               \
@@ -311,34 +311,34 @@ class tpcc_worker_mixin : private _dummy {
 
   // utils for generating random #s and strings
 
-  static inline ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
+  static ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
                                                         int upper) {
     ASSERT(v >= lower);
     ASSERT(v <= upper);
     return v;
   }
 
-  static inline ALWAYS_INLINE int RandomNumber(util::fast_random &r, int min,
+  static ALWAYS_INLINE int RandomNumber(util::fast_random &r, int min,
                                                int max) {
     return CheckBetweenInclusive(
         (int)(r.next_uniform() * (max - min + 1) + min), min, max);
   }
 
-  static inline ALWAYS_INLINE int NonUniformRandom(util::fast_random &r, int A, int C,
+  static ALWAYS_INLINE int NonUniformRandom(util::fast_random &r, int A, int C,
                                                    int min, int max) {
     return (((RandomNumber(r, 0, A) | RandomNumber(r, min, max)) + C) %
             (max - min + 1)) +
            min;
   }
 
-  static inline ALWAYS_INLINE int GetItemId(util::fast_random &r) {
+  static ALWAYS_INLINE int GetItemId(util::fast_random &r) {
     return CheckBetweenInclusive(
         g_uniform_item_dist ? RandomNumber(r, 1, NumItems())
                             : NonUniformRandom(r, 8191, 7911, 1, NumItems()),
         1, NumItems());
   }
 
-  static inline ALWAYS_INLINE int GetCustomerId(util::fast_random &r) {
+  static ALWAYS_INLINE int GetCustomerId(util::fast_random &r) {
     return CheckBetweenInclusive(
         NonUniformRandom(r, 1023, 259, 1, NumCustomersPerDistrict()), 1,
         NumCustomersPerDistrict());
@@ -367,7 +367,7 @@ class tpcc_worker_mixin : private _dummy {
     return buf - begin;
   }
 
-  static inline ALWAYS_INLINE size_t
+  static ALWAYS_INLINE size_t
   GetCustomerLastName(char *buf, util::fast_random &r, int num) {
     return GetCustomerLastName((uint8_t *)buf, r, num);
   }
@@ -379,22 +379,22 @@ class tpcc_worker_mixin : private _dummy {
     return ret;
   }
 
-  static inline ALWAYS_INLINE std::string
+  static ALWAYS_INLINE std::string
   GetNonUniformCustomerLastNameLoad(util::fast_random &r) {
     return GetCustomerLastName(r, NonUniformRandom(r, 255, 157, 0, 999));
   }
 
-  static inline ALWAYS_INLINE size_t
+  static ALWAYS_INLINE size_t
   GetNonUniformCustomerLastNameRun(uint8_t *buf, util::fast_random &r) {
     return GetCustomerLastName(buf, r, NonUniformRandom(r, 255, 223, 0, 999));
   }
 
-  static inline ALWAYS_INLINE size_t
+  static ALWAYS_INLINE size_t
   GetNonUniformCustomerLastNameRun(char *buf, util::fast_random &r) {
     return GetNonUniformCustomerLastNameRun((uint8_t *)buf, r);
   }
 
-  static inline ALWAYS_INLINE std::string
+  static ALWAYS_INLINE std::string
   GetNonUniformCustomerLastNameRun(util::fast_random &r) {
     return GetCustomerLastName(r, NonUniformRandom(r, 255, 223, 0, 999));
   }
@@ -475,7 +475,7 @@ class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
   }
 
  protected:
-  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
@@ -595,10 +595,10 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   }
 
  protected:
-  inline ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
-  inline ALWAYS_INLINE unsigned pick_wh(util::fast_random &r) {
+  ALWAYS_INLINE unsigned pick_wh(util::fast_random &r) {
     if (g_wh_temperature) {  // do it 80/20 way
       uint w = 0;
       if (r.next_uniform() >= 0.2)  // 80% access

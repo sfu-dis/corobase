@@ -55,11 +55,11 @@ class inline_str_base {
     }
   }
 
-  inline ALWAYS_INLINE const char *data() const { return &buf[0]; }
+  ALWAYS_INLINE const char *data() const { return &buf[0]; }
 
-  inline ALWAYS_INLINE size_t size() const { return sz; }
+  ALWAYS_INLINE size_t size() const { return sz; }
 
-  inline ALWAYS_INLINE void assign(const char *s) { assign(s, strlen(s)); }
+  ALWAYS_INLINE void assign(const char *s) { assign(s, strlen(s)); }
 
   inline void assign(const char *s, size_t n) {
     ASSERT(n <= N);
@@ -67,7 +67,7 @@ class inline_str_base {
     sz = n;
   }
 
-  inline ALWAYS_INLINE void assign(const std::string &s) {
+  ALWAYS_INLINE void assign(const std::string &s) {
     assign(s.data(), s.size());
   }
 
@@ -150,15 +150,15 @@ class inline_str_fixed {
     return *this;
   }
 
-  inline ALWAYS_INLINE std::string str() const {
+  ALWAYS_INLINE std::string str() const {
     return std::string(&buf[0], N);
   }
 
-  inline ALWAYS_INLINE const char *data() const { return &buf[0]; }
+  ALWAYS_INLINE const char *data() const { return &buf[0]; }
 
-  inline ALWAYS_INLINE size_t size() const { return N; }
+  ALWAYS_INLINE size_t size() const { return N; }
 
-  inline ALWAYS_INLINE void assign(const char *s) { assign(s, strlen(s)); }
+  ALWAYS_INLINE void assign(const char *s) { assign(s, strlen(s)); }
 
   inline void assign(const char *s, size_t n) {
     ASSERT(n <= N);
@@ -167,7 +167,7 @@ class inline_str_fixed {
       memset(&buf[n], FillChar, N - n);  // pad with spaces
   }
 
-  inline ALWAYS_INLINE void assign(const std::string &s) {
+  ALWAYS_INLINE void assign(const std::string &s) {
     assign(s.data(), s.size());
   }
 

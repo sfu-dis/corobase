@@ -55,94 +55,94 @@ typedef aligned_padded_elem<uint64_t> aligned_padded_u64;
 
 template <typename T>
 struct host_endian_trfm {
-  inline ALWAYS_INLINE T operator()(const T &t) const { return t; }
+  ALWAYS_INLINE T operator()(const T &t) const { return t; }
 };
 
 template <>
 struct host_endian_trfm<uint16_t> {
-  inline ALWAYS_INLINE uint16_t operator()(uint16_t t) const {
+  ALWAYS_INLINE uint16_t operator()(uint16_t t) const {
     return be16toh(t);
   }
 };
 
 template <>
 struct host_endian_trfm<int16_t> {
-  inline ALWAYS_INLINE int16_t operator()(int16_t t) const {
+  ALWAYS_INLINE int16_t operator()(int16_t t) const {
     return be16toh(t);
   }
 };
 
 template <>
 struct host_endian_trfm<int32_t> {
-  inline ALWAYS_INLINE int32_t operator()(int32_t t) const {
+  ALWAYS_INLINE int32_t operator()(int32_t t) const {
     return be32toh(t);
   }
 };
 
 template <>
 struct host_endian_trfm<uint32_t> {
-  inline ALWAYS_INLINE uint32_t operator()(uint32_t t) const {
+  ALWAYS_INLINE uint32_t operator()(uint32_t t) const {
     return be32toh(t);
   }
 };
 
 template <>
 struct host_endian_trfm<int64_t> {
-  inline ALWAYS_INLINE int64_t operator()(int64_t t) const {
+  ALWAYS_INLINE int64_t operator()(int64_t t) const {
     return be64toh(t);
   }
 };
 
 template <>
 struct host_endian_trfm<uint64_t> {
-  inline ALWAYS_INLINE uint64_t operator()(uint64_t t) const {
+  ALWAYS_INLINE uint64_t operator()(uint64_t t) const {
     return be64toh(t);
   }
 };
 
 template <typename T>
 struct big_endian_trfm {
-  inline ALWAYS_INLINE T operator()(const T &t) const { return t; }
+  ALWAYS_INLINE T operator()(const T &t) const { return t; }
 };
 
 template <>
 struct big_endian_trfm<uint16_t> {
-  inline ALWAYS_INLINE uint16_t operator()(uint16_t t) const {
+  ALWAYS_INLINE uint16_t operator()(uint16_t t) const {
     return htobe16(t);
   }
 };
 
 template <>
 struct big_endian_trfm<int16_t> {
-  inline ALWAYS_INLINE int16_t operator()(int16_t t) const {
+  ALWAYS_INLINE int16_t operator()(int16_t t) const {
     return htobe16(t);
   }
 };
 
 template <>
 struct big_endian_trfm<int32_t> {
-  inline ALWAYS_INLINE int32_t operator()(int32_t t) const {
+  ALWAYS_INLINE int32_t operator()(int32_t t) const {
     return htobe32(t);
   }
 };
 
 template <>
 struct big_endian_trfm<uint32_t> {
-  inline ALWAYS_INLINE uint32_t operator()(uint32_t t) const {
+  ALWAYS_INLINE uint32_t operator()(uint32_t t) const {
     return htobe32(t);
   }
 };
 
 template <>
 struct big_endian_trfm<int64_t> {
-  inline ALWAYS_INLINE int64_t operator()(int64_t t) const {
+  ALWAYS_INLINE int64_t operator()(int64_t t) const {
     return htobe64(t);
   }
 };
 
 template <>
 struct big_endian_trfm<uint64_t> {
-  inline ALWAYS_INLINE uint64_t operator()(uint64_t t) const {
+  ALWAYS_INLINE uint64_t operator()(uint64_t t) const {
     return htobe64(t);
   }
 };
@@ -178,17 +178,17 @@ struct mask_ {
 
 // rounding
 template <typename T, unsigned int lgbase>
-static constexpr inline ALWAYS_INLINE T round_up(T t) {
+static constexpr ALWAYS_INLINE T round_up(T t) {
   return (t + mask_<T, lgbase>::value) & ~mask_<T, lgbase>::value;
 }
 
 template <typename T, unsigned int lgbase>
-static constexpr inline ALWAYS_INLINE T round_down(T t) {
+static constexpr ALWAYS_INLINE T round_down(T t) {
   return (t & ~mask_<T, lgbase>::value);
 }
 
 template <typename T, typename U>
-static inline ALWAYS_INLINE T iceil(T x, U y) {
+static ALWAYS_INLINE T iceil(T x, U y) {
   U mod = x % y;
   return x + (mod ? y - mod : 0);
 }
