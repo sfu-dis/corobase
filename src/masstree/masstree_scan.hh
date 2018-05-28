@@ -194,7 +194,6 @@ retry_node:
     }
   }
   if (n_->has_changed(v_)) {
-    ti.mark(tc_leaf_retry);
     n_ = n_->advance_to_key(ka, v_, ti);
     goto retry_node;
   }
