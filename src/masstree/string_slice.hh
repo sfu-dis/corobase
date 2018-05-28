@@ -155,3 +155,4 @@ template <typename T>
 constexpr int string_slice<T>::size;
 
 #endif
+
