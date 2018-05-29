@@ -773,7 +773,11 @@ install:
     __sync_synchronize();
     return head;
   } else {
-    new_object->SetNextPersistent(old_desc->GetPersistentAddress());
+    fat_ptr pa = old_desc->GetPersistentAddress();
+    while (pa == NULL_PTR) {
+      pa = old_desc->GetPersistentAddress();
+    }
+    new_object->SetNextPersistent(pa);
     new_object->SetNextVolatile(head);
     if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr,
                                      new_obj_ptr->_ptr)) {
@@ -1000,7 +1004,6 @@ start_over:
     }
     ptr = tentative_next;
     prev_obj = cur_obj;
-    ASSERT(prev_obj->GetClsn().offset());
   }
   return nullptr;  // No Visible records
 }

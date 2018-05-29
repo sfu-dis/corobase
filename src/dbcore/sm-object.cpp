@@ -133,4 +133,22 @@ fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
   ASSERT(size_code != INVALID_SIZE_CODE);
   return fat_ptr::make(obj, size_code, 0 /* 0: in-memory */);
 }
+
+// Make sure the object has a valid clsn/pdest
+fat_ptr Object::GenerateClsnPtr(uint64_t clsn) {
+  fat_ptr clsn_ptr = NULL_PTR;
+  uint64_t tuple_off = GetPersistentAddress().offset();
+  if (tuple_off == 0) {
+    // Must be a delete record
+    ASSERT(GetPinnedTuple()->size == 0);
+    ASSERT(GetPersistentAddress() == NULL_PTR);
+    tuple_off = clsn;
+    clsn_ptr = LSN::make(tuple_off, 0).to_log_ptr();
+    // Set pdest here which wasn't set by log_delete
+    pdest_ = clsn_ptr;
+  } else {
+    clsn_ptr = LSN::make(tuple_off, 0).to_log_ptr();
+  }
+  return clsn_ptr;
+}
 }  // namespace ermia
