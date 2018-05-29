@@ -7,9 +7,9 @@
 # $6 - other parameters like --retry-aborted-transactions
 # $7 - other parameters for the workload, e.g., --fast-new-order-id-gen
 
-if [[ $# -lt 4 ]]; then
+if [[ $# -lt 5 ]]; then
     echo "Too few arguments. "
-    echo "Usage $0 <executable> <benchmark> <threads> <runtime>"
+    echo "Usage $0 <executable> <benchmark> <threads> <scalefactor> <runtime>"
     exit
 fi
 
