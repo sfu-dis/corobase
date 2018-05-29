@@ -608,8 +608,7 @@ rc_t transaction::parallel_ssn_commit() {
       next_tuple->welcome_read_mostly_tx();
     }
     volatile_write(tuple->xstamp, cstamp);
-    fat_ptr clsn_ptr =
-        LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
+    fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
     object->SetClsn(clsn_ptr);
     ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
   }
@@ -936,15 +935,18 @@ rc_t transaction::parallel_ssi_commit() {
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     tuple->do_write();
     dbtuple *overwritten_tuple = tuple->NextVolatile();
-    fat_ptr clsn_ptr =
-        LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
+
+    fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
     if (overwritten_tuple) {  // update
       ASSERT(not overwritten_tuple->s2);
+      // Must set sstamp first before setting s2 (ssi_read assumes sstamp is
+      // available once s2 is available)
+      ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
+      volatile_write(overwritten_tuple->sstamp, clsn_ptr);
+
       // Must set s2 first, before setting clsn
       volatile_write(overwritten_tuple->s2, ct3);
       COMPILER_MEMORY_FENCE;
-      ASSERT(XID::from_ptr(volatile_read(overwritten_tuple->sstamp)) == xid);
-      volatile_write(overwritten_tuple->sstamp, clsn_ptr);
     }
     volatile_write(tuple->xstamp, cstamp);
     object->SetClsn(clsn_ptr);
@@ -1095,8 +1097,7 @@ rc_t transaction::mvocc_commit() {
     ASSERT(w.entry);
     tuple->do_write();
     dbtuple *overwritten_tuple = tuple->NextVolatile();
-    fat_ptr clsn_ptr =
-        LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
+    fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
     if (overwritten_tuple) {
       ASSERT(overwritten_tuple->sstamp.asi_type() == fat_ptr::ASI_XID);
       ASSERT(XID::from_ptr(overwritten_tuple->sstamp) == xid);
@@ -1147,8 +1148,8 @@ rc_t transaction::si_commit() {
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     ASSERT(w.entry);
     tuple->do_write();
-    fat_ptr clsn_ptr =
-        LSN::make(object->GetPersistentAddress().offset(), 0).to_log_ptr();
+
+    fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
     object->SetClsn(clsn_ptr);
     ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
 #ifndef NDEBUG
