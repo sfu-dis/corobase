@@ -128,9 +128,11 @@ void bench_worker::my_work(char *) {
     cmdlog_redo_workload = get_cmdlog_redo_workload();
     txn_counts.resize(cmdlog_redo_workload.size());
     if (ermia::config::replay_policy == ermia::config::kReplayBackground) {
-      ermia::CommandLog::cmd_log->BackgroundReplay(worker_id, (bench_worker*)this);
+      ermia::CommandLog::cmd_log->BackgroundReplay(worker_id,
+        std::bind(&bench_worker::do_cmdlog_redo_workload_function, this, std::placeholders::_1, std::placeholders::_2));
     } else if (ermia::config::replay_policy != ermia::config::kReplayNone) {
-      ermia::CommandLog::cmd_log->BackupRedo(worker_id, (bench_worker*)this);
+      ermia::CommandLog::cmd_log->BackupRedo(worker_id,
+        std::bind(&bench_worker::do_cmdlog_redo_workload_function, this, std::placeholders::_1, std::placeholders::_2));
     }
   }
 }
@@ -511,6 +513,9 @@ void bench_runner::start_measurement() {
     delete ermia::logmgr;
     if (ermia::config::command_log) {
       delete ermia::CommandLog::cmd_log;
+      for (auto &t : bench_runner::cmdlog_redoers) {
+        t->join();
+      }
     }
     ermia::rep::PrimaryShutdown();
   }

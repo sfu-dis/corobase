@@ -9,8 +9,6 @@
 #include "../macros.h"
 #include "../spinbarrier.h"
 
-class bench_worker;
-
 namespace ermia {
 
 /* 
@@ -24,6 +22,8 @@ extern spin_barrier *redoer_barrier;
 extern std::condition_variable redo_cond;
 extern std::mutex redo_mutex;
 extern uint64_t next_replay_offset[2];
+
+typedef std::function<void(uint32_t, void*)> RedoWorkloadFunction;
 
 struct LogRecord {
   static const uint32_t kInvalidPartition = ~uint32_t{0};
@@ -84,9 +84,9 @@ public:
   ~CommandLogManager();
 
   void TryFlush();
-  void BackupRedo(uint32_t part_id, bench_worker *worker);
+  void BackupRedo(uint32_t part_id, RedoWorkloadFunction redo_function);
   void BackgroundReplayDaemon();
-  void BackgroundReplay(uint32_t redoer_id, bench_worker *worker);
+  void BackgroundReplay(uint32_t redoer_id, RedoWorkloadFunction redo_function);
   uint32_t Size() { return buffer_size_; }
   void BackupFlush(uint64_t new_off);
   void FlushDaemon();
