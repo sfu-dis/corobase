@@ -3,7 +3,6 @@
 #include "sm-log.h"
 #include "sm-rep.h"
 #include "../util.h"
-#include "../benchmarks/bench.h"
 
 namespace ermia {
 namespace CommandLog {
@@ -133,7 +132,7 @@ void CommandLogManager::BackgroundReplayDaemon() {
   }
 }
 
-void CommandLogManager::BackgroundReplay(uint32_t redoer_id, bench_worker *worker) {
+void CommandLogManager::BackgroundReplay(uint32_t redoer_id, RedoWorkloadFunction redo_function) {
   uint64_t last_replayed = replayed_offset;
   ALWAYS_ASSERT(redoer_barrier);
   redoer_barrier->count_down();
@@ -162,7 +161,8 @@ void CommandLogManager::BackgroundReplay(uint32_t redoer_id, bench_worker *worke
         // "Redo" it
         id = r->partition_id;  // Pass the actual partition (warehouse for TPCC)
         LOG_IF(FATAL, r->partition_id < 1);
-        worker->do_cmdlog_redo_workload_function(r->transaction_type, (void*)id);
+        ASSERT(redo_function);
+        redo_function(r->transaction_type, (void*)id);
         size += kRecordSize;
       }
       to_replay -= kRecordSize;
@@ -182,9 +182,9 @@ void CommandLogManager::BackgroundReplay(uint32_t redoer_id, bench_worker *worke
 }
 
 // For synchronous and pipelined redo only
-void CommandLogManager::BackupRedo(uint32_t redoer_id, bench_worker *worker) {
+void CommandLogManager::BackupRedo(uint32_t redoer_id, RedoWorkloadFunction redo_function) {
   if (config::replay_policy == config::kReplayBackground) {
-    BackgroundReplay(redoer_id, worker);
+    BackgroundReplay(redoer_id, redo_function);
     return;
   }
   LOG(INFO) << "Started redo thread " << redoer_id;
@@ -216,7 +216,8 @@ void CommandLogManager::BackupRedo(uint32_t redoer_id, bench_worker *worker) {
         // "Redo" it
         id = r->partition_id;  // Pass the actual partition (warehouse for TPCC)
         LOG_IF(FATAL, r->partition_id < 1);
-        worker->do_cmdlog_redo_workload_function(r->transaction_type, (void*)id);
+        ASSERT(redo_function);
+        redo_function(r->transaction_type, (void*)id);
         size += kRecordSize;
       }
       to_replay -= kRecordSize;
@@ -275,9 +276,6 @@ CommandLogManager::~CommandLogManager() {
     flush_cond_.notify_all();
   }
   flusher_.join();
-  for (auto &t : bench_runner::cmdlog_redoers) {
-    t->join();
-  }
   os_close(fd_);
 }
 }  // namespace CommandLog
