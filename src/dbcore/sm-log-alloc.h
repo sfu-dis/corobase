@@ -150,7 +150,6 @@ struct sm_log_alloc_mgr {
   // The flusher dequeues all entries from these vectors up to
   // flushed_durable_lsn
   struct commit_queue {
-    // Each entry is a std::pair<lsn_offset, start_time>
     struct Entry {
       uint64_t lsn;
       uint64_t start_time;
@@ -161,6 +160,7 @@ struct sm_log_alloc_mgr {
     uint32_t start;
     uint32_t items;
     sm_log_alloc_mgr *lm;
+    static uint64_t total_latency_us;
     commit_queue() : start(0), items(0), lm(nullptr) {
       queue = new Entry[config::group_commit_queue_length];
     }

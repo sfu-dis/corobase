@@ -3,7 +3,6 @@
 #include "sm-log-alloc.h"
 #include "sm-rep.h"
 #include "stopwatch.h"
-#include "../benchmarks/bench.h"
 #include "../util.h"
 
 namespace {
@@ -24,6 +23,8 @@ enum { DAEMON_HAS_WORK = 0x1, DAEMON_SLEEPING = 0x2 };
 }  // end anonymous namespace
 
 namespace ermia {
+
+uint64_t sm_log_alloc_mgr::commit_queue::total_latency_us = 0;
 
 void sm_log_alloc_mgr::set_tls_lsn_offset(uint64_t offset) {
   volatile_write(_tls_lsn_offset[thread::my_id()], offset);
@@ -134,12 +135,7 @@ void sm_log_alloc_mgr::dequeue_committed_xcts(uint64_t upto,
       if (volatile_read(entry.lsn) > upto) {
         break;
       }
-      uint64_t worker_latency =
-          volatile_read(bench_runner::workers[i]->latency_numer_us);
-      uint64_t latency = end_time - volatile_read(entry.start_time);
-      // Must do volatile_write here
-      volatile_write(bench_runner::workers[i]->latency_numer_us,
-                     worker_latency + latency);
+      _commit_queue[i].total_latency_us += end_time - entry.start_time;
       dequeue++;
     }
     _commit_queue[i].items -= dequeue;
@@ -161,7 +157,7 @@ void sm_log_alloc_mgr::wait_for_durable(uint64_t dlsn_offset) {
     DEFER(_write_daemon_mutex.unlock());
 
     while (dur_flushed_lsn_offset() < dlsn_offset) {
-      /* Kickingdaemon here would accomplish nothing. Release of
+      /* Kicking daemon here would accomplish nothing. Release of
          new log records ensures that the daemon is (or will
          soon become) awake to process them, so the daemon will
          only stay asleep if there is no work for it to do.

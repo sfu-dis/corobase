@@ -541,7 +541,13 @@ void bench_runner::start_measurement() {
     n_rw_aborts += workers[i]->get_ntxn_rw_aborts();
     n_phantom_aborts += workers[i]->get_ntxn_phantom_aborts();
     n_query_commits += workers[i]->get_ntxn_query_commits();
-    latency_numer_us += workers[i]->get_latency_numer_us();
+    if (ermia::config::is_backup_srv() || !ermia::config::group_commit) {
+      latency_numer_us += workers[i]->get_latency_numer_us();
+    }
+  }
+
+  if (!ermia::config::is_backup_srv() && ermia::config::group_commit) {
+    latency_numer_us = ermia::sm_log_alloc_mgr::commit_queue::total_latency_us;
   }
 
   const unsigned long elapsed = t.lap();
