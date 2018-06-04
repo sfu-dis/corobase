@@ -7,10 +7,10 @@
 
 namespace ermia {
 
-class Database {
+class Engine {
 public:
-  Database() {}
-  ~Database() {}
+  Engine() {}
+  ~Engine() {}
 
   inline transaction *new_txn(uint64_t txn_flags, str_arena &arena, transaction *buf) {
     new (buf) transaction(txn_flags, arena);

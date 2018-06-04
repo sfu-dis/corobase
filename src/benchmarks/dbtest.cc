@@ -404,9 +404,9 @@ int main(int argc, char **argv) {
 
   // Must have everything in config ready by this point
   ermia::config::sanity_check();
-  ermia::Database *db = NULL;
-  db = new ermia::Database();
-  void (*test_fn)(ermia::Database *, int argc, char **argv) = NULL;
+  ermia::Engine *db = NULL;
+  db = new ermia::Engine();
+  void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
     test_fn = ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {
