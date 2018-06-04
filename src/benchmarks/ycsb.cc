@@ -71,7 +71,7 @@ YcsbKey &build_rmw_key(int worker_id) {
 
 class ycsb_worker : public bench_worker {
  public:
-  ycsb_worker(unsigned int worker_id, unsigned long seed, ermia::Database *db,
+  ycsb_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
@@ -146,7 +146,7 @@ class ycsb_worker : public bench_worker {
 
 class ycsb_usertable_loader : public bench_loader {
  public:
-  ycsb_usertable_loader(unsigned long seed, ermia::Database *db,
+  ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
                         const std::map<std::string, ermia::OrderedIndex *> &open_tables)
       : bench_loader(seed, db, open_tables) {}
 
@@ -212,7 +212,7 @@ class ycsb_usertable_loader : public bench_loader {
 
 class ycsb_bench_runner : public bench_runner {
  public:
-  ycsb_bench_runner(ermia::Database *db) : bench_runner(db) {
+  ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
     ermia::IndexDescriptor::New("USERTABLE");
   }
 
@@ -243,7 +243,7 @@ class ycsb_bench_runner : public bench_runner {
   }
 };
 
-void ycsb_do_test(ermia::Database *db, int argc, char **argv) {
+void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
   // parse options
   optind = 1;
   while (1) {

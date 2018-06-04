@@ -9,9 +9,9 @@
 #include "../spinbarrier.h"
 #include "../dbcore/sm-log-alloc.h"
 
-extern void ycsb_do_test(ermia::Database *db, int argc, char **argv);
-extern void tpcc_do_test(ermia::Database *db, int argc, char **argv);
-extern void tpce_do_test(ermia::Database *db, int argc, char **argv);
+extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
+extern void tpcc_do_test(ermia::Engine *db, int argc, char **argv);
+extern void tpce_do_test(ermia::Engine *db, int argc, char **argv);
 
 enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
 
@@ -32,7 +32,7 @@ static std::vector<T> unique_filter(const std::vector<T> &v) {
 
 class bench_loader : public ermia::thread::sm_runner {
  public:
-  bench_loader(unsigned long seed, ermia::Database *db,
+  bench_loader(unsigned long seed, ermia::Engine *db,
                const std::map<std::string, ermia::OrderedIndex *> &open_tables)
       : sm_runner(), r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load. The way we
@@ -52,7 +52,7 @@ class bench_loader : public ermia::thread::sm_runner {
   virtual void load() = 0;
 
   util::fast_random r;
-  ermia::Database *const db;
+  ermia::Engine *const db;
   std::map<std::string, ermia::OrderedIndex *> open_tables;
   ermia::transaction *txn_obj_buf;
   ermia::str_arena arena;
@@ -66,7 +66,7 @@ class bench_worker : public ermia::thread::sm_runner {
 
  public:
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
-               ermia::Database *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+               ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
       : sm_runner(),
         worker_id(worker_id),
@@ -164,7 +164,7 @@ class bench_worker : public ermia::thread::sm_runner {
   unsigned int worker_id;
   bool is_worker;
   util::fast_random r;
-  ermia::Database *const db;
+  ermia::Engine *const db;
   std::map<std::string, ermia::OrderedIndex *> open_tables;
   spin_barrier *const barrier_a;
   spin_barrier *const barrier_b;
@@ -197,7 +197,7 @@ class bench_runner {
   bench_runner(bench_runner &&) = delete;
   bench_runner &operator=(const bench_runner &) = delete;
 
-  bench_runner(ermia::Database *db)
+  bench_runner(ermia::Engine *db)
       : db(db),
         barrier_a(ermia::config::worker_threads),
         barrier_b(ermia::config::worker_threads > 0 ? 1 : 0) {}
@@ -222,7 +222,7 @@ class bench_runner {
   virtual std::vector<bench_worker *> make_workers() = 0;
   virtual std::vector<bench_worker *> make_cmdlog_redoers() = 0;
 
-  ermia::Database *const db;
+  ermia::Engine *const db;
   std::map<std::string, ermia::OrderedIndex *> open_tables;
 
   // barriers for actual benchmark execution

@@ -433,7 +433,7 @@ std::string tpcc_worker_mixin::NameTokens[] = {
 
 class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
  public:
-  tpcc_cmdlog_redoer(unsigned int worker_id, unsigned long seed, ermia::Database *db,
+  tpcc_cmdlog_redoer(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : bench_worker(worker_id, false, seed, db, open_tables),
@@ -483,7 +483,7 @@ class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
 
 class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
  public:
-  tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Database *db,
+  tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
@@ -634,7 +634,7 @@ std::vector<uint> tpcc_worker::cold_whs;
 
 class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_nation_loader(unsigned long seed, ermia::Database *db,
+  tpcc_nation_loader(unsigned long seed, ermia::Engine *db,
                      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                      const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
@@ -661,7 +661,7 @@ class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_region_loader(unsigned long seed, ermia::Database *db,
+  tpcc_region_loader(unsigned long seed, ermia::Engine *db,
                      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                      const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
@@ -686,7 +686,7 @@ class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_supplier_loader(unsigned long seed, ermia::Database *db,
+  tpcc_supplier_loader(unsigned long seed, ermia::Engine *db,
                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                        const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
@@ -723,7 +723,7 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_warehouse_loader(unsigned long seed, ermia::Database *db,
+  tpcc_warehouse_loader(unsigned long seed, ermia::Engine *db,
                         const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                         const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
@@ -796,7 +796,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_item_loader(unsigned long seed, ermia::Database *db,
+  tpcc_item_loader(unsigned long seed, ermia::Engine *db,
                    const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                    const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
@@ -845,7 +845,7 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_stock_loader(unsigned long seed, ermia::Database *db,
+  tpcc_stock_loader(unsigned long seed, ermia::Engine *db,
                     const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                     const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                     ssize_t warehouse_id)
@@ -940,7 +940,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_district_loader(unsigned long seed, ermia::Database *db,
+  tpcc_district_loader(unsigned long seed, ermia::Engine *db,
                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                        const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : bench_loader(seed, db, open_tables), tpcc_worker_mixin(partitions) {}
@@ -990,7 +990,7 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_customer_loader(unsigned long seed, ermia::Database *db,
+  tpcc_customer_loader(unsigned long seed, ermia::Engine *db,
                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                        const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t warehouse_id)
@@ -1127,7 +1127,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
 
 class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
  public:
-  tpcc_order_loader(unsigned long seed, ermia::Database *db,
+  tpcc_order_loader(unsigned long seed, ermia::Engine *db,
                     const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                     const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                     ssize_t warehouse_id)
@@ -2372,7 +2372,7 @@ class tpcc_bench_runner : public bench_runner {
     return strcmp("history", name) == 0 || strcmp("oorder_c_id_idx", name) == 0;
   }
 
-  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(ermia::Database *db,
+  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(ermia::Engine *db,
                                                         const char *name) {
     const bool is_read_only = IsTableReadOnly(name);
     const bool is_append_only = IsTableAppendOnly(name);
@@ -2402,7 +2402,7 @@ class tpcc_bench_runner : public bench_runner {
     return ret;
   }
 
-  static void RegisterTable(ermia::Database *db, const char *name,
+  static void RegisterTable(ermia::Engine *db, const char *name,
                             const char *primary_idx_name = nullptr) {
     const bool is_read_only = IsTableReadOnly(name);
     std::string s_name(name);
@@ -2415,7 +2415,7 @@ class tpcc_bench_runner : public bench_runner {
             s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(i);
           }
           auto ss_name = s_name + "_" + std::to_string(i);
-          ermia::IndexDescriptor::New(ss_name, s_primary_name.c_str());
+          db->CreateTable(ss_name.c_str(), s_primary_name.c_str());
         }
       } else {
         const unsigned nwhse_per_partition =
@@ -2429,21 +2429,17 @@ class tpcc_bench_runner : public bench_runner {
           if (primary_idx_name) {
             s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(partid);
           }
-          ermia::IndexDescriptor::New(s_name + std::string("_") + std::to_string(partid),
-                               s_primary_name.c_str());
+          db->CreateTable((s_name + std::string("_") + std::to_string(partid)).c_str(),
+                          s_primary_name.c_str());
         }
       }
     } else {
-      std::string s_primary_name("");
-      if (primary_idx_name) {
-        s_primary_name = std::string(primary_idx_name);
-      }
-      ermia::IndexDescriptor::New(s_name, s_primary_name.c_str());
+      db->CreateTable(name, primary_idx_name);
     }
   }
 
  public:
-  tpcc_bench_runner(ermia::Database *db) : bench_runner(db) {
+  tpcc_bench_runner(ermia::Engine *db) : bench_runner(db) {
     // Register all tables with the engine
     RegisterTable(db, "customer");
     RegisterTable(db, "customer_name_idx", "customer");
@@ -2558,7 +2554,7 @@ class tpcc_bench_runner : public bench_runner {
   std::map<std::string, std::vector<ermia::OrderedIndex *>> partitions;
 };
 
-void tpcc_do_test(ermia::Database *db, int argc, char **argv) {
+void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
   // parse options
   optind = 1;
   bool did_spec_remote_pct = false;

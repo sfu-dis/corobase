@@ -277,7 +277,7 @@ class tpce_worker : public bench_worker,
                     public CSendToMarketInterface {
  public:
   // resp for [partition_id_start, partition_id_end)
-  tpce_worker(unsigned int worker_id, unsigned long seed, ermia::Database *db,
+  tpce_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
               const map<std::string, ermia::OrderedIndex *> &open_tables,
               const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
               spin_barrier *barrier_a, spin_barrier *barrier_b,
@@ -3446,7 +3446,7 @@ rc_t tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn) {
 
 class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_charge_loader(unsigned long seed, ermia::Database *db,
+  tpce_charge_loader(unsigned long seed, ermia::Engine *db,
                      const map<std::string, ermia::OrderedIndex *> &open_tables,
                      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                      ssize_t partition_id)
@@ -3499,7 +3499,7 @@ class tpce_commission_rate_loader : public bench_loader,
                                     public tpce_worker_mixin {
  public:
   tpce_commission_rate_loader(
-      unsigned long seed, ermia::Database *db,
+      unsigned long seed, ermia::Engine *db,
       const map<std::string, ermia::OrderedIndex *> &open_tables,
       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
@@ -3550,7 +3550,7 @@ class tpce_commission_rate_loader : public bench_loader,
 
 class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_exchange_loader(unsigned long seed, ermia::Database *db,
+  tpce_exchange_loader(unsigned long seed, ermia::Engine *db,
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
@@ -3593,7 +3593,7 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_industry_loader(unsigned long seed, ermia::Database *db,
+  tpce_industry_loader(unsigned long seed, ermia::Engine *db,
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
@@ -3655,7 +3655,7 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_sector_loader(unsigned long seed, ermia::Database *db,
+  tpce_sector_loader(unsigned long seed, ermia::Engine *db,
                      const map<std::string, ermia::OrderedIndex *> &open_tables,
                      const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                      ssize_t partition_id)
@@ -3705,7 +3705,7 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_status_type_loader(unsigned long seed, ermia::Database *db,
+  tpce_status_type_loader(unsigned long seed, ermia::Engine *db,
                           const map<std::string, ermia::OrderedIndex *> &open_tables,
                           const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                           ssize_t partition_id)
@@ -3754,7 +3754,7 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_tax_rate_loader(unsigned long seed, ermia::Database *db,
+  tpce_tax_rate_loader(unsigned long seed, ermia::Engine *db,
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
@@ -3804,7 +3804,7 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_trade_type_loader(unsigned long seed, ermia::Database *db,
+  tpce_trade_type_loader(unsigned long seed, ermia::Engine *db,
                          const map<std::string, ermia::OrderedIndex *> &open_tables,
                          const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                          ssize_t partition_id)
@@ -3855,7 +3855,7 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_zip_code_loader(unsigned long seed, ermia::Database *db,
+  tpce_zip_code_loader(unsigned long seed, ermia::Engine *db,
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
@@ -3903,7 +3903,7 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_address_loader(unsigned long seed, ermia::Database *db,
+  tpce_address_loader(unsigned long seed, ermia::Engine *db,
                       const map<std::string, ermia::OrderedIndex *> &open_tables,
                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                       ssize_t partition_id)
@@ -3957,7 +3957,7 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_customer_loader(unsigned long seed, ermia::Database *db,
+  tpce_customer_loader(unsigned long seed, ermia::Engine *db,
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
@@ -4038,7 +4038,7 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_ca_and_ap_loader(unsigned long seed, ermia::Database *db,
+  tpce_ca_and_ap_loader(unsigned long seed, ermia::Engine *db,
                         const map<std::string, ermia::OrderedIndex *> &open_tables,
                         const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
@@ -4133,7 +4133,7 @@ class tpce_customer_taxrate_loader : public bench_loader,
                                      public tpce_worker_mixin {
  public:
   tpce_customer_taxrate_loader(
-      unsigned long seed, ermia::Database *db,
+      unsigned long seed, ermia::Engine *db,
       const map<std::string, ermia::OrderedIndex *> &open_tables,
       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
@@ -4189,7 +4189,7 @@ class tpce_customer_taxrate_loader : public bench_loader,
 
 class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_wl_and_wi_loader(unsigned long seed, ermia::Database *db,
+  tpce_wl_and_wi_loader(unsigned long seed, ermia::Engine *db,
                         const map<std::string, ermia::OrderedIndex *> &open_tables,
                         const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
@@ -4263,7 +4263,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_company_loader(unsigned long seed, ermia::Database *db,
+  tpce_company_loader(unsigned long seed, ermia::Engine *db,
                       const map<std::string, ermia::OrderedIndex *> &open_tables,
                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                       ssize_t partition_id)
@@ -4335,7 +4335,7 @@ class tpce_company_competitor_loader : public bench_loader,
                                        public tpce_worker_mixin {
  public:
   tpce_company_competitor_loader(
-      unsigned long seed, ermia::Database *db,
+      unsigned long seed, ermia::Engine *db,
       const map<std::string, ermia::OrderedIndex *> &open_tables,
       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
@@ -4390,7 +4390,7 @@ class tpce_company_competitor_loader : public bench_loader,
 class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
  public:
   tpce_daily_market_loader(
-      unsigned long seed, ermia::Database *db,
+      unsigned long seed, ermia::Engine *db,
       const map<std::string, ermia::OrderedIndex *> &open_tables,
       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
       ssize_t partition_id)
@@ -4445,7 +4445,7 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_financial_loader(unsigned long seed, ermia::Database *db,
+  tpce_financial_loader(unsigned long seed, ermia::Engine *db,
                         const map<std::string, ermia::OrderedIndex *> &open_tables,
                         const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
@@ -4509,7 +4509,7 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_last_trade_loader(unsigned long seed, ermia::Database *db,
+  tpce_last_trade_loader(unsigned long seed, ermia::Engine *db,
                          const map<std::string, ermia::OrderedIndex *> &open_tables,
                          const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                          ssize_t partition_id)
@@ -4563,7 +4563,7 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_ni_and_nx_loader(unsigned long seed, ermia::Database *db,
+  tpce_ni_and_nx_loader(unsigned long seed, ermia::Engine *db,
                         const map<std::string, ermia::OrderedIndex *> &open_tables,
                         const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                         ssize_t partition_id)
@@ -4642,7 +4642,7 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_security_loader(unsigned long seed, ermia::Database *db,
+  tpce_security_loader(unsigned long seed, ermia::Engine *db,
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
@@ -4715,7 +4715,7 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
 
 class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
  public:
-  tpce_growing_loader(unsigned long seed, ermia::Database *db,
+  tpce_growing_loader(unsigned long seed, ermia::Engine *db,
                       const map<std::string, ermia::OrderedIndex *> &open_tables,
                       const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                       ssize_t partition_id)
@@ -5030,7 +5030,7 @@ class tpce_bench_runner : public bench_runner {
     return true;
   }
 
-  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(ermia::Database *db,
+  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(ermia::Engine *db,
                                                         const char *name) {
     const std::string s_name(name);
     std::vector<ermia::OrderedIndex *> ret(NumPartitions());
@@ -5039,7 +5039,7 @@ class tpce_bench_runner : public bench_runner {
     return ret;
   }
 
-  static void RegisterTable(ermia::Database *db, const char *name,
+  static void RegisterTable(ermia::Engine *db, const char *name,
                             const char *primary_idx_name = nullptr) {
     const std::string s_name(name);
     std::vector<ermia::OrderedIndex *> ret(NumPartitions());
@@ -5047,7 +5047,7 @@ class tpce_bench_runner : public bench_runner {
   }
 
  public:
-  tpce_bench_runner(ermia::Database *db) : bench_runner(db) {
+  tpce_bench_runner(ermia::Engine *db) : bench_runner(db) {
     RegisterTable(db, "charge");
     RegisterTable(db, "commission_rate");
     RegisterTable(db, "exchange");
@@ -5202,7 +5202,7 @@ class tpce_bench_runner : public bench_runner {
 };
 
 // Benchmark entry function
-void tpce_do_test(ermia::Database *db, int argc, char **argv) {
+void tpce_do_test(ermia::Engine *db, int argc, char **argv) {
   int customers = 0;
   int working_days = 0;
   int scaling_factor_tpce = ermia::config::benchmark_scale_factor;
