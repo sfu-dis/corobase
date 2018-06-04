@@ -213,7 +213,7 @@ class ycsb_usertable_loader : public bench_loader {
 class ycsb_bench_runner : public bench_runner {
  public:
   ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    ermia::IndexDescriptor::New("USERTABLE");
+    db->CreateTable("USERTABLE");
   }
 
   virtual void prepare(char *) {

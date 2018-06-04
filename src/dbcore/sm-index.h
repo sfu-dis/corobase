@@ -29,13 +29,14 @@ class IndexDescriptor {
   static inline OrderedIndex* GetIndex(FID fid) {
     return fid_map[fid]->GetIndex();
   }
-  static inline void New(std::string name, const char* primary = nullptr) {
+  static inline IndexDescriptor* New(std::string name, const char* primary = nullptr) {
     if (primary) {
       std::string p(primary);
       name_map[name] = new IndexDescriptor(name, p);
     } else {
       name_map[name] = new IndexDescriptor(name);
     }
+    return name_map[name];
   }
   static inline uint32_t NumIndexes() { return name_map.size(); }
 
