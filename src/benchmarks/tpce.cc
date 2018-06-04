@@ -5041,9 +5041,7 @@ class tpce_bench_runner : public bench_runner {
 
   static void RegisterTable(ermia::Engine *db, const char *name,
                             const char *primary_idx_name = nullptr) {
-    const std::string s_name(name);
-    std::vector<ermia::OrderedIndex *> ret(NumPartitions());
-    ermia::IndexDescriptor::New(std::string(name), primary_idx_name);
+    db->CreateTable(name, primary_idx_name);
   }
 
  public:

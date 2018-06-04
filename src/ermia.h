@@ -4,13 +4,16 @@
 
 #include "base_txn_btree.h"
 #include "txn.h"
+#include "../dbcore/sm-log-recover-impl.h"
 
 namespace ermia {
 
 class Engine {
 public:
-  Engine() {}
+  Engine();
   ~Engine() {}
+
+  void CreateTable(const char *name, const char *primary_name = nullptr);
 
   inline transaction *new_txn(uint64_t txn_flags, str_arena &arena, transaction *buf) {
     new (buf) transaction(txn_flags, arena);

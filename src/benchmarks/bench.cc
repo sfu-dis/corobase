@@ -170,67 +170,20 @@ void bench_runner::create_files_task(char *) {
 }
 
 void bench_runner::run() {
-  if (ermia::config::is_backup_srv()) {
-    ermia::rep::BackupStartReplication();
-  } else {
-    // Now we should already have a list of registered tables in
-    // ermia::IndexDescriptor::name_map, but all the index, oid_array fileds are
-    // empty; only the table name is available.  Create the ermia::logmgr here,
-    // instead of in an sm-thread: recovery might want to utilize all the
-    // worker_threads specified in config.
-    ermia::RCU::rcu_register();
-    ALWAYS_ASSERT(ermia::config::log_dir.size());
-    ALWAYS_ASSERT(not ermia::logmgr);
-    ALWAYS_ASSERT(not ermia::oidmgr);
-    ermia::RCU::rcu_enter();
-    ermia::sm_log::allocate_log_buffer();
-    ermia::logmgr = ermia::sm_log::new_log(ermia::config::recover_functor, nullptr);
-    ermia::sm_oid_mgr::create();
-    if (ermia::config::command_log) {
-      ermia::CommandLog::cmd_log = new ermia::CommandLog::CommandLogManager();
-    }
-  }
-  ALWAYS_ASSERT(ermia::logmgr);
-  ALWAYS_ASSERT(ermia::oidmgr);
-
-  ermia::LSN chkpt_lsn = ermia::logmgr->get_chkpt_start();
-  if (ermia::config::enable_chkpt) {
-    ermia::chkptmgr = new ermia::sm_chkpt_mgr(chkpt_lsn);
-  } else {
-    ermia::chkptmgr = nullptr;
-  }
-
-  // The backup will want to recover in another thread
-  if (ermia::sm_log::need_recovery && !ermia::config::is_backup_srv()) {
-    ermia::logmgr->recover();
-  }
-
-  ermia::RCU::rcu_exit();
-
-  ermia::thread::sm_thread *runner_thread = nullptr;
-  ermia::thread::sm_thread::task_t runner_task;
-  if (!ermia::sm_log::need_recovery && !ermia::config::is_backup_srv()) {
-    runner_thread = ermia::thread::get_thread();
-    // Get a thread to create the index and FIDs backing each table
-    // Note: this will insert to the log and therefore affect min_flush_lsn,
-    // so must be done in an sm-thread.
-    runner_task = std::bind(&bench_runner::create_files_task, this,
-                            std::placeholders::_1);
-    runner_thread->start_task(runner_task);
-    runner_thread->join();
-  }
-
   if (ermia::config::worker_threads ||
       (ermia::config::is_backup_srv() && ermia::config::replay_threads && ermia::config::command_log)) {
     // Get a thread to use benchmark-provided prepare(), which gathers
     // information about index pointers created by create_file_task.
-    runner_task = std::bind(&bench_runner::prepare, this, std::placeholders::_1);
-    if (!runner_thread) {
-      runner_thread = ermia::thread::get_thread();
-    }
+    ermia::thread::sm_thread::task_t runner_task =
+      std::bind(&bench_runner::prepare, this, std::placeholders::_1);
+    ermia::thread::sm_thread *runner_thread = ermia::thread::get_thread();
     runner_thread->start_task(runner_task);
     runner_thread->join();
     ermia::thread::put_thread(runner_thread);
+  }
+
+  if (!ermia::RCU::rcu_is_registered()) {
+    ermia::RCU::rcu_register();
   }
 
   // load data, unless we recover from logs or is a backup server (recover from
