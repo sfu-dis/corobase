@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 #include "../macros.h"
-#include "../varint.h"
+#include "varint.h"
 
 typedef uint8_t *(*generic_write_fn)(uint8_t *, const uint8_t *);
 typedef const uint8_t *(*generic_read_fn)(const uint8_t *, uint8_t *);

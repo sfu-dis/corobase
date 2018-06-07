@@ -47,9 +47,6 @@ class OrderedIndex {
     // because it really should be the string_type of the underlying
     // tree, but since ndb_ordered_index is not templated we can't
     // really do better than this for now
-    //
-    // we keep value as std::string b/c we have more control over how those
-    // strings are generated
     virtual bool invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };

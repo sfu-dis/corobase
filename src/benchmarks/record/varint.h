@@ -163,9 +163,4 @@ inline size_t size_uvint32(uint32_t value) {
   return 5;
 }
 
-class varint {
- public:
-  static void Test();
-};
-
 #endif /* _VARINT_H_ */

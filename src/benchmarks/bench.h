@@ -6,7 +6,7 @@
 #include <string>
 
 #include "../ermia.h"
-#include "../spinbarrier.h"
+#include "../util.h"
 #include "../dbcore/sm-log-alloc.h"
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
