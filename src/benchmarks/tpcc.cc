@@ -1646,7 +1646,7 @@ class credit_check_order_line_scan_callback
 
 rc_t tpcc_worker::txn_credit_check() {
   /*
-          Note: Cahill's credit check ermia::transaction to introduce SI's anomaly.
+          Note: Cahill's credit check transaction to introduce SI's anomaly.
 
           SELECT c_balance, c_credit_lim
           INTO :c_balance, :c_credit_lim

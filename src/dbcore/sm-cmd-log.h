@@ -7,7 +7,7 @@
 #include "sm-common.h"
 #include "sm-thread.h"
 #include "../macros.h"
-#include "../spinbarrier.h"
+#include "../util.h"
 
 namespace ermia {
 
