@@ -3,13 +3,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include <map>
 #include <vector>
-#include <string>
-#include <utility>
-#include <stdexcept>
-#include <limits>
-#include <unordered_set>
 
 #include "dbcore/xid.h"
 #include "dbcore/sm-config.h"

@@ -134,25 +134,21 @@ namespace TXN {
           "hey yo, you need to abort!", betting that the reader will later use
           the updater's cstamp as its sstamp which will be low. But this makes
           it very tricky to choose the threshold and can abort lots of
-   read-mostly
-          transactions.
+          read-mostly transactions.
 
           (The implementation is like: use a boolean (set by the updater) in the
           reader's context (xc.should_abort) to indicate whether it needs to
-   abort.
-          The reader will examine this flag before post-commit (if it survived),
-          and abort accordingly. The updater should read the reader's state
-          (e.g., ACTIVE) before setting the flag, then re-read it after setting
-   it.
+          abort.  The reader will examine this flag before post-commit (if it
+          survived), and abort accordingly. The updater should read the
+          reader's state (e.g., ACTIVE) before setting the flag, then re-read
+          it after setting it.
+
           If the reader's state didn't change, it means the reader will know it
           should abort later; otherwise the updater considers it missed this
-   precious
-          opportunity. Then the updater will have two choice: spin on the reader
-   or
-          abort. The former might cause deadlock - an reader might be spinning
-   on
-          the updater already hoping to use its cstamp as sstamp. So here we let
-          the updater abort.)
+          precious opportunity. Then the updater will have two choice: spin on
+          the reader or abort. The former might cause deadlock - an reader
+          might be spinning on the updater already hoping to use its cstamp as
+          sstamp. So here we let the updater abort.)
 
         - But actually we can allow back-edges - simply let the updater to set
           the reader's sstamp to the updater's sstamp. This implies that we need
