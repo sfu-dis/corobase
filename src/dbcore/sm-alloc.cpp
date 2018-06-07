@@ -123,35 +123,27 @@ void gc_version_chain(fat_ptr *oid_entry) {
     ptr = cur_obj->GetNextVolatile();
     prev_next = cur_obj->GetNextVolatilePtr();
     // If the chkpt needs to be a consistent one, must make sure not to GC a
-    // version
-    // that might be needed by chkpt:
+    // version that might be needed by chkpt:
     // uint64_t glsn = std::min(logmgr->durable_flushed_lsn().offset(),
     // volatile_read(gc_lsn));
     // This makes the GC thread has to traverse longer in the chain, unless
     // with small log buffers or frequent log flush, which is bad for disk
-    // performance.
-    // For good performance, we use inconsistent chkpt which grabs the latest
-    // committed
-    // version directly. Log replay after the chkpt-start lsn is necessary for
-    // correctness.
+    // performance.  For good performance, we use inconsistent chkpt which
+    // grabs the latest committed version directly. Log replay after the
+    // chkpt-start lsn is necessary for correctness.
     uint64_t glsn = volatile_read(gc_lsn);
     if (LSN::from_ptr(clsn).offset() <= glsn && ptr._ptr) {
       // Fast forward to the **second** version < gc_lsn. Consider that we set
-      // safesnap
-      // lsn to 1.8, and gc_lsn to 1.6. Assume we have two versions with LSNs 2
-      // and 1.5.
-      // We need to keep the one with LSN=1.5 although its < gc_lsn; otherwise
-      // the tx
-      // using safesnap won't be able to find any version available.
+      // safesnap lsn to 1.8, and gc_lsn to 1.6. Assume we have two versions
+      // with LSNs 2 and 1.5.  We need to keep the one with LSN=1.5 although
+      // its < gc_lsn; otherwise the tx using safesnap won't be able to find
+      // any version available.
       //
       // We only traverse and GC a version chain when an update transaction
-      // successfully
-      // installed a version. So at any time there will be only one guy possibly
-      // doing
-      // this for a version chain - just blind write. If we're traversing at
-      // other times,
-      // e.g., after committed, then a CAS is needed:
-      // __sync_bool_compare_and_swap(&prev_next->_ptr, ptr._ptr, 0)) {
+      // successfully installed a version. So at any time there will be only
+      // one guy possibly doing this for a version chain - just blind write. If
+      // we're traversing at other times, e.g., after committed, then a CAS is
+      // needed: __sync_bool_compare_and_swap(&prev_next->_ptr, ptr._ptr, 0)
       volatile_write(prev_next->_ptr, 0);
       while (ptr.offset()) {
         cur_obj = (Object *)ptr.offset();
@@ -307,14 +299,13 @@ void epoch_exit(uint64_t s, epoch_num e) {
   // Transactions under a safesnap will pass s = 0 (INVALID_LSN)
   if (s != 0 && (epoch_tls.nbytes >= EPOCH_SIZE_NBYTES ||
                  epoch_tls.counts >= EPOCH_SIZE_COUNT)) {
-    // epoch_ended() (which is called by new_epoch() in its critical
-    // section) will pick up this safe lsn if new_epoch() succeeded
-    // (it could also be set by somebody else who's also doing epoch_exit(),
-    // but this is captured before new_epoch succeeds, so we're fine).
-    // If instead, we do this in epoch_ended(), that cur_lsn captured
-    // actually belongs to the *new* epoch - not safe to gc based on
-    // this lsn. The real gc_lsn should be some lsn at the end of the
-    // ending epoch, not some lsn after the next epoch.
+    // epoch_ended() (which is called by new_epoch() in its critical section)
+    // will pick up this safe lsn if new_epoch() succeeded (it could also be
+    // set by somebody else who's also doing epoch_exit(), but this is captured
+    // before new_epoch succeeds, so we're fine).  If instead, we do this in
+    // epoch_ended(), that cur_lsn captured actually belongs to the *new* epoch
+    // - not safe to gc based on this lsn. The real gc_lsn should be some lsn
+    // at the end of the ending epoch, not some lsn after the next epoch.
     epoch_excl_begin_lsn[(e + 1) % 3] = s;
     if (mm_epochs.new_epoch_possible() && mm_epochs.new_epoch()) {
       epoch_tls.nbytes = epoch_tls.counts = 0;

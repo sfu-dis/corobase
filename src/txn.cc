@@ -4,13 +4,6 @@
 #include "dbcore/sm-rep.h"
 #include "dbcore/serial.h"
 
-#include <atomic>
-#include <algorithm>
-#include <iostream>
-#include <sstream>
-#include <vector>
-#include <utility>
-
 namespace ermia {
 
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -165,26 +158,6 @@ void transaction::abort_impl() {
     log->discard();
   }
 }
-
-namespace {
-
-inline std::string transaction_flags_to_str(uint64_t flags) {
-  bool first = true;
-  std::ostringstream oss;
-  if (flags & transaction::TXN_FLAG_LOW_LEVEL_SCAN) {
-    oss << "TXN_FLAG_LOW_LEVEL_SCAN";
-    first = false;
-  }
-  if (flags & transaction::TXN_FLAG_READ_ONLY) {
-    if (first)
-      oss << "TXN_FLAG_READ_ONLY";
-    else
-      oss << " | TXN_FLAG_READ_ONLY";
-    first = false;
-  }
-  return oss.str();
-}
-};  // end of namespace
 
 rc_t transaction::commit() {
   ALWAYS_ASSERT(state() == TXN::TXN_ACTIVE);
