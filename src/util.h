@@ -554,7 +554,7 @@ static inline std::ostream &operator<<(std::ostream &o,
 
 class spin_barrier {
  public:
-  spin_barrier(size_t n) : n(n) { ALWAYS_ASSERT(n >= 0); }
+  spin_barrier(size_t n) : n(n) {}
 
   spin_barrier(const spin_barrier &) = delete;
   spin_barrier(spin_barrier &&) = delete;
