@@ -134,7 +134,7 @@ static constexpr bool is_aligned(T val, U amount = DEFAULT_ALIGNMENT) {
  */
 template <int N>
 struct __attribute__((aligned(N))) aligner {
-  char _empty[];
+  char *_empty;
 };
 
 // lest there be any confusion...
@@ -228,7 +228,7 @@ static inline void volatile_write(T volatile &x, U const &y) {
 
    Work around: good old-fashioned null pointer arithmetic...
  */
-#define OFFSETOF(tp, expr) (((char *)&((tp *)0)->expr) - ((char *)((tp *)0)))
+#define OFFSETOF(tp, expr) (((uint64_t)(&((tp *)0)->expr)) - ((uint64_t)((tp *)0)))
 #else
 #define OFFSETOF(tp, expr) offsetof(tp, expr)
 #endif

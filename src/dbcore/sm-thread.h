@@ -4,6 +4,7 @@
 
 #include <condition_variable>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <thread>
 

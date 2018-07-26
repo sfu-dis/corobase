@@ -56,7 +56,8 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
      WARNING: this iterator is only safe to use during startup/recovery.
   */
   struct block_scanner {
-    static size_t const MIN_BLOCK_FETCH = log_block::size(MAX_BLOCK_RECORDS, 0);
+    static size_t const MIN_BLOCK_FETCH = //log_block::size(MAX_BLOCK_RECORDS, 0);
+      OFFSETOF(log_block, records[MAX_BLOCK_RECORDS].data[0]);
 
     static log_block invalid_block() {
       return log_block{

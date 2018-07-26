@@ -78,7 +78,7 @@ sm_log_alloc_mgr::sm_log_alloc_mgr(sm_log_recover_impl *rf, void *rfn_arg)
 sm_log_alloc_mgr::~sm_log_alloc_mgr() {
   _write_daemon_should_stop = true;
   int err = pthread_join(_write_daemon_tid, NULL);
-  THROW_IF(err, os_error, err, "Unable to join log writer daemon thread");
+  LOG_IF(FATAL, err) << "Unable to join log writer daemon thread";
 }
 
 void sm_log_alloc_mgr::enqueue_committed_xct(uint32_t worker_id,

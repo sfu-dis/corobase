@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
   std::cerr << "PID: " << getpid() << std::endl;
 
   google::InitGoogleLogging(argv[0]);
-  google::ParseCommandLineFlags(&argc, &argv, true);
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
