@@ -374,7 +374,7 @@ struct LOG_ALIGN log_request {
 /* The smallest meaningful log block carries no payload. Like all log
    blocks, however, it ends with a skip record.
  */
-static size_t const MIN_LOG_BLOCK_SIZE = log_block::size(0, 0);
+static size_t const MIN_LOG_BLOCK_SIZE = OFFSETOF(log_block, records[0].data[0]);
 
 /* Format a skip record.
 

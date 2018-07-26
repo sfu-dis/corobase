@@ -198,7 +198,7 @@ void sm_log_file_mgr::_make_new_log() {
      in our case the checkpoint itself is *also* a skip block.
    */
   union LOG_ALIGN {
-    char buf[log_block::size(0, MIN_LOG_BLOCK_SIZE)];
+    char buf[OFFSETOF(log_block, records[0].data[MIN_LOG_BLOCK_SIZE])];
     log_block b;
   };
 

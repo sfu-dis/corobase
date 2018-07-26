@@ -280,7 +280,7 @@ void sm_tx_log_impl::_populate_block(log_block *b) {
    their intent to enter pre-commit. It should never be accessed or
    freed.
  */
-static constexpr log_allocation *const ENTERING_PRECOMMIT =
+static log_allocation *const ENTERING_PRECOMMIT =
     (log_allocation *)0x1;
 
 /* Sometimes the log block overflows before a transaction completes

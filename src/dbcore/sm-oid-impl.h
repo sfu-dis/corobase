@@ -58,9 +58,9 @@ struct sm_oid_mgr_impl : sm_oid_mgr {
 };
 
 /* Make sure things are consistent */
+/*
 static_assert(oid_array::alloc_size() == oid_array::MAX_SIZE,
               "Go fix oid_array::MAX_ENTRIES");
-/*
 static_assert(oid_array::MAX_ENTRIES
               == sm_allocator::MAX_CAPACITY_MARK,
               "Go fix sm_allocator::MAX_CAPACITY_MARK");
