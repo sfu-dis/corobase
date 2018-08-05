@@ -411,6 +411,8 @@ int main(int argc, char **argv) {
     test_fn = ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {
     test_fn = tpcc_do_test;
+  } else if (FLAGS_benchmark == "tpcc-dora") {
+    test_fn = tpcc_dora_do_test;
   } else if (FLAGS_benchmark == "tpce") {
     test_fn = tpce_do_test;
   } else {
