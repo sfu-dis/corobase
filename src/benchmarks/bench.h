@@ -11,6 +11,7 @@
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_do_test(ermia::Engine *db, int argc, char **argv);
+extern void tpcc_dora_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpce_do_test(ermia::Engine *db, int argc, char **argv);
 
 enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
