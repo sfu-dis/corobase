@@ -13,6 +13,7 @@ protected:
 public:
   Node() : num_keys_(0) {}
   inline uint32_t NumKeys() { return num_keys_; }
+  virtual bool IsLeaf() = 0;
 };
 
 struct Stack {
@@ -81,6 +82,7 @@ private:
 
 public:
   LeafNode() : Node(), data_size_(0) {}
+  inline virtual bool IsLeaf() { return true; }
 
   static LeafNode *New() {
     LeafNode *node = (LeafNode *)malloc(NodeSize);
@@ -108,8 +110,10 @@ private:
 
 public:
   InternalNode() : min_ptr_(nullptr), data_size_(0) {}
+  inline virtual bool IsLeaf() { return false; }
   inline uint32_t Capacity() { return NodeSize - sizeof(*this); }
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
+  Node *GetChild(char *key, uint32_t key_size);
   static inline InternalNode *New() {
     InternalNode<NodeSize> *node = (InternalNode *)malloc(NodeSize);
     new (node) InternalNode<NodeSize>;
@@ -117,6 +121,16 @@ public:
   }
   void Add(char *key, uint32_t key_size, Node *left_child, Node *right_child, Stack &stack);
   Node *MinPtr() { return min_ptr_; }
+};
+
+template<uint32_t NodeSize, class PayloadType>
+class BTree {
+private:
+  Node *root_;
+
+public:
+  BTree() : root_(LeafNode<NodeSize, PayloadType>::New()) {}
+  LeafNode<NodeSize, PayloadType> *ReachLeaf(char *key, uint32_t key_size, Stack &stack);
 };
 }  // namespace btree
 }  // namespace ermia

@@ -174,6 +174,38 @@ void InternalNode<NodeSize>::InsertAt(uint32_t idx,
   }
 }
 
+template<uint32_t NodeSize>
+Node *InternalNode<NodeSize>::GetChild(char *key, uint32_t key_size) {
+  uint32_t idx = 0;
+  for (idx = 0; idx < num_keys_; ++idx) {
+    NodeEntry &entry = GetEntry(idx);
+    int cmp = entry.CompareKey(key, key_size);
+    if (cmp > 0) {
+      break;
+    }
+  }
+
+  Node *node;
+  if (idx == 0) {
+    node = min_ptr_;
+  } else {
+    NodeEntry &entry = GetEntry(idx - 1);
+    node = *(Node **)entry.GetValueData();
+  }
+  return node;
+}
+
+template<uint32_t NodeSize, class PayloadType>
+LeafNode<NodeSize, PayloadType> *BTree<NodeSize, PayloadType>::ReachLeaf(
+    char *key, uint32_t key_size, Stack &stack) {
+  Node *node = root_;
+  while (!node->IsLeaf()) {
+    stack.Push(node);
+    node = ((InternalNode<NodeSize> *)node)->GetChild(key, key_size);
+  }
+  return node;
+}
+
 // Template instantiation
 template class LeafNode<4096, int>;
 }  // namespace btree
