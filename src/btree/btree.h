@@ -79,6 +79,7 @@ private:
   // Split out a new right sibling, self as the left sibling
   LeafNode *Split(Stack &stack);
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
+  NodeEntry *GetEntry(char *key, uint32_t key_size);
 
 public:
   LeafNode() : Node(), data_size_(0) {}
@@ -128,9 +129,13 @@ class BTree {
 private:
   Node *root_;
 
+private:
+  LeafNode<NodeSize, PayloadType> *ReachLeaf(char *key, uint32_t key_size, Stack &stack);
+
 public:
   BTree() : root_(LeafNode<NodeSize, PayloadType>::New()) {}
-  LeafNode<NodeSize, PayloadType> *ReachLeaf(char *key, uint32_t key_size, Stack &stack);
+  bool Insert(char *key, uint32_t key_size, PayloadType &payload);
+  bool Search(char *key, uint32_t key_size, PayloadType *payload);
 };
 }  // namespace btree
 }  // namespace ermia
