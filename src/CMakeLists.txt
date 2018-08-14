@@ -7,7 +7,7 @@ project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-set(LINK_FLAGS "-libverbs -lnuma -lpthread -lrt -lglog -lgflags")
+set(LINK_FLAGS "-libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
 link_libraries(${LINK_FLAGS})
 
 # Use masstree for index
@@ -24,11 +24,13 @@ endif()
 # Assume 64-byte cache line
 add_definitions(-DCACHELINE_SIZE=64)
 
+include_directories(btree)
 include_directories(dbcore)
 include_directories(masstree)
 include_directories(third-party/sparsehash/src)
 
 add_subdirectory(benchmarks)
+add_subdirectory(btree)
 add_subdirectory(dbcore)
 add_subdirectory(masstree)
 
