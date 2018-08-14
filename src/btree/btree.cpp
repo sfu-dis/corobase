@@ -206,6 +206,36 @@ LeafNode<NodeSize, PayloadType> *BTree<NodeSize, PayloadType>::ReachLeaf(
   return node;
 }
 
+template<uint32_t NodeSize, class PayloadType>
+bool BTree<NodeSize, PayloadType>::Insert(char *key, uint32_t key_size, PayloadType &payload) {
+  Stack stack;
+  LeafNode<NodeSize, PayloadType> *node = ReachLeaf(key, key_size, stack);
+  return node->Add(key, key_size, payload, stack);
+}
+
+template<uint32_t NodeSize, class PayloadType>
+NodeEntry *LeafNode<NodeSize, PayloadType>::GetEntry(char *key, uint32_t key_size) {
+  for (uint32_t idx = 0; idx < num_keys_; ++idx) {
+    NodeEntry &entry = GetEntry(idx);
+    int cmp = entry.CompareKey(key, key_size);
+    if (cmp == 0) {
+      return &entry;
+    }
+  }
+  return nullptr;
+}
+
+template<uint32_t NodeSize, class PayloadType>
+bool BTree<NodeSize, PayloadType>::Search(char *key, uint32_t key_size, PayloadType *payload) {
+  Stack stack;
+  LeafNode<NodeSize, PayloadType> *node = ReachLeaf(key, key_size, stack);
+  NodeEntry *entry = node->GetEntry(key, key_size);
+  if (entry) {
+    memcpy(payload, node->GetValueData(), sizeof(PayloadType));
+  }
+  return entry != nullptr;
+}
+
 // Template instantiation
 template class LeafNode<4096, int>;
 }  // namespace btree
