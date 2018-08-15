@@ -26,7 +26,7 @@ bool LeafNode<NodeSize, PayloadType>::Add(char *key,
   }
 
   // Check space
-  if (key_size + sizeof(payload) + data_size_ + sizeof(LeafNode) > Capacity()) {
+  if (key_size + sizeof(payload) + sizeof(NodeEntry) + data_size_ > DataCapacity()) {
     abort();
     // Need split
     auto *right = Split(stack);
@@ -106,7 +106,7 @@ void InternalNode<NodeSize>::Add(char *key, uint32_t key_size,
   }
 
   // Check space
-  if (key_size + sizeof(right_child) + data_size_ + sizeof(InternalNode) > Capacity()) {
+  if (key_size + sizeof(right_child) + data_size_ + sizeof(InternalNode) > DataCapacity()) {
     abort();
     // Need split
     auto *right = Split(stack);
@@ -203,7 +203,7 @@ LeafNode<NodeSize, PayloadType> *BTree<NodeSize, PayloadType>::ReachLeaf(
     stack.Push(node);
     node = ((InternalNode<NodeSize> *)node)->GetChild(key, key_size);
   }
-  return node;
+  return (LeafNode<NodeSize, PayloadType> *)node;
 }
 
 template<uint32_t NodeSize, class PayloadType>
@@ -231,12 +231,15 @@ bool BTree<NodeSize, PayloadType>::Search(char *key, uint32_t key_size, PayloadT
   LeafNode<NodeSize, PayloadType> *node = ReachLeaf(key, key_size, stack);
   NodeEntry *entry = node->GetEntry(key, key_size);
   if (entry) {
-    memcpy(payload, node->GetValueData(), sizeof(PayloadType));
+    memcpy(payload, entry->GetValueData(), sizeof(PayloadType));
   }
   return entry != nullptr;
 }
 
 // Template instantiation
 template class LeafNode<4096, int>;
+template class LeafNode<4096, uint64_t>;
+template class InternalNode<4096>;
+template class BTree<4096, uint64_t>;
 }  // namespace btree
 }  // namespace ermia
