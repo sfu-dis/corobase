@@ -31,8 +31,8 @@ struct Stack {
   Stack() : num_frames(0) {}
   ~Stack() { num_frames = 0; }
   inline void Push(Node *node) { new (&frames[num_frames++]) Frame(node); }
-  inline Frame *Pop() { return &frames[--num_frames]; }
-  Frame *Top() { return &frames[num_frames - 1]; }
+  inline Node *Pop() { return num_frames == 0 ? nullptr : frames[--num_frames].node; }
+  Node *Top() { return num_frames == 0 ? nullptr : frames[num_frames - 1].node; }
 };
 
 class NodeEntry {
@@ -72,16 +72,16 @@ template<uint32_t NodeSize, class PayloadType>
 class LeafNode : public Node {
 private:
   uint32_t data_size_;  // Includes keys and values, not including the NodeEntry array
+  LeafNode *right_sibling_;
   char data_[0];  // Must be the last element
 
 private:
   void InsertAt(uint32_t idx, char *key, uint32_t key_size, PayloadType &payload);
-  // Split out a new right sibling, self as the left sibling
-  LeafNode *Split(Stack &stack);
+  void Split(LeafNode *&left, LeafNode *&right, Stack &stack);
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
 
 public:
-  LeafNode() : Node(), data_size_(0) {}
+  LeafNode() : Node(), data_size_(0), right_sibling_(nullptr) {}
   inline virtual bool IsLeaf() { return true; }
   NodeEntry *GetEntry(char *key, uint32_t key_size);
 
@@ -95,9 +95,11 @@ public:
   inline uint32_t DataCapacity() {
     return NodeSize - sizeof(*this) - num_keys_ * sizeof(NodeEntry);
   }
+  inline void SetRightSibling(LeafNode *node) { right_sibling_ = node; }
+  inline LeafNode *GetRightSibling() { return right_sibling_; }
   inline char *GetKey(uint32_t idx) { return GetEntry(idx).GetKeyData(); }
   inline char *GetValue(uint32_t idx) { return GetEntry(idx).GetValueData(); }
-  bool Add(char *key, uint32_t key_size, PayloadType &payload, Stack &stack);
+  bool Add(char *key, uint32_t key_size, PayloadType &payload, bool &did_split, Stack &stack);
 };
 
 template<uint32_t NodeSize>
@@ -140,6 +142,7 @@ public:
   BTree() : root_(LeafNode<NodeSize, PayloadType>::New()) {}
   bool Insert(char *key, uint32_t key_size, PayloadType &payload);
   bool Search(char *key, uint32_t key_size, PayloadType *payload);
+  void Dump();
 };
 }  // namespace btree
 }  // namespace ermia

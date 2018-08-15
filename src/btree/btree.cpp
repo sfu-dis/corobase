@@ -9,7 +9,10 @@ template<uint32_t NodeSize, class PayloadType>
 bool LeafNode<NodeSize, PayloadType>::Add(char *key,
                                           uint32_t key_size,
                                           PayloadType &payload,
+                                          bool &did_split,
                                           Stack &stack) {
+  did_split = false;
+
   // Find the position in the leaf entry array which begins at data_
   // FIXME(tzwang): do binary search here
   uint32_t insert_idx = 0;
@@ -27,17 +30,22 @@ bool LeafNode<NodeSize, PayloadType>::Add(char *key,
 
   // Check space
   if (key_size + sizeof(payload) + sizeof(NodeEntry) + data_size_ > DataCapacity()) {
-    abort();
     // Need split
-    auto *right = Split(stack);
+    LeafNode<NodeSize, PayloadType> *left = nullptr, *right = nullptr;
+    Split(left, right, stack);
+    bool inserted = false;
+    bool split = false;
     if (insert_idx > num_keys_ / 2) {  // Belongs to the new right sibling
-      bool inserted = right->Add(key, key_size, payload, stack);
-      LOG_IF(FATAL, !inserted);
-      return inserted;
+      inserted = right->Add(key, key_size, payload, split, stack);
+    } else {
+      inserted = left->Add(key, key_size, payload, split, stack);
     }
+    LOG_IF(FATAL, !inserted);
+    LOG_IF(FATAL, split) << "New nodes shouldn't split";
+    did_split = true;
+  } else {
+    InsertAt(insert_idx, key, key_size, payload);
   }
-
-  InsertAt(insert_idx, key, key_size, payload);
   return true;
 }
 
@@ -63,15 +71,33 @@ void LeafNode<NodeSize, PayloadType>::InsertAt(uint32_t idx,
 }
 
 template<uint32_t NodeSize, class PayloadType>
-LeafNode<NodeSize, PayloadType>* LeafNode<NodeSize, PayloadType>::Split(Stack &stack) {
+void LeafNode<NodeSize, PayloadType>::Split(LeafNode<NodeSize, PayloadType> *&left,
+                                            LeafNode<NodeSize, PayloadType> *&right,
+                                            Stack &stack) {
   LOG_IF(FATAL, num_keys_ < 2);
-  LeafNode<NodeSize, PayloadType> *right_sibling = LeafNode::New();
-  // The last half of keys/values go to the right sibling
+  left = LeafNode::New();
+  right = LeafNode::New();
+
+  right->SetRightSibling(right_sibling_);
+  left->SetRightSibling(right);
+  right_sibling_ = right;
+
+  // Copy keys and values to the new left and right nodes
   uint32_t keys_to_move = num_keys_ / 2;
-  for (uint32_t i = num_keys_ - keys_to_move; i < num_keys_; ++i) {
+  for (uint32_t i = 0; i < num_keys_; ++i) {
     NodeEntry &entry = GetEntry(i);
-    bool added = right_sibling->Add(entry.GetKeyData(), entry.GetKeySize(),
-                                    *(PayloadType *)entry.GetValueData(), stack);
+    bool added = false;
+    bool did_split = false;
+    if (i < num_keys_ - keys_to_move) {
+      added = left->Add(entry.GetKeyData(), entry.GetKeySize(),
+                        *(PayloadType *)entry.GetValueData(),
+                        did_split, stack);
+    } else {
+      added = right->Add(entry.GetKeyData(), entry.GetKeySize(),
+                         *(PayloadType *)entry.GetValueData(),
+                         did_split, stack);
+    }
+    LOG_IF(FATAL, did_split) << "Shouldn't split";
     LOG_IF(FATAL, !added) << "Couldn't add key-value";
   }
 
@@ -79,13 +105,11 @@ LeafNode<NodeSize, PayloadType>* LeafNode<NodeSize, PayloadType>::Split(Stack &s
   NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
 
   // Insert the separator key to parent
-  InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Top()->node;
-  parent->Add(entry.GetKeyData(), entry.GetKeySize(), this, right_sibling, stack);
-
-  // Reduce the number of keys, leave the data there to be overwritten later
-  num_keys_ -= keys_to_move;
-
-  return right_sibling;
+  InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Pop();
+  if (!parent) {
+    parent = InternalNode<NodeSize>::New();
+  }
+  parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, stack);
 }
 
 template<uint32_t NodeSize>
@@ -135,7 +159,10 @@ InternalNode<NodeSize> *InternalNode<NodeSize>::Split(Stack &stack) {
   NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
 
   // Insert the separator key to parent
-  InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Top()->node;
+  InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Top();
+  if (!parent) {
+    parent = InternalNode<NodeSize>::New();
+  }
   parent->Add(entry.GetKeyData(), entry.GetKeySize(), this, right_sibling, stack);
 
   // Reduce the number of keys, leave the data there to be overwritten later
@@ -210,7 +237,11 @@ template<uint32_t NodeSize, class PayloadType>
 bool BTree<NodeSize, PayloadType>::Insert(char *key, uint32_t key_size, PayloadType &payload) {
   Stack stack;
   LeafNode<NodeSize, PayloadType> *node = ReachLeaf(key, key_size, stack);
-  return node->Add(key, key_size, payload, stack);
+  bool did_split = false;
+  bool inserted = node->Add(key, key_size, payload, did_split, stack);
+  if (did_split) {
+    free(node);
+  }
 }
 
 template<uint32_t NodeSize, class PayloadType>
@@ -234,6 +265,10 @@ bool BTree<NodeSize, PayloadType>::Search(char *key, uint32_t key_size, PayloadT
     memcpy(payload, entry->GetValueData(), sizeof(PayloadType));
   }
   return entry != nullptr;
+}
+
+template<uint32_t NodeSize, class PayloadType>
+void BTree<NodeSize, PayloadType>::Dump() {
 }
 
 // Template instantiation

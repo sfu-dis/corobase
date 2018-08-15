@@ -6,78 +6,62 @@
 
 #include "btree.h"
 
-TEST(LeafNode, Insert) {
+TEST(LeafNode, InsertSplit) {
   // Prepare a list of integers to be inserted in random order
   std::vector<int> inputs;
-  const uint32_t kKeys = 100;
-  for (uint32_t i = 0; i < kKeys; ++i) {
+  // 169 for filling a 4k page: this must be adjusted if page layout changes
+  // (i.e., fields added to or removed from LeafPage, or page size changes).
+  typedef ermia::btree::LeafNode<4096, int> LeafNodeType;
+  const uint32_t kInserts = 169;
+  for (uint32_t i = 0; i < kInserts + 1; ++i) {
     inputs.emplace_back(i);
   }
   std::random_shuffle(inputs.begin(), inputs.end());
 
   // Allocate a node
-  typedef ermia::btree::LeafNode<4096, int> LeafNodeType;
   LeafNodeType *node = (LeafNodeType*)malloc(4096);
   new (node) LeafNodeType;
 
   // Insert all keys
   ermia::btree::Stack stack;
-  for (uint32_t i = 0; i < inputs.size(); ++i) {
+  for (uint32_t i = 0; i < kInserts; ++i) {
     int k = inputs[i];
     int v = inputs[i] + 1;
-    bool inserted = node->Add((char*)&k, sizeof(int), v, stack);
+    bool did_split;
+    bool inserted = node->Add((char*)&k, sizeof(int), v, did_split, stack);
     ASSERT_TRUE(inserted);
+    ASSERT_FALSE(did_split);
     ASSERT_EQ(i + 1, node->NumKeys());
   }
 
-  ASSERT_EQ(node->NumKeys(), kKeys);
+  ASSERT_EQ(node->NumKeys(), kInserts);
     
   // Dump all key-payload pairs
   for (uint32_t i = 0; i < node->NumKeys(); ++i) {
     int k = *(int*)node->GetKey(i);
     int v = *(int*)node->GetValue(i);
-    ASSERT_EQ(k, i);
-    ASSERT_EQ(v, i + 1);
+    ASSERT_EQ(k, v - 1);
   }
 
-  free(node);
-}
-
-TEST(LeafNode, Split) {
-  // Prepare a list of integers to be inserted in random order
-  std::vector<int> inputs;
-  const uint32_t kKeys = 1000;
-  for (uint32_t i = 0; i < kKeys; ++i) {
-    inputs.emplace_back(i);
-  }
-  //std::random_shuffle(inputs.begin(), inputs.end());
-
-  // Allocate a node
-  typedef ermia::btree::LeafNode<4096, int> LeafNodeType;
-  LeafNodeType *node = (LeafNodeType*)malloc(4096);
-  new (node) LeafNodeType;
-
-  // Insert all keys
-  ermia::btree::Stack stack;
-  for (uint32_t i = 0; i < inputs.size(); ++i) {
-    int k = inputs[i];
-    int v = inputs[i] + 1;
-    LOG(INFO) << "INSERT " << k;
-    bool inserted = node->Add((char*)&k, sizeof(int), v, stack);
-    ASSERT_TRUE(inserted);
-    ASSERT_EQ(i + 1, node->NumKeys());
-  }
-
-  ASSERT_EQ(node->NumKeys(), kKeys);
+  // Now insert more keys will trigger a split
+  int k = inputs[kInserts];
+  int v = inputs[kInserts] + 1;
+  bool did_split = false;
+  bool inserted = node->Add((char*)&k, sizeof(int), v, did_split, stack);
+  ASSERT_TRUE(did_split);
+  ASSERT_TRUE(inserted);
 
   // Dump all key-payload pairs
   for (uint32_t i = 0; i < node->NumKeys(); ++i) {
     int k = *(int*)node->GetKey(i);
     int v = *(int*)node->GetValue(i);
-    ASSERT_EQ(k, i);
-    ASSERT_EQ(v, i + 1);
+    ASSERT_EQ(k, v - 1);
   }
+  ASSERT_TRUE(inserted);
 
+  // Must <= 1: after split one might be 1 larger
+  int diff = node->GetRightSibling()->NumKeys() - kInserts;
+  ASSERT_TRUE(diff <= 1);
   free(node);
 }
 
@@ -106,7 +90,7 @@ TEST(InternalNode, Insert) {
   }
 
   ASSERT_EQ(node->NumKeys(), kKeys);
-    
+
   // Dump all key-payload pairs
   ASSERT_EQ((uint64_t)node->MinPtr(), 1);
   for (uint32_t i = 0; i < node->NumKeys(); ++i) {
