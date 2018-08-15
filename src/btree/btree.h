@@ -71,7 +71,7 @@ public:
 template<uint32_t NodeSize, class PayloadType>
 class LeafNode : public Node {
 private:
-  uint32_t data_size_;  // Includes keys and values
+  uint32_t data_size_;  // Includes keys and values, not including the NodeEntry array
   char data_[0];  // Must be the last element
 
 private:
@@ -79,11 +79,11 @@ private:
   // Split out a new right sibling, self as the left sibling
   LeafNode *Split(Stack &stack);
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
-  NodeEntry *GetEntry(char *key, uint32_t key_size);
 
 public:
   LeafNode() : Node(), data_size_(0) {}
   inline virtual bool IsLeaf() { return true; }
+  NodeEntry *GetEntry(char *key, uint32_t key_size);
 
   static LeafNode *New() {
     LeafNode *node = (LeafNode *)malloc(NodeSize);
@@ -92,7 +92,9 @@ public:
   }
 
   // Data area size, including keys and values
-  inline uint32_t Capacity() { return NodeSize - sizeof(*this); }
+  inline uint32_t DataCapacity() {
+    return NodeSize - sizeof(*this) - num_keys_ * sizeof(NodeEntry);
+  }
   inline char *GetKey(uint32_t idx) { return GetEntry(idx).GetKeyData(); }
   inline char *GetValue(uint32_t idx) { return GetEntry(idx).GetValueData(); }
   bool Add(char *key, uint32_t key_size, PayloadType &payload, Stack &stack);
@@ -112,7 +114,9 @@ private:
 public:
   InternalNode() : min_ptr_(nullptr), data_size_(0) {}
   inline virtual bool IsLeaf() { return false; }
-  inline uint32_t Capacity() { return NodeSize - sizeof(*this); }
+  inline uint32_t DataCapacity() {
+    return NodeSize - sizeof(*this) - num_keys_ * sizeof(NodeEntry);
+  }
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
   Node *GetChild(char *key, uint32_t key_size);
   static inline InternalNode *New() {
