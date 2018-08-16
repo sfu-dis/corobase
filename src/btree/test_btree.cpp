@@ -103,12 +103,12 @@ TEST(InternalNode, Insert) {
   free(node);
 }
 
-TEST(BTree, NoSplit) {
+TEST(BTree, Full) {
   ermia::btree::BTree<4096, uint64_t> btree;
 
   // Prepare a list of integers to be inserted in random order
   std::vector<uint64_t> inputs;
-  const uint32_t kKeys = 100;
+  const uint32_t kKeys = 5000;
   for (uint64_t i = 0; i < kKeys; ++i) {
     inputs.emplace_back(i);
   }

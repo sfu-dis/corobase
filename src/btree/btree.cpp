@@ -108,6 +108,7 @@ void LeafNode<NodeSize, PayloadType>::Split(LeafNode<NodeSize, PayloadType> *&le
   InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Pop();
   if (!parent) {
     parent = InternalNode<NodeSize>::New();
+    stack.Push(parent);  // Growing tree height
   }
   parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, stack);
 }
@@ -241,6 +242,12 @@ bool BTree<NodeSize, PayloadType>::Insert(char *key, uint32_t key_size, PayloadT
   bool inserted = node->Add(key, key_size, payload, did_split, stack);
   if (did_split) {
     free(node);
+  }
+  if (stack.num_frames == 1 && stack.Top() != root_) {
+    // Only possible if tree has growed during a split, which must have already
+    // popped all old internal nodes and will push the new root node. See
+    // InternalNode's Split for details.
+    root_ = stack.Top();
   }
 }
 
