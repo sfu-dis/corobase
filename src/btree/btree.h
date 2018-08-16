@@ -82,7 +82,7 @@ private:
 
 public:
   LeafNode() : Node(), data_size_(0), right_sibling_(nullptr) {}
-  inline virtual bool IsLeaf() { return true; }
+  inline bool IsLeaf() { return true; }
   NodeEntry *GetEntry(char *key, uint32_t key_size);
 
   static LeafNode *New() {
@@ -115,7 +115,7 @@ private:
 
 public:
   InternalNode() : min_ptr_(nullptr), data_size_(0) {}
-  inline virtual bool IsLeaf() { return false; }
+  inline bool IsLeaf() { return false; }
   inline uint32_t DataCapacity() {
     return NodeSize - sizeof(*this) - num_keys_ * sizeof(NodeEntry);
   }
