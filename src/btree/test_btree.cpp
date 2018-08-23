@@ -68,8 +68,9 @@ TEST(LeafNode, InsertSplit) {
 TEST(InternalNode, Insert) {
   // Prepare a list of integers to be inserted in random order
   std::vector<uint64_t> inputs;
-  const uint32_t kKeys = 100;
-  for (uint64_t i = 0; i < kKeys; ++i) {
+  // The 128-th insert will trigger a split
+  const uint32_t kKeys = 127;
+  for (uint64_t i = 0; i < kKeys + 1; ++i) {
     inputs.emplace_back(i);
   }
   std::random_shuffle(inputs.begin(), inputs.end());
@@ -81,7 +82,7 @@ TEST(InternalNode, Insert) {
 
   // Insert all keys
   ermia::btree::Stack stack;
-  for (uint64_t i = 0; i < inputs.size(); ++i) {
+  for (uint64_t i = 0; i < kKeys; ++i) {
     uint64_t k = inputs[i];
     InternalNodeType *left = (InternalNodeType *)(k + 1);
     InternalNodeType *right = (InternalNodeType *)(k + 2);
@@ -95,20 +96,25 @@ TEST(InternalNode, Insert) {
   ASSERT_EQ((uint64_t)node->MinPtr(), 1);
   for (uint32_t i = 0; i < node->NumKeys(); ++i) {
     auto &entry = node->GetEntry(i);
-    int k = *(int*)entry.GetKeyData();
-    ASSERT_EQ(k, i);
-    ASSERT_EQ(*(int *)entry.GetValueData(), i + 2);
+    uint64_t k = *(uint64_t*)entry.GetKeyData();
+    ASSERT_EQ(*(uint64_t*)entry.GetValueData(), k + 2);
   }
+
+  // Now insert another key to trigger a split
+  uint64_t k = inputs[kKeys];
+  InternalNodeType *left = (InternalNodeType *)(k + 1);
+  InternalNodeType *right = (InternalNodeType *)(k + 2);
+  node->Add((char*)&k, sizeof(uint64_t), left, right, stack);
 
   free(node);
 }
 
 TEST(BTree, Full) {
-  ermia::btree::BTree<4096, uint64_t> btree;
+  ermia::btree::BTree<128, uint64_t> btree;
 
   // Prepare a list of integers to be inserted in random order
   std::vector<uint64_t> inputs;
-  const uint32_t kKeys = 5000;
+  const uint32_t kKeys = 15000;
   for (uint64_t i = 0; i < kKeys; ++i) {
     inputs.emplace_back(i);
   }
@@ -117,7 +123,7 @@ TEST(BTree, Full) {
   // Insert all key-value pairs
   for (uint64_t i = 0; i < inputs.size(); ++i) {
     uint64_t k = inputs[i];
-    uint64_t v = inputs[i] + 1;
+    uint64_t v = inputs[i] * 2;
     bool inserted = btree.Insert((char*)&k, sizeof(uint64_t), v);
     ASSERT_TRUE(inserted);
   }
@@ -128,7 +134,7 @@ TEST(BTree, Full) {
     uint64_t v = 0;
     bool found = btree.Search((char*)&k, sizeof(uint64_t), &v);
     ASSERT_TRUE(found);
-    ASSERT_EQ(v, k + 1);
+    ASSERT_EQ(v, k * 2);
   }
 }
 

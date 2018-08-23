@@ -283,5 +283,9 @@ template class LeafNode<4096, int>;
 template class LeafNode<4096, uint64_t>;
 template class InternalNode<4096>;
 template class BTree<4096, uint64_t>;
+
+template class LeafNode<128, uint64_t>;
+template class InternalNode<128>;
+template class BTree<128, uint64_t>;
 }  // namespace btree
 }  // namespace ermia
