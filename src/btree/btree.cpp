@@ -111,13 +111,17 @@ void LeafNode<NodeSize, PayloadType>::Split(LeafNode<NodeSize, PayloadType> *&le
 
   // Keys >= this separator are on the right sibling
   NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
-  parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, stack);
+  bool did_split = false;
+  parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, did_split, stack);
+  if (did_split) {
+    free(parent);
+  }
 }
 
 template<uint32_t NodeSize>
 void InternalNode<NodeSize>::Add(char *key, uint32_t key_size,
                                  Node *left_child, Node *right_child,
-                                 Stack &stack) {
+                                 bool &did_split, Stack &stack) {
   // Find the position in the leaf entry array which begins at data_
   // FIXME(tzwang): do binary search here
   uint32_t insert_idx = 0;
@@ -131,17 +135,20 @@ void InternalNode<NodeSize>::Add(char *key, uint32_t key_size,
     }
   }
 
-
+  did_split = false;
   // Check space
   if (key_size + sizeof(right_child) + sizeof(NodeEntry) + data_size_ > DataCapacity()) {
     // Need split
     InternalNode<NodeSize> *left = nullptr, *right = nullptr;
     Split(left, right, stack);
+    bool new_node_split = false;
     if (insert_idx > left->NumKeys()) {  // Belongs to the new right sibling
-      right->Add(key, key_size, left_child, right_child, stack);
+      right->Add(key, key_size, left_child, right_child, new_node_split, stack);
     } else {
-      left->Add(key, key_size, left_child, right_child, stack);
+      left->Add(key, key_size, left_child, right_child, new_node_split, stack);
     }
+    LOG_IF(FATAL, new_node_split) << "New nodes should not split";
+    did_split = true;
   } else {
     InsertAt(insert_idx, key, key_size, left_child, right_child);
   }
@@ -161,6 +168,7 @@ void InternalNode<NodeSize>::Split(InternalNode<NodeSize> *&left,
     NodeEntry &entry = GetEntry(i);
     Node *left_child = nullptr;
     Node *right_child = *(Node **)entry.GetValueData();
+    bool split = false;
 
     if (i < num_keys_ - keys_to_move) {
       if (i == 0) {
@@ -168,11 +176,12 @@ void InternalNode<NodeSize>::Split(InternalNode<NodeSize> *&left,
       } else {
         left_child = *(Node **)GetEntry(i - 1).GetValueData();
       }
-      left->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, stack);
+      left->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, split, stack);
     } else {
       left_child = (Node *)GetEntry(i - 1).GetValueData();
-      right->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, stack);
+      right->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, split, stack);
     }
+    LOG_IF(FATAL, split);
   }
 
   // Insert the separator key to parent
@@ -184,7 +193,11 @@ void InternalNode<NodeSize>::Split(InternalNode<NodeSize> *&left,
 
   // Keys >= this separator are on the right sibling
   NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
-  parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, stack);
+  bool split = false;
+  parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, split, stack);
+  if (split) {
+    free(parent);
+  }
 }
 
 template<uint32_t NodeSize>
