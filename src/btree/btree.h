@@ -6,6 +6,7 @@
 namespace ermia {
 namespace btree {
 
+// Basic node type common to both internal and leaf nodes
 class Node {
 protected:
   uint32_t num_keys_;
@@ -35,6 +36,10 @@ struct Stack {
   Node *Top() { return num_frames == 0 ? nullptr : frames[num_frames - 1].node; }
 };
 
+// Key-value (or key-pointer) pair header stored in nodes. Value/pointer is
+// supposed to follow the key string which is pointed to by [data_] which usually
+// points to somewhere in the leaf/internal node's data area (alternatively it
+// could be in the heap if data is too large).
 class NodeEntry {
 private:
   uint32_t key_size_;    // Key size
@@ -68,6 +73,25 @@ public:
   }
 };
 
+// Leaf node header that contains size of the keys and values, and a pointer to
+// the right sibling. Data (keys and values) must follow right after this struct.
+//
+// DataEntries grow 'downwards' and key-value (actual data) pairs correspond to
+// DataEntries grow 'upwards':
+//
+// -----------------------------------------
+// num_keys_ | data_size_ | right_sibling_ |
+// -----------------------------------------
+// NodeEntry 1 | NodeEntry 2 | NodeEntry 3 |
+// -----------------------------------------
+//        ... more NodeEntries ...
+// -----------------------------------------
+//               free space
+// -----------------------------------------
+//  more key-value pairs | Key 3 + value 3 |
+// -----------------------------------------
+//     Key 2 + value 2  |  Key 1 + value 1 |
+// -----------------------------------------
 template<uint32_t NodeSize, class PayloadType>
 class LeafNode : public Node {
 private:
@@ -102,10 +126,31 @@ public:
   bool Add(char *key, uint32_t key_size, PayloadType &payload, bool &did_split, Stack &stack);
 };
 
+// Internal node that contains keys and pointers to right children nodes, and a
+// pointer to the left-most child. Data (keys and pointers) must follow right after
+// this struct.
+//
+// DataEntries grow 'downwards' and key-pointer (actual data) pairs correspond to
+// DataEntries grow 'upwards':
+//
+// -----------------------------------------
+// num_keys_ |   min_ptr_   |  data_size_  |
+// -----------------------------------------
+// NodeEntry 1 | NodeEntry 2 | NodeEntry 3 |
+// -----------------------------------------
+//        ... more NodeEntries ...
+// -----------------------------------------
+//               free space
+// -----------------------------------------
+//  more key-value pairs | Key 3 + value 3 |
+// -----------------------------------------
+//     Key 2 + value 2  |  Key 1 + value 1 |
+// -----------------------------------------
+
 template<uint32_t NodeSize>
 class InternalNode : public Node {
 private:
-  Node *min_ptr_;
+  Node *min_ptr_;  // Left-most child
   uint32_t data_size_;  // Includes keys only, pointers are stored in InternalEntries
   char data_[0];  // Must be the last element
 
