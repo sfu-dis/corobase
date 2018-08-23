@@ -86,8 +86,10 @@ TEST(InternalNode, Insert) {
     uint64_t k = inputs[i];
     InternalNodeType *left = (InternalNodeType *)(k + 1);
     InternalNodeType *right = (InternalNodeType *)(k + 2);
-    node->Add((char*)&k, sizeof(uint64_t), left, right, stack);
+    bool split = false;
+    node->Add((char*)&k, sizeof(uint64_t), left, right, split, stack);
     ASSERT_EQ(i + 1, node->NumKeys());
+    ASSERT_FALSE(split);
   }
 
   ASSERT_EQ(node->NumKeys(), kKeys);
@@ -104,7 +106,9 @@ TEST(InternalNode, Insert) {
   uint64_t k = inputs[kKeys];
   InternalNodeType *left = (InternalNodeType *)(k + 1);
   InternalNodeType *right = (InternalNodeType *)(k + 2);
-  node->Add((char*)&k, sizeof(uint64_t), left, right, stack);
+  bool split = false;
+  node->Add((char*)&k, sizeof(uint64_t), left, right, split, stack);
+  ASSERT_TRUE(split);
 
   free(node);
 }

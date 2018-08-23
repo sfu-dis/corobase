@@ -173,7 +173,7 @@ public:
     new (node) InternalNode<NodeSize>;
     return node;
   }
-  void Add(char *key, uint32_t key_size, Node *left_child, Node *right_child, Stack &stack);
+  void Add(char *key, uint32_t key_size, Node *left_child, Node *right_child, bool &did_split, Stack &stack);
   Node *MinPtr() { return min_ptr_; }
   void Dump() override;
 };
