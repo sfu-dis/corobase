@@ -15,6 +15,7 @@ public:
   Node() : num_keys_(0) {}
   inline uint32_t NumKeys() { return num_keys_; }
   virtual bool IsLeaf() = 0;
+  virtual void Dump() = 0;
 };
 
 struct Stack {
@@ -106,7 +107,7 @@ private:
 
 public:
   LeafNode() : Node(), data_size_(0), right_sibling_(nullptr) {}
-  inline bool IsLeaf() { return true; }
+  inline bool IsLeaf() override { return true; }
   NodeEntry *GetEntry(char *key, uint32_t key_size);
 
   static LeafNode *New() {
@@ -124,6 +125,7 @@ public:
   inline char *GetKey(uint32_t idx) { return GetEntry(idx).GetKeyData(); }
   inline char *GetValue(uint32_t idx) { return GetEntry(idx).GetValueData(); }
   bool Add(char *key, uint32_t key_size, PayloadType &payload, bool &did_split, Stack &stack);
+  void Dump() override {}
 };
 
 // Internal node that contains keys and pointers to right children nodes, and a
@@ -156,11 +158,11 @@ private:
 
 private:
   void InsertAt(uint32_t idx, char *key, uint32_t key_size, Node *left_child, Node *right_child);
-  InternalNode *Split(Stack &stack);
+  void Split(InternalNode *&left, InternalNode *&right, Stack &stack);
 
 public:
   InternalNode() : min_ptr_(nullptr), data_size_(0) {}
-  inline bool IsLeaf() { return false; }
+  inline bool IsLeaf() override { return false; }
   inline uint32_t DataCapacity() {
     return NodeSize - sizeof(*this) - num_keys_ * sizeof(NodeEntry);
   }
@@ -173,6 +175,7 @@ public:
   }
   void Add(char *key, uint32_t key_size, Node *left_child, Node *right_child, Stack &stack);
   Node *MinPtr() { return min_ptr_; }
+  void Dump() override;
 };
 
 template<uint32_t NodeSize, class PayloadType>

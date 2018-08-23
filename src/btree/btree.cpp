@@ -1,4 +1,5 @@
 #include <cassert>
+#include <iostream>
 #include <glog/logging.h>
 #include "btree.h"
 
@@ -35,7 +36,7 @@ bool LeafNode<NodeSize, PayloadType>::Add(char *key,
     Split(left, right, stack);
     bool inserted = false;
     bool split = false;
-    if (insert_idx > num_keys_ / 2) {  // Belongs to the new right sibling
+    if (insert_idx > left->NumKeys()) {  // Belongs to the new right sibling
       inserted = right->Add(key, key_size, payload, split, stack);
     } else {
       inserted = left->Add(key, key_size, payload, split, stack);
@@ -101,15 +102,15 @@ void LeafNode<NodeSize, PayloadType>::Split(LeafNode<NodeSize, PayloadType> *&le
     LOG_IF(FATAL, !added) << "Couldn't add key-value";
   }
 
-  // Keys >= this separator are on the right sibling
-  NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
-
   // Insert the separator key to parent
   InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Pop();
   if (!parent) {
     parent = InternalNode<NodeSize>::New();
     stack.Push(parent);  // Growing tree height
   }
+
+  // Keys >= this separator are on the right sibling
+  NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
   parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, stack);
 }
 
@@ -130,46 +131,60 @@ void InternalNode<NodeSize>::Add(char *key, uint32_t key_size,
     }
   }
 
-  // Check space
-  if (key_size + sizeof(right_child) + data_size_ + sizeof(InternalNode) > DataCapacity()) {
-    abort();
-    // Need split
-    auto *right = Split(stack);
-    if (insert_idx > num_keys_ / 2) {  // Belongs to the new right sibling
-      right->Add(key, key_size, left_child, right_child, stack);
-    }
-  }
 
-  InsertAt(insert_idx, key, key_size, left_child, right_child);
+  // Check space
+  if (key_size + sizeof(right_child) + sizeof(NodeEntry) + data_size_ > DataCapacity()) {
+    // Need split
+    InternalNode<NodeSize> *left = nullptr, *right = nullptr;
+    Split(left, right, stack);
+    if (insert_idx > left->NumKeys()) {  // Belongs to the new right sibling
+      right->Add(key, key_size, left_child, right_child, stack);
+    } else {
+      left->Add(key, key_size, left_child, right_child, stack);
+    }
+  } else {
+    InsertAt(insert_idx, key, key_size, left_child, right_child);
+  }
 }
 
 template<uint32_t NodeSize>
-InternalNode<NodeSize> *InternalNode<NodeSize>::Split(Stack &stack) {
+void InternalNode<NodeSize>::Split(InternalNode<NodeSize> *&left,
+                                   InternalNode<NodeSize> *&right,
+                                   Stack &stack) {
   LOG_IF(FATAL, num_keys_ < 2);
-  InternalNode<NodeSize> *right_sibling = InternalNode::New();
+  left = InternalNode<NodeSize>::New();
+  right = InternalNode<NodeSize>::New();
+
   // The last half of keys/values go to the right sibling
   uint32_t keys_to_move = num_keys_ / 2;
-  for (uint32_t i = num_keys_ - keys_to_move; i < num_keys_; ++i) {
+  for (uint32_t i = 0; i < num_keys_; ++i) {
     NodeEntry &entry = GetEntry(i);
-    right_sibling->Add(entry.GetKeyData(), entry.GetKeySize(),
-                       (Node *)GetEntry(i - 1).GetValueData(),
-                       (Node *)entry.GetValueData(), stack);
+    Node *left_child = nullptr;
+    Node *right_child = *(Node **)entry.GetValueData();
+
+    if (i < num_keys_ - keys_to_move) {
+      if (i == 0) {
+        left_child = min_ptr_;
+      } else {
+        left_child = *(Node **)GetEntry(i - 1).GetValueData();
+      }
+      left->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, stack);
+    } else {
+      left_child = (Node *)GetEntry(i - 1).GetValueData();
+      right->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, stack);
+    }
+  }
+
+  // Insert the separator key to parent
+  InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Pop();
+  if (!parent) {
+    parent = InternalNode<NodeSize>::New();
+    stack.Push(parent);
   }
 
   // Keys >= this separator are on the right sibling
   NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
-
-  // Insert the separator key to parent
-  InternalNode<NodeSize> *parent = (InternalNode<NodeSize> *)stack.Top();
-  if (!parent) {
-    parent = InternalNode<NodeSize>::New();
-  }
-  parent->Add(entry.GetKeyData(), entry.GetKeySize(), this, right_sibling, stack);
-
-  // Reduce the number of keys, leave the data there to be overwritten later
-  num_keys_ -= keys_to_move;
-
-  return right_sibling;
+  parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, stack);
 }
 
 template<uint32_t NodeSize>
@@ -200,6 +215,19 @@ void InternalNode<NodeSize>::InsertAt(uint32_t idx,
     NodeEntry &left_sibling = GetEntry(idx - 1);
     memcpy(left_sibling.GetValueData(), (char *)&left_child, sizeof(InternalNode*));
   }
+}
+
+template<uint32_t NodeSize>
+void InternalNode<NodeSize>::Dump() {
+  std::cout << "Dumping " << this << ": ";
+  std::cout << std::hex << (uint64_t)min_ptr_ << " <- ";
+  for (uint32_t i = 0; i < num_keys_; ++i) {
+    auto &entry = GetEntry(i);
+    uint64_t key = *(uint64_t*)entry.GetKeyData();
+    uint64_t right = *(uint64_t*)entry.GetValueData();
+    std::cout << std::dec << key << " -> " << std::hex << right << " | " << std::dec;
+  }
+  std::cout << std::endl;
 }
 
 template<uint32_t NodeSize>
@@ -248,6 +276,7 @@ bool BTree<NodeSize, PayloadType>::Insert(char *key, uint32_t key_size, PayloadT
     // popped all old internal nodes and will push the new root node. See
     // InternalNode's Split for details.
     root_ = stack.Top();
+    assert(root_);
   }
 }
 
