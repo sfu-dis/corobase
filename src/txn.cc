@@ -944,7 +944,7 @@ rc_t transaction::parallel_ssi_commit() {
     // Update xstamps in read versions, this should happen before
     // deregistering from the bitmap, so when the updater found a
     // context change, it'll get a stable xtamp from the tuple.
-    // No need to look into write set and skip: do_tuple_read will
+    // No need to look into write set and skip: DoTupleRead will
     // skip inserting to read set if it's already in write set; it's
     // possible to see a tuple in both read and write sets, only if
     // the tuple is first read, then updated - updating the xstamp
@@ -1404,7 +1404,7 @@ bool transaction::try_insert_new_tuple(OrderedIndex *index, const varstr *key,
   return true;
 }
 
-rc_t transaction::do_tuple_read(dbtuple *tuple, varstr *out_v) {
+rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
   ASSERT(tuple);
   ASSERT(xc);
   bool read_my_own =
