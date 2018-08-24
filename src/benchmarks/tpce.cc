@@ -5041,7 +5041,7 @@ class tpce_bench_runner : public bench_runner {
 
   static void RegisterTable(ermia::Engine *db, const char *name,
                             const char *primary_idx_name = nullptr) {
-    db->CreateTable(name, primary_idx_name);
+    db->CreateMasstreeTable(name, primary_idx_name);
   }
 
  public:
