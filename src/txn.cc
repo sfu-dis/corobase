@@ -3,6 +3,7 @@
 #include "dbcore/rcu.h"
 #include "dbcore/sm-rep.h"
 #include "dbcore/serial.h"
+#include "ermia.h"
 
 namespace ermia {
 
@@ -10,7 +11,7 @@ namespace ermia {
 static __thread transaction::read_set_t *tls_read_set;
 #endif
 
-extern write_set_t tls_write_set[config::MAX_THREADS];
+write_set_t tls_write_set[config::MAX_THREADS];
 
 transaction::transaction(uint64_t flags, str_arena &sa)
     : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()]) {
@@ -34,8 +35,8 @@ transaction::transaction(uint64_t flags, str_arena &sa)
 
 void transaction::initialize_read_write() {
   if (config::phantom_prot) {
-    absent_set.set_empty_key(NULL);  // google dense map
-    absent_set.clear();
+    masstree_absent_set.set_empty_key(NULL);  // google dense map
+    masstree_absent_set.clear();
   }
   write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -538,7 +539,7 @@ rc_t transaction::parallel_ssn_commit() {
 
   if (not ssn_check_exclusion(xc)) return rc_t{RC_ABORT_SERIAL};
 
-  if (config::phantom_prot && !check_phantom()) {
+  if (config::phantom_prot && !MasstreeCheckPhantom()) {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
@@ -893,7 +894,7 @@ rc_t transaction::parallel_ssi_commit() {
     }
   }
 
-  if (config::phantom_prot && !check_phantom()) {
+  if (config::phantom_prot && !MasstreeCheckPhantom()) {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
@@ -993,7 +994,7 @@ rc_t transaction::mvocc_commit() {
     return rc_t{RC_ABORT_INTERNAL};
   }
 
-  if (config::phantom_prot && !check_phantom()) {
+  if (config::phantom_prot && !MasstreeCheckPhantom()) {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
@@ -1105,7 +1106,7 @@ rc_t transaction::si_commit() {
   xc->end = log->pre_commit().offset();
   if (xc->end == 0) return rc_t{RC_ABORT_INTERNAL};
 
-  if (config::phantom_prot && !check_phantom()) {
+  if (config::phantom_prot && !MasstreeCheckPhantom()) {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
@@ -1142,8 +1143,8 @@ rc_t transaction::si_commit() {
 #endif
 
 // returns true if btree versions have changed, ie there's phantom
-bool transaction::check_phantom() {
-  for (auto &r : absent_set) {
+bool transaction::MasstreeCheckPhantom() {
+  for (auto &r : masstree_absent_set) {
     const uint64_t v = ConcurrentMasstree::ExtractVersionNumber(r.first);
     if (unlikely(v != r.second.version)) return false;
   }
@@ -1314,12 +1315,13 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
     return rc_t{RC_ABORT_SI_CONFLICT};
   }
 }
-bool transaction::try_insert_new_tuple(ConcurrentMasstree *btr, const varstr *key,
+
+bool transaction::try_insert_new_tuple(OrderedIndex *index, const varstr *key,
                                        varstr *value, OID *inserted_oid) {
   ASSERT(key);
   OID oid = 0;
-  IndexDescriptor *id = btr->get_descriptor();
-  bool is_primary_idx = btr->is_primary_idx();
+  IndexDescriptor *id = index->GetDescriptor();
+  bool is_primary_idx = id->IsPrimary();
   auto *key_array = id->GetKeyArray();
   auto *tuple_array = id->GetTupleArray();
   FID tuple_fid = id->GetTupleFid();
@@ -1340,8 +1342,8 @@ bool transaction::try_insert_new_tuple(ConcurrentMasstree *btr, const varstr *ke
     // Inserting into a secondary index - just key-OID mapping is enough
     oid = *(OID *)value;  // It's actually a pointer to an OID in user space
   }
-  typename ConcurrentMasstree::insert_info_t ins_info;
-  if (!btr->insert_if_absent(*key, oid, xc, &ins_info)) {
+
+  if (!index->InsertIfAbsent(this, *key, oid)) {
     if (is_primary_idx) {
       oidmgr->PrimaryTupleUnlink(tuple_array, oid);
     }
@@ -1349,27 +1351,6 @@ bool transaction::try_insert_new_tuple(ConcurrentMasstree *btr, const varstr *ke
       volatile_write(key_array->get(oid)->_ptr, 0);
     }
     return false;
-  }
-
-  if (config::phantom_prot && !absent_set.empty()) {
-    // update node #s
-    ASSERT(ins_info.node);
-    auto it = absent_set.find(ins_info.node);
-    if (it != absent_set.end()) {
-      if (unlikely(it->second.version != ins_info.old_version)) {
-        // important: unlink the version, otherwise we risk leaving a dead
-        // version at chain head -> infinite loop or segfault...
-        if (likely(is_primary_idx)) {
-          oidmgr->PrimaryTupleUnlink(tuple_array, oid);
-        }
-        if (config::enable_chkpt) {
-          volatile_write(key_array->get(oid)->_ptr, 0);
-        }
-        return false;
-      }
-      // otherwise, bump the version
-      it->second.version = ins_info.new_version;
-    }
   }
 
   // Succeeded, now put the key there if we need it
@@ -1462,18 +1443,6 @@ rc_t transaction::do_tuple_read(dbtuple *tuple, varstr *out_v) {
     return rc_t{RC_FALSE};
   }
   return {RC_TRUE};
-}
-
-rc_t transaction::do_node_read(
-    const typename ConcurrentMasstree::node_opaque_t *n, uint64_t v) {
-  ALWAYS_ASSERT(config::phantom_prot);
-  ASSERT(n);
-  auto it = absent_set.find(n);
-  if (it == absent_set.end())
-    absent_set[n].version = v;
-  else if (it->second.version != v)
-    return rc_t{RC_ABORT_PHANTOM};
-  return rc_t{RC_TRUE};
 }
 
 #ifdef SSN
