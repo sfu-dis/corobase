@@ -2,6 +2,7 @@
 
 #include <map>
 
+#include "btree/btree.h"
 #include "txn.h"
 #include "../dbcore/sm-log-recover-impl.h"
 
@@ -220,4 +221,10 @@ private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 };
 
+class SingleThreadedBTree : public OrderedIndex {
+private:
+  btree::BTree<4096, OID> btree_;
+public:
+  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+};
 }  // namespace ermia

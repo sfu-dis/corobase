@@ -277,4 +277,32 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
   return true;
 }
 
+rc_t SingleThreadedBTree::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+  t->ensure_active();
+
+  // search the underlying btree to map key=>(btree_node|tuple)
+  OID out_oid;
+  bool found = btree_.Search((char*)key.data(), key.size(), &out_oid);
+
+  if (oid) {
+    *oid = out_oid;
+  }
+
+  if (found) {
+    dbtuple *tuple = nullptr;
+    auto *xc = t->GetXIDContext();
+    // Look at version chain to read the actual tuple data
+    if (config::is_backup_srv()) {
+      tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
+                                       descriptor_->GetPersistentAddressArray(),
+                                       out_oid, xc);
+    } else {
+      tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), out_oid, xc);
+    }
+    if (tuple) {
+      return t->DoTupleRead(tuple, &value);
+    }
+  }
+  return rc_t{RC_FALSE};
+}
 }  // namespace ermia

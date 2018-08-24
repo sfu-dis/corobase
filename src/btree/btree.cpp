@@ -3,6 +3,8 @@
 #include <glog/logging.h>
 #include "btree.h"
 
+#include "../dbcore/sm-oid.h"
+
 namespace ermia {
 namespace btree {
 
@@ -329,5 +331,8 @@ template class BTree<4096, uint64_t>;
 template class LeafNode<128, uint64_t>;
 template class InternalNode<128>;
 template class BTree<128, uint64_t>;
+
+template class LeafNode<4096, OID>;
+template class BTree<4096, OID>;
 }  // namespace btree
 }  // namespace ermia
