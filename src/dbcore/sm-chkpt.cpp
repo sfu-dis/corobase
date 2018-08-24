@@ -210,7 +210,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
         memcpy((void*)key->p, read_buffer(key->l), key->l);
         ALWAYS_ASSERT(key->size());
         ALWAYS_ASSERT(
-            index->underlying_btree.insert_if_absent(*key, o, NULL, 0));
+            index->masstree_.insert_if_absent(*key, o, NULL, 0));
         if (!config::is_backup_srv()) {
           oidmgr->oid_put_new(ka, o, fat_ptr::make(key, INVALID_SIZE_CODE));
         }

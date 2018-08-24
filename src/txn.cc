@@ -1144,13 +1144,13 @@ rc_t transaction::si_commit() {
 // returns true if btree versions have changed, ie there's phantom
 bool transaction::check_phantom() {
   for (auto &r : absent_set) {
-    const uint64_t v = concurrent_btree::ExtractVersionNumber(r.first);
+    const uint64_t v = ConcurrentMasstree::ExtractVersionNumber(r.first);
     if (unlikely(v != r.second.version)) return false;
   }
   return true;
 }
 
-bool transaction::try_insert_new_tuple(concurrent_btree *btr, const varstr *key,
+bool transaction::try_insert_new_tuple(ConcurrentMasstree *btr, const varstr *key,
                                        varstr *value, OID *inserted_oid) {
   ASSERT(key);
   OID oid = 0;
@@ -1176,7 +1176,7 @@ bool transaction::try_insert_new_tuple(concurrent_btree *btr, const varstr *key,
     // Inserting into a secondary index - just key-OID mapping is enough
     oid = *(OID *)value;  // It's actually a pointer to an OID in user space
   }
-  typename concurrent_btree::insert_info_t ins_info;
+  typename ConcurrentMasstree::insert_info_t ins_info;
   if (!btr->insert_if_absent(*key, oid, xc, &ins_info)) {
     if (is_primary_idx) {
       oidmgr->PrimaryTupleUnlink(tuple_array, oid);
@@ -1301,7 +1301,7 @@ rc_t transaction::do_tuple_read(dbtuple *tuple, varstr *out_v) {
 }
 
 rc_t transaction::do_node_read(
-    const typename concurrent_btree::node_opaque_t *n, uint64_t v) {
+    const typename ConcurrentMasstree::node_opaque_t *n, uint64_t v) {
   ALWAYS_ASSERT(config::phantom_prot);
   ASSERT(n);
   auto it = absent_set.find(n);

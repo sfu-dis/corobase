@@ -82,7 +82,27 @@ rc_t ConcurrentMasstreeIndex::scan(transaction *t, const varstr &start_key,
                                    str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
-  do_search_range_call(*t, start_key, end_key, c);
+
+  t->ensure_active();
+  if (end_key) {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key) << ", "
+                      << util::hexify(*end_key) << ")" << std::endl);
+  } else {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key)
+                      << ", +inf)" << std::endl);
+  }
+
+  if (!unlikely(end_key && *end_key <= start_key)) {
+    txn_search_range_callback cb(t, &c);
+
+    varstr uppervk;
+    if (end_key) {
+      uppervk = *end_key;
+    }
+    masstree_.search_range_call(start_key, end_key ? &uppervk : nullptr, cb, t->xc);
+  }
   return c.return_code;
 }
 
@@ -91,33 +111,42 @@ rc_t ConcurrentMasstreeIndex::rscan(transaction *t, const varstr &start_key,
                                     str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
-  do_rsearch_range_call(*t, start_key, end_key, c);
+
+  t->ensure_active();
+  if (!unlikely(end_key && start_key <= *end_key)) {
+    txn_search_range_callback cb(t, &c);
+
+    varstr lowervk;
+    if (end_key) {
+      lowervk = *end_key;
+    }
+    masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb, t->xc);
+  }
   return c.return_code;
 }
 
 std::map<std::string, uint64_t> ConcurrentMasstreeIndex::clear() {
   purge_tree_walker w;
-  underlying_btree.tree_walk(w);
-  underlying_btree.clear();
+  masstree_.tree_walk(w);
+  masstree_.clear();
   return std::map<std::string, uint64_t>();
 }
 
-rc_t ConcurrentMasstreeIndex::do_search(transaction &t, const varstr &k, varstr *out_v,
-                               OID *out_oid) {
-  t.ensure_active();
+rc_t ConcurrentMasstreeIndex::get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+  t->ensure_active();
 
-  // search the underlying btree to map k=>(btree_node|tuple)
+  // search the underlying btree to map key=>(btree_node|tuple)
   dbtuple *tuple{};
-  OID oid;
-  concurrent_btree::versioned_node_t sinfo;
-  bool found = this->underlying_btree.search(k, oid, tuple, t.xc, &sinfo);
-  if (out_oid) {
-    *out_oid = oid;
+  OID out_oid;
+  ConcurrentMasstree::versioned_node_t sinfo;
+  bool found = masstree_.search(key, out_oid, tuple, t->xc, &sinfo);
+  if (oid) {
+    *oid = out_oid;
   }
   if (found) {
-    return t.do_tuple_read(tuple, out_v);
+    return t->do_tuple_read(tuple, &value);
   } else if (config::phantom_prot) {
-    rc_t rc = t.do_node_read(sinfo.first, sinfo.second);
+    rc_t rc = t->do_node_read(sinfo.first, sinfo.second);
     if (rc_is_abort(rc)) {
       return rc;
     }
@@ -126,9 +155,9 @@ rc_t ConcurrentMasstreeIndex::do_search(transaction &t, const varstr &k, varstr 
 }
 
 void ConcurrentMasstreeIndex::purge_tree_walker::on_node_begin(
-    const typename concurrent_btree::node_opaque_t *n) {
+    const typename ConcurrentMasstree::node_opaque_t *n) {
   ASSERT(spec_values.empty());
-  spec_values = concurrent_btree::ExtractValues(n);
+  spec_values = ConcurrentMasstree::ExtractValues(n);
 }
 
 void ConcurrentMasstreeIndex::purge_tree_walker::on_node_success() {
@@ -148,7 +177,7 @@ rc_t ConcurrentMasstreeIndex::do_tree_put(transaction &t, const varstr *k, varst
   // for now [since this would indicate a suboptimality]
   t.ensure_active();
   if (expect_new) {
-    if (t.try_insert_new_tuple(&this->underlying_btree, k, v, inserted_oid)) {
+    if (t.try_insert_new_tuple(&masstree_, k, v, inserted_oid)) {
       return rc_t{RC_TRUE};
     } else if (!upsert) {
       return rc_t{RC_ABORT_INTERNAL};
@@ -158,7 +187,7 @@ rc_t ConcurrentMasstreeIndex::do_tree_put(transaction &t, const varstr *k, varst
   // do regular search
   dbtuple *bv = 0;
   OID oid = 0;
-  if (!this->underlying_btree.search(*k, oid, bv, t.xc))
+  if (!masstree_.search(*k, oid, bv, t.xc))
     return rc_t{RC_ABORT_INTERNAL};
 
   oid_array *tuple_array = descriptor_->GetTupleArray();
@@ -326,10 +355,10 @@ rc_t ConcurrentMasstreeIndex::do_tree_put(transaction &t, const varstr *k, varst
 }
 
 void ConcurrentMasstreeIndex::txn_search_range_callback::on_resp_node(
-    const typename concurrent_btree::node_opaque_t *n, uint64_t version) {
+    const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version) {
   VERBOSE(std::cerr << "on_resp_node(): <node=0x" << util::hexify(intptr_t(n))
                     << ", version=" << version << ">" << std::endl);
-  VERBOSE(std::cerr << "  " << concurrent_btree::NodeStringify(n) << std::endl);
+  VERBOSE(std::cerr << "  " << ConcurrentMasstree::NodeStringify(n) << std::endl);
   if (config::phantom_prot) {
 #ifdef SSN
     if (t->flags & transaction::TXN_FLAG_READ_ONLY) {
@@ -344,9 +373,9 @@ void ConcurrentMasstreeIndex::txn_search_range_callback::on_resp_node(
 }
 
 bool ConcurrentMasstreeIndex::txn_search_range_callback::invoke(
-    const concurrent_btree *btr_ptr,
-    const typename concurrent_btree::string_type &k, dbtuple *v,
-    const typename concurrent_btree::node_opaque_t *n, uint64_t version) {
+    const ConcurrentMasstree *btr_ptr,
+    const typename ConcurrentMasstree::string_type &k, dbtuple *v,
+    const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version) {
   t->ensure_active();
   VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x"
                     << util::hexify(n) << ", version=" << version << ">"
@@ -362,47 +391,6 @@ bool ConcurrentMasstreeIndex::txn_search_range_callback::invoke(
                    // visit_value(), which calls this function to determine
                    // if it should stop reading.
   return true;
-}
-
-void ConcurrentMasstreeIndex::do_search_range_call(transaction &t, const varstr &lower,
-                                          const varstr *upper,
-                                          SearchRangeCallback &callback) {
-  t.ensure_active();
-  if (upper)
-    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
-                      << ")::search_range_call [" << util::hexify(lower) << ", "
-                      << util::hexify(*upper) << ")" << std::endl);
-  else
-    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
-                      << ")::search_range_call [" << util::hexify(lower)
-                      << ", +inf)" << std::endl);
-
-  if (unlikely(upper && *upper <= lower)) return;
-
-  txn_search_range_callback c(&t, &callback);
-
-  varstr uppervk;
-  if (upper) uppervk = *upper;
-  this->underlying_btree.search_range_call(lower, upper ? &uppervk : nullptr, c,
-                                           t.xc);
-}
-
-void ConcurrentMasstreeIndex::do_rsearch_range_call(transaction &t, const varstr &upper,
-                                           const varstr *lower,
-                                           SearchRangeCallback &callback) {
-  t.ensure_active();
-  if (unlikely(lower && upper <= *lower)) return;
-
-  txn_search_range_callback c(&t, &callback);
-
-  varstr lowervk;
-  if (lower) lowervk = *lower;
-  this->underlying_btree.rsearch_range_call(upper, lower ? &lowervk : nullptr,
-                                            c, t.xc);
-}
-
-OrderedIndex::OrderedIndex(std::string name, const char* primary) {
-  descriptor_ = IndexDescriptor::New(this, name, primary);
 }
 
 }  // namespace ermia
