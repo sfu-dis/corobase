@@ -186,6 +186,8 @@ class transaction {
   bool try_insert_new_tuple(ConcurrentMasstree *btr, const varstr *key,
                             varstr *value, OID *inserted_oid);
 
+  rc_t Update(IndexDescriptor *index_desc, OID oid, const varstr *k, varstr *v);
+
   // reads the contents of tuple into v
   // within this transaction context
   rc_t do_tuple_read(dbtuple *tuple, varstr *out_v);
