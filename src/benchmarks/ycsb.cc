@@ -120,10 +120,10 @@ class ycsb_worker : public bench_worker {
       ermia::varstr k((char *)&key.data_, sizeof(key));
       ermia::varstr v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
-      try_catch(tbl->get(txn, k, v));  // Read
+      try_catch(tbl->Get(txn, k, v));  // Read
       memset(v.data(), 'a', v.size());
       ASSERT(v.size() == sizeof(YcsbRecord));
-      try_catch(tbl->put(txn, k, v));  // Modify-write
+      try_catch(tbl->Put(txn, k, v));  // Modify-write
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
@@ -131,7 +131,7 @@ class ycsb_worker : public bench_worker {
       ermia::varstr k((char *)&key.data_, sizeof(key));
       ermia::varstr v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
-      try_catch(tbl->get(txn, k, v));  // Read
+      try_catch(tbl->Get(txn, k, v));  // Read
     }
     try_catch(db->commit_txn(txn));
     return {RC_TRUE};
@@ -201,7 +201,7 @@ class ycsb_usertable_loader : public bench_loader {
       ermia::varstr v(r.data_, sizeof(r));
       ermia::transaction *txn = db->new_txn(0, arena, txn_buf());
       arena.reset();
-      try_verify_strict(tbl->insert(txn, k, v));
+      try_verify_strict(tbl->Insert(txn, k, v));
       try_verify_strict(db->commit_txn(txn));
     }
 

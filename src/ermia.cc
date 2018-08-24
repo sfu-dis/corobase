@@ -85,8 +85,8 @@ void Engine::CreateTable(uint16_t index_type, const char *name, const char *prim
   }
 }
 
-rc_t ConcurrentMasstreeIndex::scan(transaction *t, const varstr &start_key,
-                                   const varstr *end_key, scan_callback &callback,
+rc_t ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
+                                   const varstr *end_key, ScanCallback &callback,
                                    str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
@@ -114,9 +114,9 @@ rc_t ConcurrentMasstreeIndex::scan(transaction *t, const varstr &start_key,
   return c.return_code;
 }
 
-rc_t ConcurrentMasstreeIndex::rscan(transaction *t, const varstr &start_key,
-                                    const varstr *end_key, scan_callback &callback,
-                                    str_arena *arena) {
+rc_t ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
+                                          const varstr *end_key, ScanCallback &callback,
+                                          str_arena *arena) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -133,14 +133,14 @@ rc_t ConcurrentMasstreeIndex::rscan(transaction *t, const varstr &start_key,
   return c.return_code;
 }
 
-std::map<std::string, uint64_t> ConcurrentMasstreeIndex::clear() {
+std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   purge_tree_walker w;
   masstree_.tree_walk(w);
   masstree_.clear();
   return std::map<std::string, uint64_t>();
 }
 
-rc_t ConcurrentMasstreeIndex::get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+rc_t ConcurrentMasstreeIndex::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
   t->ensure_active();
 
   // search the underlying btree to map key=>(btree_node|tuple)
@@ -392,7 +392,7 @@ bool ConcurrentMasstreeIndex::txn_search_range_callback::invoke(
   varstr vv;
   caller_callback->return_code = t->do_tuple_read(v, &vv);
   if (caller_callback->return_code._val == RC_TRUE)
-    return caller_callback->invoke(k, vv);
+    return caller_callback->Invoke(k, vv);
   else if (rc_is_abort(caller_callback->return_code))
     return false;  // don't continue the read if the tx should abort
                    // ^^^^^ note: see masstree_scan.hh, whose scan() calls
