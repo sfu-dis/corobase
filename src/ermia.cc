@@ -149,7 +149,7 @@ rc_t ConcurrentMasstreeIndex::Get(transaction *t, const varstr &key, varstr &val
     *oid = out_oid;
   }
   if (found) {
-    return t->do_tuple_read(tuple, &value);
+    return t->DoTupleRead(tuple, &value);
   } else if (config::phantom_prot) {
     rc_t rc = DoNodeRead(t, sinfo.first, sinfo.second);
     if (rc_is_abort(rc)) {
@@ -266,7 +266,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << std::endl
                     << "  " << *((dbtuple *)v) << std::endl);
   varstr vv;
-  caller_callback->return_code = t->do_tuple_read(v, &vv);
+  caller_callback->return_code = t->DoTupleRead(v, &vv);
   if (caller_callback->return_code._val == RC_TRUE)
     return caller_callback->Invoke(k, vv);
   else if (rc_is_abort(caller_callback->return_code))

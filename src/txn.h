@@ -147,12 +147,6 @@ class transaction {
  protected:
   inline txn_state state() const { return xc->state; }
 
-  // only fires during invariant checking
-  inline void ensure_active() {
-    volatile_write(xc->state, TXN::TXN_ACTIVE);
-    ASSERT(state() == TXN::TXN_ACTIVE);
-  }
-
   // the absent set is a mapping from (masstree node -> version_number).
   typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *, uint64_t > MasstreeAbsentSet;
   MasstreeAbsentSet masstree_absent_set;
@@ -161,6 +155,11 @@ class transaction {
   transaction(uint64_t flags, str_arena &sa);
   ~transaction();
   void initialize_read_write();
+
+  inline void ensure_active() {
+    volatile_write(xc->state, TXN::TXN_ACTIVE);
+    ASSERT(state() == TXN::TXN_ACTIVE);
+  }
 
   rc_t commit();
 #ifdef SSN
@@ -185,11 +184,10 @@ class transaction {
 
   rc_t Update(IndexDescriptor *index_desc, OID oid, const varstr *k, varstr *v);
 
-  // reads the contents of tuple into v
-  // within this transaction context
-  rc_t do_tuple_read(dbtuple *tuple, varstr *out_v);
-
  public:
+  // Reads the contents of tuple into v within this transaction context
+  rc_t DoTupleRead(dbtuple *tuple, varstr *out_v);
+
   // expected public overrides
 
   inline str_arena &string_allocator() { return *sa; }
@@ -204,6 +202,8 @@ class transaction {
 #endif
     write_set.emplace_back(entry);
   }
+
+  inline TXN::xid_context *GetXIDContext() { return xc; }
 
  protected:
   const uint64_t flags;
