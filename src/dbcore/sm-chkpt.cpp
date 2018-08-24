@@ -190,7 +190,8 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
     oid_array* ka = oidmgr->get_array(key_fid);
 
     // Populate the OID/key array and index
-    OrderedIndex* index = IndexDescriptor::GetIndex(key_fid);
+    // FIXME(tzwang): support other index types
+    ConcurrentMasstreeIndex* index = (ConcurrentMasstreeIndex *)IndexDescriptor::GetIndex(key_fid);
     bool is_primary = index->GetDescriptor()->IsPrimary();
     ALWAYS_ASSERT(index);
     while (1) {
@@ -209,7 +210,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
         memcpy((void*)key->p, read_buffer(key->l), key->l);
         ALWAYS_ASSERT(key->size());
         ALWAYS_ASSERT(
-            index->tree_.underlying_btree.insert_if_absent(*key, o, NULL, 0));
+            index->underlying_btree.insert_if_absent(*key, o, NULL, 0));
         if (!config::is_backup_srv()) {
           oidmgr->oid_put_new(ka, o, fat_ptr::make(key, INVALID_SIZE_CODE));
         }

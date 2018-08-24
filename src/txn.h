@@ -52,7 +52,7 @@ struct write_set_t {
 class base_txn_btree;
 
 class transaction {
-  friend class base_txn_btree;
+  friend class ConcurrentMasstreeIndex;
   friend class sm_oid_mgr;
 
  public:

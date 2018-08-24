@@ -29,12 +29,12 @@ class IndexDescriptor {
   static inline OrderedIndex* GetIndex(FID fid) {
     return fid_map[fid]->GetIndex();
   }
-  static inline IndexDescriptor* New(std::string name, const char* primary = nullptr) {
+  static inline IndexDescriptor* New(OrderedIndex *index, std::string name, const char* primary = nullptr) {
     if (primary) {
       std::string p(primary);
-      name_map[name] = new IndexDescriptor(name, p);
+      name_map[name] = new IndexDescriptor(index, name, p);
     } else {
-      name_map[name] = new IndexDescriptor(name);
+      name_map[name] = new IndexDescriptor(index, name);
     }
     return name_map[name];
   }
@@ -54,8 +54,8 @@ class IndexDescriptor {
   oid_array* aux_array_;
 
  public:
-  IndexDescriptor(std::string& name);
-  IndexDescriptor(std::string& name, std::string& primary_name);
+  IndexDescriptor(OrderedIndex *index, std::string& name);
+  IndexDescriptor(OrderedIndex *index, std::string& name, std::string& primary_name);
 
   void Initialize();
   void Recover(FID tuple_fid, FID key_fid, OID himark = 0);
