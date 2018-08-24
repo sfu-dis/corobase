@@ -13,17 +13,17 @@
 #include <utility>
 #include <atomic>
 
-#include "masstree/masstree_insert.hh"
-#include "masstree/masstree_remove.hh"
-#include "masstree/masstree_scan.hh"
-#include "masstree/masstree_print.hh"
-#include "masstree/timestamp.hh"
-#include "masstree/mtcounters.hh"
-#include "masstree/circular_int.hh"
+#include "masstree_insert.hh"
+#include "masstree_remove.hh"
+#include "masstree_scan.hh"
+#include "masstree_print.hh"
+#include "timestamp.hh"
+#include "mtcounters.hh"
+#include "circular_int.hh"
 
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/sm-index.h"
-#include "tuple.h"
+#include "../tuple.h"
 
 namespace ermia {
 

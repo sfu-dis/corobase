@@ -4,7 +4,6 @@
 #include "dbcore/sm-rep.h"
 
 #include "ermia.h"
-#include "masstree_btree.h"
 #include "txn.h"
 
 namespace ermia {
