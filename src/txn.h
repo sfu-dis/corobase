@@ -152,12 +152,9 @@ class transaction {
     volatile_write(xc->state, TXN::TXN_ACTIVE);
     ASSERT(state() == TXN::TXN_ACTIVE);
   }
-  // the absent set is a mapping from (btree_node -> version_number).
-  struct MasstreeAbsentRecord {
-    uint64_t version;
-  };
-  typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *,
-                         MasstreeAbsentRecord> MasstreeAbsentSet;
+
+  // the absent set is a mapping from (masstree node -> version_number).
+  typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *, uint64_t > MasstreeAbsentSet;
   MasstreeAbsentSet masstree_absent_set;
 
  public:
