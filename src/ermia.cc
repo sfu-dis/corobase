@@ -187,13 +187,13 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key, 
     ASSERT(ins_info.node);
     auto it = t->masstree_absent_set.find(ins_info.node);
     if (it != t->masstree_absent_set.end()) {
-      if (unlikely(it->second.version != ins_info.old_version)) {
+      if (unlikely(it->second != ins_info.old_version)) {
         // Important: caller should unlink the version, otherwise we risk leaving
         // a dead version at chain head -> infinite loop or segfault...
         return false;
       }
       // otherwise, bump the version
-      it->second.version = ins_info.new_version;
+      it->second = ins_info.new_version;
     }
   }
   return true;
@@ -232,8 +232,8 @@ rc_t ConcurrentMasstreeIndex::DoNodeRead(transaction *t,
   ASSERT(node);
   auto it = t->masstree_absent_set.find(node);
   if (it == t->masstree_absent_set.end()) {
-    t->masstree_absent_set[node].version = version;
-  } else if (it->second.version != version) {
+    t->masstree_absent_set[node] = version;
+  } else if (it->second != version) {
     return rc_t{RC_ABORT_PHANTOM};
   }
   return rc_t{RC_TRUE};

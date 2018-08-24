@@ -1146,7 +1146,7 @@ rc_t transaction::si_commit() {
 bool transaction::MasstreeCheckPhantom() {
   for (auto &r : masstree_absent_set) {
     const uint64_t v = ConcurrentMasstree::ExtractVersionNumber(r.first);
-    if (unlikely(v != r.second.version)) return false;
+    if (unlikely(v != r.second)) return false;
   }
   return true;
 }
