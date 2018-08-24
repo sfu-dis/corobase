@@ -12,7 +12,12 @@ public:
   Engine();
   ~Engine() {}
 
-  void CreateTable(const char *name, const char *primary_name = nullptr);
+  void CreateTable(uint16_t index_type, const char *name, const char *primary_name);
+
+  static const uint16_t kIndexConcurrentMasstree = 0x1;
+  inline void CreateMasstreeTable(const char *name, const char *primary_name = nullptr) {
+    CreateTable(kIndexConcurrentMasstree, name, primary_name);
+  }
 
   inline transaction *new_txn(uint64_t txn_flags, str_arena &arena, transaction *buf) {
     new (buf) transaction(txn_flags, arena);

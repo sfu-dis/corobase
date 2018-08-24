@@ -49,10 +49,18 @@ Engine::Engine() {
   }
 }
 
-void Engine::CreateTable(const char *name, const char *primary_name)
+void Engine::CreateTable(uint16_t index_type, const char *name, const char *primary_name)
 {
-  ConcurrentMasstreeIndex *masstree = new ConcurrentMasstreeIndex(name, primary_name);
-  IndexDescriptor *index_desc = masstree->GetDescriptor();
+  IndexDescriptor *index_desc = nullptr;
+
+  switch(index_type) {
+    case kIndexConcurrentMasstree:
+      index_desc = (new ConcurrentMasstreeIndex(name, primary_name))->GetDescriptor();
+      break;
+    default:
+      LOG(FATAL) << "Wrong index type: " << index_type;
+      break;
+  }
 
   if (!sm_log::need_recovery && !config::is_backup_srv()) {
     ASSERT(ermia::logmgr);
@@ -169,8 +177,8 @@ void ConcurrentMasstreeIndex::purge_tree_walker::on_node_failure() {
 }
 
 rc_t ConcurrentMasstreeIndex::do_tree_put(transaction &t, const varstr *k, varstr *v,
-                                 bool expect_new, bool upsert,
-                                 OID *inserted_oid) {
+                                          bool expect_new, bool upsert,
+                                          OID *inserted_oid) {
   ASSERT(k);
   ASSERT(!expect_new || v);  // makes little sense to remove() a key you expect
   // to not be present, so we assert this doesn't happen
