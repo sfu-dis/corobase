@@ -232,13 +232,13 @@ class bench_runner {
 
 // XXX(stephentu): limit_callback is not optimal, should use
 // static_limit_callback if possible
-class limit_callback : public ermia::OrderedIndex::scan_callback {
+class limit_callback : public ermia::OrderedIndex::ScanCallback {
  public:
   limit_callback(ssize_t limit = -1) : limit(limit), n(0) {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
 
-  virtual bool invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ASSERT(limit == -1 || n < size_t(limit));
     values.emplace_back(ermia::varstr(keyp, keylen), value);
     return (limit == -1) || (++n < size_t(limit));

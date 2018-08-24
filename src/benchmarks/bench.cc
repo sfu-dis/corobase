@@ -359,7 +359,7 @@ void bench_runner::start_measurement() {
   if (ermia::config::verbose) {
     for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
-      const size_t s = it->second->size();
+      const size_t s = it->second->Size();
       std::cerr << "table " << it->first << " size " << s << std::endl;
       table_sizes_before[it->first] = s;
     }
@@ -566,9 +566,9 @@ void bench_runner::start_measurement() {
     std::cerr << "--- table statistics ---" << std::endl;
     for (std::map<std::string, ermia::OrderedIndex *>::iterator it = open_tables.begin();
          it != open_tables.end(); ++it) {
-      const size_t s = it->second->size();
+      const size_t s = it->second->Size();
       const ssize_t delta = ssize_t(s) - ssize_t(table_sizes_before[it->first]);
-      std::cerr << "table " << it->first << " size " << it->second->size();
+      std::cerr << "table " << it->first << " size " << it->second->Size();
       if (delta < 0)
         std::cerr << " (" << delta << " records)" << std::endl;
       else

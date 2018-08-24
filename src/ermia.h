@@ -47,14 +47,14 @@ public:
   }
   inline IndexDescriptor *GetDescriptor() { return descriptor_; }
 
-  class scan_callback {
+  class ScanCallback {
    public:
-    ~scan_callback() {}
+    ~ScanCallback() {}
     // XXX(stephentu): key is passed as (const char *, size_t) pair
     // because it really should be the string_type of the underlying
     // tree, but since ndb_ordered_index is not templated we can't
     // really do better than this for now
-    virtual bool invoke(const char *keyp, size_t keylen,
+    virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };
 
@@ -62,7 +62,7 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. Returns true if found, false otherwise
    */
-  virtual rc_t get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
+  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
 
   /**
    * Put a key of length keylen, with mapping of length valuelen.
@@ -78,7 +78,7 @@ public:
    * returned is guaranteed to be valid memory until the key associated with
    * value is overriden.
    */
-  virtual rc_t put(transaction *t, const varstr &key, varstr &value) = 0;
+  virtual rc_t Put(transaction *t, const varstr &key, varstr &value) = 0;
 
   /**
    * Insert a key of length keylen.
@@ -89,35 +89,35 @@ public:
    *
    * Default implementation calls put(). See put() for meaning of return value.
    */
-  virtual rc_t insert(transaction *t, const varstr &key, varstr &value,
+  virtual rc_t Insert(transaction *t, const varstr &key, varstr &value,
                       OID *oid = nullptr) = 0;
 
   /**
    * Insert into a secondary index. Maps key to OID.
    */
-  virtual rc_t insert(transaction *t, const varstr &key, OID oid) = 0;
+  virtual rc_t Insert(transaction *t, const varstr &key, OID oid) = 0;
 
   /**
    * Search [start_key, *end_key) if end_key is not null, otherwise
    * search [start_key, +infty)
    */
-  virtual rc_t scan(transaction *t, const varstr &start_key, const varstr *end_key,
-                    scan_callback &callback, str_arena *arena) = 0;
+  virtual rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+                    ScanCallback &callback, str_arena *arena) = 0;
   /**
    * Search (*end_key, start_key] if end_key is not null, otherwise
    * search (-infty, start_key] (starting at start_key and traversing
    * backwards)
    */
-  virtual rc_t rscan(transaction *t, const varstr &start_key, const varstr *end_key,
-                     scan_callback &callback, str_arena *arena) = 0;
+  virtual rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
+                           ScanCallback &callback, str_arena *arena) = 0;
 
   /**
    * Default implementation calls put() with NULL (zero-length) value
    */
-  virtual rc_t remove(transaction *t, const varstr &key) = 0;
+  virtual rc_t Remove(transaction *t, const varstr &key) = 0;
 
-  virtual size_t size() = 0;
-  virtual std::map<std::string, uint64_t> clear() = 0;
+  virtual size_t Size() = 0;
+  virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
 };
 
@@ -130,15 +130,15 @@ private:
   ConcurrentMasstree masstree_;
 
   struct SearchRangeCallback {
-    SearchRangeCallback(OrderedIndex::scan_callback &upcall)
+    SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
       : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
     ~SearchRangeCallback() {}
 
-    inline bool invoke(const ConcurrentMasstree::string_type &k, const varstr &v) {
-      return upcall->invoke(k.data(), k.length(), v);
+    inline bool Invoke(const ConcurrentMasstree::string_type &k, const varstr &v) {
+      return upcall->Invoke(k.data(), k.length(), v);
     }
 
-    OrderedIndex::scan_callback *upcall;
+    OrderedIndex::ScanCallback *upcall;
     rc_t return_code;
   };
 
@@ -184,26 +184,26 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char* primary)
     : OrderedIndex(name, primary) {}
 
-  virtual rc_t get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
-  inline rc_t put(transaction *t, const varstr &key, varstr &value) override {
+  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return do_tree_put(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
     return do_tree_put(*t, &key, &value, true, true, oid);
   }
-  inline rc_t insert(transaction *t, const varstr &key, OID oid) override {
+  inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
     return do_tree_put(*t, &key, (varstr *)&oid, true, false, nullptr);
   }
-  inline rc_t remove(transaction *t, const varstr &key) override {
+  inline rc_t Remove(transaction *t, const varstr &key) override {
     return do_tree_put(*t, &key, nullptr, false, false, nullptr);
   }
-  rc_t scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            scan_callback &callback, str_arena *arena) override;
-  rc_t rscan(transaction *t, const varstr &start_key, const varstr *end_key,
-             scan_callback &callback, str_arena *arena) override;
+  rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+            ScanCallback &callback, str_arena *arena) override;
+  rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
+                   ScanCallback &callback, str_arena *arena) override;
 
-  inline size_t size() override { return masstree_.size(); }
-  std::map<std::string, uint64_t> clear() override;
+  inline size_t Size() override { return masstree_.size(); }
+  std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
 };
 
