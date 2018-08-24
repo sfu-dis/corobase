@@ -9,8 +9,6 @@
 
 namespace ermia {
 
-write_set_t tls_write_set[config::MAX_THREADS];
-
 // Engine initialization, including creating the OID, log, and checkpoint
 // managers and recovery if needed.
 Engine::Engine() {
@@ -103,7 +101,7 @@ rc_t ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
   }
 
   if (!unlikely(end_key && *end_key <= start_key)) {
-    txn_search_range_callback cb(t, &c);
+    XctSearchRangeCallback cb(t, &c);
 
     varstr uppervk;
     if (end_key) {
@@ -122,7 +120,7 @@ rc_t ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_ke
 
   t->ensure_active();
   if (!unlikely(end_key && start_key <= *end_key)) {
-    txn_search_range_callback cb(t, &c);
+    XctSearchRangeCallback cb(t, &c);
 
     varstr lowervk;
     if (end_key) {
@@ -134,7 +132,7 @@ rc_t ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_ke
 }
 
 std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
-  purge_tree_walker w;
+  PurgeTreeWalker w;
   masstree_.tree_walk(w);
   masstree_.clear();
   return std::map<std::string, uint64_t>();
@@ -154,7 +152,7 @@ rc_t ConcurrentMasstreeIndex::Get(transaction *t, const varstr &key, varstr &val
   if (found) {
     return t->do_tuple_read(tuple, &value);
   } else if (config::phantom_prot) {
-    rc_t rc = t->do_node_read(sinfo.first, sinfo.second);
+    rc_t rc = DoNodeRead(t, sinfo.first, sinfo.second);
     if (rc_is_abort(rc)) {
       return rc;
     }
@@ -162,30 +160,55 @@ rc_t ConcurrentMasstreeIndex::Get(transaction *t, const varstr &key, varstr &val
   return rc_t{RC_FALSE};
 }
 
-void ConcurrentMasstreeIndex::purge_tree_walker::on_node_begin(
+void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
     const typename ConcurrentMasstree::node_opaque_t *n) {
   ASSERT(spec_values.empty());
   spec_values = ConcurrentMasstree::ExtractValues(n);
 }
 
-void ConcurrentMasstreeIndex::purge_tree_walker::on_node_success() {
+void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_success() {
   spec_values.clear();
 }
 
-void ConcurrentMasstreeIndex::purge_tree_walker::on_node_failure() {
+void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_failure() {
   spec_values.clear();
 }
 
-rc_t ConcurrentMasstreeIndex::do_tree_put(transaction &t, const varstr *k, varstr *v,
-                                          bool expect_new, bool upsert,
-                                          OID *inserted_oid) {
+bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key, OID oid) {
+  typename ConcurrentMasstree::insert_info_t ins_info;
+  bool inserted = masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
+
+  if (!inserted) {
+    return false;
+  }
+
+  if (config::phantom_prot && !t->masstree_absent_set.empty()) {
+    // Update node version number
+    ASSERT(ins_info.node);
+    auto it = t->masstree_absent_set.find(ins_info.node);
+    if (it != t->masstree_absent_set.end()) {
+      if (unlikely(it->second.version != ins_info.old_version)) {
+        // Important: caller should unlink the version, otherwise we risk leaving
+        // a dead version at chain head -> infinite loop or segfault...
+        return false;
+      }
+      // otherwise, bump the version
+      it->second.version = ins_info.new_version;
+    }
+  }
+  return true;
+}
+
+rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k, varstr *v,
+                                        bool expect_new, bool upsert,
+                                        OID *inserted_oid) {
   ASSERT(k);
   ASSERT(!expect_new || v);  // makes little sense to remove() a key you expect
   // to not be present, so we assert this doesn't happen
   // for now [since this would indicate a suboptimality]
   t.ensure_active();
   if (expect_new) {
-    if (t.try_insert_new_tuple(&masstree_, k, v, inserted_oid)) {
+    if (t.try_insert_new_tuple(this, k, v, inserted_oid)) {
       return rc_t{RC_TRUE};
     } else if (!upsert) {
       return rc_t{RC_ABORT_INTERNAL};
@@ -202,7 +225,21 @@ rc_t ConcurrentMasstreeIndex::do_tree_put(transaction &t, const varstr *k, varst
   }
 }
 
-void ConcurrentMasstreeIndex::txn_search_range_callback::on_resp_node(
+rc_t ConcurrentMasstreeIndex::DoNodeRead(transaction *t,
+                                         const ConcurrentMasstree::node_opaque_t *node,
+                                         uint64_t version) {
+  ALWAYS_ASSERT(config::phantom_prot);
+  ASSERT(node);
+  auto it = t->masstree_absent_set.find(node);
+  if (it == t->masstree_absent_set.end()) {
+    t->masstree_absent_set[node].version = version;
+  } else if (it->second.version != version) {
+    return rc_t{RC_ABORT_PHANTOM};
+  }
+  return rc_t{RC_TRUE};
+}
+
+void ConcurrentMasstreeIndex::XctSearchRangeCallback::on_resp_node(
     const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version) {
   VERBOSE(std::cerr << "on_resp_node(): <node=0x" << util::hexify(intptr_t(n))
                     << ", version=" << version << ">" << std::endl);
@@ -213,14 +250,14 @@ void ConcurrentMasstreeIndex::txn_search_range_callback::on_resp_node(
       return;
     }
 #endif
-    rc_t rc = t->do_node_read(n, version);
+    rc_t rc = DoNodeRead(t, n, version);
     if (rc_is_abort(rc)) {
       caller_callback->return_code = rc;
     }
   }
 }
 
-bool ConcurrentMasstreeIndex::txn_search_range_callback::invoke(
+bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     const ConcurrentMasstree *btr_ptr,
     const typename ConcurrentMasstree::string_type &k, dbtuple *v,
     const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version) {

@@ -38,6 +38,8 @@ public:
 
 // Base class for user-facing index implementations
 class OrderedIndex {
+  friend class transaction;
+
 protected:
   IndexDescriptor *descriptor_;
 
@@ -119,6 +121,14 @@ public:
   virtual size_t Size() = 0;
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
+
+protected:
+  /**
+   * Insert key-oid pair to the underlying actual index structure.
+   *
+   * Returns false if the record already exists or there is potential phantom.
+   */ 
+  virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -142,10 +152,8 @@ private:
     rc_t return_code;
   };
 
-  struct txn_search_range_callback
-      : public ConcurrentMasstree::low_level_search_range_callback {
-    constexpr txn_search_range_callback(transaction *t,
-                                        SearchRangeCallback *caller_callback)
+  struct XctSearchRangeCallback : public ConcurrentMasstree::low_level_search_range_callback {
+    constexpr XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
         : t(t), caller_callback(caller_callback) {}
 
     virtual void on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
@@ -161,15 +169,13 @@ private:
     SearchRangeCallback *const caller_callback;
   };
 
-  struct purge_tree_walker : public ConcurrentMasstree::tree_walk_callback {
-    virtual void on_node_begin(
-        const typename ConcurrentMasstree::node_opaque_t *n);
+  struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
+    virtual void on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
     virtual void on_node_success();
     virtual void on_node_failure();
 
    private:
-    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool> >
-        spec_values;
+    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool> > spec_values;
   };
 
   // expect_new indicates if we expect the record to not exist in the tree- is
@@ -177,8 +183,12 @@ private:
   // as value.
   //
   // NOTE: both key and value are expected to be stable values already
-  rc_t do_tree_put(transaction &t, const varstr *k, varstr *v, bool expect_new,
+  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
                    bool upsert, OID *inserted_oid);
+
+  static rc_t DoNodeRead(transaction *t,
+                         const ConcurrentMasstree::node_opaque_t *node,
+                         uint64_t version);
 
 public:
   ConcurrentMasstreeIndex(std::string name, const char* primary)
@@ -186,16 +196,16 @@ public:
 
   virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
-    return do_tree_put(*t, &key, &value, false, true, nullptr);
+    return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
   inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
-    return do_tree_put(*t, &key, &value, true, true, oid);
+    return DoTreePut(*t, &key, &value, true, true, oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
-    return do_tree_put(*t, &key, (varstr *)&oid, true, false, nullptr);
+    return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
   }
   inline rc_t Remove(transaction *t, const varstr &key) override {
-    return do_tree_put(*t, &key, nullptr, false, false, nullptr);
+    return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
             ScanCallback &callback, str_arena *arena) override;
@@ -205,6 +215,9 @@ public:
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
+
+private:
+  bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 };
 
 }  // namespace ermia

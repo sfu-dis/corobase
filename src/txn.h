@@ -153,12 +153,12 @@ class transaction {
     ASSERT(state() == TXN::TXN_ACTIVE);
   }
   // the absent set is a mapping from (btree_node -> version_number).
-  struct absent_record_t {
+  struct MasstreeAbsentRecord {
     uint64_t version;
   };
   typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *,
-                         absent_record_t> absent_set_map;
-  absent_set_map absent_set;
+                         MasstreeAbsentRecord> MasstreeAbsentSet;
+  MasstreeAbsentSet masstree_absent_set;
 
  public:
   transaction(uint64_t flags, str_arena &sa);
@@ -179,11 +179,11 @@ class transaction {
   rc_t si_commit();
 #endif
 
-  bool check_phantom();
+  bool MasstreeCheckPhantom();
   void abort_impl();
 
  protected:
-  bool try_insert_new_tuple(ConcurrentMasstree *btr, const varstr *key,
+  bool try_insert_new_tuple(OrderedIndex *index, const varstr *key,
                             varstr *value, OID *inserted_oid);
 
   rc_t Update(IndexDescriptor *index_desc, OID oid, const varstr *k, varstr *v);
@@ -191,8 +191,6 @@ class transaction {
   // reads the contents of tuple into v
   // within this transaction context
   rc_t do_tuple_read(dbtuple *tuple, varstr *out_v);
-  rc_t do_node_read(const typename ConcurrentMasstree::node_opaque_t *n,
-                    uint64_t version);
 
  public:
   // expected public overrides
