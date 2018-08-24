@@ -348,9 +348,9 @@ int main(int argc, char **argv) {
   std::cerr << "  command-log       : " << ermia::config::command_log << std::endl;
   std::cerr << "  command-logbuf    : " << ermia::config::command_log_buffer_mb << "MB" << std::endl;
 
-  std::cerr << "  btree_internal_node_size: " << ermia::concurrent_btree::InternalNodeSize()
+  std::cerr << "  masstree_internal_node_size: " << ermia::ConcurrentMasstree::InternalNodeSize()
        << std::endl;
-  std::cerr << "  btree_leaf_node_size    : " << ermia::concurrent_btree::LeafNodeSize()
+  std::cerr << "  masstree_leaf_node_size    : " << ermia::ConcurrentMasstree::LeafNodeSize()
        << std::endl;
   std::cerr << "  read_view_stat_interval : " << ermia::config::read_view_stat_interval_ms
        << "ms" << std::endl;

@@ -156,7 +156,7 @@ class transaction {
   struct absent_record_t {
     uint64_t version;
   };
-  typedef dense_hash_map<const concurrent_btree::node_opaque_t *,
+  typedef dense_hash_map<const ConcurrentMasstree::node_opaque_t *,
                          absent_record_t> absent_set_map;
   absent_set_map absent_set;
 
@@ -183,13 +183,13 @@ class transaction {
   void abort_impl();
 
  protected:
-  bool try_insert_new_tuple(concurrent_btree *btr, const varstr *key,
+  bool try_insert_new_tuple(ConcurrentMasstree *btr, const varstr *key,
                             varstr *value, OID *inserted_oid);
 
   // reads the contents of tuple into v
   // within this transaction context
   rc_t do_tuple_read(dbtuple *tuple, varstr *out_v);
-  rc_t do_node_read(const typename concurrent_btree::node_opaque_t *n,
+  rc_t do_node_read(const typename ConcurrentMasstree::node_opaque_t *n,
                     uint64_t version);
 
  public:

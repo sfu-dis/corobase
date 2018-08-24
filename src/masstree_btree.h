@@ -732,6 +732,6 @@ void mbtree<P>::print() {
   table_.print();
 }
 
-typedef mbtree<masstree_params> concurrent_btree;
-typedef mbtree<masstree_single_threaded_params> single_threaded_btree;
+typedef mbtree<masstree_params> ConcurrentMasstree;
+typedef mbtree<masstree_single_threaded_params> SingleThreadedMasstree;
 }  // namespace ermia
