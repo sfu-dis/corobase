@@ -11,7 +11,7 @@
 #include "dbcore/sm-log.h"
 #include "dbcore/sm-object.h"
 #include "dbcore/sm-rc.h"
-#include "masstree_btree.h"
+#include "masstree/masstree_btree.h"
 #include "macros.h"
 #include "str_arena.h"
 #include "tuple.h"
