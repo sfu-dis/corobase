@@ -13,17 +13,17 @@ const uint32_t kMaxWorkers = 1024;
  * prefix.
  * So the key itself is still a char array (string) that fits exactly one
  * uint64_t. */
-struct YcsbKey {
-  uint64_t data_;
+struct YcsbKey : public ermia::varstr {
   bool operator<(const YcsbKey& other) const { return compare(*this, other); }
-  bool operator==(const YcsbKey& other) const { return data_ == other.data_; }
+  //bool operator==(const YcsbKey& other) const { return data_ == other.data_; }
   static inline bool compare(const YcsbKey& k1, const YcsbKey& k2) {
-    return k1.data_ < k2.data_;
+    return *(uint64_t*)k1.data() < *(uint64_t*)k2.data();
   }
   YcsbKey& build(uint32_t high_bits, uint32_t low_bits) {
-    data_ = ((uint64_t)high_bits << 32) | low_bits;
+    *(uint64_t*)p = ((uint64_t)high_bits << 32) | low_bits;
     return *this;
   }
+  YcsbKey() : ermia::varstr((uint8_t*)this + sizeof(*this), sizeof(uint64_t)) {}
 };
 
 struct YcsbRecord {
