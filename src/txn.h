@@ -176,11 +176,10 @@ class transaction {
 #endif
 
   bool MasstreeCheckPhantom();
-  void abort_impl();
+  void Abort();
 
- protected:
-  bool try_insert_new_tuple(OrderedIndex *index, const varstr *key,
-                            varstr *value, OID *inserted_oid);
+  bool TryInsertNewTuple(OrderedIndex *index, const varstr *key,
+                         varstr *value, OID *inserted_oid);
 
   rc_t Update(IndexDescriptor *index_desc, OID oid, const varstr *k, varstr *v);
 

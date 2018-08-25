@@ -32,7 +32,7 @@ public:
   }
 
   inline void abort_txn(transaction *t) {
-    t->abort_impl();
+    t->Abort();
     t->~transaction();
   }
 };
@@ -60,6 +60,9 @@ public:
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };
+
+  // Use transaction's TryInsertNewTuple to try insert a new tuple
+  rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid);
 
   /**
    * Get a key of length keylen. The underlying DB does not manage
@@ -185,7 +188,7 @@ private:
   //
   // NOTE: both key and value are expected to be stable values already
   rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
-                   bool upsert, OID *inserted_oid);
+                 bool upsert, OID *inserted_oid);
 
   static rc_t DoNodeRead(transaction *t,
                          const ConcurrentMasstree::node_opaque_t *node,
@@ -224,7 +227,22 @@ private:
 class SingleThreadedBTree : public OrderedIndex {
 private:
   btree::BTree<4096, OID> btree_;
+
+  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
+                 bool upsert, OID *inserted_oid);
 public:
   virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
+    return DoTreePut(*t, &key, &value, false, true, nullptr);
+  }
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
+    return DoTreePut(*t, &key, &value, true, true, oid);
+  }
+  inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
+    return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
+  }
+  inline rc_t Remove(transaction *t, const varstr &key) override {
+    return DoTreePut(*t, &key, nullptr, false, false, nullptr);
+  }
 };
 }  // namespace ermia

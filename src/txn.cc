@@ -117,7 +117,7 @@ transaction::~transaction() {
   TXN::xid_free(xid);  // must do this after epoch_exit, which uses xc.end
 }
 
-void transaction::abort_impl() {
+void transaction::Abort() {
   // Mark the dirty tuple as invalid, for oid_get_version to
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
@@ -1316,8 +1316,8 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
   }
 }
 
-bool transaction::try_insert_new_tuple(OrderedIndex *index, const varstr *key,
-                                       varstr *value, OID *inserted_oid) {
+bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
+                                    varstr *value, OID *inserted_oid) {
   ASSERT(key);
   OID oid = 0;
   IndexDescriptor *id = index->GetDescriptor();

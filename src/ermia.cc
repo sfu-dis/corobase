@@ -198,19 +198,27 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key, 
   return true;
 }
 
+rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid) {
+  if (t.TryInsertNewTuple(this, k, v, inserted_oid)) {
+    return rc_t{RC_TRUE};
+  } else if (!upsert) {
+    return rc_t{RC_ABORT_INTERNAL};
+  } else {
+    return rc_t{RC_FALSE};
+  }
+}
+
 rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k, varstr *v,
                                         bool expect_new, bool upsert,
                                         OID *inserted_oid) {
   ASSERT(k);
-  ASSERT(!expect_new || v);  // makes little sense to remove() a key you expect
-  // to not be present, so we assert this doesn't happen
-  // for now [since this would indicate a suboptimality]
+  ASSERT(!expect_new || v);
   t.ensure_active();
+
   if (expect_new) {
-    if (t.try_insert_new_tuple(this, k, v, inserted_oid)) {
-      return rc_t{RC_TRUE};
-    } else if (!upsert) {
-      return rc_t{RC_ABORT_INTERNAL};
+    rc_t rc = TryInsert(t, k, v, upsert, inserted_oid);
+    if (rc._val != RC_FALSE) {
+      return rc;
     }
   }
 
@@ -305,4 +313,25 @@ rc_t SingleThreadedBTree::Get(transaction *t, const varstr &key, varstr &value, 
   }
   return rc_t{RC_FALSE};
 }
+
+rc_t SingleThreadedBTree::DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
+                                    bool upsert, OID *inserted_oid) {
+  t.ensure_active();
+
+  if (expect_new) {
+    rc_t rc = TryInsert(t, k, v, upsert, inserted_oid);
+    if (rc._val != RC_FALSE) {
+      return rc;
+    }
+  }
+
+  dbtuple *bv = nullptr;
+  OID oid = 0;
+  if (btree_.Search((char *)k->data(), k->size(), &oid)) {
+    return t.Update(descriptor_, oid, k, v);
+  } else {
+    return rc_t{RC_ABORT_INTERNAL};
+  }
+}
+
 }  // namespace ermia
