@@ -54,6 +54,9 @@ void Engine::CreateTable(uint16_t index_type, const char *name, const char *prim
     case kIndexConcurrentMasstree:
       index_desc = (new ConcurrentMasstreeIndex(name, primary_name))->GetDescriptor();
       break;
+    case kIndexSingleThreadedBTree:
+      index_desc = (new SingleThreadedBTree(name, primary_name))->GetDescriptor();
+      break;
     default:
       LOG(FATAL) << "Wrong index type: " << index_type;
       break;
@@ -332,6 +335,11 @@ rc_t SingleThreadedBTree::DoTreePut(transaction &t, const varstr *k, varstr *v, 
   } else {
     return rc_t{RC_ABORT_INTERNAL};
   }
+}
+
+bool SingleThreadedBTree::InsertIfAbsent(transaction *t, const varstr &key, OID oid) {
+  return btree_.Insert((char *)key.data(), key.size(), oid);
+  // TODO(tzwang): phantom protection
 }
 
 }  // namespace ermia
