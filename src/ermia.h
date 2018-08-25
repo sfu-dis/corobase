@@ -15,9 +15,15 @@ public:
 
   void CreateTable(uint16_t index_type, const char *name, const char *primary_name);
 
+  // All supported index types
   static const uint16_t kIndexConcurrentMasstree = 0x1;
+  static const uint16_t kIndexSingleThreadedBTree = 0x2;
+
   inline void CreateMasstreeTable(const char *name, const char *primary_name = nullptr) {
     CreateTable(kIndexConcurrentMasstree, name, primary_name);
+  }
+  inline void CreateSingleThreadedBTreeTable(const char *name, const char *primary_name = nullptr) {
+    CreateTable(kIndexSingleThreadedBTree, name, primary_name);
   }
 
   inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena, transaction *buf) {
@@ -228,9 +234,13 @@ class SingleThreadedBTree : public OrderedIndex {
 private:
   btree::BTree<4096, OID> btree_;
 
+  bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
   rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
                  bool upsert, OID *inserted_oid);
+
 public:
+  SingleThreadedBTree(std::string name, const char *primary) : OrderedIndex(name, primary) {}
+
   virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
@@ -244,5 +254,13 @@ public:
   inline rc_t Remove(transaction *t, const varstr &key) override {
     return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
+  rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+            ScanCallback &callback, str_arena *arena) override { /* Not implemented */ }
+  rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
+                   ScanCallback &callback, str_arena *arena) override { /* Not implemented */ }
+
+  inline size_t Size() override { /* Not implemented */ }
+  std::map<std::string, uint64_t> Clear() { /* Not implemented */ }
+  inline void SetArrays() override { /* Not implemented */ }
 };
 }  // namespace ermia
