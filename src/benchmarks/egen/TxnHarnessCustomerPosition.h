@@ -76,7 +76,7 @@ public:
         strncpy(Frame1Input.tax_id, pTxnInput->tax_id, sizeof(Frame1Input.tax_id));
 
         // Execute Frame 1
-        try_return(m_db->DoCustomerPositionFrame1(&Frame1Input, &Frame1Output));
+        TryReturn(m_db->DoCustomerPositionFrame1(&Frame1Input, &Frame1Output));
 
         // Validate Frame 1 Output
         if ((Frame1Output.acct_len < 1) ||
@@ -124,7 +124,7 @@ public:
             Frame2Input.acct_id = Frame1Output.acct_id[ pTxnInput->acct_id_idx ];
 
             // Execute Frame 2
-            try_return(m_db->DoCustomerPositionFrame2(&Frame2Input, &Frame2Output));
+            TryReturn(m_db->DoCustomerPositionFrame2(&Frame2Input, &Frame2Output));
 
             // Validate Frame 2 Output
             if ((Frame2Output.hist_len < min_hist_len) || 
@@ -147,7 +147,7 @@ public:
         else
         {
             // Execute Frame 3
-            try_return(m_db->DoCustomerPositionFrame3());
+            TryReturn(m_db->DoCustomerPositionFrame3());
 
             // Copy Frame 3 Output
             pTxnOutput->hist_len = 0;

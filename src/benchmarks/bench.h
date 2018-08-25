@@ -255,69 +255,62 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 
 // Note: try_catch_cond_abort might call __abort_txn with rc=RC_FALSE
 // so no need to assure rc must be RC_ABORT_*.
-#define __abort_txn(r)                              \
-  {                                                 \
-    db->abort_txn(txn);                             \
-    if (not rc_is_abort(r)) return {RC_ABORT_USER}; \
-    return r;                                       \
-  }
+#define __abort_txn(r)                            \
+{                                                 \
+  db->Abort(txn);                                 \
+  if (not rc_is_abort(r)) return {RC_ABORT_USER}; \
+  return r;                                       \
+}
 
 // NOTE: only use these in transaction benchmark (e.g., TPCC) code, not in
 // engine code
 
 // reminescent the try...catch block:
 // if return code is one of those RC_ABORT* then abort
-#define try_catch(rc)                   \
-  {                                     \
-    rc_t r = rc;                        \
-    if (rc_is_abort(r)) __abort_txn(r); \
-  }
+#define TryCatch(rc)                  \
+{                                     \
+  rc_t r = rc;                        \
+  if (rc_is_abort(r)) __abort_txn(r); \
+}
 
-// same as try_catch but don't do abort, only return rc
+// same as TryCatch but don't do abort, only return rc
 // So far the only user is TPC-E's TxnHarness***.h.
-#define try_return(rc)            \
-  {                               \
-    rc_t r = rc;                  \
-    if (rc_is_abort(r)) return r; \
-  }
-
-#define try_tpce_output(op)                   \
-  {                                           \
-    rc_t r = op;                              \
-    if (rc_is_abort(r)) return r;             \
-    if (output.status == 0) return {RC_TRUE}; \
-    return {RC_ABORT_USER};                   \
-  }
+#define TryReturn(rc)           \
+{                               \
+  rc_t r = rc;                  \
+  if (rc_is_abort(r)) return r; \
+}
 
 // if rc == RC_FALSE then do op
-#define try_catch_cond(rc, op)          \
-  {                                     \
-    rc_t r = rc;                        \
-    if (rc_is_abort(r)) __abort_txn(r); \
-    if (r._val == RC_FALSE) op;         \
-  }
+#define TryCatchCond(rc, op)          \
+{                                     \
+  rc_t r = rc;                        \
+  if (rc_is_abort(r)) __abort_txn(r); \
+  if (r._val == RC_FALSE) op;         \
+}
 
-#define try_catch_cond_abort(rc)                              \
-  {                                                           \
-    rc_t r = rc;                                              \
-    if (rc_is_abort(r) or r._val == RC_FALSE) __abort_txn(r); \
-  }
+#define TryCatchCondAbort(rc)                               \
+{                                                           \
+  rc_t r = rc;                                              \
+  if (rc_is_abort(r) or r._val == RC_FALSE) __abort_txn(r); \
+}
+
 // combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
 // abort (by SSN). Use try_verify_strict if you need rc=true.
-#define try_verify_relax(oper)                          \
-  {                                                     \
-    rc_t r = oper;                                      \
-    LOG_IF(FATAL, r._val != RC_TRUE && !rc_is_abort(r)) \
-      << "Wrong return value " << r._val;               \
-    if (rc_is_abort(r)) __abort_txn(r);                 \
-  }
+#define TryVerifyRelaxed(oper)                        \
+{                                                     \
+  rc_t r = oper;                                      \
+  LOG_IF(FATAL, r._val != RC_TRUE && !rc_is_abort(r)) \
+    << "Wrong return value " << r._val;               \
+  if (rc_is_abort(r)) __abort_txn(r);                 \
+}
 
 // No abort is allowed, usually for loading
-#define try_verify_strict(oper)        \
-  {                                    \
-    rc_t rc = oper;                    \
-    LOG_IF(FATAL, rc._val != RC_TRUE)      \
-      << "Wrong return value " << rc._val; \
-  }
+#define TryVerifyStrict(oper)            \
+{                                        \
+  rc_t rc = oper;                        \
+  LOG_IF(FATAL, rc._val != RC_TRUE)      \
+    << "Wrong return value " << rc._val; \
+}

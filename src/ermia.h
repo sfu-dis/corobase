@@ -20,18 +20,18 @@ public:
     CreateTable(kIndexConcurrentMasstree, name, primary_name);
   }
 
-  inline transaction *new_txn(uint64_t txn_flags, str_arena &arena, transaction *buf) {
+  inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena, transaction *buf) {
     new (buf) transaction(txn_flags, arena);
     return buf;
   }
 
-  inline rc_t commit_txn(transaction *t) {
+  inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
     if (not rc_is_abort(rc)) t->~transaction();
     return rc;
   }
 
-  inline void abort_txn(transaction *t) {
+  inline void Abort(transaction *t) {
     t->Abort();
     t->~transaction();
   }

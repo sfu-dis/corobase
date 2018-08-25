@@ -75,7 +75,7 @@ public:
             memcpy( Frame1Input.trade_id, pTxnInput->trade_id, sizeof( Frame1Input.trade_id ));
 
             // Execute Frame 1
-            try_return(m_db->DoTradeUpdateFrame1(&Frame1Input, &Frame1Output));
+            TryReturn(m_db->DoTradeUpdateFrame1(&Frame1Input, &Frame1Output));
 
             // Validate Frame 1 Output
             if (   Frame1Output.num_found != pTxnInput->max_trades
@@ -111,7 +111,7 @@ public:
             Frame2Input.end_trade_dts = pTxnInput->end_trade_dts;
 
             // Execute Frame 2
-            try_return(m_db->DoTradeUpdateFrame2(&Frame2Input, &Frame2Output));
+            TryReturn(m_db->DoTradeUpdateFrame2(&Frame2Input, &Frame2Output));
 
             /* valid relationships           */
             /* 1) num_found   <= max_trades  */
@@ -161,7 +161,7 @@ public:
             Frame3Input.max_acct_id = pTxnInput->max_acct_id;
 
             // Execute Frame 3
-            try_return(m_db->DoTradeUpdateFrame3(&Frame3Input, &Frame3Output));
+            TryReturn(m_db->DoTradeUpdateFrame3(&Frame3Input, &Frame3Output));
 
             /* valid relationships           */
             /* 1) num_found   <= max_trades  */
