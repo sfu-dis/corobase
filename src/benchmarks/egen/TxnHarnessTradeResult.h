@@ -97,7 +97,7 @@ public:
         Frame1Input.trade_id = pTxnInput->trade_id;
 
         // Execute Frame 1
-        try_return(m_db->DoTradeResultFrame1(&Frame1Input, &Frame1Output));
+        TryReturn(m_db->DoTradeResultFrame1(&Frame1Input, &Frame1Output));
 
         // Validate Frame 1 Output
         if (Frame1Output.num_found != 1)
@@ -120,7 +120,7 @@ public:
         Frame2Input.type_is_sell = Frame1Output.type_is_sell;
 
         // Execute Frame 2
-        try_return(m_db->DoTradeResultFrame2(&Frame2Input, &Frame2Output));
+        TryReturn(m_db->DoTradeResultFrame2(&Frame2Input, &Frame2Output));
 
         //
         // FRAME 3
@@ -137,7 +137,7 @@ public:
             Frame3Input.trade_id = pTxnInput->trade_id;
 
             // Execute Frame 3
-            try_return(m_db->DoTradeResultFrame3(&Frame3Input, &Frame3Output));
+            TryReturn(m_db->DoTradeResultFrame3(&Frame3Input, &Frame3Output));
 
             // Validate Frame 3 Output
             if (Frame3Output.tax_amount < 0.00)
@@ -157,7 +157,7 @@ public:
         strncpy(Frame4Input.type_id, Frame1Output.type_id, sizeof(Frame4Input.type_id));
 
         // Execute Frame 4
-        try_return(m_db->DoTradeResultFrame4(&Frame4Input, &Frame4Output));
+        TryReturn(m_db->DoTradeResultFrame4(&Frame4Input, &Frame4Output));
 
         // Validate Frame 4 Output
         if (Frame4Output.comm_rate <= 0.0000)
@@ -181,7 +181,7 @@ public:
         Frame5Input.trade_price = pTxnInput->trade_price;
 
         // Execute Frame 5
-        try_return(m_db->DoTradeResultFrame5(&Frame5Input));
+        TryReturn(m_db->DoTradeResultFrame5(&Frame5Input));
 
         //
         // FRAME 6
@@ -222,7 +222,7 @@ public:
         strncpy(Frame6Input.type_name, Frame1Output.type_name, sizeof(Frame6Input.type_name));
 
         // Execute Frame 6
-        try_return(m_db->DoTradeResultFrame6(&Frame6Input, &Frame6Output));
+        TryReturn(m_db->DoTradeResultFrame6(&Frame6Input, &Frame6Output));
 
         // Copy Frame 6 Output
         pTxnOutput->acct_id = Frame1Output.acct_id;

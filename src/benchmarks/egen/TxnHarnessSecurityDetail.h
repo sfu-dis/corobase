@@ -65,7 +65,7 @@ public:
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         // Execute Frame 1
-        try_return(m_db->DoSecurityDetailFrame1(pTxnInput, &Frame1Output));
+        TryReturn(m_db->DoSecurityDetailFrame1(pTxnInput, &Frame1Output));
 
         // Validate Frame 1 Output
         if ((Frame1Output.day_len < min_day_len) || 

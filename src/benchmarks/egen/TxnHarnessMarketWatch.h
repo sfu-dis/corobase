@@ -65,7 +65,7 @@ public:
             memset(&Frame1Output, 0, sizeof(Frame1Output));
 
             // Execute Frame 1
-            try_return(m_db->DoMarketWatchFrame1(pTxnInput, &Frame1Output));
+            TryReturn(m_db->DoMarketWatchFrame1(pTxnInput, &Frame1Output));
 
             // Copy Frame 1 Output
             pTxnOutput->pct_change = Frame1Output.pct_change;

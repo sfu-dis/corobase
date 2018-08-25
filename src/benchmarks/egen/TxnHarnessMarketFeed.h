@@ -75,7 +75,7 @@ public:
         }
 
         // Execute Frame 1
-        try_return(m_db->DoMarketFeedFrame1(&Frame1Input, &Frame1Output, m_pSendToMarket));
+        TryReturn(m_db->DoMarketFeedFrame1(&Frame1Input, &Frame1Output, m_pSendToMarket));
 
         // Validate Frame 1 Output
         if (Frame1Output.num_updated < pTxnInput->unique_symbols)

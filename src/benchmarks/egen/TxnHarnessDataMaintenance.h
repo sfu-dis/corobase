@@ -57,7 +57,7 @@ public:
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         // Execute Frame 1
-        try_return(m_db->DoDataMaintenanceFrame1(pTxnInput));
+        TryReturn(m_db->DoDataMaintenanceFrame1(pTxnInput));
     }
 };
 
