@@ -293,6 +293,7 @@ bool BTree<NodeSize, PayloadType>::Insert(char *key, uint32_t key_size, PayloadT
     root_ = stack.Top();
     assert(root_);
   }
+  return inserted;
 }
 
 template<uint32_t NodeSize, class PayloadType>
