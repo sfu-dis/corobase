@@ -20,6 +20,7 @@ DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
+DEFINE_bool(dora, false, "Whether to use data oriented transaction execution (DORA)");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
@@ -327,6 +328,7 @@ int main(int argc, char **argv) {
   std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
+  std::cerr << "  dora              : " << FLAGS_dora << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::worker_threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
@@ -408,13 +410,9 @@ int main(int argc, char **argv) {
   db = new ermia::Engine();
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
-    test_fn = ycsb_do_test;
-  } else if (FLAGS_benchmark == "ycsb-dora") {
-    test_fn = ycsb_dora_do_test;
+    test_fn = FLAGS_dora ? ycsb_dora_do_test : ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {
-    test_fn = tpcc_do_test;
-  } else if (FLAGS_benchmark == "tpcc-dora") {
-    test_fn = tpcc_dora_do_test;
+    test_fn = FLAGS_dora ? tpcc_dora_do_test : tpcc_do_test;
   } else if (FLAGS_benchmark == "tpce") {
     test_fn = tpce_do_test;
   } else {
