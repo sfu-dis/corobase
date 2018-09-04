@@ -26,27 +26,6 @@
 #include "bench.h"
 #include "tpcc.h"
 
-#define TPCC_TABLE_LIST(x)                                                     \
-  x(customer) x(customer_name_idx) x(district) x(history) x(item) x(new_order) \
-      x(oorder) x(oorder_c_id_idx) x(order_line) x(stock) x(stock_data)        \
-          x(nation) x(region) x(supplier) x(warehouse)
-
-class tpcc_table_scanner : public ermia::OrderedIndex::ScanCallback {
- public:
-  tpcc_table_scanner(ermia::str_arena *arena) : _arena(arena) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    ermia::varstr *const k = _arena->next(keylen);
-    ASSERT(k);
-    k->copy_from(keyp, keylen);
-    output.emplace_back(k, &value);
-    return true;
-  }
-
-  void clear() { output.clear(); }
-  std::vector<std::pair<ermia::varstr *, const ermia::varstr *>> output;
-  ermia::str_arena *_arena;
-};
-
 static ALWAYS_INLINE size_t NumWarehouses() {
   return (size_t)ermia::config::benchmark_scale_factor;
 }
@@ -187,9 +166,6 @@ struct checker {
     ASSERT(v->ol_i_id >= 1 && static_cast<size_t>(v->ol_i_id) <= NumItems());
   }
 };
-
-struct _dummy {};  // exists so we can inherit from it, so we can use a macro in
-                   // an init list...
 
 class tpcc_dora_worker_mixin : private _dummy {
 #define DEFN_TBL_INIT_X(name) , tbl_##name##_vec(partitions.at(#name))
