@@ -9,11 +9,12 @@
 namespace ermia {
 
 class Engine {
+private:
+  void CreateTable(uint16_t index_type, const char *name, const char *primary_name);
+
 public:
   Engine();
   ~Engine() {}
-
-  void CreateTable(uint16_t index_type, const char *name, const char *primary_name);
 
   // All supported index types
   static const uint16_t kIndexConcurrentMasstree = 0x1;
