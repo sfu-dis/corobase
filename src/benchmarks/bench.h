@@ -10,6 +10,7 @@
 #include "../dbcore/sm-log-alloc.h"
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
+extern void ycsb_dora_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_dora_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpce_do_test(ermia::Engine *db, int argc, char **argv);

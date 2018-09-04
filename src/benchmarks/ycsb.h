@@ -28,10 +28,14 @@ struct YcsbKey : public ermia::varstr {
 
 struct YcsbRecord {
   char data_[kRecordSize];
-  explicit YcsbRecord(char value);
+
   YcsbRecord() {}
+  YcsbRecord(char value) { memset(data_, value, kFields * kFieldLength * sizeof(char)); }
+
   char* get_field(uint32_t f) { return data_ + f * kFieldLength; }
-  static void initialize_field(char* field);
+  static void initialize_field(char* field) {
+    memset(field, 'a', kFieldLength);
+  }
 };
 
 struct YcsbWorkload {
@@ -75,3 +79,5 @@ struct YcsbWorkload {
   int32_t reps_per_tx_;
   bool distinct_keys_;
 };
+
+YcsbKey &build_rmw_key(int worker_id);

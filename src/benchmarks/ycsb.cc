@@ -16,47 +16,34 @@
 #include "bench.h"
 #include "ycsb.h"
 
-YcsbRecord::YcsbRecord(char value) {
-  memset(data_, value, kFields * kFieldLength * sizeof(char));
-}
-
-void YcsbRecord::initialize_field(char *field) {
-  memset(field, 'a', kFieldLength);
-}
-
 uint64_t local_key_counter[ermia::config::MAX_THREADS];
-
 uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
 char g_workload = 'F';
 uint g_initial_table_size = 10000;
 int g_sort_load_keys = 0;
 
+YcsbKey *key_arena = nullptr;
+
+util::fast_random rnd_record_select(477377);
+
 // { insert, read, update, scan, rmw }
-YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0,
-                           0);  // Workload A - 50% read, 50% update
-YcsbWorkload YcsbWorkloadB('B', 0, 95U, 100U, 0,
-                           0);  // Workload B - 95% read, 5% update
+YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
+YcsbWorkload YcsbWorkloadB('B', 0, 95U, 100U, 0, 0);  // Workload B - 95% read, 5% update
 YcsbWorkload YcsbWorkloadC('C', 0, 100U, 0, 0, 0);  // Workload C - 100% read
-YcsbWorkload YcsbWorkloadD('D', 5U, 100U, 0, 0,
-                           0);  // Workload D - 95% read, 5% insert
-YcsbWorkload YcsbWorkloadE('E', 5U, 0, 0, 100U,
-                           0);  // Workload E - 5% insert, 95% scan
+YcsbWorkload YcsbWorkloadD('D', 5U, 100U, 0, 0, 0);  // Workload D - 95% read, 5% insert
+YcsbWorkload YcsbWorkloadE('E', 5U, 0, 0, 100U, 0);  // Workload E - 5% insert, 95% scan
 
 // Combine reps_per_tx and rmw_additional_reads to have "10R+10RMW" style
 // transactions.
 YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
 
 // Extra workloads (not in spec)
-YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U,
-                           0);  // Workload G - 5% update, 95% scan
+YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
 
 YcsbWorkload ycsb_workload = YcsbWorkloadF;
 
-util::fast_random rnd_record_select(477377);
-
-YcsbKey *key_arena;
 YcsbKey &build_rmw_key(int worker_id) {
   uint64_t key_seq = rnd_record_select.next_uniform() * g_initial_table_size;
   auto cnt = local_key_counter[worker_id];
