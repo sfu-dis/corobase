@@ -233,7 +233,7 @@ private:
 
 class SingleThreadedBTree : public OrderedIndex {
 private:
-  btree::BTree<4096, OID> btree_;
+  btree::BTree<256, OID> btree_;
 
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
   rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,

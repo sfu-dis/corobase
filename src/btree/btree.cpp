@@ -357,6 +357,9 @@ template class LeafNode<128, uint64_t>;
 template class InternalNode<128>;
 template class BTree<128, uint64_t>;
 
+template class LeafNode<128, OID>;
+template class BTree<128, OID>;
+
 template class LeafNode<256, OID>;
 template class InternalNode<256>;
 template class BTree<256, OID>;
