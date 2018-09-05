@@ -32,7 +32,7 @@ bool LeafNode<NodeSize, PayloadType>::Add(char *key,
   }
 
   // Check space
-  if (key_size + sizeof(payload) + sizeof(NodeEntry) + data_size_ > DataCapacity()) {
+  if (key_size + sizeof(payload) + sizeof(NodeEntry) + data_size_ > kMaxDataSize) {
     // Need split
     LeafNode<NodeSize, PayloadType> *left = nullptr, *right = nullptr;
     Split(left, right, stack);
@@ -57,20 +57,24 @@ void LeafNode<NodeSize, PayloadType>::InsertAt(uint32_t idx,
                                                char *key,
                                                uint32_t key_size,
                                                PayloadType &payload) {
-  // Found the place to insert: move everything after the insert location
-  memmove(&((NodeEntry *)data_)[idx + 1],
-          &((NodeEntry *)data_)[idx],
-          sizeof(NodeEntry) * (num_keys_ - idx));
+  LOG_IF(FATAL, sizeof(*this) + key_size + sizeof(payload) + sizeof(NodeEntry) + data_size_ > NodeSize);
+
+  if (idx < num_keys_) {
+    // Found the place to insert: move everything after the insert location
+    memmove(&((NodeEntry *)data_)[idx + 1],
+            &((NodeEntry *)data_)[idx],
+            sizeof(NodeEntry) * (num_keys_ - idx));
+  }
 
   // Now the idx-th slot is ready
   NodeEntry *entry = (NodeEntry *)data_ + idx;
-  char *data_start = data_ + NodeSize - sizeof(*this) - data_size_ - key_size - sizeof(payload);
+  char *data_start = data_ + kMaxDataSize - KeyValueSize() - sizeof(payload) - key_size;
   new (entry) NodeEntry(key_size, sizeof(payload), data_start, key, (char*)&payload);
   assert(memcmp(entry->GetKeyData(), key, key_size) == 0);
   assert(memcmp(entry->GetValueData(), &payload, sizeof(payload)) == 0);
 
   ++num_keys_;
-  data_size_ += (key_size + sizeof(payload));
+  data_size_ += ((sizeof(NodeEntry) + key_size + sizeof(payload)));
 }
 
 template<uint32_t NodeSize, class PayloadType>
@@ -81,17 +85,27 @@ void LeafNode<NodeSize, PayloadType>::Split(LeafNode<NodeSize, PayloadType> *&le
   left = LeafNode::New();
   right = LeafNode::New();
 
-  right->SetRightSibling(right_sibling_);
+  if (left_sibling_) {
+    left_sibling_->SetRightSibling(left);
+  }
+  if (right_sibling_) {
+    right_sibling_->SetLeftSibling(right);
+  }
+
+  left->SetLeftSibling(left_sibling_);
   left->SetRightSibling(right);
-  right_sibling_ = right;
+
+  right->SetLeftSibling(left);
+  right->SetRightSibling(right_sibling_);
 
   // Copy keys and values to the new left and right nodes
+  LOG_IF(FATAL, num_keys_ < 2);
   uint32_t keys_to_move = num_keys_ / 2;
   for (uint32_t i = 0; i < num_keys_; ++i) {
     NodeEntry &entry = GetEntry(i);
     bool added = false;
     bool did_split = false;
-    if (i < num_keys_ - keys_to_move) {
+    if (i < keys_to_move) {
       added = left->Add(entry.GetKeyData(), entry.GetKeySize(),
                         *(PayloadType *)entry.GetValueData(),
                         did_split, stack);
@@ -112,7 +126,7 @@ void LeafNode<NodeSize, PayloadType>::Split(LeafNode<NodeSize, PayloadType> *&le
   }
 
   // Keys >= this separator are on the right sibling
-  NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
+  NodeEntry &entry = GetEntry(keys_to_move);
   bool did_split = false;
   parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, did_split, stack);
   if (did_split) {
@@ -139,7 +153,7 @@ void InternalNode<NodeSize>::Add(char *key, uint32_t key_size,
 
   did_split = false;
   // Check space
-  if (key_size + sizeof(right_child) + sizeof(NodeEntry) + data_size_ > DataCapacity()) {
+  if (key_size + sizeof(right_child) + sizeof(NodeEntry) + data_size_ > kMaxDataSize) {
     // Need split
     InternalNode<NodeSize> *left = nullptr, *right = nullptr;
     Split(left, right, stack);
@@ -166,21 +180,23 @@ void InternalNode<NodeSize>::Split(InternalNode<NodeSize> *&left,
 
   // The last half of keys/values go to the right sibling
   uint32_t keys_to_move = num_keys_ / 2;
+  assert(keys_to_move > 0);
+  assert(num_keys_ >= 2);
   for (uint32_t i = 0; i < num_keys_; ++i) {
     NodeEntry &entry = GetEntry(i);
     Node *left_child = nullptr;
     Node *right_child = *(Node **)entry.GetValueData();
     bool split = false;
 
-    if (i < num_keys_ - keys_to_move) {
+    if (i < keys_to_move) {
       if (i == 0) {
         left_child = min_ptr_;
       } else {
         left_child = *(Node **)GetEntry(i - 1).GetValueData();
       }
       left->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, split, stack);
-    } else {
-      left_child = (Node *)GetEntry(i - 1).GetValueData();
+    } else if (i > keys_to_move) {  // Skip the separator to be inserted to parent
+      left_child = *(Node **)GetEntry(i - 1).GetValueData();
       right->Add(entry.GetKeyData(), entry.GetKeySize(), left_child, right_child, split, stack);
     }
     LOG_IF(FATAL, split);
@@ -194,7 +210,7 @@ void InternalNode<NodeSize>::Split(InternalNode<NodeSize> *&left,
   }
 
   // Keys >= this separator are on the right sibling
-  NodeEntry &entry = GetEntry(num_keys_ - keys_to_move);
+  NodeEntry &entry = GetEntry(keys_to_move);
   bool split = false;
   parent->Add(entry.GetKeyData(), entry.GetKeySize(), left, right, split, stack);
   if (split) {
@@ -215,34 +231,21 @@ void InternalNode<NodeSize>::InsertAt(uint32_t idx,
   NodeEntry &entry = GetEntry(idx);
 
   // right_child goes to the value space 
-  char *data_start = data_ + NodeSize - sizeof(*this) - data_size_ - key_size - sizeof(Node*);
+  char *data_start = data_ + kMaxDataSize - KeyValueSize() - key_size - sizeof(Node*);
   new (&entry) NodeEntry(key_size, sizeof(Node*), data_start, key, (char*)&right_child);
   assert(memcmp(entry.GetKeyData(), key, key_size) == 0);
   assert(memcmp(entry.GetValueData(), (char *)&right_child, sizeof(Node*)) == 0);
 
   ++num_keys_;
-  data_size_ += (key_size + sizeof(Node*));
+  data_size_ += (key_size + sizeof(Node*) + sizeof(NodeEntry));
 
   // Set up left sibling's right child pointer
   if (idx == 0) {
     min_ptr_ = left_child;
   } else {
-    NodeEntry &left_sibling = GetEntry(idx - 1);
-    memcpy(left_sibling.GetValueData(), (char *)&left_child, sizeof(InternalNode*));
+    NodeEntry &left_entry = GetEntry(idx - 1);
+    memcpy(left_entry.GetValueData(), (char *)&left_child, sizeof(Node*));
   }
-}
-
-template<uint32_t NodeSize>
-void InternalNode<NodeSize>::Dump() {
-  std::cout << "Dumping " << this << ": ";
-  std::cout << std::hex << (uint64_t)min_ptr_ << " <- ";
-  for (uint32_t i = 0; i < num_keys_; ++i) {
-    auto &entry = GetEntry(i);
-    uint64_t key = *(uint64_t*)entry.GetKeyData();
-    uint64_t right = *(uint64_t*)entry.GetValueData();
-    std::cout << std::dec << key << " -> " << std::hex << right << " | " << std::dec;
-  }
-  std::cout << std::endl;
 }
 
 template<uint32_t NodeSize>
@@ -320,6 +323,32 @@ bool BTree<NodeSize, PayloadType>::Search(char *key, uint32_t key_size, PayloadT
 }
 
 template<uint32_t NodeSize, class PayloadType>
+void LeafNode<NodeSize, PayloadType>::Dump() {
+  std::cout << "Dumping " << this << ": ";
+  for (uint32_t i = 0; i < num_keys_; ++i) {
+    auto &entry = GetEntry(i);
+    uint64_t key = *(uint64_t*)entry.GetKeyData();
+    uint64_t value = *(uint64_t*)entry.GetValueData();
+    std::cout << std::dec << key << " -> " << std::hex << value << " | " << std::dec;
+  }
+  std::cout << std::endl;
+}
+
+
+template<uint32_t NodeSize>
+void InternalNode<NodeSize>::Dump() {
+  std::cout << "Dumping " << this << ": ";
+  std::cout << std::hex << (uint64_t)min_ptr_ << " <- ";
+  for (uint32_t i = 0; i < num_keys_; ++i) {
+    auto &entry = GetEntry(i);
+    uint64_t key = *(uint64_t*)entry.GetKeyData();
+    uint64_t right = *(uint64_t*)entry.GetValueData();
+    std::cout << std::dec << key << " -> " << std::hex << right << " | " << std::dec;
+  }
+  std::cout << std::endl;
+}
+
+template<uint32_t NodeSize, class PayloadType>
 void BTree<NodeSize, PayloadType>::Dump() {
 }
 
@@ -332,6 +361,18 @@ template class BTree<4096, uint64_t>;
 template class LeafNode<128, uint64_t>;
 template class InternalNode<128>;
 template class BTree<128, uint64_t>;
+
+template class LeafNode<256, OID>;
+template class InternalNode<256>;
+template class BTree<256, OID>;
+
+template class LeafNode<512, OID>;
+template class InternalNode<512>;
+template class BTree<512, OID>;
+
+template class LeafNode<1024, OID>;
+template class InternalNode<1024>;
+template class BTree<1024, OID>;
 
 template class LeafNode<4096, OID>;
 template class BTree<4096, OID>;
