@@ -353,11 +353,6 @@ void BTree<NodeSize, PayloadType>::Dump() {
 }
 
 // Template instantiation
-template class LeafNode<4096, int>;
-template class LeafNode<4096, uint64_t>;
-template class InternalNode<4096>;
-template class BTree<4096, uint64_t>;
-
 template class LeafNode<128, uint64_t>;
 template class InternalNode<128>;
 template class BTree<128, uint64_t>;
@@ -374,7 +369,16 @@ template class LeafNode<1024, OID>;
 template class InternalNode<1024>;
 template class BTree<1024, OID>;
 
+template class LeafNode<2048, OID>;
+template class InternalNode<2048>;
+template class BTree<2048, OID>;
+
 template class LeafNode<4096, OID>;
+template class InternalNode<4096>;
 template class BTree<4096, OID>;
+
+template class LeafNode<4096, int>;
+template class LeafNode<4096, uint64_t>;
+template class BTree<4096, uint64_t>;
 }  // namespace btree
 }  // namespace ermia
