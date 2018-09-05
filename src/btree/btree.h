@@ -99,6 +99,8 @@ private:
   void InsertAt(uint32_t idx, char *key, uint32_t key_size, PayloadType &payload);
   void Split(LeafNode *&left, LeafNode *&right, Stack &stack);
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
+  bool BinarySearch(char *key, uint32_t key_size, int32_t &idx);
+  bool LinearSearch(char *key, uint32_t key_size, int32_t &idx);
 
 public:
   LeafNode() : Node(), data_size_(0), left_sibling_(nullptr), right_sibling_(nullptr) {}
@@ -158,6 +160,8 @@ private:
 private:
   void InsertAt(uint32_t idx, char *key, uint32_t key_size, Node *left_child, Node *right_child);
   void Split(InternalNode *&left, InternalNode *&right, Stack &stack);
+  bool BinarySearch(char *key, uint32_t key_size, int32_t &idx);
+  bool LinearSearch(char *key, uint32_t key_size, int32_t &idx);
 
 public:
   InternalNode() : Node(), min_ptr_(nullptr), data_size_(0) {}
