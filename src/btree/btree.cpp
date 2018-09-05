@@ -9,6 +9,84 @@ namespace ermia {
 namespace btree {
 
 template<uint32_t NodeSize, class PayloadType>
+bool LeafNode<NodeSize, PayloadType>::BinarySearch(char *key, uint32_t key_size, int32_t &idx) {
+  // Find the position in the leaf entry array which begins at data_
+  int32_t left = 0, right = num_keys_ - 1;
+  while (left <= right) {
+    uint32_t mid = (left + right) / 2;
+    NodeEntry &entry = GetEntry(mid);
+    int cmp = entry.CompareKey(key, key_size);
+    if (cmp == 0) {
+      // Key exists
+      idx = mid;
+      return true;
+    } else if (cmp > 0) {
+      right = mid - 1;
+    } else {
+      left = mid + 1;
+    }
+  }
+  LOG_IF(FATAL, left < 0);
+  idx = left;
+  return false;
+}
+
+template<uint32_t NodeSize, class PayloadType>
+bool LeafNode<NodeSize, PayloadType>::LinearSearch(char *key, uint32_t key_size, int32_t &idx) {
+  idx = 0;
+  for (idx = 0; idx < num_keys_; ++idx) {
+    NodeEntry &entry = GetEntry(idx);
+    int cmp = entry.CompareKey(key, key_size);
+    if (cmp == 0) {
+      return true;
+    } else if (cmp > 0) {
+      // Found the place for potential insert
+      break;
+    }
+  }
+  return false;
+}
+
+template<uint32_t NodeSize>
+bool InternalNode<NodeSize>::BinarySearch(char *key, uint32_t key_size, int32_t &idx) {
+  // Find the position in the leaf entry array which begins at data_
+  int32_t left = 0, right = num_keys_ - 1;
+  while (left <= right) {
+    uint32_t mid = (left + right) / 2;
+    NodeEntry &entry = GetEntry(mid);
+    int cmp = entry.CompareKey(key, key_size);
+    if (cmp == 0) {
+      // Key already exists
+      idx = mid;
+      return true;
+    } else if (cmp > 0) {
+      right = mid - 1;
+    } else {
+      left = mid + 1;
+    }
+  }
+  LOG_IF(FATAL, left < 0);
+  idx = left;
+  return false;
+}
+
+template<uint32_t NodeSize>
+bool InternalNode<NodeSize>::LinearSearch(char *key, uint32_t key_size, int32_t &idx) {
+  idx = 0;
+  for (idx = 0; idx < num_keys_; ++idx) {
+    NodeEntry &entry = GetEntry(idx);
+    int cmp = entry.CompareKey(key, key_size);
+    if (cmp == 0) {
+      return true;
+    } else if (cmp > 0) {
+      // Found the place for potential insert
+      break;
+    }
+  }
+  return false;
+}
+
+template<uint32_t NodeSize, class PayloadType>
 bool LeafNode<NodeSize, PayloadType>::Add(char *key,
                                           uint32_t key_size,
                                           PayloadType &payload,
@@ -16,19 +94,10 @@ bool LeafNode<NodeSize, PayloadType>::Add(char *key,
                                           Stack &stack) {
   did_split = false;
 
-  // Find the position in the leaf entry array which begins at data_
-  // FIXME(tzwang): do binary search here
-  uint32_t insert_idx = 0;
-  for (insert_idx = 0; insert_idx < num_keys_; ++insert_idx) {
-    NodeEntry &entry = GetEntry(insert_idx);
-    int cmp = entry.CompareKey(key, key_size);
-    if (cmp == 0) {
-      // Key already exists
-      return false;
-    } else if (cmp > 0) {
-      // Found the place
-      break;
-    }
+  int32_t insert_idx = -1;
+  bool exists = LinearSearch(key, key_size, insert_idx);
+  if (exists) {
+    return false;
   }
 
   // Check space
@@ -138,18 +207,9 @@ template<uint32_t NodeSize>
 void InternalNode<NodeSize>::Add(char *key, uint32_t key_size,
                                  Node *left_child, Node *right_child,
                                  bool &did_split, Stack &stack) {
-  // Find the position in the leaf entry array which begins at data_
-  // FIXME(tzwang): do binary search here
-  uint32_t insert_idx = 0;
-  for (insert_idx = 0; insert_idx < num_keys_; ++insert_idx) {
-    NodeEntry &entry = GetEntry(insert_idx);
-    int cmp = entry.CompareKey(key, key_size);
-    LOG_IF(FATAL, cmp == 0) << "Key already exists in parent node";
-    if (cmp > 0) {
-      // Found the place
-      break;
-    }
-  }
+  int32_t insert_idx = -1;
+  bool found = LinearSearch(key, key_size, insert_idx);
+  LOG_IF(FATAL, found) << "Key already exists";
 
   did_split = false;
   // Check space
@@ -250,16 +310,13 @@ void InternalNode<NodeSize>::InsertAt(uint32_t idx,
 
 template<uint32_t NodeSize>
 Node *InternalNode<NodeSize>::GetChild(char *key, uint32_t key_size) {
-  uint32_t idx = 0;
-  for (idx = 0; idx < num_keys_; ++idx) {
-    NodeEntry &entry = GetEntry(idx);
-    int cmp = entry.CompareKey(key, key_size);
-    if (cmp > 0) {
-      break;
-    }
+  int32_t idx = -1;
+  bool found = LinearSearch(key, key_size, idx);
+  if (found) {
+    ++idx;
   }
 
-  Node *node;
+  Node *node = nullptr;
   if (idx == 0) {
     node = min_ptr_;
   } else {
@@ -301,12 +358,11 @@ bool BTree<NodeSize, PayloadType>::Insert(char *key, uint32_t key_size, PayloadT
 
 template<uint32_t NodeSize, class PayloadType>
 NodeEntry *LeafNode<NodeSize, PayloadType>::GetEntry(char *key, uint32_t key_size) {
-  for (uint32_t idx = 0; idx < num_keys_; ++idx) {
+  int32_t idx = -1;
+  if (LinearSearch(key, key_size, idx)) {
     NodeEntry &entry = GetEntry(idx);
-    int cmp = entry.CompareKey(key, key_size);
-    if (cmp == 0) {
-      return &entry;
-    }
+    assert(entry.CompareKey(key, key_size) == 0);
+    return &entry;
   }
   return nullptr;
 }
@@ -333,7 +389,6 @@ void LeafNode<NodeSize, PayloadType>::Dump() {
   }
   std::cout << std::endl;
 }
-
 
 template<uint32_t NodeSize>
 void InternalNode<NodeSize>::Dump() {
