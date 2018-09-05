@@ -19,22 +19,15 @@ public:
 };
 
 struct Stack {
-  struct Frame {
-    Node *node;
-    Frame() : node(nullptr) {}
-    Frame(Node *node) : node(node) {}
-    ~Frame() { node = nullptr; }
-  };
-
   static const uint32_t kMaxFrames = 32;
-  Frame frames[kMaxFrames];
+  Node *frames[kMaxFrames];
   uint32_t num_frames;
 
   Stack() : num_frames(0) {}
   ~Stack() { num_frames = 0; }
-  inline void Push(Node *node) { new (&frames[num_frames++]) Frame(node); }
-  inline Node *Pop() { return num_frames == 0 ? nullptr : frames[--num_frames].node; }
-  Node *Top() { return num_frames == 0 ? nullptr : frames[num_frames - 1].node; }
+  inline void Push(Node *node) { frames[num_frames++] = node; }
+  inline Node *Pop() { return num_frames == 0 ? nullptr : frames[--num_frames]; }
+  Node *Top() { return num_frames == 0 ? nullptr : frames[num_frames - 1]; }
 };
 
 // Key-value (or key-pointer) pair header stored in nodes. Value/pointer is
@@ -48,11 +41,10 @@ private:
   char *data_;           // Data (includes key and value) address
 
 private:
-  inline char *GetData() { return data_; }
   static int Compare(char *d1, uint32_t l1, char *d2, uint32_t l2) {
     int cmp = memcmp(d1, d2, std::min<uint32_t>(l1, l2));
-    if (cmp == 0 && l1 != l2) {
-      return l1 > l2 ? 1 : -1;
+    if (cmp == 0) {
+      return l1 - l2;
     }
     return cmp;
   }
@@ -96,8 +88,11 @@ public:
 template<uint32_t NodeSize, class PayloadType>
 class LeafNode : public Node {
 private:
-  uint32_t data_size_;  // Includes keys and values, not including the NodeEntry array
+  static const uint32_t kMaxDataSize = NodeSize - sizeof(LeafNode<NodeSize, PayloadType>);
+
+  uint32_t data_size_;  // Includes node entries + key/value pairs
   LeafNode *right_sibling_;
+  LeafNode *left_sibling_;
   char data_[0];  // Must be the last element
 
 private:
@@ -106,26 +101,28 @@ private:
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
 
 public:
-  LeafNode() : Node(), data_size_(0), right_sibling_(nullptr) {}
-  inline bool IsLeaf() override { return true; }
-  NodeEntry *GetEntry(char *key, uint32_t key_size);
+  LeafNode() : Node(), data_size_(0), left_sibling_(nullptr), right_sibling_(nullptr) {}
 
-  static LeafNode *New() {
+  static inline LeafNode *New() {
     LeafNode *node = (LeafNode *)malloc(NodeSize);
-    new (node) LeafNode();
+    memset(node, 0, NodeSize);
+    new (node) LeafNode<NodeSize, PayloadType>();
     return node;
   }
 
   // Data area size, including keys and values
-  inline uint32_t DataCapacity() {
-    return NodeSize - sizeof(*this) - num_keys_ * sizeof(NodeEntry);
-  }
+  inline virtual bool IsLeaf() override { return true; }
+  inline uint32_t KeyValueSize() { return data_size_ - num_keys_ * sizeof(NodeEntry); }
   inline void SetRightSibling(LeafNode *node) { right_sibling_ = node; }
+  inline void SetLeftSibling(LeafNode *node) { left_sibling_ = node; }
   inline LeafNode *GetRightSibling() { return right_sibling_; }
+  inline LeafNode *GetLeftSibling() { return left_sibling_; }
   inline char *GetKey(uint32_t idx) { return GetEntry(idx).GetKeyData(); }
   inline char *GetValue(uint32_t idx) { return GetEntry(idx).GetValueData(); }
+
+  NodeEntry *GetEntry(char *key, uint32_t key_size);
   bool Add(char *key, uint32_t key_size, PayloadType &payload, bool &did_split, Stack &stack);
-  void Dump() override {}
+  void Dump() override;
 };
 
 // Internal node that contains keys and pointers to right children nodes, and a
@@ -152,8 +149,10 @@ public:
 template<uint32_t NodeSize>
 class InternalNode : public Node {
 private:
+  static const uint32_t kMaxDataSize = NodeSize - sizeof(InternalNode<NodeSize>);
+
   Node *min_ptr_;  // Left-most child
-  uint32_t data_size_;  // Includes keys only, pointers are stored in InternalEntries
+  uint32_t data_size_;  // Inlcudes node entries + key/value pairs
   char data_[0];  // Must be the last element
 
 private:
@@ -161,20 +160,22 @@ private:
   void Split(InternalNode *&left, InternalNode *&right, Stack &stack);
 
 public:
-  InternalNode() : min_ptr_(nullptr), data_size_(0) {}
-  inline bool IsLeaf() override { return false; }
-  inline uint32_t DataCapacity() {
-    return NodeSize - sizeof(*this) - num_keys_ * sizeof(NodeEntry);
-  }
+  InternalNode() : Node(), min_ptr_(nullptr), data_size_(0) {}
+
+  inline virtual bool IsLeaf() override { return false; }
+  inline uint32_t KeyValueSize() { return data_size_ - sizeof(NodeEntry) * num_keys_; }
   inline NodeEntry &GetEntry(uint32_t idx) { return ((NodeEntry *)data_)[idx]; }
-  Node *GetChild(char *key, uint32_t key_size);
+  inline Node *MinPtr() { return min_ptr_; }
+
   static inline InternalNode *New() {
     InternalNode<NodeSize> *node = (InternalNode *)malloc(NodeSize);
+    memset(node, 0, NodeSize);
     new (node) InternalNode<NodeSize>;
     return node;
   }
+
+  Node *GetChild(char *key, uint32_t key_size);
   void Add(char *key, uint32_t key_size, Node *left_child, Node *right_child, bool &did_split, Stack &stack);
-  Node *MinPtr() { return min_ptr_; }
   void Dump() override;
 };
 
