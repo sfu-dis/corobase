@@ -19,8 +19,7 @@ TEST(LeafNode, InsertSplit) {
   std::random_shuffle(inputs.begin(), inputs.end());
 
   // Allocate a node
-  LeafNodeType *node = (LeafNodeType*)malloc(4096);
-  new (node) LeafNodeType;
+  LeafNodeType *node = LeafNodeType::New();
 
   // Insert all keys
   ermia::btree::Stack stack;
@@ -58,17 +57,13 @@ TEST(LeafNode, InsertSplit) {
     ASSERT_EQ(k, v - 1);
   }
   ASSERT_TRUE(inserted);
-
-  // Must <= 1: after split one might be 1 larger
-  int diff = node->GetRightSibling()->NumKeys() - kInserts;
-  ASSERT_TRUE(diff <= 1);
   free(node);
 }
 
 TEST(InternalNode, Insert) {
   // Prepare a list of integers to be inserted in random order
   std::vector<uint64_t> inputs;
-  // The 128-th insert will trigger a split
+  // The (kKey+1)-th insert will trigger a split
   const uint32_t kKeys = 127;
   for (uint64_t i = 0; i < kKeys + 1; ++i) {
     inputs.emplace_back(i);
