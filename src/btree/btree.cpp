@@ -9,6 +9,18 @@ namespace ermia {
 namespace btree {
 
 template<uint32_t NodeSize, class PayloadType>
+void LeafNode<NodeSize, PayloadType>::Dump() {
+  std::cout << "Dumping " << this << ": ";
+  for (uint32_t i = 0; i < num_keys_; ++i) {
+    auto &entry = GetEntry(i);
+    uint64_t key = *(uint64_t*)entry.GetKeyData();
+    uint64_t value = *(uint64_t*)entry.GetValueData();
+    std::cout << std::dec << key << " -> " << std::hex << value << " | " << std::dec;
+  }
+  std::cout << std::endl;
+}
+
+template<uint32_t NodeSize, class PayloadType>
 bool LeafNode<NodeSize, PayloadType>::Add(char *key,
                                           uint32_t key_size,
                                           PayloadType &payload,
