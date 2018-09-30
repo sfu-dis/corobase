@@ -54,7 +54,6 @@ bool DetectCPUCores() {
         memset(cpu_buf, 0, 8);
         sibling_file.getline(cpu_buf, 256, ',');
         threads.push_back(atoi(cpu_buf));
-        //break;
       }
 
       // A physical core?
