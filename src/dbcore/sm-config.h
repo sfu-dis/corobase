@@ -23,7 +23,6 @@ struct config {
   static const uint64_t GB = MB * 1024;
   static std::string tmpfs_dir;
   static bool htt_is_on;
-  static uint32_t max_threads_per_node;
   static uint32_t state;
   static bool enable_chkpt;
   static uint64_t chkpt_interval;

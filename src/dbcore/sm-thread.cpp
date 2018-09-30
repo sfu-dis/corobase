@@ -11,6 +11,7 @@ uint32_t next_thread_id = 0;
 node_thread_pool *thread_pools = nullptr;
 __thread uint32_t thread_id CACHE_ALIGNED;
 __thread bool thread_initialized CACHE_ALIGNED;
+uint32_t node_thread_pool::max_threads_per_node = 0;
 
 std::vector<CPUCore> cpu_cores;
 bool DetectCPUCores() {
@@ -58,7 +59,7 @@ bool DetectCPUCores() {
 
       // A physical core?
       if (cpu == threads[0]) {
-        cpu_cores.emplace_back(threads[0]);
+        cpu_cores.emplace_back(node, threads[0]);
         for (uint32_t i = 1; i < threads.size(); ++i) {
           cpu_cores[cpu_cores.size()-1].AddLogical(threads[i]);
         }
@@ -71,6 +72,60 @@ bool DetectCPUCores() {
     }
   }
   return true;
+}
+
+sm_thread::sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
+    : node(n),
+      core(c),
+      sys_cpu(sys_cpu),
+      shutdown(false),
+      state(kStateNoWork),
+      task(nullptr),
+      sleep_when_idle(true),
+      is_physical(is_physical) {
+  thd = std::move(std::thread(&sm_thread::idle_task, this));
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(sys_cpu, &cpuset);
+  int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
+                                  &cpuset);
+  LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
+  ALWAYS_ASSERT(rc == 0);
+}
+
+node_thread_pool::node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
+  ALWAYS_ASSERT(!numa_run_on_node(node));
+  threads = (sm_thread *)numa_alloc_onnode(
+      sizeof(sm_thread) * max_threads_per_node, node);
+
+  if (cpu_cores.size()) {
+    ALWAYS_ASSERT(cpu_cores.size() <= max_threads_per_node);
+    uint32_t core = 0;
+    for (uint32_t i = 0; i < cpu_cores.size(); ++i) {
+      auto &c = cpu_cores[i];
+      if (c.node == n) {
+        uint32_t sys_cpu = c.physical_thread;
+        new (threads + core) sm_thread(node, core, sys_cpu, true);
+        for (auto &sib : c.logical_threads) {
+          ++core;
+          new (threads + core) sm_thread(node, core, sib, false);
+        }
+        ++core;
+      }
+    }
+  }
+}
+
+void init() {
+  uint32_t nodes = numa_max_node() + 1;
+  node_thread_pool::max_threads_per_node = std::thread::hardware_concurrency() / nodes;
+  bool detected = thread::DetectCPUCores();
+  LOG_IF(FATAL, !detected);
+  thread_pools =
+      (node_thread_pool *)malloc(sizeof(node_thread_pool) * nodes);
+  for (uint16_t i = 0; i < nodes; i++) {
+    new (thread_pools + i) node_thread_pool(i);
+  }
 }
 
 void sm_thread::idle_task() {
