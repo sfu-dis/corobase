@@ -17,9 +17,17 @@
 namespace ermia {
 namespace thread {
 
-bool detect_phys_cores();
+struct CPUCore {
+  uint32_t physical_thread;
+  std::vector<uint32_t> logical_threads;
+  CPUCore(uint32_t phys) : physical_thread(phys) {}
+  void AddLogical(uint32_t t) { logical_threads.push_back(t); }
+};
 
-extern std::vector<uint32_t> phys_cores;
+extern std::vector<CPUCore> cpu_cores;
+
+bool DetectCPUCores();
+
 extern uint32_t
     next_thread_id;  // == total number of threads had so far - never decreases
 extern __thread uint32_t thread_id;
@@ -153,9 +161,9 @@ struct node_thread_pool {
     threads = (sm_thread *)numa_alloc_onnode(
         sizeof(sm_thread) * config::max_threads_per_node, node);
 
-    if (phys_cores.size()) {
+    if (cpu_cores.size()) {
       for (uint core = 0; core < config::max_threads_per_node; core++) {
-        uint32_t sys_cpu = phys_cores[node * config::max_threads_per_node + core];
+        uint32_t sys_cpu = cpu_cores[node * config::max_threads_per_node + core].physical_thread;
         new (threads + core) sm_thread(node, core, sys_cpu);
       }
     } else {

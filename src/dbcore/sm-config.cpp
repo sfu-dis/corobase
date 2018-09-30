@@ -73,7 +73,7 @@ void config::init() {
   // Figure out how many socket we will occupy here; this determines how
   // much memory we allocate for the centralized pool per socket too.
 
-  if (!thread::detect_phys_cores()) {
+  if (!thread::DetectCPUCores()) {
     const long ncpus = ::sysconf(_SC_NPROCESSORS_ONLN);
     ALWAYS_ASSERT(ncpus);
     max_threads_per_node = htt_is_on ? ncpus / 2 / (numa_max_node() + 1)
@@ -81,8 +81,8 @@ void config::init() {
   } else {
     LOG(INFO) << "Successfully detected physical cores, ignoring the -htt option";
     // HTT on/off doesn't matter here, we use physical cores only
-    max_threads_per_node = thread::phys_cores.size() / (numa_max_node() + 1);
-    ALWAYS_ASSERT(thread::phys_cores.size());
+    max_threads_per_node = thread::cpu_cores.size() / (numa_max_node() + 1);
+    ALWAYS_ASSERT(thread::cpu_cores.size());
   }
   numa_nodes = (threads + max_threads_per_node - 1) / max_threads_per_node;
 
