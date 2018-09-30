@@ -18,15 +18,17 @@ namespace ermia {
 namespace thread {
 
 struct CPUCore {
+  uint32_t node;
   uint32_t physical_thread;
   std::vector<uint32_t> logical_threads;
-  CPUCore(uint32_t phys) : physical_thread(phys) {}
+  CPUCore(uint32_t n, uint32_t phys) : node(n), physical_thread(phys) {}
   void AddLogical(uint32_t t) { logical_threads.push_back(t); }
 };
 
 extern std::vector<CPUCore> cpu_cores;
 
 bool DetectCPUCores();
+void init();
 
 extern uint32_t
     next_thread_id;  // == total number of threads had so far - never decreases
@@ -56,52 +58,12 @@ struct sm_thread {
   task_t task;
   char *task_input;
   bool sleep_when_idle;
+  bool is_physical;
 
   std::condition_variable trigger;
   std::mutex trigger_lock;
 
-  // Not recommended: only use when there isn't /proc/devices/cpu* available.
-  sm_thread(uint16_t n, uint16_t c)
-      : node(n),
-        core(c),
-        sys_cpu(-1),
-        shutdown(false),
-        state(kStateNoWork),
-        task(nullptr),
-        sleep_when_idle(true) {
-    thd = std::move(std::thread(&sm_thread::idle_task, this));
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    // Assuming a topology where all physical cores are listed first,
-    //       // ie 16-core cpu, 2-socket: 0-15 will be physical cores, 16 and
-    //       // beyond are hyper threads.
-    CPU_SET(core + node * config::max_threads_per_node, &cpuset);
-    int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
-                                    &cpuset);
-    LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
-    ALWAYS_ASSERT(rc == 0);
-  }
-
-  // Recommended: caller figure out the physical core's OS-given CPU number.
-  // Otherwise we have to guess in the other ctor that doesn't take sys_cpu.
-  sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu)
-      : node(n),
-        core(c),
-        sys_cpu(sys_cpu),
-        shutdown(false),
-        state(kStateNoWork),
-        task(nullptr),
-        sleep_when_idle(true) {
-    thd = std::move(std::thread(&sm_thread::idle_task, this));
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(sys_cpu, &cpuset);
-    int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
-                                    &cpuset);
-    LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
-    ALWAYS_ASSERT(rc == 0);
-  }
-
+  sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical);
   ~sm_thread() {}
 
   void idle_task();
@@ -132,23 +94,39 @@ struct sm_thread {
 };
 
 struct node_thread_pool {
+  static uint32_t max_threads_per_node;
   uint16_t node CACHE_ALIGNED;
   sm_thread *threads CACHE_ALIGNED;
   uint64_t bitmap CACHE_ALIGNED;  // max 64 threads per node, 1 - busy, 0 - free
 
-  inline sm_thread *get_thread() {
+  inline sm_thread *get_thread(bool physical = true) {
   retry:
     uint64_t b = volatile_read(bitmap);
-    auto xor_pos = b ^ (~uint64_t{0});
+    uint64_t xor_pos = b ^ (~uint64_t{0});
     uint64_t pos = __builtin_ctzll(xor_pos);
-    if (pos == config::max_threads_per_node) {
+    if (pos == max_threads_per_node) {
       return nullptr;
     }
+
+    sm_thread *t = threads + pos;
+    // Find the thread that matches the preferred type 
+    bool found = (t->is_physical != physical);
+    while (true) {
+      ++pos;
+      if (pos >= max_threads_per_node) {
+        return nullptr;
+      }
+      t = &threads[pos];
+      if ((!((1UL << pos) & b)) && (t->is_physical == physical)) {
+        break;
+      }
+    }
+
     if (not __sync_bool_compare_and_swap(&bitmap, b, b | (1UL << pos))) {
       goto retry;
     }
-    ALWAYS_ASSERT(pos < config::max_threads_per_node);
-    return threads + pos;
+    ALWAYS_ASSERT(pos < max_threads_per_node);
+    return t;
   }
 
   inline void put_thread(sm_thread *t) {
@@ -156,34 +134,10 @@ struct node_thread_pool {
     __sync_fetch_and_and(&bitmap, b);
   }
 
-  node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
-    ALWAYS_ASSERT(!numa_run_on_node(node));
-    threads = (sm_thread *)numa_alloc_onnode(
-        sizeof(sm_thread) * config::max_threads_per_node, node);
-
-    if (cpu_cores.size()) {
-      for (uint core = 0; core < config::max_threads_per_node; core++) {
-        uint32_t sys_cpu = cpu_cores[node * config::max_threads_per_node + core].physical_thread;
-        new (threads + core) sm_thread(node, core, sys_cpu);
-      }
-    } else {
-      // No desired /sys/devices interface, fallback to our assumption
-      for (uint core = 0; core < config::max_threads_per_node; core++) {
-        new (threads + core) sm_thread(node, core);
-      }
-    }
-  }
+  node_thread_pool(uint16_t n);
 };
 
 extern node_thread_pool *thread_pools;
-
-inline void init() {
-  thread_pools =
-      (node_thread_pool *)malloc(sizeof(node_thread_pool) * config::numa_nodes);
-  for (uint16_t i = 0; i < config::numa_nodes; i++) {
-    new (thread_pools + i) node_thread_pool(i);
-  }
-}
 
 inline sm_thread *get_thread(uint16_t from) {
   return thread_pools[from].get_thread();

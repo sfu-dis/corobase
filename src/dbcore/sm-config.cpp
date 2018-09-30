@@ -53,7 +53,6 @@ bool config::log_key_for_update = false;
 bool config::enable_chkpt = 0;
 uint64_t config::chkpt_interval = 50;
 bool config::phantom_prot = 0;
-uint32_t config::max_threads_per_node = 0;
 double config::cycles_per_byte = 0;
 uint32_t config::state = config::kStateLoading;
 int config::replay_policy = config::kReplayPipelined;
@@ -69,25 +68,9 @@ uint32_t config::command_log_buffer_mb = 16;
 
 void config::init() {
   ALWAYS_ASSERT(threads);
-  // We pin threads compactly, ie., socket by socket
-  // Figure out how many socket we will occupy here; this determines how
-  // much memory we allocate for the centralized pool per socket too.
-
-  if (!thread::DetectCPUCores()) {
-    const long ncpus = ::sysconf(_SC_NPROCESSORS_ONLN);
-    ALWAYS_ASSERT(ncpus);
-    max_threads_per_node = htt_is_on ? ncpus / 2 / (numa_max_node() + 1)
-                                     : ncpus / (numa_max_node() + 1);
-  } else {
-    LOG(INFO) << "Successfully detected physical cores, ignoring the -htt option";
-    // HTT on/off doesn't matter here, we use physical cores only
-    max_threads_per_node = thread::cpu_cores.size() / (numa_max_node() + 1);
-    ALWAYS_ASSERT(thread::cpu_cores.size());
-  }
-  numa_nodes = (threads + max_threads_per_node - 1) / max_threads_per_node;
-
   thread::init();
-
+  uint32_t max = thread::node_thread_pool::max_threads_per_node;
+  numa_nodes = (threads + max - 1) / max;
   if (num_backups) {
     enable_chkpt = true;
   }
