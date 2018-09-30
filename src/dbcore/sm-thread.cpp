@@ -12,8 +12,8 @@ node_thread_pool *thread_pools = nullptr;
 __thread uint32_t thread_id CACHE_ALIGNED;
 __thread bool thread_initialized CACHE_ALIGNED;
 
-std::vector<uint32_t> phys_cores;
-bool detect_phys_cores() {
+std::vector<CPUCore> cpu_cores;
+bool DetectCPUCores() {
   // FIXME(tzwang): Linux-specific way of querying NUMA topology
   //
   // We used to query /sys/devices/system/node/nodeX/cpulist to get a list of
@@ -38,7 +38,7 @@ bool detect_phys_cores() {
       }
       ALWAYS_ASSERT(info.st_mode & S_IFDIR);
 
-      // Make sure it's a physical thread, not a hyper-thread Query
+      // Make sure it's a physical thread, not a hyper-thread: Query
       // /sys/devices/system/cpu/cpuX/topology/thread_siblings_list, if the
       // first number matches X, then it's a physical core [1] (might not work
       // in virtualized environments like Xen).  [1]
@@ -48,17 +48,25 @@ bool detect_phys_cores() {
                                       "/topology/thread_siblings_list";
       char cpu_buf[8];
       memset(cpu_buf, 0, 8);
+      std::vector<uint32_t> threads;
       std::ifstream sibling_file(sibling_file_name);
       while (sibling_file.good()) {
         memset(cpu_buf, 0, 8);
         sibling_file.getline(cpu_buf, 256, ',');
-        break;
+        threads.push_back(atoi(cpu_buf));
+        //break;
       }
 
       // A physical core?
-      if (cpu == atoi(cpu_buf)) {
-        phys_cores.push_back(cpu);
-        LOG(INFO) << "Physical core: " << phys_cores[phys_cores.size()-1];
+      if (cpu == threads[0]) {
+        cpu_cores.emplace_back(threads[0]);
+        for (uint32_t i = 1; i < threads.size(); ++i) {
+          cpu_cores[cpu_cores.size()-1].AddLogical(threads[i]);
+        }
+        LOG(INFO) << "Physical core: " << cpu_cores[cpu_cores.size()-1].physical_thread;
+        for (uint32_t i = 0; i < cpu_cores[cpu_cores.size()-1].logical_threads.size(); ++i) {
+          LOG(INFO) << "Logical core: " << cpu_cores[cpu_cores.size()-1].logical_threads[i];
+        }
       }
       ++cpu;
     }
