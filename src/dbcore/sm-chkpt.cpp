@@ -328,16 +328,16 @@ void sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr* lm) {
   // Now deal with the real data, get many threads to do it in parallel
   std::vector<thread::Thread*> workers;
   for (uint32_t i = 0; i < num_recovery_threads; ++i) {
-    auto* t = thread::get_thread();
+    auto* t = thread::GetThread();
     ALWAYS_ASSERT(t);
     thread::Thread::task_t task = std::bind(&do_recovery, buf, i, nbytes);
-    t->start_task(task);
+    t->StartTask(task);
     workers.push_back(t);
   }
 
   for (auto& w : workers) {
-    w->join();
-    thread::put_thread(w);
+    w->Join();
+    thread::PutThread(w);
   }
   LOG(INFO) << "[Checkpoint] Recovered";
 }

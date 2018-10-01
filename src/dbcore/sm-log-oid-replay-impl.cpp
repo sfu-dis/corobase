@@ -52,15 +52,15 @@ LSN parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
 process:
   for (auto &r : redoers) {
     // Scan the rest of the log
-    if (not r.done and not r.is_impersonated() and r.try_impersonate()) {
-      r.start();
+    if (not r.done and not r.IsImpersonated() and r.TryImpersonate()) {
+      r.Start();
     }
   }
 
   // Loop over existing redoers to scavenge and reuse available threads
   while (done < redoers.size()) {
     for (auto &r : redoers) {
-      if (r.is_impersonated() and r.try_join()) {
+      if (r.IsImpersonated() and r.TryJoin()) {
         if (r.replayed_lsn > replayed_lsn) {
           replayed_lsn = r.replayed_lsn;
         }
@@ -166,7 +166,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
   RCU::rcu_exit();
 }
 
-void parallel_oid_replay::redo_runner::my_work(char *) {
+void parallel_oid_replay::redo_runner::MyWork(char *) {
   redo_partition();
   done = true;
   __sync_synchronize();
