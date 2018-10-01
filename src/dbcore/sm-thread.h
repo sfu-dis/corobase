@@ -43,7 +43,7 @@ inline uint32_t my_id() {
   return thread_id;
 }
 
-struct sm_thread {
+struct Thread {
   const uint8_t kStateHasWork = 1U;
   const uint8_t kStateSleep = 2U;
   const uint8_t kStateNoWork = 3U;
@@ -63,8 +63,8 @@ struct sm_thread {
   std::condition_variable trigger;
   std::mutex trigger_lock;
 
-  sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical);
-  ~sm_thread() {}
+  Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical);
+  ~Thread() {}
 
   void idle_task();
 
@@ -96,10 +96,10 @@ struct sm_thread {
 struct node_thread_pool {
   static uint32_t max_threads_per_node;
   uint16_t node CACHE_ALIGNED;
-  sm_thread *threads CACHE_ALIGNED;
+  Thread *threads CACHE_ALIGNED;
   uint64_t bitmap CACHE_ALIGNED;  // max 64 threads per node, 1 - busy, 0 - free
 
-  inline sm_thread *get_thread(bool physical = true) {
+  inline Thread *get_thread(bool physical = true) {
   retry:
     uint64_t b = volatile_read(bitmap);
     uint64_t xor_pos = b ^ (~uint64_t{0});
@@ -108,7 +108,7 @@ struct node_thread_pool {
       return nullptr;
     }
 
-    sm_thread *t = threads + pos;
+    Thread *t = threads + pos;
     // Find the thread that matches the preferred type 
     bool found = (t->is_physical != physical);
     while (true) {
@@ -129,7 +129,7 @@ struct node_thread_pool {
     return t;
   }
 
-  inline void put_thread(sm_thread *t) {
+  inline void put_thread(Thread *t) {
     auto b = ~uint64_t{1UL << (t - threads)};
     __sync_fetch_and_and(&bitmap, b);
   }
@@ -139,11 +139,11 @@ struct node_thread_pool {
 
 extern node_thread_pool *thread_pools;
 
-inline sm_thread *get_thread(uint16_t from) {
+inline Thread *get_thread(uint16_t from) {
   return thread_pools[from].get_thread();
 }
 
-inline sm_thread *get_thread(/* don't care where */) {
+inline Thread *get_thread(/* don't care where */) {
   for (uint16_t i = 0; i < config::numa_nodes; i++) {
     auto *t = thread_pools[i].get_thread();
     if (t) {
@@ -153,11 +153,11 @@ inline sm_thread *get_thread(/* don't care where */) {
   return nullptr;
 }
 
-inline void put_thread(sm_thread *t) { thread_pools[t->node].put_thread(t); }
+inline void put_thread(Thread *t) { thread_pools[t->node].put_thread(t); }
 
-// A wrapper that includes sm_thread for user code to use.
+// A wrapper that includes Thread for user code to use.
 // Benchmark and log replay threads deal with this only,
-// not with sm_thread.
+// not with Thread.
 struct sm_runner {
   sm_runner() : me(nullptr) {}
   ~sm_runner() {
@@ -170,7 +170,7 @@ struct sm_runner {
 
   inline void start() {
     ALWAYS_ASSERT(me);
-    thread::sm_thread::task_t t =
+    thread::Thread::task_t t =
         std::bind(&sm_runner::my_work, this, std::placeholders::_1);
     me->start_task(t);
   }
@@ -202,7 +202,7 @@ struct sm_runner {
     return false;
   }
 
-  sm_thread *me;
+  Thread *me;
 };
 }  // namespace thread
 }  // namespace ermia
