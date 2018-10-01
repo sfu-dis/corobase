@@ -74,7 +74,7 @@ bool DetectCPUCores() {
   return true;
 }
 
-sm_thread::sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
+Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
     : node(n),
       core(c),
       sys_cpu(sys_cpu),
@@ -83,7 +83,7 @@ sm_thread::sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
       task(nullptr),
       sleep_when_idle(true),
       is_physical(is_physical) {
-  thd = std::move(std::thread(&sm_thread::idle_task, this));
+  thd = std::move(std::thread(&Thread::idle_task, this));
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(sys_cpu, &cpuset);
@@ -95,8 +95,8 @@ sm_thread::sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
 
 node_thread_pool::node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
   ALWAYS_ASSERT(!numa_run_on_node(node));
-  threads = (sm_thread *)numa_alloc_onnode(
-      sizeof(sm_thread) * max_threads_per_node, node);
+  threads = (Thread *)numa_alloc_onnode(
+      sizeof(Thread) * max_threads_per_node, node);
 
   if (cpu_cores.size()) {
     ALWAYS_ASSERT(cpu_cores.size() <= max_threads_per_node);
@@ -105,10 +105,10 @@ node_thread_pool::node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
       auto &c = cpu_cores[i];
       if (c.node == n) {
         uint32_t sys_cpu = c.physical_thread;
-        new (threads + core) sm_thread(node, core, sys_cpu, true);
+        new (threads + core) Thread(node, core, sys_cpu, true);
         for (auto &sib : c.logical_threads) {
           ++core;
-          new (threads + core) sm_thread(node, core, sib, false);
+          new (threads + core) Thread(node, core, sib, false);
         }
         ++core;
       }
@@ -128,7 +128,7 @@ void init() {
   }
 }
 
-void sm_thread::idle_task() {
+void Thread::idle_task() {
   std::unique_lock<std::mutex> lock(trigger_lock);
 
 #if defined(SSN) || defined(SSI)
