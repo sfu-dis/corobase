@@ -68,8 +68,8 @@ uint32_t config::command_log_buffer_mb = 16;
 
 void config::init() {
   ALWAYS_ASSERT(threads);
-  thread::init();
-  uint32_t max = thread::node_thread_pool::max_threads_per_node;
+  thread::Initialize();
+  uint32_t max = thread::PerNodeThreadPool::max_threads_per_node;
   numa_nodes = (threads + max - 1) / max;
   if (num_backups) {
     enable_chkpt = true;

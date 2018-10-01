@@ -28,14 +28,14 @@ struct CPUCore {
 extern std::vector<CPUCore> cpu_cores;
 
 bool DetectCPUCores();
-void init();
+void Initialize();
 
 extern uint32_t
     next_thread_id;  // == total number of threads had so far - never decreases
 extern __thread uint32_t thread_id;
 extern __thread bool thread_initialized;
 
-inline uint32_t my_id() {
+inline uint32_t MyId() {
   if (!thread_initialized) {
     thread_id = __sync_fetch_and_add(&next_thread_id, 1);
     thread_initialized = true;
@@ -66,10 +66,10 @@ struct Thread {
   Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical);
   ~Thread() {}
 
-  void idle_task();
+  void IdleTask();
 
   // No CC whatsoever, caller must know what it's doing
-  inline void start_task(task_t t, char *input = nullptr) {
+  inline void StartTask(task_t t, char *input = nullptr) {
     task = t;
     task_input = input;
     auto s = __sync_val_compare_and_swap(&state, kStateNoWork, kStateHasWork);
@@ -83,23 +83,18 @@ struct Thread {
     }
   }
 
-  inline void join() {
-    while (volatile_read(state) == kStateHasWork) { /** spin **/
-    }
-  }
-
-  inline bool try_join() { return volatile_read(state) != kStateHasWork; }
-
-  inline void destroy() { volatile_write(shutdown, true); }
+  inline void Join() { while (volatile_read(state) == kStateHasWork) {} }
+  inline bool TryJoin() { return volatile_read(state) != kStateHasWork; }
+  inline void Destroy() { volatile_write(shutdown, true); }
 };
 
-struct node_thread_pool {
+struct PerNodeThreadPool {
   static uint32_t max_threads_per_node;
   uint16_t node CACHE_ALIGNED;
   Thread *threads CACHE_ALIGNED;
   uint64_t bitmap CACHE_ALIGNED;  // max 64 threads per node, 1 - busy, 0 - free
 
-  inline Thread *get_thread(bool physical = true) {
+  inline Thread *GetThread(bool physical = true) {
   retry:
     uint64_t b = volatile_read(bitmap);
     uint64_t xor_pos = b ^ (~uint64_t{0});
@@ -129,23 +124,23 @@ struct node_thread_pool {
     return t;
   }
 
-  inline void put_thread(Thread *t) {
+  inline void PutThread(Thread *t) {
     auto b = ~uint64_t{1UL << (t - threads)};
     __sync_fetch_and_and(&bitmap, b);
   }
 
-  node_thread_pool(uint16_t n);
+  PerNodeThreadPool(uint16_t n);
 };
 
-extern node_thread_pool *thread_pools;
+extern PerNodeThreadPool *thread_pools;
 
-inline Thread *get_thread(uint16_t from) {
-  return thread_pools[from].get_thread();
+inline Thread *GetThread(uint16_t from) {
+  return thread_pools[from].GetThread();
 }
 
-inline Thread *get_thread(/* don't care where */) {
+inline Thread *GetThread(/* don't care where */) {
   for (uint16_t i = 0; i < config::numa_nodes; i++) {
-    auto *t = thread_pools[i].get_thread();
+    auto *t = thread_pools[i].GetThread();
     if (t) {
       return t;
     }
@@ -153,49 +148,49 @@ inline Thread *get_thread(/* don't care where */) {
   return nullptr;
 }
 
-inline void put_thread(Thread *t) { thread_pools[t->node].put_thread(t); }
+inline void PutThread(Thread *t) { thread_pools[t->node].PutThread(t); }
 
 // A wrapper that includes Thread for user code to use.
 // Benchmark and log replay threads deal with this only,
 // not with Thread.
-struct sm_runner {
-  sm_runner() : me(nullptr) {}
-  ~sm_runner() {
+struct Runner {
+  Runner() : me(nullptr) {}
+  ~Runner() {
     if (me) {
-      join();
+      Join();
     }
   }
 
-  virtual void my_work(char *) = 0;
+  virtual void MyWork(char *) = 0;
 
-  inline void start() {
+  inline void Start() {
     ALWAYS_ASSERT(me);
     thread::Thread::task_t t =
-        std::bind(&sm_runner::my_work, this, std::placeholders::_1);
-    me->start_task(t);
+        std::bind(&Runner::MyWork, this, std::placeholders::_1);
+    me->StartTask(t);
   }
 
-  inline bool try_impersonate(bool sleep_when_idle = true) {
+  inline bool TryImpersonate(bool sleep_when_idle = true) {
     ALWAYS_ASSERT(not me);
-    me = thread::get_thread();
+    me = thread::GetThread();
     if (me) {
       me->sleep_when_idle = sleep_when_idle;
     }
     return me != nullptr;
   }
 
-  inline void join() {
-    me->join();
-    put_thread(me);
+  inline void Join() {
+    me->Join();
+    PutThread(me);
     me = nullptr;
   }
-  // Same as join(), but don't return the thread
-  inline void wait() { me->join(); }
-  inline bool try_wait() { return me->try_join(); }
-  inline bool is_impersonated() { return me != nullptr; }
-  inline bool try_join() {
-    if (me->try_join()) {
-      put_thread(me);
+  // Same as Join(), but don't return the thread
+  inline void Wait() { me->Join(); }
+  inline bool TryWait() { return me->TryJoin(); }
+  inline bool IsImpersonated() { return me != nullptr; }
+  inline bool TryJoin() {
+    if (me->TryJoin()) {
+      PutThread(me);
       me = nullptr;
       return true;
     }

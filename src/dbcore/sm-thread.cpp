@@ -8,10 +8,10 @@ namespace ermia {
 namespace thread {
 
 uint32_t next_thread_id = 0;
-node_thread_pool *thread_pools = nullptr;
+PerNodeThreadPool *thread_pools = nullptr;
 __thread uint32_t thread_id CACHE_ALIGNED;
 __thread bool thread_initialized CACHE_ALIGNED;
-uint32_t node_thread_pool::max_threads_per_node = 0;
+uint32_t PerNodeThreadPool::max_threads_per_node = 0;
 
 std::vector<CPUCore> cpu_cores;
 bool DetectCPUCores() {
@@ -83,7 +83,7 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
       task(nullptr),
       sleep_when_idle(true),
       is_physical(is_physical) {
-  thd = std::move(std::thread(&Thread::idle_task, this));
+  thd = std::move(std::thread(&Thread::IdleTask, this));
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(sys_cpu, &cpuset);
@@ -93,7 +93,7 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
   ALWAYS_ASSERT(rc == 0);
 }
 
-node_thread_pool::node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
+PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
   ALWAYS_ASSERT(!numa_run_on_node(node));
   threads = (Thread *)numa_alloc_onnode(
       sizeof(Thread) * max_threads_per_node, node);
@@ -116,19 +116,19 @@ node_thread_pool::node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
   }
 }
 
-void init() {
+void Initialize() {
   uint32_t nodes = numa_max_node() + 1;
-  node_thread_pool::max_threads_per_node = std::thread::hardware_concurrency() / nodes;
+  PerNodeThreadPool::max_threads_per_node = std::thread::hardware_concurrency() / nodes;
   bool detected = thread::DetectCPUCores();
   LOG_IF(FATAL, !detected);
   thread_pools =
-      (node_thread_pool *)malloc(sizeof(node_thread_pool) * nodes);
+      (PerNodeThreadPool *)malloc(sizeof(PerNodeThreadPool) * nodes);
   for (uint16_t i = 0; i < nodes; i++) {
-    new (thread_pools + i) node_thread_pool(i);
+    new (thread_pools + i) PerNodeThreadPool(i);
   }
 }
 
-void Thread::idle_task() {
+void Thread::IdleTask() {
   std::unique_lock<std::mutex> lock(trigger_lock);
 
 #if defined(SSN) || defined(SSI)

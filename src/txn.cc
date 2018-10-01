@@ -14,7 +14,7 @@ static __thread transaction::read_set_t *tls_read_set;
 write_set_t tls_write_set[config::MAX_THREADS];
 
 transaction::transaction(uint64_t flags, str_arena &sa)
-    : flags(flags), sa(&sa), write_set(tls_write_set[thread::my_id()]) {
+    : flags(flags), sa(&sa), write_set(tls_write_set[thread::MyId()]) {
   if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a

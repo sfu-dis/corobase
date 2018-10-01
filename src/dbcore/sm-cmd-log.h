@@ -92,7 +92,7 @@ public:
   void FlushDaemon();
   uint64_t Insert(uint32_t partition_id, uint32_t xct_type);
   inline uint64_t GetTlsOffset() {
-    return volatile_read(tls_offsets_[thread::my_id()]);
+    return volatile_read(tls_offsets_[thread::MyId()]);
   }
   inline char *GetBuffer() { return buffer_; }
   inline uint64_t DurableOffset() { return durable_offset_; }
