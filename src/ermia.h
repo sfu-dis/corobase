@@ -193,8 +193,6 @@ private:
   // expect_new indicates if we expect the record to not exist in the tree- is
   // just a hint that affects perf, not correctness. remove is put with nullptr
   // as value.
-  //
-  // NOTE: both key and value are expected to be stable values already
   rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
                  bool upsert, OID *inserted_oid);
 
@@ -233,91 +231,28 @@ private:
 };
 
 // User-facing masstree with decoupled index access
-class DecoupledMasstreeIndex : public OrderedIndex {
+class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
   friend class sm_log_recover_impl;
   friend class sm_chkpt_mgr;
-
-private:
-  ConcurrentMasstree masstree_;
-
-  struct SearchRangeCallback {
-    SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
-      : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
-    ~SearchRangeCallback() {}
-
-    inline bool Invoke(const ConcurrentMasstree::string_type &k, const varstr &v) {
-      return upcall->Invoke(k.data(), k.length(), v);
-    }
-
-    OrderedIndex::ScanCallback *upcall;
-    rc_t return_code;
-  };
-
-  struct XctSearchRangeCallback : public ConcurrentMasstree::low_level_search_range_callback {
-    constexpr XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
-        : t(t), caller_callback(caller_callback) {}
-
-    virtual void on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
-                              uint64_t version);
-    virtual bool invoke(const ConcurrentMasstree *btr_ptr,
-                        const typename ConcurrentMasstree::string_type &k,
-                        dbtuple *v,
-                        const typename ConcurrentMasstree::node_opaque_t *n,
-                        uint64_t version);
-
-   private:
-    transaction *const t;
-    SearchRangeCallback *const caller_callback;
-  };
-
-  struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
-    virtual void on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
-    virtual void on_node_success();
-    virtual void on_node_failure();
-
-   private:
-    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool> > spec_values;
-  };
-
-  // expect_new indicates if we expect the record to not exist in the tree- is
-  // just a hint that affects perf, not correctness. remove is put with nullptr
-  // as value.
-  //
-  // NOTE: both key and value are expected to be stable values already
-  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
-                 bool upsert, OID *inserted_oid);
-
-  static rc_t DoNodeRead(transaction *t,
-                         const ConcurrentMasstree::node_opaque_t *node,
-                         uint64_t version);
 
 public:
   DecoupledMasstreeIndex(std::string name, const char* primary);
 
-  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr);
+  /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
-    return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
   inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
-    return DoTreePut(*t, &key, &value, true, true, oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
-    return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
   }
   inline rc_t Remove(transaction *t, const varstr &key) override {
-    return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
             ScanCallback &callback, str_arena *arena) override;
   rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
                    ScanCallback &callback, str_arena *arena) override;
-
-  inline size_t Size() override { return masstree_.size(); }
-  std::map<std::string, uint64_t> Clear() override;
-  inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
-
-private:
-  bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
+  */
 };
 
 class SingleThreadedBTree : public OrderedIndex {
