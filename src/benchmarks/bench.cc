@@ -174,7 +174,7 @@ void bench_runner::run() {
       (ermia::config::is_backup_srv() && ermia::config::replay_threads && ermia::config::command_log)) {
     // Get a thread to use benchmark-provided prepare(), which gathers
     // information about index pointers created by create_file_task.
-    ermia::thread::Thread::task_t runner_task =
+    ermia::thread::Thread::Task runner_task =
       std::bind(&bench_runner::prepare, this, std::placeholders::_1);
     ermia::thread::Thread *runner_thread = ermia::thread::GetThread();
     runner_thread->StartTask(runner_task);

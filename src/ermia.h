@@ -18,10 +18,11 @@ public:
 
   // All supported index types
   static const uint16_t kIndexConcurrentMasstree = 0x1;
-  static const uint16_t kIndexSingleThreadedBTree = 0x2;
+  static const uint16_t kIndexDecoupledMasstree = 0x2;
+  static const uint16_t kIndexSingleThreadedBTree = 0x3;
 
-  inline void CreateMasstreeTable(const char *name, const char *primary_name = nullptr) {
-    CreateTable(kIndexConcurrentMasstree, name, primary_name);
+  inline void CreateMasstreeTable(const char *name, bool decoupled, const char *primary_name = nullptr) {
+    CreateTable(decoupled ? kIndexDecoupledMasstree : kIndexConcurrentMasstree, name, primary_name);
   }
   inline void CreateSingleThreadedBTreeTable(const char *name, const char *primary_name = nullptr) {
     CreateTable(kIndexSingleThreadedBTree, name, primary_name);
@@ -291,7 +292,7 @@ private:
                          uint64_t version);
 
 public:
-  ConcurrentMasstreeIndex(std::string name, const char* primary)
+  DecoupledMasstreeIndex(std::string name, const char* primary)
     : OrderedIndex(name, primary) {}
 
   virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;

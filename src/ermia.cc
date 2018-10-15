@@ -54,6 +54,9 @@ void Engine::CreateTable(uint16_t index_type, const char *name, const char *prim
     case kIndexConcurrentMasstree:
       index_desc = (new ConcurrentMasstreeIndex(name, primary_name))->GetDescriptor();
       break;
+    //case kIndexDecoupledMasstree:
+    //  index_desc = (new DecoupledMasstreeIndex(name, primary_name))->GetDescriptor();
+    //  break;
     case kIndexSingleThreadedBTree:
       index_desc = (new SingleThreadedBTree(name, primary_name))->GetDescriptor();
       break;
