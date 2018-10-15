@@ -80,7 +80,7 @@ void Engine::CreateTable(uint16_t index_type, const char *name, const char *prim
 
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread.
-    ermia::thread::Thread *thread = ermia::thread::GetThread();
+    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
     ALWAYS_ASSERT(thread);
     thread->StartTask(create_file);
     thread->Join();

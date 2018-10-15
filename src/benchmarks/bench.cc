@@ -176,7 +176,7 @@ void bench_runner::run() {
     // information about index pointers created by create_file_task.
     ermia::thread::Thread::Task runner_task =
       std::bind(&bench_runner::prepare, this, std::placeholders::_1);
-    ermia::thread::Thread *runner_thread = ermia::thread::GetThread();
+    ermia::thread::Thread *runner_thread = ermia::thread::GetThread(true /* physical */);
     runner_thread->StartTask(runner_task);
     runner_thread->Join();
     ermia::thread::PutThread(runner_thread);
