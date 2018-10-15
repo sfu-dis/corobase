@@ -1,4 +1,5 @@
 #pragma once
+#include "../dbcore/sm-oid.h"
 #include "../varstr.h"
 #include "../txn.h"
 
@@ -8,6 +9,8 @@ namespace ermia {
 namespace dia {
 
 void Initialize();
+void SendReadRequest(ermia::transaction *t, OrderedIndex *index,
+                     const varstr *key, varstr *value, OID *oid);
 
 // Structure that represents an index access request
 struct Request {
@@ -57,7 +60,8 @@ public:
       req = &requests[start];
     } while (!req->transaction);
   }
-  inline bool Enqueue(ermia::transaction *t, OrderedIndex *index, varstr *key, varstr *value, bool read) {
+  inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
+                      const varstr *key, varstr *value, bool is_read) {
     bool success = false;
     while (!success) {
       // tzwang: simple dumb solution; may get fancier if needed later.
@@ -85,6 +89,11 @@ private:
 
 public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {}
+
+  inline bool AddRequest(ermia::transaction *t, OrderedIndex *index,
+                         const varstr *key, varstr *value, OID *oid, bool is_read) {
+    queue.Enqueue(t, index, key, value, is_read);
+  }
   void MyWork(char *);
 };
 

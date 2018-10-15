@@ -3,9 +3,14 @@
 namespace ermia {
 namespace dia {
 
-std::vector<ermia::thread::Runner *> index_threads;
+std::vector<IndexThread *> index_threads;
 
 void Request::Execute() {
+}
+
+void SendReadRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, varstr *value, OID *oid) {
+  // FIXME(tzwang): find the right index thread using some partitioning scheme
+  index_threads[0]->AddRequest(t, index, key, value, oid, true);
 }
 
 // Prepare the extra index threads needed by DIA. The other compute threads

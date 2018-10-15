@@ -1,3 +1,4 @@
+#include "dbcore/sm-dia.h"
 #include "dbcore/rcu.h"
 #include "dbcore/sm-chkpt.h"
 #include "dbcore/sm-cmd-log.h"
@@ -346,7 +347,11 @@ bool SingleThreadedBTree::InsertIfAbsent(transaction *t, const varstr &key, OID 
 }
 
 DecoupledMasstreeIndex::DecoupledMasstreeIndex(std::string name, const char *primary)
-  : OrderedIndex(name, primary) {
+  : ConcurrentMasstreeIndex(name, primary) {
+}
+
+rc_t DecoupledMasstreeIndex::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+  ermia::dia::SendReadRequest(t, this, &key, &value, oid);
 }
 
 }  // namespace ermia
