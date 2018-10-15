@@ -18,26 +18,32 @@ struct Request {
   OrderedIndex *index;
   varstr *key;
   varstr *value;
-  bool read;
+  OID *oid_ptr;
+  bool is_read;
 
   // Point read/write request
   Request(ermia::transaction *t,
           OrderedIndex *index,
           varstr *key,
           varstr *value,
-          bool read)
+          bool is_read,
+          OID *oid)
     : transaction(t)
     , index(index)
     , key(key)
     , value(value)
-    , read(read) {}
+    , oid_ptr(oid)
+    , is_read(is_read)
+  {}
 
   Request()
     : transaction(nullptr)
     , index(nullptr)
     , key(nullptr)
     , value(nullptr)
-    , read(false) {}
+    , oid_ptr(nullptr)
+    , is_read(false)
+  {}
   void Execute();
 };
 
