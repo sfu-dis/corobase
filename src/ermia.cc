@@ -54,9 +54,9 @@ void Engine::CreateTable(uint16_t index_type, const char *name, const char *prim
     case kIndexConcurrentMasstree:
       index_desc = (new ConcurrentMasstreeIndex(name, primary_name))->GetDescriptor();
       break;
-    //case kIndexDecoupledMasstree:
-    //  index_desc = (new DecoupledMasstreeIndex(name, primary_name))->GetDescriptor();
-    //  break;
+    case kIndexDecoupledMasstree:
+      index_desc = (new DecoupledMasstreeIndex(name, primary_name))->GetDescriptor();
+      break;
     case kIndexSingleThreadedBTree:
       index_desc = (new SingleThreadedBTree(name, primary_name))->GetDescriptor();
       break;
@@ -343,6 +343,10 @@ rc_t SingleThreadedBTree::DoTreePut(transaction &t, const varstr *k, varstr *v, 
 bool SingleThreadedBTree::InsertIfAbsent(transaction *t, const varstr &key, OID oid) {
   return btree_.Insert((char *)key.data(), key.size(), oid);
   // TODO(tzwang): phantom protection
+}
+
+DecoupledMasstreeIndex::DecoupledMasstreeIndex(std::string name, const char *primary)
+  : OrderedIndex(name, primary) {
 }
 
 }  // namespace ermia
