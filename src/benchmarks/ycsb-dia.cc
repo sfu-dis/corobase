@@ -44,9 +44,9 @@ extern YcsbWorkload YcsbWorkloadH;
 
 extern YcsbWorkload ycsb_workload;
 
-class ycsb_dora_worker : public bench_worker {
+class ycsb_dia_worker : public bench_worker {
  public:
-  ycsb_dora_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+  ycsb_dia_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
@@ -84,7 +84,7 @@ class ycsb_dora_worker : public bench_worker {
   static rc_t TxnScan(bench_worker *w) { return {RC_TRUE}; }
 
   static rc_t TxnRMW(bench_worker *w) {
-    return static_cast<ycsb_dora_worker *>(w)->txn_rmw();
+    return static_cast<ycsb_dia_worker *>(w)->txn_rmw();
   }
 
   rc_t txn_rmw() {
@@ -184,10 +184,10 @@ class ycsb_usertable_loader : public bench_loader {
   }
 };
 
-class ycsb_dora_bench_runner : public bench_runner {
+class ycsb_dia_bench_runner : public bench_runner {
  public:
-  ycsb_dora_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    db->CreateSingleThreadedBTreeTable("USERTABLE");
+  ycsb_dia_bench_runner(ermia::Engine *db) : bench_runner(db) {
+    db->CreateMasstreeTable("USERTABLE", true /* decoupled index access */);
   }
 
   virtual void prepare(char *) {
@@ -210,14 +210,14 @@ class ycsb_dora_bench_runner : public bench_runner {
     util::fast_random r(8544290);
     std::vector<bench_worker *> ret;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-      ret.push_back(new ycsb_dora_worker(i, r.next(), db, open_tables, &barrier_a,
+      ret.push_back(new ycsb_dia_worker(i, r.next(), db, open_tables, &barrier_a,
                                     &barrier_b));
     }
     return ret;
   }
 };
 
-void ycsb_dora_do_test(ermia::Engine *db, int argc, char **argv) {
+void ycsb_dia_do_test(ermia::Engine *db, int argc, char **argv) {
   // varstr header followed by the actual key data (uint64_t)
   key_arena = (YcsbKey *)malloc(sizeof(YcsbKey) + sizeof(uint64_t));
   new (key_arena) YcsbKey();
@@ -297,6 +297,6 @@ void ycsb_dora_do_test(ermia::Engine *db, int argc, char **argv) {
          << "  sort load keys:             " << g_sort_load_keys << std::endl;
   }
 
-  ycsb_dora_bench_runner r(db);
+  ycsb_dia_bench_runner r(db);
   r.run();
 }

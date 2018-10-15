@@ -48,14 +48,14 @@ struct Thread {
   const uint8_t kStateSleep = 2U;
   const uint8_t kStateNoWork = 3U;
 
-  typedef std::function<void(char *task_input)> task_t;
+  typedef std::function<void(char *task_input)> Task;
   std::thread thd;
   uint16_t node;
   uint16_t core;
   uint32_t sys_cpu;  // OS-given CPU number
   bool shutdown;
   uint8_t state;
-  task_t task;
+  Task task;
   char *task_input;
   bool sleep_when_idle;
   bool is_physical;
@@ -69,7 +69,7 @@ struct Thread {
   void IdleTask();
 
   // No CC whatsoever, caller must know what it's doing
-  inline void StartTask(task_t t, char *input = nullptr) {
+  inline void StartTask(Task t, char *input = nullptr) {
     task = t;
     task_input = input;
     auto s = __sync_val_compare_and_swap(&state, kStateNoWork, kStateHasWork);
@@ -233,7 +233,7 @@ struct Runner {
 
   inline void Start() {
     ALWAYS_ASSERT(me);
-    thread::Thread::task_t t =
+    thread::Thread::Task t =
         std::bind(&Runner::MyWork, this, std::placeholders::_1);
     me->StartTask(t);
   }
