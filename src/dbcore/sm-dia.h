@@ -8,15 +8,13 @@ namespace ermia {
 namespace dia {
 
 // Structure that represents an index access request
-class Request {
-private:
+struct Request {
   ermia::transaction *transaction;
   OrderedIndex *index;
   varstr *key;
   varstr *value;
   bool read;
 
-public:
   // Point read/write request
   Request(ermia::transaction *t,
           OrderedIndex *index,
@@ -41,24 +39,35 @@ public:
 // Request queue (single-consumer, single producer)
 class RequestQueue {
 private:
-  const static uint32_t kMaxSize = 10000;
+  const static uint32_t kMaxSize = 32768;
   Request requests[kMaxSize];
-  uint32_t size;
+  uint32_t start;
+  uint32_t next_free_pos;
 
 public:
-  RequestQueue() : size(0) {}
-  ~RequestQueue() { size = 0; }
-  inline void Enqueue(ermia::transaction *t, OrderedIndex *index, varstr *key, varstr *value, bool read) {
+  RequestQueue() : start(0), next_free_pos(0) {}
+  ~RequestQueue() { start = next_free_pos = 0; }
+  inline bool Enqueue(ermia::transaction *t, OrderedIndex *index, varstr *key, varstr *value, bool read) {
+    uint32_t pos = volatile_read(next_free_pos);
+    volatile_write(next_free_pos, (pos + 1) % kMaxSize);
+    Request &req = requests[pos];
+    while (volatile_read(req.transaction)) {}
   }
   inline void Dequeue() {
+    uint32_t pos = volatile_read(start);
+    Request &req = requests[pos];
+    volatile_write(req.transaction, nullptr);
+    volatile_write(start, (pos + 1) % kMaxSize);
   }
 };
 
-// Spawn index access threads
-void Initialize();
+class IndexThread : public ermia::thread::Runner {
+public:
+  IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {}
+  void MyWork(char *);
+};
 
-// Index thread routine
-void IndexThreadTask(char *);
+void Initialize();
 
 }  // namespace dia
 }  // namespace ermia

@@ -328,7 +328,7 @@ void sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr* lm) {
   // Now deal with the real data, get many threads to do it in parallel
   std::vector<thread::Thread*> workers;
   for (uint32_t i = 0; i < num_recovery_threads; ++i) {
-    auto* t = thread::GetThread();
+    auto* t = thread::GetThread(true /* physical */);
     ALWAYS_ASSERT(t);
     thread::Thread::Task task = std::bind(&do_recovery, buf, i, nbytes);
     t->StartTask(task);

@@ -188,11 +188,11 @@ struct PerNodeThreadPool {
 
 extern PerNodeThreadPool *thread_pools;
 
-inline Thread *GetThread(uint16_t from, bool physical = true) {
+inline Thread *GetThread(uint16_t from, bool physical) {
   return thread_pools[from].GetThread(physical);
 }
 
-inline Thread *GetThread(bool physical = true /* don't care where */) {
+inline Thread *GetThread(bool physical /* don't care where */) {
   for (uint16_t i = 0; i < config::numa_nodes; i++) {
     auto *t = thread_pools[i].GetThread(physical);
     if (t) {
@@ -222,7 +222,7 @@ inline void PutThread(Thread *t) { thread_pools[t->node].PutThread(t); }
 // Benchmark and log replay threads deal with this only,
 // not with Thread.
 struct Runner {
-  Runner() : me(nullptr) {}
+  Runner(bool physical = true) : me(nullptr), physical(physical) {}
   ~Runner() {
     if (me) {
       Join();
@@ -240,7 +240,8 @@ struct Runner {
 
   inline bool TryImpersonate(bool sleep_when_idle = true) {
     ALWAYS_ASSERT(not me);
-    me = thread::GetThread();
+    me = thread::GetThread(physical);
+    LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
     if (me) {
       me->sleep_when_idle = sleep_when_idle;
     }
@@ -266,6 +267,7 @@ struct Runner {
   }
 
   Thread *me;
+  bool physical;
 };
 }  // namespace thread
 }  // namespace ermia
