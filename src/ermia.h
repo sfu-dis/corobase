@@ -292,8 +292,7 @@ private:
                          uint64_t version);
 
 public:
-  DecoupledMasstreeIndex(std::string name, const char* primary)
-    : OrderedIndex(name, primary) {}
+  DecoupledMasstreeIndex(std::string name, const char* primary);
 
   virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
