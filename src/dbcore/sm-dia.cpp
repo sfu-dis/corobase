@@ -1,3 +1,4 @@
+#include "../ermia.h"
 #include "sm-dia.h"
 
 namespace ermia {
@@ -36,7 +37,10 @@ void IndexThread::MyWork(char *) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
     if (t) {
-      // TODO: process it
+      auto &req = queue.GetNextRequest();
+      if (req.is_read) {
+        req.index->Get(req.transaction, *req.key, *req.value, req.oid_ptr);
+      }
       queue.Dequeue();
     }
   }
