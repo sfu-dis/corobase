@@ -7,6 +7,8 @@
 namespace ermia {
 namespace dia {
 
+void Initialize();
+
 // Structure that represents an index access request
 struct Request {
   ermia::transaction *transaction;
@@ -36,23 +38,39 @@ struct Request {
   void Execute();
 };
 
-// Request queue (single-consumer, single producer)
+// Request queue (multi-producer, single-consumer)
 class RequestQueue {
 private:
   const static uint32_t kMaxSize = 32768;
   Request requests[kMaxSize];
   uint32_t start;
-  uint32_t next_free_pos;
+  std::atomic<uint32_t> next_free_pos;
 
 public:
-  RequestQueue() : start(0), next_free_pos(0) {}
-  ~RequestQueue() { start = next_free_pos = 0; }
-  inline bool Enqueue(ermia::transaction *t, OrderedIndex *index, varstr *key, varstr *value, bool read) {
-    uint32_t pos = volatile_read(next_free_pos);
-    volatile_write(next_free_pos, (pos + 1) % kMaxSize);
-    Request &req = requests[pos];
-    while (volatile_read(req.transaction)) {}
+  RequestQueue() : start(0), next_free_pos(0) {
+    ALWAYS_ASSERT(kMaxSize >= ermia::config::worker_threads);
   }
+  ~RequestQueue() { start = next_free_pos = 0; }
+  inline Request &GetNextRequest() {
+    Request *req = nullptr;
+    do {
+      req = &requests[start];
+    } while (!req->transaction);
+  }
+  inline bool Enqueue(ermia::transaction *t, OrderedIndex *index, varstr *key, varstr *value, bool read) {
+    bool success = false;
+    while (!success) {
+      // tzwang: simple dumb solution; may get fancier if needed later.
+      // First try to get a possible slot in the queue, then wait for the slot to
+      // become available - there might be multiple threads (very rare) that got
+      // the same slot number, so use a CAS to claim it.
+      uint32_t pos = next_free_pos.fetch_add(1, std::memory_order_release) % kMaxSize;
+      Request &req = requests[pos];
+      while (volatile_read(req.transaction)) {}
+      success = __sync_bool_compare_and_swap(&req.transaction, nullptr, t);
+    }
+  }
+  // Only one guy can call this
   inline void Dequeue() {
     uint32_t pos = volatile_read(start);
     Request &req = requests[pos];
@@ -62,12 +80,13 @@ public:
 };
 
 class IndexThread : public ermia::thread::Runner {
+private:
+  RequestQueue queue;
+
 public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {}
   void MyWork(char *);
 };
-
-void Initialize();
 
 }  // namespace dia
 }  // namespace ermia
