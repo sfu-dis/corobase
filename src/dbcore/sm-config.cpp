@@ -92,5 +92,5 @@ void sanity_check() {
   }
 }
 
-} // namespace config
+}  // namespace config
 }  // namespace ermia

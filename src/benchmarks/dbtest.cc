@@ -7,6 +7,7 @@
 #include <gflags/gflags.h>
 
 #include "bench.h"
+#include "../dbcore/sm-dia.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
@@ -408,6 +409,9 @@ int main(int argc, char **argv) {
   ermia::config::sanity_check();
   ermia::Engine *db = NULL;
   db = new ermia::Engine();
+  if (FLAGS_dia) {
+    ermia::dia::Initialize();
+  }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
     test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
@@ -419,6 +423,11 @@ int main(int argc, char **argv) {
     LOG(FATAL) << "Invalid benchmark: " << FLAGS_benchmark;
   }
 
+  // FIXME(tzwang): the current thread doesn't belong to the thread pool, and
+  // it could be on any node. But not all nodes will be used by benchmark
+  // (i.e., config::numa_nodes) and so not all nodes will have memory pool. So
+  // here run on the first NUMA node to ensure we got a place to allocate memory
+  numa_run_on_node(0);
   test_fn(db, argc, new_argv);
   delete db;
   return 0;

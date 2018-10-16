@@ -89,7 +89,9 @@ class ycsb_worker : public bench_worker {
 
   static rc_t TxnInsert(bench_worker *w) { return {RC_TRUE}; }
 
-  static rc_t TxnRead(bench_worker *w) { return {RC_TRUE}; }
+  static rc_t TxnRead(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_read();
+  }
 
   static rc_t TxnUpdate(bench_worker *w) { return {RC_TRUE}; }
 
@@ -97,6 +99,19 @@ class ycsb_worker : public bench_worker {
 
   static rc_t TxnRMW(bench_worker *w) {
     return static_cast<ycsb_worker *>(w)->txn_rmw();
+  }
+
+  rc_t txn_read() {
+    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+    arena.reset();
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      auto &k = build_rmw_key(worker_id);
+      ermia::varstr v = str(sizeof(YcsbRecord));
+      // TODO(tzwang): add read/write_all_fields knobs
+      TryCatch(tbl->Get(txn, k, v));  // Read
+    }
+    TryCatch(db->Commit(txn));
+    return {RC_TRUE};
   }
 
   rc_t txn_rmw() {

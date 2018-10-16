@@ -10,16 +10,18 @@ namespace dia {
 
 void Initialize();
 void SendReadRequest(ermia::transaction *t, OrderedIndex *index,
-                     const varstr *key, varstr *value, OID *oid);
+                     const varstr *key, varstr *value,
+                     OID *oid, bool *finished);
 
 // Structure that represents an index access request
 struct Request {
   ermia::transaction *transaction;
   OrderedIndex *index;
-  varstr *key;
+  const varstr *key;
   varstr *value;
   OID *oid_ptr;
   bool is_read;
+  bool *finished;
 
   // Point read/write request
   Request(ermia::transaction *t,
@@ -27,13 +29,15 @@ struct Request {
           varstr *key,
           varstr *value,
           bool is_read,
-          OID *oid)
+          OID *oid,
+          bool *finished)
     : transaction(t)
     , index(index)
     , key(key)
     , value(value)
     , oid_ptr(oid)
     , is_read(is_read)
+    , finished(finished)
   {}
 
   Request()
@@ -43,6 +47,7 @@ struct Request {
     , value(nullptr)
     , oid_ptr(nullptr)
     , is_read(false)
+    , finished(nullptr)
   {}
   void Execute();
 };
@@ -64,10 +69,14 @@ public:
     Request *req = nullptr;
     do {
       req = &requests[start];
-    } while (!req->transaction);
+    } while (!volatile_read(req->transaction));
+    // Wait for the busy bit to be reset (shuold be very rare)
+    while ((uint64_t)(volatile_read(req->transaction)) & (1UL << 63)) {}
+    return *req;
   }
   inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
-                      const varstr *key, varstr *value, bool is_read) {
+                      const varstr *key, varstr *value,
+                      bool is_read, bool *finished) {
     bool success = false;
     while (!success) {
       // tzwang: simple dumb solution; may get fancier if needed later.
@@ -77,7 +86,21 @@ public:
       uint32_t pos = next_free_pos.fetch_add(1, std::memory_order_release) % kMaxSize;
       Request &req = requests[pos];
       while (volatile_read(req.transaction)) {}
-      success = __sync_bool_compare_and_swap(&req.transaction, nullptr, t);
+
+      // We have more than the transaction to update in the slot, so mark it in
+      // the MSB as 'busy'
+      success = __sync_bool_compare_and_swap(&req.transaction, nullptr,
+        (ermia::transaction *)((uint64_t)t | (1UL << 63)));
+      req.index = index;
+      req.key = key;
+      req.value = value;
+      req.is_read = is_read;
+      req.finished = finished;
+
+      // Now toggle the busy bit so it's really ready
+      COMPILER_MEMORY_FENCE;
+      uint64_t new_val = (uint64_t)req.transaction & (~(1UL << 63));
+      req.transaction = (ermia::transaction *)new_val;
     }
   }
   // Only one guy can call this
@@ -97,8 +120,9 @@ public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {}
 
   inline bool AddRequest(ermia::transaction *t, OrderedIndex *index,
-                         const varstr *key, varstr *value, OID *oid, bool is_read) {
-    queue.Enqueue(t, index, key, value, is_read);
+                         const varstr *key, varstr *value, OID *oid,
+                         bool is_read, bool *finished) {
+    queue.Enqueue(t, index, key, value, is_read, finished);
   }
   void MyWork(char *);
 };
