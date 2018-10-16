@@ -9,9 +9,9 @@ std::vector<IndexThread *> index_threads;
 void Request::Execute() {
 }
 
-void SendReadRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, varstr *value, OID *oid) {
+void SendReadRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, varstr *value, OID *oid, bool *finished) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  index_threads[0]->AddRequest(t, index, key, value, oid, true);
+  index_threads[0]->AddRequest(t, index, key, value, oid, true, finished);
 }
 
 // Prepare the extra index threads needed by DIA. The other compute threads
@@ -27,22 +27,24 @@ void Initialize() {
 
   for (auto t : index_threads) {
     while (!t->TryImpersonate()) {}
+    t->Start();
   }
 }
 
 // The actual index access goes here
 void IndexThread::MyWork(char *) {
+  LOG(INFO) << "Index thread started";
   // FIXME(tzwang): Process requests in batches
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
-    if (t) {
-      auto &req = queue.GetNextRequest();
-      if (req.is_read) {
-        req.index->Get(req.transaction, *req.key, *req.value, req.oid_ptr);
-      }
-      queue.Dequeue();
+    ALWAYS_ASSERT(t);
+    ALWAYS_ASSERT(req.is_read);
+    if (req.is_read) {
+      req.index->DiaGet(req.transaction, *req.key, *req.value, req.oid_ptr);
+      volatile_write(*req.finished, true);
     }
+    queue.Dequeue();
   }
 }
 

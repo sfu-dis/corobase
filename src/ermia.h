@@ -4,6 +4,7 @@
 
 #include "btree/btree.h"
 #include "txn.h"
+#include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
 
 namespace ermia {
@@ -134,6 +135,9 @@ public:
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
 
+  // Index designed for DIA will overload this function, others don't care
+  rc_t DiaGet(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) {}
+
 protected:
   /**
    * Insert key-oid pair to the underlying actual index structure.
@@ -234,6 +238,13 @@ private:
 class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
   friend class sm_log_recover_impl;
   friend class sm_chkpt_mgr;
+  friend class dia::IndexThread;
+
+private:
+  // Interfaces for DIA to operate on the underlying index directly
+  inline rc_t DiaGet(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) {
+    return ConcurrentMasstreeIndex::Get(t, key, value, oid);
+  }
 
 public:
   DecoupledMasstreeIndex(std::string name, const char* primary);

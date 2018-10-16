@@ -351,7 +351,9 @@ DecoupledMasstreeIndex::DecoupledMasstreeIndex(std::string name, const char *pri
 }
 
 rc_t DecoupledMasstreeIndex::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
-  ermia::dia::SendReadRequest(t, this, &key, &value, oid);
+  bool finished = false;
+  ermia::dia::SendReadRequest(t, this, &key, &value, oid, &finished);
+  while (!volatile_read(finished)) {}
 }
 
 }  // namespace ermia
