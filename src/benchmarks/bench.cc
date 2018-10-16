@@ -272,7 +272,7 @@ void bench_runner::run() {
     if (ermia::config::enable_chkpt) {
       ermia::chkptmgr->start_chkpt_thread();
     }
-    volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
+    ermia::volatile_write(ermia::config::state, ermia::config::kStateForwardProcessing);
   }
 
   // Start a thread that dumps read view LSN
@@ -457,7 +457,7 @@ void bench_runner::start_measurement() {
   }
   running = false;
 
-  volatile_write(ermia::config::state, ermia::config::kStateShutdown);
+  ermia::volatile_write(ermia::config::state, ermia::config::kStateShutdown);
   for (size_t i = 0; i < ermia::config::worker_threads; i++) {
     workers[i]->Join();
   }
