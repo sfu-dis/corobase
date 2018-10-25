@@ -86,7 +86,7 @@ protected:
     void ReadList(istream &tmpFile)
     {
         T   row;
-        memset(&row, 0, sizeof(row));
+        memset((char*)&row, 0, sizeof(row));
 
         while(tmpFile.good())
         {

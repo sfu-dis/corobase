@@ -136,7 +136,7 @@ public:
   virtual void SetArrays() = 0;
 
   // Index designed for DIA will overload this function, others don't care
-  rc_t DiaGet(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) {}
+  rc_t DiaGet(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) { return rc_t{RC_TRUE}; }
 
 protected:
   /**
@@ -291,12 +291,12 @@ public:
     return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            ScanCallback &callback, str_arena *arena) override { /* Not implemented */ }
+            ScanCallback &callback, str_arena *arena) override { return rc_t{RC_TRUE}; /* Not implemented */ }
   rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-                   ScanCallback &callback, str_arena *arena) override { /* Not implemented */ }
+                   ScanCallback &callback, str_arena *arena) override { return rc_t{RC_TRUE}; /* Not implemented */ }
 
-  inline size_t Size() override { /* Not implemented */ }
-  std::map<std::string, uint64_t> Clear() { /* Not implemented */ }
+  inline size_t Size() override { return 0; /* Not implemented */ }
+  std::map<std::string, uint64_t> Clear() override { std::map<std::string, uint64_t> unused; return unused; /* Not implemented */ }
   inline void SetArrays() override { /* Not implemented */ }
 };
 }  // namespace ermia
