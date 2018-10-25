@@ -58,6 +58,7 @@ public:
 
         // Execute Frame 1
         TryReturn(m_db->DoDataMaintenanceFrame1(pTxnInput));
+        return rc_t{RC_TRUE};
     }
 };
 

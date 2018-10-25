@@ -101,6 +101,7 @@ bool LeafNode<NodeSize, PayloadType>::Add(char *key,
   }
 
   // Check space
+  static const uint32_t kMaxDataSize = NodeSize - sizeof(LeafNode<NodeSize, PayloadType>);
   if (key_size + sizeof(payload) + sizeof(NodeEntry) + data_size_ > kMaxDataSize) {
     // Need split
     LeafNode<NodeSize, PayloadType> *left = nullptr, *right = nullptr;
@@ -137,6 +138,7 @@ void LeafNode<NodeSize, PayloadType>::InsertAt(uint32_t idx,
 
   // Now the idx-th slot is ready
   NodeEntry *entry = (NodeEntry *)data_ + idx;
+  static const uint32_t kMaxDataSize = NodeSize - sizeof(LeafNode<NodeSize, PayloadType>);
   char *data_start = data_ + kMaxDataSize - KeyValueSize() - sizeof(payload) - key_size;
   new (entry) NodeEntry(key_size, sizeof(payload), data_start, key, (char*)&payload);
   assert(memcmp(entry->GetKeyData(), key, key_size) == 0);
@@ -213,6 +215,7 @@ void InternalNode<NodeSize>::Add(char *key, uint32_t key_size,
 
   did_split = false;
   // Check space
+  static const uint32_t kMaxDataSize = NodeSize - sizeof(InternalNode<NodeSize>);
   if (key_size + sizeof(right_child) + sizeof(NodeEntry) + data_size_ > kMaxDataSize) {
     // Need split
     InternalNode<NodeSize> *left = nullptr, *right = nullptr;
@@ -291,6 +294,7 @@ void InternalNode<NodeSize>::InsertAt(uint32_t idx,
   NodeEntry &entry = GetEntry(idx);
 
   // right_child goes to the value space 
+  static const uint32_t kMaxDataSize = NodeSize - sizeof(InternalNode<NodeSize>);
   char *data_start = data_ + kMaxDataSize - KeyValueSize() - key_size - sizeof(Node*);
   new (&entry) NodeEntry(key_size, sizeof(Node*), data_start, key, (char*)&right_child);
   assert(memcmp(entry.GetKeyData(), key, key_size) == 0);

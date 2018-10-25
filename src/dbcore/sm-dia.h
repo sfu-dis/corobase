@@ -119,7 +119,7 @@ private:
 public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {}
 
-  inline bool AddRequest(ermia::transaction *t, OrderedIndex *index,
+  inline void AddRequest(ermia::transaction *t, OrderedIndex *index,
                          const varstr *key, varstr *value, OID *oid,
                          bool is_read, bool *finished) {
     queue.Enqueue(t, index, key, value, is_read, finished);

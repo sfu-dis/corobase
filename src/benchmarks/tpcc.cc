@@ -199,7 +199,7 @@ class tpcc_worker_mixin : private _dummy {
     // XXX(stephentu): implement a scalable GetCurrentTimeMillis()
     // for now, we just give each core an increasing number
 
-    static __thread uint32_t tl_hack = 0;
+    static thread_local uint32_t tl_hack = 0;
     return tl_hack++;
   }
 
@@ -1625,7 +1625,7 @@ rc_t tpcc_worker::txn_credit_check() {
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    static __thread credit_check_order_line_scan_callback c_ol(s_arena.get());
+    static thread_local credit_check_order_line_scan_callback c_ol(s_arena.get());
     c_ol._v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
@@ -1725,7 +1725,7 @@ rc_t tpcc_worker::txn_payment() {
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
     static const std::string zeros(16, 0);
-    static const std::string ones(16, 255);
+    static const std::string ones(16, (char)255);
 
     customer_name_idx::key k_c_idx_0;
     k_c_idx_0.c_w_id = customerWarehouseID;
@@ -1875,7 +1875,7 @@ rc_t tpcc_worker::txn_order_status() {
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
     static const std::string zeros(16, 0);
-    static const std::string ones(16, 255);
+    static const std::string ones(16, (char)255);
 
     customer_name_idx::key k_c_idx_0;
     k_c_idx_0.c_w_id = warehouse_id;
@@ -2059,7 +2059,7 @@ rc_t tpcc_worker::txn_query2() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
-  static __thread tpcc_table_scanner r_scanner(&arena);
+  static thread_local tpcc_table_scanner r_scanner(&arena);
   r_scanner.clear();
   const region::key k_r_0(0);
   const region::key k_r_1(5);
@@ -2068,7 +2068,7 @@ rc_t tpcc_worker::txn_query2() {
                                 s_arena.get()));
   ALWAYS_ASSERT(r_scanner.output.size() == 5);
 
-  static __thread tpcc_table_scanner n_scanner(&arena);
+  static thread_local tpcc_table_scanner n_scanner(&arena);
   n_scanner.clear();
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
@@ -2818,7 +2818,7 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
     GetNonUniformCustomerLastNameRun(lastname_buf, r);
 
     static const std::string zeros(16, 0);
-    static const std::string ones(16, 255);
+    static const std::string ones(16, (char)255);
 
     customer_name_idx::key k_c_idx_0;
     k_c_idx_0.c_w_id = customerWarehouseID;

@@ -94,6 +94,7 @@ class bench_worker : public ermia::thread::Runner {
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
     TryImpersonate();
   }
+  ~bench_worker() {}
 
   /* For the r/w workload using command log shipping on backups */
   typedef rc_t (*cmdlog_redo_fn_t)(bench_worker *, void * /* parameters */);
