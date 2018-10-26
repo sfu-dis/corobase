@@ -99,8 +99,11 @@ PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
       sizeof(Thread) * max_threads_per_node, node);
 
   if (cpu_cores.size()) {
-    ALWAYS_ASSERT(cpu_cores.size() <= max_threads_per_node);
-    uint32_t core = 0;
+    uint32_t total_numa_nodes = numa_max_node() + 1;
+    ALWAYS_ASSERT(cpu_cores.size() / total_numa_nodes <= max_threads_per_node);
+    LOG(INFO) << "Node " << n << " has " << cpu_cores.size() / total_numa_nodes
+              << " physical cores, " << max_threads_per_node
+              << " threads"; uint32_t core = 0;
     for (uint32_t i = 0; i < cpu_cores.size(); ++i) {
       auto &c = cpu_cores[i];
       if (c.node == n) {
