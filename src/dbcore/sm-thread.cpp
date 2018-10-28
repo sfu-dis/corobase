@@ -185,5 +185,78 @@ void Thread::IdleTask() {
 #endif
 }
 
+Thread *PerNodeThreadPool::GetThread(bool physical) {
+retry:
+  uint64_t b = volatile_read(bitmap);
+  uint64_t xor_pos = b ^ (~uint64_t{0});
+  uint64_t pos = __builtin_ctzll(xor_pos);
+
+  Thread *t = threads + pos;
+  // Find the thread that matches the preferred type
+  while (true) {
+    if (pos >= max_threads_per_node) {
+      return nullptr;
+    }
+    t = &threads[pos];
+    if ((!((1UL << pos) & b)) && (t->is_physical == physical)) {
+      break;
+    }
+    ++pos;
+  }
+
+  if (not __sync_bool_compare_and_swap(&bitmap, b, b | (1UL << pos))) {
+    goto retry;
+  }
+  ALWAYS_ASSERT(pos < max_threads_per_node);
+  return t;
+}
+
+bool PerNodeThreadPool::GetThreadGroup(std::vector<Thread*> &thread_group) {
+retry:
+  thread_group.clear();
+  uint64_t b = volatile_read(bitmap);
+  uint64_t xor_pos = b ^ (~uint64_t{0});
+  uint64_t pos = __builtin_ctzll(xor_pos);
+
+  Thread *t = threads + pos;
+  // Find the thread that matches the preferred type
+  while (true) {
+    if (pos >= max_threads_per_node) {
+      return false;
+    }
+    t = &threads[pos];
+    if ((!((1UL << pos) & b)) && t->is_physical) {
+      break;
+    }
+    ++pos;
+  }
+
+  thread_group.push_back(t);
+
+  // Got the physical thread, now try to claim the logical ones as well
+  uint64_t count = 1;  // Number of 1-bits, including the physical thread
+  ++pos;
+  while (true) {
+    t = threads + pos;
+    if (t->is_physical) {
+      break;
+    } else {
+      thread_group.push_back(t);
+      ++count;
+    }
+  }
+
+  // Fill [count] bits starting from [pos]
+  uint64_t bits = 0;
+  for (uint32_t i = pos; i < pos + count; ++i) {
+    bits |= (1UL << pos);
+  }
+  if (not __sync_bool_compare_and_swap(&bitmap, b, b | bits)) {
+    goto retry;
+  }
+  ALWAYS_ASSERT(pos < max_threads_per_node);
+  return true;
+}
+
 }  // namespace thread
 }  // namespace ermia
