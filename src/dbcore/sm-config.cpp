@@ -70,7 +70,9 @@ uint32_t command_log_buffer_mb = 16;
 void init() {
   ALWAYS_ASSERT(threads);
   thread::Initialize();
-  uint32_t max = thread::PerNodeThreadPool::max_threads_per_node;
+  // Here [threads] refers to worker threads, so use the number of physical cores
+  // to calculate # of numa nodes
+  uint32_t max = thread::cpu_cores.size() / (numa_max_node() + 1);
   numa_nodes = (threads + max - 1) / max;
   ALWAYS_ASSERT(numa_nodes);
   if (num_backups) {
