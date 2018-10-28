@@ -191,7 +191,7 @@ retry:
   uint64_t xor_pos = b ^ (~uint64_t{0});
   uint64_t pos = __builtin_ctzll(xor_pos);
 
-  Thread *t = threads + pos;
+  Thread *t = nullptr;
   // Find the thread that matches the preferred type
   while (true) {
     if (pos >= max_threads_per_node) {
@@ -218,7 +218,7 @@ retry:
   uint64_t xor_pos = b ^ (~uint64_t{0});
   uint64_t pos = __builtin_ctzll(xor_pos);
 
-  Thread *t = threads + pos;
+  Thread *t = nullptr;
   // Find the thread that matches the preferred type
   while (true) {
     if (pos >= max_threads_per_node) {
