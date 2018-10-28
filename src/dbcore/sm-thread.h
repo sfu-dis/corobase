@@ -241,8 +241,8 @@ struct Runner {
   inline bool TryImpersonate(bool sleep_when_idle = true) {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(physical);
-    LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
     if (me) {
+      LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;
     }
     return me != nullptr;
