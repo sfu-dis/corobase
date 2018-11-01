@@ -77,33 +77,34 @@ public:
   inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
                       const varstr *key, varstr *value,
                       bool is_read, bool *finished) {
-    bool success = false;
-    while (!success) {
-      // tzwang: simple dumb solution; may get fancier if needed later.
-      // First try to get a possible slot in the queue, then wait for the slot to
-      // become available - there might be multiple threads (very rare) that got
-      // the same slot number, so use a CAS to claim it.
-      uint32_t pos = next_free_pos.fetch_add(1, std::memory_order_release) % kMaxSize;
-      Request &req = requests[pos];
-      while (volatile_read(req.transaction)) {}
+    // tzwang: simple dumb solution; may get fancier if needed later.
+    // First try to get a possible slot in the queue, then wait for the slot to
+    // become available - there might be multiple threads (very rare) that got
+    // the same slot number, so use a CAS to claim it.
+    uint32_t pos = next_free_pos.fetch_add(1, std::memory_order_release) % kMaxSize;
+    Request &req = requests[pos];
+    while (volatile_read(req.transaction)) {}
 
-      // We have more than the transaction to update in the slot, so mark it in
-      // the MSB as 'busy'
-      success = __sync_bool_compare_and_swap(&req.transaction, nullptr,
-        (ermia::transaction *)((uint64_t)t | (1UL << 63)));
-      req.index = index;
-      req.key = key;
-      req.value = value;
-      req.is_read = is_read;
-      req.finished = finished;
+    // We have more than the transaction to update in the slot, so mark it in
+    // the MSB as 'busy'
+    req.transaction = (ermia::transaction *)((uint64_t)t | (1UL << 63));
+    COMPILER_MEMORY_FENCE;
 
-      // Now toggle the busy bit so it's really ready
-      COMPILER_MEMORY_FENCE;
-      uint64_t new_val = (uint64_t)req.transaction & (~(1UL << 63));
-      req.transaction = (ermia::transaction *)new_val;
-    }
+    req.index = index;
+    req.key = key;
+    req.value = value;
+    req.is_read = is_read;
+    req.finished = finished;
+
+    // Now toggle the busy bit so it's really ready
+    COMPILER_MEMORY_FENCE;
+    uint64_t new_val = (uint64_t)req.transaction & (~(1UL << 63));
+    req.transaction = (ermia::transaction *)new_val;
   }
+
   // Only one guy can call this
+  // Note: should only call this after GetNextRequest unless the processing of a
+  // queue entry (Request) isn't needed.
   inline void Dequeue() {
     uint32_t pos = volatile_read(start);
     Request &req = requests[pos];
