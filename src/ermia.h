@@ -75,9 +75,9 @@ public:
 
   /**
    * Get a key of length keylen. The underlying DB does not manage
-   * the memory associated with key. Returns true if found, false otherwise
+   * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
    */
-  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
 
   /**
    * Put a key of length keylen, with mapping of length valuelen.
@@ -136,7 +136,7 @@ public:
   virtual void SetArrays() = 0;
 
   // Index designed for DIA will overload this function, others don't care
-  rc_t DiaGet(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) { return rc_t{RC_TRUE}; }
+  virtual void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
 
 protected:
   /**
@@ -208,7 +208,7 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char* primary)
     : OrderedIndex(name, primary) {}
 
-  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
@@ -230,6 +230,9 @@ public:
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
 
+  // Don't care
+  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override {}
+
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 };
@@ -242,14 +245,15 @@ class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
 
 private:
   // Interfaces for DIA to operate on the underlying index directly
-  inline rc_t DiaGet(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) {
-    return ConcurrentMasstreeIndex::Get(t, key, value, oid);
+  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override {
+    ConcurrentMasstreeIndex::Get(t, rc, key, value, oid);
+    ALWAYS_ASSERT(!rc_is_invalid(rc));
   }
 
 public:
   DecoupledMasstreeIndex(std::string name, const char* primary);
 
-  rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr);
+  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -277,7 +281,7 @@ private:
 public:
   SingleThreadedBTree(std::string name, const char *primary) : OrderedIndex(name, primary) {}
 
-  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
@@ -298,5 +302,8 @@ public:
   inline size_t Size() override { return 0; /* Not implemented */ }
   std::map<std::string, uint64_t> Clear() override { std::map<std::string, uint64_t> unused; return unused; /* Not implemented */ }
   inline void SetArrays() override { /* Not implemented */ }
+
+  // Don't care
+  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override {}
 };
 }  // namespace ermia

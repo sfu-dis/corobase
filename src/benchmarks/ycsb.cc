@@ -108,7 +108,9 @@ class ycsb_worker : public bench_worker {
       auto &k = build_rmw_key(worker_id);
       ermia::varstr v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
-      TryCatch(tbl->Get(txn, k, v));  // Read
+      rc_t rc = rc_t{RC_INVALID};
+      tbl->Get(txn, rc, k, v);  // Read
+      TryCatch(rc);
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
@@ -121,7 +123,9 @@ class ycsb_worker : public bench_worker {
       auto &k = build_rmw_key(worker_id);
       ermia::varstr v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
-      TryCatch(tbl->Get(txn, k, v));  // Read
+      rc_t rc = rc_t{RC_INVALID};
+      tbl->Get(txn, rc, k, v);  // Read
+      TryCatch(rc);
       memset(v.data(), 'a', v.size());
       ASSERT(v.size() == sizeof(YcsbRecord));
       TryCatch(tbl->Put(txn, k, v));  // Modify-write
@@ -131,7 +135,9 @@ class ycsb_worker : public bench_worker {
       auto &k = build_rmw_key(worker_id);
       ermia::varstr v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
-      TryCatch(tbl->Get(txn, k, v));  // Read
+      rc_t rc = rc_t{RC_INVALID};
+      tbl->Get(txn, rc, k, v);  // Read
+      TryCatch(rc);
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};

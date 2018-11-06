@@ -415,10 +415,12 @@ int main(int argc, char **argv) {
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
     test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
+    /*
   } else if (FLAGS_benchmark == "tpcc") {
     test_fn = FLAGS_dia ? tpcc_dora_do_test : tpcc_do_test;
   } else if (FLAGS_benchmark == "tpce") {
     test_fn = tpce_do_test;
+    */
   } else {
     LOG(FATAL) << "Invalid benchmark: " << FLAGS_benchmark;
   }

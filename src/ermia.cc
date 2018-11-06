@@ -144,7 +144,7 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
-rc_t ConcurrentMasstreeIndex::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) {
   t->ensure_active();
 
   // search the underlying btree to map key=>(btree_node|tuple)
@@ -156,14 +156,15 @@ rc_t ConcurrentMasstreeIndex::Get(transaction *t, const varstr &key, varstr &val
     *oid = out_oid;
   }
   if (found) {
-    return t->DoTupleRead(tuple, &value);
+    volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+    return;
   } else if (config::phantom_prot) {
-    rc_t rc = DoNodeRead(t, sinfo.first, sinfo.second);
+    volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
     if (rc_is_abort(rc)) {
-      return rc;
+      return;
     }
   }
-  return rc_t{RC_FALSE};
+  volatile_write(rc._val, RC_FALSE);
 }
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
@@ -292,7 +293,7 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
   return true;
 }
 
-rc_t SingleThreadedBTree::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+void SingleThreadedBTree::Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) {
   t->ensure_active();
 
   // search the underlying btree to map key=>(btree_node|tuple)
@@ -315,10 +316,11 @@ rc_t SingleThreadedBTree::Get(transaction *t, const varstr &key, varstr &value, 
       tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), out_oid, xc);
     }
     if (tuple) {
-      return t->DoTupleRead(tuple, &value);
+      rc = t->DoTupleRead(tuple, &value);
+      return;
     }
   }
-  return rc_t{RC_FALSE};
+  rc = rc_t{RC_FALSE};
 }
 
 rc_t SingleThreadedBTree::DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
@@ -350,10 +352,8 @@ DecoupledMasstreeIndex::DecoupledMasstreeIndex(std::string name, const char *pri
   : ConcurrentMasstreeIndex(name, primary) {
 }
 
-rc_t DecoupledMasstreeIndex::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
-  bool finished = false;
-  ermia::dia::SendReadRequest(t, this, &key, &value, oid, &finished);
-  while (!volatile_read(finished)) {}
+void DecoupledMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) {
+  ermia::dia::SendReadRequest(t, this, &key, &value, oid, &rc);
 }
 
 }  // namespace ermia
