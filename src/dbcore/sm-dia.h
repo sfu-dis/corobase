@@ -11,7 +11,7 @@ namespace dia {
 void Initialize();
 void SendReadRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *key, varstr *value,
-                     OID *oid, bool *finished);
+                     OID *oid, rc_t *rc);
 
 // Structure that represents an index access request
 struct Request {
@@ -21,7 +21,7 @@ struct Request {
   varstr *value;
   OID *oid_ptr;
   bool is_read;
-  bool *finished;
+  rc_t *rc;  // Return result of the index operation
 
   // Point read/write request
   Request(ermia::transaction *t,
@@ -30,14 +30,14 @@ struct Request {
           varstr *value,
           bool is_read,
           OID *oid,
-          bool *finished)
+          rc_t *rc)
     : transaction(t)
     , index(index)
     , key(key)
     , value(value)
     , oid_ptr(oid)
     , is_read(is_read)
-    , finished(finished)
+    , rc(rc)
   {}
 
   Request()
@@ -47,7 +47,7 @@ struct Request {
     , value(nullptr)
     , oid_ptr(nullptr)
     , is_read(false)
-    , finished(nullptr)
+    , rc(nullptr)
   {}
   void Execute();
 };
@@ -76,7 +76,7 @@ public:
   }
   inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
                       const varstr *key, varstr *value,
-                      bool is_read, bool *finished) {
+                      bool is_read, rc_t *rc) {
     // tzwang: simple dumb solution; may get fancier if needed later.
     // First try to get a possible slot in the queue, then wait for the slot to
     // become available - there might be multiple threads (very rare) that got
@@ -94,7 +94,7 @@ public:
     req.key = key;
     req.value = value;
     req.is_read = is_read;
-    req.finished = finished;
+    req.rc = rc;
 
     // Now toggle the busy bit so it's really ready
     COMPILER_MEMORY_FENCE;
@@ -122,8 +122,8 @@ public:
 
   inline void AddRequest(ermia::transaction *t, OrderedIndex *index,
                          const varstr *key, varstr *value, OID *oid,
-                         bool is_read, bool *finished) {
-    queue.Enqueue(t, index, key, value, is_read, finished);
+                         bool is_read, rc_t *rc) {
+    queue.Enqueue(t, index, key, value, is_read, rc);
   }
   void MyWork(char *);
 };

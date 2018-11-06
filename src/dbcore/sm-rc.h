@@ -34,5 +34,5 @@ struct rc_t {
 #define RC_ABORT_USER (RC_ABORT | 0x100)
 
 inline bool rc_is_user_abort(rc_t rc) { return rc._val == RC_ABORT_USER; }
-
+inline bool rc_is_invalid(rc_t rc) { return rc._val == RC_INVALID; }
 inline bool rc_is_abort(rc_t rc) { return rc._val & RC_ABORT; }
