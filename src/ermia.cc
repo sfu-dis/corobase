@@ -148,7 +148,9 @@ void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key, v
   t->ensure_active();
   OID oid = 0;
   ConcurrentMasstree::versioned_node_t sinfo;
-  bool found = GetOID(key, t->xc, oid, &sinfo);
+  rc = {RC_INVALID};
+  GetOID(key, rc, t->xc, oid, &sinfo);
+  bool found = (rc._val == RC_TRUE);
 
   dbtuple *tuple = nullptr;
   if (found) {
@@ -242,7 +244,9 @@ rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k, varstr 
 
   // do regular search
   OID oid = 0;
-  if (GetOID(*k, t.xc, oid)) {
+  rc_t rc = {RC_INVALID};
+  GetOID(*k, rc, t.xc, oid);
+  if (rc._val == RC_TRUE) {
     return t.Update(descriptor_, oid, k, v);
   } else {
     return rc_t{RC_ABORT_INTERNAL};
@@ -361,8 +365,17 @@ DecoupledMasstreeIndex::DecoupledMasstreeIndex(std::string name, const char *pri
   : ConcurrentMasstreeIndex(name, primary) {
 }
 
-void DecoupledMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) {
-  ermia::dia::SendReadRequest(t, this, &key, &value, oid, &rc);
+void DecoupledMasstreeIndex::RecvGet(transaction *t, rc_t &rc, OID &oid, varstr &value) {
+  // Wait for the traversal to finish
+  while (volatile_read(rc._val) == RC_INVALID) {}
+  if (rc._val == RC_TRUE) {
+    dbtuple *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), volatile_read(oid), t->GetXIDContext());
+    if (tuple) {
+      volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+    } else {
+      volatile_write(rc._val, RC_FALSE);
+    }
+  }
 }
 
 }  // namespace ermia

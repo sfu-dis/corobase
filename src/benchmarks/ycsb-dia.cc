@@ -50,7 +50,7 @@ class ycsb_dia_worker : public bench_worker {
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tbl(open_tables.at("USERTABLE")) {}
+        tbl((ermia::DecoupledMasstreeIndex*)open_tables.at("USERTABLE")) {}
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
@@ -90,15 +90,20 @@ class ycsb_dia_worker : public bench_worker {
   }
 
   // Request result placeholders
-  rc_t *PrepareRCs() {
+  void PrepareForDIA(rc_t **out_rcs, ermia::OID **out_oids) {
     thread_local rc_t *rcs = nullptr;
+    thread_local ermia::OID *oids = nullptr;
+    uint32_t n = std::max<uint32_t>(g_reps_per_tx, g_rmw_additional_reads);
     if (!rcs) {
-      rcs = (rc_t *)malloc(sizeof(rc_t) * g_reps_per_tx);
+      rcs = (rc_t *)malloc(sizeof(rc_t) * n);
+      oids = (ermia::OID *)malloc(sizeof(ermia::OID) * n);
     }
-    for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
+    for (uint32_t i = 0; i < n; ++i) {
       rcs[i] = rc_t{RC_INVALID};
+      oids[i] = 0;
     }
-    return rcs;
+    *out_rcs = rcs;
+    *out_oids = oids;
   }
 
   rc_t txn_read() {
@@ -109,18 +114,21 @@ class ycsb_dia_worker : public bench_worker {
     thread_local std::vector<YcsbKey *> keys;
     keys.clear();
     values.clear();
-    rc_t *rcs = PrepareRCs();
+    rc_t *rcs = nullptr;
+    ermia::OID *oids = nullptr;
+    PrepareForDIA(&rcs, &oids);
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       keys.push_back(&build_rmw_key(worker_id));
       values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
-      tbl->Get(txn, rcs[i], *keys[i], *values[i]);  // Send out async Get request
+      tbl->SendGet(txn, rcs[i], *keys[i], *values[i], &oids[i]);  // Send out async Get request
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      while (ermia::volatile_read(rcs[i]._val) == RC_INVALID) {}
+      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
+      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
       TryCatch(rcs[i]);
       // TODO(tzwang): if we abort here (e.g. because the return value rc says
       // so), it might be beneficial to rescind the subsequent requests that have
@@ -138,18 +146,22 @@ class ycsb_dia_worker : public bench_worker {
     keys.clear();
     values.clear();
 
-    rc_t *rcs = PrepareRCs();
+    rc_t *rcs = nullptr;
+    ermia::OID *oids = nullptr;
+    PrepareForDIA(&rcs, &oids);
+
     // Issue all reads
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       keys.push_back(&build_rmw_key(worker_id));
       values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
-      tbl->Get(txn, rcs[i], *keys[i], *values[i]);
+      tbl->SendGet(txn, rcs[i], *keys[i], *values[i], &oids[i]);
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Barrier to ensure data is read in
-      while (rc_is_invalid(rcs[i])) {}
+      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
+      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
       TryCatch(rcs[i]);
 
       // Do write
@@ -160,16 +172,17 @@ class ycsb_dia_worker : public bench_worker {
       // subsequent requests for better performance
     }
 
-    rcs = PrepareRCs();
+    PrepareForDIA(&rcs, &oids);
+    keys.clear();
+    values.clear();
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      auto &k = build_rmw_key(worker_id);
-      ermia::varstr v = str(sizeof(YcsbRecord));
-      // TODO(tzwang): add read/write_all_fields knobs
-      tbl->Get(txn, rcs[i], k, v);  // Read
+      keys.push_back(&build_rmw_key(worker_id));
+      values.push_back(&str(sizeof(YcsbRecord)));
+      tbl->SendGet(txn, rcs[i], *keys[i], *values[i], &oids[i]);
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      while (rc_is_invalid(rcs[i])) {}
+      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
       TryCatch(rcs[i]);
     }
     TryCatch(db->Commit(txn));
@@ -180,7 +193,7 @@ class ycsb_dia_worker : public bench_worker {
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
  private:
-  ermia::OrderedIndex *tbl;
+  ermia::DecoupledMasstreeIndex *tbl;
 };
 
 class ycsb_usertable_loader : public bench_loader {

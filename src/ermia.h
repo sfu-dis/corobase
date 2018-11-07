@@ -73,6 +73,9 @@ public:
   // Use transaction's TryInsertNewTuple to try insert a new tuple
   rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid);
 
+  virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
+
   /**
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
@@ -134,9 +137,6 @@ public:
   virtual size_t Size() = 0;
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
-
-  // Index designed for DIA will overload this function, others don't care
-  virtual void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) = 0;
 
 protected:
   /**
@@ -208,9 +208,10 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char* primary)
     : OrderedIndex(name, primary) {}
 
-  inline bool GetOID(const varstr &key, TXN::xid_context *xc, OID &out_oid,
-                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) {
-    return masstree_.search(key, out_oid, xc, out_sinfo);
+  inline void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
 
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
@@ -235,9 +236,6 @@ public:
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
 
-  // Don't care
-  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override {}
-
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 };
@@ -248,17 +246,15 @@ class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
   friend class sm_chkpt_mgr;
   friend class dia::IndexThread;
 
-private:
-  // Interfaces for DIA to operate on the underlying index directly
-  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
-    ConcurrentMasstreeIndex::Get(t, rc, key, value, out_oid);
-    ALWAYS_ASSERT(!rc_is_invalid(rc));
-  }
-
 public:
   DecoupledMasstreeIndex(std::string name, const char* primary);
 
-  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr);
+  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) { LOG(FATAL); }
+  inline void SendGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid) {
+    ASSERT(out_oid);
+    ermia::dia::SendReadRequest(t, this, &key, out_oid, &rc);
+  }
+  void RecvGet(transaction *t, rc_t &rc, OID &oid, varstr &value);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -286,6 +282,8 @@ private:
 public:
   SingleThreadedBTree(std::string name, const char *primary) : OrderedIndex(name, primary) {}
 
+  void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {}
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
@@ -307,8 +305,5 @@ public:
   inline size_t Size() override { return 0; /* Not implemented */ }
   std::map<std::string, uint64_t> Clear() override { std::map<std::string, uint64_t> unused; return unused; /* Not implemented */ }
   inline void SetArrays() override { /* Not implemented */ }
-
-  // Don't care
-  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override {}
 };
 }  // namespace ermia
