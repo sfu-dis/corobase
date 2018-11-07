@@ -77,7 +77,7 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
    */
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) = 0;
 
   /**
    * Put a key of length keylen, with mapping of length valuelen.
@@ -105,7 +105,7 @@ public:
    * Default implementation calls put(). See put() for meaning of return value.
    */
   virtual rc_t Insert(transaction *t, const varstr &key, varstr &value,
-                      OID *oid = nullptr) = 0;
+                      OID *out_oid = nullptr) = 0;
 
   /**
    * Insert into a secondary index. Maps key to OID.
@@ -136,7 +136,7 @@ public:
   virtual void SetArrays() = 0;
 
   // Index designed for DIA will overload this function, others don't care
-  virtual void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
+  virtual void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) = 0;
 
 protected:
   /**
@@ -208,12 +208,17 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char* primary)
     : OrderedIndex(name, primary) {}
 
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  inline bool GetOID(const varstr &key, TXN::xid_context *xc, OID &out_oid,
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) {
+    return masstree_.search(key, out_oid, xc, out_sinfo);
+  }
+
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
-    return DoTreePut(*t, &key, &value, true, true, oid);
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
+    return DoTreePut(*t, &key, &value, true, true, out_oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
     return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
@@ -231,7 +236,7 @@ public:
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
 
   // Don't care
-  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override {}
+  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override {}
 
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
@@ -245,15 +250,15 @@ class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
 
 private:
   // Interfaces for DIA to operate on the underlying index directly
-  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override {
-    ConcurrentMasstreeIndex::Get(t, rc, key, value, oid);
+  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
+    ConcurrentMasstreeIndex::Get(t, rc, key, value, out_oid);
     ALWAYS_ASSERT(!rc_is_invalid(rc));
   }
 
 public:
   DecoupledMasstreeIndex(std::string name, const char* primary);
 
-  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr);
+  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -281,12 +286,12 @@ private:
 public:
   SingleThreadedBTree(std::string name, const char *primary) : OrderedIndex(name, primary) {}
 
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
-    return DoTreePut(*t, &key, &value, true, true, oid);
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
+    return DoTreePut(*t, &key, &value, true, true, out_oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
     return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
@@ -304,6 +309,6 @@ public:
   inline void SetArrays() override { /* Not implemented */ }
 
   // Don't care
-  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid = nullptr) override {}
+  inline void DiaGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override {}
 };
 }  // namespace ermia
