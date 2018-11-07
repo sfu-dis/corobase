@@ -1,4 +1,5 @@
 #include "serial.h"
+#include "../macros.h"
 namespace ermia {
 
 #if defined(SSN) || defined(SSI)
