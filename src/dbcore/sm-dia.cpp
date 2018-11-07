@@ -9,9 +9,9 @@ std::vector<IndexThread *> index_threads;
 void Request::Execute() {
 }
 
-void SendReadRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, varstr *value, OID *oid, rc_t *rc) {
+void SendReadRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  index_threads[0]->AddRequest(t, index, key, value, oid, true, rc);
+  index_threads[0]->AddRequest(t, index, key, oid, true, rc);
 }
 
 // Prepare the extra index threads needed by DIA. The other compute threads
@@ -42,7 +42,8 @@ void IndexThread::MyWork(char *) {
     ALWAYS_ASSERT(req.is_read);
     if (req.is_read) {
       *req.rc = rc_t{RC_INVALID};
-      req.index->DiaGet(req.transaction, *req.rc, *req.key, *req.value, req.oid_ptr);
+      ASSERT(req.oid_ptr);
+      req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
     }
     queue.Dequeue();
   }
