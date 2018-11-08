@@ -177,6 +177,7 @@ void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key, v
   } else {
     volatile_write(rc._val, RC_FALSE);
   }
+  ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
 }
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
