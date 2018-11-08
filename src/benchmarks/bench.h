@@ -70,7 +70,7 @@ class bench_worker : public ermia::thread::Runner {
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
                ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
-      : Runner(),
+      : Runner(ermia::config::physical_workers_only ? true : (worker_id % 2 == 0)),
         worker_id(worker_id),
         is_worker(is_worker),
         r(seed),

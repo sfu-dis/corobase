@@ -36,6 +36,7 @@ bool truncate_at_bench_start = false;
 std::string primary_srv("");
 std::string primary_port("10000");
 bool htt_is_on = true;
+bool physical_workers_only = true;
 bool print_cpu_util = false;
 uint64_t node_memory_gb = 12;
 bool log_ship_offset_replay = false;
