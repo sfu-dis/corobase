@@ -162,7 +162,12 @@ int main(int argc, char **argv) {
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
   ermia::config::htt_is_on = FLAGS_htt;
-  ermia::config::physical_workers_only = FLAGS_physical_workers_only;
+  if (FLAGS_dia && !FLAGS_physical_workers_only) {
+    LOG(INFO) << "DIA is on, ignoring the physical-workers-only option";
+    ermia::config::physical_workers_only = true;
+  } else {
+    ermia::config::physical_workers_only = FLAGS_physical_workers_only;
+  }
   ermia::config::verbose = FLAGS_verbose;
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;
   ermia::config::threads = FLAGS_threads;
