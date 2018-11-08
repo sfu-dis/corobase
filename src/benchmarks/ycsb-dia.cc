@@ -196,16 +196,16 @@ class ycsb_dia_worker : public bench_worker {
   ermia::DecoupledMasstreeIndex *tbl;
 };
 
-class ycsb_usertable_loader : public bench_loader {
+class ycsb_dia_usertable_loader : public bench_loader {
  public:
-  ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
+  ycsb_dia_usertable_loader(unsigned long seed, ermia::Engine *db,
                         const std::map<std::string, ermia::OrderedIndex *> &open_tables)
       : bench_loader(seed, db, open_tables) {}
 
  protected:
   // XXX(tzwang): for now this is serial
   void load() {
-    ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
+    ermia::DecoupledMasstreeIndex *tbl = (ermia::DecoupledMasstreeIndex*)open_tables.at("USERTABLE");
     std::vector<YcsbKey*> keys;
     uint64_t records_per_thread = g_initial_table_size / ermia::config::worker_threads;
     bool spread = true;
@@ -253,7 +253,16 @@ class ycsb_usertable_loader : public bench_loader {
       ermia::varstr v(r.data_, sizeof(r));
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
-      TryVerifyStrict(tbl->Insert(txn, *key, v));
+
+      //TryVerifyStrict(tbl->Insert(txn, *key, v));
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::dbtuple *tuple = nullptr;
+      tbl->SendInsert(txn, rc, *key, v, &oid, &tuple);
+      ASSERT(tuple);
+      tbl->RecvInsert(txn, rc, oid, *key, v, tuple);
+      TryVerifyStrict(rc);
+
       TryVerifyStrict(db->Commit(txn));
       free(key);
     }
@@ -276,7 +285,7 @@ class ycsb_dia_bench_runner : public bench_runner {
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     std::vector<bench_loader *> ret;
-    ret.push_back(new ycsb_usertable_loader(0, db, open_tables));
+    ret.push_back(new ycsb_dia_usertable_loader(0, db, open_tables));
     return ret;
   }
 

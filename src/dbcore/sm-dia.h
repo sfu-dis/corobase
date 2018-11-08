@@ -9,30 +9,35 @@ namespace ermia {
 namespace dia {
 
 void Initialize();
-void SendReadRequest(ermia::transaction *t, OrderedIndex *index,
+void SendGetRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *key, OID *oid, rc_t *rc);
+void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
+                       const varstr *key, OID *oid, rc_t *rc);
 
 // Structure that represents an index access request
 struct Request {
+  static const uint8_t kTypeInvalid= 0x0;
+  static const uint8_t kTypeGet = 0x1;
+  static const uint8_t kTypeInsert = 0x2;
   ermia::transaction *transaction;
   OrderedIndex *index;
   const varstr *key;
-  OID *oid_ptr;
-  bool is_read;
+  OID *oid_ptr;  // output for Get, input for Put
+  uint8_t type;
   rc_t *rc;  // Return result of the index operation
 
   // Point read/write request
   Request(ermia::transaction *t,
           OrderedIndex *index,
           varstr *key,
-          bool is_read,
+          uint8_t type,
           OID *oid,
           rc_t *rc)
     : transaction(t)
     , index(index)
     , key(key)
     , oid_ptr(oid)
-    , is_read(is_read)
+    , type(type)
     , rc(rc)
   {}
 
@@ -41,10 +46,9 @@ struct Request {
     , index(nullptr)
     , key(nullptr)
     , oid_ptr(nullptr)
-    , is_read(false)
+    , type(kTypeInvalid)
     , rc(nullptr)
   {}
-  void Execute();
 };
 
 // Request queue (multi-producer, single-consumer)
@@ -70,7 +74,7 @@ public:
     return *req;
   }
   inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
-                      const varstr *key, bool is_read, rc_t *rc, OID *oid) {
+                      const varstr *key, uint8_t type, rc_t *rc, OID *oid) {
     // tzwang: simple dumb solution; may get fancier if needed later.
     // First try to get a possible slot in the queue, then wait for the slot to
     // become available - there might be multiple threads (very rare) that got
@@ -86,7 +90,7 @@ public:
 
     req.index = index;
     req.key = key;
-    req.is_read = is_read;
+    req.type = type;
     req.rc = rc;
     req.oid_ptr = oid;
 
@@ -115,9 +119,8 @@ public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {}
 
   inline void AddRequest(ermia::transaction *t, OrderedIndex *index,
-                         const varstr *key, OID *oid,
-                         bool is_read, rc_t *rc) {
-    queue.Enqueue(t, index, key, is_read, rc, oid);
+                         const varstr *key, OID *oid, uint8_t type, rc_t *rc) {
+    queue.Enqueue(t, index, key, type, rc, oid);
   }
   void MyWork(char *);
 };

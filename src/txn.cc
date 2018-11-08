@@ -1119,6 +1119,7 @@ rc_t transaction::si_commit() {
   for (uint32_t i = 0; i < write_set.size(); ++i) {
     auto &w = write_set[i];
     Object *object = w.get_object();
+    ASSERT(object);
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     ASSERT(w.entry);
     tuple->DoWrite();
