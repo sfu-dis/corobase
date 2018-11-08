@@ -1437,10 +1437,7 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 #endif
 
   // do the actual tuple read
-  if (!tuple->DoRead(out_v, !read_my_own)) {
-    return rc_t{RC_FALSE};
-  }
-  return {RC_TRUE};
+  return tuple->DoRead(out_v, !read_my_own);
 }
 
 #ifdef SSN
