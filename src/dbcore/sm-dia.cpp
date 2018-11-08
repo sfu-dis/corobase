@@ -6,12 +6,14 @@ namespace dia {
 
 std::vector<IndexThread *> index_threads;
 
-void Request::Execute() {
+void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
+  // FIXME(tzwang): find the right index thread using some partitioning scheme
+  index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
 }
 
-void SendReadRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
+void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  index_threads[0]->AddRequest(t, index, key, oid, true, rc);
+  index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
 }
 
 // Prepare the extra index threads needed by DIA. The other compute threads
@@ -39,11 +41,25 @@ void IndexThread::MyWork(char *) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
     ALWAYS_ASSERT(t);
-    ALWAYS_ASSERT(req.is_read);
-    if (req.is_read) {
-      *req.rc = rc_t{RC_INVALID};
-      ASSERT(req.oid_ptr);
-      req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+    ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
+    *req.rc = rc_t{RC_INVALID};
+    ASSERT(req.oid_ptr);
+    switch (req.type) {
+      // Regardless the request is for record read or update, we only need to get
+      // the OID, i.e., a Get operation on the index. For updating OID, we need
+      // to use the Put interface
+      case Request::kTypeGet:
+        req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+        break;
+      case Request::kTypeInsert:
+        if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
+          volatile_write(req.rc->_val, RC_TRUE);
+        } else {
+          volatile_write(req.rc->_val, RC_FALSE);
+        }
+        break;
+      default:
+        LOG(FATAL) << "Wrong request type";
     }
     queue.Dequeue();
   }

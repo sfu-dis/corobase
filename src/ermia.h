@@ -138,7 +138,6 @@ public:
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
 
-protected:
   /**
    * Insert key-oid pair to the underlying actual index structure.
    *
@@ -249,16 +248,28 @@ class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
 public:
   DecoupledMasstreeIndex(std::string name, const char* primary);
 
-  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) { LOG(FATAL); }
   inline void SendGet(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid) {
     ASSERT(out_oid);
-    ermia::dia::SendReadRequest(t, this, &key, out_oid, &rc);
+    ermia::dia::SendGetRequest(t, this, &key, out_oid, &rc);
   }
   void RecvGet(transaction *t, rc_t &rc, OID &oid, varstr &value);
+
+  inline void SendInsert(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid, dbtuple **out_tuple) {
+    ASSERT(out_oid);
+    *out_tuple = nullptr;
+    *out_oid = t->PrepareInsert(this, &value, out_tuple);
+    ermia::dia::SendInsertRequest(t, this, &key, out_oid, &rc);
+  }
+  void RecvInsert(transaction *t, rc_t &rc, OID oid, varstr &key, varstr &value, dbtuple *tuple);
+
+  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) {
+    LOG(FATAL);
+  }
+  rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) {
+    LOG(FATAL);
+  }
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
-  }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
   }

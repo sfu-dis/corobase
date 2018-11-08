@@ -379,4 +379,24 @@ void DecoupledMasstreeIndex::RecvGet(transaction *t, rc_t &rc, OID &oid, varstr 
   }
 }
 
+void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc, OID oid,
+                                        varstr &key, varstr &value,
+                                        dbtuple *tuple) {
+  while (volatile_read(rc._val) == RC_INVALID) {}
+  if (rc._val == RC_TRUE) {
+    // key-OID installed successfully
+    t->FinishInsert(this, oid, &key, &value, tuple);
+    volatile_write(rc._val, RC_TRUE);
+  } else {
+    ASSERT(rc._val == RC_FALSE);
+    if (descriptor_->IsPrimary()) {
+      oidmgr->PrimaryTupleUnlink(descriptor_->GetTupleArray(), oid);
+    }
+    if (config::enable_chkpt) {
+      volatile_write(descriptor_->GetKeyArray()->get(oid)->_ptr, 0);
+    }
+    volatile_write(rc._val, RC_FALSE);
+  }
+}
+
 }  // namespace ermia
