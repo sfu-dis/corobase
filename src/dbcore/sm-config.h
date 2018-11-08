@@ -25,6 +25,7 @@ extern uint32_t worker_threads;
 extern int numa_nodes;
 extern std::string tmpfs_dir;
 extern bool htt_is_on;
+extern bool physical_workers_only;
 extern uint32_t state;
 extern bool enable_chkpt;
 extern uint64_t chkpt_interval;

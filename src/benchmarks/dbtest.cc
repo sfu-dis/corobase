@@ -19,6 +19,7 @@
 // Options that are shared by the primary and backup servers
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
+DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_bool(dia, false, "Whether to use decoupled index access (DIA)");
@@ -161,6 +162,7 @@ int main(int argc, char **argv) {
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
   ermia::config::htt_is_on = FLAGS_htt;
+  ermia::config::physical_workers_only = FLAGS_physical_workers_only;
   ermia::config::verbose = FLAGS_verbose;
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;
   ermia::config::threads = FLAGS_threads;
@@ -333,6 +335,7 @@ int main(int argc, char **argv) {
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::worker_threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
+  std::cerr << "  physical-workers-only: " << ermia::config::physical_workers_only << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
 #ifdef USE_VARINT_ENCODING
   std::cerr << "  var-encode        : yes" << std::endl;
