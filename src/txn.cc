@@ -1316,33 +1316,42 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
   }
 }
 
-bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
-                                    varstr *value, OID *inserted_oid) {
-  ASSERT(key);
-  OID oid = 0;
+OID transaction::PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out_tuple) {
   IndexDescriptor *id = index->GetDescriptor();
   bool is_primary_idx = id->IsPrimary();
-  auto *key_array = id->GetKeyArray();
   auto *tuple_array = id->GetTupleArray();
   FID tuple_fid = id->GetTupleFid();
-  dbtuple *tuple = nullptr;
+  *out_tuple = nullptr;
+  OID oid = 0;
   if (likely(is_primary_idx)) {
     fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
     ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
     ASSERT(new_head.asi_type() == 0);
-    tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
-    ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
-    tuple->GetObject()->SetClsn(xid.to_ptr());
+    *out_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
+    ASSERT(decode_size_aligned(new_head.size_code()) >= (*out_tuple)->size);
+    (*out_tuple)->GetObject()->SetClsn(xid.to_ptr());
     oid = oidmgr->alloc_oid(tuple_fid);
     oidmgr->oid_put_new(tuple_array, oid, new_head);
-    if (inserted_oid) {
-      *inserted_oid = oid;
-    }
   } else {
     // Inserting into a secondary index - just key-OID mapping is enough
     oid = *(OID *)value;  // It's actually a pointer to an OID in user space
   }
+  return oid;
+}
 
+bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
+                                    varstr *value, OID *inserted_oid) {
+  dbtuple *tuple = nullptr;
+  OID oid = PrepareInsert(index, value, &tuple);
+  if (inserted_oid) {
+    *inserted_oid = oid;
+  }
+  IndexDescriptor *id = index->GetDescriptor();
+  auto *tuple_array = id->GetTupleArray();
+  auto *key_array = id->GetKeyArray();
+
+  ASSERT(key);
+  bool is_primary_idx = id->IsPrimary();
   if (!index->InsertIfAbsent(this, *key, oid)) {
     if (is_primary_idx) {
       oidmgr->PrimaryTupleUnlink(tuple_array, oid);
@@ -1352,6 +1361,14 @@ bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
     }
     return false;
   }
+  FinishInsert(index, oid, key, value, tuple);
+  return true;
+}
+
+void transaction::FinishInsert(OrderedIndex *index, OID oid, const varstr *key, varstr *value, dbtuple *tuple) {
+  IndexDescriptor *id = index->GetDescriptor();
+  auto *tuple_array = id->GetTupleArray();
+  auto *key_array = id->GetKeyArray();
 
   // Succeeded, now put the key there if we need it
   if (config::enable_chkpt) {
@@ -1368,6 +1385,7 @@ bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
   }
 
   // insert to log
+  bool is_primary_idx = id->IsPrimary();
   ASSERT(log);
   if (likely(tuple)) {  // Primary index, "real tuple"
     ASSERT(is_primary_idx);
@@ -1379,6 +1397,7 @@ bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
     ASSERT(tuple->size);
     // log the whole varstr so that recovery can figure out the real size
     // of the tuple, instead of using the decoded (larger-than-real) size.
+    FID tuple_fid = id->GetTupleFid();
     log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
                     DEFAULT_ALIGNMENT_BITS,
                     tuple->GetObject()->GetPersistentAddressPtr());
@@ -1401,7 +1420,6 @@ bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
     ASSERT(tuple->pvalue->size() == tuple->size);
     add_to_write_set(tuple_array->get(oid));
   }
-  return true;
 }
 
 rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
