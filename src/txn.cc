@@ -570,7 +570,7 @@ rc_t transaction::parallel_ssn_commit() {
     auto &w = write_set[i];
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-    tuple->do_write();
+    tuple->DoWrite();
     dbtuple *next_tuple = tuple->NextVolatile();
     ASSERT(not next_tuple or (object->GetNextVolatile().offset() ==
                               (uint64_t)next_tuple->GetObject()));
@@ -907,7 +907,7 @@ rc_t transaction::parallel_ssi_commit() {
     auto &w = write_set[i];
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
-    tuple->do_write();
+    tuple->DoWrite();
     dbtuple *overwritten_tuple = tuple->NextVolatile();
 
     fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
@@ -1069,7 +1069,7 @@ rc_t transaction::mvocc_commit() {
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     ASSERT(w.entry);
-    tuple->do_write();
+    tuple->DoWrite();
     dbtuple *overwritten_tuple = tuple->NextVolatile();
     fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
     if (overwritten_tuple) {
@@ -1121,7 +1121,7 @@ rc_t transaction::si_commit() {
     Object *object = w.get_object();
     dbtuple *tuple = (dbtuple *)object->GetPayload();
     ASSERT(w.entry);
-    tuple->do_write();
+    tuple->DoWrite();
 
     fat_ptr clsn_ptr = object->GenerateClsnPtr(clsn);
     object->SetClsn(clsn_ptr);

@@ -180,7 +180,7 @@ struct dbtuple {
   }
 
   // move data from the user's varstr pvalue to this tuple
-  ALWAYS_INLINE void do_write() const {
+  inline void DoWrite() const {
     if (pvalue) {
       ASSERT(pvalue->size() == size);
       memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());
