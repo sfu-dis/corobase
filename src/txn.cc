@@ -1437,9 +1437,7 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
 #endif
 
   // do the actual tuple read
-  dbtuple::ReadStatus stat = tuple->do_read(out_v, !read_my_own);
-  ASSERT(stat == dbtuple::READ_EMPTY || stat == dbtuple::READ_RECORD);
-  if (stat == dbtuple::READ_EMPTY) {
+  if (!tuple->DoRead(out_v, !read_my_own)) {
     return rc_t{RC_FALSE};
   }
   return {RC_TRUE};
