@@ -53,11 +53,6 @@ struct sparse_bitset {
     entries[1] = v8hi{0};
   }
 
-  /* Return true if adding one more entry would leave the bitmap
-     full
-   */
-  bool almost_full() { return as_array()[CAPACITY - 2]; }
-
   /* Insert a value into the map. Return 0 if the insert succeeded
      normally, 1 if the map became full as a result of this insert,
      and -1 if the map was already full.
@@ -222,12 +217,12 @@ struct sm_allocator {
 
     /* How many full bitmaps are in [l2], ready to use?
      */
-    uint16_t l2_size;
+    uint32_t l2_size;
 
     /* What is the index, in [l2], where the first unused bitset
        resides? A value of zero means L2 does not yet exist.
     */
-    uint16_t l2_first_unused;
+    uint32_t l2_first_unused;
 
     /* If we are reduced to scavenging L2 for loose OIDs, run an
        incremental sweep all the way across to avoid re-scanning
@@ -235,7 +230,7 @@ struct sm_allocator {
        means no scan in progress (since any scan would examine at
        least one entry).
     */
-    uint16_t l2_scan_hand;
+    uint32_t l2_scan_hand;
 
     /* How many OIDs reside in non-full L2 bitmaps? We normally
        ignore these as "low grade ore", but it may become
