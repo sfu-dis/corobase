@@ -218,7 +218,7 @@ char argv[20][100];
           strncpy(szInDir, vp, sizeof(szInDir));
           if(( '/' != szInDir[ strlen(szInDir) - 1 ] ) && ( '\\' != szInDir[ strlen(szInDir) - 1 ] ))
           {
-              strncat( szInDir, "/", sizeof(szInDir) );
+              strncat(szInDir, "/", std::min<size_t>(sizeof(szInDir), iMaxPath - 1));
           }
           break;
 
