@@ -27,7 +27,7 @@ void CommandLogManager::TryFlush() {
   }
 }
 
-uint64_t CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type) {
+void CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type) {
   uint64_t off = allocated_.fetch_add(kRecordSize);
   uint64_t end_off = off + kRecordSize;
 
@@ -255,7 +255,7 @@ void CommandLogManager::ShipLog(char *buf, uint32_t size) {
 
 void CommandLogManager::FlushDaemon() {
   while (!shutdown_) {
-    while (!shutdown && !(flush_status_ & 1)) {
+    while (!shutdown_ && !(flush_status_ & 1)) {
       // Maybe can sleep
       if (!(flush_status_.fetch_or(2) & 1)) {
         std::unique_lock<std::mutex> lock(flush_mutex_);

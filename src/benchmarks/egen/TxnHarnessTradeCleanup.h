@@ -57,6 +57,7 @@ public:
         TXN_HARNESS_SET_STATUS_SUCCESS;
 
         TryReturn(m_db->DoTradeCleanupFrame1(pTxnInput));
+        return rc_t{RC_TRUE};
     }
 };
 

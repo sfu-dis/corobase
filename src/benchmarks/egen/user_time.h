@@ -15,8 +15,8 @@ struct tm* user_localtime_r(time_t* timer, struct tm* timep)
 	time_t time = *timer;
 	int year = EPOCH_YR;
 
-    register auto dayclock = time % SECS_DAY;
-    register auto dayno = time / SECS_DAY;
+    auto dayclock = time % SECS_DAY;
+    auto dayno = time / SECS_DAY;
 
 	timep->tm_sec = dayclock % 60;
 	timep->tm_min = (dayclock % 3600) / 60;
@@ -42,10 +42,10 @@ struct tm* user_localtime_r(time_t* timer, struct tm* timep)
 #if defined(false)
 time_t my_mktime( struct tm* timep )
 {
-	register long day, year;
-	register int tm_year;
+	long day, year;
+	int tm_year;
 	int yday, month;
-	register uint64_t seconds;
+	uint64_t seconds;
 	int overflow;
 	unsigned dst;
 

@@ -35,7 +35,7 @@ struct oid_array {
 
   /* How much space is required for an array with [n] entries?
    */
-  static constexpr size_t alloc_size(size_t n = MAX_ENTRIES) {
+  static size_t alloc_size(size_t n = MAX_ENTRIES) {
     return OFFSETOF(oid_array, _entries[n]);
   }
 

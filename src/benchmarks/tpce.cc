@@ -215,7 +215,7 @@ class tpce_worker_mixin : private _dummy {
     // XXX(stephentu): implement a scalable GetCurrentTimeMillis()
     // for now, we just give each core an increasing number
 
-    static __thread uint32_t tl_hack = 0;
+    static thread_local uint32_t tl_hack = 0;
     return tl_hack++;
   }
 
@@ -3406,7 +3406,7 @@ rc_t tpce_worker::DoLongQueryFrame1() {
                                       std::string(cSYMBOL_len, (char)0));
     const holding_summary::key k_hs_1(k_ca->ca_id,
                                       std::string(cSYMBOL_len, (char)255));
-    static __thread tpce_table_scanner hs_scanner(&arena);
+    static thread_local tpce_table_scanner hs_scanner(&arena);
     hs_scanner.output.clear();
     TryCatch(tbl_holding_summary(1)->Scan(
         txn, Encode(str(sizeof(k_hs_0)), k_hs_0),

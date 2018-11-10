@@ -164,7 +164,7 @@ private:
   };
 
   struct XctSearchRangeCallback : public ConcurrentMasstree::low_level_search_range_callback {
-    constexpr XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
+    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
         : t(t), caller_callback(caller_callback) {}
 
     virtual void on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
@@ -256,12 +256,12 @@ public:
     return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            ScanCallback &callback, str_arena *arena) override { /* Not implemented */ }
+            ScanCallback &callback, str_arena *arena) override { return rc_t{RC_TRUE}; /* Not implemented */ }
   rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-                   ScanCallback &callback, str_arena *arena) override { /* Not implemented */ }
+                   ScanCallback &callback, str_arena *arena) override { return rc_t{RC_TRUE}; /* Not implemented */ }
 
-  inline size_t Size() override { /* Not implemented */ }
-  std::map<std::string, uint64_t> Clear() { /* Not implemented */ }
+  inline size_t Size() override { return 0; /* Not implemented */ }
+  std::map<std::string, uint64_t> Clear() override { std::map<std::string, uint64_t> unused; return unused; /* Not implemented */ }
   inline void SetArrays() override { /* Not implemented */ }
 };
 }  // namespace ermia
