@@ -179,7 +179,7 @@ struct context {
   /* Same as rdma_write() above, but with immediate data [imm_data] */
   void rdma_write_imm(uint32_t local_index, uint64_t local_offset,
                       uint32_t remote_index, uint64_t remote_offset,
-                      uint64_t size, uint32_t imm_data, bool sync = true);
+                      uint64_t size, uint32_t imm_data, bool poll_cq = true);
 
   /* Send multiple RDMA Write with Immediate requests in a single post */
   void rdma_write_imm_n(struct write_request *req_list);
