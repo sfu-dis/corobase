@@ -107,10 +107,7 @@ struct epoch_mgr {
   static_assert(std::is_pod<callbacks>::value,
                 "epoch_mgr::callbacks must be POD");
 
-  /* Use a constexpr constructor so that this object can still be
-     statically initialized.
-   */
-  constexpr epoch_mgr(callbacks const &c) : cb(c) {}
+  epoch_mgr(callbacks const &c) : cb(c) {}
 
   epoch_num get_cur_epoch();
 
