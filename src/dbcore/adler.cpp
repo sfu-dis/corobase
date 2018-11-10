@@ -49,9 +49,15 @@ void adler32_single(uint64_t &a, uint64_t &b, char const *data, Op &op) {
 }
 
 template <typename Op>
-uint32_t __attribute__((optimize("unroll-loops")))
+uint32_t 
+#ifndef __clang__
+__attribute__((optimize("unroll-loops")))
+#endif
 adler32_finish(uint64_t a, uint64_t b, char const *data, size_t i,
                size_t nbytes, Op &op) {
+#ifdef __clang__
+#pragma clang loop unroll(enable)
+#endif
   for (; i < nbytes; i++) adler32_single(a, b, data + i, op);
 
   a %= MOD_ADLER;
@@ -77,7 +83,10 @@ uint32_t adler32_merge(uint32_t left, uint32_t right, size_t right_size) {
 }
 
 template <typename Op>
-uint32_t __attribute__((optimize("unroll-loops")))
+uint32_t
+#ifndef __clang__
+__attribute__((optimize("unroll-loops")))
+#endif
 adler32_vanilla(char const *data, size_t nbytes, uint32_t sofar, Op &op) {
   return adler32_finish(sofar & 0xffff, sofar >> 16, data, 0, nbytes, op);
 }

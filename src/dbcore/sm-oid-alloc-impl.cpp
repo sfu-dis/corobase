@@ -237,7 +237,10 @@ int32_t sm_allocator::_drain_l1(uint32_t target) {
     if (bidx) {
       // add an entry to the swath
       head.l2_loose_oids++;
+#ifndef __clang__
+      // FIXME(tzwang): port contains() for clang
       ASSERT(not l2_maps[bidx].contains(x));
+#endif
       if (int rval = l2_maps[bidx].insert(x)) {
         /* Became full! Move the map to the ready list. We can
            never overflow that list, because it has room for

@@ -168,7 +168,7 @@ private:
   };
 
   struct XctSearchRangeCallback : public ConcurrentMasstree::low_level_search_range_callback {
-    constexpr XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
+    XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
         : t(t), caller_callback(caller_callback) {}
 
     virtual void on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,

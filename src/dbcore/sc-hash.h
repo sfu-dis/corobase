@@ -180,22 +180,21 @@ struct sc_hash_set {
   value_space _buckets[N];
 
  private:
-  struct dummy {};
+  struct dummy_struct {};
 
  public:
   /* No-arg constructor only available if the hash function allows it
    */
   sc_hash_set(typename std::enable_if<
                   std::is_default_constructible<hash_function>::value,
-                  dummy>::type = dummy{}) {
+                  dummy_struct>::type = dummy_struct{}) {
     objzero(_presence);
   }
 
   template <typename H>
   sc_hash_set(
       H &&hash,
-      typename std::enable_if<std::is_convertible<H, hash_function>::value,
-                              dummy>::type dummy = dummy{})
+      typename std::enable_if<std::is_convertible<H, hash_function>::value, dummy_struct>::type dummy = dummy_struct{})
       : _hash(std::forward<H>(hash)) {
     objzero(_presence);
   }

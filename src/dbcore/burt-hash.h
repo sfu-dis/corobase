@@ -49,8 +49,12 @@ struct burt_hash4 {
    */
   __v4si operator()(int32_t xi) const {
     __v4si x = {xi};
+#ifdef __clang__
+    x = (__v4si)__builtin_shufflevector((__v16qi)x, (__v16qi)x, 0, 1, 2, 3, 3, 2, 0, 1, 2, 3, 1, 0, 1, 0, 3, 2);
+#else
     __v16qi k = {0, 1, 2, 3, 3, 2, 0, 1, 2, 3, 1, 0, 1, 0, 3, 2};
     x = (__v4si)__builtin_shuffle((__v16qi)x, k);
+#endif
     return operator()(x);
   }
 

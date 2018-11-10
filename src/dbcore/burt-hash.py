@@ -37,34 +37,44 @@ hash_constants = '''
 46 113  42 101  35 110  50
 '''
 
-def op2code(c):
+def op2code(c, xtype='uint32_t'):
     c = int(c)
-    if c < 32:
-        return 'x += x << %d' % c
-    elif c < 64:
-        return 'x -= x << %d' % (c-32)
-    elif c < 96:
-        return 'x ^= x << %d' % (c-64)
+    if xtype is '__v4si':
+        if c < 32:
+            return 'x[0] += x[0] << %d; x[1] += x[1] << %d; x[2] += x[2] << %d; x[3] += x[3] << %d' % (c, c, c, c)
+        elif c < 64:
+            return 'x[0] += x[0] << %d; x[1] += x[1] << %d; x[2] += x[2] << %d; x[3] += x[3] << %d' % (c-32, c-32, c-32, c-32)
+        elif c < 96:
+            return 'x[0] += x[0] << %d; x[1] += x[1] << %d; x[2] += x[2] << %d; x[3] += x[3] << %d' % (c-64, c-64, c-64, c-64)
+        else:
+            return 'x[0] += x[0] << %d; x[1] += x[1] << %d; x[2] += x[2] << %d; x[3] += x[3] << %d' % (c-96, c-96, c-96, c-96)
     else:
-        return 'x ^= x >> %d' % (c-96)
+        if c < 32:
+            return 'x += x << %d' % c
+        elif c < 64:
+            return 'x -= x << %d' % (c-32)
+        elif c < 96:
+            return 'x ^= x << %d' % (c-64)
+        else:
+            return 'x ^= x >> %d' % (c-96)
     
-def emit_python(name, clist):
+def emit_python(name, clist, xtype):
     print 'def %s(x):' % name
     for c in clist:
-        print '\t%s' % op2code(c)
+        print '\t%s' % op2code(c, xtype)
     print '\treturn x\n'
 
 def emit_c(name, clist, xtype='uint32_t'):
     print 'static {xtype} {name}({xtype} x) {{'.format(name=name, xtype=xtype)
     for c in clist:
-        print '\t%s;' % op2code(c)
+        print '\t%s;' % op2code(c, xtype)
     print '\treturn x;\n}\n'
 
 def emit_c_obj(name, clist, xtype='uint32_t'):
     print 'struct %s : burt_hash {' % name
     print '\t{xtype} operator()({xtype} x) {{'.format(name=name, xtype=xtype)
     for c in clist:
-        print '\t\t%s;' % op2code(c)
+        print '\t\t%s;' % op2code(c, xtype)
     print '\t\treturn x;\n\t}\n};\n'
 
 def emit_c_epilogue(nlists, name):
