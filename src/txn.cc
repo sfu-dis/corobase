@@ -1557,6 +1557,7 @@ rc_t transaction::ssi_read(dbtuple *tuple) {
 #ifdef MVOCC
 rc_t transaction::mvocc_read(dbtuple *tuple) {
   read_set->emplace_back(tuple);
+  return rc_t{RC_TRUE};
 }
 #endif
 }  // namespace ermia
