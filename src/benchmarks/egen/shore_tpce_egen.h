@@ -61,7 +61,7 @@ public:
       cnt = 0;
     }
     T* get(int i){cnt++; return &buffer[i]; }
-    void append(T* row) {memcpy(&buffer[size++],row, sizeof(T)); }
+    void append(T* row) {memcpy((char*)&buffer[size++], (char*)row, sizeof(T)); }
     bool hasSpace(){return (size<capacity-2);}
     bool hasMoreToRead() {return moreToRead;}
     void setMoreToRead(bool x) {moreToRead = x;}    

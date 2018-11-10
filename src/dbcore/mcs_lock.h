@@ -81,7 +81,7 @@ struct mcs_lock {
     me->_next = 0;
     me->_waiting = true;
     __sync_synchronize();
-    qnode* pred = (qnode*)__sync_val_compare_and_swap(&_tail, 0, (void*)me);
+    qnode* pred = (qnode*)__sync_val_compare_and_swap(&_tail, 0, me);
     // lock held?
     if (pred) return false;
     __sync_synchronize();
@@ -100,7 +100,7 @@ struct mcs_lock {
     me->_next = 0;
     me->_waiting = true;
     __sync_synchronize();
-    qnode* pred = (qnode*)__sync_lock_test_and_set(&_tail, (void*)me);
+    qnode* pred = (qnode*)__sync_lock_test_and_set(&_tail, me);
     if (pred) {
       pred->_next = me;
     }
@@ -133,7 +133,7 @@ struct mcs_lock {
     if (!(next = me->_next)) {
       if (me == _tail &&
           me == (qnode*)__sync_val_compare_and_swap((char** volatile) & _tail,
-                                                    (void*)me, 0))
+                                                    (char*)me, 0))
         return;
       next = spin_on_next(me);
     }

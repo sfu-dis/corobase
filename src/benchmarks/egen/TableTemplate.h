@@ -138,7 +138,7 @@ public:
     *   RETURNS:
     *           none.
     */
-    void ClearRecord() { memset(&m_row, 0, sizeof(m_row)); }
+    void ClearRecord() { memset((char*)&m_row, 0, sizeof(m_row)); }
 };
 
 }   // namespace TPCE

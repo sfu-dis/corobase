@@ -88,8 +88,6 @@ public:
 template<uint32_t NodeSize, class PayloadType>
 class LeafNode : public Node {
 private:
-  static const uint32_t kMaxDataSize = NodeSize - sizeof(LeafNode<NodeSize, PayloadType>);
-
   uint32_t data_size_;  // Includes node entries + key/value pairs
   LeafNode *right_sibling_;
   LeafNode *left_sibling_;
@@ -105,7 +103,7 @@ public:
 
   static inline LeafNode *New() {
     LeafNode *node = (LeafNode *)malloc(NodeSize);
-    memset(node, 0, NodeSize);
+    memset((char*)node, 0, NodeSize);
     new (node) LeafNode<NodeSize, PayloadType>();
     return node;
   }
@@ -149,8 +147,6 @@ public:
 template<uint32_t NodeSize>
 class InternalNode : public Node {
 private:
-  static const uint32_t kMaxDataSize = NodeSize - sizeof(InternalNode<NodeSize>);
-
   Node *min_ptr_;  // Left-most child
   uint32_t data_size_;  // Inlcudes node entries + key/value pairs
   char data_[0];  // Must be the last element
@@ -169,7 +165,7 @@ public:
 
   static inline InternalNode *New() {
     InternalNode<NodeSize> *node = (InternalNode *)malloc(NodeSize);
-    memset(node, 0, NodeSize);
+    memset((char*)node, 0, NodeSize);
     new (node) InternalNode<NodeSize>;
     return node;
   }

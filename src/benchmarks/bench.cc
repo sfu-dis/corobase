@@ -309,8 +309,10 @@ void bench_runner::run() {
         std::get<3>(agg[t.first]) += std::get<3>(t.second);
       }
     }
+#ifndef __clang__
     std::cerr << "cmdlog txn breakdown: "
       << util::format_list(agg.begin(), agg.end()) << std::endl;
+#endif
   }
   if (ermia::config::read_view_stat_interval_ms) {
     read_view_observer.join();
@@ -557,7 +559,6 @@ void bench_runner::start_measurement() {
       std::get<2>(agg_txn_counts[t.first]) += std::get<2>(t.second);
       std::get<3>(agg_txn_counts[t.first]) += std::get<3>(t.second);
     }
-    workers[i]->~bench_worker();
   }
 
   if (ermia::config::enable_chkpt) delete ermia::chkptmgr;
@@ -588,8 +589,10 @@ void bench_runner::start_measurement() {
     std::cerr << "agg_abort_rate: " << agg_abort_rate << " aborts/sec" << std::endl;
     std::cerr << "avg_per_core_abort_rate: " << avg_per_core_abort_rate
          << " aborts/sec/core" << std::endl;
+#ifndef __clang__
     std::cerr << "txn breakdown: " << util::format_list(agg_txn_counts.begin(),
                                                    agg_txn_counts.end()) << std::endl;
+#endif
     if (ermia::config::is_backup_srv()) {
       std::cerr << "agg_replay_time: " << agg_replay_latency_ms << " ms" << std::endl;
       std::cerr << "agg_redo_batches: " << agg_redo_batches << std::endl;

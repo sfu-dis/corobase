@@ -87,7 +87,7 @@ template <typename T> class CInputFileNoWeight
     void ReadList(istream &tmpFile)
     {
         T   row;
-        memset(&row, 0, sizeof(row));
+        memset((char*)&row, 0, sizeof(row));
         int iIndex;
         int iLastIndex = -1; /* must be different from the 1st index in the input file */
 
