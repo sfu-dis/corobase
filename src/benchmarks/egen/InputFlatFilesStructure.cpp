@@ -66,7 +66,7 @@ bool CInputFiles::Initialize(eDriverType eType, TIdent iConfiguredCustomerCount,
     iDirLen = strlen( szFileName );
     pStartInFileName = (char *)&szFileName[iDirLen];
     if (*pStartInFileName != '/' && *pStartInFileName != '\\') {
-        strncat(szFileName, "/", sizeof(szFileName));
+        strncat(szFileName, "/", std::min(sizeof(szFileName), iDirLen - 1));
         pStartInFileName++;
         iDirLen++;
     }
