@@ -22,11 +22,6 @@ namespace ermia {
 sm_oid_mgr *oidmgr = NULL;
 
 struct thread_data {
-  /* Use a 64-entry hash table to store OID caches. That may sound
-     small for a typical hash table, but occupancy of this
-     implementation can achieve 90% or higher occupancy for
-     uniformly distributed FIDs.
-   */
   static size_t const NENTRIES = 4096;
 
   struct hasher : burt_hash {
@@ -70,7 +65,7 @@ struct thread_data {
   os_mutex mutex;
 };
 
-__thread thread_data *tls;
+thread_local thread_data *tls = nullptr;
 
 /* Used to make sure threads give back their caches on exit */
 os_mutex_pod oid_mutex = os_mutex_pod::static_init();
@@ -444,8 +439,7 @@ void sm_oid_mgr::PrimaryTakeChkpt(uint64_t chkpt_start_lsn) {
 iterate_index:
   for (auto &fm : IndexDescriptor::name_map) {
     IndexDescriptor *id = fm.second;
-    if (!((id->IsPrimary() && !handling_2nd) ||
-          !id->IsPrimary() && handling_2nd)) {
+    if (!((id->IsPrimary() && !handling_2nd) || (!id->IsPrimary() && handling_2nd))) {
       continue;
     }
     size_t len = id->GetName().length();
