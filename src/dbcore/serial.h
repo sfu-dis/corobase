@@ -63,8 +63,7 @@ struct readers_list {
 uint64_t serial_get_last_read_mostly_cstamp(int xid_idx);
 void serial_stamp_last_committed_lsn(uint64_t lsn);
 void serial_deregister_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap);
-void serial_register_reader_tx(XID xid,
-                               readers_list::bitmap_t* tuple_readers_bitmap);
+void serial_register_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap);
 void serial_register_tx(XID xid);
 void serial_deregister_tx(XID xid);
 

@@ -100,13 +100,13 @@ class ycsb_worker : public bench_worker {
     return w;
   }
 
-  static rc_t TxnInsert(bench_worker *w) { return {RC_TRUE}; }
+  static rc_t TxnInsert(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
   static rc_t TxnRead(bench_worker *w) { return {RC_TRUE}; }
 
-  static rc_t TxnUpdate(bench_worker *w) { return {RC_TRUE}; }
+  static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
-  static rc_t TxnScan(bench_worker *w) { return {RC_TRUE}; }
+  static rc_t TxnScan(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
   static rc_t TxnRMW(bench_worker *w) {
     return static_cast<ycsb_worker *>(w)->txn_rmw();

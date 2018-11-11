@@ -115,8 +115,7 @@ class RdmaNode {
                              remote_offset, size, imm, sync);
   }
   inline void RdmaWriteDaemonBuffer(uint64_t local_offset,
-                                    uint64_t remote_offset, uint64_t size,
-                                    bool sync = true) {
+                                    uint64_t remote_offset, uint64_t size) {
     context_->rdma_write(daemon_buf_ridx_, local_offset, daemon_buf_ridx_,
                          remote_offset, size);
   }

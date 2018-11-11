@@ -36,7 +36,7 @@ void primary_rdma_wait_for_message(uint64_t msg, bool reset) {
 
 // Helper function that brings up a backup server
 void bring_up_backup_rdma(RdmaNode* rn, int chkpt_fd,
-                          backup_start_metadata *md, LSN chkpt_start_lsn) {
+                          backup_start_metadata *md) {
   // Now can really send something, metadata first, header must fit in the
   // buffer
   ALWAYS_ASSERT(md->size() < RdmaNode::kDaemonBufferSize);
@@ -67,7 +67,7 @@ void bring_up_backup_rdma(RdmaNode* rn, int chkpt_fd,
   }
 
   // Done with the chkpt file, now log files
-  send_log_files_after_rdma(rn, md, chkpt_start_lsn);
+  send_log_files_after_rdma(rn, md);
 
   // Publish each node's address in the daemon buffer for backups to know, so
   // that they know whom to talk to after a failure/take-over
@@ -106,7 +106,7 @@ void primary_daemon_rdma() {
   // Fire workers to do the real job - must do this after got all backups
   // as we need to broadcast to everyone the complete list of all backup nodes
   for (auto &rn : nodes) {
-    workers.push_back(new std::thread(bring_up_backup_rdma, rn, chkpt_fd, md, chkpt_start_lsn));
+    workers.push_back(new std::thread(bring_up_backup_rdma, rn, chkpt_fd, md));
   }
 
   for (auto& w : workers) {
@@ -131,7 +131,7 @@ void primary_daemon_rdma() {
       nodes.push_back(rn);
     }
     auto* md = prepare_start_metadata(chkpt_fd, chkpt_start_lsn);
-    bring_up_backup_rdma(rn, chkpt_fd, md, chkpt_start_lsn);
+    bring_up_backup_rdma(rn, chkpt_fd, md);
     // Set the node to be active after shipping the first batch for correct
     // control flow poll
     //rn->WaitForMessageAsPrimary(kRdmaReadyToReceive);
@@ -141,8 +141,7 @@ void primary_daemon_rdma() {
   }
 }
 
-void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md,
-                               LSN chkpt_start) {
+void send_log_files_after_rdma(RdmaNode* self, backup_start_metadata* md) {
   char* daemon_buffer = self->GetDaemonBuffer();
   dirent_iterator dir(config::log_dir.c_str());
   int dfd = dir.dup();

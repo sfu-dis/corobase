@@ -164,7 +164,7 @@ void gc_version_chain(fat_ptr *oid_entry) {
   }
 }
 
-void *allocate(size_t size, epoch_num e) {
+void *allocate(size_t size) {
   size = align_up(size);
   void *p = NULL;
 
@@ -245,6 +245,7 @@ void *thread_registered(void *) {
 }
 
 void thread_deregistered(void *cookie, void *thread_cookie) {
+  MARK_REFERENCED(cookie);
   auto *t = (thread_data *)thread_cookie;
   ASSERT(t == &epoch_tls);
   t->initialized = false;
@@ -253,6 +254,7 @@ void thread_deregistered(void *cookie, void *thread_cookie) {
 }
 
 void *epoch_ended(void *cookie, epoch_num e) {
+  MARK_REFERENCED(cookie);
   // remember the epoch number so we can find it out when it's reclaimed later
   epoch_num *epoch = (epoch_num *)malloc(sizeof(epoch_num));
   *epoch = e;
@@ -261,10 +263,13 @@ void *epoch_ended(void *cookie, epoch_num e) {
 
 void *epoch_ended_thread(void *cookie, void *epoch_cookie,
                          void *thread_cookie) {
+  MARK_REFERENCED(cookie);
+  MARK_REFERENCED(thread_cookie);
   return epoch_cookie;
 }
 
 void epoch_reclaimed(void *cookie, void *epoch_cookie) {
+  MARK_REFERENCED(cookie);
   epoch_num e = *(epoch_num *)epoch_cookie;
   free(epoch_cookie);
   uint64_t my_begin_lsn = epoch_excl_begin_lsn[e % 3];

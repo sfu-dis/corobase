@@ -9,8 +9,9 @@
 
 namespace ermia {
 
-LSN parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
-                                     LSN to) {
+LSN parallel_oid_replay::operator()(void *arg, sm_log_scan_mgr *s,
+                                    LSN from, LSN to) {
+  MARK_REFERENCED(arg);
   //util::scoped_timer t("parallel_oid_replay");
   scanner = s;
   start_lsn = from;

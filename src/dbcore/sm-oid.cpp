@@ -405,7 +405,7 @@ void sm_oid_mgr::create() {
   oidmgr->dfd = dirent_iterator(config::log_dir.c_str()).dup();
 }
 
-void sm_oid_mgr::PrimaryTakeChkpt(uint64_t chkpt_start_lsn) {
+void sm_oid_mgr::PrimaryTakeChkpt() {
   ASSERT(!config::is_backup_srv());
   // Now the real work. The format of a chkpt file is:
   // [number of indexes]
@@ -845,7 +845,7 @@ retry:
       size_t sz = sizeof(Object) + sizeof(dbtuple) +
                   decode_size_aligned(ptr.size_code());
       sz = align_up(sz);
-      Object *obj = (Object *)MM::allocate(sz, 0);
+      Object *obj = (Object *)MM::allocate(sz);
       // FIXME(tzwang): figure out how GC/epoch works with this
       new (obj) Object(ptr, NULL_PTR, 0, false);  // Update next_ later
       // TODO(tzawng): allow pinning the header part only (ie the varstr
@@ -950,7 +950,7 @@ start_over:
       if (ptr.asi_type() == fat_ptr::ASI_LOG) {
         ASSERT(ptr.size_code() != INVALID_SIZE_CODE);
         size_t alloc_sz = align_up(decode_size_aligned(ptr.size_code()) + sizeof(Object));
-        cur_obj = (Object *)MM::allocate(alloc_sz, visitor_xc->begin_epoch);
+        cur_obj = (Object *)MM::allocate(alloc_sz);
         new (cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, false);
         cur_obj->Pin();  // After this next_pdest_ is valid
         ASSERT(cur_obj->GetClsn().offset());

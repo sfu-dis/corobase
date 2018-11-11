@@ -11,8 +11,10 @@
 
 namespace ermia {
 
-LSN parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s, LSN from,
-                                        LSN to) {
+LSN parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s,
+                                       LSN from, LSN to) {
+  MARK_REFERENCED(arg);
+  MARK_REFERENCED(from);
   scanner = s;
   RCU::rcu_enter();
   for (uint32_t i = 0; i < nredoers; ++i) {

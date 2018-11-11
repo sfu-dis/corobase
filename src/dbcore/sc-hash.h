@@ -196,6 +196,7 @@ struct sc_hash_set {
       H &&hash,
       typename std::enable_if<std::is_convertible<H, hash_function>::value, dummy_struct>::type dummy = dummy_struct{})
       : _hash(std::forward<H>(hash)) {
+    MARK_REFERENCED(dummy);
     objzero(_presence);
   }
 
