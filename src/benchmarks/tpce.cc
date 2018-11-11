@@ -204,7 +204,7 @@ class tpce_worker_mixin : private _dummy {
   // in TPCE)
   //
   // pins the *calling* thread
-  static void PinToPartition(unsigned int pid) {}
+  static void PinToPartition(unsigned int pid) { MARK_REFERENCED(pid); }
 
  public:
   static inline uint32_t GetCurrentTimeMillis() {
@@ -223,6 +223,8 @@ class tpce_worker_mixin : private _dummy {
 
   static ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
                                                         int upper) {
+    MARK_REFERENCED(lower);
+    MARK_REFERENCED(upper);
     ASSERT(v >= lower);
     ASSERT(v <= upper);
     return v;
@@ -1017,6 +1019,7 @@ rc_t tpce_worker::DoCustomerPositionFrame3(void) {
 rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
                                      TMarketFeedFrame1Output *pOut,
                                      CSendToMarketInterface *pSendToMarket) {
+  MARK_REFERENCED(pSendToMarket);
   auto now_dts = CDateTime().GetDate();
   std::vector<TTradeRequest> TradeRequestBuffer;
   double req_price_quote = 0;
@@ -3446,9 +3449,11 @@ rc_t tpce_worker::DoLongQueryFrame1() {
 
 rc_t tpce_worker::DoDataMaintenanceFrame1(
     const TDataMaintenanceFrame1Input *pIn) {
+  MARK_REFERENCED(pIn);
   return {RC_INVALID};
 }
 rc_t tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn) {
+  MARK_REFERENCED(pIn);
   return {RC_INVALID};
 }
 
@@ -3562,7 +3567,7 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
-      : bench_loader(seed, db, open_tables), tpce_worker_mixin(partitions) {}
+      : bench_loader(seed, db, open_tables), tpce_worker_mixin(partitions) { MARK_REFERENCED(partition_id); }
 
  protected:
   virtual void load() {
@@ -5029,11 +5034,13 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_bench_runner : public bench_runner {
  private:
   static bool IsTableReadOnly(const char *name) {
+    MARK_REFERENCED(name);
     // TODO.
     return false;
   }
 
   static bool IsTableAppendOnly(const char *name) {
+    MARK_REFERENCED(name);
     // TODO.
     return true;
   }
