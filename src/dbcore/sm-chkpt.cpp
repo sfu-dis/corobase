@@ -58,7 +58,7 @@ void sm_chkpt_mgr::do_chkpt() {
     return;
   }
   prepare_file(cstart);
-  oidmgr->PrimaryTakeChkpt(cstart.offset());
+  oidmgr->PrimaryTakeChkpt();
   // FIXME (tzwang): originally we should put info about the chkpt
   // in a log record and then commit that sys transaction that's
   // responsible for doing chkpt. But that would interfere with
@@ -205,7 +205,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
       nbytes += sizeof(uint32_t);
       ALWAYS_ASSERT(key_size);
       if (o % num_recovery_threads == oid_partition) {
-        varstr* key = (varstr*)MM::allocate(sizeof(varstr) + key_size, 0);
+        varstr* key = (varstr*)MM::allocate(sizeof(varstr) + key_size);
         new (key) varstr((char*)key + sizeof(varstr), key_size);
         memcpy((void*)key->p, read_buffer(key->l), key->l);
         ALWAYS_ASSERT(key->size());
@@ -231,7 +231,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
           fat_ptr pdest = fat_ptr::make((uintptr_t)nbytes, size_code,
                                         fat_ptr::ASI_CHK_FLAG);
           Object* obj =
-              (Object*)MM::allocate(decode_size_aligned(size_code), 0);
+              (Object*)MM::allocate(decode_size_aligned(size_code));
           new (obj) Object(pdest, NULL_PTR, 0, false);
           // Pin it regardless - the clsn needs to be comparable with other
           // versions
@@ -246,7 +246,7 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
   }
 }
 
-void sm_chkpt_mgr::recover(LSN chkpt_start, sm_log_recover_mgr* lm) {
+void sm_chkpt_mgr::recover(LSN chkpt_start) {
   util::scoped_timer t("chkpt_recovery");
   // Take the sum to make sure we have threads to to the work
   num_recovery_threads = config::worker_threads + config::replay_threads;

@@ -5038,8 +5038,7 @@ class tpce_bench_runner : public bench_runner {
     return true;
   }
 
-  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(ermia::Engine *db,
-                                                        const char *name) {
+  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(const char *name) {
     const std::string s_name(name);
     std::vector<ermia::OrderedIndex *> ret(NumPartitions());
     ermia::OrderedIndex *idx = ermia::IndexDescriptor::GetIndex(s_name);
@@ -5101,7 +5100,7 @@ class tpce_bench_runner : public bench_runner {
   }
 
   virtual void prepare(char *) {
-#define OPEN_TABLESPACE_X(x) partitions[#x] = OpenTablesForTablespace(db, #x);
+#define OPEN_TABLESPACE_X(x) partitions[#x] = OpenTablesForTablespace(#x);
 
     TPCE_TABLE_LIST(OPEN_TABLESPACE_X);
 

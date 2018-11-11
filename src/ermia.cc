@@ -92,6 +92,7 @@ void Engine::CreateTable(uint16_t index_type, const char *name, const char *prim
 rc_t ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
                                    const varstr *end_key, ScanCallback &callback,
                                    str_arena *arena) {
+  MARK_REFERENCED(arena);
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -121,6 +122,7 @@ rc_t ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
 rc_t ConcurrentMasstreeIndex::ReverseScan(transaction *t, const varstr &start_key,
                                           const varstr *end_key, ScanCallback &callback,
                                           str_arena *arena) {
+  MARK_REFERENCED(arena);
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -290,6 +292,9 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     const ConcurrentMasstree *btr_ptr,
     const typename ConcurrentMasstree::string_type &k, dbtuple *v,
     const typename ConcurrentMasstree::node_opaque_t *n, uint64_t version) {
+  MARK_REFERENCED(btr_ptr);
+  MARK_REFERENCED(n);
+  MARK_REFERENCED(version);
   t->ensure_active();
   VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x"
                     << util::hexify(n) << ", version=" << version << ">"
@@ -358,6 +363,7 @@ rc_t SingleThreadedBTree::DoTreePut(transaction &t, const varstr *k, varstr *v, 
 }
 
 bool SingleThreadedBTree::InsertIfAbsent(transaction *t, const varstr &key, OID oid) {
+  MARK_REFERENCED(t);
   return btree_.Insert((char *)key.data(), key.size(), oid);
   // TODO(tzwang): phantom protection
 }

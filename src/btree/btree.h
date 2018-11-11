@@ -89,8 +89,8 @@ template<uint32_t NodeSize, class PayloadType>
 class LeafNode : public Node {
 private:
   uint32_t data_size_;  // Includes node entries + key/value pairs
-  LeafNode *right_sibling_;
   LeafNode *left_sibling_;
+  LeafNode *right_sibling_;
   char data_[0];  // Must be the last element
 
 private:

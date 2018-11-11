@@ -51,7 +51,7 @@ void sm_log_recover_mgr::recover() {
   }
   LSN chkpt_lsn = get_chkpt_start();
   if (chkpt_lsn.offset()) {
-    sm_chkpt_mgr::recover(chkpt_lsn, this);
+    sm_chkpt_mgr::recover(chkpt_lsn);
   }
 
   LOG(INFO) << "Will recover till " << std::hex << get_durable_mark().offset();

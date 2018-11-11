@@ -87,7 +87,7 @@ class simple_threadinfo {
 
   // memory allocation
   void *allocate(size_t sz, memtag) {
-    Object *obj = (Object *)MM::allocate(sz + sizeof(Object), epoch_);
+    Object *obj = (Object *)MM::allocate(sz + sizeof(Object));
     new (obj) Object(NULL_PTR, NULL_PTR, epoch_, true);
     return obj->GetPayload();
   }
@@ -276,10 +276,15 @@ class mbtree {
 
   class search_range_callback : public low_level_search_range_callback {
    public:
-    virtual void on_resp_node(const node_opaque_t *n, uint64_t version) {}
+    virtual void on_resp_node(const node_opaque_t *n, uint64_t version) {
+      MARK_REFERENCED(n);
+      MARK_REFERENCED(version);
+    }
 
     virtual bool invoke(const string_type &k, value_type v,
                         const node_opaque_t *n, uint64_t version) {
+      MARK_REFERENCED(n);
+      MARK_REFERENCED(version);
       return invoke(k, v);
     }
 
@@ -651,10 +656,15 @@ class mbtree<P>::low_level_search_range_callback_wrapper
  public:
   low_level_search_range_callback_wrapper(F &callback) : callback_(callback) {}
 
-  void on_resp_node(const node_opaque_t *n, uint64_t version) override {}
+  void on_resp_node(const node_opaque_t *n, uint64_t version) override {
+    MARK_REFERENCED(n);
+    MARK_REFERENCED(version);
+  }
 
   bool invoke(const string_type &k, OID o, dbtuple *v, const node_opaque_t *n,
               uint64_t version) override {
+    MARK_REFERENCED(n);
+    MARK_REFERENCED(version);
     return callback_(k, o, v);
   }
 

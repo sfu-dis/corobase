@@ -534,7 +534,10 @@ struct helper {
 
 template <size_t Idx, class... Types>
 struct helper<Idx, false, Types...> {
-  static inline void apply(std::ostream &o, const std::tuple<Types...> &t) {}
+  static inline void apply(std::ostream &o, const std::tuple<Types...> &t) {
+    MARK_REFERENCED(o);
+    MARK_REFERENCED(t);
+  }
 };
 }
 

@@ -87,6 +87,7 @@ static inline uint64_t FastNewOrderIdGen(unsigned warehouse,
       .fetch_add(1, std::memory_order_acq_rel);
 }
 
+#ifndef NDEBUG
 struct checker {
   // these sanity checks are just a few simple checks to make sure
   // the data is not entirely corrupted
@@ -125,14 +126,12 @@ struct checker {
     ASSERT(v->i_price >= 1.0 && v->i_price <= 100.0);
   }
 
-  static ALWAYS_INLINE void SanityCheckStock(const stock::key *k,
-                                                    const stock::value *v) {
+  static ALWAYS_INLINE void SanityCheckStock(const stock::key *k) {
     ASSERT(k->s_w_id >= 1 && static_cast<size_t>(k->s_w_id) <= NumWarehouses());
     ASSERT(k->s_i_id >= 1 && static_cast<size_t>(k->s_i_id) <= NumItems());
   }
 
-  static ALWAYS_INLINE void SanityCheckNewOrder(
-      const new_order::key *k, const new_order::value *v) {
+  static ALWAYS_INLINE void SanityCheckNewOrder(const new_order::key *k) {
     ASSERT(k->no_w_id >= 1 &&
            static_cast<size_t>(k->no_w_id) <= NumWarehouses());
     ASSERT(k->no_d_id >= 1 &&
@@ -161,6 +160,7 @@ struct checker {
     ASSERT(v->ol_i_id >= 1 && static_cast<size_t>(v->ol_i_id) <= NumItems());
   }
 };
+#endif
 
 class tpcc_worker_mixin : private _dummy {
 #define DEFN_TBL_INIT_X(name) , tbl_##name##_vec(partitions.at(#name))
@@ -207,6 +207,8 @@ class tpcc_worker_mixin : private _dummy {
 
   static ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
                                                         int upper) {
+    MARK_REFERENCED(lower);
+    MARK_REFERENCED(upper);
     ASSERT(v >= lower);
     ASSERT(v <= upper);
     return v;
@@ -243,8 +245,7 @@ class tpcc_worker_mixin : private _dummy {
   // all tokens are at most 5 chars long
   static const size_t CustomerLastNameMaxSize = 5 * 3;
 
-  static inline size_t GetCustomerLastName(uint8_t *buf, util::fast_random &r,
-                                           int num) {
+  static inline size_t GetCustomerLastName(uint8_t *buf, int num) {
     const std::string &s0 = NameTokens[num / 100];
     const std::string &s1 = NameTokens[(num / 10) % 10];
     const std::string &s2 = NameTokens[num % 10];
@@ -261,26 +262,21 @@ class tpcc_worker_mixin : private _dummy {
     return buf - begin;
   }
 
-  static ALWAYS_INLINE size_t
-  GetCustomerLastName(char *buf, util::fast_random &r, int num) {
-    return GetCustomerLastName((uint8_t *)buf, r, num);
-  }
-
-  static inline std::string GetCustomerLastName(util::fast_random &r, int num) {
+  static inline std::string GetCustomerLastName(int num) {
     std::string ret;
     ret.resize(CustomerLastNameMaxSize);
-    ret.resize(GetCustomerLastName((uint8_t *)&ret[0], r, num));
+    ret.resize(GetCustomerLastName((uint8_t *)&ret[0], num));
     return ret;
   }
 
   static ALWAYS_INLINE std::string
   GetNonUniformCustomerLastNameLoad(util::fast_random &r) {
-    return GetCustomerLastName(r, NonUniformRandom(r, 255, 157, 0, 999));
+    return GetCustomerLastName(NonUniformRandom(r, 255, 157, 0, 999));
   }
 
   static ALWAYS_INLINE size_t
   GetNonUniformCustomerLastNameRun(uint8_t *buf, util::fast_random &r) {
-    return GetCustomerLastName(buf, r, NonUniformRandom(r, 255, 223, 0, 999));
+    return GetCustomerLastName(buf, NonUniformRandom(r, 255, 223, 0, 999));
   }
 
   static ALWAYS_INLINE size_t
@@ -290,7 +286,7 @@ class tpcc_worker_mixin : private _dummy {
 
   static ALWAYS_INLINE std::string
   GetNonUniformCustomerLastNameRun(util::fast_random &r) {
-    return GetCustomerLastName(r, NonUniformRandom(r, 255, 223, 0, 999));
+    return GetCustomerLastName(NonUniformRandom(r, 255, 223, 0, 999));
   }
 
   // following oltpbench, we really generate strings of len - 1...
@@ -649,7 +645,9 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       v.w_state.assign(w_state);
       v.w_zip.assign(w_zip);
 
+#ifndef NDEBUG
       checker::SanityCheckWarehouse(&k, &v);
+#endif
       const size_t sz = Size(v);
       warehouse_total_sz += sz;
       n_warehouses++;
@@ -673,7 +671,9 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
       ALWAYS_ASSERT(warehouses[i - 1] == *v);
 
+#ifndef NDEBUG
       checker::SanityCheckWarehouse(&k, v);
+#endif
       TryVerifyStrict(db->Commit(txn));
     }
 
@@ -724,7 +724,9 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
       }
       v.i_im_id = RandomNumber(r, 1, 10000);
 
+#ifndef NDEBUG
       checker::SanityCheckItem(&k, &v);
+#endif
       const size_t sz = Size(v);
       total_sz += sz;
       TryVerifyStrict(tbl_item(1)->Insert(
@@ -803,7 +805,9 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
           v_data.s_dist_09.assign(RandomStr(r, 24));
           v_data.s_dist_10.assign(RandomStr(r, 24));
 
-          checker::SanityCheckStock(&k, &v);
+#ifndef NDEBUG
+          checker::SanityCheckStock(&k);
+#endif
           const size_t sz = Size(v);
           stock_total_sz += sz;
           n_stocks++;
@@ -866,7 +870,9 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
         v.d_state.assign(RandomStr(r, 3));
         v.d_zip.assign("123456789");
 
+#ifndef NDEBUG
         checker::SanityCheckDistrict(&k, &v);
+#endif
         const size_t sz = Size(v);
         district_total_sz += sz;
         n_districts++;
@@ -937,7 +943,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
               v.c_credit.assign("GC");
 
             if (c <= 1000)
-              v.c_last.assign(GetCustomerLastName(r, c - 1));
+              v.c_last.assign(GetCustomerLastName(c - 1));
             else
               v.c_last.assign(GetNonUniformCustomerLastNameLoad(r));
 
@@ -959,7 +965,9 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
             v.c_middle.assign("OE");
             v.c_data.assign(RandomStr(r, RandomNumber(r, 300, 500)));
 
+#ifndef NDEBUG
             checker::SanityCheckCustomer(&k, &v);
+#endif
             const size_t sz = Size(v);
             total_sz += sz;
             ermia::OID c_oid = 0;  // Get the OID and put in customer_name_idx later
@@ -1077,7 +1085,9 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
           v_oo.o_all_local = 1;
           v_oo.o_entry_d = GetCurrentTimeMillis();
 
+#ifndef NDEBUG
           checker::SanityCheckOOrder(&k_oo, &v_oo);
+#endif
           const size_t sz = Size(v_oo);
           oorder_total_sz += sz;
           n_oorders++;
@@ -1101,7 +1111,9 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             const new_order::key k_no(w, d, c);
             const new_order::value v_no;
 
-            checker::SanityCheckNewOrder(&k_no, &v_no);
+#ifndef NDEBUG
+            checker::SanityCheckNewOrder(&k_no);
+#endif
             const size_t sz = Size(v_no);
             new_order_total_sz += sz;
             n_new_orders++;
@@ -1129,7 +1141,9 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
             // v_ol.ol_dist_info comes from stock_data(ol_supply_w_id, ol_o_id)
             // v_ol.ol_dist_info = RandomStr(r, 24);
 
+#ifndef NDEBUG
             checker::SanityCheckOrderLine(&k_ol, &v_ol);
+#endif
             const size_t sz = Size(v_ol);
             order_line_total_sz += sz;
             n_order_lines++;
@@ -1223,7 +1237,9 @@ rc_t tpcc_worker::txn_new_order() {
   TryVerifyRelaxed(rc);
 
   const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+#ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, v_c);
+#endif
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
@@ -1234,7 +1250,9 @@ rc_t tpcc_worker::txn_new_order() {
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+#ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
+#endif
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
@@ -1245,7 +1263,9 @@ rc_t tpcc_worker::txn_new_order() {
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+#ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
+#endif
 
   const uint64_t my_next_o_id =
       g_new_order_fast_id_gen ? FastNewOrderIdGen(warehouse_id, districtID)
@@ -1299,7 +1319,9 @@ rc_t tpcc_worker::txn_new_order() {
     TryVerifyRelaxed(rc);
 
     const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+#ifndef NDEBUG
     checker::SanityCheckItem(&k_i, v_i);
+#endif
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
@@ -1310,7 +1332,9 @@ rc_t tpcc_worker::txn_new_order() {
     TryVerifyRelaxed(rc);
 
     const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
-    checker::SanityCheckStock(&k_s, v_s);
+#ifndef NDEBUG
+    checker::SanityCheckStock(&k_s);
+#endif
 
     stock::value v_s_new(*v_s);
     if (v_s_new.s_quantity - ol_quantity >= 10)
@@ -1350,13 +1374,15 @@ class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
   new_order_scan_callback() : k_no(0) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keylen);
+    MARK_REFERENCED(value);
     ASSERT(keylen == sizeof(new_order::key));
     ASSERT(value.size() == sizeof(new_order::value));
     k_no = Decode(keyp, k_no_temp);
 #ifndef NDEBUG
     new_order::value v_no_temp;
     const new_order::value *v_no = Decode(value, v_no_temp);
-    checker::SanityCheckNewOrder(k_no, v_no);
+    checker::SanityCheckNewOrder(k_no);
 #endif
     return false;
   }
@@ -1466,7 +1492,9 @@ rc_t tpcc_worker::txn_delivery() {
     TryCatchCondAbort(rc);
 
     const oorder::value *v_oo = Decode(sv_oo_temp, v_oo_temp);
+#ifndef NDEBUG
     checker::SanityCheckOOrder(&k_oo, v_oo);
+#endif
 
     static_limit_callback<15> c(
         s_arena.get(), false);  // never more than 15 order_lines per order
@@ -1539,6 +1567,7 @@ class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallbac
  public:
   credit_check_order_scan_callback(ermia::str_arena *arena) : _arena(arena) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(value);
     ermia::varstr *const k = _arena->next(keylen);
     ASSERT(k);
     k->copy_from(keyp, keylen);
@@ -1552,8 +1581,10 @@ class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallbac
 class credit_check_order_line_scan_callback
     : public ermia::OrderedIndex::ScanCallback {
  public:
-  credit_check_order_line_scan_callback(ermia::str_arena *arena) {}
+  credit_check_order_line_scan_callback() {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keyp);
+    MARK_REFERENCED(keylen);
     _v_ol.emplace_back(&value);
     return true;
   }
@@ -1618,7 +1649,9 @@ rc_t tpcc_worker::txn_credit_check() {
   TryVerifyRelaxed(rc);
 
   const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+#ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, v_c);
+#endif
 
   // scan order
   //		c_w_id = :w_id;
@@ -1650,7 +1683,7 @@ rc_t tpcc_worker::txn_credit_check() {
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    static thread_local credit_check_order_line_scan_callback c_ol(s_arena.get());
+    static thread_local credit_check_order_line_scan_callback c_ol;
     c_ol._v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
@@ -1720,7 +1753,9 @@ rc_t tpcc_worker::txn_payment() {
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+#ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
+#endif
 
   warehouse::value v_w_new(*v_w);
   v_w_new.w_ytd += paymentAmount;
@@ -1737,7 +1772,9 @@ rc_t tpcc_worker::txn_payment() {
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+#ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
+#endif
 
   district::value v_d_new(*v_d);
   v_d_new.d_ytd += paymentAmount;
@@ -1796,7 +1833,9 @@ rc_t tpcc_worker::txn_payment() {
     TryVerifyRelaxed(rc);
     Decode(sv_c, v_c);
   }
+#ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, &v_c);
+#endif
   customer::value v_c_new(v_c);
 
   v_c_new.c_balance -= paymentAmount;
@@ -1841,6 +1880,8 @@ class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
  public:
   order_line_nop_callback() : n(0) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keylen);
+    MARK_REFERENCED(keyp);
     ASSERT(keylen == sizeof(order_line::key));
     order_line::value v_ol_temp;
     const order_line::value *v_ol = Decode(value, v_ol_temp);
@@ -1863,6 +1904,7 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
   }
 
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(value);
     ASSERT(limit == -1 || n < limit);
     k->copy_from(keyp, keylen);
     ++n;
@@ -1949,7 +1991,9 @@ rc_t tpcc_worker::txn_order_status() {
 
     Decode(sv_c, v_c);
   }
+#ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, &v_c);
+#endif
 
   oorder_c_id_idx::value sv;
   ermia::varstr *newest_o_c_id = s_arena.get()->next(Size(sv));
@@ -2007,6 +2051,8 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
  public:
   order_line_scan_callback() : n(0) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keyp);
+    MARK_REFERENCED(keylen);
     ASSERT(keylen == sizeof(order_line::key));
     order_line::value v_ol_temp;
     const order_line::value *v_ol = Decode(value, v_ol_temp);
@@ -2054,7 +2100,9 @@ rc_t tpcc_worker::txn_stock_level() {
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+#ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
+#endif
 
   const uint64_t cur_next_o_id =
       g_new_order_fast_id_gen
@@ -2195,7 +2243,9 @@ rc_t tpcc_worker::txn_query2() {
         tbl_item(1)->Get(txn, rc, Encode(str(Size(k_i)), k_i), sv_i_temp);
         TryVerifyRelaxed(rc);
         const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+#ifndef NDEBUG
         checker::SanityCheckItem(&k_i, v_i);
+#endif
 
         //  filtering item (i_data like '%b')
         auto found = v_i->i_data.str().find('b');
@@ -2209,7 +2259,9 @@ rc_t tpcc_worker::txn_query2() {
           new_v_s.s_ytd = min_v_s.s_ytd;
           new_v_s.s_order_cnt = min_v_s.s_order_cnt;
           new_v_s.s_remote_cnt = min_v_s.s_remote_cnt;
-          checker::SanityCheckStock(&min_k_s, &new_v_s);
+#ifndef NDEBUG
+          checker::SanityCheckStock(&min_k_s);
+#endif
           TryCatch(tbl_stock(min_k_s.s_w_id)
                         ->Put(txn, Encode(str(Size(min_k_s)), min_k_s),
                               Encode(str(Size(new_v_s)), new_v_s)));
@@ -2290,7 +2342,9 @@ rc_t tpcc_worker::txn_microbench_random() {
     v.s_order_cnt = 0;
     v.s_remote_cnt = 0;
 
-    checker::SanityCheckStock(&k_s, &v);
+#ifndef NDEBUG
+    checker::SanityCheckStock(&k_s);
+#endif
     TryCatch(tbl_stock(ww)->Put(txn, Encode(str(Size(k_s)), k_s),
                                  Encode(str(Size(v)), v)));
   }
@@ -2314,8 +2368,7 @@ class tpcc_bench_runner : public bench_runner {
     return strcmp("history", name) == 0 || strcmp("oorder_c_id_idx", name) == 0;
   }
 
-  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(ermia::Engine *db,
-                                                        const char *name) {
+  static std::vector<ermia::OrderedIndex *> OpenTablesForTablespace(const char *name) {
     const bool is_read_only = IsTableReadOnly(name);
     const bool is_append_only = IsTableAppendOnly(name);
     const std::string s_name(name);
@@ -2401,7 +2454,7 @@ class tpcc_bench_runner : public bench_runner {
   }
 
   virtual void prepare(char *) {
-#define OPEN_TABLESPACE_X(x) partitions[#x] = OpenTablesForTablespace(db, #x);
+#define OPEN_TABLESPACE_X(x) partitions[#x] = OpenTablesForTablespace(#x);
 
     TPCC_TABLE_LIST(OPEN_TABLESPACE_X);
 
@@ -2695,7 +2748,9 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   TryVerifyRelaxed(rc);
 
   const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+#ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, v_c);
+#endif
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
@@ -2706,7 +2761,9 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+#ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
+#endif
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
@@ -2717,7 +2774,9 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+#ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
+#endif
 
   const uint64_t my_next_o_id =
       g_new_order_fast_id_gen ? FastNewOrderIdGen(warehouse_id, districtID)
@@ -2769,7 +2828,9 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
     tbl_item(1)->Get(txn, rc, Encode(str(Size(k_i)), k_i), sv_i_temp);
     TryVerifyRelaxed(rc);
     const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+#ifndef NDEBUG
     checker::SanityCheckItem(&k_i, v_i);
+#endif
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
@@ -2780,7 +2841,9 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
     TryVerifyRelaxed(rc);
 
     const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
-    checker::SanityCheckStock(&k_s, v_s);
+#ifndef NDEBUG
+    checker::SanityCheckStock(&k_s);
+#endif
 
     stock::value v_s_new(*v_s);
     if (v_s_new.s_quantity - ol_quantity >= 10)
@@ -2849,7 +2912,9 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+#ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
+#endif
 
   warehouse::value v_w_new(*v_w);
   v_w_new.w_ytd += paymentAmount;
@@ -2864,7 +2929,9 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
   tbl_district(warehouse_id)->Get(txn, rc, Encode(str(Size(k_d)), k_d), sv_d_temp);
   TryVerifyRelaxed(rc);
   const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+#ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
+#endif
 
   district::value v_d_new(*v_d);
   v_d_new.d_ytd += paymentAmount;
@@ -2923,7 +2990,9 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
     TryVerifyRelaxed(rc);
     Decode(sv_c, v_c);
   }
+#ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, &v_c);
+#endif
   customer::value v_c_new(v_c);
 
   v_c_new.c_balance -= paymentAmount;
@@ -3011,7 +3080,9 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     tbl_oorder(warehouse_id)->Get(txn, rc, Encode(str(Size(k_oo)), k_oo), sv_oo_temp);
     TryCatchCondAbort(rc);
     const oorder::value *v_oo = Decode(sv_oo_temp, v_oo_temp);
+#ifndef NDEBUG
     checker::SanityCheckOOrder(&k_oo, v_oo);
+#endif
 
     static_limit_callback<15> c(
         s_arena.get(), false);  // never more than 15 order_lines per order
