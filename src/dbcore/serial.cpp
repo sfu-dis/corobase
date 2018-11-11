@@ -210,13 +210,13 @@ void serial_register_tx(XID xid) {
 
 // deregister tx in the global rlist (called at tx end)
 void serial_deregister_tx(XID xid) {
+  MARK_REFERENCED(xid);
   ASSERT(rlist.xids[tls_bitmap_info.xid_index()]._val == xid._val);
   volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, 0);
   ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
 }
 
-void serial_register_reader_tx(XID xid,
-                               readers_list::bitmap_t* tuple_readers_bitmap) {
+void serial_register_reader_tx(readers_list::bitmap_t* tuple_readers_bitmap) {
   ASSERT(tls_bitmap_info.entry);
   ASSERT(rlist.bitmap.array[tls_bitmap_info.index] & tls_bitmap_info.entry);
   // With read optimization, a transaction might not clear the bit,

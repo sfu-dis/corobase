@@ -1359,7 +1359,7 @@ bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
     // realistic setting here to not generate it, the purpose of skipping
     // this is solely for benchmarking CC.
     varstr *new_key =
-        (varstr *)MM::allocate(sizeof(varstr) + key->size(), xc->begin_epoch);
+        (varstr *)MM::allocate(sizeof(varstr) + key->size());
     new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
     new_key->copy_from(key);
     key_array->ensure_size(oid);
@@ -1489,7 +1489,7 @@ rc_t transaction::ssn_read(dbtuple *tuple) {
       // already read a (then latest) version, then T2 comes to overwrite it).
       read_set->emplace_back(tuple);
     }
-    serial_register_reader_tx(xc->owner, &tuple->readers_bitmap);
+    serial_register_reader_tx(&tuple->readers_bitmap);
   }
 
 #ifdef EARLY_SSN_CHECK
@@ -1533,7 +1533,7 @@ rc_t transaction::ssi_read(dbtuple *tuple) {
   } else {
     // survived, register as a reader
     // After this point, I'll be visible to the updater (if any)
-    serial_register_reader_tx(xc->owner, &tuple->readers_bitmap);
+    serial_register_reader_tx(&tuple->readers_bitmap);
     read_set->emplace_back(tuple);
   }
   return {RC_TRUE};

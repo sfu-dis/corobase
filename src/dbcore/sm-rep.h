@@ -210,8 +210,7 @@ void start_as_backup_rdma();
 void primary_init_rdma();
 void primary_ship_log_buffer_rdma(const char* buf, uint32_t size, bool new_seg,
                                   uint64_t new_seg_start_offset);
-void send_log_files_after_rdma(RdmaNode* node, backup_start_metadata* md,
-                               LSN chkpt_start);
+void send_log_files_after_rdma(RdmaNode* node, backup_start_metadata* md);
 void primary_rdma_poll_send_cq(uint64_t nops);
 void primary_rdma_wait_for_message(uint64_t msg, bool reset);
 void primary_rdma_set_global_persisted_lsn(uint64_t lsn);
@@ -221,8 +220,7 @@ void start_as_backup_tcp();
 void BackupDaemonTcp();
 void BackupDaemonTcpCommandLog();
 void primary_daemon_tcp();
-void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
-                              LSN chkpt_start);
+void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md);
 void PrimaryShutdownTcp();
 
 /* Send a chunk of log records (still in memory log buffer) to a backup via TCP.

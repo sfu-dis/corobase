@@ -46,7 +46,7 @@ class sm_chkpt_mgr {
   void do_chkpt();
   void daemon();
   void write_buffer(void* p, size_t s);
-  static void recover(LSN chkpt_start, sm_log_recover_mgr* lm);
+  static void recover(LSN chkpt_start);
 
   inline char* advance_buffer(uint32_t size) {
     if (_buf_pos + size > kBufferSize) {

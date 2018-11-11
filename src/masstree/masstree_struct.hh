@@ -355,6 +355,7 @@ class leaf : public node_base<P> {
   bool has_ksuf(int p) const { return keylenx_has_ksuf(keylenx_[p]); }
   Str ksuf(int p, int keylenx) const {
     masstree_precondition(keylenx_has_ksuf(keylenx));
+    MARK_REFERENCED(keylenx);
     return ksuf_ ? ksuf_->get(p) : iksuf_[0].get(p);
   }
   Str ksuf(int p) const { return ksuf(p, keylenx_[p]); }

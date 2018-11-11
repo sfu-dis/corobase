@@ -256,9 +256,23 @@ public:
     return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            ScanCallback &callback, str_arena *arena) override { return rc_t{RC_TRUE}; /* Not implemented */ }
+            ScanCallback &callback, str_arena *arena) override { 
+    MARK_REFERENCED(t);
+    MARK_REFERENCED(start_key);
+    MARK_REFERENCED(end_key);
+    MARK_REFERENCED(callback);
+    MARK_REFERENCED(arena);
+    return rc_t{RC_TRUE};
+  }
   rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-                   ScanCallback &callback, str_arena *arena) override { return rc_t{RC_TRUE}; /* Not implemented */ }
+                   ScanCallback &callback, str_arena *arena) override {
+    MARK_REFERENCED(t);
+    MARK_REFERENCED(start_key);
+    MARK_REFERENCED(end_key);
+    MARK_REFERENCED(callback);
+    MARK_REFERENCED(arena);
+    return rc_t{RC_TRUE};
+  }
 
   inline size_t Size() override { return 0; /* Not implemented */ }
   std::map<std::string, uint64_t> Clear() override { std::map<std::string, uint64_t> unused; return unused; /* Not implemented */ }

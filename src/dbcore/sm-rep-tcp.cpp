@@ -12,7 +12,7 @@ namespace rep {
 tcp::client_context* cctx CACHE_ALIGNED;
 uint64_t global_persisted_lsn_tcp CACHE_ALIGNED;
 
-void bring_up_backup_tcp(int backup_sockfd, backup_start_metadata *md, LSN chkpt_start_lsn) {
+void bring_up_backup_tcp(int backup_sockfd, backup_start_metadata *md) {
   auto sent_bytes = send(backup_sockfd, md, md->size(), 0);
   ALWAYS_ASSERT(sent_bytes == md->size());
 
@@ -38,7 +38,7 @@ void bring_up_backup_tcp(int backup_sockfd, backup_start_metadata *md, LSN chkpt
   os_close(chkpt_fd);
 
   // Now send the log after chkpt
-  send_log_files_after_tcp(backup_sockfd, md, chkpt_start_lsn);
+  send_log_files_after_tcp(backup_sockfd, md);
 
   // Wait for the backup to notify me that it persisted the logs
   tcp::expect_ack(backup_sockfd);
@@ -70,7 +70,7 @@ void primary_daemon_tcp() {
   // Fire workers to do the real job - must do this after got all backups
   // as we need to broadcast to everyone the complete list of all backup nodes
   for (auto &fd : backup_sockfds) {
-    workers.push_back(new std::thread(bring_up_backup_tcp, fd, md, chkpt_start_lsn));
+    workers.push_back(new std::thread(bring_up_backup_tcp, fd, md));
   }
 
   for (auto &w : workers) {
@@ -84,8 +84,7 @@ void primary_daemon_tcp() {
   }
 }
 
-void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md,
-                              LSN chkpt_start) {
+void send_log_files_after_tcp(int backup_fd, backup_start_metadata* md) {
   dirent_iterator dir(config::log_dir.c_str());
   int dfd = dir.dup();
   for (uint32_t i = 0; i < md->num_log_files; ++i) {
