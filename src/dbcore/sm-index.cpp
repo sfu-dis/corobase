@@ -11,8 +11,8 @@ IndexDescriptor::IndexDescriptor(OrderedIndex *index, std::string& name)
       primary_name_(""),
       index_(index),
       tuple_fid_(0),
-      aux_fid_(0),
       tuple_array_(nullptr),
+      aux_fid_(0),
       aux_array_(nullptr) {
   name_map[name_] = this;
 }
@@ -22,8 +22,8 @@ IndexDescriptor::IndexDescriptor(OrderedIndex *index, std::string& name, std::st
       primary_name_(primary_name),
       index_(index),
       tuple_fid_(0),
-      aux_fid_(0),
       tuple_array_(nullptr),
+      aux_fid_(0),
       aux_array_(nullptr) {
   name_map[name_] = this;
 }

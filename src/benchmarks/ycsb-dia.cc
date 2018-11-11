@@ -75,15 +75,15 @@ class ycsb_dia_worker : public bench_worker {
     return w;
   }
 
-  static rc_t TxnInsert(bench_worker *w) { return {RC_TRUE}; }
+  static rc_t TxnInsert(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
   static rc_t TxnRead(bench_worker *w) {
     return static_cast<ycsb_dia_worker *>(w)->txn_read();
   }
 
-  static rc_t TxnUpdate(bench_worker *w) { return {RC_TRUE}; }
+  static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
-  static rc_t TxnScan(bench_worker *w) { return {RC_TRUE}; }
+  static rc_t TxnScan(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
   static rc_t TxnRMW(bench_worker *w) {
     return static_cast<ycsb_dia_worker *>(w)->txn_rmw();
@@ -123,7 +123,7 @@ class ycsb_dia_worker : public bench_worker {
       values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
-      tbl->SendGet(txn, rcs[i], *keys[i], *values[i], &oids[i]);  // Send out async Get request
+      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);  // Send out async Get request
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
@@ -155,7 +155,7 @@ class ycsb_dia_worker : public bench_worker {
       keys.push_back(&build_rmw_key(worker_id));
       values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
-      tbl->SendGet(txn, rcs[i], *keys[i], *values[i], &oids[i]);
+      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
@@ -178,7 +178,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       keys.push_back(&build_rmw_key(worker_id));
       values.push_back(&str(sizeof(YcsbRecord)));
-      tbl->SendGet(txn, rcs[i], *keys[i], *values[i], &oids[i]);
+      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {

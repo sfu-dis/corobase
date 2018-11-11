@@ -1,18 +1,17 @@
-#include "rcu.h"
-
-#include "epoch.h"
-#include "sm-exceptions.h"
-#include "sm-common.h"
-#include "size-encode.h"
-#include "sm-defs.h"
-
 #include <stdint.h>
 #include <pthread.h>
 #include <map>
-#include <cstdio>
-#include <stdlib.h>
 #include <new>
 #include <algorithm>
+
+#include "../macros.h"
+
+#include "epoch.h"
+#include "rcu.h"
+#include "size-encode.h"
+#include "sm-exceptions.h"
+#include "sm-common.h"
+#include "sm-defs.h"
 
 namespace ermia {
 namespace RCU {
@@ -206,6 +205,7 @@ void rcu_thread_deregistered(void *, void *thread_cookie) {
 }
 
 void *rcu_epoch_ended(void *, epoch_mgr::epoch_num x) {
+  MARK_REFERENCED(x);
   RCU_LOG("Epoch %zd ended", x);
   rcu_free_target.objects_freed =
       rcu_free_counts.objects_freed + rcu_gc_threshold_nobj;

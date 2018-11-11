@@ -24,7 +24,7 @@ fat_ptr sm_log_recover_impl::PrepareObject(
   sz += (sizeof(dbtuple) + logrec->payload_size());
   sz = align_up(sz);
 
-  Object* obj = new (MM::allocate(sz, 0))
+  Object* obj = new (MM::allocate(sz))
       Object(logrec->payload_ptr(), NULL_PTR, 0, config::eager_warm_up());
   obj->SetClsn(logrec->payload_ptr());
   ASSERT(obj->GetClsn().asi_type() == fat_ptr::ASI_LOG);
@@ -140,7 +140,7 @@ void sm_log_recover_impl::recover_index_insert(
     if (!config::is_backup_srv()) {
       // Construct the varkey to be inserted in the oid array
       // (skip the varstr struct then it's data)
-      varstr* key = (varstr*)MM::allocate(sizeof(varstr) + len, 0);
+      varstr* key = (varstr*)MM::allocate(sizeof(varstr) + len);
       new (key) varstr((char*)key + sizeof(varstr), len);
       key->copy_from((char*)payload_buf + sizeof(varstr), len);
       volatile_write(*ka->get(logrec->oid()),
@@ -235,6 +235,7 @@ void sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan* logrec,
 
 void sm_log_recover_impl::recover_update_key(
     sm_log_scan_mgr::record_scan* logrec) {
+  MARK_REFERENCED(logrec);
   return;
 // Disabled for now, fix later
 #if 0
