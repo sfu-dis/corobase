@@ -98,7 +98,7 @@ struct sparse_bitset {
     return entries[1][7] ? 1 : 0;
   }
 
-/*
+#ifndef __clang__
   bool contains(uint16_t i) {
     // bit 0 is always first, if present.
     if (not i) return not entries[0][0];
@@ -116,7 +116,7 @@ struct sparse_bitset {
     int c = 1;  // first entry is always present
     return __builtin_popcount(a | b | c);
   }
-  */
+#endif
   void print(char const *name);
 };
 
