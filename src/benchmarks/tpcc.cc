@@ -768,7 +768,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       const warehouse::key k(i);
       warehouse::value warehouse_temp;
-      ermia::varstr warehouse_v = str(Size(warehouse_temp));
+      ermia::varstr warehouse_v;
       TryVerifyStrict(
           tbl_warehouse(i)->Get(txn, Encode(str(Size(k)), k), warehouse_v));
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
@@ -1333,30 +1333,28 @@ rc_t tpcc_worker::txn_new_order() {
   ermia::scoped_str_arena s_arena(arena);
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
-  ermia::varstr sv_c_temp = str(Size(v_c_temp));
+  ermia::varstr valptr;
   TryVerifyRelaxed(tbl_customer(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
-  const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+                       ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
+  const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, v_c);
 #endif
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  ermia::varstr sv_w_temp = str(Size(v_w_temp));
   TryVerifyRelaxed(tbl_warehouse(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
-  const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+                       ->Get(txn, Encode(str(Size(k_w)), k_w), valptr));
+  const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
 #endif
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   TryVerifyRelaxed(tbl_district(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
-  const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+                       ->Get(txn, Encode(str(Size(k_d)), k_d), valptr));
+  const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
 #endif
@@ -1406,20 +1404,18 @@ rc_t tpcc_worker::txn_new_order() {
 
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
-    ermia::varstr sv_i_temp = str(Size(v_i_temp));
     TryVerifyRelaxed(
-        tbl_item(1)->Get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
-    const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+        tbl_item(1)->Get(txn, Encode(str(Size(k_i)), k_i), valptr));
+    const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
     checker::SanityCheckItem(&k_i, v_i);
 #endif
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
-    ermia::varstr sv_s_temp = str(Size(v_s_temp));
     TryVerifyRelaxed(tbl_stock(ol_supply_w_id)
-                         ->Get(txn, Encode(str(Size(k_s)), k_s), sv_s_temp));
-    const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
+                         ->Get(txn, Encode(str(Size(k_s)), k_s), valptr));
+    const stock::value *v_s = Decode(valptr, v_s_temp);
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
@@ -1573,11 +1569,11 @@ rc_t tpcc_worker::txn_delivery() {
     // we will read the oorder entry: in this case the txn will abort,
     // but we're simply bailing out early
     oorder::value v_oo_temp;
-    ermia::varstr sv_oo_temp = str(Size(v_oo_temp));
+    ermia::varstr valptr;
     TryCatchCondAbort(
         tbl_oorder(warehouse_id)
-            ->Get(txn, Encode(str(Size(k_oo)), k_oo), sv_oo_temp));
-    const oorder::value *v_oo = Decode(sv_oo_temp, v_oo_temp);
+            ->Get(txn, Encode(str(Size(k_oo)), k_oo), valptr));
+    const oorder::value *v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
     checker::SanityCheckOOrder(&k_oo, v_oo);
 #endif
@@ -1629,11 +1625,10 @@ rc_t tpcc_worker::txn_delivery() {
     // update customer
     const customer::key k_c(warehouse_id, d, c_id);
     customer::value v_c_temp;
-    ermia::varstr sv_c_temp = str(Size(v_c_temp));
     TryVerifyRelaxed(tbl_customer(warehouse_id)
-                         ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
+                         ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
 
-    const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+    const customer::value *v_c = Decode(valptr, v_c_temp);
     customer::value v_c_new(*v_c);
     v_c_new.c_balance += ol_total;
     TryCatch(tbl_customer(warehouse_id)
@@ -1722,14 +1717,14 @@ rc_t tpcc_worker::txn_credit_check() {
   // select * from customer with random C_ID
   customer::key k_c;
   customer::value v_c_temp;
-  ermia::varstr sv_c_temp = str(Size(v_c_temp));
+  ermia::varstr valptr;
   const uint customerID = GetCustomerId(r);
   k_c.c_w_id = customerWarehouseID;
   k_c.c_d_id = customerDistrictID;
   k_c.c_id = customerID;
   TryVerifyRelaxed(tbl_customer(customerWarehouseID)
-                       ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
-  const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+                       ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
+  const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, v_c);
 #endif
@@ -1755,9 +1750,8 @@ rc_t tpcc_worker::txn_credit_check() {
 
     const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
     oorder::value v;
-    ermia::varstr sv = str(Size(v));
     TryCatchCond(
-        tbl_oorder(warehouse_id)->Get(txn, Encode(str(Size(k_oo)), k_oo), sv),
+        tbl_oorder(warehouse_id)->Get(txn, Encode(str(Size(k_oo)), k_oo), valptr),
         continue);
     // Order line scan
     //		ol_d_id = :d_id
@@ -1827,10 +1821,10 @@ rc_t tpcc_worker::txn_payment() {
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  ermia::varstr sv_w_temp = str(Size(v_w_temp));
+  ermia::varstr valptr;
   TryVerifyRelaxed(tbl_warehouse(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
-  const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+                       ->Get(txn, Encode(str(Size(k_w)), k_w), valptr));
+  const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
 #endif
@@ -1843,10 +1837,9 @@ rc_t tpcc_worker::txn_payment() {
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   TryVerifyRelaxed(tbl_district(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
-  const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+                       ->Get(txn, Encode(str(Size(k_d)), k_d), valptr));
+  const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
 #endif
@@ -1859,7 +1852,6 @@ rc_t tpcc_worker::txn_payment() {
 
   customer::key k_c;
   customer::value v_c;
-  ermia::varstr sv_c = str(Size(v_c));
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -1904,8 +1896,8 @@ rc_t tpcc_worker::txn_payment() {
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = customerID;
     TryVerifyRelaxed(tbl_customer(customerWarehouseID)
-                         ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c));
-    Decode(sv_c, v_c);
+                         ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
+    Decode(valptr, v_c);
   }
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, &v_c);
@@ -2014,7 +2006,7 @@ rc_t tpcc_worker::txn_order_status() {
 
   customer::key k_c;
   customer::value v_c;
-  ermia::varstr sv_c = str(Size(v_c));
+  ermia::varstr valptr;
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -2059,8 +2051,8 @@ rc_t tpcc_worker::txn_order_status() {
     k_c.c_d_id = districtID;
     k_c.c_id = customerID;
     TryVerifyRelaxed(tbl_customer(warehouse_id)
-                         ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c));
-    Decode(sv_c, v_c);
+                         ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
+    Decode(valptr, v_c);
   }
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, &v_c);
@@ -2164,10 +2156,10 @@ rc_t tpcc_worker::txn_stock_level() {
   // locking is un-necessary (since we can just read from some old snapshot)
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  ermia::varstr sv_d_temp = str(Size(v_d_temp));
+  ermia::varstr valptr;
   TryVerifyRelaxed(tbl_district(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
-  const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+                       ->Get(txn, Encode(str(Size(k_d)), k_d), valptr));
+  const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
 #endif
@@ -2193,11 +2185,10 @@ rc_t tpcc_worker::txn_stock_level() {
     for (auto &p : c.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
       stock::value v_s;
-      ermia::varstr sv_s = str(Size(v_s));
       ASSERT(p.first >= 1 && p.first <= NumItems());
       TryVerifyRelaxed(
-          tbl_stock(warehouse_id)->Get(txn, Encode(str(Size(k_s)), k_s), sv_s));
-      const uint8_t *ptr = (const uint8_t *)sv_s.data();
+          tbl_stock(warehouse_id)->Get(txn, Encode(str(Size(k_s)), k_s), valptr));
+      const uint8_t *ptr = (const uint8_t *)valptr.data();
       int16_t i16tmp;
       ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
       if (i16tmp < int(threshold)) s_i_ids_distinct[p.first] = 1;
@@ -2260,10 +2251,10 @@ rc_t tpcc_worker::txn_query2() {
       for (auto i = 0; i < g_nr_suppliers; i++) {
         const supplier::key k_su(i);
         supplier::value v_su_tmp;
-        ermia::varstr buf_su = str(Size(v_su_tmp));
+        ermia::varstr valptr;
         TryVerifyRelaxed(
-            tbl_supplier(1)->Get(txn, Encode(str(Size(k_su)), k_su), buf_su));
-        const supplier::value *v_su = Decode(buf_su, v_su_tmp);
+            tbl_supplier(1)->Get(txn, Encode(str(Size(k_su)), k_su), valptr));
+        const supplier::value *v_su = Decode(valptr, v_su_tmp);
 
         // Filtering suppliers
         if (k_n->n_nationkey != v_su->su_nationkey) continue;
@@ -2280,10 +2271,9 @@ rc_t tpcc_worker::txn_query2() {
         {
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
-          ermia::varstr sv = str(Size(v_s_tmp));
           TryVerifyRelaxed(
-              tbl_stock(it.first)->Get(txn, Encode(str(Size(k_s)), k_s), sv));
-          const stock::value *v_s = Decode(sv, v_s_tmp);
+              tbl_stock(it.first)->Get(txn, Encode(str(Size(k_s)), k_s), valptr));
+          const stock::value *v_s = Decode(valptr, v_s_tmp);
 
           ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
           if (min_qty > v_s->s_quantity) {
@@ -2299,10 +2289,9 @@ rc_t tpcc_worker::txn_query2() {
         // fetch the (lowest stock level) item info
         const item::key k_i(min_k_s.s_i_id);
         item::value v_i_temp;
-        ermia::varstr sv_i_temp = str(Size(v_i_temp));
         TryVerifyRelaxed(
-            tbl_item(1)->Get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
-        const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+            tbl_item(1)->Get(txn, Encode(str(Size(k_i)), k_i), valptr));
+        const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
         checker::SanityCheckItem(&k_i, v_i);
 #endif
@@ -2356,7 +2345,7 @@ rc_t tpcc_worker::txn_microbench_random() {
 
   // read rows
   stock::value v;
-  ermia::varstr sv = str(Size(v));
+  ermia::varstr sv;
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
     DLOG(INFO) << "rd " << w << " " << s;
@@ -2799,30 +2788,28 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   ermia::scoped_str_arena s_arena(arena);
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
-  ermia::varstr sv_c_temp = str(Size(v_c_temp));
+  ermia::varstr valptr;
   TryVerifyRelaxed(tbl_customer(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
-  const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+                       ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
+  const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, v_c);
 #endif
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  ermia::varstr sv_w_temp = str(Size(v_w_temp));
   TryVerifyRelaxed(tbl_warehouse(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
-  const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+                       ->Get(txn, Encode(str(Size(k_w)), k_w), valptr));
+  const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
 #endif
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   TryVerifyRelaxed(tbl_district(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
-  const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+                       ->Get(txn, Encode(str(Size(k_d)), k_d), valptr));
+  const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
 #endif
@@ -2872,20 +2859,18 @@ rc_t tpcc_cmdlog_redoer::txn_new_order(uint warehouse_id) {
 
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
-    ermia::varstr sv_i_temp = str(Size(v_i_temp));
     TryVerifyRelaxed(
-        tbl_item(1)->Get(txn, Encode(str(Size(k_i)), k_i), sv_i_temp));
-    const item::value *v_i = Decode(sv_i_temp, v_i_temp);
+        tbl_item(1)->Get(txn, Encode(str(Size(k_i)), k_i), valptr));
+    const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
     checker::SanityCheckItem(&k_i, v_i);
 #endif
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
-    ermia::varstr sv_s_temp = str(Size(v_s_temp));
     TryVerifyRelaxed(tbl_stock(ol_supply_w_id)
-                         ->Get(txn, Encode(str(Size(k_s)), k_s), sv_s_temp));
-    const stock::value *v_s = Decode(sv_s_temp, v_s_temp);
+                         ->Get(txn, Encode(str(Size(k_s)), k_s), valptr));
+    const stock::value *v_s = Decode(valptr, v_s_temp);
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
@@ -2950,10 +2935,10 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
 
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
-  ermia::varstr sv_w_temp = str(Size(v_w_temp));
+  ermia::varstr valptr;
   TryVerifyRelaxed(tbl_warehouse(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_w)), k_w), sv_w_temp));
-  const warehouse::value *v_w = Decode(sv_w_temp, v_w_temp);
+                       ->Get(txn, Encode(str(Size(k_w)), k_w), valptr));
+  const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
 #endif
@@ -2966,10 +2951,9 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
-  ermia::varstr sv_d_temp = str(Size(v_d_temp));
   TryVerifyRelaxed(tbl_district(warehouse_id)
-                       ->Get(txn, Encode(str(Size(k_d)), k_d), sv_d_temp));
-  const district::value *v_d = Decode(sv_d_temp, v_d_temp);
+                       ->Get(txn, Encode(str(Size(k_d)), k_d), valptr));
+  const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
 #endif
@@ -2982,7 +2966,6 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
 
   customer::key k_c;
   customer::value v_c;
-  ermia::varstr sv_c = str(Size(v_c));
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -3027,8 +3010,8 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = customerID;
     TryVerifyRelaxed(tbl_customer(customerWarehouseID)
-                         ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c));
-    Decode(sv_c, v_c);
+                         ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
+    Decode(valptr, v_c);
   }
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, &v_c);
@@ -3115,11 +3098,11 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     // we will read the oorder entry: in this case the txn will abort,
     // but we're simply bailing out early
     oorder::value v_oo_temp;
-    ermia::varstr sv_oo_temp = str(Size(v_oo_temp));
+    ermia::varstr valptr;
     TryCatchCondAbort(
         tbl_oorder(warehouse_id)
-            ->Get(txn, Encode(str(Size(k_oo)), k_oo), sv_oo_temp));
-    const oorder::value *v_oo = Decode(sv_oo_temp, v_oo_temp);
+            ->Get(txn, Encode(str(Size(k_oo)), k_oo), valptr));
+    const oorder::value *v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
     checker::SanityCheckOOrder(&k_oo, v_oo);
 #endif
@@ -3171,11 +3154,10 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     // update customer
     const customer::key k_c(warehouse_id, d, c_id);
     customer::value v_c_temp;
-    ermia::varstr sv_c_temp = str(Size(v_c_temp));
     TryVerifyRelaxed(tbl_customer(warehouse_id)
-                         ->Get(txn, Encode(str(Size(k_c)), k_c), sv_c_temp));
+                         ->Get(txn, Encode(str(Size(k_c)), k_c), valptr));
 
-    const customer::value *v_c = Decode(sv_c_temp, v_c_temp);
+    const customer::value *v_c = Decode(valptr, v_c_temp);
     customer::value v_c_new(*v_c);
     v_c_new.c_balance += ol_total;
     TryCatch(tbl_customer(warehouse_id)
