@@ -270,6 +270,11 @@ public:
     MARK_REFERENCED(value);
     MARK_REFERENCED(out_oid);
   }
+
+  inline void SendPut(transaction *t, rc_t &rc, const varstr &key, OID *out_oid) {
+    SendGet(t, rc, key, out_oid);
+  }
+  void RecvPut(transaction *t, rc_t &rc, OID oid, const varstr &key, varstr &value);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }

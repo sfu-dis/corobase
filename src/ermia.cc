@@ -405,4 +405,17 @@ void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc, OID oid,
   }
 }
 
+void DecoupledMasstreeIndex::RecvPut(transaction *t, rc_t &rc, OID oid, const varstr &key, varstr &value) {
+  switch(rc._val) {
+    case RC_TRUE:
+      rc = t->Update(descriptor_, oid, &key, &value);
+      break;
+    case RC_FALSE:
+      rc._val = RC_ABORT_INTERNAL;
+      break;
+    default:
+    LOG(FATAL) << "Wrong SendPut result";
+  }
+}
+
 }  // namespace ermia
