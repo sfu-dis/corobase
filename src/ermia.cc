@@ -406,6 +406,7 @@ void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc, OID oid,
 }
 
 void DecoupledMasstreeIndex::RecvPut(transaction *t, rc_t &rc, OID oid, const varstr &key, varstr &value) {
+  while (volatile_read(rc._val) == RC_INVALID) {}
   switch(rc._val) {
     case RC_TRUE:
       rc = t->Update(descriptor_, oid, &key, &value);
