@@ -1,11 +1,6 @@
 #pragma once
 #include <stdint.h>
 
-// txn operation (e.g., r/w) return code
-struct rc_t {
-  uint16_t _val;
-};
-
 // 8 bits for return code:
 // bit  meaning
 //  8   user requested abort
@@ -33,6 +28,16 @@ struct rc_t {
 #define RC_ABORT_PHANTOM (RC_ABORT | 0x80)
 #define RC_ABORT_USER (RC_ABORT | 0x100)
 
-inline bool rc_is_user_abort(rc_t rc) { return rc._val == RC_ABORT_USER; }
-inline bool rc_is_invalid(rc_t rc) { return rc._val == RC_INVALID; }
-inline bool rc_is_abort(rc_t rc) { return rc._val & RC_ABORT; }
+// Operation (e.g., r/w) return code
+struct rc_t {
+  uint16_t _val;
+
+  rc_t() : _val(RC_INVALID) {}
+  rc_t(uint16_t v) : _val(v) {}
+
+  inline bool IsUserAbort() { return _val == RC_ABORT_USER; }
+  inline bool IsInvalid() { return _val == RC_INVALID; }
+  inline bool IsAbort() { return _val & RC_ABORT; }
+};
+
+

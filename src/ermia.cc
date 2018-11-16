@@ -282,7 +282,7 @@ void ConcurrentMasstreeIndex::XctSearchRangeCallback::on_resp_node(
     }
 #endif
     rc_t rc = DoNodeRead(t, n, version);
-    if (rc_is_abort(rc)) {
+    if (rc.IsAbort()) {
       caller_callback->return_code = rc;
     }
   }
@@ -302,13 +302,15 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << "  " << *((dbtuple *)v) << std::endl);
   varstr vv;
   caller_callback->return_code = t->DoTupleRead(v, &vv);
-  if (caller_callback->return_code._val == RC_TRUE)
+  if (caller_callback->return_code._val == RC_TRUE) {
     return caller_callback->Invoke(k, vv);
-  else if (rc_is_abort(caller_callback->return_code))
+  } else if (caller_callback->return_code.IsAbort()) {
+    // don't continue the read if the tx should abort
+    // ^^^^^ note: see masstree_scan.hh, whose scan() calls
+    // visit_value(), which calls this function to determine
+    // if it should stop reading.
     return false;  // don't continue the read if the tx should abort
-                   // ^^^^^ note: see masstree_scan.hh, whose scan() calls
-                   // visit_value(), which calls this function to determine
-                   // if it should stop reading.
+  }
   return true;
 }
 

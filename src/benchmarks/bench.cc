@@ -52,7 +52,7 @@ retry:
 }
 
 bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t) {
-  if (!rc_is_abort(ret)) {
+  if (!ret.IsAbort()) {
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
     if (!ermia::config::is_backup_srv() && ermia::config::group_commit) {
@@ -91,8 +91,7 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
       default:
         ALWAYS_ASSERT(false);
     }
-    if (ermia::config::retry_aborted_transactions && !rc_is_user_abort(ret) &&
-        running) {
+    if (ermia::config::retry_aborted_transactions && !ret.IsUserAbort() && running) {
       if (ermia::config::backoff_aborted_transactions) {
         if (backoff_shifts < 63) backoff_shifts++;
         uint64_t spins = 1UL << backoff_shifts;

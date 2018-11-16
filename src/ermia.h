@@ -36,7 +36,9 @@ public:
 
   inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
-    if (not rc_is_abort(rc)) t->~transaction();
+    if (!rc.IsAbort()) {
+      t->~transaction();
+    }
     return rc;
   }
 
