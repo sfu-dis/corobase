@@ -170,7 +170,7 @@ struct dbtuple {
     } else {
       if (!pvalue) {  // so I just deleted this tuple... return empty?
         ASSERT(size == 0);
-        return {RC_FALSE};
+        return rc_t{RC_FALSE};
       }
       out_v->p = pvalue->data();
       ASSERT(pvalue->size() == size);

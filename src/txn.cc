@@ -1451,7 +1451,7 @@ rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
       rc = mvocc_read(tuple);
 #endif
     }
-    if (rc_is_abort(rc)) return rc;
+    if (rc.IsAbort()) return rc;
   }  // otherwise it's my own update/insert, just read it
 #endif
 
