@@ -6,7 +6,7 @@ endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Woverloaded-virtual -Werror=reorder -Werror=unused-parameter")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Woverloaded-virtual -Werror=reorder -Werror=unused-parameter -Wno-address-of-packed-member")
 set(LINK_FLAGS "-libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
 link_libraries(${LINK_FLAGS})
 
