@@ -1,4 +1,5 @@
 #include "../ermia.h"
+
 #include "sm-dia.h"
 
 namespace ermia {
@@ -8,7 +9,15 @@ std::vector<IndexThread *> index_threads;
 
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+  switch (ermia::config::benchmark[0]) {
+    case 'y':
+      index_threads[static_cast<int>(*((*key).data()))%index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+      break;
+
+    default:
+      index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+      break;
+  }
 }
 
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
