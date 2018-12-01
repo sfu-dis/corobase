@@ -12,7 +12,7 @@ void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *ke
   switch (ermia::config::benchmark[0]) {
     case 'y': {
       uint32_t worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
-      index_threads[worker_id%index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+      index_threads[worker_id % index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
       }
       break;
     
