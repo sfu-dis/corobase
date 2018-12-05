@@ -19,6 +19,7 @@ static const uint64_t GB = MB * 1024;
 
 // Common settings
 extern bool verbose;
+extern std::string benchmark;
 extern uint32_t benchmark_scale_factor;
 extern uint32_t threads;
 extern uint32_t worker_threads;
