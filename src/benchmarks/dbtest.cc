@@ -158,7 +158,8 @@ int main(int argc, char **argv) {
 
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
-
+  
+  ermia::config::benchmark = FLAGS_benchmark;
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
   ermia::config::htt_is_on = FLAGS_htt;

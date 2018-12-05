@@ -1,4 +1,5 @@
 #include "../ermia.h"
+
 #include "sm-dia.h"
 
 namespace ermia {
@@ -8,12 +9,32 @@ std::vector<IndexThread *> index_threads;
 
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+  switch (ermia::config::benchmark[0]) {
+    case 'y': {
+      uint32_t worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
+      index_threads[worker_id % index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+      }
+      break;
+    
+    default:
+      LOG(FATAL) << "Not implemented";
+      break;
+  }
 }
 
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
+  switch (ermia::config::benchmark[0]) {
+    case 'y': {
+      uint32_t worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
+      index_threads[worker_id%index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
+      }
+      break;
+
+    default:
+      LOG(FATAL) << "Not implemented";
+      break;
+  }
 }
 
 // Prepare the extra index threads needed by DIA. The other compute threads
