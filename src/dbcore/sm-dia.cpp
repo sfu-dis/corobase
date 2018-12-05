@@ -16,13 +16,8 @@ void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *ke
       }
       break;
     
-    case 't': {
-      index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
-      }
-      break;
-
     default:
-      index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+      LOG(FATAL) << "Not implemented";
       break;
   }
 }
@@ -36,13 +31,8 @@ void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr 
       }
       break;
 
-    case 't': {
-      index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
-      }
-      break;
-
     default:
-      index_threads[0]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
+      LOG(FATAL) << "Not implemented";
       break;
   }
 }
