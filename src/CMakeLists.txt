@@ -6,8 +6,8 @@ endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Woverloaded-virtual -Werror=reorder -Werror=unused-parameter -Wno-address-of-packed-member")
-set(LINK_FLAGS "-libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Werror=unused-parameter -Wno-address-of-packed-member")
+set(LINK_FLAGS "-libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags -lstdc++ /usr/lib/x86_64-linux-gnu/libstdc++.so.6")
 link_libraries(${LINK_FLAGS})
 
 # Use masstree for index
@@ -29,6 +29,9 @@ include_directories(btree)
 include_directories(dbcore)
 include_directories(masstree)
 include_directories(third-party/sparsehash/src)
+include_directories(/usr/include/libcxxabi)
+include_directories(/usr/include/c++/5.4.0)
+include_directories(/usr/include/x86_64-linux-gnu/c++/5.4.0)
 
 add_subdirectory(benchmarks)
 add_subdirectory(btree)
