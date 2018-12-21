@@ -116,7 +116,7 @@ void sm_log_file_mgr::_pop_newest() {
 
 sm_log_file_mgr::segment_array::segment_array() {
   segment_id *sd = NULL;
-  std::uninitialized_fill(arr, arr + NUM_LOG_SEGMENTS, sd);
+  pod_fill(arr, arr + NUM_LOG_SEGMENTS, sd);
 }
 
 sm_log_file_mgr::segment_array::~segment_array() {
