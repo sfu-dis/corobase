@@ -40,8 +40,11 @@ struct pointer_stash {
  */
 struct rcu_tcb {
   static rcu_tcb *tls() {
-    static thread_local rcu_tcb local;
-    return &local;
+    static __thread rcu_tcb *local;
+    if (!local) {
+      local = new rcu_tcb;
+    }
+    return local;
   }
 
   //    bool initialized;
@@ -126,7 +129,7 @@ void rcu_delete_v(void *ptr) {
  ***************************************/
 void rcu_global_init(void *) { RCU_LOG("Initializing RCU subsystem"); }
 epoch_mgr::tls_storage *rcu_get_tls(void *) {
-  static thread_local epoch_mgr::tls_storage s;
+  static __thread epoch_mgr::tls_storage s;
   return &s;
 }
 

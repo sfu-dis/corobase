@@ -65,7 +65,7 @@ struct thread_data {
   os_mutex mutex;
 };
 
-thread_local thread_data *tls = nullptr;
+__thread thread_data *tls = nullptr;
 
 /* Used to make sure threads give back their caches on exit */
 os_mutex_pod oid_mutex = os_mutex_pod::static_init();
