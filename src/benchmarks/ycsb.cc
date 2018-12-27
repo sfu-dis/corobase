@@ -204,12 +204,15 @@ class ycsb_usertable_loader : public bench_loader {
     // start a transaction and insert all the records
     for (auto &key : keys) {
       YcsbRecord r('a');
-      ermia::varstr v(r.data_, sizeof(r));
+      ermia::varstr *v = (ermia::varstr *)malloc(sizeof(ermia::varstr) + sizeof(uint64_t));
+      new (v) ermia::varstr(r.data_, sizeof(r));        
+      //ermia::varstr v(r.data_, sizeof(r));
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
-      TryVerifyStrict(tbl->Insert(txn, *key, v));
+      TryVerifyStrict(tbl->Insert(txn, *key, *v));
       TryVerifyStrict(db->Commit(txn));
       free(key);
+      free(v);
     }
 
     if (ermia::config::verbose)

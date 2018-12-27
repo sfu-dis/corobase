@@ -19,7 +19,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a
     // consistent snapshot back in time. No CC involved.
-    thread_local TXN::xid_context *ctx = nullptr;
+    static __thread TXN::xid_context *ctx;
     if (!ctx) {
       ctx = TXN::xid_get_context(TXN::xid_alloc());
     }
