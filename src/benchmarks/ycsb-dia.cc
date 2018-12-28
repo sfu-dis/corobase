@@ -91,8 +91,8 @@ class ycsb_dia_worker : public bench_worker {
 
   // Request result placeholders
   void PrepareForDIA(rc_t **out_rcs, ermia::OID **out_oids) {
-    thread_local rc_t *rcs = nullptr;
-    thread_local ermia::OID *oids = nullptr;
+    static __thread rc_t *rcs = nullptr;
+    static __thread ermia::OID *oids = nullptr;
     uint32_t n = std::max<uint32_t>(g_reps_per_tx, g_rmw_additional_reads);
     if (!rcs) {
       rcs = (rc_t *)malloc(sizeof(rc_t) * n);
@@ -110,25 +110,25 @@ class ycsb_dia_worker : public bench_worker {
     ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
     arena.reset();
 
-    thread_local std::vector<ermia::varstr *> values;
-    thread_local std::vector<YcsbKey *> keys;
-    keys.clear();
-    values.clear();
+    static __thread std::vector<ermia::varstr *> *values;
+    static __thread std::vector<YcsbKey *> *keys;
+    keys->clear();
+    values->clear();
     rc_t *rcs = nullptr;
     ermia::OID *oids = nullptr;
     PrepareForDIA(&rcs, &oids);
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      keys.push_back(&build_rmw_key(worker_id));
-      values.push_back(&str(sizeof(YcsbRecord)));
+      keys->push_back(&build_rmw_key(worker_id));
+      values->push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
-      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);  // Send out async Get request
+      tbl->SendGet(txn, rcs[i], *(*keys)[i], &oids[i]);  // Send out async Get request
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
-      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+      tbl->RecvGet(txn, rcs[i], oids[i], *(*values)[i]);
+      ALWAYS_ASSERT(*(char*)((*values)[i]->data()) == 'a');
       TryCatch(rcs[i]);
       // TODO(tzwang): if we abort here (e.g. because the return value rc says
       // so), it might be beneficial to rescind the subsequent requests that have
@@ -141,10 +141,10 @@ class ycsb_dia_worker : public bench_worker {
   rc_t txn_rmw() {
     ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
     arena.reset();
-    thread_local std::vector<ermia::varstr *> values;
-    thread_local std::vector<YcsbKey *> keys;
-    keys.clear();
-    values.clear();
+    static __thread std::vector<ermia::varstr *> *values;
+    static __thread std::vector<YcsbKey *> *keys;
+    keys->clear();
+    values->clear();
 
     rc_t *rcs = nullptr;
     ermia::OID *oids = nullptr;
@@ -152,18 +152,18 @@ class ycsb_dia_worker : public bench_worker {
 
     // Issue all reads
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      keys.push_back(&build_rmw_key(worker_id));
-      values.push_back(&str(sizeof(ermia::varstr)));
+      keys->push_back(&build_rmw_key(worker_id));
+      values->push_back(&str(sizeof(ermia::varstr)));
       // TODO(tzwang): add read/write_all_fields knobs
-      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
+      tbl->SendGet(txn, rcs[i], *(*keys)[i], &oids[i]);
     }
 
-    thread_local std::vector<ermia::varstr *> new_values;
-    new_values.clear();
+    static __thread std::vector<ermia::varstr *> *new_values;
+    new_values->clear();
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Barrier to ensure data is read in
-      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
-      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+      tbl->RecvGet(txn, rcs[i], oids[i], *(*values)[i]);
+      ALWAYS_ASSERT(*(char*)((*values)[i]->data()) == 'a');
       TryCatch(rcs[i]);
 
       // Reset the return value placeholders
@@ -171,34 +171,34 @@ class ycsb_dia_worker : public bench_worker {
       oids[i] = 0;
 
       // Copy to user space and do the write
-      new_values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
-      new_values[i]->p = (const uint8_t *)new_values[i] + sizeof(ermia::varstr);
-      new_values[i]->l = sizeof(YcsbRecord);
-      ASSERT(values[i]->size() == sizeof(YcsbRecord));
+      new_values->push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
+      (*new_values)[i]->p = (const uint8_t *)(*new_values)[i] + sizeof(ermia::varstr);
+      (*new_values)[i]->l = sizeof(YcsbRecord);
+      ASSERT((*values)[i]->size() == sizeof(YcsbRecord));
 
-      memcpy(new_values[i]->data(), values[i]->data(), values[i]->size());
-      memset(new_values[i]->data(), 'a', values[i]->size());
-      tbl->SendPut(txn, rcs[i], *keys[i], &oids[i]);  // Modify-write
+      memcpy((*new_values)[i]->data(), (*values)[i]->data(), (*values)[i]->size());
+      memset((*new_values)[i]->data(), 'a', (*values)[i]->size());
+      tbl->SendPut(txn, rcs[i], *(*keys)[i], &oids[i]);  // Modify-write
       // TODO(tzwang): similar to read-only case, see if we can rescind
       // subsequent requests for better performance
     }
 
     // Wait for writes to finish
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      tbl->RecvPut(txn, rcs[i], oids[i], *keys[i], *new_values[i]);
+      tbl->RecvPut(txn, rcs[i], oids[i], *(*keys)[i], *(*new_values)[i]);
     }
 
     PrepareForDIA(&rcs, &oids);
-    keys.clear();
-    values.clear();
+    keys->clear();
+    values->clear();
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      keys.push_back(&build_rmw_key(worker_id));
-      values.push_back(&str(sizeof(YcsbRecord)));
-      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
+      keys->push_back(&build_rmw_key(worker_id));
+      values->push_back(&str(sizeof(YcsbRecord)));
+      tbl->SendGet(txn, rcs[i], *(*keys)[i], &oids[i]);
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
+      tbl->RecvGet(txn, rcs[i], oids[i], *(*values)[i]);
       TryCatch(rcs[i]);
     }
     TryCatch(db->Commit(txn));
