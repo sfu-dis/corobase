@@ -115,7 +115,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
 
     auto fid = scan->fid();
     if (!config::is_backup_srv()) {
-      //max_oid[fid] = std::max((*max_oid)[fid], oid);
+      (*max_oid)[fid] = std::max((*max_oid)[fid], oid);
     }
 
     switch (scan->type()) {

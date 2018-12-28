@@ -199,7 +199,7 @@ class tpcc_worker_mixin : private _dummy {
     // XXX(stephentu): implement a scalable GetCurrentTimeMillis()
     // for now, we just give each core an increasing number
 
-    static thread_local uint32_t tl_hack = 0;
+    static __thread uint32_t tl_hack = 0;
     return tl_hack++;
   }
 
@@ -1677,17 +1677,17 @@ rc_t tpcc_worker::txn_credit_check() {
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    static thread_local credit_check_order_line_scan_callback c_ol;
-    c_ol._v_ol.clear();
+    static __thread credit_check_order_line_scan_callback *c_ol;
+    c_ol->_v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
     TryCatch(tbl_order_line(warehouse_id)
                   ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                         &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
+                         &Encode(str(Size(k_ol_1)), k_ol_1), *c_ol,
                          s_arena.get()));
-    ALWAYS_ASSERT(c_ol._v_ol.size());
+    ALWAYS_ASSERT(c_ol->_v_ol.size());
 
-    for (auto &v_ol : c_ol._v_ol) {
+    for (auto &v_ol : c_ol->_v_ol) {
       order_line::value v_ol_temp;
       const order_line::value *val = Decode(*v_ol, v_ol_temp);
 
@@ -2139,23 +2139,25 @@ rc_t tpcc_worker::txn_query2() {
       db->NewTransaction(ermia::transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
-  static thread_local tpcc_table_scanner r_scanner(&arena);
-  r_scanner.clear();
+  static thread_local tpcc_table_scanner  *r_scanner;
+  r_scanner->_arena = &arena;
+  r_scanner->clear();
   const region::key k_r_0(0);
   const region::key k_r_1(5);
   TryCatch(tbl_region(1)->Scan(txn, Encode(str(sizeof(k_r_0)), k_r_0),
-                                &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner,
+                                &Encode(str(sizeof(k_r_1)), k_r_1), *r_scanner,
                                 s_arena.get()));
-  ALWAYS_ASSERT(r_scanner.output.size() == 5);
+  ALWAYS_ASSERT(r_scanner->output.size() == 5);
 
-  static thread_local tpcc_table_scanner n_scanner(&arena);
-  n_scanner.clear();
+  static __thread tpcc_table_scanner *n_scanner;
+  n_scanner->_arena = &arena;
+  n_scanner->clear();
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
   TryCatch(tbl_nation(1)->Scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
-                                &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
+                                &Encode(str(sizeof(k_n_1)), k_n_1), *n_scanner,
                                 s_arena.get()));
-  ALWAYS_ASSERT(n_scanner.output.size() == 62);
+  ALWAYS_ASSERT(n_scanner->output.size() == 62);
 
   // Pick a target region
   auto target_region = RandomNumber(r, 0, 4);
@@ -2163,7 +2165,7 @@ rc_t tpcc_worker::txn_query2() {
   ALWAYS_ASSERT(0 <= target_region and target_region <= 4);
 
   // Scan region
-  for (auto &r_r : r_scanner.output) {
+  for (auto &r_r : r_scanner->output) {
     region::key k_r_temp;
     region::value v_r_temp;
     const region::key *k_r = Decode(*r_r.first, k_r_temp);
@@ -2173,7 +2175,7 @@ rc_t tpcc_worker::txn_query2() {
     if (v_r->r_name != std::string(regions[target_region])) continue;
 
     // Scan nation
-    for (auto &r_n : n_scanner.output) {
+    for (auto &r_n : n_scanner->output) {
       nation::key k_n_temp;
       nation::value v_n_temp;
       const nation::key *k_n = Decode(*r_n.first, k_n_temp);
