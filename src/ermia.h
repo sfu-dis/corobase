@@ -1,11 +1,12 @@
 #pragma once
 
 #include <map>
-
+#include <experimental/coroutine>
 #include "btree/btree.h"
 #include "txn.h"
 #include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
+#include "../dbcore/sm-coroutine.h"
 
 namespace ermia {
 
@@ -77,6 +78,9 @@ public:
 
   virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                       ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
+
+  inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) {co_return true;}
 
   /**
    * Get a key of length keylen. The underlying DB does not manage
@@ -213,6 +217,15 @@ public:
                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     bool found = masstree_.search(key, out_oid, xc, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+  }  
+
+  inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) {
+    auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
+    while (co_await cs){ }
+    bool found = cs.current_value();
+    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+    co_return found;
   }
 
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;

@@ -64,6 +64,22 @@ public:
     ALWAYS_ASSERT(kMaxSize >= ermia::config::worker_threads);
   }
   ~RequestQueue() { start = next_free_pos = 0; }
+
+  inline uint32_t getPos() {
+    uint32_t pos = volatile_read(start);
+    return pos;
+  }
+  
+  inline Request &GetRequestByPos(uint32_t pos) {
+    Request *req = nullptr;
+    do {
+      req = &requests[pos];
+    } while (!volatile_read(req->transaction));
+    // Wait for the busy bit to be reset (shuold be very rare)
+    while ((uint64_t)(volatile_read(req->transaction)) & (1UL << 63)) {}
+    return *req;
+  }
+
   inline Request &GetNextRequest() {
     Request *req = nullptr;
     do {
