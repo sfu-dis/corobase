@@ -1,8 +1,7 @@
-#include <experimental/coroutine>
-
+#include <map>
 #include "../ermia.h"
-
 #include "sm-dia.h"
+#include "sm-coroutine.h"
 
 namespace ermia {
 namespace dia {
@@ -56,10 +55,12 @@ void Initialize() {
   }
 }
 
+
 // The actual index access goes here
 void IndexThread::MyWork(char *) {
   LOG(INFO) << "Index thread started";
   // FIXME(tzwang): Process requests in batches
+/*
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
@@ -86,7 +87,56 @@ void IndexThread::MyWork(char *) {
     }
     queue.Dequeue();
   }
+*/
+  while (true) {
+    uint32_t pos = queue.getPos();
+    std::map<int, ermia::dia::generator<bool>> coro_map;
+    for (int i = 0; i < 50; i++){
+      Request &req = queue.GetRequestByPos(pos);
+      ermia::transaction *t = volatile_read(req.transaction);
+      ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
+      *req.rc = rc_t{RC_INVALID};
+      ASSERT(req.oid_ptr);
+      switch (req.type) {
+        // Regardless the request is for record read or update, we only need to get
+        // the OID, i.e., a Get operation on the index. For updating OID, we need
+        // to use the Put interface
+	case Request::kTypeGet:{
+          ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+          coro_map.insert(std::pair<int, ermia::dia::generator<bool>>(i, cG));
+          }
+          break;
+        case Request::kTypeInsert:
+          if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
+            volatile_write(req.rc->_val, RC_TRUE);
+          } else {
+            volatile_write(req.rc->_val, RC_FALSE);
+          }
+          break;
+        default:
+          LOG(FATAL) << "Wrong request type";
+      }
+      pos = (pos + 1) % 32768;  
+    }
+    
+    std::map<int, ermia::dia::generator<bool>>::iterator it;
+    while (true) {
+      for(it=coro_map.begin();it!= coro_map.end();) {  
+        if(!(it->second.advance()))
+          it=coro_map.erase(it);
+        else
+          ++it;
+      }
+      if(coro_map.empty())
+        break;  
+    }
+   
+    for (int i = 0; i < 50; i++)
+      queue.Dequeue();
+  }
 }
+
 
 }  // namespace dia
 }  // namespace ermia
