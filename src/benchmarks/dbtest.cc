@@ -423,7 +423,7 @@ int main(int argc, char **argv) {
   }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
-    test_fn = ycsb_do_test;
+    test_fn = ycsb_dia_do_test;
     //test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {
     test_fn = tpcc_do_test;

@@ -266,7 +266,9 @@ class ycsb_dia_usertable_loader : public bench_loader {
     // start a transaction and insert all the records
     for (auto &key : keys) {
       YcsbRecord r('a');
-      ermia::varstr v(r.data_, sizeof(r));
+      ermia::varstr *v = (ermia::varstr *)malloc(sizeof(ermia::varstr) + sizeof(uint64_t));
+      new (v) ermia::varstr(r.data_, sizeof(r));
+      //ermia::varstr v(r.data_, sizeof(r));
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
 
@@ -274,13 +276,14 @@ class ycsb_dia_usertable_loader : public bench_loader {
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
       ermia::dbtuple *tuple = nullptr;
-      tbl->SendInsert(txn, rc, *key, v, &oid, &tuple);
+      tbl->SendInsert(txn, rc, *key, *v, &oid, &tuple);
       ASSERT(tuple);
-      tbl->RecvInsert(txn, rc, oid, *key, v, tuple);
+      tbl->RecvInsert(txn, rc, oid, *key, *v, tuple);
       TryVerifyStrict(rc);
 
       TryVerifyStrict(db->Commit(txn));
       free(key);
+      free(v);
     }
 
     if (ermia::config::verbose)
