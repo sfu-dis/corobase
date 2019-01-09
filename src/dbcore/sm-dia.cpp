@@ -60,7 +60,7 @@ void Initialize() {
 void IndexThread::MyWork(char *) {
   LOG(INFO) << "Index thread started";
   // FIXME(tzwang): Process requests in batches
-/*
+
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
@@ -87,7 +87,8 @@ void IndexThread::MyWork(char *) {
     }
     queue.Dequeue();
   }
-*/
+
+/*
   while (true) {
     uint32_t pos = queue.getPos();
     std::map<int, ermia::dia::generator<bool>> coro_map;
@@ -135,6 +136,7 @@ void IndexThread::MyWork(char *) {
     for (int i = 0; i < 50; i++)
       queue.Dequeue();
   }
+*/
 }
 
 
