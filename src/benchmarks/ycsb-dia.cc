@@ -55,6 +55,7 @@ class ycsb_dia_worker : public bench_worker {
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
   }
+
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
     if (ycsb_workload.insert_percent())
@@ -111,10 +112,14 @@ class ycsb_dia_worker : public bench_worker {
     arena.reset();
 
     static __thread std::vector<ermia::varstr *> *values;
-    static __thread std::vector<YcsbKey *> *keys;
+    if (!values)
+      values = new std::vector<ermia::varstr *>();
+    values->clear();
 
-    values = new std::vector<ermia::varstr *>();
-    keys = new std::vector<YcsbKey *>();
+    static __thread std::vector<YcsbKey *> *keys;
+    if (!keys)
+      keys = new std::vector<YcsbKey *>();
+    keys->clear();
 
     rc_t *rcs = nullptr;
     ermia::OID *oids = nullptr;
@@ -137,9 +142,6 @@ class ycsb_dia_worker : public bench_worker {
       // been sent.
     }
     TryCatch(db->Commit(txn));
-
-    delete values;
-    delete keys;
     return {RC_TRUE};
   }
 
@@ -148,9 +150,14 @@ class ycsb_dia_worker : public bench_worker {
     arena.reset();
 
     static __thread std::vector<ermia::varstr *> *values;
+    if (!values)
+      values = new std::vector<ermia::varstr *>();
+    values->clear();
+
     static __thread std::vector<YcsbKey *> *keys;
-    values = new std::vector<ermia::varstr *>();
-    keys = new std::vector<YcsbKey *>();
+    if (!keys)
+      keys = new std::vector<YcsbKey *>();
+    keys->clear();
 
     rc_t *rcs = nullptr;
     ermia::OID *oids = nullptr;
@@ -165,7 +172,9 @@ class ycsb_dia_worker : public bench_worker {
     }
 
     static __thread std::vector<ermia::varstr *> *new_values;
-    new_values = new std::vector<ermia::varstr *>();
+    if (!new_values)
+      new_values = new std::vector<ermia::varstr *>();
+    new_values->clear();
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Barrier to ensure data is read in
@@ -196,8 +205,8 @@ class ycsb_dia_worker : public bench_worker {
     }
 
     PrepareForDIA(&rcs, &oids);
-    (*keys).clear();
-    (*values).clear();
+    keys->clear();
+    values->clear();
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       keys->push_back(&build_rmw_key(worker_id));
       values->push_back(&str(sizeof(YcsbRecord)));
@@ -209,10 +218,6 @@ class ycsb_dia_worker : public bench_worker {
       TryCatch(rcs[i]);
     }
     TryCatch(db->Commit(txn));
-
-    delete values;
-    delete keys;
-    delete new_values;
     return {RC_TRUE};
   }
 
