@@ -79,8 +79,8 @@ public:
   virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                       ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
-  inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) {co_return true;}
+  virtual ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
   /**
    * Get a key of length keylen. The underlying DB does not manage
@@ -220,11 +220,12 @@ public:
   }  
 
   inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) {
-    auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
-    while (co_await cs){ }
-    bool found = cs.current_value();
-    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    //auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
+    //while (co_await cs){ }
+    //bool found = cs.current_value();
+    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    //volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
     co_return found;
   }
 
@@ -322,6 +323,15 @@ public:
     MARK_REFERENCED(xc);
     MARK_REFERENCED(out_oid);
     MARK_REFERENCED(out_sinfo);
+  }
+  ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    MARK_REFERENCED(key);
+    MARK_REFERENCED(rc);
+    MARK_REFERENCED(xc);
+    MARK_REFERENCED(out_oid);
+    MARK_REFERENCED(out_sinfo);
+    co_return true;
   }
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
