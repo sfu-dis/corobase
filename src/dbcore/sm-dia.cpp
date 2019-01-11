@@ -61,6 +61,7 @@ void IndexThread::MyWork(char *) {
   LOG(INFO) << "Index thread started";
   // FIXME(tzwang): Process requests in batches
 
+
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
@@ -72,9 +73,12 @@ void IndexThread::MyWork(char *) {
       // Regardless the request is for record read or update, we only need to get
       // the OID, i.e., a Get operation on the index. For updating OID, we need
       // to use the Put interface
-      case Request::kTypeGet:
-        req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-        break;
+      case Request::kTypeGet:{
+        //req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+        ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+	volatile_write(req.rc->_val, cG.current_value() ? RC_TRUE : RC_FALSE);
+        }
+	break;
       case Request::kTypeInsert:
         if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
           volatile_write(req.rc->_val, RC_TRUE);
@@ -87,6 +91,7 @@ void IndexThread::MyWork(char *) {
     }
     queue.Dequeue();
   }
+
 
 /*
   while (true) {
@@ -137,6 +142,7 @@ void IndexThread::MyWork(char *) {
       queue.Dequeue();
   }
 */
+
 }
 
 
