@@ -1,4 +1,3 @@
-#include <map>
 #include "../ermia.h"
 #include "sm-dia.h"
 #include "sm-coroutine.h"
@@ -61,7 +60,7 @@ void IndexThread::MyWork(char *) {
   LOG(INFO) << "Index thread started";
   // FIXME(tzwang): Process requests in batches
 
-
+/*
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
@@ -73,11 +72,8 @@ void IndexThread::MyWork(char *) {
       // Regardless the request is for record read or update, we only need to get
       // the OID, i.e., a Get operation on the index. For updating OID, we need
       // to use the Put interface
-      case Request::kTypeGet:{
-        //req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-        ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-	volatile_write(req.rc->_val, cG.current_value() ? RC_TRUE : RC_FALSE);
-        }
+      case Request::kTypeGet:
+        req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
 	break;
       case Request::kTypeInsert:
         if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
@@ -91,26 +87,43 @@ void IndexThread::MyWork(char *) {
     }
     queue.Dequeue();
   }
+*/
 
-
-/*
   while (true) {
+    static __thread std::vector<ermia::dia::generator<bool> *> *coro_scheduler;
+    if (!coro_scheduler)
+      coro_scheduler = new std::vector<ermia::dia::generator<bool> *>();
+    else
+      coro_scheduler->clear();
     uint32_t pos = queue.getPos();
-    std::map<int, ermia::dia::generator<bool>> coro_map;
-    for (int i = 0; i < 50; i++){
+    for (int i = 0; i < 50; ++i){
       Request &req = queue.GetRequestByPos(pos);
       ermia::transaction *t = volatile_read(req.transaction);
       ALWAYS_ASSERT(t);
       ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
       *req.rc = rc_t{RC_INVALID};
       ASSERT(req.oid_ptr);
+
       switch (req.type) {
         // Regardless the request is for record read or update, we only need to get
         // the OID, i.e., a Get operation on the index. For updating OID, we need
         // to use the Put interface
-	case Request::kTypeGet:{
-          ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-          coro_map.insert(std::pair<int, ermia::dia::generator<bool>>(i, cG));
+	  case Request::kTypeGet:{
+          //previous GetOID without coroutine
+          //req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+
+          //assign the object at the same time as creation
+	  //ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+	  //while(cG.advance()){}
+
+//        save the coroutine in array
+//        ermia::dia::generator<bool> cgs[1];
+//	  cgs[i] = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+
+          ermia::dia::generator<bool> *cG_p;
+          cG_p = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
+          while (cG_p->advance()){}
+          //coro_scheduler->push_back(cG_p);
           }
           break;
         case Request::kTypeInsert:
@@ -125,23 +138,29 @@ void IndexThread::MyWork(char *) {
       }
       pos = (pos + 1) % 32768;  
     }
-    
-    std::map<int, ermia::dia::generator<bool>>::iterator it;
-    while (true) {
-      for(it=coro_map.begin();it!= coro_map.end();) {  
-        if(!(it->second.advance()))
-          it=coro_map.erase(it);
+
+/*
+      for(auto &coro : (*coro_scheduler)) {
+        while(coro->advance()){}
+      }
+*/
+
+/*
+      while (true) {
+
+	if(!(*it)->advance())
+          it = coro_scheduler->erase(it);
         else
           ++it;
       }
-      if(coro_map.empty())
-        break;  
+      if(coro_scheduler->empty())
+        break;
     }
-   
-    for (int i = 0; i < 50; i++)
+*/
+
+    for (int i = 0; i < 50; ++i)
       queue.Dequeue();
   }
-*/
 
 }
 

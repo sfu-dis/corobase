@@ -13,7 +13,7 @@ struct generator {
     T current_value;
     bool go_on;
     auto get_return_object() { return generator{handle::from_promise(*this)}; }
-    auto initial_suspend() { go_on = true; return std::experimental::suspend_never{}; }
+    auto initial_suspend() { go_on = true; return std::experimental::suspend_always{}; }
     auto final_suspend() { return std::experimental::suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
     auto return_value(T value) {
@@ -24,7 +24,10 @@ struct generator {
   };
   bool advance() { return coro ? (coro.resume(), !coro.done()) : false; }
   T current_value() { return coro.promise().current_value; }
+
+  generator(generator const&) = delete;
   generator(handle h = nullptr) : coro(h) {}
+  generator(generator && rhs) : coro(rhs.coro) { rhs.coro = nullptr; }
   ~generator() { if (coro) { coro.destroy();} }
 
   auto operator co_await(){

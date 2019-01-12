@@ -114,12 +114,14 @@ class ycsb_dia_worker : public bench_worker {
     static __thread std::vector<ermia::varstr *> *values;
     if (!values)
       values = new std::vector<ermia::varstr *>();
-    values->clear();
+    else
+      values->clear();
 
     static __thread std::vector<YcsbKey *> *keys;
     if (!keys)
       keys = new std::vector<YcsbKey *>();
-    keys->clear();
+    else
+      keys->clear();
 
     rc_t *rcs = nullptr;
     ermia::OID *oids = nullptr;
@@ -152,12 +154,14 @@ class ycsb_dia_worker : public bench_worker {
     static __thread std::vector<ermia::varstr *> *values;
     if (!values)
       values = new std::vector<ermia::varstr *>();
-    values->clear();
+    else
+      values->clear();
 
     static __thread std::vector<YcsbKey *> *keys;
     if (!keys)
       keys = new std::vector<YcsbKey *>();
-    keys->clear();
+    else
+      keys->clear();
 
     rc_t *rcs = nullptr;
     ermia::OID *oids = nullptr;
@@ -174,7 +178,8 @@ class ycsb_dia_worker : public bench_worker {
     static __thread std::vector<ermia::varstr *> *new_values;
     if (!new_values)
       new_values = new std::vector<ermia::varstr *>();
-    new_values->clear();
+    else
+      new_values->clear();
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Barrier to ensure data is read in
