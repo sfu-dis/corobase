@@ -221,11 +221,11 @@ public:
 
   inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    //auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
-    //while (co_await cs){ }
-    //bool found = cs.current_value();
-    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
-    //volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+    auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
+    while (co_await cs){ }
+    bool found = cs.current_value();
+    //bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
     co_return found;
   }
 
