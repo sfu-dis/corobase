@@ -90,13 +90,10 @@ void IndexThread::MyWork(char *) {
 */
 
   while (true) {
-    static __thread std::vector<ermia::dia::generator<bool> *> *coro_scheduler;
-    if (!coro_scheduler)
-      coro_scheduler = new std::vector<ermia::dia::generator<bool> *>();
-    else
-      coro_scheduler->clear();
+    ermia::dia::generator<bool> *cgs[1];
+    bool flag = false;
     uint32_t pos = queue.getPos();
-    for (int i = 0; i < 50; ++i){
+    for (int i = 0; i < 1; ++i){
       Request &req = queue.GetRequestByPos(pos);
       ermia::transaction *t = volatile_read(req.transaction);
       ALWAYS_ASSERT(t);
@@ -116,14 +113,14 @@ void IndexThread::MyWork(char *) {
 	  //ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
 	  //while(cG.advance()){}
 
-//        save the coroutine in array
-//        ermia::dia::generator<bool> cgs[1];
-//	  cgs[i] = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+          //save the coroutine in array
+          //ermia::dia::generator<bool> *cG_p;
+          //cG_p = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
+          //while (cG_p->advance()){}
 
-          ermia::dia::generator<bool> *cG_p;
-          cG_p = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
-          while (cG_p->advance()){}
-          //coro_scheduler->push_back(cG_p);
+          cgs[i] = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
+          flag = true;
+          //while (cgs[i]->advance()){}
           }
           break;
         case Request::kTypeInsert:
@@ -139,26 +136,12 @@ void IndexThread::MyWork(char *) {
       pos = (pos + 1) % 32768;  
     }
 
-/*
-      for(auto &coro : (*coro_scheduler)) {
-        while(coro->advance()){}
-      }
-*/
-
-/*
-      while (true) {
-
-	if(!(*it)->advance())
-          it = coro_scheduler->erase(it);
-        else
-          ++it;
-      }
-      if(coro_scheduler->empty())
-        break;
+    if (flag){
+      flag = false;
+      while(cgs[0]->advance()){}
     }
-*/
 
-    for (int i = 0; i < 50; ++i)
+    for (int i = 0; i < 1; ++i)
       queue.Dequeue();
   }
 
