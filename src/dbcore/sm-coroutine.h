@@ -30,6 +30,14 @@ struct generator {
   generator(generator && rhs) : coro(rhs.coro) { rhs.coro = nullptr; }
   ~generator() { if (coro) { coro.destroy();} }
 
+  generator &operator=(generator const&) = delete;
+  generator &operator=(generator&& rhs) {
+    if (this != &rhs) {
+      coro = rhs.coro;
+      rhs.coro = nullptr;
+    }
+    return *this;
+  }
   auto operator co_await(){
     struct awaitable_type {
       std::experimental::coroutine_handle<promise_type> coro;
