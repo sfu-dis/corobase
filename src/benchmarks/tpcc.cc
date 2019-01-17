@@ -1678,6 +1678,9 @@ rc_t tpcc_worker::txn_credit_check() {
     //		ol_o_id = o_id
     //		ol_number = 1-15
     static __thread credit_check_order_line_scan_callback *c_ol;
+    if (!c_ol) {
+      c_ol = new credit_check_order_line_scan_callback;
+    }
     c_ol->_v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
@@ -2150,6 +2153,9 @@ rc_t tpcc_worker::txn_query2() {
   ALWAYS_ASSERT(r_scanner->output.size() == 5);
 
   static __thread tpcc_table_scanner *n_scanner;
+  if (!n_scanner) {
+    n_scanner = new tpcc_table_scanner;
+  }
   n_scanner->_arena = &arena;
   n_scanner->clear();
   const nation::key k_n_0(0);
