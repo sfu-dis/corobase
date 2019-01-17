@@ -32,8 +32,8 @@ void Initialize();
 
 extern uint32_t
     next_thread_id;  // == total number of threads had so far - never decreases
-extern __thread uint32_t thread_id;
-extern __thread bool thread_initialized;
+extern thread_local uint32_t thread_id;
+extern thread_local bool thread_initialized;
 
 inline uint32_t MyId() {
   if (!thread_initialized) {
