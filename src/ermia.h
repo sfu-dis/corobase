@@ -65,10 +65,6 @@ public:
   class ScanCallback {
    public:
     ~ScanCallback() {}
-    // XXX(stephentu): key is passed as (const char *, size_t) pair
-    // because it really should be the string_type of the underlying
-    // tree, but since ndb_ordered_index is not templated we can't
-    // really do better than this for now
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };
