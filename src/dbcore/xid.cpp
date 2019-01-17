@@ -55,7 +55,7 @@ xid_context contexts[NCONTEXTS];
 
 xid_bitmap xid_bitmaps[NBITMAPS];
 
-__thread thread_data tls CACHE_ALIGNED;
+thread_local thread_data tls CACHE_ALIGNED;
 
 /***************************************
  * * * Callbacks for the epoch_mgr * * *
@@ -68,7 +68,7 @@ void global_init(void *) {
 }
 
 epoch_mgr::tls_storage *get_tls(void *) {
-  static __thread epoch_mgr::tls_storage s;
+  static thread_local epoch_mgr::tls_storage s;
   return &s;
 }
 

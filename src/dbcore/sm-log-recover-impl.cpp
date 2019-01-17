@@ -102,7 +102,7 @@ void sm_log_recover_impl::recover_index_insert(
   static const uint32_t kBufferSize = 8 * config::MB;
   ASSERT(index);
   auto sz = align_up(logrec->payload_size());
-  static __thread char* buf;
+  static thread_local char* buf = nullptr;
   if (!buf) {
     buf = (char*)malloc(kBufferSize);
   }

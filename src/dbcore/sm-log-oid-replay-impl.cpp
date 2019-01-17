@@ -98,7 +98,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
   ALWAYS_ASSERT(owner->start_lsn.segment() >= 1);
   auto *scan = owner->scanner->new_log_scan(owner->start_lsn,
                                             config::eager_warm_up(), false);
-  static __thread std::unordered_map<FID, OID> *max_oid;
+  static thread_local std::unordered_map<FID, OID> max_oid;
   replayed_lsn = INVALID_LSN;
 
   for (; scan->valid() and scan->payload_lsn().offset() + scan->payload_size() <= owner->end_lsn.offset(); scan->next()) {
@@ -115,7 +115,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
 
     auto fid = scan->fid();
     if (!config::is_backup_srv()) {
-      (*max_oid)[fid] = std::max((*max_oid)[fid], oid);
+      max_oid[fid] = std::max(max_oid[fid], oid);
     }
 
     switch (scan->type()) {
@@ -158,7 +158,7 @@ void parallel_oid_replay::redo_runner::redo_partition() {
              << "/" << dcount << "/" << size;
 
   if (!config::is_backup_srv()) {
-    for (auto &m : *max_oid) {
+    for (auto &m : max_oid) {
       oidmgr->recreate_allocator(m.first, m.second);
     }
   }
