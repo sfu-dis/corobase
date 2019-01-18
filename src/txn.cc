@@ -1342,6 +1342,7 @@ OID transaction::PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out
 
 bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
                                     varstr *value, OID *inserted_oid) {
+  ASSERT((char *)key->data() == (char *)key + sizeof(varstr));
   dbtuple *tuple = nullptr;
   OID oid = PrepareInsert(index, value, &tuple);
   if (inserted_oid) {
