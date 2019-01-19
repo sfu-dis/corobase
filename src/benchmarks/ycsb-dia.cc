@@ -160,7 +160,7 @@ class ycsb_dia_worker : public bench_worker {
       auto &k = str(sizeof(ermia::varstr) + sizeof(uint64_t));
       build_rmw_key_for_worker(worker_id, k);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(ermia::varstr)));
+      values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
