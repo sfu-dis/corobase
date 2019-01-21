@@ -1,6 +1,7 @@
 #include "../ermia.h"
 #include "sm-dia.h"
 #include "sm-coroutine.h"
+#include <vector>
 
 namespace ermia {
 namespace dia {
@@ -90,8 +91,8 @@ void IndexThread::MyWork(char *) {
 */
 
   while (true) {
-    ermia::dia::generator<bool> *cgs[1];
-    bool flag = false;
+    thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
+    coroutines.clear();
     uint32_t pos = queue.getPos();
     for (int i = 0; i < 1; ++i){
       Request &req = queue.GetRequestByPos(pos);
@@ -105,7 +106,7 @@ void IndexThread::MyWork(char *) {
         // Regardless the request is for record read or update, we only need to get
         // the OID, i.e., a Get operation on the index. For updating OID, we need
         // to use the Put interface
-	  case Request::kTypeGet:{
+	case Request::kTypeGet:{
           //previous GetOID without coroutine
           //req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
 
@@ -118,9 +119,10 @@ void IndexThread::MyWork(char *) {
           //cG_p = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
           //while (cG_p->advance()){}
 
-          cgs[i] = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
-          flag = true;
+          //cgs[i] = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
           //while (cgs[i]->advance()){}
+
+          coroutines.push_back(new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr)));
           }
           break;
         case Request::kTypeInsert:
@@ -136,9 +138,10 @@ void IndexThread::MyWork(char *) {
       pos = (pos + 1) % 32768;  
     }
 
-    if (flag){
-      flag = false;
-      while(cgs[0]->advance()){}
+    while(coroutines.size()){
+      while(coroutines.back()->advance()){}
+      delete coroutines.back();
+      coroutines.pop_back();
     }
 
     for (int i = 0; i < 1; ++i)
