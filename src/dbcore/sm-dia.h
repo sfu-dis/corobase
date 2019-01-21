@@ -70,14 +70,21 @@ public:
     return pos;
   }
   
-  inline Request &GetRequestByPos(uint32_t pos) {
-    Request *req = nullptr;
-    do {
-      req = &requests[pos];
-    } while (!volatile_read(req->transaction));
-    // Wait for the busy bit to be reset (shuold be very rare)
-    while ((uint64_t)(volatile_read(req->transaction)) & (1UL << 63)) {}
-    return *req;
+  inline Request *GetRequestByPos(uint32_t pos, bool wait = true) {
+    Request *req = &requests[pos];
+    bool exists = (volatile_read(req->transaction) != nullptr);
+
+    if (wait && !exists) {
+      while (!volatile_read(req->transaction)) {}
+      exists = true;
+    }
+
+    if (exists) {
+      // Wait for the busy bit to be reset (shuold be very rare)
+      while ((uint64_t)(volatile_read(req->transaction)) & (1UL << 63)) {}
+      return req;
+    }
+    return nullptr;
   }
 
   inline Request &GetNextRequest() {

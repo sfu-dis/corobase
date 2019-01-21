@@ -90,29 +90,34 @@ void IndexThread::MyWork(char *) {
   }
 */
 
+  static const uint32_t kBatchSize = 20;
   while (true) {
     thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
     coroutines.clear();
     uint32_t pos = queue.getPos();
-    for (int i = 0; i < 1; ++i){
-      Request &req = queue.GetRequestByPos(pos);
-      ermia::transaction *t = volatile_read(req.transaction);
+    for (int i = 0; i < kBatchSize; ++i){
+      Request *req = queue.GetRequestByPos(pos, false); //GetRequestByPos(pos);
+      if (!req) {
+        break;
+      }
+      ++pos;
+      ermia::transaction *t = req->transaction;
       ALWAYS_ASSERT(t);
-      ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
-      *req.rc = rc_t{RC_INVALID};
-      ASSERT(req.oid_ptr);
+      ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+      *req->rc = rc_t{RC_INVALID};
+      ASSERT(req->oid_ptr);
 
-      switch (req.type) {
+      switch (req->type) {
         // Regardless the request is for record read or update, we only need to get
         // the OID, i.e., a Get operation on the index. For updating OID, we need
         // to use the Put interface
-	case Request::kTypeGet:{
+        case Request::kTypeGet:
           //previous GetOID without coroutine
           //req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
 
           //assign the object at the same time as creation
-	  //ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-	  //while(cG.advance()){}
+          //ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+          //while(cG.advance()){}
 
           //save the coroutine in array
           //ermia::dia::generator<bool> *cG_p;
@@ -122,32 +127,30 @@ void IndexThread::MyWork(char *) {
           //cgs[i] = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
           //while (cgs[i]->advance()){}
 
-          coroutines.push_back(new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr)));
-          }
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, *req->rc, t->GetXIDContext(), *req->oid_ptr)));
           break;
         case Request::kTypeInsert:
-          if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
-            volatile_write(req.rc->_val, RC_TRUE);
+          if (req->index->InsertIfAbsent(t, *req->key, *req->oid_ptr)) {
+            volatile_write(req->rc->_val, RC_TRUE);
           } else {
-            volatile_write(req.rc->_val, RC_FALSE);
+            volatile_write(req->rc->_val, RC_FALSE);
           }
           break;
         default:
           LOG(FATAL) << "Wrong request type";
       }
-      pos = (pos + 1) % 32768;  
     }
 
-    while(coroutines.size()){
+    while(coroutines.size()) {
       while(coroutines.back()->advance()){}
       delete coroutines.back();
       coroutines.pop_back();
     }
 
-    for (int i = 0; i < 1; ++i)
+    for (int i = 0; i < coroutines.size(); ++i) {
       queue.Dequeue();
+    }
   }
-
 }
 
 
