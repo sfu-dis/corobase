@@ -280,7 +280,6 @@ class ycsb_dia_usertable_loader : public bench_loader {
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
 
-      //TryVerifyStrict(tbl->Insert(txn, *key, v));
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
       ermia::dbtuple *tuple = nullptr;

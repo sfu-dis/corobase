@@ -96,11 +96,10 @@ void IndexThread::MyWork(char *) {
     coroutines.clear();
     uint32_t pos = queue.getPos();
     for (int i = 0; i < kBatchSize; ++i){
-      Request *req = queue.GetRequestByPos(pos, false); //GetRequestByPos(pos);
+      Request *req = queue.GetRequestByPos(pos + i, false); //GetRequestByPos(pos);
       if (!req) {
         break;
       }
-      ++pos;
       ermia::transaction *t = req->transaction;
       ALWAYS_ASSERT(t);
       ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
@@ -135,6 +134,7 @@ void IndexThread::MyWork(char *) {
           } else {
             volatile_write(req->rc->_val, RC_FALSE);
           }
+          queue.Dequeue();
           break;
         default:
           LOG(FATAL) << "Wrong request type";
