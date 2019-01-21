@@ -123,14 +123,16 @@ class ycsb_dia_worker : public bench_worker {
       auto &k = str(sizeof(ermia::varstr) + sizeof(uint64_t));
       build_rmw_key_for_worker(worker_id, k);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(YcsbRecord)));
+      values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);  // Send out async Get request
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
+      ermia::varstr *r = values[i];
+      new (r) ermia::varstr((char*)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      tbl->RecvGet(txn, rcs[i], oids[i], *r);
       ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
       TryCatch(rcs[i]);
       // TODO(tzwang): if we abort here (e.g. because the return value rc says
@@ -160,7 +162,7 @@ class ycsb_dia_worker : public bench_worker {
       auto &k = str(sizeof(ermia::varstr) + sizeof(uint64_t));
       build_rmw_key_for_worker(worker_id, k);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(YcsbRecord)));
+      values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
@@ -170,8 +172,10 @@ class ycsb_dia_worker : public bench_worker {
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Barrier to ensure data is read in
-      tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
-      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+      ermia::varstr *r = values[i];
+      new (r) ermia::varstr((char*)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      tbl->RecvGet(txn, rcs[i], oids[i], *r);
+      ALWAYS_ASSERT(*(char*)r->data() == 'a');
       TryCatch(rcs[i]);
 
       // Reset the return value placeholders
@@ -202,7 +206,7 @@ class ycsb_dia_worker : public bench_worker {
       auto &k = str(sizeof(ermia::varstr) + sizeof(uint64_t));
       build_rmw_key_for_worker(worker_id, k);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(YcsbRecord)));
+      values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
