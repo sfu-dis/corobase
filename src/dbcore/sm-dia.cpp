@@ -59,9 +59,10 @@ void Initialize() {
 // The actual index access goes here
 void IndexThread::MyWork(char *) {
   LOG(INFO) << "Index thread started";
-  // FIXME(tzwang): Process requests in batches
+  request_handler();
+}
 
-/*
+void IndexThread::SerialHandler() {
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
@@ -88,8 +89,9 @@ void IndexThread::MyWork(char *) {
     }
     queue.Dequeue();
   }
-*/
+}
 
+void IndexThread::CoroutineHandler() {
   static const uint32_t kBatchSize = 20;
   while (true) {
     thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
