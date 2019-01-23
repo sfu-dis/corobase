@@ -71,20 +71,22 @@ public:
   }
   
   inline Request *GetRequestByPos(uint32_t pos, bool wait = true) {
-    Request *req = &requests[pos];
+    Request *req = &requests[pos % kMaxSize];
+
+    get_request:
     bool exists = (volatile_read(req->transaction) != nullptr);
 
-    if (wait && !exists) {
-      while (!volatile_read(req->transaction)) {}
-      exists = true;
-    }
-
     if (exists) {
-      // Wait for the busy bit to be reset (shuold be very rare)
+      // Wait for the busy bit to be reset (should be very rare)
       while ((uint64_t)(volatile_read(req->transaction)) & (1UL << 63)) {}
       return req;
+    } else {
+      if (wait) {
+        goto get_request;
+      } else {
+        return nullptr;
+      }
     }
-    return nullptr;
   }
 
   inline Request &GetNextRequest() {
@@ -96,6 +98,7 @@ public:
     while ((uint64_t)(volatile_read(req->transaction)) & (1UL << 63)) {}
     return *req;
   }
+
   inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
                       const varstr *key, uint8_t type, rc_t *rc, OID *oid) {
     // tzwang: simple dumb solution; may get fancier if needed later.
@@ -108,7 +111,7 @@ public:
 
     // We have more than the transaction to update in the slot, so mark it in
     // the MSB as 'busy'
-    req.transaction = (ermia::transaction *)((uint64_t)t | (1UL << 63));
+    volatile_write(req.transaction, (ermia::transaction *)((uint64_t)t | (1UL << 63)));
     COMPILER_MEMORY_FENCE;
 
     req.index = index;
@@ -119,8 +122,7 @@ public:
 
     // Now toggle the busy bit so it's really ready
     COMPILER_MEMORY_FENCE;
-    uint64_t new_val = (uint64_t)req.transaction & (~(1UL << 63));
-    req.transaction = (ermia::transaction *)new_val;
+    volatile_write(req.transaction, t);
   }
 
   // Only one guy can call this
