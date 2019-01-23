@@ -96,12 +96,13 @@ void IndexThread::MyWork(char *) {
     coroutines.clear();
     uint32_t pos = queue.getPos();
     for (int i = 0; i < kBatchSize; ++i){
-      Request *req = queue.GetRequestByPos(pos + i, false); //GetRequestByPos(pos);
+      Request *req = queue.GetRequestByPos(pos + i, false);
       if (!req) {
         break;
       }
       ermia::transaction *t = req->transaction;
       ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
       ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
       *req->rc = rc_t{RC_INVALID};
       ASSERT(req->oid_ptr);
@@ -111,21 +112,6 @@ void IndexThread::MyWork(char *) {
         // the OID, i.e., a Get operation on the index. For updating OID, we need
         // to use the Put interface
         case Request::kTypeGet:
-          //previous GetOID without coroutine
-          //req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-
-          //assign the object at the same time as creation
-          //ermia::dia::generator<bool> cG = req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-          //while(cG.advance()){}
-
-          //save the coroutine in array
-          //ermia::dia::generator<bool> *cG_p;
-          //cG_p = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
-          //while (cG_p->advance()){}
-
-          //cgs[i] = new ermia::dia::generator<bool>(req.index->coro_GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr));
-          //while (cgs[i]->advance()){}
-
           coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, *req->rc, t->GetXIDContext(), *req->oid_ptr)));
           break;
         case Request::kTypeInsert:
@@ -141,13 +127,12 @@ void IndexThread::MyWork(char *) {
       }
     }
 
-    while(coroutines.size()) {
-      while(coroutines.back()->advance()){}
-      delete coroutines.back();
-      coroutines.pop_back();
+    for (auto &c : coroutines) {
+      while (c->advance()) {}
+      delete c;
     }
 
-    for (int i = 0; i < coroutines.size(); ++i) {
+    for (auto &c : coroutines) {
       queue.Dequeue();
     }
   }
