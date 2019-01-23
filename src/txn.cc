@@ -8,7 +8,7 @@
 namespace ermia {
 
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
-static __thread transaction::read_set_t *tls_read_set;
+static thread_local transaction::read_set_t *tls_read_set = nullptr;
 #endif
 
 write_set_t tls_write_set[config::MAX_THREADS];
@@ -19,7 +19,7 @@ transaction::transaction(uint64_t flags, str_arena &sa)
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a
     // consistent snapshot back in time. No CC involved.
-    thread_local TXN::xid_context *ctx = nullptr;
+    static thread_local TXN::xid_context *ctx = nullptr;
     if (!ctx) {
       ctx = TXN::xid_get_context(TXN::xid_alloc());
     }
@@ -1342,6 +1342,7 @@ OID transaction::PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out
 
 bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
                                     varstr *value, OID *inserted_oid) {
+  ASSERT((char *)key->data() == (char *)key + sizeof(varstr));
   dbtuple *tuple = nullptr;
   OID oid = PrepareInsert(index, value, &tuple);
   if (inserted_oid) {

@@ -235,6 +235,7 @@ rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k, varstr 
                                         bool expect_new, bool upsert,
                                         OID *inserted_oid) {
   ASSERT(k);
+  ASSERT((char *)k->data() == (char *)k + sizeof(varstr));
   ASSERT(!expect_new || v);
   t.ensure_active();
 

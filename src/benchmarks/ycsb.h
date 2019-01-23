@@ -13,7 +13,7 @@ const uint32_t kMaxWorkers = 1024;
  * prefix.
  * So the key itself is still a char array (string) that fits exactly one
  * uint64_t. */
-struct YcsbKey : public ermia::varstr {
+/*
   bool operator<(const YcsbKey& other) const { return compare(*this, other); }
   //bool operator==(const YcsbKey& other) const { return data_ == other.data_; }
   static inline bool compare(const YcsbKey& k1, const YcsbKey& k2) {
@@ -24,7 +24,7 @@ struct YcsbKey : public ermia::varstr {
     return *this;
   }
   YcsbKey() : ermia::varstr((uint8_t*)this + sizeof(*this), sizeof(uint64_t)) {}
-};
+  */
 
 struct YcsbRecord {
   char data_[kRecordSize];
@@ -80,4 +80,5 @@ struct YcsbWorkload {
   bool distinct_keys_;
 };
 
-YcsbKey &build_rmw_key(int worker_id);
+void build_rmw_key_for_worker(int worker_id, ermia::varstr &k);
+void build_rmw_key(uint64_t hi, uint64_t lo, ermia::varstr &k);
