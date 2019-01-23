@@ -17,6 +17,7 @@
 #define MASSTREE_GET_HH 1
 #include "masstree_tcursor.hh"
 #include "masstree_key.hh"
+#include "../dbcore/sm-coroutine.h"
 namespace Masstree {
 
 template <typename P>
@@ -51,6 +52,42 @@ forward:
     goto retry;
   } else
     return match;
+}
+
+template <typename P>
+ermia::dia::generator<bool> unlocked_tcursor<P>::coro_find_unlocked(threadinfo& ti) {
+  int match;
+  key_indexed_position kx;
+  node_base<P>* root = const_cast<node_base<P>*>(root_);
+
+retry:
+  n_ = root->reach_leaf(ka_, v_, ti);
+
+forward:
+  if (v_.deleted()) goto retry;
+
+  n_->prefetch();
+  co_await std::experimental::suspend_always{};
+  perm_ = n_->permutation();
+  kx = leaf<P>::bound_type::lower(ka_, *this);
+  if (kx.p >= 0) {
+    lv_ = n_->lv_[kx.p];
+    lv_.prefetch(n_->keylenx_[kx.p]);
+    co_await std::experimental::suspend_always{};
+    match = n_->ksuf_matches(kx.p, ka_);
+  } else
+    match = 0;
+  if (n_->has_changed(v_)) {
+    n_ = n_->advance_to_key(ka_, v_, ti);
+    goto forward;
+  }
+
+  if (match < 0) {
+    ka_.shift_by(-match);
+    root = lv_.layer();
+    goto retry;
+  } else
+    co_return match;
 }
 
 template <typename P>

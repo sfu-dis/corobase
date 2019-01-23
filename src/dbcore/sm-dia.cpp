@@ -1,8 +1,7 @@
-#include <experimental/coroutine>
-
 #include "../ermia.h"
-
 #include "sm-dia.h"
+#include "sm-coroutine.h"
+#include <vector>
 
 namespace ermia {
 namespace dia {
@@ -56,10 +55,13 @@ void Initialize() {
   }
 }
 
+
 // The actual index access goes here
 void IndexThread::MyWork(char *) {
   LOG(INFO) << "Index thread started";
   // FIXME(tzwang): Process requests in batches
+
+/*
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
@@ -73,7 +75,7 @@ void IndexThread::MyWork(char *) {
       // to use the Put interface
       case Request::kTypeGet:
         req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-        break;
+	break;
       case Request::kTypeInsert:
         if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
           volatile_write(req.rc->_val, RC_TRUE);
@@ -86,7 +88,56 @@ void IndexThread::MyWork(char *) {
     }
     queue.Dequeue();
   }
+*/
+
+  static const uint32_t kBatchSize = 20;
+  while (true) {
+    thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
+    coroutines.clear();
+    uint32_t pos = queue.getPos();
+    for (int i = 0; i < kBatchSize; ++i){
+      Request *req = queue.GetRequestByPos(pos + i, false);
+      if (!req) {
+        break;
+      }
+      ermia::transaction *t = req->transaction;
+      ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+      ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+      *req->rc = rc_t{RC_INVALID};
+      ASSERT(req->oid_ptr);
+
+      switch (req->type) {
+        // Regardless the request is for record read or update, we only need to get
+        // the OID, i.e., a Get operation on the index. For updating OID, we need
+        // to use the Put interface
+        case Request::kTypeGet:
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, *req->rc, t->GetXIDContext(), *req->oid_ptr)));
+          break;
+        case Request::kTypeInsert:
+          if (req->index->InsertIfAbsent(t, *req->key, *req->oid_ptr)) {
+            volatile_write(req->rc->_val, RC_TRUE);
+          } else {
+            volatile_write(req->rc->_val, RC_FALSE);
+          }
+          queue.Dequeue();
+          break;
+        default:
+          LOG(FATAL) << "Wrong request type";
+      }
+    }
+
+    for (auto &c : coroutines) {
+      while (c->advance()) {}
+      delete c;
+    }
+
+    for (auto &c : coroutines) {
+      queue.Dequeue();
+    }
+  }
 }
+
 
 }  // namespace dia
 }  // namespace ermia

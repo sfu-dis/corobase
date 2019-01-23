@@ -9,8 +9,8 @@ namespace thread {
 
 uint32_t next_thread_id = 0;
 PerNodeThreadPool *thread_pools = nullptr;
-__thread uint32_t thread_id CACHE_ALIGNED;
-__thread bool thread_initialized CACHE_ALIGNED;
+thread_local uint32_t thread_id CACHE_ALIGNED;
+thread_local bool thread_initialized CACHE_ALIGNED;
 uint32_t PerNodeThreadPool::max_threads_per_node = 0;
 
 std::vector<CPUCore> cpu_cores;

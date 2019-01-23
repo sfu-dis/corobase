@@ -1,11 +1,12 @@
 #pragma once
 
 #include <map>
-
+#include <experimental/coroutine>
 #include "btree/btree.h"
 #include "txn.h"
 #include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
+#include "../dbcore/sm-coroutine.h"
 
 namespace ermia {
 
@@ -64,10 +65,6 @@ public:
   class ScanCallback {
    public:
     ~ScanCallback() {}
-    // XXX(stephentu): key is passed as (const char *, size_t) pair
-    // because it really should be the string_type of the underlying
-    // tree, but since ndb_ordered_index is not templated we can't
-    // really do better than this for now
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };
@@ -76,6 +73,9 @@ public:
   rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid);
 
   virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
+
+  virtual ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                       ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
   /**
@@ -213,6 +213,16 @@ public:
                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     bool found = masstree_.search(key, out_oid, xc, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+  }  
+
+  inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    //auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
+    //while (co_await cs){ }
+    //bool found = cs.current_value();
+    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+    co_return found;
   }
 
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
@@ -309,6 +319,15 @@ public:
     MARK_REFERENCED(xc);
     MARK_REFERENCED(out_oid);
     MARK_REFERENCED(out_sinfo);
+  }
+  ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    MARK_REFERENCED(key);
+    MARK_REFERENCED(rc);
+    MARK_REFERENCED(xc);
+    MARK_REFERENCED(out_oid);
+    MARK_REFERENCED(out_sinfo);
+    co_return true;
   }
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {

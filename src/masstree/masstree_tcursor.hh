@@ -18,6 +18,7 @@
 #include "local_vector.hh"
 #include "masstree_key.hh"
 #include "masstree_struct.hh"
+#include "../dbcore/sm-coroutine.h"
 namespace Masstree {
 template <typename P>
 struct gc_layer_rcu_callback;
@@ -52,6 +53,7 @@ class unlocked_tcursor {
         root_(table.fix_root()) {}
 
   bool find_unlocked(threadinfo& ti);
+  ermia::dia::generator<bool> coro_find_unlocked(threadinfo& ti);
 
   inline value_type value() const { return lv_.value(); }
   inline leaf<P>* node() const { return n_; }

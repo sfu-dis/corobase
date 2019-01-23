@@ -21,6 +21,7 @@
 #include "mtcounters.hh"
 #include "circular_int.hh"
 
+#include "../dbcore/sm-coroutine.h"
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/sm-index.h"
 #include "../tuple.h"
@@ -190,6 +191,9 @@ class mbtree {
    * of setting up RCU */
 
   inline bool search(const key_type &k, OID &o, TXN::xid_context *xc,
+                     versioned_node_t *search_info = nullptr) const;
+
+  inline ermia::dia::generator<bool> coro_search(const key_type &k, OID &o, TXN::xid_context *xc,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -506,6 +510,24 @@ inline bool mbtree<P>::search(const key_type &k, OID &o,
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   }
   return found;
+}
+
+template <typename P>
+inline ermia::dia::generator<bool> mbtree<P>::coro_search(const key_type &k, OID &o,
+                              TXN::xid_context *xc,
+                              versioned_node_t *search_info) const {
+  threadinfo ti(xc->begin_epoch);
+  Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
+  auto cfu = lp.coro_find_unlocked(ti);
+  while (co_await cfu){ }
+  bool found = cfu.current_value();
+  if (found) {
+    o = lp.value();
+  }
+  if (search_info) {
+    *search_info = versioned_node_t(lp.node(), lp.full_version_value());
+  }
+  co_return found;
 }
 
 template <typename P>
