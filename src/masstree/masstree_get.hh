@@ -55,25 +55,28 @@ forward:
 }
 
 template <typename P>
-ermia::dia::generator<bool> unlocked_tcursor<P>::coro_find_unlocked(threadinfo& ti) {
+ermia::dia::generator<int> unlocked_tcursor<P>::coro_find_unlocked(threadinfo& ti) {
   int match;
   key_indexed_position kx;
   node_base<P>* root = const_cast<node_base<P>*>(root_);
 
 retry:
-  n_ = root->reach_leaf(ka_, v_, ti);
+  //n_ = root->reach_leaf(ka_, v_, ti);
+  auto crl = root->coro_reach_leaf(ka_, v_, ti);
+  while (co_await crl){}
+  n_ = crl.current_value();
 
 forward:
   if (v_.deleted()) goto retry;
 
   n_->prefetch();
-  co_await std::experimental::suspend_always{};
+  //co_await std::experimental::suspend_always{};
   perm_ = n_->permutation();
   kx = leaf<P>::bound_type::lower(ka_, *this);
   if (kx.p >= 0) {
     lv_ = n_->lv_[kx.p];
     lv_.prefetch(n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
+    //co_await std::experimental::suspend_always{};
     match = n_->ksuf_matches(kx.p, ka_);
   } else
     match = 0;
@@ -86,8 +89,8 @@ forward:
     ka_.shift_by(-match);
     root = lv_.layer();
     goto retry;
-  } else
-    co_return match;
+  }
+  co_return match;
 }
 
 template <typename P>

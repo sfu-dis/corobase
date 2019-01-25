@@ -75,6 +75,7 @@ public:
   virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                       ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
+  // a coroutine variant of GetOID
   virtual ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                       ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 

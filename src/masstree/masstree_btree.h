@@ -193,6 +193,7 @@ class mbtree {
   inline bool search(const key_type &k, OID &o, TXN::xid_context *xc,
                      versioned_node_t *search_info = nullptr) const;
 
+  // a coroutine variant of search
   inline ermia::dia::generator<bool> coro_search(const key_type &k, OID &o, TXN::xid_context *xc,
                      versioned_node_t *search_info = nullptr) const;
 
