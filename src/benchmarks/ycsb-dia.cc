@@ -197,6 +197,7 @@ class ycsb_dia_worker : public bench_worker {
     // Wait for writes to finish
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       tbl->RecvPut(txn, rcs[i], oids[i], *keys[i], *new_values[i]);
+      TryCatch(rcs[i]);
     }
 
     PrepareForDIA(&rcs, &oids);
