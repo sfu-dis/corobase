@@ -59,9 +59,10 @@ void Initialize() {
 // The actual index access goes here
 void IndexThread::MyWork(char *) {
   LOG(INFO) << "Index thread started";
-  // FIXME(tzwang): Process requests in batches
+  request_handler();
+}
 
-/*
+void IndexThread::SerialHandler() {
   while (true) {
     Request &req = queue.GetNextRequest();
     ermia::transaction *t = volatile_read(req.transaction);
@@ -88,9 +89,10 @@ void IndexThread::MyWork(char *) {
     }
     queue.Dequeue();
   }
-*/
+}
 
-  static const uint32_t kBatchSize = 20;
+void IndexThread::CoroutineHandler() {
+  static const uint32_t kBatchSize = 500;
   while (true) {
     thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
     coroutines.clear();
@@ -127,6 +129,21 @@ void IndexThread::MyWork(char *) {
       }
     }
 
+    int dequeueSize = coroutines.size();
+    while (coroutines.size()){
+      for (auto it = coroutines.begin(); it != coroutines.end();) {
+        if ((*it)->advance()){
+          ++it;
+        }else{
+          delete (*it);
+          it = coroutines.erase(it);
+        }
+      }
+    }
+
+    for (int i = 0; i < dequeueSize; ++i)
+      queue.Dequeue();
+/*
     for (auto &c : coroutines) {
       while (c->advance()) {}
       delete c;
@@ -135,9 +152,11 @@ void IndexThread::MyWork(char *) {
     for (auto &c : coroutines) {
       queue.Dequeue();
     }
+*/
   }
 }
 
 
 }  // namespace dia
+
 }  // namespace ermia

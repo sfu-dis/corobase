@@ -69,6 +69,9 @@ extern uint32_t replay_threads;
 extern bool persist_nvram_on_replay;
 extern int persist_policy;
 
+// DIA-specific settings
+extern std::string dia_req_handler;
+
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the
 // difference between pipelined/sync replay which use the pdest array.

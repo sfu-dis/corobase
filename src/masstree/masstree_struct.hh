@@ -20,6 +20,7 @@
 #include "stringbag.hh"
 #include "mtcounters.hh"
 #include "timestamp.hh"
+#include "../dbcore/sm-coroutine.h"
 namespace Masstree {
 
 template <typename P>
@@ -94,6 +95,10 @@ class node_base : public make_nodeversion<P>::type {
   }
 
   inline leaf_type* reach_leaf(const key_type& k, nodeversion_type& version,
+                               threadinfo& ti) const;
+
+  // a coroutine variant of reach_leaf
+  inline ermia::dia::generator<leaf_type*> coro_reach_leaf(const key_type& k, nodeversion_type& version,
                                threadinfo& ti) const;
 
   void prefetch_full() const {
@@ -586,6 +591,53 @@ retry:
 
   version = v[sense];
   return const_cast<leaf<P>*>(static_cast<const leaf<P>*>(n[sense]));
+}
+
+template <typename P>
+inline ermia::dia::generator<leaf<P>*> node_base<P>::coro_reach_leaf(const key_type& ka,
+                                         nodeversion_type& version,
+                                         threadinfo& ti) const {
+  const node_base<P>* n[2];
+  typename node_base<P>::nodeversion_type v[2];
+  bool sense;
+
+// Get a non-stale root.
+// Detect staleness by checking whether n has ever split.
+// The true root has never split.
+retry:
+  sense = false;
+  n[sense] = this;
+  while (1) {
+    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+    if (!v[sense].has_split()) break;
+    n[sense] = n[sense]->unsplit_ancestor();
+  }
+
+  // Loop over internal nodes.
+  while (!v[sense].isleaf()) {
+    const internode<P>* in = static_cast<const internode<P>*>(n[sense]);
+    in->prefetch();
+    co_await std::experimental::suspend_always{};
+    int kp = internode<P>::bound_type::upper(ka, *in);
+    n[!sense] = in->child_[kp];
+    if (!n[!sense]) goto retry;
+    v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+    if (likely(!in->has_changed(v[sense]))) {
+      sense = !sense;
+      continue;
+    }
+
+    typename node_base<P>::nodeversion_type oldv = v[sense];
+    v[sense] = in->stable_annotated(ti.stable_fence());
+    if (oldv.has_split(v[sense]) &&
+        in->stable_last_key_compare(ka, v[sense], ti) > 0) {
+      goto retry;
+    }
+  }
+
+  version = v[sense];
+  co_return const_cast<leaf<P>*>(static_cast<const leaf<P>*>(n[sense]));
 }
 
 /** @brief Return the leaf at or after *this responsible for @a ka.
