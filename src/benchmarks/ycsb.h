@@ -9,23 +9,6 @@ const uint32_t kFieldLength = 10;
 const uint64_t kRecordSize = kFieldLength * kFields;
 const uint32_t kMaxWorkers = 1024;
 
-/* XXX(tzwang): currently we assume integer keys only, without the "user"
- * prefix.
- * So the key itself is still a char array (string) that fits exactly one
- * uint64_t. */
-/*
-  bool operator<(const YcsbKey& other) const { return compare(*this, other); }
-  //bool operator==(const YcsbKey& other) const { return data_ == other.data_; }
-  static inline bool compare(const YcsbKey& k1, const YcsbKey& k2) {
-    return *(uint64_t*)k1.data() < *(uint64_t*)k2.data();
-  }
-  YcsbKey& build(uint32_t high_bits, uint32_t low_bits) {
-    *(uint64_t*)p = ((uint64_t)high_bits << 32) | low_bits;
-    return *this;
-  }
-  YcsbKey() : ermia::varstr((uint8_t*)this + sizeof(*this), sizeof(uint64_t)) {}
-  */
-
 struct YcsbRecord {
   char data_[kRecordSize];
 
@@ -80,5 +63,4 @@ struct YcsbWorkload {
   bool distinct_keys_;
 };
 
-void build_rmw_key_for_worker(int worker_id, ermia::varstr &k);
-void build_rmw_key(uint64_t hi, uint64_t lo, ermia::varstr &k);
+void BuildKey(uint64_t hi, uint64_t lo, ermia::varstr &k);
