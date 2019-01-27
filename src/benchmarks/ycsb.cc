@@ -96,8 +96,7 @@ class ycsb_worker : public bench_worker {
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
-      ermia::varstr &v = str(sizeof(ermia::varstr) + sizeof(YcsbRecord));
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ermia::varstr));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
@@ -113,21 +112,24 @@ class ycsb_worker : public bench_worker {
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       ermia::varstr &k = BuildKey(worker_id);
       ermia::varstr &v = str(sizeof(ermia::varstr) + sizeof(YcsbRecord));
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
       tbl->Get(txn, rc, k, v, &oid);  // Read
       TryCatch(rc);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
+
+      // Re-initialize the value structure to use my own allocated memory -
+      // DoTupleRead will change v.p to the object's data area to avoid memory
+      // copy (in the read op we just did).
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
       memset(v.data(), 'a', 1);
       TryCatch(tbl->Put(txn, k, v));  // Modify-write
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       ermia::varstr &k = BuildKey(worker_id);
-      ermia::varstr &v = str(sizeof(ermia::varstr) + sizeof(YcsbRecord));
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      ermia::varstr v;
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
@@ -217,18 +219,15 @@ class ycsb_usertable_loader : public bench_loader {
 
     // Verify inserted values
     for (auto &key : keys) {
-      ermia::varstr &v = str(sizeof(ermia::varstr) + sizeof(YcsbRecord));
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
+      ermia::varstr &v = str(sizeof(ermia::varstr));
       tbl->Get(txn, rc, *key, v, &oid);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
       TryVerifyStrict(rc);
       TryVerifyStrict(db->Commit(txn));
-
-      LOG(INFO) << "Inserted " << *(uint64_t*)key->p << " " << *(char*)v.p;
       free(key);
     }
 
