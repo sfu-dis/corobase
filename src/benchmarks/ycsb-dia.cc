@@ -167,9 +167,6 @@ class ycsb_dia_worker : public bench_worker {
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
-    thread_local std::vector<ermia::varstr *> new_values;
-    new_values.clear();
-
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Barrier to ensure data is read in
       ermia::varstr *r = values[i];
@@ -183,12 +180,7 @@ class ycsb_dia_worker : public bench_worker {
       oids[i] = 0;
 
       // Copy to user space and do the write
-      new_values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
-      new_values[i]->p = (const uint8_t *)new_values[i] + sizeof(ermia::varstr);
-      new_values[i]->l = sizeof(YcsbRecord);
-
-      memcpy(new_values[i]->data(), values[i]->data(), values[i]->size());
-      memset(new_values[i]->data(), 'a', values[i]->size());
+      *(char*)r->data() = 'a';
       tbl->SendPut(txn, rcs[i], *keys[i], &oids[i]);  // Modify-write
       // TODO(tzwang): similar to read-only case, see if we can rescind
       // subsequent requests for better performance
@@ -196,7 +188,8 @@ class ycsb_dia_worker : public bench_worker {
 
     // Wait for writes to finish
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      tbl->RecvPut(txn, rcs[i], oids[i], *keys[i], *new_values[i]);
+      tbl->RecvPut(txn, rcs[i], oids[i], *keys[i], *values[i]);
+      TryCatch(rcs[i]);
     }
 
     PrepareForDIA(&rcs, &oids);

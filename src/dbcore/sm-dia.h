@@ -139,15 +139,28 @@ public:
 class IndexThread : public ermia::thread::Runner {
 private:
   RequestQueue queue;
+  std::function<void()> request_handler;
 
 public:
-  IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {}
+  IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {
+    if (config::dia_req_handler == "coroutine") {
+      request_handler = std::bind(&IndexThread::CoroutineHandler, this);
+    } else if (config::dia_req_handler == "serial") {
+      request_handler = std::bind(&IndexThread::SerialHandler, this);
+    } else {
+      LOG(FATAL) << "Wrong handler type: " << config::dia_req_handler;
+    }
+  }
 
   inline void AddRequest(ermia::transaction *t, OrderedIndex *index,
                          const varstr *key, OID *oid, uint8_t type, rc_t *rc) {
     queue.Enqueue(t, index, key, type, rc, oid);
   }
   void MyWork(char *);
+
+private:
+  void CoroutineHandler();
+  void SerialHandler();
 };
 
 }  // namespace dia
