@@ -122,7 +122,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
+      values.push_back(&str(sizeof(ermia::varstr)));
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);  // Send out async Get request
@@ -130,7 +130,6 @@ class ycsb_dia_worker : public bench_worker {
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       ermia::varstr *r = values[i];
-      new (r) ermia::varstr((char*)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
       tbl->RecvGet(txn, rcs[i], oids[i], *r);
       ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
       TryCatch(rcs[i]);
@@ -168,7 +167,6 @@ class ycsb_dia_worker : public bench_worker {
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Barrier to ensure data is read in
       ermia::varstr *r = values[i];
-      new (r) ermia::varstr((char*)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
       tbl->RecvGet(txn, rcs[i], oids[i], *r);
       ALWAYS_ASSERT(*(char*)r->data() == 'a');
       TryCatch(rcs[i]);
@@ -177,7 +175,10 @@ class ycsb_dia_worker : public bench_worker {
       rcs[i]._val = RC_INVALID;
       oids[i] = 0;
 
-      // Copy to user space and do the write
+      // Copy to user space and do the write.
+      // Re-set the data area here as the previous read (DoTupleRead) has r->p
+      // pointing to the object's data area
+      new (r) ermia::varstr((char*)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
       *(char*)r->data() = 'a';
       tbl->SendPut(txn, rcs[i], *keys[i], &oids[i]);  // Modify-write
       // TODO(tzwang): similar to read-only case, see if we can rescind
@@ -196,7 +197,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
+      values.push_back(&str(sizeof(ermia::varstr)));
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
