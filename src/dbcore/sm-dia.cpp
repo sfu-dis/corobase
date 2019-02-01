@@ -92,7 +92,7 @@ void IndexThread::SerialHandler() {
 }
 
 void IndexThread::CoroutineHandler() {
-  static const uint32_t kBatchSize = 500;
+  static const uint32_t kBatchSize = 20;
   while (true) {
     thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
     coroutines.clear();
@@ -129,6 +129,7 @@ void IndexThread::CoroutineHandler() {
       }
     }
 
+/*
     int dequeueSize = coroutines.size();
     while (coroutines.size()){
       for (auto it = coroutines.begin(); it != coroutines.end();) {
@@ -143,7 +144,7 @@ void IndexThread::CoroutineHandler() {
 
     for (int i = 0; i < dequeueSize; ++i)
       queue.Dequeue();
-/*
+*/
     for (auto &c : coroutines) {
       while (c->advance()) {}
       delete c;
@@ -152,11 +153,8 @@ void IndexThread::CoroutineHandler() {
     for (auto &c : coroutines) {
       queue.Dequeue();
     }
-*/
   }
 }
 
-
 }  // namespace dia
-
 }  // namespace ermia
