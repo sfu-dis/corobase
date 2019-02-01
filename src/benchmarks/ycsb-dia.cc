@@ -122,7 +122,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(ermia::varstr)));
+      values.push_back(&str(0));
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);  // Send out async Get request
@@ -159,7 +159,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(ermia::varstr) + sizeof(YcsbRecord)));
+      values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
@@ -197,7 +197,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      values.push_back(&str(sizeof(ermia::varstr)));
+      values.push_back(&str(0));
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
@@ -215,7 +215,7 @@ class ycsb_dia_worker : public bench_worker {
   ermia::varstr &BuildKey(int worker_id) {
     uint64_t hi = rnd_record_select.next_uniform() * ermia::config::worker_threads;
     uint64_t lo = rnd_record_select.next_uniform() * local_key_counter[worker_id];
-    ermia::varstr &k = str(sizeof(ermia::varstr) + sizeof(uint64_t));  // 8-byte key
+    ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
     new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(hi, lo, k);
     return k;
@@ -261,7 +261,7 @@ class ycsb_dia_usertable_loader : public bench_loader {
       auto remaining_inserts = records_per_thread;
       uint32_t high = worker_id, low = 0;
       while (true) {
-        ermia::varstr &key = str(sizeof(ermia::varstr) + sizeof(uint64_t));  // 8-byte key
+        ermia::varstr &key = str(sizeof(uint64_t));  // 8-byte key
         new (&key) ermia::varstr((char *)&key + sizeof(ermia::varstr), sizeof(uint64_t));
         BuildKey(high, low++, key);
         keys.push_back(&key);
@@ -278,7 +278,7 @@ class ycsb_dia_usertable_loader : public bench_loader {
 
     // start a transaction and insert all the records
     for (auto &key : keys) {
-      ermia::varstr &v = str(sizeof(ermia::varstr) + sizeof(uint64_t));
+      ermia::varstr &v = str(sizeof(uint64_t));
       v.p = (uint8_t*)&v + sizeof(v);
       *(char*)v.p = 'a';
       v.l = 1;
