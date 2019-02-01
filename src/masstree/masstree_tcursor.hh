@@ -54,7 +54,7 @@ class unlocked_tcursor {
 
   bool find_unlocked(threadinfo& ti);
   // a coroutine variant of find_unlocked
-  ermia::dia::generator<int> coro_find_unlocked(threadinfo& ti);
+  ermia::dia::generator<bool> coro_find_unlocked(threadinfo& ti);
 
   inline value_type value() const { return lv_.value(); }
   inline leaf<P>* node() const { return n_; }

@@ -55,7 +55,7 @@ forward:
 }
 
 template <typename P>
-ermia::dia::generator<int> unlocked_tcursor<P>::coro_find_unlocked(threadinfo& ti) {
+ermia::dia::generator<bool> unlocked_tcursor<P>::coro_find_unlocked(threadinfo& ti) {
   int match;
   key_indexed_position kx;
   node_base<P>* root = const_cast<node_base<P>*>(root_);

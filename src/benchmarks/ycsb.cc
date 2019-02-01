@@ -96,7 +96,7 @@ class ycsb_worker : public bench_worker {
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
-      ermia::varstr &v = str(sizeof(ermia::varstr));
+      ermia::varstr &v = str(0);
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
@@ -111,7 +111,7 @@ class ycsb_worker : public bench_worker {
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       ermia::varstr &k = BuildKey(worker_id);
-      ermia::varstr &v = str(sizeof(ermia::varstr) + sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
@@ -145,7 +145,7 @@ class ycsb_worker : public bench_worker {
   ermia::varstr &BuildKey(int worker_id) {
     uint64_t hi = rnd_record_select.next_uniform() * ermia::config::worker_threads;
     uint64_t lo = rnd_record_select.next_uniform() * local_key_counter[worker_id];
-    ermia::varstr &k = str(sizeof(ermia::varstr) + sizeof(uint64_t));  // 8-byte key
+    ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
     new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(hi, lo, k);
     return k;
@@ -208,7 +208,7 @@ class ycsb_usertable_loader : public bench_loader {
 
     // start a transaction and insert all the records
     for (auto &key : keys) {
-      ermia::varstr &v = str(sizeof(ermia::varstr) + sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(YcsbRecord));
       new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
       *(char*)v.p = 'a';
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
@@ -223,7 +223,7 @@ class ycsb_usertable_loader : public bench_loader {
       arena.reset();
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
-      ermia::varstr &v = str(sizeof(ermia::varstr));
+      ermia::varstr &v = str(0);
       tbl->Get(txn, rc, *key, v, &oid);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
       TryVerifyStrict(rc);
