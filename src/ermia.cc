@@ -221,6 +221,31 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key, 
   return true;
 }
 
+ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key, OID oid) {
+  typename ConcurrentMasstree::insert_info_t ins_info;
+  bool inserted = masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
+
+  if (!inserted) {
+    co_return false;
+  }
+
+  if (config::phantom_prot && !t->masstree_absent_set.empty()) {
+    // Update node version number
+    ASSERT(ins_info.node);
+    auto it = t->masstree_absent_set.find(ins_info.node);
+    if (it != t->masstree_absent_set.end()) {
+      if (unlikely(it->second != ins_info.old_version)) {
+        // Important: caller should unlink the version, otherwise we risk leaving
+        // a dead version at chain head -> infinite loop or segfault...
+        co_return false;
+      }
+      // otherwise, bump the version
+      it->second = ins_info.new_version;
+    }
+  }
+  co_return true;
+}
+
 rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid) {
   if (t.TryInsertNewTuple(this, k, v, inserted_oid)) {
     return rc_t{RC_TRUE};
