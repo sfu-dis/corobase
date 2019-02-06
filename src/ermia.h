@@ -218,6 +218,7 @@ public:
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }  
 
+  // a coroutine variant of getOID
   inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
@@ -252,6 +253,7 @@ public:
 
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
+  // a coroutine variant of InsertIfAbsent
   ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 };
 

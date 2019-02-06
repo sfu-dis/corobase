@@ -593,6 +593,7 @@ retry:
   return const_cast<leaf<P>*>(static_cast<const leaf<P>*>(n[sense]));
 }
 
+// a coroutine variant of reach_leaf
 template <typename P>
 inline ermia::dia::generator<leaf<P>*> node_base<P>::coro_reach_leaf(const key_type& ka,
                                          nodeversion_type& version,
