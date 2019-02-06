@@ -336,6 +336,10 @@ class mbtree {
   inline bool insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
                                insert_info_t *insert_info = NULL);
 
+  // a coroutine variant of insert_if_absent
+  inline ermia::dia::generator<bool> coro_insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
+                               insert_info_t *insert_info = NULL);
+
   /**
    * return true if a value was removed, false otherwise.
    *
@@ -584,6 +588,43 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
   }
   lp.finish(!found, ti);
   return !found;
+}
+
+template <typename P>
+inline ermia::dia::generator<bool> mbtree<P>::coro_insert_if_absent(const key_type &k, OID o,
+                                        TXN::xid_context *xc,
+                                        insert_info_t *insert_info) {
+  // Recovery will give a null xc, use epoch 0 for the memory allocated
+  epoch_num e = 0;
+  if (xc) {
+    e = xc->begin_epoch;
+  }
+  threadinfo ti(e);
+  Masstree::tcursor<P> lp(table_, k.data(), k.size());
+  bool found = lp.find_insert(ti);
+  if (!found) {
+  insert_new:
+    found = false;
+    ti.advance_timestamp(lp.node_timestamp());
+    lp.value() = o;
+    if (insert_info) {
+      insert_info->node = lp.node();
+      insert_info->old_version = lp.previous_full_version_value();
+      insert_info->new_version = lp.next_full_version_value(1);
+    }
+  } else if (is_primary_idx_) {
+    // we have two cases: 1) predecessor's inserts are still remaining in tree,
+    // even though version chain is empty or 2) somebody else are making dirty
+    // data in this chain. If it's the first case, version chain is considered
+    // empty, then we retry insert.
+    OID oid = lp.value();
+    if (oidmgr->oid_get_latest_version(tuple_array_, oid))
+      found = true;
+    else
+      goto insert_new;
+  }
+  lp.finish(!found, ti);
+  co_return !found;
 }
 
 /**

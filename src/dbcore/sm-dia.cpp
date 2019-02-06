@@ -116,13 +116,16 @@ void IndexThread::CoroutineHandler() {
         case Request::kTypeGet:
           coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, *req->rc, t->GetXIDContext(), *req->oid_ptr)));
           break;
-        case Request::kTypeInsert:
-          if (req->index->InsertIfAbsent(t, *req->key, *req->oid_ptr)) {
+        case Request::kTypeInsert:{
+          auto coro_insert = req->index->coro_InsertIfAbsent(t, *req->key, *req->oid_ptr);
+          while (coro_insert.advance()) {}
+          if (coro_insert.current_value()) {
             volatile_write(req->rc->_val, RC_TRUE);
           } else {
             volatile_write(req->rc->_val, RC_FALSE);
           }
           queue.Dequeue();
+          }
           break;
         default:
           LOG(FATAL) << "Wrong request type";
