@@ -223,7 +223,9 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key, 
 
 ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key, OID oid) {
   typename ConcurrentMasstree::insert_info_t ins_info;
-  bool inserted = masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
+  auto ciia = masstree_.coro_insert_if_absent(key, oid, t->xc, &ins_info);
+  while (co_await ciia){ }
+  bool inserted = ciia.current_value();
 
   if (!inserted) {
     co_return false;

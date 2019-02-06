@@ -17,6 +17,9 @@
 #define MASSTREE_INSERT_HH
 #include "masstree_get.hh"
 #include "masstree_split.hh"
+
+#include "../dbcore/sm-coroutine.h"
+
 namespace Masstree {
 
 template <typename P>
@@ -53,6 +56,43 @@ bool tcursor<P>::find_insert(threadinfo& ti) {
 
   // otherwise must split
   return make_split(ti);
+}
+
+// a coroutine variant of find_insert
+template <typename P>
+ermia::dia::generator<bool> tcursor<P>::coro_find_insert(threadinfo& ti) {
+  find_locked(ti);
+  original_n_ = n_;
+  original_v_ = n_->full_unlocked_version_value();
+
+  // maybe we found it
+  if (state_) co_return true;
+
+  // otherwise mark as inserted but not present
+  state_ = 2;
+
+  // maybe we need a new layer
+  if (kx_.p >= 0) co_return make_new_layer(ti);
+
+  // mark insertion if we are changing modification state
+  if (unlikely(n_->modstate_ != leaf<P>::modstate_insert)) {
+    masstree_invariant(n_->modstate_ == leaf<P>::modstate_remove);
+    n_->mark_insert();
+    n_->modstate_ = leaf<P>::modstate_insert;
+  }
+
+  // try inserting into this node
+  if (n_->size() < n_->width) {
+    kx_.p = permuter_type(n_->permutation_).back();
+    // don't inappropriately reuse position 0, which holds the ikey_bound
+    if (likely(kx_.p != 0) || !n_->prev_ || n_->ikey_bound() == ka_.ikey()) {
+      n_->assign(kx_.p, ka_, ti);
+      co_return false;
+    }
+  }
+
+  // otherwise must split
+  co_return make_split(ti);
 }
 
 template <typename P>

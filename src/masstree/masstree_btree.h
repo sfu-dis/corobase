@@ -601,7 +601,9 @@ inline ermia::dia::generator<bool> mbtree<P>::coro_insert_if_absent(const key_ty
   }
   threadinfo ti(e);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
-  bool found = lp.find_insert(ti);
+  auto cfi = lp.coro_find_insert(ti);
+  while (co_await cfi) {}
+  bool found = cfi.current_value();
   if (!found) {
   insert_new:
     found = false;
