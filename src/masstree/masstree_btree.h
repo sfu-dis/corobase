@@ -517,6 +517,7 @@ inline bool mbtree<P>::search(const key_type &k, OID &o,
   return found;
 }
 
+// a coroutine variant of search
 template <typename P>
 inline ermia::dia::generator<bool> mbtree<P>::coro_search(const key_type &k, OID &o,
                               TXN::xid_context *xc,
@@ -553,6 +554,7 @@ inline bool mbtree<P>::insert(const key_type &k, OID o, TXN::xid_context *xc,
   return !found;
 }
 
+// a coroutine variant of insert_if_absent
 template <typename P>
 inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
                                         TXN::xid_context *xc,
