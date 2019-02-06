@@ -130,7 +130,12 @@ class tcursor {
   inline const new_nodes_type& new_nodes() const { return new_nodes_; }
 
   inline bool find_locked(threadinfo& ti);
+  // a coroutine variant of find_insert
+  inline ermia::dia::generator<bool> coro_find_locked(threadinfo& ti);
+
   inline bool find_insert(threadinfo& ti);
+  // a coroutine variant of find_insert
+  inline ermia::dia::generator<bool> coro_find_insert(threadinfo& ti);
 
   inline void finish(int answer, threadinfo& ti);
 
