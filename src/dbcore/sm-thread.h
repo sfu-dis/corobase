@@ -49,7 +49,8 @@ struct Thread {
   const uint8_t kStateNoWork = 3U;
 
   typedef std::function<void(char *task_input)> Task;
-  std::thread thd;
+  pthread_t thd;
+  pthread_attr_t thd_attr;
   uint16_t node;
   uint16_t core;
   uint32_t sys_cpu;  // OS-given CPU number
@@ -67,6 +68,10 @@ struct Thread {
   ~Thread() {}
 
   void IdleTask();
+  static void *StaticIdleTask(void *context) {
+      ((Thread *)context)->IdleTask();
+      return nullptr;
+  }
 
   // No CC whatsoever, caller must know what it's doing
   inline void StartTask(Task t, char *input = nullptr) {
