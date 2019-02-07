@@ -83,12 +83,12 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
       task(nullptr),
       sleep_when_idle(true),
       is_physical(is_physical) {
-  thd = std::move(std::thread(&Thread::IdleTask, this));
+  int rc = pthread_attr_init (&thd_attr);
+  pthread_create(&thd, &thd_attr, &Thread::StaticIdleTask, (void *)this);
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   CPU_SET(sys_cpu, &cpuset);
-  int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
-                                  &cpuset);
+  rc = pthread_setaffinity_np(thd, sizeof(cpu_set_t), &cpuset);
   LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
   ALWAYS_ASSERT(rc == 0);
 }
