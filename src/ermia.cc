@@ -222,13 +222,14 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key, 
 }
 
 // a coroutine variant of InsertIfAbsent
-ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key, OID oid) {
+ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) {
   typename ConcurrentMasstree::insert_info_t ins_info;
   auto ciia = masstree_.coro_insert_if_absent(key, oid, t->xc, &ins_info);
   while (co_await ciia){ }
   bool inserted = ciia.current_value();
 
   if (!inserted) {
+    volatile_write(rc._val, RC_FALSE);
     co_return false;
   }
 
@@ -240,12 +241,14 @@ ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transac
       if (unlikely(it->second != ins_info.old_version)) {
         // Important: caller should unlink the version, otherwise we risk leaving
         // a dead version at chain head -> infinite loop or segfault...
+        volatile_write(rc._val, RC_FALSE);
         co_return false;
       }
       // otherwise, bump the version
       it->second = ins_info.new_version;
     }
   }
+  volatile_write(rc._val, RC_TRUE);
   co_return true;
 }
 

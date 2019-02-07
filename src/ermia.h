@@ -148,7 +148,7 @@ public:
    */ 
   virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
   // a coroutine variant of InsertIfAbsent
-  virtual ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, OID oid) { co_return true; }
+  virtual ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) { co_return true; }
 };
 
 // User-facing concurrent Masstree
@@ -254,7 +254,7 @@ public:
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
   // a coroutine variant of InsertIfAbsent
-  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
+  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) override;
 };
 
 // User-facing masstree with decoupled index access
