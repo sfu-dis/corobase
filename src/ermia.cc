@@ -449,7 +449,7 @@ void DecoupledMasstreeIndex::RecvPut(transaction *t, rc_t &rc, OID &oid, const v
       rc._val = RC_ABORT_INTERNAL;
       break;
     default:
-    LOG(FATAL) << "Wrong SendPut result";
+      LOG(FATAL) << "Wrong SendPut result";
   }
 }
 

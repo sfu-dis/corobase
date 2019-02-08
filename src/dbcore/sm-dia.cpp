@@ -10,11 +10,12 @@ std::vector<IndexThread *> index_threads;
 
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
+  uint32_t worker_id = 0;
   switch (ermia::config::benchmark[0]) {
-    case 'y': {
-      uint32_t worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
+    case 'y':
+      worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
+      ALWAYS_ASSERT(rc->_val == RC_INVALID);
       index_threads[worker_id % index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
-      }
       break;
     
     default:
