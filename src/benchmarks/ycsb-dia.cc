@@ -132,10 +132,13 @@ class ycsb_dia_worker : public bench_worker {
       ermia::varstr *r = values[i];
       tbl->RecvGet(txn, rcs[i], oids[i], *r);
       ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
-      TryCatch(rcs[i]);
       // TODO(tzwang): if we abort here (e.g. because the return value rc says
       // so), it might be beneficial to rescind the subsequent requests that have
       // been sent.
+    }
+
+    for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
+      TryCatch(rcs[i]);
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
@@ -168,8 +171,9 @@ class ycsb_dia_worker : public bench_worker {
       // Barrier to ensure data is read in
       ermia::varstr *r = values[i];
       tbl->RecvGet(txn, rcs[i], oids[i], *r);
+      rc_t rr = rcs[i];
       ALWAYS_ASSERT(*(char*)r->data() == 'a');
-      TryCatch(rcs[i]);
+      ALWAYS_ASSERT(ermia::volatile_read(rcs[i]._val) == RC_TRUE);
 
       // Reset the return value placeholders
       rcs[i]._val = RC_INVALID;
@@ -182,12 +186,24 @@ class ycsb_dia_worker : public bench_worker {
       *(char*)r->data() = 'a';
       tbl->SendPut(txn, rcs[i], *keys[i], &oids[i]);  // Modify-write
       // TODO(tzwang): similar to read-only case, see if we can rescind
-      // subsequent requests for better performance
+      // subsequent requests for better performance. Note: before we have this
+      // feature, we have to first RecvGet all RCs and then do TryCatch.
+      // Otherwise because TryCatch will return as long as it sees a 'false' in
+      // any RC, we might risk the indexing threads that are still working on
+      // previous RecvGets overwriting rc results for the new requests that are
+      // reusing RCs.
+    }
+
+    for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
+      TryCatch(rcs[i]);
     }
 
     // Wait for writes to finish
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       tbl->RecvPut(txn, rcs[i], oids[i], *keys[i], *values[i]);
+    }
+
+    for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       TryCatch(rcs[i]);
     }
 
@@ -203,8 +219,13 @@ class ycsb_dia_worker : public bench_worker {
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
+      ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
+    }
+
+    for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       TryCatch(rcs[i]);
     }
+
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
   }
