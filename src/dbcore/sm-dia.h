@@ -101,18 +101,22 @@ public:
 
   inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
                       const varstr *key, uint8_t type, rc_t *rc, OID *oid) {
-    // tzwang: simple dumb solution; may get fancier if needed later.
-    // First try to get a possible slot in the queue, then wait for the slot to
-    // become available - there might be multiple threads (very rare) that got
-    // the same slot number, so use a CAS to claim it.
+  retry:
+    // tzwang: simple dumb solution; may get fancier if needed later.  First try
+    // to get a possible slot in the queue, then wait for the slot to become
+    // available - there might be multiple threads (very rare) that got the same
+    // slot number (when number of threads > number of request slots such that we
+    // may wrap around very quickly), so later we use a CAS to really claim it by
+    // swapping in the transaction pointer.
     uint32_t pos = next_free_pos.fetch_add(1, std::memory_order_release) % kMaxSize;
     Request &req = requests[pos];
     while (volatile_read(req.transaction)) {}
 
     // We have more than the transaction to update in the slot, so mark it in
     // the MSB as 'busy'
-    volatile_write(req.transaction, (ermia::transaction *)((uint64_t)t | (1UL << 63)));
-    COMPILER_MEMORY_FENCE;
+    if (!__sync_bool_compare_and_swap((uint64_t*)&req.transaction, 0, (uint64_t)t | (1UL << 63))) {
+      goto retry;
+    }
 
     req.index = index;
     req.key = key;
