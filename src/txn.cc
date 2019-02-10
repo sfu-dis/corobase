@@ -1255,7 +1255,10 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
       ASSERT(((Object *)prev_obj_ptr.offset())->GetAllocateEpoch() ==
              xc->begin_epoch);
       prev_persistent_ptr = prev_obj->GetNextPersistent();
-      MM::deallocate(prev_obj_ptr);
+      // FIXME(tzwang): 20190210: seems the deallocation here is too early,
+      // causing readers to not find any visible version. Fix this together with
+      // GC later.
+      //MM::deallocate(prev_obj_ptr);
     } else {  // prev is committed (or precommitted but in post-commit now) head
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       volatile_write(prev->sstamp, xc->owner.to_ptr());
