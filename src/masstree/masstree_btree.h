@@ -189,7 +189,7 @@ class mbtree {
   /** NOTE: the public interface assumes that the caller has taken care
    * of setting up RCU */
 
-  inline bool search(const key_type &k, OID &o, dbtuple *&v, TXN::xid_context *xc,
+  inline bool search(const key_type &k, OID &o, TXN::xid_context *xc,
                      versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -493,7 +493,7 @@ inline size_t mbtree<P>::size() const {
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple *&v,
+inline bool mbtree<P>::search(const key_type &k, OID &o,
                               TXN::xid_context *xc,
                               versioned_node_t *search_info) const {
   threadinfo ti(xc->begin_epoch);
@@ -501,15 +501,10 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, dbtuple *&v,
   bool found = lp.find_unlocked(ti);
   if (found) {
     o = lp.value();
-    if (config::is_backup_srv()) {
-      v = oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
-    } else {
-      v = oidmgr->oid_get_version(tuple_array_, o, xc);
-    }
-    if (!v) found = false;
   }
-  if (search_info)
+  if (search_info) {
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
+  }
   return found;
 }
 

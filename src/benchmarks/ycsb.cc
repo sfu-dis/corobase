@@ -16,57 +16,34 @@
 #include "bench.h"
 #include "ycsb.h"
 
-YcsbRecord::YcsbRecord(char value) {
-  memset(data_, value, kFields * kFieldLength * sizeof(char));
-}
-
-void YcsbRecord::initialize_field(char *field) {
-  memset(field, 'a', kFieldLength);
-}
-
 uint64_t local_key_counter[ermia::config::MAX_THREADS];
-
 uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
 char g_workload = 'F';
 uint g_initial_table_size = 10000;
 int g_sort_load_keys = 0;
 
+util::fast_random rnd_record_select(477377);
+
 // { insert, read, update, scan, rmw }
-YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0,
-                           0);  // Workload A - 50% read, 50% update
-YcsbWorkload YcsbWorkloadB('B', 0, 95U, 100U, 0,
-                           0);  // Workload B - 95% read, 5% update
+YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
+YcsbWorkload YcsbWorkloadB('B', 0, 95U, 100U, 0, 0);  // Workload B - 95% read, 5% update
 YcsbWorkload YcsbWorkloadC('C', 0, 100U, 0, 0, 0);  // Workload C - 100% read
-YcsbWorkload YcsbWorkloadD('D', 5U, 100U, 0, 0,
-                           0);  // Workload D - 95% read, 5% insert
-YcsbWorkload YcsbWorkloadE('E', 5U, 0, 0, 100U,
-                           0);  // Workload E - 5% insert, 95% scan
+YcsbWorkload YcsbWorkloadD('D', 5U, 100U, 0, 0, 0);  // Workload D - 95% read, 5% insert
+YcsbWorkload YcsbWorkloadE('E', 5U, 0, 0, 100U, 0);  // Workload E - 5% insert, 95% scan
 
 // Combine reps_per_tx and rmw_additional_reads to have "10R+10RMW" style
 // transactions.
 YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
 
 // Extra workloads (not in spec)
-YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U,
-                           0);  // Workload G - 5% update, 95% scan
+YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
 
 YcsbWorkload ycsb_workload = YcsbWorkloadF;
 
-util::fast_random rnd_record_select(477377);
-
-YcsbKey *key_arena;
-YcsbKey &build_rmw_key(int worker_id) {
-  uint64_t key_seq = rnd_record_select.next_uniform() * g_initial_table_size;
-  auto cnt = local_key_counter[worker_id];
-  if (cnt == 0) {
-    cnt = local_key_counter[0];
-  }
-  auto hi = key_seq / cnt;
-  auto lo = key_seq % cnt;
-  key_arena->build(hi, lo);
-  return *key_arena;
+void BuildKey(uint64_t hi, uint64_t lo, ermia::varstr &k) {
+  *(uint64_t*)k.p = ((uint64_t)hi << 32) | lo;
 }
 
 class ycsb_worker : public bench_worker {
@@ -102,7 +79,9 @@ class ycsb_worker : public bench_worker {
 
   static rc_t TxnInsert(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
-  static rc_t TxnRead(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
+  static rc_t TxnRead(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_read();
+  }
 
   static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
@@ -112,24 +91,66 @@ class ycsb_worker : public bench_worker {
     return static_cast<ycsb_worker *>(w)->txn_rmw();
   }
 
+  rc_t txn_read() {
+    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+    arena.reset();
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      auto &k = BuildKey(worker_id);
+      ermia::varstr &v = str(0);
+      // TODO(tzwang): add read/write_all_fields knobs
+      rc_t rc = rc_t{RC_INVALID};
+      tbl->Get(txn, rc, k, v);  // Read
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+#endif
+    }
+    TryCatch(db->Commit(txn));
+    return {RC_TRUE};
+  }
+
   rc_t txn_rmw() {
     ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = build_rmw_key(worker_id);
-      ermia::varstr v = str(sizeof(YcsbRecord));
+      ermia::varstr &k = BuildKey(worker_id);
+      ermia::varstr &v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
-      TryCatch(tbl->Get(txn, k, v));  // Read
-      memset(v.data(), 'a', v.size());
-      ASSERT(v.size() == sizeof(YcsbRecord));
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      tbl->Get(txn, rc, k, v, &oid);  // Read
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+#endif
+
+      // Re-initialize the value structure to use my own allocated memory -
+      // DoTupleRead will change v.p to the object's data area to avoid memory
+      // copy (in the read op we just did).
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      memset(v.data(), 'a', 1);
       TryCatch(tbl->Put(txn, k, v));  // Modify-write
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      auto &k = build_rmw_key(worker_id);
-      ermia::varstr v = str(sizeof(YcsbRecord));
+      ermia::varstr &k = BuildKey(worker_id);
+      ermia::varstr v;
       // TODO(tzwang): add read/write_all_fields knobs
-      TryCatch(tbl->Get(txn, k, v));  // Read
+      rc_t rc = rc_t{RC_INVALID};
+      tbl->Get(txn, rc, k, v);  // Read
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+#endif
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
@@ -137,6 +158,15 @@ class ycsb_worker : public bench_worker {
 
  protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+
+  ermia::varstr &BuildKey(int worker_id) {
+    uint64_t hi = rnd_record_select.next_uniform() * ermia::config::worker_threads;
+    uint64_t lo = rnd_record_select.next_uniform() * local_key_counter[worker_id];
+    ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
+    new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
+    ::BuildKey(hi, lo, k);
+    return k;
+  }
 
  private:
   ermia::OrderedIndex *tbl;
@@ -152,7 +182,8 @@ class ycsb_usertable_loader : public bench_loader {
   // XXX(tzwang): for now this is serial
   void load() {
     ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
-    std::vector<YcsbKey*> keys;
+    std::vector<ermia::varstr*> keys;
+    uint64_t requested = g_initial_table_size;
     uint64_t records_per_thread = g_initial_table_size / ermia::config::worker_threads;
     bool spread = true;
     if (records_per_thread == 0) {
@@ -165,7 +196,7 @@ class ycsb_usertable_loader : public bench_loader {
     }
 
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << g_initial_table_size
+      std::cerr << "[INFO] requested for " << requested
            << " records, will load "
            << records_per_thread *ermia::config::worker_threads << std::endl;
     }
@@ -178,9 +209,9 @@ class ycsb_usertable_loader : public bench_loader {
       auto remaining_inserts = records_per_thread;
       uint32_t high = worker_id, low = 0;
       while (true) {
-        YcsbKey *key = (YcsbKey *)malloc(sizeof(YcsbKey) + sizeof(uint64_t));
-        new (key) YcsbKey();
-        key->build(high, low++);
+        ermia::varstr *key = (ermia::varstr *)malloc(sizeof(ermia::varstr) + sizeof(uint64_t));  // 8-byte key
+        new (key) ermia::varstr((char *)key + sizeof(ermia::varstr), sizeof(uint64_t));
+        BuildKey(high, low++, *key);
         keys.push_back(key);
         inserted++;
         local_key_counter[worker_id]++;
@@ -195,17 +226,32 @@ class ycsb_usertable_loader : public bench_loader {
 
     // start a transaction and insert all the records
     for (auto &key : keys) {
-      YcsbRecord r('a');
-      ermia::varstr v(r.data_, sizeof(r));
+      arena.reset();
+      ermia::varstr &v = str(sizeof(YcsbRecord));
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      *(char*)v.p = 'a';
+      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+      TryVerifyStrict(tbl->Insert(txn, *key, v));
+      TryVerifyStrict(db->Commit(txn));
+    }
+
+    // Verify inserted values
+    for (auto &key : keys) {
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
-      TryVerifyStrict(tbl->Insert(txn, *key, v));
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::varstr &v = str(0);
+      tbl->Get(txn, rc, *key, v, &oid);
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      TryVerifyStrict(rc);
       TryVerifyStrict(db->Commit(txn));
       free(key);
     }
 
-    if (ermia::config::verbose)
+    if (ermia::config::verbose) {
       std::cerr << "[INFO] loaded " << inserted << " kyes in USERTABLE" << std::endl;
+    }
   }
 };
 
@@ -243,9 +289,6 @@ class ycsb_bench_runner : public bench_runner {
 };
 
 void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
-  // varstr header followed by the actual key data (uint64_t)
-  key_arena = (YcsbKey *)malloc(sizeof(YcsbKey) + sizeof(uint64_t));
-  new (key_arena) YcsbKey();
   // parse options
   optind = 1;
   while (1) {

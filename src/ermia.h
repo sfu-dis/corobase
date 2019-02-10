@@ -34,7 +34,9 @@ public:
 
   inline rc_t Commit(transaction *t) {
     rc_t rc = t->commit();
-    if (not rc_is_abort(rc)) t->~transaction();
+    if (!rc.IsAbort()) {
+      t->~transaction();
+    }
     return rc;
   }
 
@@ -60,10 +62,6 @@ public:
   class ScanCallback {
    public:
     ~ScanCallback() {}
-    // XXX(stephentu): key is passed as (const char *, size_t) pair
-    // because it really should be the string_type of the underlying
-    // tree, but since ndb_ordered_index is not templated we can't
-    // really do better than this for now
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };
@@ -71,11 +69,13 @@ public:
   // Use transaction's TryInsertNewTuple to try insert a new tuple
   rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid);
 
+  virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
   /**
    * Get a key of length keylen. The underlying DB does not manage
-   * the memory associated with key. Returns true if found, false otherwise
+   * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
    */
-  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) = 0;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) = 0;
 
   /**
    * Put a key of length keylen, with mapping of length valuelen.
@@ -103,7 +103,7 @@ public:
    * Default implementation calls put(). See put() for meaning of return value.
    */
   virtual rc_t Insert(transaction *t, const varstr &key, varstr &value,
-                      OID *oid = nullptr) = 0;
+                      OID *out_oid = nullptr) = 0;
 
   /**
    * Insert into a secondary index. Maps key to OID.
@@ -133,7 +133,6 @@ public:
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
 
-protected:
   /**
    * Insert key-oid pair to the underlying actual index structure.
    *
@@ -192,8 +191,6 @@ private:
   // expect_new indicates if we expect the record to not exist in the tree- is
   // just a hint that affects perf, not correctness. remove is put with nullptr
   // as value.
-  //
-  // NOTE: both key and value are expected to be stable values already
   rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
                  bool upsert, OID *inserted_oid);
 
@@ -205,12 +202,17 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char* primary)
     : OrderedIndex(name, primary) {}
 
-  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  inline void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+  }  
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
-    return DoTreePut(*t, &key, &value, true, true, oid);
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
+    return DoTreePut(*t, &key, &value, true, true, out_oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
     return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
@@ -233,7 +235,7 @@ private:
 
 class SingleThreadedBTree : public OrderedIndex {
 private:
-  btree::BTree<4096, OID> btree_;
+  btree::BTree<256, OID> btree_;
 
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
   rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
@@ -242,12 +244,20 @@ private:
 public:
   SingleThreadedBTree(std::string name, const char *primary) : OrderedIndex(name, primary) {}
 
-  virtual rc_t Get(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override;
+  void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    MARK_REFERENCED(key);
+    MARK_REFERENCED(rc);
+    MARK_REFERENCED(xc);
+    MARK_REFERENCED(out_oid);
+    MARK_REFERENCED(out_sinfo);
+  }
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *oid = nullptr) override {
-    return DoTreePut(*t, &key, &value, true, true, oid);
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
+    return DoTreePut(*t, &key, &value, true, true, out_oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
     return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);

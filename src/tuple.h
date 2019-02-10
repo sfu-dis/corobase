@@ -68,11 +68,6 @@ struct dbtuple {
 
   ~dbtuple() {}
 
-  enum ReadStatus {
-    READ_EMPTY,
-    READ_RECORD,
-  };
-
 #if defined(SSN)
   /* return the tuple's age based on a safe_lsn provided by the calling tx.
    * safe_lsn usually = the calling tx's begin offset.
@@ -166,27 +161,26 @@ struct dbtuple {
   }
 
  public:
-  ALWAYS_INLINE ReadStatus
-      // Note: the stable=false option will try to read from pvalue,
-      // instead of the real data area; so giving stable=false is only
-      // safe for the updating transaction itself to read its own write.
-      do_read(varstr *out_v, bool stable) const {
+  // Note: the stable=false option will try to read from pvalue,
+  // instead of the real data area; so giving stable=false is only
+  // safe for the updating transaction itself to read its own write.
+  inline rc_t DoRead(varstr *out_v, bool stable) const {
     if (stable) {
       out_v->p = get_value_start();
     } else {
-      if (not pvalue) {  // so I just deleted this tuple... return empty?
-        ASSERT(not size);
-        return READ_EMPTY;
+      if (!pvalue) {  // so I just deleted this tuple... return empty?
+        ASSERT(size == 0);
+        return rc_t{RC_FALSE};
       }
       out_v->p = pvalue->data();
       ASSERT(pvalue->size() == size);
     }
     out_v->l = size;
-    return size ? READ_RECORD : READ_EMPTY;
+    return size > 0 ? rc_t{RC_TRUE} : rc_t{RC_FALSE};
   }
 
   // move data from the user's varstr pvalue to this tuple
-  ALWAYS_INLINE void do_write() const {
+  inline void DoWrite() const {
     if (pvalue) {
       ASSERT(pvalue->size() == size);
       memcpy((void *)get_value_start(), pvalue->data(), pvalue->size());

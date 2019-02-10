@@ -17,89 +17,65 @@
 namespace ermia {
 namespace thread {
 
-bool detect_phys_cores();
+struct CPUCore {
+  uint32_t node;
+  uint32_t physical_thread;
+  std::vector<uint32_t> logical_threads;
+  CPUCore(uint32_t n, uint32_t phys) : node(n), physical_thread(phys) {}
+  void AddLogical(uint32_t t) { logical_threads.push_back(t); }
+};
 
-extern std::vector<uint32_t> phys_cores;
-extern uint32_t
-    next_thread_id;  // == total number of threads had so far - never decreases
-extern __thread uint32_t thread_id;
-extern __thread bool thread_initialized;
+extern std::vector<CPUCore> cpu_cores;
 
-inline uint32_t my_id() {
+bool DetectCPUCores();
+void Initialize();
+
+// == total number of threads had so far - never decreases
+extern std::atomic<uint32_t> next_thread_id;
+
+inline uint32_t MyId() {
+  thread_local uint32_t thread_id CACHE_ALIGNED;
+  thread_local bool thread_initialized CACHE_ALIGNED;
+
   if (!thread_initialized) {
-    thread_id = __sync_fetch_and_add(&next_thread_id, 1);
+    thread_id = next_thread_id.fetch_add(1);
     thread_initialized = true;
   }
   return thread_id;
 }
 
-struct sm_thread {
+struct Thread {
   const uint8_t kStateHasWork = 1U;
   const uint8_t kStateSleep = 2U;
   const uint8_t kStateNoWork = 3U;
 
-  typedef std::function<void(char *task_input)> task_t;
-  std::thread thd;
+  typedef std::function<void(char *task_input)> Task;
+  pthread_t thd;
+  pthread_attr_t thd_attr;
   uint16_t node;
   uint16_t core;
   uint32_t sys_cpu;  // OS-given CPU number
   bool shutdown;
   uint8_t state;
-  task_t task;
+  Task task;
   char *task_input;
   bool sleep_when_idle;
+  bool is_physical;
 
   std::condition_variable trigger;
   std::mutex trigger_lock;
 
-  // Not recommended: only use when there isn't /proc/devices/cpu* available.
-  sm_thread(uint16_t n, uint16_t c)
-      : node(n),
-        core(c),
-        sys_cpu(-1),
-        shutdown(false),
-        state(kStateNoWork),
-        task(nullptr),
-        sleep_when_idle(true) {
-    thd = std::move(std::thread(&sm_thread::idle_task, this));
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    // Assuming a topology where all physical cores are listed first,
-    //       // ie 16-core cpu, 2-socket: 0-15 will be physical cores, 16 and
-    //       // beyond are hyper threads.
-    CPU_SET(core + node * config::max_threads_per_node, &cpuset);
-    int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
-                                    &cpuset);
-    LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
-    ALWAYS_ASSERT(rc == 0);
+  Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical);
+  ~Thread() {}
+
+  void IdleTask();
+  static void *StaticIdleTask(void *context) {
+      ((Thread *)context)->IdleTask();
+      return nullptr;
   }
-
-  // Recommended: caller figure out the physical core's OS-given CPU number.
-  // Otherwise we have to guess in the other ctor that doesn't take sys_cpu.
-  sm_thread(uint16_t n, uint16_t c, uint32_t sys_cpu)
-      : node(n),
-        core(c),
-        sys_cpu(sys_cpu),
-        shutdown(false),
-        state(kStateNoWork),
-        task(nullptr),
-        sleep_when_idle(true) {
-    thd = std::move(std::thread(&sm_thread::idle_task, this));
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(sys_cpu, &cpuset);
-    int rc = pthread_setaffinity_np(thd.native_handle(), sizeof(cpu_set_t),
-                                    &cpuset);
-    LOG(INFO) << "Binding thread " << core << " on node " << node << " to CPU " << sys_cpu;
-    ALWAYS_ASSERT(rc == 0);
-  }
-
-  ~sm_thread() {}
-
-  void idle_task();
 
   // No CC whatsoever, caller must know what it's doing
-  inline void start_task(task_t t, char *input = nullptr) {
+  inline void StartTask(Task t, char *input = nullptr) {
     task = t;
     task_input = input;
     auto s = __sync_val_compare_and_swap(&state, kStateNoWork, kStateHasWork);
@@ -113,77 +89,44 @@ struct sm_thread {
     }
   }
 
-  inline void join() {
-    while (volatile_read(state) == kStateHasWork) { /** spin **/
-    }
-  }
-
-  inline bool try_join() { return volatile_read(state) != kStateHasWork; }
-
-  inline void destroy() { volatile_write(shutdown, true); }
+  inline void Join() { while (volatile_read(state) == kStateHasWork) {} }
+  inline bool TryJoin() { return volatile_read(state) != kStateHasWork; }
+  inline void Destroy() { volatile_write(shutdown, true); }
 };
 
-struct node_thread_pool {
+struct PerNodeThreadPool {
+  static uint32_t max_threads_per_node;
   uint16_t node CACHE_ALIGNED;
-  sm_thread *threads CACHE_ALIGNED;
+  Thread *threads CACHE_ALIGNED;
   uint64_t bitmap CACHE_ALIGNED;  // max 64 threads per node, 1 - busy, 0 - free
 
-  inline sm_thread *get_thread() {
-  retry:
-    uint64_t b = volatile_read(bitmap);
-    auto xor_pos = b ^ (~uint64_t{0});
-    uint64_t pos = __builtin_ctzll(xor_pos);
-    if (pos == config::max_threads_per_node) {
-      return nullptr;
-    }
-    if (not __sync_bool_compare_and_swap(&bitmap, b, b | (1UL << pos))) {
-      goto retry;
-    }
-    ALWAYS_ASSERT(pos < config::max_threads_per_node);
-    return threads + pos;
-  }
+  PerNodeThreadPool(uint16_t n);
 
-  inline void put_thread(sm_thread *t) {
+  // Get a single new thread which can be physical or logical
+  Thread *GetThread(bool physical);
+
+  // Get a thread group - which includes all the threads (phyiscal + logical) on
+  // the same phyiscal core. Similar to GetThread, but continue to also allocate
+  // the logical threads that follow immediately the physical thread in the
+  // bitmap.
+  bool GetThreadGroup(std::vector<Thread*> &thread_group);
+
+  // Release a thread back to the pool
+  inline void PutThread(Thread *t) {
     auto b = ~uint64_t{1UL << (t - threads)};
     __sync_fetch_and_and(&bitmap, b);
   }
-
-  node_thread_pool(uint16_t n) : node(n), bitmap(0UL) {
-    ALWAYS_ASSERT(!numa_run_on_node(node));
-    threads = (sm_thread *)numa_alloc_onnode(
-        sizeof(sm_thread) * config::max_threads_per_node, node);
-
-    if (phys_cores.size()) {
-      for (uint core = 0; core < config::max_threads_per_node; core++) {
-        uint32_t sys_cpu = phys_cores[node * config::max_threads_per_node + core];
-        new (threads + core) sm_thread(node, core, sys_cpu);
-      }
-    } else {
-      // No desired /sys/devices interface, fallback to our assumption
-      for (uint core = 0; core < config::max_threads_per_node; core++) {
-        new (threads + core) sm_thread(node, core);
-      }
-    }
-  }
 };
 
-extern node_thread_pool *thread_pools;
+extern PerNodeThreadPool *thread_pools;
 
-inline void init() {
-  thread_pools =
-      (node_thread_pool *)malloc(sizeof(node_thread_pool) * config::numa_nodes);
-  for (uint16_t i = 0; i < config::numa_nodes; i++) {
-    new (thread_pools + i) node_thread_pool(i);
-  }
+inline Thread *GetThread(uint16_t from, bool physical) {
+  return thread_pools[from].GetThread(physical);
 }
 
-inline sm_thread *get_thread(uint16_t from) {
-  return thread_pools[from].get_thread();
-}
-
-inline sm_thread *get_thread(/* don't care where */) {
+inline Thread *GetThread(bool physical /* don't care where */) {
   for (uint16_t i = 0; i < config::numa_nodes; i++) {
-    auto *t = thread_pools[i].get_thread();
+    auto *t = thread_pools[i].GetThread(physical);
     if (t) {
       return t;
     }
@@ -191,56 +134,72 @@ inline sm_thread *get_thread(/* don't care where */) {
   return nullptr;
 }
 
-inline void put_thread(sm_thread *t) { thread_pools[t->node].put_thread(t); }
+// Return all the threads (physical + logical) on the same physical core
+inline bool GetThreadGroup(uint16_t from, std::vector<Thread*> &threads) {
+  return thread_pools[from].GetThreadGroup(threads);
+}
 
-// A wrapper that includes sm_thread for user code to use.
+inline bool GetThreadGroup(std::vector<Thread*> &threads /* don't care where */) {
+  for (uint16_t i = 0; i < config::numa_nodes; i++) {
+    if (thread_pools[i].GetThreadGroup(threads)) {
+      break;
+    }
+  }
+  return threads.size() > 0;
+}
+
+inline void PutThread(Thread *t) { thread_pools[t->node].PutThread(t); }
+
+// A wrapper that includes Thread for user code to use.
 // Benchmark and log replay threads deal with this only,
-// not with sm_thread.
-struct sm_runner {
-  sm_runner() : me(nullptr) {}
-  ~sm_runner() {
+// not with Thread.
+struct Runner {
+  Runner(bool physical = true) : me(nullptr), physical(physical) {}
+  ~Runner() {
     if (me) {
-      join();
+      Join();
     }
   }
 
-  virtual void my_work(char *) = 0;
+  virtual void MyWork(char *) = 0;
 
-  inline void start() {
+  inline void Start() {
     ALWAYS_ASSERT(me);
-    thread::sm_thread::task_t t =
-        std::bind(&sm_runner::my_work, this, std::placeholders::_1);
-    me->start_task(t);
+    thread::Thread::Task t =
+        std::bind(&Runner::MyWork, this, std::placeholders::_1);
+    me->StartTask(t);
   }
 
-  inline bool try_impersonate(bool sleep_when_idle = true) {
+  inline bool TryImpersonate(bool sleep_when_idle = true) {
     ALWAYS_ASSERT(not me);
-    me = thread::get_thread();
+    me = thread::GetThread(physical);
     if (me) {
+      LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;
     }
     return me != nullptr;
   }
 
-  inline void join() {
-    me->join();
-    put_thread(me);
+  inline void Join() {
+    me->Join();
+    PutThread(me);
     me = nullptr;
   }
-  // Same as join(), but don't return the thread
-  inline void wait() { me->join(); }
-  inline bool try_wait() { return me->try_join(); }
-  inline bool is_impersonated() { return me != nullptr; }
-  inline bool try_join() {
-    if (me->try_join()) {
-      put_thread(me);
+  // Same as Join(), but don't return the thread
+  inline void Wait() { me->Join(); }
+  inline bool TryWait() { return me->TryJoin(); }
+  inline bool IsImpersonated() { return me != nullptr; }
+  inline bool TryJoin() {
+    if (me->TryJoin()) {
+      PutThread(me);
       me = nullptr;
       return true;
     }
     return false;
   }
 
-  sm_thread *me;
+  Thread *me;
+  bool physical;
 };
 }  // namespace thread
 }  // namespace ermia

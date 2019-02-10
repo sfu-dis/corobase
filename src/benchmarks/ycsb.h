@@ -9,29 +9,16 @@ const uint32_t kFieldLength = 10;
 const uint64_t kRecordSize = kFieldLength * kFields;
 const uint32_t kMaxWorkers = 1024;
 
-/* XXX(tzwang): currently we assume integer keys only, without the "user"
- * prefix.
- * So the key itself is still a char array (string) that fits exactly one
- * uint64_t. */
-struct YcsbKey : public ermia::varstr {
-  bool operator<(const YcsbKey& other) const { return compare(*this, other); }
-  //bool operator==(const YcsbKey& other) const { return data_ == other.data_; }
-  static inline bool compare(const YcsbKey& k1, const YcsbKey& k2) {
-    return *(uint64_t*)k1.data() < *(uint64_t*)k2.data();
-  }
-  YcsbKey& build(uint32_t high_bits, uint32_t low_bits) {
-    *(uint64_t*)p = ((uint64_t)high_bits << 32) | low_bits;
-    return *this;
-  }
-  YcsbKey() : ermia::varstr((uint8_t*)this + sizeof(*this), sizeof(uint64_t)) {}
-};
-
 struct YcsbRecord {
   char data_[kRecordSize];
-  explicit YcsbRecord(char value);
+
   YcsbRecord() {}
+  YcsbRecord(char value) { memset(data_, value, kFields * kFieldLength * sizeof(char)); }
+
   char* get_field(uint32_t f) { return data_ + f * kFieldLength; }
-  static void initialize_field(char* field);
+  static void initialize_field(char* field) {
+    memset(field, 'a', kFieldLength);
+  }
 };
 
 struct YcsbWorkload {
@@ -75,3 +62,5 @@ struct YcsbWorkload {
   int32_t reps_per_tx_;
   bool distinct_keys_;
 };
+
+void BuildKey(uint64_t hi, uint64_t lo, ermia::varstr &k);

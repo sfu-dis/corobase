@@ -20,9 +20,9 @@ LSN parallel_offset_replay::operator()(void *arg, sm_log_scan_mgr *s,
   for (uint32_t i = 0; i < nredoers; ++i) {
     redo_runner *r = new redo_runner(this, INVALID_LSN, INVALID_LSN);
     redoers.push_back(r);
-    bool success = r->try_impersonate(false);
+    bool success = r->TryImpersonate(false);
     ALWAYS_ASSERT(success);
-    r->start();
+    r->Start();
   }
   RCU::rcu_exit();
   return to;
@@ -134,7 +134,7 @@ struct redo_range {
   LSN end;
 };
 
-void parallel_offset_replay::redo_runner::my_work(char *) {
+void parallel_offset_replay::redo_runner::MyWork(char *) {
   // Distributing persistence work over replay threads: when enabled, this
   // allows each replay thread to persist its own replay partition so we get
   // lower NVRAM persistence latency. But a pure persist-replay procedure would

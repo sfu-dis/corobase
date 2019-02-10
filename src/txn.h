@@ -48,14 +48,11 @@ struct write_set_t {
   inline write_record_t &operator[](uint32_t idx) { return entries[idx]; }
 };
 
-// forward decl
-class base_txn_btree;
-
 class transaction {
   friend class ConcurrentMasstreeIndex;
   friend class sm_oid_mgr;
 
- public:
+public:
   typedef TXN::txn_state txn_state;
 
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
@@ -81,70 +78,7 @@ class transaction {
   inline bool is_read_mostly() { return flags & TXN_FLAG_READ_MOSTLY; }
   inline bool is_read_only() { return flags & TXN_FLAG_READ_ONLY; }
 
-  // KeyWriter is expected to implement:
-  // [1-arg constructor]
-  //   KeyWriter(const Key *)
-  // [fully materialize]
-  //   template <typename StringAllocator>
-  //   const std::string * fully_materialize(bool, StringAllocator &)
-
-  // ValueWriter is expected to implement:
-  // [1-arg constructor]
-  //   ValueWriter(const Value *, ValueInfo)
-  // [compute new size from old value]
-  //   size_t compute_needed(const uint8_t *, size_t)
-  // [fully materialize]
-  //   template <typename StringAllocator>
-  //   const std::string * fully_materialize(bool, StringAllocator &)
-  // [perform write]
-  //   void operator()(uint8_t *, size_t)
-  //
-  // ValueWriter does not have to be move/copy constructable. The value passed
-  // into the ValueWriter constructor is guaranteed to be valid throughout the
-  // lifetime of a ValueWriter instance.
-
-  // KeyReader Interface
-  //
-  // KeyReader is a simple transformation from (const std::string &) => const
-  // Key &.
-  // The input is guaranteed to be stable, so it has a simple interface:
-  //
-  //   const Key &operator()(const std::string &)
-  //
-  // The KeyReader is expect to preserve the following property: After a call
-  // to operator(), but before the next, the returned value is guaranteed to be
-  // valid and remain stable.
-
-  // ValueReader Interface
-  //
-  // ValueReader is a more complex transformation from (const uint8_t *, size_t)
-  // => Value &.
-  // The input is not guaranteed to be stable, so it has a more complex
-  // interface:
-  //
-  //   template <typename StringAllocator>
-  //   bool operator()(const uint8_t *, size_t, StringAllocator &)
-  //
-  // This interface returns false if there was not enough buffer space to
-  // finish the read, true otherwise.  Note that this interface returning true
-  // does NOT mean that a read was stable, but it just means there were enough
-  // bytes in the buffer to perform the tentative read.
-  //
-  // Note that ValueReader also exposes a dup interface
-  //
-  //   template <typename StringAllocator>
-  //   void dup(const Value &, StringAllocator &)
-  //
-  // ValueReader also exposes a means to fetch results:
-  //
-  //   Value &results()
-  //
-  // The ValueReader is expected to preserve the following property: After a
-  // call to operator(), if it returns true, then the value returned from
-  // results() should remain valid and stable until the next call to
-  // operator().
-
- protected:
+protected:
   inline txn_state state() const { return xc->state; }
 
   // the absent set is a mapping from (masstree node -> version_number).
@@ -178,6 +112,8 @@ class transaction {
   bool MasstreeCheckPhantom();
   void Abort();
 
+  OID PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out_tuple);
+  void FinishInsert(OrderedIndex *index, OID oid, const varstr *key, varstr *value, dbtuple *tuple);
   bool TryInsertNewTuple(OrderedIndex *index, const varstr *key,
                          varstr *value, OID *inserted_oid);
 

@@ -77,11 +77,11 @@ void Engine::CreateTable(uint16_t index_type, const char *name, const char *prim
 
     // Note: this will insert to the log and therefore affect min_flush_lsn,
     // so must be done in an sm-thread.
-    ermia::thread::sm_thread *thread = ermia::thread::get_thread();
+    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
     ALWAYS_ASSERT(thread);
-    thread->start_task(create_file);
-    thread->join();
-    ermia::thread::put_thread(thread);
+    thread->StartTask(create_file);
+    thread->Join();
+    ermia::thread::PutThread(thread);
   }
 }
 
@@ -142,26 +142,40 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
-rc_t ConcurrentMasstreeIndex::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid) {
   t->ensure_active();
-
-  // search the underlying btree to map key=>(btree_node|tuple)
-  dbtuple *tuple{};
-  OID out_oid;
+  OID oid = 0;
   ConcurrentMasstree::versioned_node_t sinfo;
-  bool found = masstree_.search(key, out_oid, tuple, t->xc, &sinfo);
-  if (oid) {
-    *oid = out_oid;
-  }
+  rc = {RC_INVALID};
+  GetOID(key, rc, t->xc, oid, &sinfo);
+  bool found = (rc._val == RC_TRUE);
+
+  dbtuple *tuple = nullptr;
   if (found) {
-    return t->DoTupleRead(tuple, &value);
-  } else if (config::phantom_prot) {
-    rc_t rc = DoNodeRead(t, sinfo.first, sinfo.second);
-    if (rc_is_abort(rc)) {
-      return rc;
+    // Key-OID mapping exists, now try to get the actual tuple to be sure
+    if (config::is_backup_srv()) {
+      tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
+                                       descriptor_->GetPersistentAddressArray(),
+                                       oid, t->xc);
+    } else {
+      tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
+    }
+    if (!tuple) {
+      found = false;
     }
   }
-  return rc_t{RC_FALSE};
+
+  if (found) {
+    if (out_oid) {
+      *out_oid = oid;
+    }
+    volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+  } else if (config::phantom_prot) {
+    volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
+  } else {
+    volatile_write(rc._val, RC_FALSE);
+  }
+  ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
 }
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
@@ -217,6 +231,7 @@ rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k, varstr 
                                         bool expect_new, bool upsert,
                                         OID *inserted_oid) {
   ASSERT(k);
+  ASSERT((char *)k->data() == (char *)k + sizeof(varstr));
   ASSERT(!expect_new || v);
   t.ensure_active();
 
@@ -228,9 +243,10 @@ rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k, varstr 
   }
 
   // do regular search
-  dbtuple *bv = nullptr;
   OID oid = 0;
-  if (masstree_.search(*k, oid, bv, t.xc)) {
+  rc_t rc = {RC_INVALID};
+  GetOID(*k, rc, t.xc, oid);
+  if (rc._val == RC_TRUE) {
     return t.Update(descriptor_, oid, k, v);
   } else {
     return rc_t{RC_ABORT_INTERNAL};
@@ -263,7 +279,7 @@ void ConcurrentMasstreeIndex::XctSearchRangeCallback::on_resp_node(
     }
 #endif
     rc_t rc = DoNodeRead(t, n, version);
-    if (rc_is_abort(rc)) {
+    if (rc.IsAbort()) {
       caller_callback->return_code = rc;
     }
   }
@@ -283,17 +299,19 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << "  " << *((dbtuple *)v) << std::endl);
   varstr vv;
   caller_callback->return_code = t->DoTupleRead(v, &vv);
-  if (caller_callback->return_code._val == RC_TRUE)
+  if (caller_callback->return_code._val == RC_TRUE) {
     return caller_callback->Invoke(k, vv);
-  else if (rc_is_abort(caller_callback->return_code))
+  } else if (caller_callback->return_code.IsAbort()) {
+    // don't continue the read if the tx should abort
+    // ^^^^^ note: see masstree_scan.hh, whose scan() calls
+    // visit_value(), which calls this function to determine
+    // if it should stop reading.
     return false;  // don't continue the read if the tx should abort
-                   // ^^^^^ note: see masstree_scan.hh, whose scan() calls
-                   // visit_value(), which calls this function to determine
-                   // if it should stop reading.
+  }
   return true;
 }
 
-rc_t SingleThreadedBTree::Get(transaction *t, const varstr &key, varstr &value, OID *oid) {
+void SingleThreadedBTree::Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *oid) {
   t->ensure_active();
 
   // search the underlying btree to map key=>(btree_node|tuple)
@@ -316,10 +334,11 @@ rc_t SingleThreadedBTree::Get(transaction *t, const varstr &key, varstr &value, 
       tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), out_oid, xc);
     }
     if (tuple) {
-      return t->DoTupleRead(tuple, &value);
+      rc = t->DoTupleRead(tuple, &value);
+      return;
     }
   }
-  return rc_t{RC_FALSE};
+  rc = rc_t{RC_FALSE};
 }
 
 rc_t SingleThreadedBTree::DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,

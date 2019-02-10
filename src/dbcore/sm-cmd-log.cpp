@@ -36,11 +36,11 @@ void CommandLogManager::Insert(uint32_t partition_id, uint32_t xct_type) {
   while (end_off - durable_offset_ > buffer_size_) {
     TryFlush();
   }
-  uint64_t *myoff = &tls_offsets_[thread::my_id()];
+  uint64_t *myoff = &tls_offsets_[thread::MyId()];
   volatile_write(*myoff, *myoff | (1UL << 63));
 
   new (r) LogRecord(partition_id, xct_type);
-  volatile_write(tls_offsets_[thread::my_id()], end_off);
+  volatile_write(tls_offsets_[thread::MyId()], end_off);
 
   if (end_off - durable_offset_ >= config::group_commit_bytes) {
     TryFlush();

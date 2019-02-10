@@ -23,6 +23,8 @@ namespace ermia {
 typedef uint32_t OID;
 typedef uint32_t FID;
 
+static OID const INVALID_OID = ~uint32_t{0};
+
 static size_t const NUM_LOG_SEGMENT_BITS = 4;
 static size_t const NUM_LOG_SEGMENTS = 1 << NUM_LOG_SEGMENT_BITS;
 
