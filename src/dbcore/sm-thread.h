@@ -30,14 +30,15 @@ extern std::vector<CPUCore> cpu_cores;
 bool DetectCPUCores();
 void Initialize();
 
-extern uint32_t
-    next_thread_id;  // == total number of threads had so far - never decreases
-extern thread_local uint32_t thread_id;
-extern thread_local bool thread_initialized;
+// == total number of threads had so far - never decreases
+extern std::atomic<uint32_t> next_thread_id;
 
 inline uint32_t MyId() {
+  thread_local uint32_t thread_id CACHE_ALIGNED;
+  thread_local bool thread_initialized CACHE_ALIGNED;
+
   if (!thread_initialized) {
-    thread_id = __sync_fetch_and_add(&next_thread_id, 1);
+    thread_id = next_thread_id.fetch_add(1);
     thread_initialized = true;
   }
   return thread_id;
