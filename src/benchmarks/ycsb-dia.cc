@@ -171,10 +171,15 @@ class ycsb_dia_worker : public bench_worker {
       // Barrier to ensure data is read in
       ermia::varstr *r = values[i];
       tbl->RecvGet(txn, rcs[i], oids[i], *r);
-      rc_t rr = rcs[i];
       ALWAYS_ASSERT(*(char*)r->data() == 'a');
       ALWAYS_ASSERT(ermia::volatile_read(rcs[i]._val) == RC_TRUE);
+    }
 
+    for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
+      TryVerifyStrict(rcs[i]);
+    }
+
+    for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Reset the return value placeholders
       rcs[i]._val = RC_INVALID;
       oids[i] = 0;
@@ -182,9 +187,11 @@ class ycsb_dia_worker : public bench_worker {
       // Copy to user space and do the write.
       // Re-set the data area here as the previous read (DoTupleRead) has r->p
       // pointing to the object's data area
+      ermia::varstr *r = values[i];
       new (r) ermia::varstr((char*)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
       *(char*)r->data() = 'a';
       tbl->SendPut(txn, rcs[i], *keys[i], &oids[i]);  // Modify-write
+
       // TODO(tzwang): similar to read-only case, see if we can rescind
       // subsequent requests for better performance. Note: before we have this
       // feature, we have to first RecvGet all RCs and then do TryCatch.
@@ -192,10 +199,6 @@ class ycsb_dia_worker : public bench_worker {
       // any RC, we might risk the indexing threads that are still working on
       // previous RecvGets overwriting rc results for the new requests that are
       // reusing RCs.
-    }
-
-    for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      TryCatch(rcs[i]);
     }
 
     // Wait for writes to finish
