@@ -116,7 +116,9 @@ class ycsb_worker : public bench_worker {
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
       tbl->Get(txn, rc, k, v, &oid);  // Read
-      TryCatch(rc);
+
+      // Read must succeed - BuildKey actually makes sure the key is valid
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
 
       // Re-initialize the value structure to use my own allocated memory -
@@ -133,6 +135,7 @@ class ycsb_worker : public bench_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
       TryCatch(rc);
     }
     TryCatch(db->Commit(txn));
