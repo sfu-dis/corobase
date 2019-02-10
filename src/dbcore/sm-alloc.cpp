@@ -54,7 +54,7 @@ thread_local TlsFreeObjectPool *tls_free_object_pool CACHE_ALIGNED;
 char **node_memory = nullptr;
 uint64_t *allocated_node_memory = nullptr;
 static uint64_t thread_local tls_allocated_node_memory CACHE_ALIGNED;
-static const uint64_t tls_node_memory_gb = 1;
+static const uint64_t tls_node_memory_mb = 200;
 
 void prepare_node_memory() {
   ALWAYS_ASSERT(config::numa_nodes);
@@ -182,8 +182,8 @@ void *allocate(size_t size) {
   // Have to use the vanilla bump allocator, hopefully later we reuse them
   static thread_local char *tls_node_memory CACHE_ALIGNED;
   if (unlikely(not tls_node_memory) or
-      tls_allocated_node_memory + size >= tls_node_memory_gb * config::GB) {
-    tls_node_memory = (char *)allocate_onnode(tls_node_memory_gb * config::GB);
+      tls_allocated_node_memory + size >= tls_node_memory_mb * config::MB) {
+    tls_node_memory = (char *)allocate_onnode(tls_node_memory_mb * config::MB);
     tls_allocated_node_memory = 0;
   }
 
