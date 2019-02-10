@@ -100,7 +100,13 @@ class ycsb_worker : public bench_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
-      TryCatch(rc);
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+#endif
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
@@ -116,10 +122,13 @@ class ycsb_worker : public bench_worker {
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
       tbl->Get(txn, rc, k, v, &oid);  // Read
-
-      // Read must succeed - BuildKey actually makes sure the key is valid
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+      // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
+#endif
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
@@ -135,8 +144,13 @@ class ycsb_worker : public bench_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+      // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
-      TryCatch(rc);
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+#endif
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
@@ -212,11 +226,11 @@ class ycsb_usertable_loader : public bench_loader {
 
     // start a transaction and insert all the records
     for (auto &key : keys) {
+      arena.reset();
       ermia::varstr &v = str(sizeof(YcsbRecord));
       new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
       *(char*)v.p = 'a';
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-      arena.reset();
       TryVerifyStrict(tbl->Insert(txn, *key, v));
       TryVerifyStrict(db->Commit(txn));
     }

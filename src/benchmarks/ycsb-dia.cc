@@ -131,15 +131,22 @@ class ycsb_dia_worker : public bench_worker {
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       ermia::varstr *r = values[i];
       tbl->RecvGet(txn, rcs[i], oids[i], *r);
-      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
       // TODO(tzwang): if we abort here (e.g. because the return value rc says
       // so), it might be beneficial to rescind the subsequent requests that have
       // been sent.
+#if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+#endif
     }
 
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      TryCatch(rcs[i]);
+      TryCatch(rcs[i]);  // Might abort if we use SSI/SSN/MVOCC
     }
+#endif
+
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
   }
@@ -171,13 +178,18 @@ class ycsb_dia_worker : public bench_worker {
       // Barrier to ensure data is read in
       ermia::varstr *r = values[i];
       tbl->RecvGet(txn, rcs[i], oids[i], *r);
-      ALWAYS_ASSERT(*(char*)r->data() == 'a');
-      ALWAYS_ASSERT(ermia::volatile_read(rcs[i]._val) == RC_TRUE);
+#if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+#endif
     }
 
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
-      TryVerifyStrict(rcs[i]);
+      TryCatch(rcs[i]);  // Might abort if we use SSI/SSN/MVOCC
     }
+#endif
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       // Reset the return value placeholders
@@ -222,12 +234,18 @@ class ycsb_dia_worker : public bench_worker {
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
+#if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
+      // Under SI this must succeed
       ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+#endif
     }
 
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      TryCatch(rcs[i]);
+      TryCatch(rcs[i]);  // Might abort if we use SSI/SSN/MVOCC
     }
+#endif
 
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
