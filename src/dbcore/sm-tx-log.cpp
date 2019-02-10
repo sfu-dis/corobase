@@ -10,13 +10,13 @@ namespace {
    DORA we'll have to be more clever, because transactions would
    change threads frequently, but for now it works great.
  */
-static __thread ermia::log_request
+static thread_local ermia::log_request
     tls_log_requests[ermia::sm_log_recover_mgr::MAX_BLOCK_RECORDS];
 
 /* Same goes for the sm_tx_log_impl object we give the caller, for that matter
  */
-static __thread char LOG_ALIGN tls_log_space[sizeof(ermia::sm_tx_log_impl)];
-static __thread bool tls_log_space_used = false;
+static thread_local char LOG_ALIGN tls_log_space[sizeof(ermia::sm_tx_log_impl)];
+static thread_local bool tls_log_space_used = false;
 
 static ermia::sm_tx_log_impl *get_log_impl(ermia::sm_tx_log *x) {
   DIE_IF(

@@ -126,7 +126,7 @@ fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
   ASSERT(tuple->pvalue == NULL);
   tuple->pvalue = (varstr *)tuple_value;
   if (do_write) {
-    tuple->do_write();
+    tuple->DoWrite();
   }
 
   size_t size_code = encode_size_aligned(alloc_sz);

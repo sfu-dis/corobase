@@ -168,7 +168,7 @@ namespace TXN {
 */
 
 readers_list rlist;
-static __thread readers_list::tls_bitmap_info tls_bitmap_info;
+static thread_local readers_list::tls_bitmap_info tls_bitmap_info;
 
 void assign_reader_bitmap_entry() {
   if (tls_bitmap_info.entry) return;

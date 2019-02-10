@@ -43,18 +43,18 @@ static const uint64_t EPOCH_SIZE_COUNT = 2000;
 uint64_t epoch_excl_begin_lsn[3] = {0, 0, 0};
 uint64_t epoch_reclaim_lsn[3] = {0, 0, 0};
 
-static __thread struct thread_data epoch_tls CACHE_ALIGNED;
+static thread_local struct thread_data epoch_tls CACHE_ALIGNED;
 epoch_mgr mm_epochs{{nullptr, &global_init, &get_tls, &thread_registered,
                      &thread_deregistered, &epoch_ended, &epoch_ended_thread,
                      &epoch_reclaimed}};
 
 uint64_t safesnap_lsn = 0;
 
-__thread TlsFreeObjectPool *tls_free_object_pool CACHE_ALIGNED;
+thread_local TlsFreeObjectPool *tls_free_object_pool CACHE_ALIGNED;
 char **node_memory = nullptr;
 uint64_t *allocated_node_memory = nullptr;
-static uint64_t __thread tls_allocated_node_memory CACHE_ALIGNED;
-static const uint64_t tls_node_memory_gb = 1;
+static uint64_t thread_local tls_allocated_node_memory CACHE_ALIGNED;
+static const uint64_t tls_node_memory_mb = 200;
 
 void prepare_node_memory() {
   ALWAYS_ASSERT(config::numa_nodes);
@@ -180,10 +180,10 @@ void *allocate(size_t size) {
 
   ALWAYS_ASSERT(not p);
   // Have to use the vanilla bump allocator, hopefully later we reuse them
-  static __thread char *tls_node_memory CACHE_ALIGNED;
+  static thread_local char *tls_node_memory CACHE_ALIGNED;
   if (unlikely(not tls_node_memory) or
-      tls_allocated_node_memory + size >= tls_node_memory_gb * config::GB) {
-    tls_node_memory = (char *)allocate_onnode(tls_node_memory_gb * config::GB);
+      tls_allocated_node_memory + size >= tls_node_memory_mb * config::MB) {
+    tls_node_memory = (char *)allocate_onnode(tls_node_memory_mb * config::MB);
     tls_allocated_node_memory = 0;
   }
 
@@ -234,7 +234,7 @@ void global_init(void *) {
 }
 
 epoch_mgr::tls_storage *get_tls(void *) {
-  static __thread epoch_mgr::tls_storage s;
+  static thread_local epoch_mgr::tls_storage s;
   return &s;
 }
 void *thread_registered(void *) {

@@ -34,15 +34,15 @@ struct sm_log_recover_impl {
 };
 
 struct parallel_oid_replay : public sm_log_recover_impl {
-  struct redo_runner : public thread::sm_runner {
+  struct redo_runner : public thread::Runner {
     parallel_oid_replay *owner;
     OID oid_partition;
     bool done;
     LSN replayed_lsn;
 
     redo_runner(parallel_oid_replay *o, OID part)
-        : thread::sm_runner(), owner(o), oid_partition(part), done(false), replayed_lsn(INVALID_LSN) {}
-    virtual void my_work(char *);
+        : thread::Runner(), owner(o), oid_partition(part), done(false), replayed_lsn(INVALID_LSN) {}
+    virtual void MyWork(char *);
     void redo_partition();
   };
 
@@ -61,7 +61,7 @@ struct parallel_oid_replay : public sm_log_recover_impl {
 // that are guaranteed to respect log block/transaction boundaries. Used by
 // replay during log shipping.
 struct parallel_offset_replay : public sm_log_recover_impl {
-  struct redo_runner : public thread::sm_runner {
+  struct redo_runner : public thread::Runner {
     parallel_offset_replay *owner;
     // The half-open interval
     LSN start_lsn;
@@ -71,9 +71,9 @@ struct parallel_offset_replay : public sm_log_recover_impl {
     uint64_t redo_batches;
 
     redo_runner(parallel_offset_replay *o, LSN start, LSN end)
-        : thread::sm_runner(), owner(o), start_lsn(start),
+        : thread::Runner(), owner(o), start_lsn(start),
           end_lsn(end), redo_latency_us(0), redo_size(0), redo_batches(0) {}
-    virtual void my_work(char *);
+    virtual void MyWork(char *);
     void redo_logbuf_partition();
     void persist_logbuf_partition();
   };
