@@ -166,6 +166,7 @@ class ycsb_usertable_loader : public bench_loader {
   void load() {
     ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
     std::vector<ermia::varstr*> keys;
+    uint64_t requested = g_initial_table_size;
     uint64_t records_per_thread = g_initial_table_size / ermia::config::worker_threads;
     bool spread = true;
     if (records_per_thread == 0) {
@@ -178,7 +179,7 @@ class ycsb_usertable_loader : public bench_loader {
     }
 
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << g_initial_table_size
+      std::cerr << "[INFO] requested for " << requested
            << " records, will load "
            << records_per_thread *ermia::config::worker_threads << std::endl;
     }
