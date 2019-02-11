@@ -69,6 +69,7 @@ std::string read_view_stat_file;
 bool command_log = false;
 uint32_t command_log_buffer_mb = 16;
 std::string dia_req_handler = "coroutine";
+bool dia_req_coalesce = false;
 
 void init() {
   ALWAYS_ASSERT(threads);

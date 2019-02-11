@@ -71,6 +71,7 @@ extern int persist_policy;
 
 // DIA-specific settings
 extern std::string dia_req_handler;
+extern bool dia_req_coalesce;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the

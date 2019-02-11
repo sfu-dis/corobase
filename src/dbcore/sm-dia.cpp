@@ -77,7 +77,7 @@ void IndexThread::SerialHandler() {
       // to use the Put interface
       case Request::kTypeGet:
         req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-	break;
+        break;
       case Request::kTypeInsert:
         if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
           volatile_write(req.rc->_val, RC_TRUE);
@@ -124,7 +124,7 @@ void IndexThread::CoroutineHandler() {
           LOG(FATAL) << "Wrong request type";
       }
     }
-/*
+
     int dequeueSize = coroutines.size();
     while (coroutines.size()){
       for (auto it = coroutines.begin(); it != coroutines.end();) {
@@ -139,7 +139,7 @@ void IndexThread::CoroutineHandler() {
 
     for (int i = 0; i < dequeueSize; ++i)
       queue.Dequeue();
-*/
+/*
     for (auto &c : coroutines) {
       while (c->advance()) {}
       delete c;
@@ -148,6 +148,7 @@ void IndexThread::CoroutineHandler() {
     for (auto &c : coroutines) {
       queue.Dequeue();
     }
+*/
   }
 }
 
