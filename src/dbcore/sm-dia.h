@@ -144,6 +144,7 @@ class IndexThread : public ermia::thread::Runner {
 private:
   RequestQueue queue;
   std::function<void()> request_handler;
+  static const uint32_t kBatchSize = 20;
 
 public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {
