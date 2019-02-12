@@ -64,36 +64,76 @@ void IndexThread::MyWork(char *) {
 }
 
 void IndexThread::SerialHandler() {
-  while (true) {
-    Request &req = queue.GetNextRequest();
-    ermia::transaction *t = volatile_read(req.transaction);
-    ALWAYS_ASSERT(t);
-    ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
-    *req.rc = rc_t{RC_INVALID};
-    ASSERT(req.oid_ptr);
-    switch (req.type) {
-      // Regardless the request is for record read or update, we only need to get
-      // the OID, i.e., a Get operation on the index. For updating OID, we need
-      // to use the Put interface
-      case Request::kTypeGet:
-        req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-        break;
-      case Request::kTypeInsert:
-        if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
-          volatile_write(req.rc->_val, RC_TRUE);
-        } else {
-          volatile_write(req.rc->_val, RC_FALSE);
+  if (ermia::config::dia_req_coalesce){
+    while (true) {
+      uint32_t pos = queue.getPos();
+      int dequeueSize = 0;
+      for (int i = 0; i < kBatchSize; ++i){
+        Request *req = queue.GetRequestByPos(pos + i, false);
+        if (!req) {
+          break;
         }
-        break;
-      default:
-        LOG(FATAL) << "Wrong request type";
+        ermia::transaction *t = req->transaction;
+        ALWAYS_ASSERT(t);
+        ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+        *req->rc = rc_t{RC_INVALID};
+        ASSERT(req->oid_ptr);
+	switch (req->type) {
+          // Regardless the request is for record read or update, we only need to get
+          // the OID, i.e., a Get operation on the index. For updating OID, we need
+          // to use the Put interface
+          case Request::kTypeGet:
+            req->index->GetOID(*req->key, *req->rc, req->transaction->GetXIDContext(), *req->oid_ptr);
+            break;
+          case Request::kTypeInsert:
+            if (req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr)) {
+              volatile_write(req->rc->_val, RC_TRUE);
+            } else {
+              volatile_write(req->rc->_val, RC_FALSE);
+            }
+            break;
+          default:
+            LOG(FATAL) << "Wrong request type";
+        }
+        ++dequeueSize;
+      }
+
+      for (int i = 0; i < dequeueSize; ++i){
+        queue.Dequeue();
+      }
     }
-    queue.Dequeue();
+  } else {
+    while (true) {
+      Request &req = queue.GetNextRequest();
+      ermia::transaction *t = volatile_read(req.transaction);
+      ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
+      *req.rc = rc_t{RC_INVALID};
+      ASSERT(req.oid_ptr);
+      switch (req.type) {
+        // Regardless the request is for record read or update, we only need to get
+        // the OID, i.e., a Get operation on the index. For updating OID, we need
+        // to use the Put interface
+        case Request::kTypeGet:
+          req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+          break;
+        case Request::kTypeInsert:
+          if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
+            volatile_write(req.rc->_val, RC_TRUE);
+          } else {
+            volatile_write(req.rc->_val, RC_FALSE);
+          }
+          break;
+        default:
+          LOG(FATAL) << "Wrong request type";
+      }
+      queue.Dequeue();
+    }
   }
 }
 
 void IndexThread::CoroutineHandler() {
-  static const uint32_t kBatchSize = 20;
   while (true) {
     thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
     coroutines.clear();
