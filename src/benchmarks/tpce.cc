@@ -102,14 +102,14 @@ class tpce_table_scanner : public ermia::OrderedIndex::ScanCallback {
 int64_t GetLastListID() {
   // TODO. decentralize,  thread ID + local counter and TLS
   auto ret = __sync_add_and_fetch(&last_list, 1);
-  ALWAYS_ASSERT(ret);
+  ermia::ALWAYS_ASSERT(ret);
   return ret;
 }
 
 int64_t GetLastTradeID() {
   // TODO. decentralize,  thread ID + local counter and TLS
   auto ret = __sync_add_and_fetch(&lastTradeId, 1);
-  ALWAYS_ASSERT(ret);
+  ermia::ALWAYS_ASSERT(ret);
   return ret;
 }
 
@@ -202,7 +202,7 @@ class tpce_worker_mixin : private _dummy {
  public:
   static inline uint32_t GetCurrentTimeMillis() {
     // struct timeval tv;
-    // ALWAYS_ASSERT(gettimeofday(&tv, 0) == 0);
+    // ermia::ALWAYS_ASSERT(gettimeofday(&tv, 0) == 0);
     // return tv.tv_sec * 1000;
 
     // XXX(stephentu): implement a scalable GetCurrentTimeMillis()
@@ -300,10 +300,10 @@ class tpce_worker : public bench_worker,
 
     auto i = worker_id % ermia::config::worker_threads;
     mee = mees[i];
-    ALWAYS_ASSERT(i >= 0 and i < mees.size());
+    ermia::ALWAYS_ASSERT(i >= 0 and i < mees.size());
     MarketFeedInputBuffer = MarketFeedInputBuffers[i];
     TradeResultInputBuffer = TradeResultInputBuffers[i];
-    ALWAYS_ASSERT(TradeResultInputBuffer and MarketFeedInputBuffer and mee);
+    ermia::ALWAYS_ASSERT(TradeResultInputBuffer and MarketFeedInputBuffer and mee);
   }
 
   // Market Interface
@@ -594,7 +594,7 @@ class tpce_worker : public bench_worker,
     double m = 0;
     for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
       m += g_txn_workload_mix[i];
-    ALWAYS_ASSERT(m == 100);
+    ermia::ALWAYS_ASSERT(m == 100);
     if (g_txn_workload_mix[0])
       w.push_back(workload_desc(
           "BrokerVolume", double(g_txn_workload_mix[0]) / 100.0, BrokerVolume));
@@ -714,7 +714,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
   TryCatch(tbl_sector(1)->Scan(txn, Encode(str(sizeof(k_sc_0)), k_sc_0),
                                 &Encode(str(sizeof(k_sc_1)), k_sc_1),
                                 sc_scanner, &arena));
-  ALWAYS_ASSERT(sc_scanner.output.size() == 1);
+  ermia::ALWAYS_ASSERT(sc_scanner.output.size() == 1);
   for (auto &r_sc : sc_scanner.output) {
     sector::key k_sc_temp;
     const sector::key *k_sc = Decode(*r_sc.first, k_sc_temp);
@@ -727,7 +727,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
     TryCatch(tbl_in_sc_id_index(1)->Scan(
         txn, Encode(str(sizeof(k_in_0)), k_in_0),
         &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
-    ALWAYS_ASSERT(in_scanner.output.size());
+    ermia::ALWAYS_ASSERT(in_scanner.output.size());
 
     for (auto &r_in : in_scanner.output) {
       in_sc_id_index::key k_in_temp;
@@ -740,7 +740,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
       TryCatch(tbl_co_in_id_index(1)->Scan(
           txn, Encode(str(sizeof(k_in_0)), k_in_0),
           &Encode(str(sizeof(k_in_1)), k_in_1), co_scanner, &arena));
-      ALWAYS_ASSERT(co_scanner.output.size());
+      ermia::ALWAYS_ASSERT(co_scanner.output.size());
       for (auto &r_co : co_scanner.output) {
         co_in_id_index::key k_co_temp;
         const co_in_id_index::key *k_co = Decode(*r_co.first, k_co_temp);
@@ -756,7 +756,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
         TryCatch(tbl_security_index(1)->Scan(
             txn, Encode(str(sizeof(k_s_0)), k_s_0),
             &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
-        ALWAYS_ASSERT(s_scanner.output.size());
+        ermia::ALWAYS_ASSERT(s_scanner.output.size());
         for (auto &r_s : s_scanner.output) {
           security_index::key k_s_temp;
           const security_index::key *k_s = Decode(*r_s.first, k_s_temp);
@@ -775,7 +775,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
             TryCatch(tbl_trade_request(1)->Scan(
                 txn, Encode(str(sizeof(k_tr_0)), k_tr_0),
                 &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
-            // ALWAYS_ASSERT(tr_scanner.output.size()); // XXX. If there's no
+            // ermia::ALWAYS_ASSERT(tr_scanner.output.size()); // XXX. If there's no
             // previous trade, this can happen
 
             for (auto &r_tr : tr_scanner.output) {
@@ -827,7 +827,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
         Decode(*(c_scanner.output.front().first), k_c_temp);
     pOut->cust_id = k_c->c_id;
   }
-  ALWAYS_ASSERT(pOut->cust_id);
+  ermia::ALWAYS_ASSERT(pOut->cust_id);
 
   // probe Customers
   const customers::key k_c(pOut->cust_id);
@@ -868,7 +868,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
   TryCatch(tbl_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_ca_0)), k_ca_0),
                                      &Encode(str(sizeof(k_ca_1)), k_ca_1),
                                      ca_scanner, &arena));
-  ALWAYS_ASSERT(ca_scanner.output.size());
+  ermia::ALWAYS_ASSERT(ca_scanner.output.size());
 
   for (auto &r_ca : ca_scanner.output) {
     ca_id_index::key k_ca_temp;
@@ -885,7 +885,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
     TryCatch(tbl_holding_summary(1)->Scan(
         txn, Encode(str(sizeof(k_hs_0)), k_hs_0),
         &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-    // ALWAYS_ASSERT(hs_scanner.output.size());  // left-outer join. S table
+    // ermia::ALWAYS_ASSERT(hs_scanner.output.size());  // left-outer join. S table
     // could be empty.
 
     auto asset = 0;
@@ -936,7 +936,7 @@ rc_t tpce_worker::DoCustomerPositionFrame2(
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ALWAYS_ASSERT(t_scanner.output.size());
+  ermia::ALWAYS_ASSERT(t_scanner.output.size());
 
   std::vector<std::pair<ermia::varstr *, const ermia::varstr *>> tids;
   for (auto &r_t : t_scanner.output) {
@@ -972,7 +972,7 @@ rc_t tpce_worker::DoCustomerPositionFrame2(
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ALWAYS_ASSERT(th_scanner.output.size());
+    ermia::ALWAYS_ASSERT(th_scanner.output.size());
 
     for (auto &r_th : th_scanner.output) {
       trade_history::key k_th_temp;
@@ -1061,7 +1061,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
     TryCatch(tbl_trade_request(1)->Scan(
         txn, Encode(str(sizeof(k_tr_0)), k_tr_0),
         &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
-    // ALWAYS_ASSERT(tr_scanner.output.size());  // XXX. If there's no previous
+    // ermia::ALWAYS_ASSERT(tr_scanner.output.size());  // XXX. If there's no previous
     // trade, this can happen. Higher initial trading days would enlarge this
     // scan set
 
@@ -1173,7 +1173,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_watch_list(1)->Scan(txn, Encode(str(sizeof(k_wl_0)), k_wl_0),
                                       &Encode(str(sizeof(k_wl_1)), k_wl_1),
                                       wl_scanner, &arena));
-    ALWAYS_ASSERT(wl_scanner.output.size());
+    ermia::ALWAYS_ASSERT(wl_scanner.output.size());
 
     for (auto &r_wl : wl_scanner.output) {
       watch_list::key k_wl_temp;
@@ -1185,7 +1185,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
       TryCatch(tbl_watch_item(1)->Scan(
           txn, Encode(str(sizeof(k_wi_0)), k_wi_0),
           &Encode(str(sizeof(k_wi_1)), k_wi_1), wi_scanner, &arena));
-      ALWAYS_ASSERT(wi_scanner.output.size());
+      ermia::ALWAYS_ASSERT(wi_scanner.output.size());
       for (auto &r_wi : wi_scanner.output) {
         watch_item::key k_wi_temp;
         const watch_item::key *k_wi = Decode(*r_wi.first, k_wi_temp);
@@ -1202,7 +1202,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_in_name_index(1)->Scan(
         txn, Encode(str(sizeof(k_in_0)), k_in_0),
         &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
-    ALWAYS_ASSERT(in_scanner.output.size());
+    ermia::ALWAYS_ASSERT(in_scanner.output.size());
 
     const company::key k_co_0(pIn->starting_co_id);
     const company::key k_co_1(pIn->ending_co_id);
@@ -1210,7 +1210,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_company(1)->Scan(txn, Encode(str(sizeof(k_co_0)), k_co_0),
                                    &Encode(str(sizeof(k_co_1)), k_co_1),
                                    co_scanner, &arena));
-    ALWAYS_ASSERT(co_scanner.output.size());
+    ermia::ALWAYS_ASSERT(co_scanner.output.size());
 
     const security::key k_s_0(std::string(cSYMBOL_len, (char)0));
     const security::key k_s_1(std::string(cSYMBOL_len, (char)255));
@@ -1218,7 +1218,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_security(1)->Scan(txn, Encode(str(sizeof(k_s_0)), k_s_0),
                                     &Encode(str(sizeof(k_s_1)), k_s_1),
                                     s_scanner, &arena));
-    ALWAYS_ASSERT(s_scanner.output.size());
+    ermia::ALWAYS_ASSERT(s_scanner.output.size());
 
     for (auto &r_in : in_scanner.output) {
       in_name_index::key k_in_temp;
@@ -1261,7 +1261,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
       stock_list_cursor.push_back(k_hs->hs_s_symb);
     }
   } else
-    ALWAYS_ASSERT(false);
+    ermia::ALWAYS_ASSERT(false);
 
   double old_mkt_cap = 0;
   double new_mkt_cap = 0;
@@ -1411,7 +1411,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_company_competitor(1)->Scan(
       txn, Encode(str(sizeof(k_cp_0)), k_cp_0),
       &Encode(str(sizeof(k_cp_1)), k_cp_1), cp_scanner, &arena));
-  ALWAYS_ASSERT(cp_scanner.output.size());
+  ermia::ALWAYS_ASSERT(cp_scanner.output.size());
 
   for (auto i = 0; i < max_comp_len; i++) {
     auto &r_cp = cp_scanner.output[i];
@@ -1444,7 +1444,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_financial(1)->Scan(txn, Encode(str(sizeof(k_fi_0)), k_fi_0),
                                    &Encode(str(sizeof(k_fi_1)), k_fi_1),
                                    fi_scanner, &arena));
-  ALWAYS_ASSERT(fi_scanner.output.size());
+  ermia::ALWAYS_ASSERT(fi_scanner.output.size());
   for (uint64_t i = 0; i < max_fin_len; i++) {
     auto &r_fi = fi_scanner.output[i];
     financial::key k_fi_temp;
@@ -1478,7 +1478,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_daily_market(1)->Scan(txn, Encode(str(sizeof(k_dm_0)), k_dm_0),
                                       &Encode(str(sizeof(k_dm_1)), k_dm_1),
                                       dm_scanner, &arena));
-  ALWAYS_ASSERT(dm_scanner.output.size());
+  ermia::ALWAYS_ASSERT(dm_scanner.output.size());
   for (size_t i = 0;
        i < (size_t)pIn->max_rows_to_return and i < dm_scanner.output.size();
        i++) {
@@ -1517,7 +1517,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_news_xref(1)->Scan(txn, Encode(str(sizeof(k_nx_0)), k_nx_0),
                                    &Encode(str(sizeof(k_nx_1)), k_nx_1),
                                    nx_scanner, &arena));
-  ALWAYS_ASSERT(nx_scanner.output.size());
+  ermia::ALWAYS_ASSERT(nx_scanner.output.size());
 
   for (int i = 0; i < max_news_len; i++) {
     auto &r_nx = nx_scanner.output[i];
@@ -1631,7 +1631,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ALWAYS_ASSERT(th_scanner.output.size());
+    ermia::ALWAYS_ASSERT(th_scanner.output.size());
 
     int th_cursor = 0;
     for (auto &r_th : th_scanner.output) {
@@ -1669,7 +1669,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ALWAYS_ASSERT(t_scanner.output.size());
+  ermia::ALWAYS_ASSERT(t_scanner.output.size());
 
   auto num_found = 0;
   for (auto &r_t : t_scanner.output) {
@@ -1738,7 +1738,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ALWAYS_ASSERT(th_scanner.output.size());
+    ermia::ALWAYS_ASSERT(th_scanner.output.size());
 
     int th_cursor = 0;
     for (auto &r_th : th_scanner.output) {
@@ -1777,7 +1777,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
   TryCatch(tbl_t_s_symb_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                         &Encode(str(sizeof(k_t_1)), k_t_1),
                                         t_scanner, &arena));
-  ALWAYS_ASSERT(t_scanner.output.size());
+  ermia::ALWAYS_ASSERT(t_scanner.output.size());
 
   auto num_found = 0;
   for (auto &r_t : t_scanner.output) {
@@ -1850,7 +1850,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ALWAYS_ASSERT(th_scanner.output.size());
+    ermia::ALWAYS_ASSERT(th_scanner.output.size());
 
     // TODO. order by
     int th_cursor = 0;
@@ -1925,7 +1925,7 @@ rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn,
   TryCatch(tbl_holding_history(1)->Scan(
       txn, Encode(str(sizeof(k_hh_0)), k_hh_0),
       &Encode(str(sizeof(k_hh_1)), k_hh_1), hh_scanner, &arena));
-  ALWAYS_ASSERT(
+  ermia::ALWAYS_ASSERT(
       hh_scanner.output.size());  // possible case. no holding for the customer
 
   auto hh_cursor = 0;
@@ -2024,14 +2024,14 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_co_name_index(1)->Scan(
         txn, Encode(str(sizeof(k_co_0)), k_co_0),
         &Encode(str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
-    ALWAYS_ASSERT(co_scanner.output.size());
+    ermia::ALWAYS_ASSERT(co_scanner.output.size());
 
     co_name_index::key k_co_temp;
     const co_name_index::key *k_co =
         Decode(*co_scanner.output.front().first, k_co_temp);
 
     co_id = k_co->co_id;
-    ALWAYS_ASSERT(co_id);
+    ermia::ALWAYS_ASSERT(co_id);
 
     const security_index::key k_s_0(co_id, pIn->issue,
                                     std::string(cSYMBOL_len, (char)0));
@@ -2041,7 +2041,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_security_index(1)->Scan(
         txn, Encode(str(sizeof(k_s_0)), k_s_0),
         &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
-    ALWAYS_ASSERT(s_scanner.output.size());
+    ermia::ALWAYS_ASSERT(s_scanner.output.size());
     for (auto &r_s : s_scanner.output) {
       security_index::key k_s_temp;
       security::value v_s_temp;
@@ -2128,7 +2128,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
       TryCatch(tbl_holding(1)->Scan(txn, Encode(str(sizeof(k_h_0)), k_h_0),
                                      &Encode(str(sizeof(k_h_1)), k_h_1),
                                      h_scanner, &arena));
-      // ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
+      // ermia::ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
       for (auto &r_h : h_scanner.output) {
         holding::value v_h_temp;
@@ -2169,7 +2169,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
       TryCatch(tbl_holding(1)->Scan(txn, Encode(str(sizeof(k_h_0)), k_h_0),
                                      &Encode(str(sizeof(k_h_1)), k_h_1),
                                      h_scanner, &arena));
-      // ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
+      // ermia::ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
       for (auto &r_h : h_scanner.output) {
         holding::value v_h_temp;
@@ -2213,7 +2213,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_customer_taxrate(1)->Scan(
         txn, Encode(str(sizeof(k_cx_0)), k_cx_0),
         &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
-    ALWAYS_ASSERT(cx_scanner.output.size());
+    ermia::ALWAYS_ASSERT(cx_scanner.output.size());
 
     auto tax_rates = 0.0;
     for (auto &r_cx : cx_scanner.output) {
@@ -2241,7 +2241,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
   TryCatch(tbl_commission_rate(1)->Scan(
       txn, Encode(str(sizeof(k_cr_0)), k_cr_0),
       &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
-  ALWAYS_ASSERT(cr_scanner.output.size());
+  ermia::ALWAYS_ASSERT(cr_scanner.output.size());
 
   for (auto &r_cr : cr_scanner.output) {
     commission_rate::value v_cr_temp;
@@ -2282,7 +2282,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_holding_summary(1)->Scan(
         txn, Encode(str(sizeof(k_hs_0)), k_hs_0),
         &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-    // ALWAYS_ASSERT(hs_scanner.output.size());  // XXX. allowed?
+    // ermia::ALWAYS_ASSERT(hs_scanner.output.size());  // XXX. allowed?
 
     for (auto &r_hs : hs_scanner.output) {
       holding_summary::key k_hs_temp;
@@ -2628,7 +2628,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn,
       TryCatch(tbl_holding(1)->Scan(txn, Encode(str(sizeof(k_h_0)), k_h_0),
                                      &Encode(str(sizeof(k_h_1)), k_h_1),
                                      h_scanner, &arena));
-      // ALWAYS_ASSERT(h_scanner.output.size());  // XXX. guessing could be
+      // ermia::ALWAYS_ASSERT(h_scanner.output.size());  // XXX. guessing could be
       // empty
 
       if (pIn->is_lifo) {
@@ -2755,7 +2755,7 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn,
   TryCatch(tbl_customer_taxrate(1)->Scan(
       txn, Encode(str(sizeof(k_cx_0)), k_cx_0),
       &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
-  ALWAYS_ASSERT(cx_scanner.output.size());
+  ermia::ALWAYS_ASSERT(cx_scanner.output.size());
 
   double tax_rates = 0.0;
   auto rc = rc_t{RC_INVALID};
@@ -2819,7 +2819,7 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn,
   TryCatch(tbl_commission_rate(1)->Scan(
       txn, Encode(str(sizeof(k_cr_0)), k_cr_0),
       &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
-  ALWAYS_ASSERT(cr_scanner.output.size());
+  ermia::ALWAYS_ASSERT(cr_scanner.output.size());
 
   for (auto &r_cr : cr_scanner.output) {
     commission_rate::value v_cr_temp;
@@ -2958,7 +2958,7 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn,
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ALWAYS_ASSERT(t_scanner.output.size());
+  ermia::ALWAYS_ASSERT(t_scanner.output.size());
 
   int t_cursor = 0;
   for (auto &r_t : t_scanner.output) {
@@ -3137,7 +3137,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ALWAYS_ASSERT(th_scanner.output.size());
+    ermia::ALWAYS_ASSERT(th_scanner.output.size());
 
     for (size_t th_cursor = 0;
          th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -3172,7 +3172,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn,
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ALWAYS_ASSERT(t_scanner.output.size());
+  ermia::ALWAYS_ASSERT(t_scanner.output.size());
 
   for (size_t i = 0;
        i < (size_t)pIn->max_trades and i < t_scanner.output.size(); i++) {
@@ -3260,7 +3260,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ALWAYS_ASSERT(th_scanner.output.size());
+    ermia::ALWAYS_ASSERT(th_scanner.output.size());
 
     for (size_t th_cursor = 0;
          th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -3295,7 +3295,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
   TryCatch(tbl_t_s_symb_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                         &Encode(str(sizeof(k_t_1)), k_t_1),
                                         t_scanner, &arena));
-  ALWAYS_ASSERT(t_scanner.output.size());  // XXX. short innitial trading day
+  ermia::ALWAYS_ASSERT(t_scanner.output.size());  // XXX. short innitial trading day
                                            // can make this case happening?
 
   for (size_t i = 0;
@@ -3419,7 +3419,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ALWAYS_ASSERT(th_scanner.output.size());
+    ermia::ALWAYS_ASSERT(th_scanner.output.size());
 
     for (size_t th_cursor = 0;
          th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -3453,7 +3453,7 @@ rc_t tpce_worker::DoLongQueryFrame1() {
   TryCatch(tbl_customer_account(1)->Scan(
       txn, Encode(str(sizeof(k_ca_0)), k_ca_0),
       &Encode(str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
-  ALWAYS_ASSERT(ca_scanner.output.size());
+  ermia::ALWAYS_ASSERT(ca_scanner.output.size());
 
   auto asset = 0;
   for (auto &r_ca : ca_scanner.output) {
@@ -3522,7 +3522,7 @@ class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3575,7 +3575,7 @@ class tpce_commission_rate_loader : public bench_loader,
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3669,7 +3669,7 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3731,7 +3731,7 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3781,7 +3781,7 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3830,7 +3830,7 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3880,7 +3880,7 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3931,7 +3931,7 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3979,7 +3979,7 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4033,7 +4033,7 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4114,7 +4114,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4209,7 +4209,7 @@ class tpce_customer_taxrate_loader : public bench_loader,
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4265,7 +4265,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4339,7 +4339,7 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4411,7 +4411,7 @@ class tpce_company_competitor_loader : public bench_loader,
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4466,7 +4466,7 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4521,7 +4521,7 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4585,7 +4585,7 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4639,7 +4639,7 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4718,7 +4718,7 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4791,7 +4791,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ALWAYS_ASSERT(partition_id == -1 ||
+    ermia::ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -5302,7 +5302,7 @@ void tpce_do_test(ermia::Engine *db, int argc, char **argv) {
 
       case 'r':
         long_query_scan_range = atoi(optarg);
-        ALWAYS_ASSERT(long_query_scan_range >= 0 or
+        ermia::ALWAYS_ASSERT(long_query_scan_range >= 0 or
                       long_query_scan_range <= 100);
         break;
 
@@ -5319,15 +5319,15 @@ void tpce_do_test(ermia::Engine *db, int argc, char **argv) {
         break;
       case 'w': {
         const std::vector<std::string> toks = util::split(optarg, ',');
-        ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
+        ermia::ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
         double s = 0;
         for (size_t i = 0; i < toks.size(); i++) {
           double p = atof(toks[i].c_str());
-          ALWAYS_ASSERT(p >= 0.0 && p <= 100.0);
+          ermia::ALWAYS_ASSERT(p >= 0.0 && p <= 100.0);
           s += p;
           g_txn_workload_mix[i] = p;
         }
-        ALWAYS_ASSERT(s == 100.0);
+        ermia::ALWAYS_ASSERT(s == 100.0);
       } break;
 
       case '?':

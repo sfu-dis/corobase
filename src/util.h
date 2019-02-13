@@ -28,7 +28,7 @@ class aligned_padded_elem {
   template <class... Args>
   aligned_padded_elem(Args &&... args)
       : elem(std::forward<Args>(args)...) {
-    if (Pedantic) ALWAYS_ASSERT(((uintptr_t) this % CACHELINE_SIZE) == 0);
+    if (Pedantic) ermia::ALWAYS_ASSERT(((uintptr_t) this % CACHELINE_SIZE) == 0);
   }
 
   T elem;
@@ -402,7 +402,7 @@ struct cxx_typename {
   static std::string value() {
     int st;
     char *name = abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &st);
-    if (unlikely(st))
+    if (ermia::unlikely(st))
       return std::string(typeid(T).name()) + "<demangle failed>";
     std::string ret(name);
     free(name);
@@ -453,7 +453,7 @@ struct RangeAwareParser {
       ret.emplace_back(t);
     } else {
       std::vector<std::string> toks(split(s, '-'));
-      ALWAYS_ASSERT(toks.size() == 2);
+      ermia::ALWAYS_ASSERT(toks.size() == 2);
       T t0, t1;
       std::istringstream iss0(toks[0]), iss1(toks[1]);
       iss0 >> t0;
@@ -563,14 +563,14 @@ class spin_barrier {
   spin_barrier(spin_barrier &&) = delete;
   spin_barrier &operator=(const spin_barrier &) = delete;
 
-  ~spin_barrier() { ALWAYS_ASSERT(n == 0); }
+  ~spin_barrier() { ermia::ALWAYS_ASSERT(n == 0); }
 
   void count_down() {
     // written like this (instead of using __sync_fetch_and_add())
     // so we can have assertions
     for (;;) {
       size_t copy = n;
-      ALWAYS_ASSERT(copy > 0);
+      ermia::ALWAYS_ASSERT(copy > 0);
       if (__sync_bool_compare_and_swap(&n, copy, copy - 1)) return;
     }
   }

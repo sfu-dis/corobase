@@ -51,7 +51,7 @@ int server_context::expect_client(char *client_addr) {
   socklen_t addr_size = sizeof(struct sockaddr_storage);
 
   int fd = accept(sockfd, &addr, &addr_size);
-  ALWAYS_ASSERT(fd);
+  ermia::ALWAYS_ASSERT(fd);
 
   char s[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &((sockaddr_in *)&addr)->sin_addr, s, INET_ADDRSTRLEN);

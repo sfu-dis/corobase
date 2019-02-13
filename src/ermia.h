@@ -4,7 +4,6 @@
 
 #include "btree/btree.h"
 #include "txn.h"
-#include "../dbcore/sm-log-recover-impl.h"
 
 namespace ermia {
 
@@ -57,11 +56,12 @@ public:
   OrderedIndex(std::string name, const char* primary = nullptr) {
     descriptor_ = IndexDescriptor::New(this, name, primary);
   }
+  virtual ~OrderedIndex() {}
   inline IndexDescriptor *GetDescriptor() { return descriptor_; }
 
   class ScanCallback {
    public:
-    ~ScanCallback() {}
+    virtual ~ScanCallback() {}
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
   };
@@ -143,7 +143,7 @@ public:
 
 // User-facing concurrent Masstree
 class ConcurrentMasstreeIndex : public OrderedIndex {
-  friend class sm_log_recover_impl;
+  friend struct sm_log_recover_impl;
   friend class sm_chkpt_mgr;
 
 private:

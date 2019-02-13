@@ -1,4 +1,11 @@
 #pragma once
+#include <cstdlib>
+
+namespace ermia {
+  inline bool likely(bool expr) { return __builtin_expect(!!(expr), true); }
+  inline bool unlikely(bool expr) { return __builtin_expect(!!(expr), false); }
+  inline void ALWAYS_ASSERT(bool expr) { likely((expr)) ? (void)0 : std::abort(); }
+}  // namespace ermia
 
 #define USE_VARINT_ENCODING
 
@@ -17,14 +24,7 @@
 #define ALWAYS_INLINE __attribute__((always_inline)) inline
 #endif
 
-#ifndef ALWAYS_ASSERT
-#define ALWAYS_ASSERT(expr) (likely((expr)) ? (void)0 : abort())
-#endif
-
 #define MARK_REFERENCED(x) (void)x
-
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
 
 #define COMPILER_MEMORY_FENCE asm volatile("" ::: "memory")
 

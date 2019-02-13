@@ -9,7 +9,7 @@
 
 namespace ermia {
 
-class sm_log_recover_impl;
+struct sm_log_recover_impl;
 
 namespace config {
 

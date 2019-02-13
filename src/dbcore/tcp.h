@@ -29,12 +29,12 @@ inline void receive(int fd, char* buf, size_t to_receive) {
 inline void expect_ack(int bfd) {
   static char buf[ACK_TEXT_LEN];
   receive(bfd, buf, ACK_TEXT_LEN);
-  ALWAYS_ASSERT(strcmp(buf, ACK_TEXT) == 0);
+  ermia::ALWAYS_ASSERT(strcmp(buf, ACK_TEXT) == 0);
 }
 
 inline void send_ack(int sockfd) {
   auto sent_bytes = send(sockfd, ACK_TEXT, 4, 0);
-  ALWAYS_ASSERT(sent_bytes == 4);
+  ermia::ALWAYS_ASSERT(sent_bytes == 4);
 }
 
 struct server_context {
