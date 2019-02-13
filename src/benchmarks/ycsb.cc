@@ -104,8 +104,8 @@ class ycsb_worker : public bench_worker {
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      ermia::ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ermia::ALWAYS_ASSERT(*(char*)v.data() == 'a');
 #endif
     }
     TryCatch(db->Commit(txn));
@@ -126,8 +126,8 @@ class ycsb_worker : public bench_worker {
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      ermia::ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ermia::ALWAYS_ASSERT(*(char*)v.data() == 'a');
 #endif
 
       // Re-initialize the value structure to use my own allocated memory -
@@ -148,8 +148,8 @@ class ycsb_worker : public bench_worker {
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      ermia::ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ermia::ALWAYS_ASSERT(*(char*)v.data() == 'a');
 #endif
     }
     TryCatch(db->Commit(txn));
@@ -221,7 +221,7 @@ class ycsb_usertable_loader : public bench_loader {
         break;
     }
 
-    ALWAYS_ASSERT(keys.size());
+    ermia::ALWAYS_ASSERT(keys.size());
     if (g_sort_load_keys) std::sort(keys.begin(), keys.end());
 
     // start a transaction and insert all the records
@@ -243,7 +243,7 @@ class ycsb_usertable_loader : public bench_loader {
       ermia::OID oid = 0;
       ermia::varstr &v = str(0);
       tbl->Get(txn, rc, *key, v, &oid);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      ermia::ALWAYS_ASSERT(*(char*)v.data() == 'a');
       TryVerifyStrict(rc);
       TryVerifyStrict(db->Commit(txn));
       free(key);
@@ -354,7 +354,7 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
     }
   }
 
-  ALWAYS_ASSERT(g_initial_table_size);
+  ermia::ALWAYS_ASSERT(g_initial_table_size);
 
   if (ermia::config::verbose) {
     std::cerr << "ycsb settings:" << std::endl

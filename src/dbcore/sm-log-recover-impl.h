@@ -13,6 +13,8 @@ namespace ermia {
  * parallel replay by file/OID partition, etc.
  */
 struct sm_log_recover_impl {
+  sm_log_recover_impl() {}
+  virtual ~sm_log_recover_impl() {}
   void recover_insert(sm_log_scan_mgr::record_scan *logrec,
                       bool latest = false);
   void recover_index_insert(sm_log_scan_mgr::record_scan *logrec);
@@ -42,6 +44,7 @@ struct parallel_oid_replay : public sm_log_recover_impl {
 
     redo_runner(parallel_oid_replay *o, OID part)
         : thread::Runner(), owner(o), oid_partition(part), done(false), replayed_lsn(INVALID_LSN) {}
+    virtual ~redo_runner() {}
     virtual void MyWork(char *);
     void redo_partition();
   };
@@ -53,6 +56,7 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   LSN end_lsn;
 
   parallel_oid_replay(uint32_t threads) : nredoers(threads) {}
+  virtual ~parallel_oid_replay() {}
   virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
                          LSN to);
 };
@@ -73,6 +77,7 @@ struct parallel_offset_replay : public sm_log_recover_impl {
     redo_runner(parallel_offset_replay *o, LSN start, LSN end)
         : thread::Runner(), owner(o), start_lsn(start),
           end_lsn(end), redo_latency_us(0), redo_size(0), redo_batches(0) {}
+    virtual ~redo_runner() {}
     virtual void MyWork(char *);
     void redo_logbuf_partition();
     void persist_logbuf_partition();
@@ -85,6 +90,7 @@ struct parallel_offset_replay : public sm_log_recover_impl {
   parallel_offset_replay() : nredoers(config::replay_threads) {
     LOG(INFO) << "[Backup] " << nredoers << " replay threads";
   }
+  virtual ~parallel_offset_replay() {}
   virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
                          LSN to);
 };

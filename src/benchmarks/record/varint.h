@@ -26,7 +26,7 @@ inline const uint8_t *read_uvint32_slow(const uint8_t *buf, uint32_t *value) {
   result |= b << 28;
   if (likely(b < 0x80)) goto done;
 
-  ALWAYS_ASSERT(false);  // should not reach here (improper encoding)
+  ermia::ALWAYS_ASSERT(false);  // should not reach here (improper encoding)
 
 done:
   *value = result;
@@ -108,7 +108,7 @@ ALWAYS_INLINE size_t skip_uvint32(const uint8_t *stream, uint8_t *rawv) {
     if (likely(stream[3] < 0x80)) return 4;
     if (likely(stream[4] < 0x80)) return 5;
   }
-  ALWAYS_ASSERT(false);
+  ermia::ALWAYS_ASSERT(false);
   return 0;
 }
 
@@ -137,7 +137,7 @@ failsafe_skip_uvint32(const uint8_t *stream, size_t nbytes, uint8_t *rawv) {
     if (unlikely(!nbytes--)) return 0;
     if (likely(stream[4] < 0x80)) return 5;
   }
-  ALWAYS_ASSERT(false);
+  ermia::ALWAYS_ASSERT(false);
   return 0;
 }
 
