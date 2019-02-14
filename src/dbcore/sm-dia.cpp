@@ -138,9 +138,14 @@ void IndexThread::SerialHandler() {
           ASSERT(tmp_req->oid_ptr);
           *tmp_req->rc = rc_t{RC_INVALID};
           switch (tmp_req->type) {
-            case Request::kTypeGet:{
-              *tmp_req->oid_ptr = *req->oid_ptr;
-              volatile_write(tmp_req->rc->_val, req->rc->_val);
+            case Request::kTypeGet:
+              if (req->rc->_val == RC_TRUE) {
+                *tmp_req->oid_ptr = *req->oid_ptr;
+                volatile_write(tmp_req->rc->_val, RC_TRUE);
+              } else if (req->rc->_val == RC_FALSE) {
+                volatile_write(tmp_req->rc->_val, RC_FALSE);
+              } else {
+                tmp_req->index->GetOID(*tmp_req->key, *tmp_req->rc, tmp_req->transaction->GetXIDContext(), *tmp_req->oid_ptr);
               }
               break;
             case Request::kTypeInsert:
@@ -232,16 +237,6 @@ void IndexThread::CoroutineHandler() {
 
     for (int i = 0; i < dequeueSize; ++i)
       queue.Dequeue();
-/*
-    for (auto &c : coroutines) {
-      while (c->advance()) {}
-      delete c;
-    }
-
-    for (auto &c : coroutines) {
-      queue.Dequeue();
-    }
-*/
   }
 }
 
