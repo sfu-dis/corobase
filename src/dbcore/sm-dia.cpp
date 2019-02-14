@@ -2,6 +2,7 @@
 #include "sm-dia.h"
 #include "sm-coroutine.h"
 #include <vector>
+#include <map>
 
 namespace ermia {
 namespace dia {
@@ -66,8 +67,11 @@ void IndexThread::MyWork(char *) {
 void IndexThread::SerialHandler() {
   if (ermia::config::dia_req_coalesce){
     while (true) {
+      thread_local std::map<uint64_t, std::vector<int> > coalesced_requests;
+      coalesced_requests.clear();
       uint32_t pos = queue.getPos();
       int dequeueSize = 0;
+      // Requests coalescing
       for (int i = 0; i < kBatchSize; ++i){
         Request *req = queue.GetRequestByPos(pos + i, false);
         if (!req) {
@@ -77,9 +81,33 @@ void IndexThread::SerialHandler() {
         ALWAYS_ASSERT(t);
         ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
         ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+        ASSERT(req->oid_ptr);
+
+        uint64_t current_key = *((uint64_t*)(*req->key).data());
+        if (coalesced_requests.count(current_key)){
+          coalesced_requests[current_key].push_back(i);
+        } else {
+          std::vector<int> offsets;
+          offsets.push_back(i);
+          coalesced_requests.insert(std::make_pair(current_key, offsets));
+        }
+        ++dequeueSize;
+      }
+
+      for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
+        std::vector<int> offsets = iter->second;
+        // issue the first request
+        Request *req = queue.GetRequestByPos(pos + offsets[0], false);
+        if (!req) {
+          break;
+        }
+        ermia::transaction *t = req->transaction;
+        ALWAYS_ASSERT(t);
+        ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
         *req->rc = rc_t{RC_INVALID};
         ASSERT(req->oid_ptr);
-	switch (req->type) {
+        switch (req->type) {
           // Regardless the request is for record read or update, we only need to get
           // the OID, i.e., a Get operation on the index. For updating OID, we need
           // to use the Put interface
@@ -96,7 +124,32 @@ void IndexThread::SerialHandler() {
           default:
             LOG(FATAL) << "Wrong request type";
         }
-        ++dequeueSize;
+
+        // issue the subsequent requests
+        for (int i = 1; i < offsets.size(); ++i){
+          Request *tmp_req = queue.GetRequestByPos(pos + offsets[i], false);
+          if (!tmp_req) {
+            break;
+          }
+          ermia::transaction *tmp_t = tmp_req->transaction;
+          ALWAYS_ASSERT(tmp_t);
+          ALWAYS_ASSERT(!((uint64_t)tmp_t & (1UL << 63)));  // make sure we got a ready transaction
+          ALWAYS_ASSERT(tmp_req->type != Request::kTypeInvalid);
+          ASSERT(tmp_req->oid_ptr);
+          *tmp_req->rc = rc_t{RC_INVALID};
+          switch (tmp_req->type) {
+            case Request::kTypeGet:{
+              *tmp_req->oid_ptr = *req->oid_ptr;
+              volatile_write(tmp_req->rc->_val, req->rc->_val);
+              }
+              break;
+            case Request::kTypeInsert:
+              volatile_write(tmp_req->rc->_val, RC_FALSE);
+              break;
+            default:
+              LOG(FATAL) << "Wrong request type";
+          }
+        }
       }
 
       for (int i = 0; i < dequeueSize; ++i){
