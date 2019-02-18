@@ -135,14 +135,11 @@ void IndexThread::SerialHandler() {
           *tmp_req->rc = rc_t{RC_INVALID};
           switch (tmp_req->type) {
             case Request::kTypeGet:
-              if (req->rc->_val == RC_TRUE) {
+              if (*req->oid_ptr) {
                 *tmp_req->oid_ptr = *req->oid_ptr;
                 volatile_write(tmp_req->rc->_val, RC_TRUE);
-              } else if (req->rc->_val == RC_FALSE) {
+              } else
                 volatile_write(tmp_req->rc->_val, RC_FALSE);
-              } else {
-                LOG(FATAL) << "Wrong return code: " << req->rc->_val;
-              }
               break;
             case Request::kTypeInsert:
               volatile_write(tmp_req->rc->_val, RC_FALSE);
