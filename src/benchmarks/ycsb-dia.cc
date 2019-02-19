@@ -174,10 +174,6 @@ class ycsb_dia_worker : public bench_worker {
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
-    // Barrier to ensure data is read in
-    int barrier = std::max(g_reps_per_tx, g_rmw_additional_reads) * ermia::config::worker_threads / 50;
-    usleep(barrier);
-
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
       tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
@@ -233,9 +229,6 @@ class ycsb_dia_worker : public bench_worker {
       values.push_back(&str(0));
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
-
-    // Barrier to ensure data is read in
-    usleep(barrier);
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
