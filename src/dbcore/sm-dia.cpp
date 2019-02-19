@@ -71,7 +71,8 @@ void IndexThread::SerialHandler() {
       coalesced_requests.clear();
       uint32_t pos = queue.getPos();
       int dequeueSize = 0;
-      // Requests coalescing
+
+      // Group requests by key
       for (int i = 0; i < kBatchSize; ++i) {
         Request *req = queue.GetRequestByPos(pos + i, false);
         if (!req) {
@@ -94,76 +95,86 @@ void IndexThread::SerialHandler() {
         ++dequeueSize;
       }
 
+      // Handle requests for each key
       for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
-        std::vector<int> offsets = iter->second;
-        // temporally store latest issued get's result
-        int issued_get_offset = -1;
-        ermia::OID issued_get_oid = 0;
-        rc_t issued_get_rc_t{RC_INVALID};
-        // temporally store latest issued insert's result
-        int issued_insert_offset = -1;
-        ermia::OID issued_insert_oid = 0;
-        rc_t issued_insert_rc_t{RC_INVALID};
+        std::vector<int> &offsets = iter->second;
 
+        // Must store results locally (instead of using the first request's rc
+        // and oid as they might get reused by the application (benchmark).
+        ermia::OID oid = 0;
+        rc_t rc = {RC_INVALID};
+
+        // Record if we have previously done an insert for the key. If we have
+        // insert_ok == true then that means subsequent reads will always succeed
+        // automatically. This can save us future calls into the index for reads.
+        //
+        // Note: here we don't deal with deletes which is handled
+        // by the upper layer version chain traversal ops done after index ops.
+        bool insert_ok = false;
+
+        // Handle each request for the same key - for the first one we issue a
+        // request, the latter ones will use the previous result; in case of the
+        // read-insert-read pattern, we issue the insert when we see it.
         for (int i = 0; i < offsets.size(); ++i) {
           Request *req = queue.GetRequestByPos(pos + offsets[i], true);
           ALWAYS_ASSERT(req);
-          ermia::transaction *t = req->transaction;
-          ALWAYS_ASSERT(t);
-          ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
           ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
           ASSERT(req->oid_ptr);
           *req->rc = rc_t{RC_INVALID};
+
           switch (req->type) {
             case Request::kTypeGet:
-              if ((issued_insert_offset > issued_get_offset) && (issued_insert_rc_t._val == RC_TRUE)) {
-              // The lastest issued request was a successful insert.
-                *req->oid_ptr = issued_insert_oid;
-                volatile_write(req->rc->_val, RC_TRUE);
+              if (insert_ok || rc._val != RC_INVALID) {
+                // Two cases here that allow us to fill in the results directly:
+                // 1. Previously inserted the key
+                // 2. Previously read this key
+                ASSERT((!insert_ok && rc._val != RC_INVALID) || (insert_ok && oid > 0 && rc._val == RC_TRUE));
               } else {
-              // No insert request has succeed before.
-                if (issued_get_offset == -1) {
-                // No get request has been inssued before.
-                  if (static_cast<ConcurrentMasstreeIndex *>(req->index)->Try_GetOID(*req->key, *req->rc, req->transaction->GetXIDContext(), *req->oid_ptr)) {
-                    issued_get_oid = *req->oid_ptr;
-                    volatile_write(req->rc->_val, RC_TRUE);
-                    issued_get_rc_t._val = RC_TRUE;
-                  } else {
-                    volatile_write(req->rc->_val, RC_FALSE);
-                    issued_get_rc_t._val = RC_FALSE;
-                  }
-                  issued_get_offset = i;
-                } else if (issued_get_rc_t._val == RC_TRUE) {
-                // A get request succeed before.  
-                  *req->oid_ptr = issued_get_oid;
-                  volatile_write(req->rc->_val, RC_TRUE);
-                } else {
-                // A get request failed before.
-                  volatile_write(req->rc->_val, RC_FALSE);
-                }
+                // Haven't done any insert or read
+                req->index->GetOID(*req->key, rc, req->transaction->GetXIDContext(), oid);
+                // Now subsequent reads (before any insert) will use the result
+                // here, and if there is an latter insert it will automatically
+                // fail
               }
+
+              // Fill in results
+              ALWAYS_ASSERT(rc._val != RC_INVALID);
+              volatile_write(*req->oid_ptr, oid);
+              volatile_write(req->rc->_val, rc._val);
               break;
+
             case Request::kTypeInsert:
-              if ((issued_insert_rc_t._val == RC_TRUE) || (issued_get_rc_t._val == RC_TRUE)) {
-              // A get request or an insert request has succeed before.
-              // FIXME(yongjunh): in which situation should we retry insert request?
-                volatile_write(req->rc->_val, RC_FALSE); 
+              if (insert_ok) {
+                volatile_write(req->rc->_val, RC_FALSE);
+                ASSERT(rc._val == RC_TRUE);
               } else {
-                if (req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr)) {
-                  issued_insert_oid = *req->oid_ptr;
-                  volatile_write(req->rc->_val, RC_TRUE);
-                  issued_insert_rc_t._val = RC_TRUE;
-                } else {
+                // Either we haven't done any insert or a previous insert failed.
+                if (rc._val == RC_TRUE) {
+                  // No insert before and previous reads succeeded: fail this
+                  // insert
                   volatile_write(req->rc->_val, RC_FALSE);
-                  issued_insert_rc_t._val = RC_FALSE;
+                } else {
+                  // Previous insert failed or previous reads returned false
+                  insert_ok = req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr);
+                  // Now if insert_ok becomes true, then subsequent reads will
+                  // also succeed; otherwise, subsequent reads will automatically
+                  // fail without having to issue new read requests (rc will be
+                  // RC_INVALID).
+                  if (insert_ok) {
+                    rc._val = RC_TRUE;
+                    oid = *req->oid_ptr;  // Store the OID for future reads
+                  } else {
+                    rc._val = RC_FALSE;
+                  }
+                  volatile_write(req->rc->_val, rc._val);
                 }
-                issued_insert_offset = i;
               }
               break;
             default:
               LOG(FATAL) << "Wrong request type";
           }
         }
+        offsets.clear();
       }
 
       for (int i = 0; i < dequeueSize; ++i) {

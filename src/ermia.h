@@ -216,11 +216,6 @@ public:
                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     bool found = masstree_.search(key, out_oid, xc, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
-  }  
-
-  inline bool Try_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) {
-    return masstree_.search(key, out_oid, xc, out_sinfo);
   }
 
   // a coroutine variant of getOID
