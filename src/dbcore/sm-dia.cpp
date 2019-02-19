@@ -96,53 +96,69 @@ void IndexThread::SerialHandler() {
 
       for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
         std::vector<int> offsets = iter->second;
-        // issue the first request
-        Request *req = queue.GetRequestByPos(pos + offsets[0], true);
-        ALWAYS_ASSERT(req);
-        ermia::transaction *t = req->transaction;
-        ALWAYS_ASSERT(t);
-        ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
-        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
-        *req->rc = rc_t{RC_INVALID};
-        ASSERT(req->oid_ptr);
-        switch (req->type) {
-          // Regardless the request is for record read or update, we only need to get
-          // the OID, i.e., a Get operation on the index. For updating OID, we need
-          // to use the Put interface
-          case Request::kTypeGet:
-            req->index->GetOID(*req->key, *req->rc, req->transaction->GetXIDContext(), *req->oid_ptr);
-            break;
-          case Request::kTypeInsert:
-            if (req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr)) {
-              volatile_write(req->rc->_val, RC_TRUE);
-            } else {
-              volatile_write(req->rc->_val, RC_FALSE);
-            }
-            break;
-          default:
-            LOG(FATAL) << "Wrong request type";
-        }
+        // temporally store latest issued get's result
+        int issued_get_offset = -1;
+        ermia::OID issued_get_oid = 0;
+        rc_t issued_get_rc_t{RC_INVALID};
+        // temporally store latest issued insert's result
+        int issued_insert_offset = -1;
+        ermia::OID issued_insert_oid = 0;
+        rc_t issued_insert_rc_t{RC_INVALID};
 
-        // issue the subsequent requests
-        for (int i = 1; i < offsets.size(); ++i) {
-          Request *tmp_req = queue.GetRequestByPos(pos + offsets[i], true);
-          ALWAYS_ASSERT(tmp_req);
-          ermia::transaction *tmp_t = tmp_req->transaction;
-          ALWAYS_ASSERT(tmp_t);
-          ALWAYS_ASSERT(!((uint64_t)tmp_t & (1UL << 63)));  // make sure we got a ready transaction
-          ALWAYS_ASSERT(tmp_req->type != Request::kTypeInvalid);
-          ASSERT(tmp_req->oid_ptr);
-          *tmp_req->rc = rc_t{RC_INVALID};
-          switch (tmp_req->type) {
+        for (int i = 0; i < offsets.size(); ++i) {
+          Request *req = queue.GetRequestByPos(pos + offsets[i], true);
+          ALWAYS_ASSERT(req);
+          ermia::transaction *t = req->transaction;
+          ALWAYS_ASSERT(t);
+          ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+          ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+          ASSERT(req->oid_ptr);
+          *req->rc = rc_t{RC_INVALID};
+          switch (req->type) {
             case Request::kTypeGet:
-              if (*req->oid_ptr) {
-                *tmp_req->oid_ptr = *req->oid_ptr;
-                volatile_write(tmp_req->rc->_val, RC_TRUE);
-              } else
-                volatile_write(tmp_req->rc->_val, RC_FALSE);
+              if ((issued_insert_offset > issued_get_offset) && (issued_insert_rc_t._val == RC_TRUE)) {
+              // The lastest issued request was a successful insert.
+                *req->oid_ptr = issued_insert_oid;
+                volatile_write(req->rc->_val, RC_TRUE);
+              } else {
+              // No insert request has succeed before.
+                if (issued_get_offset == -1) {
+                // No get request has been inssued before.
+                  if (static_cast<ConcurrentMasstreeIndex *>(req->index)->Try_GetOID(*req->key, *req->rc, req->transaction->GetXIDContext(), *req->oid_ptr)) {
+                    issued_get_oid = *req->oid_ptr;
+                    volatile_write(req->rc->_val, RC_TRUE);
+                    issued_get_rc_t._val = RC_TRUE;
+                  } else {
+                    volatile_write(req->rc->_val, RC_FALSE);
+                    issued_get_rc_t._val = RC_FALSE;
+                  }
+                  issued_get_offset = i;
+                } else if (issued_get_rc_t._val == RC_TRUE) {
+                // A get request succeed before.  
+                  *req->oid_ptr = issued_get_oid;
+                  volatile_write(req->rc->_val, RC_TRUE);
+                } else {
+                // A get request failed before.
+                  volatile_write(req->rc->_val, RC_FALSE);
+                }
+              }
               break;
             case Request::kTypeInsert:
-              volatile_write(tmp_req->rc->_val, RC_FALSE);
+              if ((issued_insert_rc_t._val == RC_TRUE) || (issued_get_rc_t._val == RC_TRUE)) {
+              // A get request or an insert request has succeed before.
+              // FIXME(yongjunh): in which situation should we retry insert request?
+                volatile_write(req->rc->_val, RC_FALSE); 
+              } else {
+                if (req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr)) {
+                  issued_insert_oid = *req->oid_ptr;
+                  volatile_write(req->rc->_val, RC_TRUE);
+                  issued_insert_rc_t._val = RC_TRUE;
+                } else {
+                  volatile_write(req->rc->_val, RC_FALSE);
+                  issued_insert_rc_t._val = RC_FALSE;
+                }
+                issued_insert_offset = i;
+              }
               break;
             default:
               LOG(FATAL) << "Wrong request type";
