@@ -2,6 +2,7 @@
 #include "sm-dia.h"
 #include "sm-coroutine.h"
 #include <vector>
+#include <tuple>
 #include <map>
 
 namespace ermia {
@@ -174,7 +175,6 @@ void IndexThread::SerialHandler() {
               LOG(FATAL) << "Wrong request type";
           }
         }
-        offsets.clear();
       }
 
       for (int i = 0; i < dequeueSize; ++i) {
@@ -213,7 +213,97 @@ void IndexThread::SerialHandler() {
 
 void IndexThread::CoroutineHandler() {
   if (ermia::config::dia_req_coalesce) {
-    LOG(FATAL) << "coalesced requests not implemented in coroutine yet";
+    while (true) {
+      thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
+      coroutines.clear();
+      thread_local std::map<uint64_t, std::vector<std::tuple<int, rc_t>>> coalesced_requests;
+      coalesced_requests.clear();
+      uint32_t pos = queue.getPos();
+      int dequeueSize = 0;
+
+      rc_t rcs[kBatchSize];
+      for (int i = 0; i < kBatchSize; ++i){
+        Request *req = queue.GetRequestByPos(pos + i, false);
+        if (!req) {
+          break;
+        }
+        ermia::transaction *t = req->transaction;
+        ALWAYS_ASSERT(t);
+        ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+        *req->rc = rc_t{RC_INVALID};
+        ASSERT(req->oid_ptr);
+/*
+        uint64_t current_key = *((uint64_t*)(*req->key).data());
+        int current_size = coalesced_requests.count(current_key);
+        if (current_size) {
+          coalesced_requests[current_key].push_back(std::make_tuple(i, rc_t{RC_INVALID}));
+        } else {
+          std::vector<std::tuple<int, rc_t>> offsets;
+          offsets.push_back(std::make_tuple(i, rc_t{RC_INVALID}));
+          coalesced_requests.insert(std::make_pair(current_key, offsets));
+        }
+*/
+        rcs[i] = {RC_INVALID};
+        switch (req->type) {
+          // Regardless the request is for record read or update, we only need to get
+          // the OID, i.e., a Get operation on the index. For updating OID, we need
+          // to use the Put interface
+          case Request::kTypeGet:
+            //coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, *req->rc, t->GetXIDContext(), *req->oid_ptr)));
+            coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, rcs[i], 
+                                 t->GetXIDContext(), *req->oid_ptr)));
+            break;
+          case Request::kTypeInsert:
+            //coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, *req->rc, *req->oid_ptr)));
+            coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, rcs[i], *req->oid_ptr)));
+            break;
+          default:
+            LOG(FATAL) << "Wrong request type";
+        }
+        ++dequeueSize;
+      }
+
+      for (auto &c : coroutines) {
+        while (c->advance()) {}
+        delete c;
+      }
+
+     for (int i = 0; i < dequeueSize; ++i){
+       Request *req = queue.GetRequestByPos(pos + i, true);
+       switch (req->type) {
+         case Request::kTypeGet:
+           volatile_write(req->rc->_val, rcs[i]._val);
+           break;
+         case Request::kTypeInsert:
+           volatile_write(req->rc->_val, rcs[i]._val);
+           break;
+         default:
+           LOG(FATAL) << "Wrong request type";
+       }
+     }
+/*
+      for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
+        std::vector<std::tuple<int, rc_t>> &offsets = iter->second;
+        for (int i = 0; i < offsets.size(); ++i){
+          Request *req = queue.GetRequestByPos(pos + std::get<0>(offsets[i]), true);
+          switch (req->type) {
+            case Request::kTypeGet:
+              std::cout << "size: " << dequeueSize << std::endl;
+              volatile_write(req->rc->_val, std::get<1>(offsets[i])._val);
+              break;
+            case Request::kTypeInsert:
+              volatile_write(req->rc->_val, std::get<1>(offsets[i])._val);
+              break;
+            default:
+              LOG(FATAL) << "Wrong request type";
+          }
+        }
+      }
+*/
+      for (int i = 0; i < dequeueSize; ++i)
+        queue.Dequeue();
+    }
   } else {
     while (true) {
       thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
