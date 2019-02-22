@@ -166,6 +166,7 @@ public:
 private:
   void CoroutineHandler();
   void SerialHandler();
+  uint32_t CoalesceRequests(std::unordered_map<uint64_t, std::vector<int> > &request_map);
 };
 
 }  // namespace dia
