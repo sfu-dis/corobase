@@ -148,10 +148,16 @@ private:
 
 public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {
-    if (config::dia_req_handler == "coroutine") {
-      request_handler = std::bind(&IndexThread::CoroutineHandler, this);
-    } else if (config::dia_req_handler == "serial") {
-      request_handler = std::bind(&IndexThread::SerialHandler, this);
+    if (config::dia_req_handler == "serial") {
+      if (ermia::config::dia_req_coalesce)
+        request_handler = std::bind(&IndexThread::SerialCoalesceHandler, this);
+      else
+        request_handler = std::bind(&IndexThread::SerialHandler, this);
+    } else if (config::dia_req_handler == "coroutine") {
+      if (ermia::config::dia_req_coalesce)
+        request_handler = std::bind(&IndexThread::CoroutineCoalesceHandler, this);
+      else
+        request_handler = std::bind(&IndexThread::CoroutineHandler, this);
     } else {
       LOG(FATAL) << "Wrong handler type: " << config::dia_req_handler;
     }
@@ -164,8 +170,10 @@ public:
   void MyWork(char *);
 
 private:
-  void CoroutineHandler();
   void SerialHandler();
+  void SerialCoalesceHandler();
+  void CoroutineHandler();
+  void CoroutineCoalesceHandler();
   uint32_t CoalesceRequests(std::unordered_map<uint64_t, std::vector<int> > &request_map);
 };
 

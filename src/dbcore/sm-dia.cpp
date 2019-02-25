@@ -95,298 +95,298 @@ uint32_t IndexThread::CoalesceRequests(std::unordered_map<uint64_t, std::vector<
 }
 
 void IndexThread::SerialHandler() {
-  if (ermia::config::dia_req_coalesce) {
-    while (true) {
-      thread_local std::unordered_map<uint64_t, std::vector<int> > coalesced_requests;
-      coalesced_requests.clear();
-      int dequeue_size = CoalesceRequests(coalesced_requests);
+  while (true) {
+    Request &req = queue.GetNextRequest();
+    ermia::transaction *t = volatile_read(req.transaction);
+    ALWAYS_ASSERT(t);
+    ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
+    *req.rc = rc_t{RC_INVALID};
+    ASSERT(req.oid_ptr);
+    switch (req.type) {
+      // Regardless the request is for record read or update, we only need to get
+      // the OID, i.e., a Get operation on the index. For updating OID, we need
+      // to use the Put interface
+      case Request::kTypeGet:
+        req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
+        break;
+      case Request::kTypeInsert:
+        if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
+          volatile_write(req.rc->_val, RC_TRUE);
+        } else {
+          volatile_write(req.rc->_val, RC_FALSE);
+        }
+        break;
+      default:
+        LOG(FATAL) << "Wrong request type";
+    }
+    queue.Dequeue();
+  }
+}
 
-      // Handle requests for each key
-      for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
-        std::vector<int> &offsets = iter->second;
+void IndexThread::SerialCoalesceHandler() {
+  while (true) {
+    thread_local std::unordered_map<uint64_t, std::vector<int> > coalesced_requests;
+    coalesced_requests.clear();
+    int dequeue_size = CoalesceRequests(coalesced_requests);
 
-        // Must store results locally (instead of using the first request's rc
-        // and oid as they might get reused by the application (benchmark).
-        ermia::OID oid = 0;
-        rc_t rc = {RC_INVALID};
+    // Handle requests for each key
+    for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
+      std::vector<int> &offsets = iter->second;
 
-        // Record if we have previously done an insert for the key. If we have
-        // insert_ok == true then that means subsequent reads will always succeed
-        // automatically. This can save us future calls into the index for reads.
-        //
-        // Note: here we don't deal with deletes which is handled
-        // by the upper layer version chain traversal ops done after index ops.
-        bool insert_ok = false;
+      // Must store results locally (instead of using the first request's rc
+      // and oid as they might get reused by the application (benchmark).
+      ermia::OID oid = 0;
+      rc_t rc = {RC_INVALID};
 
-        // Handle each request for the same key - for the first one we issue a
-        // request, the latter ones will use the previous result; in case of the
-        // read-insert-read pattern, we issue the insert when we see it.
-        uint32_t pos = queue.getPos();
-        for (int i = 0; i < offsets.size(); ++i) {
-          Request *req = queue.GetRequestByPos(pos + offsets[i], true);
-          ALWAYS_ASSERT(req);
-          ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
-          ASSERT(req->oid_ptr);
-          *req->rc = rc_t{RC_INVALID};
+      // Record if we have previously done an insert for the key. If we have
+      // insert_ok == true then that means subsequent reads will always succeed
+      // automatically. This can save us future calls into the index for reads.
+      //
+      // Note: here we don't deal with deletes which is handled
+      // by the upper layer version chain traversal ops done after index ops.
+      bool insert_ok = false;
 
-          switch (req->type) {
-            case Request::kTypeGet:
-              if (insert_ok || rc._val != RC_INVALID) {
-                // Two cases here that allow us to fill in the results directly:
-                // 1. Previously inserted the key
-                // 2. Previously read this key
-                ASSERT((!insert_ok && rc._val != RC_INVALID) || (insert_ok && oid > 0 && rc._val == RC_TRUE));
-              } else {
-                // Haven't done any insert or read
-                req->index->GetOID(*req->key, rc, req->transaction->GetXIDContext(), oid);
-                // Now subsequent reads (before any insert) will use the result
-                // here, and if there is an latter insert it will automatically
-                // fail
-              }
+      // Handle each request for the same key - for the first one we issue a
+      // request, the latter ones will use the previous result; in case of the
+      // read-insert-read pattern, we issue the insert when we see it.
+      uint32_t pos = queue.getPos();
+      for (int i = 0; i < offsets.size(); ++i) {
+        Request *req = queue.GetRequestByPos(pos + offsets[i], true);
+        ALWAYS_ASSERT(req);
+        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+        ASSERT(req->oid_ptr);
+        *req->rc = rc_t{RC_INVALID};
 
-              // Fill in results
-              ALWAYS_ASSERT(rc._val != RC_INVALID);
-              volatile_write(*req->oid_ptr, oid);
-              volatile_write(req->rc->_val, rc._val);
-              break;
+        switch (req->type) {
+          case Request::kTypeGet:
+            if (insert_ok || rc._val != RC_INVALID) {
+              // Two cases here that allow us to fill in the results directly:
+              // 1. Previously inserted the key
+              // 2. Previously read this key
+              ASSERT((!insert_ok && rc._val != RC_INVALID) || (insert_ok && oid > 0 && rc._val == RC_TRUE));
+            } else {
+              // Haven't done any insert or read
+              req->index->GetOID(*req->key, rc, req->transaction->GetXIDContext(), oid);
+              // Now subsequent reads (before any insert) will use the result
+              // here, and if there is an latter insert it will automatically
+              // fail
+            }
 
-            case Request::kTypeInsert:
-              if (insert_ok) {
+            // Fill in results
+            ALWAYS_ASSERT(rc._val != RC_INVALID);
+            volatile_write(*req->oid_ptr, oid);
+            volatile_write(req->rc->_val, rc._val);
+            break;
+
+          case Request::kTypeInsert:
+            if (insert_ok) {
+              volatile_write(req->rc->_val, RC_FALSE);
+              ASSERT(rc._val == RC_TRUE);
+            } else {
+              // Either we haven't done any insert or a previous insert failed.
+              if (rc._val == RC_TRUE) {
+                // No insert before and previous reads succeeded: fail this
+                // insert
                 volatile_write(req->rc->_val, RC_FALSE);
-                ASSERT(rc._val == RC_TRUE);
               } else {
-                // Either we haven't done any insert or a previous insert failed.
-                if (rc._val == RC_TRUE) {
-                  // No insert before and previous reads succeeded: fail this
-                  // insert
-                  volatile_write(req->rc->_val, RC_FALSE);
+                // Previous insert failed or previous reads returned false
+                insert_ok = req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr);
+                // Now if insert_ok becomes true, then subsequent reads will
+                // also succeed; otherwise, subsequent reads will automatically
+                // fail without having to issue new read requests (rc will be
+                // RC_INVALID).
+                if (insert_ok) {
+                  rc._val = RC_TRUE;
+                  oid = *req->oid_ptr;  // Store the OID for future reads
                 } else {
-                  // Previous insert failed or previous reads returned false
-                  insert_ok = req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr);
-                  // Now if insert_ok becomes true, then subsequent reads will
-                  // also succeed; otherwise, subsequent reads will automatically
-                  // fail without having to issue new read requests (rc will be
-                  // RC_INVALID).
-                  if (insert_ok) {
-                    rc._val = RC_TRUE;
-                    oid = *req->oid_ptr;  // Store the OID for future reads
-                  } else {
-                    rc._val = RC_FALSE;
-                  }
-                  volatile_write(req->rc->_val, rc._val);
+                  rc._val = RC_FALSE;
                 }
+                volatile_write(req->rc->_val, rc._val);
               }
-              break;
-            default:
-              LOG(FATAL) << "Wrong request type";
-          }
+            }
+            break;
+          default:
+            LOG(FATAL) << "Wrong request type";
         }
       }
-
-      for (int i = 0; i < dequeue_size; ++i) {
-        queue.Dequeue();
-      }
     }
-  } else {
-    while (true) {
-      Request &req = queue.GetNextRequest();
-      ermia::transaction *t = volatile_read(req.transaction);
-      ALWAYS_ASSERT(t);
-      ALWAYS_ASSERT(req.type != Request::kTypeInvalid);
-      *req.rc = rc_t{RC_INVALID};
-      ASSERT(req.oid_ptr);
-      switch (req.type) {
-        // Regardless the request is for record read or update, we only need to get
-        // the OID, i.e., a Get operation on the index. For updating OID, we need
-        // to use the Put interface
-        case Request::kTypeGet:
-          req.index->GetOID(*req.key, *req.rc, req.transaction->GetXIDContext(), *req.oid_ptr);
-          break;
-        case Request::kTypeInsert:
-          if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
-            volatile_write(req.rc->_val, RC_TRUE);
-          } else {
-            volatile_write(req.rc->_val, RC_FALSE);
-          }
-          break;
-        default:
-          LOG(FATAL) << "Wrong request type";
-      }
+
+    for (int i = 0; i < dequeue_size; ++i) {
       queue.Dequeue();
     }
   }
 }
 
 void IndexThread::CoroutineHandler() {
-  if (ermia::config::dia_req_coalesce) {
-    while (true) {
-      thread_local std::unordered_map<uint64_t, std::vector<int>> coalesced_requests;
-      coalesced_requests.clear();
-      uint32_t dequeue_size = CoalesceRequests(coalesced_requests);
-
-      // Must store results locally (instead of using the first request's rc and
-      // output oid) as they might get reused by the application (benchmark).
-      thread_local rc_t tls_rcs[kBatchSize];
-      memset(tls_rcs, 0, sizeof(rc_t) * kBatchSize); // #define RC_INVALID 0x0
-      thread_local OID tls_oids[kBatchSize];
-      memset(tls_oids, 0, sizeof(OID) * kBatchSize);
-
-      // Push the first request of each key to the scheduler of coroutines
-      uint32_t pos = queue.getPos();
-      thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
-      coroutines.clear();
-
-      uint32_t i = 0;
-      for (auto &r : coalesced_requests) {
-        Request *req = queue.GetRequestByPos(pos + r.second[0], false);
-        ALWAYS_ASSERT(req);
-        ermia::transaction *t = req->transaction;
-        ALWAYS_ASSERT(t);
-        ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
-        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
-
-        switch (req->type) {
-          case Request::kTypeGet:
-            coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, tls_rcs[i], t->GetXIDContext(), tls_oids[i])));
-            break;
-          case Request::kTypeInsert:
-            // Need to use the request's real OID
-            coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, tls_rcs[i], *req->oid_ptr)));
-            break;
-          default:
-            LOG(FATAL) << "Wrong request type";
-        }
-        ++i;
+  while (true) {
+    thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
+    coroutines.clear();
+    uint32_t pos = queue.getPos();
+    for (int i = 0; i < kBatchSize; ++i){
+      Request *req = queue.GetRequestByPos(pos + i, false);
+      if (!req) {
+        break;
       }
+      ermia::transaction *t = req->transaction;
+      ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+      ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+      *req->rc = rc_t{RC_INVALID};
+      ASSERT(req->oid_ptr);
 
-      // Issued the requests in the scheduler
-      uint32_t finished = 0;
-      while (finished < coroutines.size()) {
-        for (auto &c : coroutines) {
-          if (c && !c->advance()) {
-            delete c;
-            c = nullptr;
-            ++finished;
-          }
-        }
-      }
-
-      // Done with index accesses, now fill in the results
-      uint32_t r = 0;
-      for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
-        std::vector<int> &offsets = iter->second;
-
-        // Handle the first request first
-        Request *req = queue.GetRequestByPos(pos + offsets[0], true);
-        ALWAYS_ASSERT(req);
-        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
-        ASSERT(req->oid_ptr);
-
-        bool insert_ok = false;
-        if (req->type == Request::kTypeGet) {
-          *req->oid_ptr = tls_oids[r];
-        } else {
-          ALWAYS_ASSERT(req->type == Request::kTypeInsert);
-          insert_ok = (tls_rcs[r]._val == RC_TRUE);
-        }
-        volatile_write(req->rc->_val, tls_rcs[r]._val);
-
-        // Handle the rest requests
-        for (int i = 1; i < offsets.size(); ++i){
-          req = queue.GetRequestByPos(pos + offsets[i]);
-          switch (req->type) {
-            case Request::kTypeGet:
-              // If we have already a successful insert, rc would be true ->
-              // fill in rc directly.
-              // If we have already a successful read, rc would be true -> fill
-              // in rc directly.
-              ALWAYS_ASSERT(tls_rcs[r]._val != RC_INVALID);
-              volatile_write(*req->oid_ptr, tls_oids[r]);
-              volatile_write(req->rc->_val, tls_rcs[r]._val);
-              break;
-            case Request::kTypeInsert:
-              if (insert_ok) {
-                // Already inserted, fail this request
-                volatile_write(req->rc->_val, RC_FALSE);
-              } else {
-                // Either we haven't done any insert or a previous insert failed.
-                if (tls_rcs[i]._val == RC_TRUE) {
-                  // No insert before and previous reads succeeded: fail this
-                  // insert
-                  volatile_write(req->rc->_val, RC_FALSE);
-                } else {
-                  // Previous insert failed or previous reads returned false, do
-                  // it again (serially)
-                  insert_ok = req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr);
-                  // Now if insert_ok becomes true, then subsequent reads will
-                  // also succeed; otherwise, subsequent reads will automatically
-                  // fail without having to issue new read requests (rc will be
-                  // RC_INVALID).
-                  if (insert_ok) {
-                    tls_rcs[r]._val = RC_TRUE;
-                    tls_oids[r] = *req->oid_ptr;  // Store the OID for future reads
-                  }
-                  volatile_write(req->rc->_val, tls_rcs[r]._val);
-                }
-              }
-              break;
-            default:
-              LOG(FATAL) << "Wrong request type";
-          }
-        }
-        ++r;
-      }
-
-      for (int i = 0; i < dequeue_size; ++i) {
-        queue.Dequeue();
+      switch (req->type) {
+        // Regardless the request is for record read or update, we only need to get
+        // the OID, i.e., a Get operation on the index. For updating OID, we need
+        // to use the Put interface
+        case Request::kTypeGet:
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, *req->rc, t->GetXIDContext(), *req->oid_ptr)));
+          break;
+        case Request::kTypeInsert:
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, *req->rc, *req->oid_ptr)));
+          break;
+        default:
+          LOG(FATAL) << "Wrong request type";
       }
     }
-  } else {
-    while (true) {
-      thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
-      coroutines.clear();
-      uint32_t pos = queue.getPos();
-      for (int i = 0; i < kBatchSize; ++i){
-        Request *req = queue.GetRequestByPos(pos + i, false);
-        if (!req) {
-          break;
-        }
-        ermia::transaction *t = req->transaction;
-        ALWAYS_ASSERT(t);
-        ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
-        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
-        *req->rc = rc_t{RC_INVALID};
-        ASSERT(req->oid_ptr);
 
+    int dequeueSize = coroutines.size();
+    while (coroutines.size()){
+      for (auto it = coroutines.begin(); it != coroutines.end();) {
+        if ((*it)->advance()){
+          ++it;
+        }else{
+          delete (*it);
+          it = coroutines.erase(it);
+        }
+      }
+    }
+
+    for (int i = 0; i < dequeueSize; ++i)
+      queue.Dequeue();
+  }
+}
+
+void IndexThread::CoroutineCoalesceHandler() {
+  while (true) {
+    thread_local std::unordered_map<uint64_t, std::vector<int>> coalesced_requests;
+    coalesced_requests.clear();
+    uint32_t dequeue_size = CoalesceRequests(coalesced_requests);
+
+    // Must store results locally (instead of using the first request's rc and
+    // output oid) as they might get reused by the application (benchmark).
+    thread_local rc_t tls_rcs[kBatchSize];
+    memset(tls_rcs, 0, sizeof(rc_t) * kBatchSize); // #define RC_INVALID 0x0
+    thread_local OID tls_oids[kBatchSize];
+    memset(tls_oids, 0, sizeof(OID) * kBatchSize);
+
+    // Push the first request of each key to the scheduler of coroutines
+    uint32_t pos = queue.getPos();
+    thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
+    coroutines.clear();
+
+    uint32_t i = 0;
+    for (auto &r : coalesced_requests) {
+      Request *req = queue.GetRequestByPos(pos + r.second[0], false);
+      ALWAYS_ASSERT(req);
+      ermia::transaction *t = req->transaction;
+      ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+      ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+
+      switch (req->type) {
+        case Request::kTypeGet:
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, tls_rcs[i], t->GetXIDContext(), tls_oids[i])));
+          break;
+        case Request::kTypeInsert:
+          // Need to use the request's real OID
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, tls_rcs[i], *req->oid_ptr)));
+          break;
+        default:
+          LOG(FATAL) << "Wrong request type";
+      }
+      ++i;
+    }
+
+    // Issued the requests in the scheduler
+    uint32_t finished = 0;
+    while (finished < coroutines.size()) {
+      for (auto &c : coroutines) {
+        if (c && !c->advance()) {
+          delete c;
+          c = nullptr;
+          ++finished;
+        }
+      }
+    }
+
+    // Done with index accesses, now fill in the results
+    uint32_t r = 0;
+    for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
+      std::vector<int> &offsets = iter->second;
+
+      // Handle the first request first
+      Request *req = queue.GetRequestByPos(pos + offsets[0], true);
+      ALWAYS_ASSERT(req);
+      ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+      ASSERT(req->oid_ptr);
+
+      bool insert_ok = false;
+      if (req->type == Request::kTypeGet) {
+        *req->oid_ptr = tls_oids[r];
+      } else {
+        ALWAYS_ASSERT(req->type == Request::kTypeInsert);
+        insert_ok = (tls_rcs[r]._val == RC_TRUE);
+      }
+      volatile_write(req->rc->_val, tls_rcs[r]._val);
+
+      // Handle the rest requests
+      for (int i = 1; i < offsets.size(); ++i){
+        req = queue.GetRequestByPos(pos + offsets[i]);
         switch (req->type) {
-          // Regardless the request is for record read or update, we only need to get
-          // the OID, i.e., a Get operation on the index. For updating OID, we need
-          // to use the Put interface
           case Request::kTypeGet:
-            coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, *req->rc, t->GetXIDContext(), *req->oid_ptr)));
+            // If we have already a successful insert, rc would be true ->
+            // fill in rc directly.
+            // If we have already a successful read, rc would be true -> fill
+            // in rc directly.
+            ALWAYS_ASSERT(tls_rcs[r]._val != RC_INVALID);
+            volatile_write(*req->oid_ptr, tls_oids[r]);
+            volatile_write(req->rc->_val, tls_rcs[r]._val);
             break;
           case Request::kTypeInsert:
-            coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, *req->rc, *req->oid_ptr)));
+            if (insert_ok) {
+              // Already inserted, fail this request
+              volatile_write(req->rc->_val, RC_FALSE);
+            } else {
+              // Either we haven't done any insert or a previous insert failed.
+              if (tls_rcs[i]._val == RC_TRUE) {
+                // No insert before and previous reads succeeded: fail this
+                // insert
+                volatile_write(req->rc->_val, RC_FALSE);
+              } else {
+                // Previous insert failed or previous reads returned false, do
+                // it again (serially)
+                insert_ok = req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr);
+                // Now if insert_ok becomes true, then subsequent reads will
+                // also succeed; otherwise, subsequent reads will automatically
+                // fail without having to issue new read requests (rc will be
+                // RC_INVALID).
+                if (insert_ok) {
+                  tls_rcs[r]._val = RC_TRUE;
+                  tls_oids[r] = *req->oid_ptr;  // Store the OID for future reads
+                }
+                volatile_write(req->rc->_val, tls_rcs[r]._val);
+              }
+            }
             break;
           default:
             LOG(FATAL) << "Wrong request type";
         }
       }
+      ++r;
+    }
 
-      int dequeueSize = coroutines.size();
-      while (coroutines.size()){
-        for (auto it = coroutines.begin(); it != coroutines.end();) {
-          if ((*it)->advance()){
-            ++it;
-          }else{
-            delete (*it);
-            it = coroutines.erase(it);
-          }
-        }
-      }
-
-      for (int i = 0; i < dequeueSize; ++i)
-        queue.Dequeue();
+    for (int i = 0; i < dequeue_size; ++i) {
+      queue.Dequeue();
     }
   }
 }
