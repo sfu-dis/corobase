@@ -194,7 +194,7 @@ void IndexThread::SerialCoalesceHandler() {
                 // Now if insert_ok becomes true, then subsequent reads will
                 // also succeed; otherwise, subsequent reads will automatically
                 // fail without having to issue new read requests (rc will be
-                // RC_INVALID).
+                // RC_FALSE).
                 if (insert_ok) {
                   rc._val = RC_TRUE;
                   oid = *req->oid_ptr;  // Store the OID for future reads
@@ -249,19 +249,19 @@ void IndexThread::CoroutineHandler() {
       }
     }
 
-    int dequeueSize = coroutines.size();
-    while (coroutines.size()){
-      for (auto it = coroutines.begin(); it != coroutines.end();) {
-        if ((*it)->advance()){
-          ++it;
-        }else{
-          delete (*it);
-          it = coroutines.erase(it);
+    // Issued the requests in the scheduler
+    uint32_t finished = 0;
+    while (finished < coroutines.size()) {
+      for (auto &c : coroutines) {
+        if (c && !c->advance()) {
+          delete c;
+          c = nullptr;
+          ++finished;
         }
       }
     }
 
-    for (int i = 0; i < dequeueSize; ++i)
+    for (int i = 0; i < finished; ++i)
       queue.Dequeue();
   }
 }
@@ -272,21 +272,18 @@ void IndexThread::CoroutineCoalesceHandler() {
     coalesced_requests.clear();
     uint32_t dequeue_size = CoalesceRequests(coalesced_requests);
 
-    // Must store results locally (instead of using the first request's rc and
-    // output oid) as they might get reused by the application (benchmark).
+    // Must store return codes locally (instead of using the first request's rc) 
+    // as they might get reused by the application (benchmark).
     thread_local rc_t tls_rcs[kBatchSize];
-    memset(tls_rcs, 0, sizeof(rc_t) * kBatchSize); // #define RC_INVALID 0x0
-    thread_local OID tls_oids[kBatchSize];
-    memset(tls_oids, 0, sizeof(OID) * kBatchSize);
 
     // Push the first request of each key to the scheduler of coroutines
     uint32_t pos = queue.getPos();
     thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
     coroutines.clear();
 
-    uint32_t i = 0;
+    uint32_t count = 0;
     for (auto &r : coalesced_requests) {
-      Request *req = queue.GetRequestByPos(pos + r.second[0], false);
+      Request *req = queue.GetRequestByPos(pos + r.second[0], true);
       ALWAYS_ASSERT(req);
       ermia::transaction *t = req->transaction;
       ALWAYS_ASSERT(t);
@@ -295,18 +292,19 @@ void IndexThread::CoroutineCoalesceHandler() {
 
       switch (req->type) {
         case Request::kTypeGet:
-          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, tls_rcs[i], t->GetXIDContext(), tls_oids[i])));
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_GetOID(*req->key, tls_rcs[count], t->GetXIDContext(), *req->oid_ptr)));
           break;
         case Request::kTypeInsert:
           // Need to use the request's real OID
-          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, tls_rcs[i], *req->oid_ptr)));
+          coroutines.push_back(new ermia::dia::generator<bool>(req->index->coro_InsertIfAbsent(t, *req->key, tls_rcs[count], *req->oid_ptr)));
           break;
         default:
           LOG(FATAL) << "Wrong request type";
       }
-      ++i;
+      ++count;
     }
 
+    memset(tls_rcs, 0, sizeof(rc_t) * count); // #define RC_INVALID 0x0
     // Issued the requests in the scheduler
     uint32_t finished = 0;
     while (finished < coroutines.size()) {
@@ -320,7 +318,7 @@ void IndexThread::CoroutineCoalesceHandler() {
     }
 
     // Done with index accesses, now fill in the results
-    uint32_t r = 0;
+    count = 0;
     for (auto iter = coalesced_requests.begin(); iter!= coalesced_requests.end(); ++iter) {
       std::vector<int> &offsets = iter->second;
 
@@ -330,14 +328,14 @@ void IndexThread::CoroutineCoalesceHandler() {
       ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
       ASSERT(req->oid_ptr);
 
+      ermia::OID oid = *req->oid_ptr;
       bool insert_ok = false;
-      if (req->type == Request::kTypeGet) {
-        *req->oid_ptr = tls_oids[r];
+      if (req->type == Request::kTypeInsert) {
+        insert_ok = (tls_rcs[count]._val == RC_TRUE);
       } else {
-        ALWAYS_ASSERT(req->type == Request::kTypeInsert);
-        insert_ok = (tls_rcs[r]._val == RC_TRUE);
+        ALWAYS_ASSERT(req->type == Request::kTypeGet);
       }
-      volatile_write(req->rc->_val, tls_rcs[r]._val);
+      volatile_write(req->rc->_val, tls_rcs[count]._val);
 
       // Handle the rest requests
       for (int i = 1; i < offsets.size(); ++i){
@@ -348,9 +346,9 @@ void IndexThread::CoroutineCoalesceHandler() {
             // fill in rc directly.
             // If we have already a successful read, rc would be true -> fill
             // in rc directly.
-            ALWAYS_ASSERT(tls_rcs[r]._val != RC_INVALID);
-            volatile_write(*req->oid_ptr, tls_oids[r]);
-            volatile_write(req->rc->_val, tls_rcs[r]._val);
+            ALWAYS_ASSERT(tls_rcs[count]._val != RC_INVALID);
+            volatile_write(*req->oid_ptr, oid);
+            volatile_write(req->rc->_val, tls_rcs[count]._val);
             break;
           case Request::kTypeInsert:
             if (insert_ok) {
@@ -369,12 +367,12 @@ void IndexThread::CoroutineCoalesceHandler() {
                 // Now if insert_ok becomes true, then subsequent reads will
                 // also succeed; otherwise, subsequent reads will automatically
                 // fail without having to issue new read requests (rc will be
-                // RC_INVALID).
+                // RC_FALSE).
                 if (insert_ok) {
-                  tls_rcs[r]._val = RC_TRUE;
-                  tls_oids[r] = *req->oid_ptr;  // Store the OID for future reads
+                  tls_rcs[count]._val = RC_TRUE;
+                  oid = *req->oid_ptr;  // Store the OID for future reads
                 }
-                volatile_write(req->rc->_val, tls_rcs[r]._val);
+                volatile_write(req->rc->_val, tls_rcs[count]._val);
               }
             }
             break;
@@ -382,7 +380,7 @@ void IndexThread::CoroutineCoalesceHandler() {
             LOG(FATAL) << "Wrong request type";
         }
       }
-      ++r;
+      ++count;
     }
 
     for (int i = 0; i < dequeue_size; ++i) {
