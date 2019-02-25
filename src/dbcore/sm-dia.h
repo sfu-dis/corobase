@@ -138,6 +138,15 @@ public:
     volatile_write(req.transaction, nullptr);
     volatile_write(start, (pos + 1) % kMaxSize);
   }
+
+  inline void MultiDequeue(uint32_t dequeue_size) {
+    uint32_t pos = volatile_read(start);
+    for (int i = 0; i < dequeue_size; ++i) {
+      Request &req = requests[(pos + i) % kMaxSize];
+      volatile_write(req.transaction, nullptr);
+    }
+    volatile_write(start, (pos + dequeue_size) % kMaxSize);
+  }
 };
 
 class IndexThread : public ermia::thread::Runner {

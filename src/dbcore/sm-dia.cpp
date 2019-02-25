@@ -211,9 +211,7 @@ void IndexThread::SerialCoalesceHandler() {
       }
     }
 
-    for (int i = 0; i < dequeue_size; ++i) {
-      queue.Dequeue();
-    }
+    queue.MultiDequeue(dequeue_size);
   }
 }
 
@@ -261,8 +259,7 @@ void IndexThread::CoroutineHandler() {
       }
     }
 
-    for (int i = 0; i < finished; ++i)
-      queue.Dequeue();
+    queue.MultiDequeue(finished);
   }
 }
 
@@ -383,9 +380,7 @@ void IndexThread::CoroutineCoalesceHandler() {
       ++count;
     }
 
-    for (int i = 0; i < dequeue_size; ++i) {
-      queue.Dequeue();
-    }
+    queue.MultiDequeue(dequeue_size);
   }
 }
 
