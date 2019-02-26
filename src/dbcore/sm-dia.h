@@ -153,18 +153,18 @@ class IndexThread : public ermia::thread::Runner {
 private:
   RequestQueue queue;
   std::function<void()> request_handler;
-  static const uint32_t kBatchSize = 20;
+  static const uint32_t kBatchSize = 60;
 
 public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {
     if (config::dia_req_handler == "serial") {
       if (ermia::config::dia_req_coalesce)
-        request_handler = std::bind(&IndexThread::SerialCoalesceHandler, this);
+        request_handler = std::bind(&IndexThread::OnepassSerialCoalesceHandler, this);
       else
         request_handler = std::bind(&IndexThread::SerialHandler, this);
     } else if (config::dia_req_handler == "coroutine") {
       if (ermia::config::dia_req_coalesce)
-        request_handler = std::bind(&IndexThread::CoroutineCoalesceHandler, this);
+        request_handler = std::bind(&IndexThread::OnepassCoroutineCoalesceHandler, this);
       else
         request_handler = std::bind(&IndexThread::CoroutineHandler, this);
     } else {
@@ -180,9 +180,12 @@ public:
 
 private:
   void SerialHandler();
-  void SerialCoalesceHandler();
+  void OnepassSerialCoalesceHandler();
+  void TwopassSerialCoalesceHandler();
   void CoroutineHandler();
-  void CoroutineCoalesceHandler();
+  void OnepassCoroutineCoalesceHandler();
+  void TwopassCoroutineCoalesceHandler();
+
   uint32_t CoalesceRequests(std::unordered_map<uint64_t, std::vector<int> > &request_map);
 };
 
