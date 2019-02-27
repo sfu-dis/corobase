@@ -2,7 +2,6 @@
 #include "sm-dia.h"
 #include "sm-coroutine.h"
 #include <vector>
-#include <tuple>
 #include <map>
 
 namespace ermia {
@@ -125,6 +124,90 @@ void IndexThread::SerialHandler() {
 
 void IndexThread::OnepassSerialCoalesceHandler() {
   while (true) {
+    thread_local std::unordered_map<uint64_t, Result> tls_results;
+    tls_results.clear();
+
+    uint32_t pos = queue.getPos();
+    uint32_t dequeue_size = 0;
+    // Group requests by key
+    for (int i = 0; i < kBatchSize; ++i) {
+      Request *req = queue.GetRequestByPos(pos + i, false);
+      if (!req) {
+        break;
+      }
+      ermia::transaction *t = req->transaction;
+      ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(!((uint64_t)t & (1UL << 63)));  // make sure we got a ready transaction
+      ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+      ASSERT(req->oid_ptr);
+
+      uint64_t current_key = *((uint64_t*)(*req->key).data());
+      if (tls_results.find(current_key) != tls_results.end()) {
+        Result result = tls_results[current_key];
+        switch (req->type) {
+          case Request::kTypeGet:
+            // If we have already a successful insert, rc would be true ->
+            // fill in rc directly.
+            // If we have already a successful read, rc would be true -> fill
+            // in rc directly.
+            ALWAYS_ASSERT(result.rc._val != RC_INVALID);
+            volatile_write(*req->oid_ptr, result.oid);
+            volatile_write(req->rc->_val, result.rc._val);
+            break;
+          case Request::kTypeInsert:
+            if (result.insert_ok) {
+              // Already inserted, fail this request
+              volatile_write(req->rc->_val, RC_FALSE);
+            } else {
+              // Either we haven't done any insert or a previous insert failed.
+              if (result.rc._val == RC_TRUE) {
+                // No insert before and previous reads succeeded: fail this
+                // insert
+                volatile_write(req->rc->_val, RC_FALSE);
+              } else {
+                // Previous insert failed or previous reads returned false, do
+                // it again (serially)
+                result.insert_ok = req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr);
+                // Now if insert_ok becomes true, then subsequent reads will
+                // also succeed; otherwise, subsequent reads will automatically
+                // fail without having to issue new read requests (rc will be
+                // RC_FALSE).
+                if (result.insert_ok) {
+                  result.rc._val = RC_TRUE;
+                  result.oid = *req->oid_ptr;  // Store the OID for future reads
+                }
+                volatile_write(req->rc->_val, result.rc._val);
+                tls_results[current_key] = result;
+              }
+            }
+            break;
+          default:
+            LOG(FATAL) << "Wrong request type";
+        }
+      } else {
+        Result result;
+        switch (req->type) {
+          case Request::kTypeGet:
+            req->index->GetOID(*req->key, result.rc, req->transaction->GetXIDContext(), *req->oid_ptr);
+            break;
+          case Request::kTypeInsert:
+            result.insert_ok = req->index->InsertIfAbsent(req->transaction, *req->key, *req->oid_ptr);
+            if (result.insert_ok)
+              result.rc._val = RC_TRUE;
+            else
+              result.rc._val = RC_FALSE;
+            break;
+          default:
+            LOG(FATAL) << "Wrong request type";
+        }
+        if (result.rc._val == RC_TRUE)
+          result.oid = *req->oid_ptr;
+        volatile_write(req->rc->_val, result.rc._val);
+        tls_results.emplace(current_key, result);
+      }
+      ++dequeue_size;
+    }
+    queue.MultiDequeue(dequeue_size);
   }
 }
 

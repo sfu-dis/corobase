@@ -149,6 +149,16 @@ public:
   }
 };
 
+// Structure that stores the result of  an index access locally
+struct Result {
+public:
+  OID  oid;  // output for Get, input for Put
+  bool insert_ok;
+  rc_t rc;  // Return result of the index operation
+  Result(OID oid = 0, bool insert_ok = false, rc_t rc= {RC_INVALID})
+    : oid(oid), insert_ok(insert_ok), rc(rc) {}  
+};
+
 class IndexThread : public ermia::thread::Runner {
 private:
   RequestQueue queue;

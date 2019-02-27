@@ -20,7 +20,7 @@ uint64_t local_key_counter[ermia::config::MAX_THREADS];
 uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
 char g_workload = 'F';
-uint g_initial_table_size = 10000;
+uint g_initial_table_size = 3000000;
 int g_sort_load_keys = 0;
 
 util::fast_random rnd_record_select(477377);
