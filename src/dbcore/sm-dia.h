@@ -169,12 +169,12 @@ public:
   IndexThread() : ermia::thread::Runner(false /* asking for a logical thread */) {
     if (config::dia_req_handler == "serial") {
       if (ermia::config::dia_req_coalesce)
-        request_handler = std::bind(&IndexThread::OnepassSerialCoalesceHandler, this);
+        request_handler = std::bind(&IndexThread::TwopassSerialCoalesceHandler, this);
       else
         request_handler = std::bind(&IndexThread::SerialHandler, this);
     } else if (config::dia_req_handler == "coroutine") {
       if (ermia::config::dia_req_coalesce)
-        request_handler = std::bind(&IndexThread::OnepassCoroutineCoalesceHandler, this);
+        request_handler = std::bind(&IndexThread::TwopassCoroutineCoalesceHandler, this);
       else
         request_handler = std::bind(&IndexThread::CoroutineHandler, this);
     } else {

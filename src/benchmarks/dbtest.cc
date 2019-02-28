@@ -22,10 +22,11 @@ DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
 DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
+DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
 DEFINE_bool(dia, false, "Whether to use decoupled index access (DIA)");
 DEFINE_string(dia_request_handler, "coroutine", "DIA request handler: coroutine or serial");
 DEFINE_bool(dia_request_coalesce, false, "Whether to coalesce requests in DIA");
-DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
+DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to run transactions.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
 DEFINE_string(tmpfs_dir, "/dev/shm",
@@ -173,6 +174,7 @@ int main(int argc, char **argv) {
   }
   ermia::config::dia_req_handler = FLAGS_dia_request_handler;
   ermia::config::dia_req_coalesce = FLAGS_dia_request_coalesce;
+  ermia::config::dia_logical_index_threads = FLAGS_dia_logical_index_threads;
   ermia::config::verbose = FLAGS_verbose;
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;
   ermia::config::threads = FLAGS_threads;
@@ -346,6 +348,7 @@ int main(int argc, char **argv) {
   std::cerr << "  dia               : " << FLAGS_dia << std::endl;
   std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;
   std::cerr << "  dia-req-coalsece  : " << FLAGS_dia_request_coalesce << std::endl;
+  std::cerr << "  dia-logical-index-threads  : " << FLAGS_dia_logical_index_threads << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::worker_threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;

@@ -30,7 +30,7 @@ void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr 
   switch (ermia::config::benchmark[0]) {
     case 'y': {
       uint32_t worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
-      index_threads[worker_id%index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
+      index_threads[worker_id % index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
       }
       break;
 
@@ -47,7 +47,7 @@ void Initialize() {
 
   // Need [config::worker_threads] number of logical threads, each corresponds to
   // to a physical worker thread
-  for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
+  for (uint32_t i = 0; i < ermia::config::dia_logical_index_threads; ++i) {
     index_threads.emplace_back(new IndexThread());
   }
 
