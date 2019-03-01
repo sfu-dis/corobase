@@ -26,7 +26,8 @@ DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
 DEFINE_bool(dia, false, "Whether to use decoupled index access (DIA)");
 DEFINE_string(dia_request_handler, "coroutine", "DIA request handler: coroutine or serial");
 DEFINE_bool(dia_request_coalesce, false, "Whether to coalesce requests in DIA");
-DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to run transactions.");
+DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to run transactions in DIA.");
+DEFINE_uint64(dia_physical_index_threads, 0, "Number of logical index threads to run transactions in DIA.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
 DEFINE_string(tmpfs_dir, "/dev/shm",
@@ -166,18 +167,26 @@ int main(int argc, char **argv) {
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
   ermia::config::htt_is_on = FLAGS_htt;
-  if (FLAGS_dia && !FLAGS_physical_workers_only) {
-    LOG(INFO) << "DIA is on, ignoring the physical-workers-only option";
-    ermia::config::physical_workers_only = true;
+  if (FLAGS_dia){
+    if (!FLAGS_physical_workers_only){
+      LOG(INFO) << "DIA is on, ignoring the physical-workers-only option";
+      ermia::config::physical_workers_only = true;
+    }
+    ermia::config::dia_req_handler = FLAGS_dia_request_handler;
+    ermia::config::dia_req_coalesce = FLAGS_dia_request_coalesce;
+    ermia::config::dia_logical_index_threads = FLAGS_dia_logical_index_threads;
+    ermia::config::dia_physical_index_threads = FLAGS_dia_physical_index_threads;
+    ermia::config::threads = FLAGS_threads + FLAGS_dia_physical_index_threads;
   } else {
     ermia::config::physical_workers_only = FLAGS_physical_workers_only;
+    ermia::config::threads = FLAGS_threads;
   }
   ermia::config::dia_req_handler = FLAGS_dia_request_handler;
   ermia::config::dia_req_coalesce = FLAGS_dia_request_coalesce;
   ermia::config::dia_logical_index_threads = FLAGS_dia_logical_index_threads;
+  ermia::config::dia_physical_index_threads = FLAGS_dia_physical_index_threads;
   ermia::config::verbose = FLAGS_verbose;
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;
-  ermia::config::threads = FLAGS_threads;
   ermia::config::tmpfs_dir = FLAGS_tmpfs_dir;
   ermia::config::log_dir = FLAGS_log_data_dir;
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
@@ -253,7 +262,7 @@ int main(int argc, char **argv) {
 
     ermia::config::replay_threads = FLAGS_replay_threads;
     LOG_IF(FATAL, ermia::config::threads < ermia::config::replay_threads);
-    ermia::config::worker_threads = ermia::config::threads - ermia::config::replay_threads;
+    ermia::config::worker_threads = FLAGS_threads - FLAGS_replay_threads;
 
     ermia::RCU::rcu_register();
     ALWAYS_ASSERT(ermia::config::log_dir.size());
@@ -349,8 +358,10 @@ int main(int argc, char **argv) {
   std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;
   std::cerr << "  dia-req-coalsece  : " << FLAGS_dia_request_coalesce << std::endl;
   std::cerr << "  dia-logical-index-threads  : " << FLAGS_dia_logical_index_threads << std::endl;
+  std::cerr << "  dia-physical-index-threads : " << FLAGS_dia_physical_index_threads << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
-  std::cerr << "  num-threads       : " << ermia::config::worker_threads << std::endl;
+  std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;
+  std::cerr << "  worker-threads    : " << ermia::config::worker_threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
   std::cerr << "  physical-workers-only: " << ermia::config::physical_workers_only << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;

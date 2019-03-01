@@ -45,10 +45,16 @@ void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr 
 void Initialize() {
   LOG_IF(FATAL, thread::cpu_cores.size() == 0) << "No logical thread information available";
 
-  // Need [config::worker_threads] number of logical threads, each corresponds to
+  // Need [config::dia_logical_index_threads] number of logical threads, each corresponds to
   // to a physical worker thread
   for (uint32_t i = 0; i < ermia::config::dia_logical_index_threads; ++i) {
-    index_threads.emplace_back(new IndexThread());
+    index_threads.emplace_back(new IndexThread(false));
+  }
+
+  // Need [config::dia_physical_index_threads] number of physical threads, each corresponds to
+  // to a physical node
+  for (uint32_t i = 0; i < ermia::config::dia_physical_index_threads; ++i) {
+    index_threads.emplace_back(new IndexThread(true));
   }
 
   for (auto t : index_threads) {
