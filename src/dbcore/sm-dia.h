@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+
 #include "../dbcore/sm-oid.h"
 #include "../varstr.h"
 #include "../txn.h"
@@ -196,7 +198,7 @@ private:
   void OnepassCoroutineCoalesceHandler();
   void TwopassCoroutineCoalesceHandler();
 
-  uint32_t CoalesceRequests(std::unordered_map<uint64_t, std::vector<int> > &request_map);
+  uint32_t CoalesceRequests(std::unordered_map<std::string, std::vector<int> > &request_map);
 };
 
 }  // namespace dia
