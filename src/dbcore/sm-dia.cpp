@@ -1,6 +1,7 @@
 #include "../ermia.h"
 #include "sm-dia.h"
 #include "sm-coroutine.h"
+#include <string>
 #include <vector>
 #include <map>
 
@@ -70,7 +71,7 @@ void IndexThread::MyWork(char *) {
   request_handler();
 }
 
-uint32_t IndexThread::CoalesceRequests(std::unordered_map<uint64_t, std::vector<int> > &request_map) {
+uint32_t IndexThread::CoalesceRequests(std::unordered_map<std::string, std::vector<int> > &request_map) {
   uint32_t pos = queue.getPos();
   uint32_t nrequests = 0;
 
@@ -86,7 +87,7 @@ uint32_t IndexThread::CoalesceRequests(std::unordered_map<uint64_t, std::vector<
     ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
     ASSERT(req->oid_ptr);
 
-    uint64_t current_key = *((uint64_t*)(*req->key).data());
+    std::string current_key((*req->key).data(), (*req->key).data() + (*req->key).size());
     if (request_map.find(current_key) != request_map.end()) {
       request_map[current_key].push_back(i);
     } else {
@@ -130,7 +131,7 @@ void IndexThread::SerialHandler() {
 
 void IndexThread::OnepassSerialCoalesceHandler() {
   while (true) {
-    thread_local std::unordered_map<uint64_t, Result> tls_results;
+    thread_local std::unordered_map<std::string, Result> tls_results;
     tls_results.clear();
 
     uint32_t pos = queue.getPos();
@@ -147,7 +148,7 @@ void IndexThread::OnepassSerialCoalesceHandler() {
       ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
       ASSERT(req->oid_ptr);
 
-      uint64_t current_key = *((uint64_t*)(*req->key).data());
+      std::string current_key((*req->key).data(), (*req->key).data() + (*req->key).size());
       if (tls_results.find(current_key) != tls_results.end()) {
         Result result = tls_results[current_key];
         switch (req->type) {
@@ -219,7 +220,7 @@ void IndexThread::OnepassSerialCoalesceHandler() {
 
 void IndexThread::TwopassSerialCoalesceHandler() {
   while (true) {
-    thread_local std::unordered_map<uint64_t, std::vector<int> > coalesced_requests;
+    thread_local std::unordered_map<std::string, std::vector<int> > coalesced_requests;
     coalesced_requests.clear();
     int dequeue_size = CoalesceRequests(coalesced_requests);
 
@@ -359,7 +360,7 @@ void IndexThread::CoroutineHandler() {
 
 void IndexThread::OnepassCoroutineCoalesceHandler() {
   while (true) {
-    thread_local std::unordered_map<uint64_t, std::vector<int>> coalesced_requests;
+    thread_local std::unordered_map<std::string, std::vector<int>> coalesced_requests;
     coalesced_requests.clear();
     thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
     coroutines.clear();
@@ -383,7 +384,7 @@ void IndexThread::OnepassCoroutineCoalesceHandler() {
       ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
       ASSERT(req->oid_ptr);
 
-      uint64_t current_key = *((uint64_t*)(*req->key).data());
+      std::string current_key((*req->key).data(), (*req->key).data() + (*req->key).size());
       if (coalesced_requests.find(current_key) != coalesced_requests.end()) {
         coalesced_requests[current_key].push_back(i);
       } else {
@@ -492,7 +493,7 @@ void IndexThread::OnepassCoroutineCoalesceHandler() {
 
 void IndexThread::TwopassCoroutineCoalesceHandler() {
   while (true) {
-    thread_local std::unordered_map<uint64_t, std::vector<int>> coalesced_requests;
+    thread_local std::unordered_map<std::string, std::vector<int>> coalesced_requests;
     coalesced_requests.clear();
     uint32_t dequeue_size = CoalesceRequests(coalesced_requests);
 
