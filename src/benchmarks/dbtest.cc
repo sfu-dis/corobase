@@ -26,6 +26,7 @@ DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
 DEFINE_bool(dia, false, "Whether to use decoupled index access (DIA)");
 DEFINE_string(dia_request_handler, "coroutine", "DIA request handler: coroutine or serial");
 DEFINE_bool(dia_request_coalesce, false, "Whether to coalesce requests in DIA");
+DEFINE_bool(dia_index_probe_only, true, "Whether the read is only probing into index in DIA");
 DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to run transactions in DIA.");
 DEFINE_uint64(dia_physical_index_threads, 0, "Number of physical index threads to run transactions in DIA.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
@@ -174,6 +175,7 @@ int main(int argc, char **argv) {
     }
     ermia::config::dia_req_handler = FLAGS_dia_request_handler;
     ermia::config::dia_req_coalesce = FLAGS_dia_request_coalesce;
+    ermia::config::dia_index_probe_only = FLAGS_dia_index_probe_only;
     ermia::config::dia_logical_index_threads = FLAGS_dia_logical_index_threads;
     ermia::config::dia_physical_index_threads = FLAGS_dia_physical_index_threads;
     ermia::config::threads = FLAGS_threads + FLAGS_dia_physical_index_threads;
@@ -353,6 +355,7 @@ int main(int argc, char **argv) {
   std::cerr << "  dia               : " << FLAGS_dia << std::endl;
   std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;
   std::cerr << "  dia-req-coalsece  : " << FLAGS_dia_request_coalesce << std::endl;
+  std::cerr << "  dia-index-probe-only       : " << FLAGS_dia_index_probe_only << std::endl;
   std::cerr << "  dia-logical-index-threads  : " << FLAGS_dia_logical_index_threads << std::endl;
   std::cerr << "  dia-physical-index-threads : " << FLAGS_dia_physical_index_threads << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;

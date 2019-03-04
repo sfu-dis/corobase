@@ -122,7 +122,10 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      values.push_back(&str(0));
+      if (ermia::config::dia_index_probe_only)
+        values.push_back(&str(0));
+      else
+        values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);  // Send out async Get request
@@ -136,9 +139,11 @@ class ycsb_dia_worker : public bench_worker {
       // been sent.
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
       // Under SI this must succeed
-      ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+      ASSERT(rcs[i]._val == RC_TRUE);
+      ASSERT(*(char*)values[i]->data() == 'a');
 #endif
+      if (!ermia::config::dia_index_probe_only)
+        memcpy((char*)values[i] + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
     }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -178,9 +183,11 @@ class ycsb_dia_worker : public bench_worker {
       tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
       // Under SI this must succeed
-      ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+      ASSERT(rcs[i]._val == RC_TRUE);
+      ASSERT(*(char*)values[i]->data() == 'a');
 #endif
+      if (!ermia::config::dia_index_probe_only)
+        memcpy((char*)values[i] + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
     }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -199,7 +206,7 @@ class ycsb_dia_worker : public bench_worker {
       // pointing to the object's data area
       ermia::varstr *r = values[i];
       new (r) ermia::varstr((char*)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      *(char*)r->data() = 'a';
+      memset((char *)r->data(), 'a', sizeof(YcsbRecord));
       tbl->SendPut(txn, rcs[i], *keys[i], &oids[i]);  // Modify-write
 
       // TODO(tzwang): similar to read-only case, see if we can rescind
@@ -226,7 +233,10 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      values.push_back(&str(0));
+      if (ermia::config::dia_index_probe_only)
+        values.push_back(&str(0));
+      else
+        values.push_back(&str(sizeof(YcsbRecord)));
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i]);
     }
 
@@ -234,9 +244,11 @@ class ycsb_dia_worker : public bench_worker {
       tbl->RecvGet(txn, rcs[i], oids[i], *values[i]);
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
       // Under SI this must succeed
-      ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+      ASSERT(rcs[i]._val == RC_TRUE);
+      ASSERT(*(char*)values[i]->data() == 'a');
 #endif
+      if (!ermia::config::dia_index_probe_only)
+        memcpy((char*)values[i] + sizeof(ermia::varstr), (char *)values[i]->data(), values[i]->size());
     }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
