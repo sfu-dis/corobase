@@ -72,6 +72,7 @@ extern int persist_policy;
 // DIA-specific settings
 extern std::string dia_req_handler;
 extern bool dia_req_coalesce;
+extern bool dia_index_probe_only;
 extern uint32_t dia_logical_index_threads;
 extern uint32_t dia_physical_index_threads;
 
