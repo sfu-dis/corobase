@@ -104,8 +104,8 @@ class ycsb_worker : public bench_worker {
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      ASSERT(rc._val == RC_TRUE);
+      ASSERT(*(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only)
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
@@ -128,8 +128,8 @@ class ycsb_worker : public bench_worker {
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      ASSERT(rc._val == RC_TRUE);
+      ASSERT(*(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only)
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
@@ -152,8 +152,8 @@ class ycsb_worker : public bench_worker {
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      ASSERT(rc._val == RC_TRUE);
+      ASSERT(*(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only)
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
