@@ -96,7 +96,7 @@ class ycsb_worker : public bench_worker {
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
-      ermia::varstr &v = str(0);
+      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
@@ -107,6 +107,8 @@ class ycsb_worker : public bench_worker {
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
 #endif
+      if (!ermia::config::index_probe_only)
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
@@ -129,18 +131,20 @@ class ycsb_worker : public bench_worker {
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
 #endif
+      if (!ermia::config::index_probe_only)
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
       // copy (in the read op we just did).
       new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      memset(v.data(), 'a', 1);
+      memset(v.data(), 'a', sizeof(YcsbRecord));
       TryCatch(tbl->Put(txn, k, v));  // Modify-write
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       ermia::varstr &k = BuildKey(worker_id);
-      ermia::varstr v;
+      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
@@ -151,6 +155,9 @@ class ycsb_worker : public bench_worker {
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
 #endif
+      if (!ermia::config::index_probe_only)
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
