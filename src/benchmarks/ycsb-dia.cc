@@ -122,7 +122,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      if (ermia::config::dia_index_probe_only)
+      if (ermia::config::index_probe_only)
         values.push_back(&str(0));
       else
         values.push_back(&str(sizeof(YcsbRecord)));
@@ -142,7 +142,7 @@ class ycsb_dia_worker : public bench_worker {
       ASSERT(rcs[i]._val == RC_TRUE);
       ASSERT(*(char*)values[i]->data() == 'a');
 #endif
-      if (!ermia::config::dia_index_probe_only)
+      if (!ermia::config::index_probe_only)
         memcpy((char*)values[i] + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
     }
 
@@ -186,7 +186,7 @@ class ycsb_dia_worker : public bench_worker {
       ASSERT(rcs[i]._val == RC_TRUE);
       ASSERT(*(char*)values[i]->data() == 'a');
 #endif
-      if (!ermia::config::dia_index_probe_only)
+      if (!ermia::config::index_probe_only)
         memcpy((char*)values[i] + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
     }
 
@@ -233,7 +233,7 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      if (ermia::config::dia_index_probe_only)
+      if (ermia::config::index_probe_only)
         values.push_back(&str(0));
       else
         values.push_back(&str(sizeof(YcsbRecord)));
@@ -247,7 +247,7 @@ class ycsb_dia_worker : public bench_worker {
       ASSERT(rcs[i]._val == RC_TRUE);
       ASSERT(*(char*)values[i]->data() == 'a');
 #endif
-      if (!ermia::config::dia_index_probe_only)
+      if (!ermia::config::index_probe_only)
         memcpy((char*)values[i] + sizeof(ermia::varstr), (char *)values[i]->data(), values[i]->size());
     }
 
