@@ -1,6 +1,7 @@
 #include "../ermia.h"
 #include "sm-dia.h"
 #include "sm-coroutine.h"
+#include <functional>
 #include <string>
 #include <vector>
 #include <map>
@@ -9,41 +10,44 @@ namespace ermia {
 namespace dia {
 
 std::vector<IndexThread *> index_threads;
+std::function<uint32_t(const varstr *)> routing;
 
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  uint32_t worker_id = 0;
-  switch (ermia::config::benchmark[0]) {
-    case 'y':
-      worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
-      ALWAYS_ASSERT(rc->_val == RC_INVALID);
-      index_threads[worker_id % index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
-      break;
-    
-    default:
-      LOG(FATAL) << "Not implemented";
-      break;
-  }
+  ALWAYS_ASSERT(rc->_val == RC_INVALID);
+  uint32_t index_thread_id = routing(key);
+  index_threads[index_thread_id]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
+
 }
 
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
   // FIXME(tzwang): find the right index thread using some partitioning scheme
-  switch (ermia::config::benchmark[0]) {
-    case 'y': {
-      uint32_t worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
-      index_threads[worker_id % index_threads.size()]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
-      }
-      break;
+  ALWAYS_ASSERT(rc->_val == RC_INVALID);
+  uint32_t index_thread_id = routing(key);
+  index_threads[index_thread_id]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
+}
 
-    default:
-      LOG(FATAL) << "Not implemented";
-      break;
-  }
+uint32_t RoutingYcsb(const varstr *key) {
+  uint32_t worker_id = (uint32_t)(*((uint64_t*)(*key).data()) >> 32);
+  return worker_id % index_threads.size();
+}
+
+uint32_t RoutingTpcc(const varstr *key) {
+  LOG(FATAL) << "Tpcc not implemented yet";
+  return 0;
 }
 
 // Prepare the extra index threads needed by DIA. The other compute threads
 // should already be initialized by sm-config.
 void Initialize() {
+  if (config::benchmark == "ycsb") {
+    routing = std::bind(RoutingYcsb, std::placeholders::_1);
+  } else if (config::benchmark == "tpcc") {
+    routing = std::bind(RoutingTpcc, std::placeholders::_1);
+  } else {
+    LOG(FATAL) << "Wrong routing type";
+  }
+
   LOG_IF(FATAL, thread::cpu_cores.size() == 0) << "No logical thread information available";
 
   // Need [config::dia_logical_index_threads] number of logical threads, each corresponds to
@@ -63,7 +67,6 @@ void Initialize() {
     t->Start();
   }
 }
-
 
 // The actual index access goes here
 void IndexThread::MyWork(char *) {

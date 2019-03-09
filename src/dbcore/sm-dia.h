@@ -15,6 +15,8 @@ void SendGetRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *key, OID *oid, rc_t *rc);
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
                        const varstr *key, OID *oid, rc_t *rc);
+uint32_t RoutingYcsb(const varstr *key);
+uint32_t RoutingTpcc(const varstr *key);
 
 // Structure that represents an index access request
 struct Request {
@@ -155,7 +157,7 @@ public:
 struct Result {
 public:
   OID  oid;  // output for Get, input for Put
-  bool insert_ok;
+  bool insert_ok; // Record if we have previously done an insert for the key.
   rc_t rc;  // Return result of the index operation
   Result(OID oid = 0, bool insert_ok = false, rc_t rc= {RC_INVALID})
     : oid(oid), insert_ok(insert_ok), rc(rc) {}  
