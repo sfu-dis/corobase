@@ -1,10 +1,6 @@
 #include "../ermia.h"
 #include "sm-dia.h"
 #include "sm-coroutine.h"
-#include <functional>
-#include <string>
-#include <vector>
-#include <map>
 
 namespace ermia {
 namespace dia {
