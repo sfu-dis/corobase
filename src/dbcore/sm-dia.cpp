@@ -29,7 +29,6 @@ uint32_t RoutingYcsb(const varstr *key) {
 }
 
 uint32_t RoutingTpcc(const varstr *key) {
-  LOG(FATAL) << "Tpcc not implemented yet";
   return 0;
 }
 

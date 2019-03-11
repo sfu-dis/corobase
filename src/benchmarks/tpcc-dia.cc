@@ -533,8 +533,8 @@ class tpcc_dia_nation_loader : public bench_loader, public tpcc_dia_worker_mixin
   virtual void load() {
     std::string obj_buf;
     ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-    uint i;
-    for (i = 0; i < 62; i++) {
+
+    for (uint i = 0; i < 62; i++) {
       const nation::key k(nations[i].id);
       nation::value v;
 
@@ -542,8 +542,15 @@ class tpcc_dia_nation_loader : public bench_loader, public tpcc_dia_worker_mixin
       v.n_name = std::string(nations[i].name);
       v.n_regionkey = nations[i].rId;
       v.n_comment.assign(n_comment);
-      TryVerifyStrict(tbl_nation(1)->Insert(txn, Encode(str(Size(k)), k),
-                                              Encode(str(Size(v)), v)));
+
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::dbtuple *tuple = nullptr;
+      ((ermia::DecoupledMasstreeIndex*)tbl_nation(1))->SendInsert(txn, rc, Encode(str(Size(k)), k),
+                                              Encode(str(Size(v)), v), &oid, &tuple);
+      ALWAYS_ASSERT(tuple);
+      ((ermia::DecoupledMasstreeIndex*)tbl_nation(1))->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
+                                              Encode(str(Size(v)), v), tuple);
     }
     TryVerifyStrict(db->Commit(txn));
   }
