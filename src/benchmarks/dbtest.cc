@@ -25,7 +25,7 @@ DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
 DEFINE_bool(index_probe_only, true, "Whether the read is only probing into index");
 DEFINE_bool(dia, false, "Whether to use decoupled index access (DIA)");
-DEFINE_string(dia_request_handler, "coroutine", "DIA request handler: coroutine or serial");
+DEFINE_string(dia_request_handler, "serial", "DIA request handler: coroutine or serial");
 DEFINE_bool(dia_request_coalesce, false, "Whether to coalesce requests in DIA");
 DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to run transactions in DIA.");
 DEFINE_uint64(dia_physical_index_threads, 0, "Number of physical index threads to run transactions in DIA.");
