@@ -551,6 +551,7 @@ class tpcc_dia_nation_loader : public bench_loader, public tpcc_dia_worker_mixin
       ALWAYS_ASSERT(tuple);
       ((ermia::DecoupledMasstreeIndex*)tbl_nation(1))->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
                                               Encode(str(Size(v)), v), tuple);
+      TryVerifyStrict(rc);
     }
     TryVerifyStrict(db->Commit(txn));
   }
@@ -1240,7 +1241,9 @@ rc_t tpcc_dia_worker::txn_new_order() {
   ermia::varstr valptr;
 
   rc_t rc = rc_t{RC_INVALID};
-  tbl_customer(warehouse_id)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+  ermia::OID oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
@@ -1252,7 +1255,9 @@ rc_t tpcc_dia_worker::txn_new_order() {
   warehouse::value v_w_temp;
 
   rc = rc_t{RC_INVALID};
-  tbl_warehouse(warehouse_id)->Get(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
+  oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_w)), k_w), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
@@ -1264,7 +1269,9 @@ rc_t tpcc_dia_worker::txn_new_order() {
   district::value v_d_temp;
 
   rc = rc_t{RC_INVALID};
-  tbl_district(warehouse_id)->Get(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
+  oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_d)), k_d), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
@@ -1279,16 +1286,25 @@ rc_t tpcc_dia_worker::txn_new_order() {
   const new_order::key k_no(warehouse_id, districtID, my_next_o_id);
   const new_order::value v_no;
   const size_t new_order_sz = Size(v_no);
-  TryCatch(tbl_new_order(warehouse_id)
-                ->Insert(txn, Encode(str(Size(k_no)), k_no),
-                         Encode(str(new_order_sz), v_no)));
+  rc = rc_t{RC_INVALID};
+  oid = 0;
+  ermia::dbtuple *tuple = nullptr;
+  ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))->SendInsert(txn, rc, Encode(str(Size(k_no)), k_no),
+                                          Encode(str(new_order_sz), v_no), &oid, &tuple);
+  ALWAYS_ASSERT(tuple);
+  ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))->RecvInsert(txn, rc, oid, Encode(str(Size(k_no)), k_no),
+                                          Encode(str(new_order_sz), v_no), tuple);
+  TryCatch(rc);
 
   if (!g_new_order_fast_id_gen) {
     district::value v_d_new(*v_d);
     v_d_new.d_next_o_id++;
-    TryCatch(tbl_district(warehouse_id)
-                  ->Put(txn, Encode(str(Size(k_d)), k_d),
-                        Encode(str(Size(v_d_new)), v_d_new)));
+    rc = rc_t{RC_INVALID};
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->SendPut(txn, rc, Encode(str(Size(k_d)), k_d), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->RecvPut(txn, rc, oid, Encode(str(Size(k_d)), k_d), 
+                                          Encode(str(Size(v_d_new)), v_d_new));
+    TryCatch(rc);
   }
 
   const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
@@ -1300,15 +1316,18 @@ rc_t tpcc_dia_worker::txn_new_order() {
   v_oo.o_entry_d = GetCurrentTimeMillis();
 
   const size_t oorder_sz = Size(v_oo);
+  rc = rc_t{RC_INVALID};
   ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
-  TryCatch(tbl_oorder(warehouse_id)
-                ->Insert(txn, Encode(str(Size(k_oo)), k_oo),
-                         Encode(str(oorder_sz), v_oo), &v_oo_oid));
+  tuple = nullptr;
+  ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->SendInsert(txn, rc, Encode(str(Size(k_oo)), k_oo),
+                                          Encode(str(oorder_sz), v_oo), &v_oo_oid, &tuple);
+  ALWAYS_ASSERT(tuple);
+  ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->RecvInsert(txn, rc, v_oo_oid, Encode(str(Size(k_oo)), k_oo),
+                                          Encode(str(oorder_sz), v_oo), tuple);
+  TryCatch(rc);
 
-  const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
-                                      k_no.no_o_id);
-  TryCatch(tbl_oorder_c_id_idx(warehouse_id)
-                ->Insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
+  const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
+  TryCatch(tbl_oorder_c_id_idx(warehouse_id)->Insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
 
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
@@ -1319,7 +1338,9 @@ rc_t tpcc_dia_worker::txn_new_order() {
     item::value v_i_temp;
 
     rc = rc_t{RC_INVALID};
-    tbl_item(1)->Get(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->SendGet(txn, rc, Encode(str(Size(k_i)), k_i), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
 
     const item::value *v_i = Decode(valptr, v_i_temp);
@@ -1331,7 +1352,9 @@ rc_t tpcc_dia_worker::txn_new_order() {
     stock::value v_s_temp;
 
     rc = rc_t{RC_INVALID};
-    tbl_stock(ol_supply_w_id)->Get(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendGet(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
 
     const stock::value *v_s = Decode(valptr, v_s_temp);
@@ -1347,12 +1370,14 @@ rc_t tpcc_dia_worker::txn_new_order() {
     v_s_new.s_ytd += ol_quantity;
     v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
 
-    TryCatch(tbl_stock(ol_supply_w_id)
-                  ->Put(txn, Encode(str(Size(k_s)), k_s),
-                        Encode(str(Size(v_s_new)), v_s_new)));
+    rc = rc_t{RC_INVALID};
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendPut(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvPut(txn, rc, oid, Encode(str(Size(k_s)), k_s),
+                                          Encode(str(Size(v_s_new)), v_s_new));
+    TryCatch(rc);
 
-    const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
-                               ol_number);
+    const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id, ol_number);
     order_line::value v_ol;
     v_ol.ol_i_id = int32_t(ol_i_id);
     v_ol.ol_delivery_d = 0;  // not delivered yet
@@ -1361,9 +1386,15 @@ rc_t tpcc_dia_worker::txn_new_order() {
     v_ol.ol_quantity = int8_t(ol_quantity);
 
     const size_t order_line_sz = Size(v_ol);
-    TryCatch(tbl_order_line(warehouse_id)
-                  ->Insert(txn, Encode(str(Size(k_ol)), k_ol),
-                           Encode(str(order_line_sz), v_ol)));
+    rc = rc_t{RC_INVALID};
+    oid = 0;
+    tuple = nullptr;
+    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))->SendInsert(txn, rc, Encode(str(Size(k_ol)), k_ol),
+                                            Encode(str(order_line_sz), v_ol), &oid, &tuple);
+    ALWAYS_ASSERT(tuple);
+    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))->RecvInsert(txn, rc, oid, Encode(str(Size(k_ol)), k_ol),
+                                            Encode(str(order_line_sz), v_ol), tuple);
+    TryCatch(rc);
   }
 
   TryCatch(db->Commit(txn));
