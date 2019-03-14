@@ -313,6 +313,23 @@ class tpcc_dia_worker_mixin : private _dummy {
     for (uint i = 0; i < len; i++) buf[i] = (char)(base + (r.next() % 10));
     return buf;
   }
+
+  // Request result placeholders
+  void PrepareForDIA(rc_t **out_rcs, ermia::OID **out_oids) {
+    thread_local rc_t *rcs = nullptr;
+    thread_local ermia::OID *oids = nullptr;
+    uint32_t n = 50;
+    if (!rcs) {
+      rcs = (rc_t *)malloc(sizeof(rc_t) * n);
+      oids = (ermia::OID *)malloc(sizeof(ermia::OID) * n);
+    }
+    for (uint32_t i = 0; i < n; ++i) {
+      rcs[i] = rc_t{RC_INVALID};
+      oids[i] = 0;
+    }
+    *out_rcs = rcs;
+    *out_oids = oids;
+  }
 };
 
 std::string tpcc_dia_worker_mixin::NameTokens[] = {
@@ -1329,6 +1346,46 @@ rc_t tpcc_dia_worker::txn_new_order() {
   const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
   TryCatch(tbl_oorder_c_id_idx(warehouse_id)->Insert(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
 
+  thread_local std::vector<ermia::varstr *> keys_item;
+  keys_item.clear();
+  thread_local std::vector<ermia::varstr *> values_item;
+  values_item.clear();
+  rc_t *rcs_item = nullptr;
+  ermia::OID *oids_item = nullptr;
+  PrepareForDIA(&rcs_item, &oids_item);
+
+  thread_local std::vector<ermia::varstr *> keys_stock;
+  keys_stock.clear();
+  thread_local std::vector<ermia::varstr *> values_stock;
+  values_stock.clear();
+  rc_t *rcs_stock = &rcs_item[15];
+  ermia::OID *oids_stock = &oids_item[15];
+
+  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+    const uint ol_i_id = itemIDs[ol_number - 1];
+
+    const item::key k_i(ol_i_id);
+    keys_item.push_back(&Encode(str(Size(k_i)), k_i));
+    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->SendGet(txn, rcs_item[ol_number - 1], *keys_item[ol_number - 1], &oids_item[ol_number - 1]);
+
+    const stock::key k_s(ol_supply_w_id, ol_i_id);
+    keys_stock.push_back(&Encode(str(Size(k_s)), k_s));
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendGet(txn, rcs_stock[ol_number - 1], *keys_stock[ol_number - 1], &oids_stock[ol_number - 1]);
+  }
+
+  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+
+    values_item.push_back(&str(0));
+    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->RecvGet(txn, rcs_item[ol_number - 1], oids_item[ol_number - 1], *values_item[ol_number - 1]);
+    TryVerifyRelaxed(rcs_item[ol_number - 1]);
+
+    values_stock.push_back(&str(0));
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvGet(txn, rcs_stock[ol_number - 1], oids_stock[ol_number - 1], *values_stock[ol_number - 1]);
+    TryVerifyRelaxed(rcs_stock[ol_number - 1]);
+  }
+
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
     const uint ol_i_id = itemIDs[ol_number - 1];
@@ -1336,28 +1393,14 @@ rc_t tpcc_dia_worker::txn_new_order() {
 
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
-
-    rc = rc_t{RC_INVALID};
-    oid = 0;
-    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->SendGet(txn, rc, Encode(str(Size(k_i)), k_i), &oid);
-    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->RecvGet(txn, rc, oid, valptr);
-    TryVerifyRelaxed(rc);
-
-    const item::value *v_i = Decode(valptr, v_i_temp);
+    const item::value *v_i = Decode(*values_item[ol_number - 1], v_i_temp);
 #ifndef NDEBUG
     checker::SanityCheckItem(&k_i, v_i);
 #endif
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
-
-    rc = rc_t{RC_INVALID};
-    oid = 0;
-    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendGet(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
-    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvGet(txn, rc, oid, valptr);
-    TryVerifyRelaxed(rc);
-
-    const stock::value *v_s = Decode(valptr, v_s_temp);
+    const stock::value *v_s = Decode(*values_stock[ol_number - 1], v_s_temp);
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
@@ -1372,8 +1415,8 @@ rc_t tpcc_dia_worker::txn_new_order() {
 
     rc = rc_t{RC_INVALID};
     oid = 0;
-    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendPut(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
-    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvPut(txn, rc, oid, Encode(str(Size(k_s)), k_s),
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendPut(txn, rc, *keys_stock[ol_number - 1], &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvPut(txn, rc, oid, *keys_stock[ol_number - 1],
                                           Encode(str(Size(v_s_new)), v_s_new));
     TryCatch(rc);
 
