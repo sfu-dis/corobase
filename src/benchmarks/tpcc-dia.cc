@@ -2480,7 +2480,7 @@ class tpcc_dia_bench_runner : public bench_runner {
             s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(i);
           }
           auto ss_name = s_name + "_" + std::to_string(i);
-          db->CreateMasstreeTable(ss_name.c_str(), false, s_primary_name.c_str());
+          db->CreateMasstreeTable(ss_name.c_str(), true, s_primary_name.c_str());
         }
       } else {
         const unsigned nwhse_per_partition =
@@ -2495,11 +2495,11 @@ class tpcc_dia_bench_runner : public bench_runner {
             s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(partid);
           }
           db->CreateMasstreeTable((s_name + std::string("_") + std::to_string(partid)).c_str(),
-                                  false, s_primary_name.c_str());
+                                  true, s_primary_name.c_str());
         }
       }
     } else {
-      db->CreateMasstreeTable(name, false, primary_idx_name);
+      db->CreateMasstreeTable(name, true, primary_idx_name);
     }
   }
 
