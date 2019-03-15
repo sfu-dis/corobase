@@ -342,14 +342,10 @@ void IndexThread::CoroutineHandler() {
 
     // Issued the requests in the scheduler
     uint32_t finished = 0;
-    while (finished < coroutines.size()) {
-      for (auto &c : coroutines) {
-        if (c && !c->advance()) {
-          delete c;
-          c = nullptr;
-          ++finished;
-        }
-      }
+    for (auto &c : coroutines) {
+      while (c->advance()) { }
+      delete c;
+      ++finished;
     }
 
     queue.MultiDequeue(finished);
