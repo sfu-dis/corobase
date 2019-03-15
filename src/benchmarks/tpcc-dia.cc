@@ -318,7 +318,7 @@ class tpcc_dia_worker_mixin : private _dummy {
   void PrepareForDIA(rc_t **out_rcs, ermia::OID **out_oids) {
     thread_local rc_t *rcs = nullptr;
     thread_local ermia::OID *oids = nullptr;
-    uint32_t n = 50;
+    uint32_t n = 30;
     if (!rcs) {
       rcs = (rc_t *)malloc(sizeof(rc_t) * n);
       oids = (ermia::OID *)malloc(sizeof(ermia::OID) * n);
@@ -1362,7 +1362,6 @@ rc_t tpcc_dia_worker::txn_new_order() {
   values_stock.clear();
   rc_t *rcs_stock = &rcs_item[15];
   ermia::OID *oids_stock = &oids_item[15];
-
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
     const uint ol_i_id = itemIDs[ol_number - 1];
@@ -1388,6 +1387,7 @@ rc_t tpcc_dia_worker::txn_new_order() {
     TryVerifyRelaxed(rcs_stock[ol_number - 1]);
   }
 
+  // Store temp results of stock_new in keys_stock, rcs_stock, oids_stock
   PrepareForDIA(&rcs_item, &oids_item);
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
@@ -1419,6 +1419,11 @@ rc_t tpcc_dia_worker::txn_new_order() {
     TryCatch(rcs_stock[ol_number - 1]);
   }
 
+  // Store temp results of order_line in keys_item, values_item, rcs_item, oids_item
+  thread_local std::vector<ermia::dbtuple *> tuples_order_line;
+  tuples_order_line.clear();
+  keys_item.clear();
+  values_item.clear();
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
     const uint ol_i_id = itemIDs[ol_number - 1];
@@ -1432,6 +1437,8 @@ rc_t tpcc_dia_worker::txn_new_order() {
 #endif
 
     const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id, ol_number);
+    keys_item.push_back(&Encode(str(Size(k_ol)), k_ol));
+
     order_line::value v_ol;
     v_ol.ol_i_id = int32_t(ol_i_id);
     v_ol.ol_delivery_d = 0;  // not delivered yet
@@ -1440,15 +1447,18 @@ rc_t tpcc_dia_worker::txn_new_order() {
     v_ol.ol_quantity = int8_t(ol_quantity);
 
     const size_t order_line_sz = Size(v_ol);
-    rc = rc_t{RC_INVALID};
-    oid = 0;
-    tuple = nullptr;
-    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))->SendInsert(txn, rc, Encode(str(Size(k_ol)), k_ol),
-                                            Encode(str(order_line_sz), v_ol), &oid, &tuple);
+    values_item.push_back(&Encode(str(order_line_sz), v_ol));
+
+    tuples_order_line.push_back(nullptr);
+    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))->SendInsert(txn, rcs_item[ol_number - 1], *keys_item[ol_number - 1],
+                                            *values_item[ol_number - 1], &oids_item[ol_number - 1], &tuples_order_line[ol_number - 1]);
     ALWAYS_ASSERT(tuple);
-    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))->RecvInsert(txn, rc, oid, Encode(str(Size(k_ol)), k_ol),
-                                            Encode(str(order_line_sz), v_ol), tuple);
-    TryCatch(rc);
+  }
+
+  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))->RecvInsert(txn, rcs_item[ol_number - 1], oids_item[ol_number - 1], 
+                                            *keys_item[ol_number - 1], *values_item[ol_number - 1], tuples_order_line[ol_number - 1]);
+    TryCatch(rcs_item[ol_number - 1]);
   }
 
   TryCatch(db->Commit(txn));
