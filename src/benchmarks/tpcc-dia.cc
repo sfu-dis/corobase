@@ -690,7 +690,9 @@ class tpcc_dia_warehouse_loader : public bench_loader, public tpcc_dia_worker_mi
       ermia::varstr warehouse_v;
 
       rc_t rc = rc_t{RC_INVALID};
-      tbl_warehouse(i)->Get(txn, rc, Encode(str(Size(k)), k), warehouse_v);
+      ermia::OID oid = 0;
+      ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(i))->SendGet(txn, rc, Encode(str(Size(k)), k), &oid);
+      ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(i))->RecvGet(txn, rc, oid, warehouse_v);
       TryVerifyStrict(rc);
 
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
@@ -1565,7 +1567,9 @@ rc_t tpcc_dia_worker::txn_delivery() {
     ermia::varstr valptr;
 
     rc_t rc = rc_t{RC_INVALID};
-    tbl_oorder(warehouse_id)->Get(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
+    ermia::OID oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_oo)), k_oo), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->RecvGet(txn, rc, oid, valptr);
     TryCatchCondAbort(rc);
 
     const oorder::value *v_oo = Decode(valptr, v_oo_temp);
@@ -1622,7 +1626,9 @@ rc_t tpcc_dia_worker::txn_delivery() {
     customer::value v_c_temp;
 
     rc = rc_t{RC_INVALID};
-    tbl_customer(warehouse_id)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
 
     const customer::value *v_c = Decode(valptr, v_c_temp);
@@ -1721,7 +1727,9 @@ rc_t tpcc_dia_worker::txn_credit_check() {
   k_c.c_id = customerID;
 
   rc_t rc = rc_t{RC_INVALID};
-  tbl_customer(customerWarehouseID)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+  ermia::OID oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_customer(customerWarehouseID))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_customer(customerWarehouseID))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
@@ -1751,7 +1759,9 @@ rc_t tpcc_dia_worker::txn_credit_check() {
     const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
     oorder::value v;
     rc = rc_t{RC_INVALID};
-    tbl_oorder(warehouse_id)->Get(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_oo)), k_oo), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->RecvGet(txn, rc, oid, valptr);
     TryCatchCond(rc, continue);
     // Order line scan
     //		ol_d_id = :d_id
@@ -1824,7 +1834,9 @@ rc_t tpcc_dia_worker::txn_payment() {
   ermia::varstr valptr;
 
   rc_t rc = rc_t{RC_INVALID};
-  tbl_warehouse(warehouse_id)->Get(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
+  ermia::OID oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_w)), k_w), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
@@ -1842,7 +1854,9 @@ rc_t tpcc_dia_worker::txn_payment() {
   district::value v_d_temp;
 
   rc = rc_t{RC_INVALID};
-  tbl_district(warehouse_id)->Get(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
+  oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_d)), k_d), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
@@ -1902,7 +1916,9 @@ rc_t tpcc_dia_worker::txn_payment() {
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = customerID;
     rc = rc_t{RC_INVALID};
-    tbl_customer(customerWarehouseID)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(customerWarehouseID))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(customerWarehouseID))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
     Decode(valptr, v_c);
   }
@@ -2059,7 +2075,9 @@ rc_t tpcc_dia_worker::txn_order_status() {
     k_c.c_id = customerID;
 
     rc_t rc = rc_t{RC_INVALID};
-    tbl_customer(warehouse_id)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+    ermia::OID oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
 
     Decode(valptr, v_c);
@@ -2169,7 +2187,9 @@ rc_t tpcc_dia_worker::txn_stock_level() {
   ermia::varstr valptr;
 
   rc_t rc = rc_t{RC_INVALID};
-  tbl_district(warehouse_id)->Get(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
+  ermia::OID oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_d)), k_d), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
@@ -2201,7 +2221,9 @@ rc_t tpcc_dia_worker::txn_stock_level() {
       ASSERT(p.first >= 1 && p.first <= NumItems());
 
       rc = rc_t{RC_INVALID};
-      tbl_stock(warehouse_id)->Get(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
+      oid = 0;
+      ((ermia::DecoupledMasstreeIndex*)tbl_stock(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
+      ((ermia::DecoupledMasstreeIndex*)tbl_stock(warehouse_id))->RecvGet(txn, rc, oid, valptr);
       TryVerifyRelaxed(rc);
 
       const uint8_t *ptr = (const uint8_t *)valptr.data();
@@ -2270,7 +2292,9 @@ rc_t tpcc_dia_worker::txn_query2() {
         ermia::varstr valptr;
 
         rc_t rc = rc_t{RC_INVALID};
-        tbl_supplier(1)->Get(txn, rc, Encode(str(Size(k_su)), k_su), valptr);
+        ermia::OID oid = 0;
+        ((ermia::DecoupledMasstreeIndex*)tbl_supplier(1))->SendGet(txn, rc, Encode(str(Size(k_su)), k_su), &oid);
+        ((ermia::DecoupledMasstreeIndex*)tbl_supplier(1))->RecvGet(txn, rc, oid, valptr);
         TryVerifyRelaxed(rc);
 
         const supplier::value *v_su = Decode(valptr, v_su_tmp);
@@ -2291,7 +2315,9 @@ rc_t tpcc_dia_worker::txn_query2() {
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
           rc = rc_t{RC_INVALID};
-          tbl_stock(it.first)->Get(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
+          oid = 0;
+          ((ermia::DecoupledMasstreeIndex*)tbl_stock(it.first))->SendGet(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
+          ((ermia::DecoupledMasstreeIndex*)tbl_stock(it.first))->RecvGet(txn, rc, oid, valptr);
           TryVerifyRelaxed(rc);
           const stock::value *v_s = Decode(valptr, v_s_tmp);
 
@@ -2310,7 +2336,9 @@ rc_t tpcc_dia_worker::txn_query2() {
         const item::key k_i(min_k_s.s_i_id);
         item::value v_i_temp;
         rc = rc_t{RC_INVALID};
-        tbl_item(1)->Get(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
+        oid = 0;
+        ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->SendGet(txn, rc, Encode(str(Size(k_i)), k_i), &oid);
+        ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->RecvGet(txn, rc, oid, valptr);
         TryVerifyRelaxed(rc);
         const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
@@ -2371,7 +2399,9 @@ rc_t tpcc_dia_worker::txn_microbench_random() {
     const stock::key k_s(w, s);
     DLOG(INFO) << "rd " << w << " " << s;
     rc_t rc = rc_t{RC_INVALID};
-    tbl_stock(w)->Get(txn, rc, Encode(str(Size(k_s)), k_s), sv);
+    ermia::OID oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(w))->SendGet(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(w))->RecvGet(txn, rc, oid, sv);
     TryCatch(rc);
 
     if (++s > NumItems()) {
@@ -2814,7 +2844,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   ermia::varstr valptr;
 
   rc_t rc = rc_t{RC_INVALID};
-  tbl_customer(warehouse_id)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+  ermia::OID oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
@@ -2826,7 +2858,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   warehouse::value v_w_temp;
 
   rc = rc_t{RC_INVALID};
-  tbl_warehouse(warehouse_id)->Get(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
+  oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_w)), k_w), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
@@ -2838,7 +2872,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_new_order(uint warehouse_id) {
   district::value v_d_temp;
 
   rc = rc_t{RC_INVALID};
-  tbl_district(warehouse_id)->Get(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
+  oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_d)), k_d), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
@@ -2892,7 +2928,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_new_order(uint warehouse_id) {
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
     rc = rc_t{RC_INVALID};
-    tbl_item(1)->Get(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->SendGet(txn, rc, Encode(str(Size(k_i)), k_i), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_item(1))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
     const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
@@ -2903,7 +2941,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_new_order(uint warehouse_id) {
     stock::value v_s_temp;
 
     rc = rc_t{RC_INVALID};
-    tbl_stock(ol_supply_w_id)->Get(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendGet(txn, rc, Encode(str(Size(k_s)), k_s), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
 
     const stock::value *v_s = Decode(valptr, v_s_temp);
@@ -2974,7 +3014,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_payment(uint warehouse_id) {
   ermia::varstr valptr;
 
   rc_t rc = rc_t{RC_INVALID};
-  tbl_warehouse(warehouse_id)->Get(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
+  ermia::OID oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_w)), k_w), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_warehouse(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
@@ -2991,7 +3033,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_payment(uint warehouse_id) {
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
   rc = rc_t{RC_INVALID};
-  tbl_district(warehouse_id)->Get(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
+  oid = 0;
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_d)), k_d), &oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_district(warehouse_id))->RecvGet(txn, rc, oid, valptr);
   TryVerifyRelaxed(rc);
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -3050,7 +3094,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_payment(uint warehouse_id) {
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = customerID;
     rc = rc_t{RC_INVALID};
-    tbl_customer(customerWarehouseID)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(customerWarehouseID))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(customerWarehouseID))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
     Decode(valptr, v_c);
   }
@@ -3141,7 +3187,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     oorder::value v_oo_temp;
     ermia::varstr valptr;
     rc_t rc = rc_t{RC_INVALID};
-    tbl_oorder(warehouse_id)->Get(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
+    ermia::OID  oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_oo)), k_oo), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->RecvGet(txn, rc, oid, valptr);
     TryCatchCondAbort(rc);
     const oorder::value *v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
@@ -3196,7 +3244,9 @@ rc_t tpcc_dia_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     const customer::key k_c(warehouse_id, d, c_id);
     customer::value v_c_temp;
     rc = rc_t{RC_INVALID};
-    tbl_customer(warehouse_id)->Get(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_customer(warehouse_id))->RecvGet(txn, rc, oid, valptr);
     TryVerifyRelaxed(rc);
 
     const customer::value *v_c = Decode(valptr, v_c_temp);
