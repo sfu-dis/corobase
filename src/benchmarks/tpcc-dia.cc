@@ -1388,17 +1388,16 @@ rc_t tpcc_dia_worker::txn_new_order() {
     TryVerifyRelaxed(rcs_stock[ol_number - 1]);
   }
 
+  PrepareForDIA(&rcs_item, &oids_item);
+  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendPut(txn, rcs_stock[ol_number - 1], *keys_stock[ol_number - 1], &oids_stock[ol_number - 1]);
+  }
+
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
     const uint ol_i_id = itemIDs[ol_number - 1];
     const uint ol_quantity = orderQuantities[ol_number - 1];
-
-    const item::key k_i(ol_i_id);
-    item::value v_i_temp;
-    const item::value *v_i = Decode(*values_item[ol_number - 1], v_i_temp);
-#ifndef NDEBUG
-    checker::SanityCheckItem(&k_i, v_i);
-#endif
 
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
@@ -1415,12 +1414,22 @@ rc_t tpcc_dia_worker::txn_new_order() {
     v_s_new.s_ytd += ol_quantity;
     v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
 
-    rc = rc_t{RC_INVALID};
-    oid = 0;
-    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->SendPut(txn, rc, *keys_stock[ol_number - 1], &oid);
-    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvPut(txn, rc, oid, *keys_stock[ol_number - 1],
+    ((ermia::DecoupledMasstreeIndex*)tbl_stock(ol_supply_w_id))->RecvPut(txn, rcs_stock[ol_number - 1], oids_stock[ol_number - 1], *keys_stock[ol_number - 1],
                                           Encode(str(Size(v_s_new)), v_s_new));
-    TryCatch(rc);
+    TryCatch(rcs_stock[ol_number - 1]);
+  }
+
+  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+    const uint ol_i_id = itemIDs[ol_number - 1];
+    const uint ol_quantity = orderQuantities[ol_number - 1];
+
+    const item::key k_i(ol_i_id);
+    item::value v_i_temp;
+    const item::value *v_i = Decode(*values_item[ol_number - 1], v_i_temp);
+#ifndef NDEBUG
+    checker::SanityCheckItem(&k_i, v_i);
+#endif
 
     const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id, ol_number);
     order_line::value v_ol;
