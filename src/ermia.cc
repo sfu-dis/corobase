@@ -438,6 +438,23 @@ void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc, OID oid,
     volatile_write(rc._val, RC_FALSE);
   }
 }
+// overload RecvInsert for secondary index
+void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc,
+                                        varstr &key, OID value_oid) {
+  while (volatile_read(rc._val) == RC_INVALID) {}
+  if (rc._val == RC_TRUE) {
+    // key-OID installed successfully
+    t->FinishInsert(this, value_oid, &key, nullptr, nullptr);
+    volatile_write(rc._val, RC_TRUE);
+  } else {
+    ASSERT(rc._val == RC_FALSE);
+    if (config::enable_chkpt) {
+      volatile_write(descriptor_->GetKeyArray()->get(value_oid)->_ptr, 0);
+    }
+    volatile_write(rc._val, RC_FALSE);
+  }
+}
+
 
 void DecoupledMasstreeIndex::RecvPut(transaction *t, rc_t &rc, OID &oid, const varstr &key, varstr &value) {
   while (volatile_read(rc._val) == RC_INVALID) {}
