@@ -1339,13 +1339,10 @@ rc_t tpcc_dia_worker::txn_new_order() {
 
   const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
   rc = rc_t{RC_INVALID};
-  oid = 0;
-  tuple = nullptr;
-  ((ermia::DecoupledMasstreeIndex*)tbl_oorder_c_id_idx(warehouse_id))->SendInsert(txn, rc, Encode(str(Size(k_oo_idx)), k_oo_idx),
-                                          *(ermia::varstr *)&v_oo_oid, &oid, &tuple);
-  //ALWAYS_ASSERT(tuple);
-  ((ermia::DecoupledMasstreeIndex*)tbl_oorder_c_id_idx(warehouse_id))->RecvInsert(txn, rc, oid, Encode(str(Size(k_oo_idx)), k_oo_idx),
-                                          *(ermia::varstr *)&v_oo_oid, tuple);
+  ((ermia::DecoupledMasstreeIndex*)tbl_oorder_c_id_idx(warehouse_id))->SendInsert(txn, rc,
+                                          Encode(str(Size(k_oo_idx)), k_oo_idx), &v_oo_oid);
+  ((ermia::DecoupledMasstreeIndex*)tbl_oorder_c_id_idx(warehouse_id))->RecvInsert(txn, rc,
+                                          Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid);
 
   thread_local std::vector<ermia::varstr *> keys_item;
   keys_item.clear();
