@@ -278,13 +278,13 @@ public:
     *out_oid = t->PrepareInsert(this, &value, out_tuple);
     ermia::dia::SendInsertRequest(t, this, &key, out_oid, &rc);
   }
-  // overload SendInsert for secondary index. Insert oid as value to secondary index
+  void RecvInsert(transaction *t, rc_t &rc, OID oid, varstr &key, varstr &value, dbtuple *tuple);
+  // overload SendInsert for secondary index.
   inline void SendInsert(transaction *t, rc_t &rc, const varstr &key, OID *value_oid) {
     // For secondary index, PrepareInsert just copy value_oid to oid
-    // So discard it and send value_oid directly
+    // So ignore this step and send value_oid directly
     ermia::dia::SendInsertRequest(t, this, &key, value_oid, &rc);
   }
-  void RecvInsert(transaction *t, rc_t &rc, OID oid, varstr &key, varstr &value, dbtuple *tuple);
   // overload RecvInsert for secondary index.
   void RecvInsert(transaction *t, rc_t &rc, varstr &key, OID value_oid);
 
@@ -301,6 +301,11 @@ public:
     SendGet(t, rc, key, out_oid);
   }
   void RecvPut(transaction *t, rc_t &rc, OID &oid, const varstr &key, varstr &value);
+
+  inline void SendRemove(transaction *t, rc_t &rc, const varstr &key, OID *out_oid) {
+    SendGet(t, rc, key, out_oid);
+  }
+  void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
