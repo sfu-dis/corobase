@@ -470,4 +470,18 @@ void DecoupledMasstreeIndex::RecvPut(transaction *t, rc_t &rc, OID &oid, const v
   }
 }
 
+void DecoupledMasstreeIndex::RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key) {
+  while (volatile_read(rc._val) == RC_INVALID) {}
+  switch(rc._val) {
+    case RC_TRUE:
+      rc = t->Update(descriptor_, oid, &key, nullptr);
+      break;
+    case RC_FALSE:
+      rc._val = RC_ABORT_INTERNAL;
+      break;
+    default:
+      LOG(FATAL) << "Wrong SendRemove result";
+  }
+}
+
 }  // namespace ermia

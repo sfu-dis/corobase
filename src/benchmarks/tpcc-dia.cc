@@ -1623,8 +1623,13 @@ rc_t tpcc_dia_worker::txn_delivery() {
     }
 
     // delete new order
-    TryCatch(tbl_new_order(warehouse_id)
-                  ->Remove(txn, Encode(str(Size(*k_no)), *k_no)));
+    rc = rc_t{RC_INVALID};
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))->SendRemove(txn, rc,
+                        Encode(str(Size(*k_no)), *k_no), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))->RecvRemove(txn, rc, oid,
+                        Encode(str(Size(*k_no)), *k_no));
+    TryCatch(rc);
 
     // update oorder
     oorder::value v_oo_new(*v_oo);
@@ -3242,8 +3247,13 @@ rc_t tpcc_dia_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     }
 
     // delete new order
-    TryCatch(tbl_new_order(warehouse_id)
-                  ->Remove(txn, Encode(str(Size(*k_no)), *k_no)));
+    rc = rc_t{RC_INVALID};
+    oid = 0;
+    ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))->SendRemove(txn, rc,
+                        Encode(str(Size(*k_no)), *k_no), &oid);
+    ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))->RecvRemove(txn, rc, oid,
+                        Encode(str(Size(*k_no)), *k_no));
+    TryCatch(rc);
 
     // update oorder
     oorder::value v_oo_new(*v_oo);
