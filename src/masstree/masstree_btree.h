@@ -231,9 +231,8 @@ class mbtree {
    *
 
    * This function by default provides a weakly consistent view of the b-tree.
-   For
-   * instance, consider the following tree, where n = 3 is the max number of
-   * keys in a node:
+   * For instance, consider the following tree, where n = 3 is the max number
+   * of keys in a node:
    *
    *              [D|G]
    *             /  |  \
@@ -254,7 +253,7 @@ class mbtree {
    * The weakly consistent guarantee provided is the following: all keys
    * which, at the time of invocation, are known to exist in the btree
    * will be discovered on a scan (provided the key falls within the scan's
-   range),
+   * range),
    * and provided there are no concurrent modifications/removals of that key
    *
    * Note that scans within a single node are consistent
@@ -554,7 +553,6 @@ inline bool mbtree<P>::insert(const key_type &k, OID o, TXN::xid_context *xc,
   return !found;
 }
 
-// a coroutine variant of insert_if_absent
 template <typename P>
 inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
                                         TXN::xid_context *xc,
@@ -592,6 +590,7 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
   return !found;
 }
 
+// a coroutine variant of insert_if_absent
 template <typename P>
 inline ermia::dia::generator<bool> mbtree<P>::coro_insert_if_absent(const key_type &k, OID o,
                                         TXN::xid_context *xc,
