@@ -708,6 +708,16 @@ class mbtree<P>::low_level_search_range_scanner
     return callback_.invoke(this->btr_ptr_, key.full_string(), value, this->n_,
                             this->v_);
   }
+  // overload visit_value for dia
+  bool visit_value(const Masstree::key<uint64_t> &key) {
+    if (this->boundary_compar_) {
+      lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
+      if ((!Reverse && bs <= key.full_string()) ||
+          (Reverse && bs >= key.full_string()))
+        return false;
+    }
+    return true;
+  }
 
  private:
   Masstree::leaf<P> *n_;

@@ -379,5 +379,95 @@ int basic_table<P>::rscan(Str firstkey, bool emit_firstkey, F &scanner,
   return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
+template <typename P>
+template <typename H, typename F>
+int basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey,
+                         std::vector<ermia::OID> &oids, F &scanner,
+                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  typedef typename P::ikey_type ikey_type;
+  typedef typename node_type::key_type key_type;
+  typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
+  union {
+    ikey_type
+        x[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+    char s[MASSTREE_MAXKEYLEN];
+  } keybuf;
+  masstree_precondition(firstkey.len <= (int)sizeof(keybuf));
+  memcpy(keybuf.s, firstkey.s, firstkey.len);
+  key_type ka(keybuf.s, firstkey.len);
+
+  typedef scanstackelt<param_type> mystack_type;
+  mystack_type
+      stack[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+  int stackpos = 0;
+  stack[0].root_ = root_;
+  leafvalue_type entry = leafvalue_type::make_empty();
+
+  int scancount = 0;
+  int state;
+
+  while (1) {
+    state = stack[stackpos].find_initial(helper, ka, emit_firstkey, entry, ti);
+    scanner.visit_leaf(stack[stackpos], ka, ti);
+    if (state != mystack_type::scan_down) break;
+    ka.shift();
+    ++stackpos;
+  }
+
+  while (1) {
+    switch (state) {
+      case mystack_type::scan_emit: {  // surpress cross init warning about v
+        oids.emplace_back(entry.value());
+        ++scancount;
+        if (!scanner.visit_value(ka)) goto done;
+        stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
+        state = stack[stackpos].find_next(helper, ka, entry);
+      } break;
+
+      case mystack_type::scan_find_next:
+      find_next:
+        state = stack[stackpos].find_next(helper, ka, entry);
+        if (state != mystack_type::scan_up)
+          scanner.visit_leaf(stack[stackpos], ka, ti);
+        break;
+
+      case mystack_type::scan_up:
+        do {
+          if (--stackpos < 0) goto done;
+          ka.unshift();
+          stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
+        } while (unlikely(ka.empty()));
+        goto find_next;
+
+      case mystack_type::scan_down:
+        helper.shift_clear(ka);
+        ++stackpos;
+        goto retry;
+
+      case mystack_type::scan_retry:
+      retry:
+        state = stack[stackpos].find_retry(helper, ka, ti);
+        break;
+    }
+  }
+
+done:
+  return scancount;
+}
+
+template <typename P>
+template <typename F>
+int basic_table<P>::scan(Str firstkey, bool emit_firstkey, std::vector<ermia::OID> &oids,
+                         F &scanner, ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  return scan(forward_scan_helper(), firstkey, emit_firstkey, oids, scanner, xc, ti);
+}
+
+template <typename P>
+template <typename F>
+int basic_table<P>::rscan(Str firstkey, bool emit_firstkey, std::vector<ermia::OID> &oids,
+                          F &scanner, ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  return scan(reverse_scan_helper(), firstkey, emit_firstkey, oids, scanner, xc, ti);
+}
+
 }  // namespace Masstree
 #endif

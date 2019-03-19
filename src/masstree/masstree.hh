@@ -94,6 +94,13 @@ class basic_table {
             threadinfo& ti) const;
 
   template <typename F>
+  int scan(Str firstkey, bool matchfirst, std::vector<ermia::OID> &oids, F& scanner,
+           ermia::TXN::xid_context* xc, threadinfo& ti) const;
+  template <typename F>
+  int rscan(Str firstkey, bool matchfirst, std::vector<ermia::OID> &oids, F& scanner,
+            ermia::TXN::xid_context* xc, threadinfo& ti) const;
+
+  template <typename F>
   inline int modify(Str key, F& f, threadinfo& ti);
   template <typename F>
   inline int modify_insert(Str key, F& f, threadinfo& ti);
@@ -110,6 +117,10 @@ class basic_table {
   template <typename H, typename F>
   int scan(H helper, Str firstkey, bool matchfirst, F& scanner, ermia::TXN::xid_context* xc,
            threadinfo& ti) const;
+
+  template <typename H, typename F>
+  int scan(H helper, Str firstkey, bool matchfirst, std::vector<ermia::OID> &oids, F& scanner,
+           ermia::TXN::xid_context* xc, threadinfo& ti) const;
 
   friend class unlocked_tcursor<P>;
   friend class tcursor<P>;
