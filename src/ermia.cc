@@ -252,8 +252,8 @@ ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transac
   co_return true;
 }
 
-void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) {
-}
+void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
+                                      rc_t &rc, std::vector<OID> &out_oids) {}
 
 rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid) {
   if (t.TryInsertNewTuple(this, k, v, inserted_oid)) {
@@ -458,7 +458,6 @@ void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc,
   }
 }
 
-
 void DecoupledMasstreeIndex::RecvPut(transaction *t, rc_t &rc, OID &oid, const varstr &key, varstr &value) {
   while (volatile_read(rc._val) == RC_INVALID) {}
   switch(rc._val) {
@@ -487,4 +486,5 @@ void DecoupledMasstreeIndex::RecvRemove(transaction *t, rc_t &rc, OID &oid, cons
   }
 }
 
+void DecoupledMasstreeIndex::RecvScan(transaction *t, rc_t &rc, std::vector<OID> &oids, varstr *keys, varstr *values){}
 }  // namespace ermia

@@ -149,7 +149,8 @@ public:
   // a coroutine variant of InsertIfAbsent
   virtual ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
 
-  virtual void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) = 0;
+  virtual void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc,
+                       std::vector<OID> &out_oids) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -256,7 +257,7 @@ private:
   // a coroutine variant of InsertIfAbsent
   ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) override;
 
-  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) override;
+  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, std::vector<OID> &oids) override;
 };
 
 // User-facing masstree with decoupled index access
@@ -309,11 +310,10 @@ public:
   }
   void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
 
-  inline void SendScan(transaction *t, rc_t &rc, const varstr &key, OID *out_oids) {
-    ASSERT(out_oids);
-    ermia::dia::SendScanRequest(t, this, &key, out_oids, &rc);
+  inline void SendScan(transaction *t, rc_t &rc, varstr *keys, std::vector<OID> &oids) {
+    ermia::dia::SendScanRequest(t, this, keys, oids, &rc);
   }
-  //void RecvScan(transaction *t, rc_t &rc, OID *oids, varstr &value);
+  void RecvScan(transaction *t, rc_t &rc, std::vector<OID> &oids, varstr *keys, varstr *values);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -389,6 +389,6 @@ public:
 
   ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) override { co_return true; }
 
-  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) override {}
+  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, std::vector<OID> &out_oids) override {}
 };
 }  // namespace ermia
