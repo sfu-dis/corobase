@@ -12,9 +12,11 @@ namespace dia {
 
 void Initialize();
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index,
-                     const varstr *key, OID *oid, rc_t *rc);
+                    const varstr *key, OID *oid, rc_t *rc);
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
                        const varstr *key, OID *oid, rc_t *rc);
+void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
+                     const varstr *key, OID *oids, rc_t *rc);
 uint32_t RoutingYcsb(const varstr *key);
 uint32_t RoutingTpcc(const varstr *key);
 
@@ -23,6 +25,7 @@ struct Request {
   static const uint8_t kTypeInvalid= 0x0;
   static const uint8_t kTypeGet = 0x1;
   static const uint8_t kTypeInsert = 0x2;
+  static const uint8_t kTypeScan = 0x3;
   ermia::transaction *transaction;
   OrderedIndex *index;
   const varstr *key;

@@ -69,16 +69,6 @@ public:
                         const varstr &value) = 0;
   };
 
-  // Use transaction's TryInsertNewTuple to try insert a new tuple
-  rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid);
-
-  virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
-
-  // a coroutine variant of GetOID
-  virtual ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) { co_return true; }
-
   /**
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
@@ -141,6 +131,15 @@ public:
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
 
+  // Use transaction's TryInsertNewTuple to try insert a new tuple
+  rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid);
+
+  virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
+  // a coroutine variant of GetOID
+  virtual ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) { co_return true; }
+
   /**
    * Insert key-oid pair to the underlying actual index structure.
    *
@@ -149,6 +148,8 @@ public:
   virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
   // a coroutine variant of InsertIfAbsent
   virtual ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) { co_return true; }
+
+  //virtual void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -212,23 +213,6 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char* primary)
     : OrderedIndex(name, primary) {}
 
-  inline void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
-    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
-  }
-
-  // a coroutine variant of getOID
-  inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
-    while (co_await cs){ }
-    bool found = cs.current_value();
-    //bool found = masstree_.search(key, out_oid, xc, out_sinfo);
-    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
-    co_return found;
-  }
-
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
@@ -250,6 +234,22 @@ public:
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
+
+  inline void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+  }
+  // a coroutine variant of getOID
+  inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
+    while (co_await cs){ }
+    bool found = cs.current_value();
+    //bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
+    co_return found;
+  }
 
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
@@ -306,6 +306,12 @@ public:
     SendGet(t, rc, key, out_oid);
   }
   void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
+
+  inline void SendScan(transaction *t, rc_t &rc, const varstr &key, OID *out_oids) {
+    ASSERT(out_oids);
+    ermia::dia::SendScanRequest(t, this, &key, out_oids, &rc);
+  }
+  //void RecvScan(transaction *t, rc_t &rc, OID *oids, varstr &value);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
