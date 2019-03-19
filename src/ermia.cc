@@ -252,6 +252,9 @@ ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transac
   co_return true;
 }
 
+void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) {
+}
+
 rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid) {
   if (t.TryInsertNewTuple(this, k, v, inserted_oid)) {
     return rc_t{RC_TRUE};

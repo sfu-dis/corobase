@@ -138,7 +138,7 @@ public:
                       ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
   // a coroutine variant of GetOID
   virtual ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) { co_return true; }
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
   /**
    * Insert key-oid pair to the underlying actual index structure.
@@ -147,9 +147,9 @@ public:
    */ 
   virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
   // a coroutine variant of InsertIfAbsent
-  virtual ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) { co_return true; }
+  virtual ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
 
-  //virtual void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) = 0;
+  virtual void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -255,6 +255,8 @@ private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
   // a coroutine variant of InsertIfAbsent
   ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) override;
+
+  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) override;
 };
 
 // User-facing masstree with decoupled index access
@@ -337,14 +339,6 @@ private:
 public:
   SingleThreadedBTree(std::string name, const char *primary) : OrderedIndex(name, primary) {}
 
-  void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    MARK_REFERENCED(key);
-    MARK_REFERENCED(rc);
-    MARK_REFERENCED(xc);
-    MARK_REFERENCED(out_oid);
-    MARK_REFERENCED(out_sinfo);
-  }
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
@@ -380,5 +374,21 @@ public:
   inline size_t Size() override { return 0; /* Not implemented */ }
   std::map<std::string, uint64_t> Clear() override { std::map<std::string, uint64_t> unused; return unused; /* Not implemented */ }
   inline void SetArrays() override { /* Not implemented */ }
+
+  // needless functions
+  void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    MARK_REFERENCED(key);
+    MARK_REFERENCED(rc);
+    MARK_REFERENCED(xc);
+    MARK_REFERENCED(out_oid);
+    MARK_REFERENCED(out_sinfo);
+  }
+  ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override { co_return true; }
+
+  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) override { co_return true; }
+
+  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, OID *out_oids) override {}
 };
 }  // namespace ermia
