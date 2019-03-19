@@ -317,6 +317,15 @@ class mbtree {
   inline void rsearch_range(const key_type &upper, const key_type *lower,
                             F &callback, TXN::xid_context *xc) const;
 
+
+  /**
+   * Decouple callback for search_range in DIA
+   */
+  inline void search_range(const key_type &lower, const key_type *upper,
+                           std::vector<OID> &oids, TXN::xid_context *xc) const;
+  inline void rsearch_range(const key_type &lower, const key_type *upper,
+                            std::vector<OID> &oids, TXN::xid_context *xc) const;
+
   /**
    * returns true if key k did not already exist, false otherwise
    * If k exists with a different mapping, still returns false
@@ -411,6 +420,8 @@ class mbtree {
   class size_walk_callback;
   template <bool Reverse>
   class search_range_scanner_base;
+  template <bool Reverse>
+  class no_callback_search_range_scanner;
   template <bool Reverse>
   class low_level_search_range_scanner;
   template <typename F>
@@ -682,6 +693,37 @@ class mbtree<P>::search_range_scanner_base {
 
 template <typename P>
 template <bool Reverse>
+class mbtree<P>::no_callback_search_range_scanner
+    : public search_range_scanner_base<Reverse> {
+ public:
+  no_callback_search_range_scanner(const mbtree<P> *btr_ptr,
+                                   const key_type *boundary)
+      : search_range_scanner_base<Reverse>(boundary),
+        btr_ptr_(btr_ptr) {}
+  void visit_leaf(const Masstree::scanstackelt<P> &iter,
+                  const Masstree::key<uint64_t> &key, threadinfo &) {
+    this->n_ = iter.node();
+    this->v_ = iter.full_version_value();
+    if (this->boundary_) this->check(iter, key);
+  }
+  bool visit_value(const Masstree::key<uint64_t> &key) {
+    if (this->boundary_compar_) {
+      lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
+      if ((!Reverse && bs <= key.full_string()) ||
+          (Reverse && bs >= key.full_string()))
+        return false;
+    }
+    return true;
+  }
+
+ private:
+  Masstree::leaf<P> *n_;
+  uint64_t v_;
+  const mbtree<P> *btr_ptr_;
+};
+
+template <typename P>
+template <bool Reverse>
 class mbtree<P>::low_level_search_range_scanner
     : public search_range_scanner_base<Reverse> {
  public:
@@ -787,6 +829,27 @@ inline void mbtree<P>::rsearch_range(const key_type &upper,
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti(xc->begin_epoch);
   table_.rscan(lcdf::Str(upper.data(), upper.size()), true, scanner, xc, ti);
+}
+
+/**
+ * Decouple callback for search_range in DIA
+ */
+template <typename P>
+inline void mbtree<P>::search_range(const key_type &lower,
+                                    const key_type *upper, std::vector<OID> &oids,
+                                    TXN::xid_context *xc) const {
+  no_callback_search_range_scanner<false> scanner(this, upper);
+  threadinfo ti(xc->begin_epoch);
+  table_.scan(lcdf::Str(lower.data(), lower.size()), true, oids, scanner, xc, ti);
+}
+
+template <typename P>
+inline void mbtree<P>::rsearch_range(const key_type &upper,
+                                     const key_type *lower, std::vector<OID> &oids,
+                                     TXN::xid_context *xc) const {
+  no_callback_search_range_scanner<true> scanner(this, lower);
+  threadinfo ti(xc->begin_epoch);
+  table_.rscan(lcdf::Str(upper.data(), upper.size()), true, oids, scanner, xc, ti);
 }
 
 template <typename P>

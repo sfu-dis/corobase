@@ -253,7 +253,26 @@ ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertIfAbsent(transac
 }
 
 void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-                                      rc_t &rc, std::vector<OID> &out_oids) {}
+                                      rc_t &rc, std::vector<OID> &out_oids) {
+  t->ensure_active();
+  if (end_key) {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key) << ", "
+                      << util::hexify(*end_key) << ")" << std::endl);
+  } else {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key)
+                      << ", +inf)" << std::endl);
+  }
+
+  if (!unlikely(end_key && *end_key <= start_key)) {
+    varstr uppervk;
+    if (end_key) {
+      uppervk = *end_key;
+    }
+    masstree_.search_range(start_key, end_key ? &uppervk : nullptr, out_oids, t->xc);
+  }
+}
 
 rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid) {
   if (t.TryInsertNewTuple(this, k, v, inserted_oid)) {
