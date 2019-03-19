@@ -9,7 +9,6 @@ std::vector<IndexThread *> index_threads;
 std::function<uint32_t(const varstr *)> routing;
 
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
-  // FIXME(tzwang): find the right index thread using some partitioning scheme
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
   uint32_t index_thread_id = routing(key);
   index_threads[index_thread_id]->AddRequest(t, index, key, oid, Request::kTypeGet, rc);
@@ -17,10 +16,15 @@ void SendGetRequest(ermia::transaction *t, OrderedIndex *index, const varstr *ke
 }
 
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oid, rc_t *rc) {
-  // FIXME(tzwang): find the right index thread using some partitioning scheme
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
   uint32_t index_thread_id = routing(key);
   index_threads[index_thread_id]->AddRequest(t, index, key, oid, Request::kTypeInsert, rc);
+}
+
+void SendScanRequest(ermia::transaction *t, OrderedIndex *index, const varstr *key, OID *oids, rc_t *rc) {
+  ALWAYS_ASSERT(rc->_val == RC_INVALID);
+  uint32_t index_thread_id = routing(key);
+  index_threads[index_thread_id]->AddRequest(t, index, key, oids, Request::kTypeScan, rc);
 }
 
 uint32_t RoutingYcsb(const varstr *key) {
