@@ -1,18 +1,19 @@
 #pragma once
 
-#include <map>
-#include <experimental/coroutine>
-#include "btree/btree.h"
-#include "txn.h"
+#include "../dbcore/sm-coroutine.h"
 #include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
-#include "../dbcore/sm-coroutine.h"
+#include "btree/btree.h"
+#include "txn.h"
+#include <experimental/coroutine>
+#include <map>
 
 namespace ermia {
 
 class Engine {
 private:
-  void CreateTable(uint16_t index_type, const char *name, const char *primary_name);
+  void CreateTable(uint16_t index_type, const char *name,
+                   const char *primary_name);
 
 public:
   Engine();
@@ -23,14 +24,19 @@ public:
   static const uint16_t kIndexDecoupledMasstree = 0x2;
   static const uint16_t kIndexSingleThreadedBTree = 0x3;
 
-  inline void CreateMasstreeTable(const char *name, bool decoupled, const char *primary_name = nullptr) {
-    CreateTable(decoupled ? kIndexDecoupledMasstree : kIndexConcurrentMasstree, name, primary_name);
+  inline void CreateMasstreeTable(const char *name, bool decoupled,
+                                  const char *primary_name = nullptr) {
+    CreateTable(decoupled ? kIndexDecoupledMasstree : kIndexConcurrentMasstree,
+                name, primary_name);
   }
-  inline void CreateSingleThreadedBTreeTable(const char *name, const char *primary_name = nullptr) {
+  inline void
+  CreateSingleThreadedBTreeTable(const char *name,
+                                 const char *primary_name = nullptr) {
     CreateTable(kIndexSingleThreadedBTree, name, primary_name);
   }
 
-  inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena, transaction *buf) {
+  inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena,
+                                     transaction *buf) {
     new (buf) transaction(txn_flags, arena);
     return buf;
   }
@@ -57,13 +63,13 @@ protected:
   IndexDescriptor *descriptor_;
 
 public:
-  OrderedIndex(std::string name, const char* primary = nullptr) {
+  OrderedIndex(std::string name, const char *primary = nullptr) {
     descriptor_ = IndexDescriptor::New(this, name, primary);
   }
   inline IndexDescriptor *GetDescriptor() { return descriptor_; }
 
   class ScanCallback {
-   public:
+  public:
     ~ScanCallback() {}
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
@@ -73,7 +79,8 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
    */
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) = 0;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+                   OID *out_oid = nullptr) = 0;
 
   /**
    * Put a key of length keylen, with mapping of length valuelen.
@@ -112,15 +119,17 @@ public:
    * Search [start_key, *end_key) if end_key is not null, otherwise
    * search [start_key, +infty)
    */
-  virtual rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-                    ScanCallback &callback, str_arena *arena) = 0;
+  virtual rc_t Scan(transaction *t, const varstr &start_key,
+                    const varstr *end_key, ScanCallback &callback,
+                    str_arena *arena) = 0;
   /**
    * Search (*end_key, start_key] if end_key is not null, otherwise
    * search (-infty, start_key] (starting at start_key and traversing
    * backwards)
    */
-  virtual rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-                           ScanCallback &callback, str_arena *arena) = 0;
+  virtual rc_t ReverseScan(transaction *t, const varstr &start_key,
+                           const varstr *end_key, ScanCallback &callback,
+                           str_arena *arena) = 0;
 
   /**
    * Default implementation calls put() with NULL (zero-length) value
@@ -132,24 +141,29 @@ public:
   virtual void SetArrays() = 0;
 
   // Use transaction's TryInsertNewTuple to try insert a new tuple
-  rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert, OID *inserted_oid);
+  rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert,
+                 OID *inserted_oid);
 
-  virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
+  virtual void
+  GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+         ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
   // a coroutine variant of GetOID
-  virtual ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
+  virtual ermia::dia::generator<bool>
+  coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
   /**
    * Insert key-oid pair to the underlying actual index structure.
    *
    * Returns false if the record already exists or there is potential phantom.
-   */ 
+   */
   virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
   // a coroutine variant of InsertIfAbsent
-  virtual ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
+  virtual ermia::dia::generator<bool>
+  coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
 
-  virtual void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc,
+  virtual void ScanOID(transaction *t, const varstr &start_key,
+                       const varstr *end_key, rc_t &rc,
                        std::vector<OID> &out_oids) = 0;
 };
 
@@ -163,10 +177,11 @@ private:
 
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
-      : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
+        : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
     ~SearchRangeCallback() {}
 
-    inline bool Invoke(const ConcurrentMasstree::string_type &k, const varstr &v) {
+    inline bool Invoke(const ConcurrentMasstree::string_type &k,
+                       const varstr &v) {
       return upcall->Invoke(k.data(), k.length(), v);
     }
 
@@ -174,30 +189,34 @@ private:
     rc_t return_code;
   };
 
-  struct XctSearchRangeCallback : public ConcurrentMasstree::low_level_search_range_callback {
+  struct XctSearchRangeCallback
+      : public ConcurrentMasstree::low_level_search_range_callback {
     XctSearchRangeCallback(transaction *t, SearchRangeCallback *caller_callback)
         : t(t), caller_callback(caller_callback) {}
 
-    virtual void on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
-                              uint64_t version);
+    virtual void
+    on_resp_node(const typename ConcurrentMasstree::node_opaque_t *n,
+                 uint64_t version);
     virtual bool invoke(const ConcurrentMasstree *btr_ptr,
                         const typename ConcurrentMasstree::string_type &k,
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
                         uint64_t version);
 
-   private:
+  private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
   };
 
   struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
-    virtual void on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
+    virtual void
+    on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
     virtual void on_node_success();
     virtual void on_node_failure();
 
-   private:
-    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool> > spec_values;
+  private:
+    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool>>
+        spec_values;
   };
 
   // expect_new indicates if we expect the record to not exist in the tree- is
@@ -211,14 +230,16 @@ private:
                          uint64_t version);
 
 public:
-  ConcurrentMasstreeIndex(std::string name, const char* primary)
-    : OrderedIndex(name, primary) {}
+  ConcurrentMasstreeIndex(std::string name, const char *primary)
+      : OrderedIndex(name, primary) {}
 
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+                   OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value,
+                     OID *out_oid = nullptr) override {
     return DoTreePut(*t, &key, &value, true, true, out_oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
@@ -229,25 +250,29 @@ public:
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
             ScanCallback &callback, str_arena *arena) override;
-  rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-                   ScanCallback &callback, str_arena *arena) override;
+  rc_t ReverseScan(transaction *t, const varstr &start_key,
+                   const varstr *end_key, ScanCallback &callback,
+                   str_arena *arena) override;
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
 
-  inline void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+  inline void
+  GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+         ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     bool found = masstree_.search(key, out_oid, xc, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
   // a coroutine variant of getOID
-  inline ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                     ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+  inline ermia::dia::generator<bool> coro_GetOID(
+      const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
-    while (co_await cs){ }
+    while (co_await cs) {
+    }
     bool found = cs.current_value();
-    //bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    // bool found = masstree_.search(key, out_oid, xc, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
     co_return found;
   }
@@ -255,9 +280,12 @@ public:
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
   // a coroutine variant of InsertIfAbsent
-  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) override;
+  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t,
+                                                  const varstr &key, rc_t &rc,
+                                                  OID oid) override;
 
-  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, std::vector<OID> &oids) override;
+  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
+               rc_t &rc, std::vector<OID> &oids) override;
 };
 
 // User-facing masstree with decoupled index access
@@ -267,23 +295,27 @@ class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
   friend class dia::IndexThread;
 
 public:
-  DecoupledMasstreeIndex(std::string name, const char* primary);
+  DecoupledMasstreeIndex(std::string name, const char *primary);
 
-  inline void SendGet(transaction *t, rc_t &rc, const varstr &key, OID *out_oid) {
+  inline void SendGet(transaction *t, rc_t &rc, const varstr &key,
+                      OID *out_oid) {
     ASSERT(out_oid);
     ermia::dia::SendGetRequest(t, this, &key, out_oid, &rc);
   }
   void RecvGet(transaction *t, rc_t &rc, OID &oid, varstr &value);
 
-  inline void SendInsert(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid, dbtuple **out_tuple) {
+  inline void SendInsert(transaction *t, rc_t &rc, const varstr &key,
+                         varstr &value, OID *out_oid, dbtuple **out_tuple) {
     ASSERT(out_oid);
     *out_tuple = nullptr;
     *out_oid = t->PrepareInsert(this, &value, out_tuple);
     ermia::dia::SendInsertRequest(t, this, &key, out_oid, &rc);
   }
-  void RecvInsert(transaction *t, rc_t &rc, OID oid, varstr &key, varstr &value, dbtuple *tuple);
+  void RecvInsert(transaction *t, rc_t &rc, OID oid, varstr &key, varstr &value,
+                  dbtuple *tuple);
   // overload SendInsert for secondary index.
-  inline void SendInsert(transaction *t, rc_t &rc, const varstr &key, OID *value_oid) {
+  inline void SendInsert(transaction *t, rc_t &rc, const varstr &key,
+                         OID *value_oid) {
     // For secondary index, PrepareInsert just copy value_oid to oid
     // So ignore this step and send value_oid directly
     ermia::dia::SendInsertRequest(t, this, &key, value_oid, &rc);
@@ -291,7 +323,8 @@ public:
   // overload RecvInsert for secondary index.
   void RecvInsert(transaction *t, rc_t &rc, varstr &key, OID value_oid);
 
-  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) {
+  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+           OID *out_oid = nullptr) {
     LOG(FATAL);
     MARK_REFERENCED(rc);
     MARK_REFERENCED(t);
@@ -300,20 +333,25 @@ public:
     MARK_REFERENCED(out_oid);
   }
 
-  inline void SendPut(transaction *t, rc_t &rc, const varstr &key, OID *out_oid) {
+  inline void SendPut(transaction *t, rc_t &rc, const varstr &key,
+                      OID *out_oid) {
     SendGet(t, rc, key, out_oid);
   }
-  void RecvPut(transaction *t, rc_t &rc, OID &oid, const varstr &key, varstr &value);
+  void RecvPut(transaction *t, rc_t &rc, OID &oid, const varstr &key,
+               varstr &value);
 
-  inline void SendRemove(transaction *t, rc_t &rc, const varstr &key, OID *out_oid) {
+  inline void SendRemove(transaction *t, rc_t &rc, const varstr &key,
+                         OID *out_oid) {
     SendGet(t, rc, key, out_oid);
   }
   void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
 
-  inline void SendScan(transaction *t, rc_t &rc, varstr &start_key, varstr *end_key, std::vector<OID> &oids) {
+  inline void SendScan(transaction *t, rc_t &rc, varstr &start_key,
+                       varstr *end_key, std::vector<OID> &oids) {
     ermia::dia::SendScanRequest(t, this, &start_key, end_key, oids, &rc);
   }
-  void RecvScan(transaction *t, rc_t &rc, std::vector<OID> &oids, varstr *keys, varstr *values);
+  void RecvScan(transaction *t, rc_t &rc, std::vector<OID> &oids, varstr *keys,
+                varstr *values);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -323,8 +361,8 @@ public:
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
             ScanCallback &callback, str_arena *arena) override;
-  rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-                   ScanCallback &callback, str_arena *arena) override;
+  rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr
+  *end_key, ScanCallback &callback, str_arena *arena) override;
   */
 };
 
@@ -337,13 +375,16 @@ private:
                  bool upsert, OID *inserted_oid);
 
 public:
-  SingleThreadedBTree(std::string name, const char *primary) : OrderedIndex(name, primary) {}
+  SingleThreadedBTree(std::string name, const char *primary)
+      : OrderedIndex(name, primary) {}
 
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
+  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+                   OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override {
+  inline rc_t Insert(transaction *t, const varstr &key, varstr &value,
+                     OID *out_oid = nullptr) override {
     return DoTreePut(*t, &key, &value, true, true, out_oid);
   }
   inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
@@ -353,7 +394,7 @@ public:
     return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
   rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            ScanCallback &callback, str_arena *arena) override { 
+            ScanCallback &callback, str_arena *arena) override {
     MARK_REFERENCED(t);
     MARK_REFERENCED(start_key);
     MARK_REFERENCED(end_key);
@@ -361,8 +402,9 @@ public:
     MARK_REFERENCED(arena);
     return rc_t{RC_TRUE};
   }
-  rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr *end_key,
-                   ScanCallback &callback, str_arena *arena) override {
+  rc_t ReverseScan(transaction *t, const varstr &start_key,
+                   const varstr *end_key, ScanCallback &callback,
+                   str_arena *arena) override {
     MARK_REFERENCED(t);
     MARK_REFERENCED(start_key);
     MARK_REFERENCED(end_key);
@@ -372,23 +414,36 @@ public:
   }
 
   inline size_t Size() override { return 0; /* Not implemented */ }
-  std::map<std::string, uint64_t> Clear() override { std::map<std::string, uint64_t> unused; return unused; /* Not implemented */ }
-  inline void SetArrays() override { /* Not implemented */ }
+  std::map<std::string, uint64_t> Clear() override {
+    std::map<std::string, uint64_t> unused;
+    return unused; /* Not implemented */
+  }
+  inline void SetArrays() override { /* Not implemented */
+  }
 
   // needless functions
-  void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+  void
+  GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+         ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     MARK_REFERENCED(key);
     MARK_REFERENCED(rc);
     MARK_REFERENCED(xc);
     MARK_REFERENCED(out_oid);
     MARK_REFERENCED(out_sinfo);
   }
-  ermia::dia::generator<bool> coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override { co_return true; }
+  ermia::dia::generator<bool> coro_GetOID(
+      const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
+      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
+    co_return true;
+  }
 
-  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) override { co_return true; }
+  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t,
+                                                  const varstr &key, rc_t &rc,
+                                                  OID oid) override {
+    co_return true;
+  }
 
-  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc, std::vector<OID> &out_oids) override {}
+  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
+               rc_t &rc, std::vector<OID> &out_oids) override {}
 };
-}  // namespace ermia
+} // namespace ermia
