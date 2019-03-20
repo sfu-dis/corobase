@@ -417,9 +417,9 @@ int basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey,
   while (1) {
     switch (state) {
       case mystack_type::scan_emit: {  // surpress cross init warning about v
-        oids.emplace_back(entry.value());
         ++scancount;
         if (!scanner.visit_value(ka)) goto done;
+        oids.emplace_back(entry.value());
         stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
         state = stack[stackpos].find_next(helper, ka, entry);
       } break;

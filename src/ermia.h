@@ -310,8 +310,8 @@ public:
   }
   void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
 
-  inline void SendScan(transaction *t, rc_t &rc, varstr *keys, std::vector<OID> &oids) {
-    ermia::dia::SendScanRequest(t, this, keys, oids, &rc);
+  inline void SendScan(transaction *t, rc_t &rc, varstr &start_key, varstr *end_key, std::vector<OID> &oids) {
+    ermia::dia::SendScanRequest(t, this, &start_key, end_key, oids, &rc);
   }
   void RecvScan(transaction *t, rc_t &rc, std::vector<OID> &oids, varstr *keys, varstr *values);
   /*

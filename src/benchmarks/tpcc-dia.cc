@@ -1558,6 +1558,8 @@ rc_t tpcc_dia_worker::txn_delivery() {
   //   num_txn_contexts : 4
   ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
+  thread_local std::vector<ermia::OID> oids;
+  oids.clear();
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
@@ -1569,7 +1571,12 @@ rc_t tpcc_dia_worker::txn_delivery() {
                            &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
                            s_arena.get()));
     }
-
+    rc_t rc = rc_t{RC_INVALID};
+    ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))
+                    ->SendScan(txn, rc, Encode(str(Size(k_no_0)), k_no_0),
+                           &Encode(str(Size(k_no_1)), k_no_1), oids);
+    if (oids.size())
+      std::cout << "oids size: " << oids.size() << std::endl;
     const new_order::key *k_no = new_order_c.get_key();
     if (unlikely(!k_no)) continue;
     last_no_o_ids[d - 1] = k_no->no_o_id + 1;  // XXX: update last seen
@@ -1581,7 +1588,7 @@ rc_t tpcc_dia_worker::txn_delivery() {
     oorder::value v_oo_temp;
     ermia::varstr valptr;
 
-    rc_t rc = rc_t{RC_INVALID};
+    rc = rc_t{RC_INVALID};
     ermia::OID oid = 0;
     ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->SendGet(txn, rc, Encode(str(Size(k_oo)), k_oo), &oid);
     ((ermia::DecoupledMasstreeIndex*)tbl_oorder(warehouse_id))->RecvGet(txn, rc, oid, valptr);

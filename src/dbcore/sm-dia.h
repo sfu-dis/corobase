@@ -16,7 +16,8 @@ void SendGetRequest(ermia::transaction *t, OrderedIndex *index,
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
                        const varstr *key, OID *oid, rc_t *rc);
 void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
-                     const varstr *key, std::vector<OID> &oids, rc_t *rc);
+                     const varstr *start_key, const varstr *end_key,
+                     std::vector<OID> &oids, rc_t *rc);
 uint32_t RoutingYcsb(const varstr *key);
 uint32_t RoutingTpcc(const varstr *key);
 
@@ -29,6 +30,7 @@ struct Request {
   ermia::transaction *transaction;
   OrderedIndex *index;
   const varstr *key;
+  const varstr *end_key;
   OID *oid_ptr;  // output for Get, input for Put
   uint8_t type;
   rc_t *rc;  // Return result of the index operation
@@ -39,10 +41,12 @@ struct Request {
           varstr *key,
           uint8_t type,
           OID *oid,
-          rc_t *rc)
+          rc_t *rc,
+          varstr *end_key = nullptr)
     : transaction(t)
     , index(index)
     , key(key)
+    , end_key(end_key)
     , oid_ptr(oid)
     , type(type)
     , rc(rc)
@@ -52,6 +56,7 @@ struct Request {
     : transaction(nullptr)
     , index(nullptr)
     , key(nullptr)
+    , end_key(nullptr)
     , oid_ptr(nullptr)
     , type(kTypeInvalid)
     , rc(nullptr)
@@ -107,7 +112,7 @@ public:
   }
 
   inline void Enqueue(ermia::transaction *t, OrderedIndex *index,
-                      const varstr *key, uint8_t type, rc_t *rc, OID *oid) {
+                      const varstr *key, uint8_t type, rc_t *rc, OID *oid, const varstr *end_key = nullptr) {
   retry:
     // tzwang: simple dumb solution; may get fancier if needed later.  First try
     // to get a possible slot in the queue, then wait for the slot to become
@@ -127,6 +132,7 @@ public:
 
     req.index = index;
     req.key = key;
+    req.end_key = end_key;
     req.type = type;
     req.rc = rc;
     req.oid_ptr = oid;
@@ -190,8 +196,8 @@ public:
   }
 
   inline void AddRequest(ermia::transaction *t, OrderedIndex *index,
-                         const varstr *key, OID *oid, uint8_t type, rc_t *rc) {
-    queue.Enqueue(t, index, key, type, rc, oid);
+                         const varstr *key, OID *oid, uint8_t type, rc_t *rc, const varstr *end_key=nullptr) {
+    queue.Enqueue(t, index, key, type, rc, oid, end_key);
   }
   void MyWork(char *);
 
