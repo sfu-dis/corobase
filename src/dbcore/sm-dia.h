@@ -15,9 +15,11 @@ void SendGetRequest(ermia::transaction *t, OrderedIndex *index,
                     const varstr *key, OID *oid, rc_t *rc);
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
                        const varstr *key, OID *oid, rc_t *rc);
-void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
-                     const varstr *start_key, const varstr *end_key,
-                     std::vector<OID> &oids, rc_t *rc);
+void SendScanRequest(
+    ermia::transaction *t, OrderedIndex *index, const varstr *start_key,
+    const varstr *end_key,
+    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> &ko_pairs,
+    rc_t *rc);
 uint32_t RoutingYcsb(const varstr *key);
 uint32_t RoutingTpcc(const varstr *key);
 
@@ -151,7 +153,7 @@ public:
   }
 };
 
-// Structure that stores the result of  an index access locally
+// Structure that stores the result of an index access locally
 struct Result {
 public:
   OID oid;        // output for Get, input for Put
