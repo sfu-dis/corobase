@@ -278,14 +278,16 @@ void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
                       << ", +inf)" << std::endl);
   }
 
+  int scancount = 0;
   if (!unlikely(end_key && *end_key <= start_key)) {
     varstr uppervk;
     if (end_key) {
       uppervk = *end_key;
     }
-    masstree_.search_range(start_key, end_key ? &uppervk : nullptr, out_oids,
+    scancount = masstree_.search_range(start_key, end_key ? &uppervk : nullptr, out_oids,
                            t->xc);
   }
+  //volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
 
 rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v,

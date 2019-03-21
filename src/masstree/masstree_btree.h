@@ -320,10 +320,12 @@ class mbtree {
 
   /**
    * Decouple callback for search_range in DIA
+   *
+   * Return scancount
    */
-  inline void search_range(const key_type &lower, const key_type *upper,
+  inline int search_range(const key_type &lower, const key_type *upper,
                            std::vector<OID> &oids, TXN::xid_context *xc) const;
-  inline void rsearch_range(const key_type &lower, const key_type *upper,
+  inline int rsearch_range(const key_type &lower, const key_type *upper,
                             std::vector<OID> &oids, TXN::xid_context *xc) const;
 
   /**
@@ -835,21 +837,21 @@ inline void mbtree<P>::rsearch_range(const key_type &upper,
  * Decouple callback for search_range in DIA
  */
 template <typename P>
-inline void mbtree<P>::search_range(const key_type &lower,
+inline int mbtree<P>::search_range(const key_type &lower,
                                     const key_type *upper, std::vector<OID> &oids,
                                     TXN::xid_context *xc) const {
   no_callback_search_range_scanner<false> scanner(this, upper);
   threadinfo ti(xc->begin_epoch);
-  table_.scan(lcdf::Str(lower.data(), lower.size()), true, oids, scanner, xc, ti);
+  return table_.scan(lcdf::Str(lower.data(), lower.size()), true, oids, scanner, xc, ti);
 }
 
 template <typename P>
-inline void mbtree<P>::rsearch_range(const key_type &upper,
+inline int mbtree<P>::rsearch_range(const key_type &upper,
                                      const key_type *lower, std::vector<OID> &oids,
                                      TXN::xid_context *xc) const {
   no_callback_search_range_scanner<true> scanner(this, lower);
   threadinfo ti(xc->begin_epoch);
-  table_.rscan(lcdf::Str(upper.data(), upper.size()), true, oids, scanner, xc, ti);
+  return table_.rscan(lcdf::Str(upper.data(), upper.size()), true, oids, scanner, xc, ti);
 }
 
 template <typename P>
