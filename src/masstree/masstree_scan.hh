@@ -419,6 +419,7 @@ int basic_table<P>::scan(
       ++scancount;
       if (!scanner.visit_value(ka))
         goto done;
+      // FIXME(yognjunh): need to deep copy masstree::key
       ko_pairs.emplace_back(ka, entry.value());
       stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
       state = stack[stackpos].find_next(helper, ka, entry);

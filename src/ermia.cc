@@ -540,5 +540,31 @@ void DecoupledMasstreeIndex::RecvRemove(transaction *t, rc_t &rc, OID &oid,
 void DecoupledMasstreeIndex::RecvScan(
     transaction *t, rc_t &rc, ScanCallback &callback,
     std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-        &ko_pairs) {}
+        &ko_pairs) {
+  while (volatile_read(rc._val) == RC_INVALID) {
+  }
+  if (rc._val == RC_TRUE) {
+    SearchRangeCallback c(callback);
+    XctSearchRangeCallback cb(t, &c);
+    for (int i = 0; i < ko_pairs.size(); ++i) {
+      dbtuple *tuple = NULL;
+      if (ermia::config::is_backup_srv()) {
+        tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
+            descriptor_->GetPersistentAddressArray(), volatile_read(ko_pairs[i].second), t->GetXIDContext());
+      } else {
+        tuple = oidmgr->oid_get_version(
+            descriptor_->GetTupleArray(), volatile_read(ko_pairs[i].second), t->GetXIDContext());
+      }
+      if (tuple)
+        if (cb.invoke(nullptr, ko_pairs[i].first.full_string(), tuple, nullptr, 0)) {
+          volatile_write(rc._val, RC_FALSE);
+          continue;
+        }
+
+      volatile_write(rc._val, RC_FALSE);
+      break;
+    }
+  }
+}
+
 } // namespace ermia

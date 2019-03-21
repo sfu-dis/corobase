@@ -177,6 +177,28 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 private:
   ConcurrentMasstree masstree_;
 
+  struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
+    virtual void
+    on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
+    virtual void on_node_success();
+    virtual void on_node_failure();
+
+  private:
+    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool>>
+        spec_values;
+  };
+
+  // expect_new indicates if we expect the record to not exist in the tree- is
+  // just a hint that affects perf, not correctness. remove is put with nullptr
+  // as value.
+  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
+                 bool upsert, OID *inserted_oid);
+
+  static rc_t DoNodeRead(transaction *t,
+                         const ConcurrentMasstree::node_opaque_t *node,
+                         uint64_t version);
+
+protected:
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
         : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
@@ -209,27 +231,6 @@ private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
   };
-
-  struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
-    virtual void
-    on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
-    virtual void on_node_success();
-    virtual void on_node_failure();
-
-  private:
-    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool>>
-        spec_values;
-  };
-
-  // expect_new indicates if we expect the record to not exist in the tree- is
-  // just a hint that affects perf, not correctness. remove is put with nullptr
-  // as value.
-  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
-                 bool upsert, OID *inserted_oid);
-
-  static rc_t DoNodeRead(transaction *t,
-                         const ConcurrentMasstree::node_opaque_t *node,
-                         uint64_t version);
 
 public:
   ConcurrentMasstreeIndex(std::string name, const char *primary)
