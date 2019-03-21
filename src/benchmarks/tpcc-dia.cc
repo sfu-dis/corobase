@@ -1558,8 +1558,8 @@ rc_t tpcc_dia_worker::txn_delivery() {
   //   num_txn_contexts : 4
   ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
-  thread_local std::vector<ermia::OID> scan_oids;
-  scan_oids.clear();
+  thread_local std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> ko_pairs;
+  ko_pairs.clear();
   rc_t *rcs = nullptr;
   ermia::OID *oids = nullptr;
   PrepareForDIA(&rcs, &oids);
@@ -1571,7 +1571,7 @@ rc_t tpcc_dia_worker::txn_delivery() {
 
     ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))
                     ->SendScan(txn, rcs[d-1], Encode(str(Size(k_no_0)), k_no_0),
-                           &Encode(str(Size(k_no_1)), k_no_1), scan_oids);
+                           &Encode(str(Size(k_no_1)), k_no_1), ko_pairs);
 
     dia_new_order_scan_callback new_order_c;
     {

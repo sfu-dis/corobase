@@ -24,13 +24,15 @@ void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
                                              Request::kTypeInsert, rc);
 }
 
-void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
-                     const varstr *start_key, const varstr *end_key,
-                     std::vector<OID> &oids, rc_t *rc) {
+void SendScanRequest(
+    ermia::transaction *t, OrderedIndex *index, const varstr *start_key,
+    const varstr *end_key,
+    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> &ko_pairs,
+    rc_t *rc) {
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
   uint32_t index_thread_id = routing(start_key);
   index_threads[index_thread_id]->AddRequest(
-      t, index, start_key, end_key, (OID *)&oids, Request::kTypeScan, rc);
+      t, index, start_key, end_key, (OID *)&ko_pairs, Request::kTypeScan, rc);
 }
 
 uint32_t RoutingYcsb(const varstr *key) {
@@ -135,8 +137,10 @@ void IndexThread::SerialHandler() {
       }
       break;
     case Request::kTypeScan:
-      req.index->ScanOID(req.transaction, *req.key, req.end_key, *req.rc,
-                         *(std::vector<OID> *)req.oid_ptr);
+      req.index->ScanOID(
+          req.transaction, *req.key, req.end_key, *req.rc,
+          *(std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> *)
+               req.oid_ptr);
       break;
     default:
       LOG(FATAL) << "Wrong request type";

@@ -264,9 +264,10 @@ ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key,
   co_return true;
 }
 
-void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
-                                      const varstr *end_key, rc_t &rc,
-                                      std::vector<OID> &out_oids) {
+void ConcurrentMasstreeIndex::ScanOID(
+    transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc,
+    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
+        &ko_pairs) {
   t->ensure_active();
   if (end_key) {
     VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
@@ -284,10 +285,10 @@ void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
     if (end_key) {
       uppervk = *end_key;
     }
-    scancount = masstree_.search_range(start_key, end_key ? &uppervk : nullptr, out_oids,
-                           t->xc);
+    scancount = masstree_.search_range(start_key, end_key ? &uppervk : nullptr,
+                                       ko_pairs, t->xc);
   }
-  //volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
+  volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
 
 rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v,
@@ -536,7 +537,8 @@ void DecoupledMasstreeIndex::RecvRemove(transaction *t, rc_t &rc, OID &oid,
   }
 }
 
-void DecoupledMasstreeIndex::RecvScan(transaction *t, rc_t &rc,
-                                      std::vector<OID> &oids, varstr *keys,
-                                      varstr *values) {}
+void DecoupledMasstreeIndex::RecvScan(
+    transaction *t, rc_t &rc, ScanCallback &callback,
+    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
+        &ko_pairs) {}
 } // namespace ermia

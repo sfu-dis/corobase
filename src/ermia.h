@@ -162,9 +162,11 @@ public:
   virtual ermia::dia::generator<bool>
   coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
 
-  virtual void ScanOID(transaction *t, const varstr &start_key,
-                       const varstr *end_key, rc_t &rc,
-                       std::vector<OID> &out_oids) = 0;
+  virtual void
+  ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
+          rc_t &rc,
+          std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
+              &ko_pairs) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -285,7 +287,9 @@ private:
                                                   OID oid) override;
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc, std::vector<OID> &oids) override;
+               rc_t &rc,
+               std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
+                   &ko_pairs) override;
 };
 
 // User-facing masstree with decoupled index access
@@ -346,12 +350,16 @@ public:
   }
   void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
 
-  inline void SendScan(transaction *t, rc_t &rc, varstr &start_key,
-                       varstr *end_key, std::vector<OID> &oids) {
-    ermia::dia::SendScanRequest(t, this, &start_key, end_key, oids, &rc);
+  inline void
+  SendScan(transaction *t, rc_t &rc, varstr &start_key, varstr *end_key,
+           std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
+               &ko_pairs) {
+    ermia::dia::SendScanRequest(t, this, &start_key, end_key, ko_pairs, &rc);
   }
-  void RecvScan(transaction *t, rc_t &rc, std::vector<OID> &oids, varstr *keys,
-                varstr *values);
+  void
+  RecvScan(transaction *t, rc_t &rc, ScanCallback &callback,
+           std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
+               &ko_pairs);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -444,6 +452,8 @@ public:
   }
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc, std::vector<OID> &out_oids) override {}
+               rc_t &rc,
+               std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
+                   &ko_pairs) override {}
 };
 } // namespace ermia
