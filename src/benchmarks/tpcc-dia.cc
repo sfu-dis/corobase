@@ -1559,7 +1559,6 @@ rc_t tpcc_dia_worker::txn_delivery() {
   ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
   thread_local std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> ko_pairs;
-  ko_pairs.clear();
   rc_t *rcs = nullptr;
   ermia::OID *oids = nullptr;
   PrepareForDIA(&rcs, &oids);
@@ -1568,10 +1567,6 @@ rc_t tpcc_dia_worker::txn_delivery() {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
                                 std::numeric_limits<int32_t>::max());
-
-    ((ermia::DecoupledMasstreeIndex*)tbl_new_order(warehouse_id))
-                    ->SendScan(txn, rcs[d-1], Encode(str(Size(k_no_0)), k_no_0),
-                           &Encode(str(Size(k_no_1)), k_no_1), ko_pairs);
 
     dia_new_order_scan_callback new_order_c;
     {
@@ -1613,6 +1608,14 @@ rc_t tpcc_dia_worker::txn_delivery() {
     TryCatch(tbl_order_line(warehouse_id)
                   ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
                          &Encode(str(Size(k_oo_1)), k_oo_1), c, s_arena.get()));
+/*
+    ko_pairs.clear();
+    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))
+                    ->SendScan(txn, rcs[d-1], Encode(str(Size(k_oo_0)), k_oo_0),
+                           &Encode(str(Size(k_oo_1)), k_oo_1), ko_pairs);
+    ((ermia::DecoupledMasstreeIndex*)tbl_order_line(warehouse_id))
+                    ->RecvScan(txn, rcs[d-1], c, ko_pairs);
+*/
     float sum = 0.0;
     for (size_t i = 0; i < c.size(); i++) {
       order_line::value v_ol_temp;
