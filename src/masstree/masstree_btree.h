@@ -222,6 +222,11 @@ public:
     virtual bool invoke(const mbtree<masstree_params> *btr_ptr,
                         const string_type &k, dbtuple *v,
                         const node_opaque_t *n, uint64_t version) = 0;
+
+    /**
+     * This key/oid pair was read from node n @ version
+     */
+    virtual bool invoke(const string_type &k, OID oid, uint64_t version) = 0;
   };
 
   /**
@@ -277,6 +282,14 @@ public:
                           low_level_search_range_callback &callback,
                           TXN::xid_context *xc) const;
 
+  int search_range_oid(const key_type &lower, const key_type *upper,
+                       low_level_search_range_callback &callback,
+                       TXN::xid_context *xc) const;
+
+  int rsearch_range_oid(const key_type &upper, const key_type *lower,
+                        low_level_search_range_callback &callback,
+                        TXN::xid_context *xc) const;
+
   class search_range_callback : public low_level_search_range_callback {
   public:
     virtual void on_resp_node(const node_opaque_t *n, uint64_t version) {
@@ -315,22 +328,6 @@ public:
   template <typename F>
   inline void rsearch_range(const key_type &upper, const key_type *lower,
                             F &callback, TXN::xid_context *xc) const;
-
-  /**
-   * Decouple callback for search_range in DIA
-   *
-   * Return scancount
-   */
-  inline int
-  search_range(const key_type &lower, const key_type *upper,
-               std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-                   &ko_pairs,
-               TXN::xid_context *xc) const;
-  inline int 
-  rsearch_range(const key_type &lower, const key_type *upper,
-                std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-                    &ko_pairs,
-                TXN::xid_context *xc) const;
 
   /**
    * returns true if key k did not already exist, false otherwise
@@ -700,37 +697,6 @@ protected:
 
 template <typename P>
 template <bool Reverse>
-class mbtree<P>::no_callback_search_range_scanner
-    : public search_range_scanner_base<Reverse> {
-public:
-  no_callback_search_range_scanner(const mbtree<P> *btr_ptr,
-                                   const key_type *boundary)
-      : search_range_scanner_base<Reverse>(boundary), btr_ptr_(btr_ptr) {}
-  void visit_leaf(const Masstree::scanstackelt<P> &iter,
-                  const Masstree::key<uint64_t> &key, threadinfo &) {
-    this->n_ = iter.node();
-    this->v_ = iter.full_version_value();
-    if (this->boundary_)
-      this->check(iter, key);
-  }
-  bool visit_value(const Masstree::key<uint64_t> &key) {
-    if (this->boundary_compar_) {
-      lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
-      if ((!Reverse && bs <= key.full_string()) ||
-          (Reverse && bs >= key.full_string()))
-        return false;
-    }
-    return true;
-  }
-
-private:
-  Masstree::leaf<P> *n_;
-  uint64_t v_;
-  const mbtree<P> *btr_ptr_;
-};
-
-template <typename P>
-template <bool Reverse>
 class mbtree<P>::low_level_search_range_scanner
     : public search_range_scanner_base<Reverse> {
 public:
@@ -756,6 +722,15 @@ public:
     }
     return callback_.invoke(this->btr_ptr_, key.full_string(), value, this->n_,
                             this->v_);
+  }
+  bool visit_oid(const Masstree::key<uint64_t> &key, OID oid) {
+    if (this->boundary_compar_) {
+      lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
+      if ((!Reverse && bs <= key.full_string()) ||
+          (Reverse && bs >= key.full_string()))
+        return false;
+    }
+    return callback_.invoke(key.full_string(), oid, this->v_);
   }
 
 private:
@@ -809,6 +784,28 @@ mbtree<P>::rsearch_range_call(const key_type &upper, const key_type *lower,
 }
 
 template <typename P>
+inline int
+mbtree<P>::search_range_oid(const key_type &lower, const key_type *upper,
+                            low_level_search_range_callback &callback,
+                            TXN::xid_context *xc) const {
+  low_level_search_range_scanner<false> scanner(this, upper, callback);
+  threadinfo ti(xc->begin_epoch);
+  return table_.scan_oid(lcdf::Str(lower.data(), lower.size()), true, scanner,
+                         xc, ti);
+}
+
+template <typename P>
+inline int
+mbtree<P>::rsearch_range_oid(const key_type &upper, const key_type *lower,
+                             low_level_search_range_callback &callback,
+                             TXN::xid_context *xc) const {
+  low_level_search_range_scanner<true> scanner(this, lower, callback);
+  threadinfo ti(xc->begin_epoch);
+  return table_.rscan_oid(lcdf::Str(upper.data(), upper.size()), true, scanner,
+                          xc, ti);
+}
+
+template <typename P>
 template <typename F>
 inline void mbtree<P>::search_range(const key_type &lower,
                                     const key_type *upper, F &callback,
@@ -828,31 +825,6 @@ inline void mbtree<P>::rsearch_range(const key_type &upper,
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti(xc->begin_epoch);
   table_.rscan(lcdf::Str(upper.data(), upper.size()), true, scanner, xc, ti);
-}
-
-/**
- * Decouple callback for search_range in DIA
- */
-template <typename P>
-inline int mbtree<P>::search_range(
-    const key_type &lower, const key_type *upper,
-    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> &ko_pairs,
-    TXN::xid_context *xc) const {
-  no_callback_search_range_scanner<false> scanner(this, upper);
-  threadinfo ti(xc->begin_epoch);
-  return table_.scan(lcdf::Str(lower.data(), lower.size()), true, ko_pairs,
-                     scanner, xc, ti);
-}
-
-template <typename P>
-inline int mbtree<P>::rsearch_range(
-    const key_type &upper, const key_type *lower,
-    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> &ko_pairs,
-    TXN::xid_context *xc) const {
-  no_callback_search_range_scanner<true> scanner(this, lower);
-  threadinfo ti(xc->begin_epoch);
-  return table_.rscan(lcdf::Str(upper.data(), upper.size()), true, ko_pairs,
-                      scanner, xc, ti);
 }
 
 template <typename P>

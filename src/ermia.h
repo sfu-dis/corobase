@@ -73,6 +73,9 @@ public:
     ~ScanCallback() {}
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
+    virtual bool Invoke(const char *keyp, size_t keylen, OID oid) {
+      return true;
+    }
   };
 
   /**
@@ -162,11 +165,8 @@ public:
   virtual ermia::dia::generator<bool>
   coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
 
-  virtual void
-  ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-          rc_t &rc,
-          std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-              &ko_pairs) = 0;
+  virtual void ScanOID(transaction *t, const varstr &start_key,
+                       const varstr *end_key, rc_t &rc, OID *callback) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -177,28 +177,6 @@ class ConcurrentMasstreeIndex : public OrderedIndex {
 private:
   ConcurrentMasstree masstree_;
 
-  struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
-    virtual void
-    on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
-    virtual void on_node_success();
-    virtual void on_node_failure();
-
-  private:
-    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool>>
-        spec_values;
-  };
-
-  // expect_new indicates if we expect the record to not exist in the tree- is
-  // just a hint that affects perf, not correctness. remove is put with nullptr
-  // as value.
-  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
-                 bool upsert, OID *inserted_oid);
-
-  static rc_t DoNodeRead(transaction *t,
-                         const ConcurrentMasstree::node_opaque_t *node,
-                         uint64_t version);
-
-protected:
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
         : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
@@ -207,6 +185,9 @@ protected:
     inline bool Invoke(const ConcurrentMasstree::string_type &k,
                        const varstr &v) {
       return upcall->Invoke(k.data(), k.length(), v);
+    }
+    inline bool Invoke(const ConcurrentMasstree::string_type &k, OID oid) {
+      return upcall->Invoke(k.data(), k.length(), oid);
     }
 
     OrderedIndex::ScanCallback *upcall;
@@ -226,11 +207,34 @@ protected:
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
                         uint64_t version);
+    virtual bool invoke(const typename ConcurrentMasstree::string_type &k,
+                        OID oid, uint64_t version);
 
   private:
     transaction *const t;
     SearchRangeCallback *const caller_callback;
   };
+
+  struct PurgeTreeWalker : public ConcurrentMasstree::tree_walk_callback {
+    virtual void
+    on_node_begin(const typename ConcurrentMasstree::node_opaque_t *n);
+    virtual void on_node_success();
+    virtual void on_node_failure();
+
+  private:
+    std::vector<std::pair<typename ConcurrentMasstree::value_type, bool>>
+        spec_values;
+  };
+
+  // expect_new indicates if we expect the record to not exist in the tree- is
+  // just a hint that affects perf, not correctness. remove is put with
+  // nullptr as value.
+  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
+                 bool upsert, OID *inserted_oid);
+
+  static rc_t DoNodeRead(transaction *t,
+                         const ConcurrentMasstree::node_opaque_t *node,
+                         uint64_t version);
 
 public:
   ConcurrentMasstreeIndex(std::string name, const char *primary)
@@ -288,9 +292,7 @@ private:
                                                   OID oid) override;
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc,
-               std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-                   &ko_pairs) override;
+               rc_t &rc, OID *callback) override;
 };
 
 // User-facing masstree with decoupled index access
@@ -351,16 +353,15 @@ public:
   }
   void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
 
-  inline void
-  SendScan(transaction *t, rc_t &rc, varstr &start_key, varstr *end_key,
-           std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-               &ko_pairs) {
-    ermia::dia::SendScanRequest(t, this, &start_key, end_key, ko_pairs, &rc);
+  inline void SendScan(transaction *t, rc_t &rc, varstr &start_key,
+                       varstr *end_key, ScanCallback &callback) {
+    ermia::dia::SendScanRequest(t, this, &start_key, end_key, (OID *)&callback,
+                                &rc);
   }
   void
-  RecvScan(transaction *t, rc_t &rc, ScanCallback &callback,
-           std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-               &ko_pairs);
+  RecvScan(transaction *t, rc_t &rc,
+           std::vector<std::pair<ermia::varstr *, ermia::varstr *>> &values,
+           std::vector<ermia::OID> &oids);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -453,8 +454,6 @@ public:
   }
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc,
-               std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-                   &ko_pairs) override {}
+               rc_t &rc, OID *callback) override {}
 };
 } // namespace ermia
