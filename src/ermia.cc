@@ -264,10 +264,10 @@ ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key,
   co_return true;
 }
 
-void ConcurrentMasstreeIndex::ScanOID(
-    transaction *t, const varstr &start_key, const varstr *end_key, rc_t &rc,
-    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-        &ko_pairs) {
+void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
+                                      const varstr *end_key, rc_t &rc,
+                                      OID *callback) {
+  SearchRangeCallback c(*(ScanCallback *)callback);
   t->ensure_active();
   if (end_key) {
     VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
@@ -281,12 +281,13 @@ void ConcurrentMasstreeIndex::ScanOID(
 
   int scancount = 0;
   if (!unlikely(end_key && *end_key <= start_key)) {
+    XctSearchRangeCallback cb(t, &c);
     varstr uppervk;
     if (end_key) {
       uppervk = *end_key;
     }
-    scancount = masstree_.search_range(start_key, end_key ? &uppervk : nullptr,
-                                       ko_pairs, t->xc);
+    scancount = masstree_.search_range_oid(
+        start_key, end_key ? &uppervk : nullptr, cb, t->xc);
   }
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
@@ -385,6 +386,17 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     return false; // don't continue the read if the tx should abort
   }
   return true;
+}
+
+bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
+    const typename ConcurrentMasstree::string_type &k, OID oid,
+    uint64_t version) {
+  t->ensure_active();
+  VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x"
+                    << util::hexify(n) << ", version=" << version << ">"
+                    << std::endl
+                    << " oid: " << oid << std::endl);
+  return caller_callback->Invoke(k, oid);
 }
 
 void SingleThreadedBTree::Get(transaction *t, rc_t &rc, const varstr &key,
@@ -538,28 +550,32 @@ void DecoupledMasstreeIndex::RecvRemove(transaction *t, rc_t &rc, OID &oid,
 }
 
 void DecoupledMasstreeIndex::RecvScan(
-    transaction *t, rc_t &rc, ScanCallback &callback,
-    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-        &ko_pairs) {
+    transaction *t, rc_t &rc,
+    std::vector<std::pair<ermia::varstr *, ermia::varstr *>> &values,
+    std::vector<ermia::OID> &oids) {
   while (volatile_read(rc._val) == RC_INVALID) {
   }
   if (rc._val == RC_TRUE) {
-    SearchRangeCallback c(callback);
-    XctSearchRangeCallback cb(t, &c);
-    for (int i = 0; i < ko_pairs.size(); ++i) {
+    for (int i = 0; i < oids.size(); ++i) {
       dbtuple *tuple = NULL;
       if (ermia::config::is_backup_srv()) {
-        tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
-            descriptor_->GetPersistentAddressArray(), volatile_read(ko_pairs[i].second), t->GetXIDContext());
+        tuple = oidmgr->BackupGetVersion(
+            descriptor_->GetTupleArray(),
+            descriptor_->GetPersistentAddressArray(), volatile_read(oids[i]),
+            t->GetXIDContext());
       } else {
-        tuple = oidmgr->oid_get_version(
-            descriptor_->GetTupleArray(), volatile_read(ko_pairs[i].second), t->GetXIDContext());
+        tuple =
+            oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                    volatile_read(oids[i]), t->GetXIDContext());
       }
-      if (tuple)
-        if (cb.invoke(nullptr, ko_pairs[i].first.full_string(), tuple, nullptr, 0)) {
-          volatile_write(rc._val, RC_FALSE);
+      if (tuple) {
+        varstr value;
+        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+          (values[i].second)->p = value.p;
+          (values[i].second)->l = value.l;
           continue;
         }
+      }
 
       volatile_write(rc._val, RC_FALSE);
       break;

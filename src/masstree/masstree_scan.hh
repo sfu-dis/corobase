@@ -378,10 +378,8 @@ int basic_table<P>::rscan(Str firstkey, bool emit_firstkey, F &scanner,
 
 template <typename P>
 template <typename H, typename F>
-int basic_table<P>::scan(
-    H helper, Str firstkey, bool emit_firstkey,
-    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> &ko_pairs,
-    F &scanner, ermia::TXN::xid_context *xc, threadinfo &ti) const {
+int basic_table<P>::scan_oid(H helper, Str firstkey, bool emit_firstkey, F &scanner,
+                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
   typedef typename P::ikey_type ikey_type;
   typedef typename node_type::key_type key_type;
   typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
@@ -417,10 +415,10 @@ int basic_table<P>::scan(
     switch (state) {
     case mystack_type::scan_emit: { // surpress cross init warning about v
       ++scancount;
-      if (!scanner.visit_value(ka))
+      ermia::dbtuple *v = NULL;
+      ermia::OID oid = entry.value();
+      if (!scanner.visit_oid(ka, oid))
         goto done;
-      // FIXME(yognjunh): need to deep copy masstree::key
-      ko_pairs.emplace_back(ka, entry.value());
       stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
       state = stack[stackpos].find_next(helper, ka, entry);
     } break;
@@ -459,23 +457,16 @@ done:
 
 template <typename P>
 template <typename F>
-int basic_table<P>::scan(
-    Str firstkey, bool emit_firstkey,
-    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>> &ko_pairs,
-    F &scanner, ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  return scan(forward_scan_helper(), firstkey, emit_firstkey, ko_pairs, scanner,
-              xc, ti);
+int basic_table<P>::scan_oid(Str firstkey, bool emit_firstkey, F &scanner,
+                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  return scan_oid(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename F>
-int basic_table<P>::rscan(
-    Str firstkey, bool emit_firstkey,
-    std::vector<std::pair<const Masstree::key<uint64_t>, ermia::OID>>
-        &ko_pairs,
-    F &scanner, ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  return scan(reverse_scan_helper(), firstkey, emit_firstkey, ko_pairs, scanner,
-              xc, ti);
+int basic_table<P>::rscan_oid(Str firstkey, bool emit_firstkey, F &scanner,
+                          ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  return scan_oid(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 } // namespace Masstree
