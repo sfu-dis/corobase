@@ -26,11 +26,11 @@ void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
 
 void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *start_key, const varstr *end_key,
-                     OID *callback, rc_t *rc) {
+                     OID *dia_callback, rc_t *rc) {
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
   uint32_t index_thread_id = routing(start_key);
-  index_threads[index_thread_id]->AddRequest(t, index, start_key, end_key,
-                                             callback, Request::kTypeScan, rc);
+  index_threads[index_thread_id]->AddRequest(
+      t, index, start_key, end_key, dia_callback, Request::kTypeScan, rc);
 }
 
 uint32_t RoutingYcsb(const varstr *key) {

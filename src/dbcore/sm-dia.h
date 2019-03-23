@@ -17,7 +17,7 @@ void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
                        const varstr *key, OID *oid, rc_t *rc);
 void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *start_key, const varstr *end_key,
-                     OID *callback, rc_t *rc);
+                     OID *dia_callback, rc_t *rc);
 uint32_t RoutingYcsb(const varstr *key);
 uint32_t RoutingTpcc(const varstr *key);
 
