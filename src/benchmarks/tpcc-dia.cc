@@ -1546,26 +1546,55 @@ rc_t tpcc_dia_worker::txn_new_order() {
   return {RC_TRUE};
 }
 
-class dia_new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
+class dia_new_order_scan_callback
+    : public ermia::OrderedIndex::DiaScanCallback {
 public:
-  dia_new_order_scan_callback() : k_no(0) {}
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
-    MARK_REFERENCED(keylen);
-    MARK_REFERENCED(value);
+  dia_new_order_scan_callback(ermia::str_arena *arena) : k_no(0) {
+    k_no_ptr = arena->next(sizeof(new_order::key));
+  }
+
+  virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
     ASSERT(keylen == sizeof(new_order::key));
-    ASSERT(value.size() == sizeof(new_order::value));
-    k_no = Decode(keyp, k_no_temp);
+    oid_no = oid;
+    k_no_ptr->copy_from(keyp, keylen);
+    k_no = Decode(*k_no_ptr, k_no_temp);
 #ifndef NDEBUG
-    new_order::value v_no_temp;
-    const new_order::value *v_no = Decode(value, v_no_temp);
     checker::SanityCheckNewOrder(k_no);
 #endif
     return false;
   }
+
+  virtual bool Receive(ermia::transaction *t,
+                       ermia::IndexDescriptor *descriptor_) {
+    ermia::dbtuple *tuple = NULL;
+    if (ermia::config::is_backup_srv()) {
+      tuple = ermia::oidmgr->BackupGetVersion(
+          descriptor_->GetTupleArray(),
+          descriptor_->GetPersistentAddressArray(),
+          ermia::volatile_read(oid_no), t->GetXIDContext());
+    } else {
+      tuple = ermia::oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                             ermia::volatile_read(oid_no),
+                                             t->GetXIDContext());
+    }
+    if (tuple) {
+      ermia::varstr value;
+      if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+        ASSERT(value.size() == sizeof(new_order::value));
+        new_order::value v_no_temp;
+        const new_order::value *v_no = Decode(value, v_no_temp);
+        return true;
+      }
+    }
+    return false;
+  }
+
   inline const new_order::key *get_key() const { return k_no; }
 
+  ermia::OID oid_no;
+
 private:
+  ermia::varstr *k_no_ptr;
   new_order::key k_no_temp;
   const new_order::key *k_no;
 };
@@ -1585,7 +1614,7 @@ public:
   // XXX: push ignore_key into lower layer
   dia_static_limit_callback(size_t key_len, ermia::str_arena *arena,
                             bool ignore_key)
-      : n(0), key_len(key_len), arena(arena), ignore_key(ignore_key) {
+      : n(0), key_len(key_len), ignore_key(ignore_key) {
     static_assert(N > 0, "xx");
     oids.reserve(N);
     for (int i = 0; i < N; ++i) {
@@ -1645,7 +1674,6 @@ public:
 private:
   size_t n;
   size_t key_len;
-  ermia::str_arena *arena;
   bool ignore_key;
 };
 
@@ -1683,15 +1711,17 @@ rc_t tpcc_dia_worker::txn_delivery() {
     const new_order::key k_no_1(warehouse_id, d,
                                 std::numeric_limits<int32_t>::max());
 
-    dia_new_order_scan_callback new_order_c;
-    {
-      TryCatch(tbl_new_order(warehouse_id)
-                   ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                          &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
-                          s_arena.get()));
-    }
+    dia_new_order_scan_callback dia_new_order_c(s_arena.get());
+    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+        ->SendScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                   Encode(str(Size(k_no_0)), k_no_0),
+                   &Encode(str(Size(k_no_1)), k_no_1), dia_new_order_c);
+    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+        ->RecvScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                   dia_new_order_c);
+    TryCatch(rcs[d - 1 + NumDistrictsPerWarehouse()]);
 
-    const new_order::key *k_no = new_order_c.get_key();
+    const new_order::key *k_no = dia_new_order_c.get_key();
     if (unlikely(!k_no))
       continue;
     last_no_o_ids[d - 1] = k_no->no_o_id + 1; // XXX: update last seen
@@ -3429,15 +3459,18 @@ rc_t tpcc_dia_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
                                 std::numeric_limits<int32_t>::max());
-    dia_new_order_scan_callback new_order_c;
-    {
-      TryCatch(tbl_new_order(warehouse_id)
-                   ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                          &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
-                          s_arena.get()));
-    }
 
-    const new_order::key *k_no = new_order_c.get_key();
+    dia_new_order_scan_callback dia_new_order_c(s_arena.get());
+    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+        ->SendScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                   Encode(str(Size(k_no_0)), k_no_0),
+                   &Encode(str(Size(k_no_1)), k_no_1), dia_new_order_c);
+    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+        ->RecvScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                   dia_new_order_c);
+    TryCatch(rcs[d - 1 + NumDistrictsPerWarehouse()]);
+
+    const new_order::key *k_no = dia_new_order_c.get_key();
     if (unlikely(!k_no))
       continue;
     last_no_o_ids[d - 1] = k_no->no_o_id + 1; // XXX: update last seen
