@@ -1580,48 +1580,11 @@ private:
 // database, but still we need to allocate a ermia::varstr header for each
 // value. Internally it's just a ermia::varstr in the stack.
 template <size_t N>
-class dia_static_limit_callback : public ermia::OrderedIndex::ScanCallback {
+class dia_static_limit_callback : public ermia::OrderedIndex::DiaScanCallback {
 public:
   // XXX: push ignore_key into lower layer
-  dia_static_limit_callback(ermia::str_arena *arena, bool ignore_key)
-      : n(0), arena(arena), ignore_key(ignore_key) {
-    static_assert(N > 0, "xx");
-    values.reserve(N);
-  }
-
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
-    ASSERT(n < N);
-    ermia::varstr *pv = arena->next(0); // header only
-    pv->p = value.p;
-    pv->l = value.l;
-    if (ignore_key) {
-      values.emplace_back(nullptr, pv);
-    } else {
-      ermia::varstr *const s_px = arena->next(keylen);
-      ASSERT(s_px);
-      s_px->copy_from(keyp, keylen);
-      values.emplace_back(s_px, pv);
-    }
-    return ++n < N;
-  }
-
-  inline size_t size() const { return values.size(); }
-
-  typedef std::pair<const ermia::varstr *, const ermia::varstr *> kv_pair;
-  typename std::vector<kv_pair> values;
-
-private:
-  size_t n;
-  ermia::str_arena *arena;
-  bool ignore_key;
-};
-
-template <size_t N>
-class dia_callback : public ermia::OrderedIndex::DiaScanCallback {
-public:
-  // XXX: push ignore_key into lower layer
-  dia_callback(size_t key_len, ermia::str_arena *arena, bool ignore_key)
+  dia_static_limit_callback(size_t key_len, ermia::str_arena *arena,
+                            bool ignore_key)
       : n(0), key_len(key_len), arena(arena), ignore_key(ignore_key) {
     static_assert(N > 0, "xx");
     oids.reserve(N);
@@ -1756,13 +1719,15 @@ rc_t tpcc_dia_worker::txn_delivery() {
     const order_line::key k_oo_0(warehouse_id, d, k_no->no_o_id, 0);
     const order_line::key k_oo_1(warehouse_id, d, k_no->no_o_id,
                                  std::numeric_limits<int32_t>::max());
-    dia_callback<15> dia_c(16, s_arena.get(),
-                           false); // never more than 15 order_lines per order
+    dia_static_limit_callback<15> dia_c(
+        16, s_arena.get(),
+        false); // never more than 15 order_lines per order
     ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
         ->SendScan(txn, rcs[d - 1], Encode(str(Size(k_oo_0)), k_oo_0),
                    &Encode(str(Size(k_oo_1)), k_oo_1), dia_c);
     ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
         ->RecvScan(txn, rcs[d - 1], dia_c);
+    TryCatch(rcs[d - 1]);
 
     float sum = 0.0;
     for (size_t i = 0; i < dia_c.size(); i++) {
@@ -2090,19 +2055,25 @@ rc_t tpcc_dia_worker::txn_payment() {
     k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
     k_c_idx_1.c_first.assign(ones);
 
-    dia_static_limit_callback<NMaxCustomerIdxScanElems> c(
-        s_arena.get(), true); // probably a safe bet for now
-    TryCatch(tbl_customer_name_idx(customerWarehouseID)
-                 ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                        &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                        s_arena.get()));
-    ALWAYS_ASSERT(c.size() > 0);
-    ASSERT(c.size() < NMaxCustomerIdxScanElems); // we should detect this
-    int index = c.size() / 2;
-    if (c.size() % 2 == 0)
+    rc = rc_t{RC_INVALID};
+    dia_static_limit_callback<NMaxCustomerIdxScanElems> dia_c(
+        40, s_arena.get(),
+        true); // probably a safe bet for now
+    ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(
+         customerWarehouseID))
+        ->SendScan(txn, rc, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                   &Encode(str(Size(k_c_idx_1)), k_c_idx_1), dia_c);
+    ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(
+         customerWarehouseID))
+        ->RecvScan(txn, rc, dia_c);
+    TryCatch(rc);
+    ALWAYS_ASSERT(dia_c.size() > 0);
+    ASSERT(dia_c.size() < NMaxCustomerIdxScanElems); // we should detect this
+    int index = dia_c.size() / 2;
+    if (dia_c.size() % 2 == 0)
       index--;
 
-    Decode(*c.values[index].second, v_c);
+    Decode(*dia_c.values[index].second, v_c);
     k_c.c_w_id = customerWarehouseID;
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = v_c.c_id;
@@ -2230,6 +2201,9 @@ rc_t tpcc_dia_worker::txn_order_status() {
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
 
+  rc_t rc;
+  ermia::OID oid;
+
   customer::key k_c;
   customer::value v_c;
   ermia::varstr valptr;
@@ -2255,19 +2229,23 @@ rc_t tpcc_dia_worker::txn_order_status() {
     k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
     k_c_idx_1.c_first.assign(ones);
 
-    dia_static_limit_callback<NMaxCustomerIdxScanElems> c(
-        s_arena.get(), true); // probably a safe bet for now
-    TryCatch(tbl_customer_name_idx(warehouse_id)
-                 ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                        &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                        s_arena.get()));
-    ALWAYS_ASSERT(c.size() > 0);
-    ASSERT(c.size() < NMaxCustomerIdxScanElems); // we should detect this
-    int index = c.size() / 2;
-    if (c.size() % 2 == 0)
+    rc = rc_t{RC_INVALID};
+    dia_static_limit_callback<NMaxCustomerIdxScanElems> dia_c(
+        40, s_arena.get(),
+        true); // probably a safe bet for now
+    ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(warehouse_id))
+        ->SendScan(txn, rc, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                   &Encode(str(Size(k_c_idx_1)), k_c_idx_1), dia_c);
+    ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(warehouse_id))
+        ->RecvScan(txn, rc, dia_c);
+    TryCatch(rc);
+    ALWAYS_ASSERT(dia_c.size() > 0);
+    ASSERT(dia_c.size() < NMaxCustomerIdxScanElems); // we should detect this
+    int index = dia_c.size() / 2;
+    if (dia_c.size() % 2 == 0)
       index--;
 
-    Decode(*c.values[index].second, v_c);
+    Decode(*dia_c.values[index].second, v_c);
     k_c.c_w_id = warehouse_id;
     k_c.c_d_id = districtID;
     k_c.c_id = v_c.c_id;
@@ -2278,8 +2256,8 @@ rc_t tpcc_dia_worker::txn_order_status() {
     k_c.c_d_id = districtID;
     k_c.c_id = customerID;
 
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::OID oid = 0;
+    rc = rc_t{RC_INVALID};
+    oid = 0;
     ((ermia::DecoupledMasstreeIndex *)tbl_customer(warehouse_id))
         ->SendGet(txn, rc, Encode(str(Size(k_c)), k_c), &oid);
     ((ermia::DecoupledMasstreeIndex *)tbl_customer(warehouse_id))
@@ -3341,19 +3319,25 @@ rc_t tpcc_dia_cmdlog_redoer::txn_payment(uint warehouse_id) {
     k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
     k_c_idx_1.c_first.assign(ones);
 
-    dia_static_limit_callback<NMaxCustomerIdxScanElems> c(
-        s_arena.get(), true); // probably a safe bet for now
-    TryCatch(tbl_customer_name_idx(customerWarehouseID)
-                 ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                        &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                        s_arena.get()));
-    ALWAYS_ASSERT(c.size() > 0);
-    ASSERT(c.size() < NMaxCustomerIdxScanElems); // we should detect this
-    int index = c.size() / 2;
-    if (c.size() % 2 == 0)
+    rc = rc_t{RC_INVALID};
+    dia_static_limit_callback<NMaxCustomerIdxScanElems> dia_c(
+        40, s_arena.get(),
+        true); // probably a safe bet for now
+    ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(
+         customerWarehouseID))
+        ->SendScan(txn, rc, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                   &Encode(str(Size(k_c_idx_1)), k_c_idx_1), dia_c);
+    ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(
+         customerWarehouseID))
+        ->RecvScan(txn, rc, dia_c);
+    TryCatch(rc);
+    ALWAYS_ASSERT(dia_c.size() > 0);
+    ASSERT(dia_c.size() < NMaxCustomerIdxScanElems); // we should detect this
+    int index = dia_c.size() / 2;
+    if (dia_c.size() % 2 == 0)
       index--;
 
-    Decode(*c.values[index].second, v_c);
+    Decode(*dia_c.values[index].second, v_c);
     k_c.c_w_id = customerWarehouseID;
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = v_c.c_id;
@@ -3437,6 +3421,10 @@ rc_t tpcc_dia_cmdlog_redoer::txn_delivery(uint warehouse_id) {
   ermia::transaction *txn = db->NewTransaction(
       ermia::transaction::TXN_FLAG_CMD_REDO, arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
+  rc_t *rcs = nullptr;
+  ermia::OID *oids = nullptr;
+  PrepareForDIA(&rcs, &oids);
+
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
@@ -3472,33 +3460,37 @@ rc_t tpcc_dia_cmdlog_redoer::txn_delivery(uint warehouse_id) {
     checker::SanityCheckOOrder(&k_oo, v_oo);
 #endif
 
-    dia_static_limit_callback<15> c(
-        s_arena.get(), false); // never more than 15 order_lines per order
     const order_line::key k_oo_0(warehouse_id, d, k_no->no_o_id, 0);
     const order_line::key k_oo_1(warehouse_id, d, k_no->no_o_id,
                                  std::numeric_limits<int32_t>::max());
 
-    // XXX(stephentu): mutable scans would help here
-    TryCatch(tbl_order_line(warehouse_id)
-                 ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
-                        &Encode(str(Size(k_oo_1)), k_oo_1), c, s_arena.get()));
+    dia_static_limit_callback<15> dia_c(
+        16, s_arena.get(),
+        false); // never more than 15 order_lines per order
+    ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+        ->SendScan(txn, rcs[d - 1], Encode(str(Size(k_oo_0)), k_oo_0),
+                   &Encode(str(Size(k_oo_1)), k_oo_1), dia_c);
+    ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+        ->RecvScan(txn, rcs[d - 1], dia_c);
+
     float sum = 0.0;
-    for (size_t i = 0; i < c.size(); i++) {
+    for (size_t i = 0; i < dia_c.size(); i++) {
       order_line::value v_ol_temp;
-      const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
+      const order_line::value *v_ol =
+          Decode(*dia_c.values[i].second, v_ol_temp);
 
 #ifndef NDEBUG
       order_line::key k_ol_temp;
-      const order_line::key *k_ol = Decode(*c.values[i].first, k_ol_temp);
+      const order_line::key *k_ol = Decode(*dia_c.values[i].first, k_ol_temp);
       checker::SanityCheckOrderLine(k_ol, v_ol);
 #endif
 
       sum += v_ol->ol_amount;
       order_line::value v_ol_new(*v_ol);
       v_ol_new.ol_delivery_d = ts;
-      ASSERT(s_arena.get()->manages(c.values[i].first));
+      ASSERT(s_arena.get()->manages(dia_c.values[i].first));
       TryCatch(tbl_order_line(warehouse_id)
-                   ->Put(txn, *c.values[i].first,
+                   ->Put(txn, *dia_c.values[i].first,
                          Encode(str(Size(v_ol_new)), v_ol_new)));
     }
 
