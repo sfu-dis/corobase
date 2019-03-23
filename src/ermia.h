@@ -73,9 +73,13 @@ public:
     ~ScanCallback() {}
     virtual bool Invoke(const char *keyp, size_t keylen,
                         const varstr &value) = 0;
-    virtual bool Invoke(const char *keyp, size_t keylen, OID oid) {
-      return true;
-    }
+  };
+
+  class DiaScanCallback {
+  public:
+    ~DiaScanCallback() {}
+    virtual bool Invoke(const char *keyp, size_t keylen, OID oid) = 0;
+    virtual bool Receive(transaction *t, IndexDescriptor *descriptor_) = 0;
   };
 
   /**
@@ -166,7 +170,7 @@ public:
   coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
 
   virtual void ScanOID(transaction *t, const varstr &start_key,
-                       const varstr *end_key, rc_t &rc, OID *callback) = 0;
+                       const varstr *end_key, rc_t &rc, OID *dia_callback) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -180,6 +184,8 @@ private:
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
         : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
+    SearchRangeCallback(OrderedIndex::DiaScanCallback &dia_upcall)
+        : dia_upcall(&dia_upcall), return_code(rc_t{RC_FALSE}) {}
     ~SearchRangeCallback() {}
 
     inline bool Invoke(const ConcurrentMasstree::string_type &k,
@@ -187,10 +193,11 @@ private:
       return upcall->Invoke(k.data(), k.length(), v);
     }
     inline bool Invoke(const ConcurrentMasstree::string_type &k, OID oid) {
-      return upcall->Invoke(k.data(), k.length(), oid);
+      return dia_upcall->Invoke(k.data(), k.length(), oid);
     }
 
     OrderedIndex::ScanCallback *upcall;
+    OrderedIndex::DiaScanCallback *dia_upcall;
     rc_t return_code;
   };
 
@@ -292,7 +299,7 @@ private:
                                                   OID oid) override;
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc, OID *callback) override;
+               rc_t &rc, OID *dia_callback) override;
 };
 
 // User-facing masstree with decoupled index access
@@ -354,14 +361,11 @@ public:
   void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
 
   inline void SendScan(transaction *t, rc_t &rc, varstr &start_key,
-                       varstr *end_key, ScanCallback &callback) {
-    ermia::dia::SendScanRequest(t, this, &start_key, end_key, (OID *)&callback,
-                                &rc);
+                       varstr *end_key, DiaScanCallback &dia_callback) {
+    ermia::dia::SendScanRequest(t, this, &start_key, end_key,
+                                (OID *)&dia_callback, &rc);
   }
-  void
-  RecvScan(transaction *t, rc_t &rc,
-           std::vector<std::pair<ermia::varstr *, ermia::varstr *>> &values,
-           std::vector<ermia::OID> &oids);
+  void RecvScan(transaction *t, rc_t &rc, DiaScanCallback &dia_callback);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -454,6 +458,6 @@ public:
   }
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc, OID *callback) override {}
+               rc_t &rc, OID *dia_callback) override {}
 };
 } // namespace ermia

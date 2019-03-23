@@ -1618,7 +1618,7 @@ private:
 };
 
 template <size_t N>
-class dia_callback : public ermia::OrderedIndex::ScanCallback {
+class dia_callback : public ermia::OrderedIndex::DiaScanCallback {
 public:
   // XXX: push ignore_key into lower layer
   dia_callback(size_t key_len, ermia::str_arena *arena, bool ignore_key)
@@ -1637,12 +1637,6 @@ public:
     }
   }
 
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
-    LOG(FATAL) << "DIA's ScanCallback doesn't invoke value";
-    return true;
-  }
-
   virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
     ASSERT(n < N);
     if (!ignore_key) {
@@ -1650,6 +1644,33 @@ public:
     }
     oids.emplace_back(oid);
     return ++n < N;
+  }
+
+  virtual bool Receive(ermia::transaction *t,
+                       ermia::IndexDescriptor *descriptor_) {
+    for (int i = 0; i < oids.size(); ++i) {
+      ermia::dbtuple *tuple = NULL;
+      if (ermia::config::is_backup_srv()) {
+        tuple = ermia::oidmgr->BackupGetVersion(
+            descriptor_->GetTupleArray(),
+            descriptor_->GetPersistentAddressArray(),
+            ermia::volatile_read(oids[i]), t->GetXIDContext());
+      } else {
+        tuple = ermia::oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                               ermia::volatile_read(oids[i]),
+                                               t->GetXIDContext());
+      }
+      if (tuple) {
+        ermia::varstr value;
+        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+          (values[i].second)->p = value.p;
+          (values[i].second)->l = value.l;
+          continue;
+        }
+      }
+      return false;
+    }
+    return true;
   }
 
   inline size_t size() const { return oids.size(); }
@@ -1741,12 +1762,13 @@ rc_t tpcc_dia_worker::txn_delivery() {
         ->SendScan(txn, rcs[d - 1], Encode(str(Size(k_oo_0)), k_oo_0),
                    &Encode(str(Size(k_oo_1)), k_oo_1), dia_c);
     ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
-        ->RecvScan(txn, rcs[d - 1], dia_c.values, dia_c.oids);
+        ->RecvScan(txn, rcs[d - 1], dia_c);
 
     float sum = 0.0;
     for (size_t i = 0; i < dia_c.size(); i++) {
       order_line::value v_ol_temp;
-      const order_line::value *v_ol = Decode(*dia_c.values[i].second, v_ol_temp);
+      const order_line::value *v_ol =
+          Decode(*dia_c.values[i].second, v_ol_temp);
 
 #ifndef NDEBUG
       order_line::key k_ol_temp;

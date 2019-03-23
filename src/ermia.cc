@@ -266,8 +266,8 @@ ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key,
 
 void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
                                       const varstr *end_key, rc_t &rc,
-                                      OID *callback) {
-  SearchRangeCallback c(*(ScanCallback *)callback);
+                                      OID *dia_callback) {
+  SearchRangeCallback c(*(DiaScanCallback *)dia_callback);
   t->ensure_active();
   if (end_key) {
     VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
@@ -549,37 +549,13 @@ void DecoupledMasstreeIndex::RecvRemove(transaction *t, rc_t &rc, OID &oid,
   }
 }
 
-void DecoupledMasstreeIndex::RecvScan(
-    transaction *t, rc_t &rc,
-    std::vector<std::pair<ermia::varstr *, ermia::varstr *>> &values,
-    std::vector<ermia::OID> &oids) {
+void DecoupledMasstreeIndex::RecvScan(transaction *t, rc_t &rc,
+                                      DiaScanCallback &dia_callback) {
   while (volatile_read(rc._val) == RC_INVALID) {
   }
   if (rc._val == RC_TRUE) {
-    for (int i = 0; i < oids.size(); ++i) {
-      dbtuple *tuple = NULL;
-      if (ermia::config::is_backup_srv()) {
-        tuple = oidmgr->BackupGetVersion(
-            descriptor_->GetTupleArray(),
-            descriptor_->GetPersistentAddressArray(), volatile_read(oids[i]),
-            t->GetXIDContext());
-      } else {
-        tuple =
-            oidmgr->oid_get_version(descriptor_->GetTupleArray(),
-                                    volatile_read(oids[i]), t->GetXIDContext());
-      }
-      if (tuple) {
-        varstr value;
-        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
-          (values[i].second)->p = value.p;
-          (values[i].second)->l = value.l;
-          continue;
-        }
-      }
-
+    if (!dia_callback.Receive(t, descriptor_))
       volatile_write(rc._val, RC_FALSE);
-      break;
-    }
   }
 }
 
