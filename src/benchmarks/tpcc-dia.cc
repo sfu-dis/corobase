@@ -1728,13 +1728,15 @@ rc_t tpcc_dia_worker::txn_delivery() {
                                 std::numeric_limits<int32_t>::max());
 
     dia_new_order_scan_callback dia_new_order_c(s_arena.get());
-    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
-        ->SendScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
-                   Encode(str(Size(k_no_0)), k_no_0),
-                   &Encode(str(Size(k_no_1)), k_no_1), dia_new_order_c);
-    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
-        ->RecvScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
-                   dia_new_order_c);
+    {
+      ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+          ->SendScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                     Encode(str(Size(k_no_0)), k_no_0),
+                     &Encode(str(Size(k_no_1)), k_no_1), dia_new_order_c);
+      ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+          ->RecvScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                     dia_new_order_c);
+    }
     TryCatch(rcs[d - 1 + NumDistrictsPerWarehouse()]);
 
     const new_order::key *k_no = dia_new_order_c.get_key();
@@ -2397,11 +2399,13 @@ rc_t tpcc_dia_worker::txn_order_status() {
                                           0);
     const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id,
                                           std::numeric_limits<int32_t>::max());
-    ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
-        ->SendScan(txn, rc, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
-                   &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), dia_c_oorder);
-    ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
-        ->RecvScan(txn, rc, dia_c_oorder);
+    {
+      ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
+          ->SendScan(txn, rc, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
+                     &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), dia_c_oorder);
+      ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
+          ->RecvScan(txn, rc, dia_c_oorder);
+    }
     TryCatch(rc);
     ALWAYS_ASSERT(dia_c_oorder.size());
   } else {
@@ -2437,29 +2441,59 @@ rc_t tpcc_dia_worker::txn_order_status() {
   return {RC_TRUE};
 }
 
-class dia_order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
+class dia_order_line_scan_callback
+    : public ermia::OrderedIndex::DiaScanCallback {
 public:
   dia_order_line_scan_callback() : n(0) {}
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
-    MARK_REFERENCED(keyp);
-    MARK_REFERENCED(keylen);
-    ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
 
+  virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
+    ASSERT(keylen == sizeof(order_line::key));
+    oids.emplace_back(oid);
 #ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
+    checker::DiaSanityCheckOrderLine(k_ol, nullptr);
 #endif
-
-    s_i_ids[v_ol->ol_i_id] = 1;
-    n++;
+    ++n;
     return true;
   }
-  size_t n;
+
+  virtual bool Receive(ermia::transaction *t,
+                       ermia::IndexDescriptor *descriptor_) {
+    for (int i = 0; i < n; ++i) {
+      ermia::dbtuple *tuple = NULL;
+      if (ermia::config::is_backup_srv()) {
+        tuple = ermia::oidmgr->BackupGetVersion(
+            descriptor_->GetTupleArray(),
+            descriptor_->GetPersistentAddressArray(),
+            ermia::volatile_read(oids[i]), t->GetXIDContext());
+      } else {
+        tuple = ermia::oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                               ermia::volatile_read(oids[i]),
+                                               t->GetXIDContext());
+      }
+      if (tuple) {
+        ermia::varstr value;
+        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+          order_line::value v_ol_temp;
+          const order_line::value *v_ol = Decode(value, v_ol_temp);
+#ifndef NDEBUG
+          checker::DiaSanityCheckOrderLine(nullptr, v_ol);
+#endif
+          s_i_ids[v_ol->ol_i_id] = 1;
+          continue;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+  std::vector<ermia::OID> oids;
   std::unordered_map<uint, bool> s_i_ids;
+
+private:
+  size_t n;
 };
 
 rc_t tpcc_dia_worker::txn_stock_level() {
@@ -2507,18 +2541,22 @@ rc_t tpcc_dia_worker::txn_stock_level() {
                               : v_d->d_next_o_id;
 
   // manual joins are fun!
-  dia_order_line_scan_callback c;
+  dia_order_line_scan_callback dia_c_order_line;
+  rc = rc_t{RC_INVALID};
   const int32_t lower = cur_next_o_id >= 20 ? (cur_next_o_id - 20) : 0;
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
   {
-    TryCatch(tbl_order_line(warehouse_id)
-                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                        &Encode(str(Size(k_ol_1)), k_ol_1), c, s_arena.get()));
+    ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+        ->SendScan(txn, rc, Encode(str(Size(k_ol_0)), k_ol_0),
+                   &Encode(str(Size(k_ol_1)), k_ol_1), dia_c_order_line);
+    ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+        ->RecvScan(txn, rc, dia_c_order_line);
+    TryCatch(rc);
   }
   {
     std::unordered_map<uint, bool> s_i_ids_distinct;
-    for (auto &p : c.s_i_ids) {
+    for (auto &p : dia_c_order_line.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
       stock::value v_s;
       ASSERT(p.first >= 1 && p.first <= NumItems());
@@ -3546,13 +3584,15 @@ rc_t tpcc_dia_cmdlog_redoer::txn_delivery(uint warehouse_id) {
                                 std::numeric_limits<int32_t>::max());
 
     dia_new_order_scan_callback dia_new_order_c(s_arena.get());
-    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
-        ->SendScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
-                   Encode(str(Size(k_no_0)), k_no_0),
-                   &Encode(str(Size(k_no_1)), k_no_1), dia_new_order_c);
-    ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
-        ->RecvScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
-                   dia_new_order_c);
+    {
+      ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+          ->SendScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                     Encode(str(Size(k_no_0)), k_no_0),
+                     &Encode(str(Size(k_no_1)), k_no_1), dia_new_order_c);
+      ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+          ->RecvScan(txn, rcs[d - 1 + NumDistrictsPerWarehouse()],
+                     dia_new_order_c);
+    }
     TryCatch(rcs[d - 1 + NumDistrictsPerWarehouse()]);
 
     const new_order::key *k_no = dia_new_order_c.get_key();
