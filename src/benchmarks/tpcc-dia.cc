@@ -2236,9 +2236,38 @@ private:
   size_t n;
 };
 
-class dia_latest_key_callback : public ermia::OrderedIndex::ScanCallback {
+class dia_latest_key_callback : public ermia::OrderedIndex::DiaScanCallback {
 public:
   dia_latest_key_callback(ermia::varstr &k, int32_t limit = -1)
+      : limit(limit), n(0), k(&k) {
+    ALWAYS_ASSERT(limit == -1 || limit > 0);
+  }
+
+  virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
+    MARK_REFERENCED(oid);
+    ASSERT(limit == -1 || n < limit);
+    k->copy_from(keyp, keylen);
+    ++n;
+    return (limit == -1) || (n < limit);
+  }
+
+  virtual bool Receive(ermia::transaction *t,
+                       ermia::IndexDescriptor *descriptor_) {
+    return (n ? true : false);
+  }
+
+  inline size_t size() const { return n; }
+  inline ermia::varstr &kstr() { return *k; }
+
+private:
+  int32_t limit;
+  int32_t n;
+  ermia::varstr *k;
+};
+
+class non_dia_latest_key_callback : public ermia::OrderedIndex::ScanCallback {
+public:
+  non_dia_latest_key_callback(ermia::varstr &k, int32_t limit = -1)
       : limit(limit), n(0), k(&k) {
     ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
@@ -2362,20 +2391,21 @@ rc_t tpcc_dia_worker::txn_order_status() {
     // This is obviously a deviation from TPC-C, but it shouldn't make that
     // much of a difference in terms of performance numbers (in fact we are
     // making it worse for us)
-    dia_latest_key_callback c_oorder(*newest_o_c_id, (r.next() % 15) + 1);
+    rc = rc_t{RC_INVALID};
+    dia_latest_key_callback dia_c_oorder(*newest_o_c_id, (r.next() % 15) + 1);
     const oorder_c_id_idx::key k_oo_idx_0(warehouse_id, districtID, k_c.c_id,
                                           0);
     const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id,
                                           std::numeric_limits<int32_t>::max());
-    {
-      TryCatch(tbl_oorder_c_id_idx(warehouse_id)
-                   ->Scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
-                          &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
-                          s_arena.get()));
-    }
-    ALWAYS_ASSERT(c_oorder.size());
+    ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
+        ->SendScan(txn, rc, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
+                   &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), dia_c_oorder);
+    ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
+        ->RecvScan(txn, rc, dia_c_oorder);
+    TryCatch(rc);
+    ALWAYS_ASSERT(dia_c_oorder.size());
   } else {
-    dia_latest_key_callback c_oorder(*newest_o_c_id, 1);
+    non_dia_latest_key_callback c_oorder(*newest_o_c_id, 1);
     const oorder_c_id_idx::key k_oo_idx_hi(warehouse_id, districtID, k_c.c_id,
                                            std::numeric_limits<int32_t>::max());
     TryCatch(tbl_oorder_c_id_idx(warehouse_id)
