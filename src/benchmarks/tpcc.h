@@ -216,9 +216,12 @@ class tpcc_table_scanner : public ermia::OrderedIndex::ScanCallback {
   tpcc_table_scanner(ermia::str_arena *arena) : _arena(arena) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     ermia::varstr *const k = _arena->next(keylen);
+    ermia::varstr *v = _arena->next(0);  // header only
+    v->p = value.p;
+    v->l = value.l;
     ASSERT(k);
     k->copy_from(keyp, keylen);
-    output.emplace_back(k, &value);
+    output.emplace_back(k, v);
     return true;
   }
 
