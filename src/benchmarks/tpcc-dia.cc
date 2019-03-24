@@ -156,6 +156,20 @@ struct checker {
     ASSERT(k->ol_number >= 1 && k->ol_number <= 15);
     ASSERT(v->ol_i_id >= 1 && static_cast<size_t>(v->ol_i_id) <= NumItems());
   }
+
+  static ALWAYS_INLINE void
+  DiaSanityCheckOrderLine(const order_line::key *k,
+                          const order_line::value *v) {
+    if (k) {
+      ASSERT(k->ol_w_id >= 1 &&
+             static_cast<size_t>(k->ol_w_id) <= NumWarehouses());
+      ASSERT(k->ol_d_id >= 1 &&
+             static_cast<size_t>(k->ol_d_id) <= NumDistrictsPerWarehouse());
+      ASSERT(k->ol_number >= 1 && k->ol_number <= 15);
+    }
+    if (v)
+      ASSERT(v->ol_i_id >= 1 && static_cast<size_t>(v->ol_i_id) <= NumItems());
+  }
 };
 #endif
 
@@ -1581,8 +1595,10 @@ public:
       ermia::varstr value;
       if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
         ASSERT(value.size() == sizeof(new_order::value));
+#ifndef NDEBUG
         new_order::value v_no_temp;
         const new_order::value *v_no = Decode(value, v_no_temp);
+#endif
         return true;
       }
     }
@@ -1640,7 +1656,7 @@ public:
 
   virtual bool Receive(ermia::transaction *t,
                        ermia::IndexDescriptor *descriptor_) {
-    for (int i = 0; i < oids.size(); ++i) {
+    for (int i = 0; i < n; ++i) {
       ermia::dbtuple *tuple = NULL;
       if (ermia::config::is_backup_srv()) {
         tuple = ermia::oidmgr->BackupGetVersion(
@@ -1665,7 +1681,7 @@ public:
     return true;
   }
 
-  inline size_t size() const { return oids.size(); }
+  inline size_t size() const { return n; }
 
   typedef std::pair<ermia::varstr *, ermia::varstr *> kv_pair;
   typename std::vector<kv_pair> values;
@@ -2165,24 +2181,58 @@ rc_t tpcc_dia_worker::txn_payment() {
   return {RC_TRUE};
 }
 
-class dia_order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
+class dia_order_line_nop_callback
+    : public ermia::OrderedIndex::DiaScanCallback {
 public:
   dia_order_line_nop_callback() : n(0) {}
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
-    MARK_REFERENCED(keylen);
-    MARK_REFERENCED(keyp);
+
+  virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
     ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
+    oids.emplace_back(oid);
 #ifndef NDEBUG
     order_line::key k_ol_temp;
     const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
+    checker::DiaSanityCheckOrderLine(k_ol, nullptr);
 #endif
     ++n;
     return true;
   }
+
+  virtual bool Receive(ermia::transaction *t,
+                       ermia::IndexDescriptor *descriptor_) {
+    for (int i = 0; i < n; ++i) {
+      ermia::dbtuple *tuple = NULL;
+      if (ermia::config::is_backup_srv()) {
+        tuple = ermia::oidmgr->BackupGetVersion(
+            descriptor_->GetTupleArray(),
+            descriptor_->GetPersistentAddressArray(),
+            ermia::volatile_read(oids[i]), t->GetXIDContext());
+      } else {
+        tuple = ermia::oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                               ermia::volatile_read(oids[i]),
+                                               t->GetXIDContext());
+      }
+      if (tuple) {
+        ermia::varstr value;
+        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+          order_line::value v_ol_temp;
+          const order_line::value *v_ol = Decode(value, v_ol_temp);
+#ifndef NDEBUG
+          checker::DiaSanityCheckOrderLine(nullptr, v_ol);
+#endif
+          continue;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+  inline size_t size() const { return n; }
+
+  std::vector<ermia::OID> oids;
+
+private:
   size_t n;
 };
 
@@ -2338,15 +2388,20 @@ rc_t tpcc_dia_worker::txn_order_status() {
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
-  dia_order_line_nop_callback c_order_line;
+  rc = rc_t{RC_INVALID};
+  dia_order_line_nop_callback dia_c_order_line;
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
-  TryCatch(tbl_order_line(warehouse_id)
-               ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                      &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line,
-                      s_arena.get()));
-  ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
+
+  ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+      ->SendScan(txn, rc, Encode(str(Size(k_ol_0)), k_ol_0),
+                 &Encode(str(Size(k_ol_1)), k_ol_1), dia_c_order_line);
+  ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+      ->RecvScan(txn, rc, dia_c_order_line);
+  TryCatch(rc);
+
+  ALWAYS_ASSERT(dia_c_order_line.size() >= 5 && dia_c_order_line.size() <= 15);
 
   TryCatch(db->Commit(txn));
   return {RC_TRUE};
