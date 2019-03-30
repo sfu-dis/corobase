@@ -23,8 +23,6 @@ char g_workload = 'F';
 uint g_initial_table_size = 3000000;
 int g_sort_load_keys = 0;
 
-util::fast_random rnd_record_select(477377);
-
 // { insert, read, update, scan, rmw }
 YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
 YcsbWorkload YcsbWorkloadB('B', 0, 95U, 100U, 0, 0);  // Workload B - 95% read, 5% update
@@ -52,7 +50,7 @@ class ycsb_worker : public bench_worker {
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tbl(open_tables.at("USERTABLE")) {}
+        tbl(open_tables.at("USERTABLE")), rnd_record_select(477377 + worker_id) {}
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
@@ -177,6 +175,7 @@ class ycsb_worker : public bench_worker {
 
  private:
   ermia::OrderedIndex *tbl;
+  util::fast_random rnd_record_select;
 };
 
 class ycsb_usertable_loader : public bench_loader {
