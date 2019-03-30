@@ -33,6 +33,16 @@ void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
       t, index, start_key, end_key, dia_callback, Request::kTypeScan, rc);
 }
 
+void SendReverseScanRequest(ermia::transaction *t, OrderedIndex *index,
+                            const varstr *start_key, const varstr *end_key,
+                            OID *dia_callback, rc_t *rc) {
+  ALWAYS_ASSERT(rc->_val == RC_INVALID);
+  uint32_t index_thread_id = routing(start_key);
+  index_threads[index_thread_id]->AddRequest(t, index, start_key, end_key,
+                                             dia_callback,
+                                             Request::kTypeReverseScan, rc);
+}
+
 uint32_t RoutingYcsb(const varstr *key) {
   uint32_t worker_id = (uint32_t)(*(uint64_t *)key->data() >> 32);
   return worker_id % index_threads.size();
@@ -137,6 +147,10 @@ void IndexThread::SerialHandler() {
     case Request::kTypeScan:
       req.index->ScanOID(req.transaction, *req.key, req.end_key, *req.rc,
                          req.oid_ptr);
+      break;
+    case Request::kTypeReverseScan:
+      req.index->ReverseScanOID(req.transaction, *req.key, req.end_key, *req.rc,
+                                req.oid_ptr);
       break;
     default:
       LOG(FATAL) << "Wrong request type";

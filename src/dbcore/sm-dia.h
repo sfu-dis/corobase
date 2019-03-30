@@ -18,6 +18,9 @@ void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
 void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *start_key, const varstr *end_key,
                      OID *dia_callback, rc_t *rc);
+void SendReverseScanRequest(ermia::transaction *t, OrderedIndex *index,
+                            const varstr *start_key, const varstr *end_key,
+                            OID *dia_callback, rc_t *rc);
 uint32_t RoutingYcsb(const varstr *key);
 uint32_t RoutingTpcc(const varstr *key);
 
@@ -27,6 +30,7 @@ struct Request {
   static const uint8_t kTypeGet = 0x1;
   static const uint8_t kTypeInsert = 0x2;
   static const uint8_t kTypeScan = 0x3;
+  static const uint8_t kTypeReverseScan = 0x4;
   ermia::transaction *transaction;
   OrderedIndex *index;
   const varstr *key;

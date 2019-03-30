@@ -292,6 +292,25 @@ void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
 
+void ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
+                                             const varstr &start_key,
+                                             const varstr *end_key, rc_t &rc,
+                                             OID *dia_callback) {
+  SearchRangeCallback c(*(DiaScanCallback *)dia_callback);
+  t->ensure_active();
+  int scancount = 0;
+  if (!unlikely(end_key && start_key <= *end_key)) {
+    XctSearchRangeCallback cb(t, &c);
+    varstr lowervk;
+    if (end_key) {
+      lowervk = *end_key;
+    }
+    scancount = masstree_.rsearch_range_oid(
+        start_key, end_key ? &lowervk : nullptr, cb, t->xc);
+  }
+  volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
+}
+
 rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v,
                              bool upsert, OID *inserted_oid) {
   if (t.TryInsertNewTuple(this, k, v, inserted_oid)) {
@@ -559,4 +578,13 @@ void DecoupledMasstreeIndex::RecvScan(transaction *t, rc_t &rc,
   }
 }
 
+void DecoupledMasstreeIndex::RecvReverseScan(transaction *t, rc_t &rc,
+                                             DiaScanCallback &dia_callback) {
+  while (volatile_read(rc._val) == RC_INVALID) {
+  }
+  if (rc._val == RC_TRUE) {
+    if (!dia_callback.Receive(t, descriptor_))
+      volatile_write(rc._val, RC_FALSE);
+  }
+}
 } // namespace ermia
