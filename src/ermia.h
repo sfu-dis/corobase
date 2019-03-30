@@ -171,6 +171,9 @@ public:
 
   virtual void ScanOID(transaction *t, const varstr &start_key,
                        const varstr *end_key, rc_t &rc, OID *dia_callback) = 0;
+  virtual void ReverseScanOID(transaction *t, const varstr &start_key,
+                              const varstr *end_key, rc_t &rc,
+                              OID *dia_callback) = 0;
 };
 
 // User-facing concurrent Masstree
@@ -300,6 +303,9 @@ private:
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
                rc_t &rc, OID *dia_callback) override;
+  void ReverseScanOID(transaction *t, const varstr &start_key,
+                      const varstr *end_key, rc_t &rc,
+                      OID *dia_callback) override;
 };
 
 // User-facing masstree with decoupled index access
@@ -366,6 +372,13 @@ public:
                                 (OID *)&dia_callback, &rc);
   }
   void RecvScan(transaction *t, rc_t &rc, DiaScanCallback &dia_callback);
+
+  inline void SendReverseScan(transaction *t, rc_t &rc, varstr &start_key,
+                              varstr *end_key, DiaScanCallback &dia_callback) {
+    ermia::dia::SendReverseScanRequest(t, this, &start_key, end_key,
+                                       (OID *)&dia_callback, &rc);
+  }
+  void RecvReverseScan(transaction *t, rc_t &rc, DiaScanCallback &dia_callback);
   /*
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
   }
@@ -459,5 +472,8 @@ public:
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
                rc_t &rc, OID *dia_callback) override {}
+  void ReverseScanOID(transaction *t, const varstr &start_key,
+                      const varstr *end_key, rc_t &rc,
+                      OID *dia_callback) override {}
 };
 } // namespace ermia

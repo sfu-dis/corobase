@@ -2314,31 +2314,6 @@ private:
   ermia::varstr *k;
 };
 
-class non_dia_latest_key_callback : public ermia::OrderedIndex::ScanCallback {
-public:
-  non_dia_latest_key_callback(ermia::varstr &k, int32_t limit = -1)
-      : limit(limit), n(0), k(&k) {
-    ALWAYS_ASSERT(limit == -1 || limit > 0);
-  }
-
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
-    MARK_REFERENCED(value);
-    ASSERT(limit == -1 || n < limit);
-    k->copy_from(keyp, keylen);
-    ++n;
-    return (limit == -1) || (n < limit);
-  }
-
-  inline size_t size() const { return n; }
-  inline ermia::varstr &kstr() { return *k; }
-
-private:
-  int32_t limit;
-  int32_t n;
-  ermia::varstr *k;
-};
-
 rc_t tpcc_dia_worker::txn_order_status() {
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -2456,13 +2431,17 @@ rc_t tpcc_dia_worker::txn_order_status() {
     TryCatch(rc);
     ALWAYS_ASSERT(dia_c_oorder.size());
   } else {
-    non_dia_latest_key_callback c_oorder(*newest_o_c_id, 1);
+    rc = rc_t{RC_INVALID};
+    dia_latest_key_callback dia_c_oorder(*newest_o_c_id, 1);
     const oorder_c_id_idx::key k_oo_idx_hi(warehouse_id, districtID, k_c.c_id,
                                            std::numeric_limits<int32_t>::max());
-    TryCatch(tbl_oorder_c_id_idx(warehouse_id)
-                 ->ReverseScan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
-                               nullptr, c_oorder, s_arena.get()));
-    ALWAYS_ASSERT(c_oorder.size() == 1);
+    ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
+        ->SendReverseScan(txn, rc, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
+                          nullptr, dia_c_oorder);
+    ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
+        ->RecvReverseScan(txn, rc, dia_c_oorder);
+    TryCatch(rc);
+    ALWAYS_ASSERT(dia_c_oorder.size() == 1);
   }
 
   oorder_c_id_idx::key k_oo_idx_temp;
