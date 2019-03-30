@@ -2633,23 +2633,31 @@ rc_t tpcc_dia_worker::txn_query2() {
       ermia::transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
-  static thread_local tpcc_table_scanner r_scanner(&arena);
-  r_scanner.clear();
+  rc_t rc = rc_t{RC_INVALID};
+  static thread_local dia_tpcc_table_scanner dia_r_scanner(&arena);
+  dia_r_scanner.clear();
   const region::key k_r_0(0);
   const region::key k_r_1(5);
-  TryCatch(tbl_region(1)->Scan(txn, Encode(str(sizeof(k_r_0)), k_r_0),
-                               &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner,
-                               s_arena.get()));
-  ALWAYS_ASSERT(r_scanner.output.size() == 5);
+  ((ermia::DecoupledMasstreeIndex *)tbl_region(1))
+      ->SendScan(txn, rc, Encode(str(sizeof(k_r_0)), k_r_0),
+                 &Encode(str(sizeof(k_r_1)), k_r_1), dia_r_scanner);
+  ((ermia::DecoupledMasstreeIndex *)tbl_region(1))
+      ->RecvScan(txn, rc, dia_r_scanner);
+  TryCatch(rc);
+  ALWAYS_ASSERT(dia_r_scanner.output.size() == 5);
 
-  static thread_local tpcc_table_scanner n_scanner(&arena);
-  n_scanner.clear();
+  rc = rc_t{RC_INVALID};
+  static thread_local dia_tpcc_table_scanner dia_n_scanner(&arena);
+  dia_n_scanner.clear();
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
-  TryCatch(tbl_nation(1)->Scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
-                               &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
-                               s_arena.get()));
-  ALWAYS_ASSERT(n_scanner.output.size() == 62);
+  ((ermia::DecoupledMasstreeIndex *)tbl_nation(1))
+      ->SendScan(txn, rc, Encode(str(sizeof(k_n_0)), k_n_0),
+                 &Encode(str(sizeof(k_n_1)), k_n_1), dia_n_scanner);
+  ((ermia::DecoupledMasstreeIndex *)tbl_nation(1))
+      ->RecvScan(txn, rc, dia_n_scanner);
+  TryCatch(rc);
+  ALWAYS_ASSERT(dia_n_scanner.output.size() == 62);
 
   // Pick a target region
   auto target_region = RandomNumber(r, 0, 4);
@@ -2657,7 +2665,7 @@ rc_t tpcc_dia_worker::txn_query2() {
   ALWAYS_ASSERT(0 <= target_region and target_region <= 4);
 
   // Scan region
-  for (auto &r_r : r_scanner.output) {
+  for (auto &r_r : dia_r_scanner.output) {
     region::key k_r_temp;
     region::value v_r_temp;
     const region::key *k_r = Decode(*r_r.first, k_r_temp);
@@ -2668,7 +2676,7 @@ rc_t tpcc_dia_worker::txn_query2() {
       continue;
 
     // Scan nation
-    for (auto &r_n : n_scanner.output) {
+    for (auto &r_n : dia_n_scanner.output) {
       nation::key k_n_temp;
       nation::value v_n_temp;
       const nation::key *k_n = Decode(*r_n.first, k_n_temp);
@@ -2684,7 +2692,7 @@ rc_t tpcc_dia_worker::txn_query2() {
         supplier::value v_su_tmp;
         ermia::varstr valptr;
 
-        rc_t rc = rc_t{RC_INVALID};
+        rc = rc_t{RC_INVALID};
         ermia::OID oid = 0;
         ((ermia::DecoupledMasstreeIndex *)tbl_supplier(1))
             ->SendGet(txn, rc, Encode(str(Size(k_su)), k_su), &oid);
