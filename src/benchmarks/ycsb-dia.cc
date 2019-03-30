@@ -23,8 +23,6 @@ extern char g_workload;
 extern uint g_initial_table_size;
 extern int g_sort_load_keys;
 
-extern util::fast_random rnd_record_select;
-
 // { insert, read, update, scan, rmw }
 extern YcsbWorkload YcsbWorkloadA;
 extern YcsbWorkload YcsbWorkloadB;
@@ -48,7 +46,8 @@ class ycsb_dia_worker : public bench_worker {
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tbl((ermia::DecoupledMasstreeIndex*)open_tables.at("USERTABLE")) {}
+        tbl((ermia::DecoupledMasstreeIndex*)open_tables.at("USERTABLE")),
+        rnd_record_select(477377 + worker_id) {}
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
@@ -275,6 +274,7 @@ class ycsb_dia_worker : public bench_worker {
 
  private:
   ermia::DecoupledMasstreeIndex *tbl;
+  util::fast_random rnd_record_select;
 };
 
 class ycsb_dia_usertable_loader : public bench_loader {
