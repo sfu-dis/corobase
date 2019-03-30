@@ -1868,17 +1868,50 @@ public:
 };
 
 class dia_credit_check_order_line_scan_callback
-    : public ermia::OrderedIndex::ScanCallback {
+    : public ermia::OrderedIndex::DiaScanCallback {
 public:
-  dia_credit_check_order_line_scan_callback() {}
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
+  dia_credit_check_order_line_scan_callback(ermia::str_arena *arena)
+      : _arena(arena) {}
+
+  virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
     MARK_REFERENCED(keyp);
     MARK_REFERENCED(keylen);
-    _v_ol.emplace_back(&value);
+    oids.emplace_back(oid);
     return true;
   }
+
+  virtual bool Receive(ermia::transaction *t,
+                       ermia::IndexDescriptor *descriptor_) {
+    for (auto &o : oids) {
+      ermia::dbtuple *tuple = NULL;
+      if (ermia::config::is_backup_srv()) {
+        tuple = ermia::oidmgr->BackupGetVersion(
+            descriptor_->GetTupleArray(),
+            descriptor_->GetPersistentAddressArray(), ermia::volatile_read(o),
+            t->GetXIDContext());
+      } else {
+        tuple = ermia::oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                               ermia::volatile_read(o),
+                                               t->GetXIDContext());
+      }
+      if (tuple) {
+        ermia::varstr value;
+        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
+          ermia::varstr *const v = _arena->next(0);
+          v->p = value.p;
+          v->l = value.l;
+          _v_ol.emplace_back(v);
+          continue;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
   std::vector<const ermia::varstr *> _v_ol;
+  std::vector<ermia::OID> oids;
+  ermia::str_arena *_arena;
 };
 
 rc_t tpcc_dia_worker::txn_credit_check() {
@@ -1983,17 +2016,21 @@ rc_t tpcc_dia_worker::txn_credit_check() {
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    static thread_local dia_credit_check_order_line_scan_callback c_ol;
-    c_ol._v_ol.clear();
+    rc = rc_t{RC_INVALID};
+    static thread_local dia_credit_check_order_line_scan_callback dia_c_ol(
+        s_arena.get());
+    dia_c_ol._v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
-    TryCatch(tbl_order_line(warehouse_id)
-                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                        &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
-                        s_arena.get()));
-    ALWAYS_ASSERT(c_ol._v_ol.size());
+    ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+        ->SendScan(txn, rc, Encode(str(Size(k_ol_0)), k_ol_0),
+                   &Encode(str(Size(k_ol_1)), k_ol_1), dia_c_ol);
+    ((ermia::DecoupledMasstreeIndex *)tbl_order_line(warehouse_id))
+        ->RecvScan(txn, rc, dia_c_ol);
+    TryCatch(rc);
+    ALWAYS_ASSERT(dia_c_ol._v_ol.size());
 
-    for (auto &v_ol : c_ol._v_ol) {
+    for (auto &v_ol : dia_c_ol._v_ol) {
       order_line::value v_ol_temp;
       const order_line::value *val = Decode(*v_ol, v_ol_temp);
 
