@@ -1844,19 +1844,25 @@ rc_t tpcc_dia_worker::txn_delivery() {
 }
 
 class dia_credit_check_order_scan_callback
-    : public ermia::OrderedIndex::ScanCallback {
+    : public ermia::OrderedIndex::DiaScanCallback {
 public:
   dia_credit_check_order_scan_callback(ermia::str_arena *arena)
       : _arena(arena) {}
-  virtual bool Invoke(const char *keyp, size_t keylen,
-                      const ermia::varstr &value) {
-    MARK_REFERENCED(value);
-    ermia::varstr *const k = _arena->next(keylen);
+
+  virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
+    MARK_REFERENCED(oid);
+    ermia::varstr *const k = _arena->atomic_next(keylen);
     ASSERT(k);
     k->copy_from(keyp, keylen);
     output.emplace_back(k);
     return true;
   }
+
+  virtual bool Receive(ermia::transaction *t,
+                       ermia::IndexDescriptor *descriptor_) {
+    return true;
+  }
+
   std::vector<ermia::varstr *> output;
   ermia::str_arena *_arena;
 };
@@ -1945,17 +1951,21 @@ rc_t tpcc_dia_worker::txn_credit_check() {
   //		c_w_id = :w_id;
   //		c_d_id = :d_id;
   //		c_id = :c_id;
-  dia_credit_check_order_scan_callback c_no(s_arena.get());
+  rc = rc_t{RC_INVALID};
+  dia_credit_check_order_scan_callback dia_c_no(s_arena.get());
   const new_order::key k_no_0(warehouse_id, districtID, 0);
   const new_order::key k_no_1(warehouse_id, districtID,
                               std::numeric_limits<int32_t>::max());
-  TryCatch(tbl_new_order(warehouse_id)
-               ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                      &Encode(str(Size(k_no_1)), k_no_1), c_no, s_arena.get()));
-  ALWAYS_ASSERT(c_no.output.size());
+  ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+      ->SendScan(txn, rc, Encode(str(Size(k_no_0)), k_no_0),
+                 &Encode(str(Size(k_no_1)), k_no_1), dia_c_no);
+  ((ermia::DecoupledMasstreeIndex *)tbl_new_order(warehouse_id))
+      ->RecvScan(txn, rc, dia_c_no);
+  TryCatch(rc);
+  ALWAYS_ASSERT(dia_c_no.output.size());
 
   double sum = 0;
-  for (auto &k : c_no.output) {
+  for (auto &k : dia_c_no.output) {
     new_order::key k_no_temp;
     const new_order::key *k_no = Decode(*k, k_no_temp);
 
