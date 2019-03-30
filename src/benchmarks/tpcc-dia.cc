@@ -624,8 +624,18 @@ protected:
       v.r_name = std::string(regions[i]);
       const std::string r_comment = RandomStr(r, RandomNumber(r, 10, 20));
       v.r_comment.assign(r_comment);
-      TryVerifyStrict(tbl_region(1)->Insert(txn, Encode(str(Size(k)), k),
-                                            Encode(str(Size(v)), v)));
+
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::dbtuple *tuple = nullptr;
+      ((ermia::DecoupledMasstreeIndex *)tbl_region(1))
+          ->SendInsert(txn, rc, Encode(str(Size(k)), k),
+                       Encode(str(Size(v)), v), &oid, &tuple);
+      ALWAYS_ASSERT(tuple);
+      ((ermia::DecoupledMasstreeIndex *)tbl_region(1))
+          ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
+                       Encode(str(Size(v)), v), tuple);
+      TryVerifyStrict(rc);
     }
     TryVerifyStrict(db->Commit(txn));
   }
@@ -665,8 +675,17 @@ protected:
       //		  v.su_comment = RandomStr(r, RandomNumber(r,10,39));
       //// XXX. Q16 uses this. fix this if needed.
 
-      TryVerifyStrict(tbl_supplier(1)->Insert(txn, Encode(str(Size(k)), k),
-                                              Encode(str(Size(v)), v)));
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::dbtuple *tuple = nullptr;
+      ((ermia::DecoupledMasstreeIndex *)tbl_supplier(1))
+          ->SendInsert(txn, rc, Encode(str(Size(k)), k),
+                       Encode(str(Size(v)), v), &oid, &tuple);
+      ALWAYS_ASSERT(tuple);
+      ((ermia::DecoupledMasstreeIndex *)tbl_supplier(1))
+          ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
+                       Encode(str(Size(v)), v), tuple);
+      TryVerifyStrict(rc);
 
       TryVerifyStrict(db->Commit(txn));
     }
@@ -717,8 +736,17 @@ protected:
       const size_t sz = Size(v);
       warehouse_total_sz += sz;
       n_warehouses++;
-      TryVerifyStrict(tbl_warehouse(i)->Insert(txn, Encode(str(Size(k)), k),
-                                               Encode(str(sz), v)));
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::dbtuple *tuple = nullptr;
+      ((ermia::DecoupledMasstreeIndex *)tbl_warehouse(i))
+          ->SendInsert(txn, rc, Encode(str(Size(k)), k),
+                       Encode(str(sz), v), &oid, &tuple);
+      ALWAYS_ASSERT(tuple);
+      ((ermia::DecoupledMasstreeIndex *)tbl_warehouse(i))
+          ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
+                       Encode(str(sz), v), tuple);
+      TryVerifyStrict(rc);
 
       warehouses.push_back(v);
       TryVerifyStrict(db->Commit(txn));
@@ -803,9 +831,17 @@ protected:
 #endif
       const size_t sz = Size(v);
       total_sz += sz;
-      TryVerifyStrict(tbl_item(1)->Insert(
-          txn, Encode(str(Size(k)), k),
-          Encode(str(sz), v))); // this table is shared, so any partition is OK
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::dbtuple *tuple = nullptr;
+      ((ermia::DecoupledMasstreeIndex *)tbl_item(1))
+          ->SendInsert(txn, rc, Encode(str(Size(k)), k),
+                       Encode(str(sz), v), &oid, &tuple);
+      ALWAYS_ASSERT(tuple);
+      ((ermia::DecoupledMasstreeIndex *)tbl_item(1))
+          ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
+                       Encode(str(sz), v), tuple);
+      TryVerifyStrict(rc); // this table is shared, so any partition is OK
       TryVerifyStrict(db->Commit(txn));
     }
     if (ermia::config::verbose) {
@@ -890,11 +926,31 @@ protected:
           const size_t sz = Size(v);
           stock_total_sz += sz;
           n_stocks++;
-          TryVerifyStrict(tbl_stock(w)->Insert(txn, Encode(str(Size(k)), k),
-                                               Encode(str(sz), v)));
-          TryVerifyStrict(
-              tbl_stock_data(w)->Insert(txn, Encode(str(Size(k_data)), k_data),
-                                        Encode(str(Size(v_data)), v_data)));
+
+          rc_t rc = rc_t{RC_INVALID};
+          ermia::OID oid = 0;
+          ermia::dbtuple *tuple = nullptr;
+          ((ermia::DecoupledMasstreeIndex *)tbl_stock(w))
+              ->SendInsert(txn, rc, Encode(str(Size(k)), k), Encode(str(sz), v),
+                           &oid, &tuple);
+          ALWAYS_ASSERT(tuple);
+          ((ermia::DecoupledMasstreeIndex *)tbl_stock(w))
+              ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
+                           Encode(str(sz), v), tuple);
+          TryVerifyStrict(rc);
+
+          rc = rc_t{RC_INVALID};
+          oid = 0;
+          tuple = nullptr;
+          ((ermia::DecoupledMasstreeIndex *)tbl_stock_data(w))
+              ->SendInsert(txn, rc, Encode(str(Size(k_data)), k_data),
+                           Encode(str(Size(v_data)), v_data), &oid, &tuple);
+          ALWAYS_ASSERT(tuple);
+          ((ermia::DecoupledMasstreeIndex *)tbl_stock_data(w))
+              ->RecvInsert(txn, rc, oid, Encode(str(Size(k_data)), k_data),
+                           Encode(str(Size(v_data)), v_data), tuple);
+          TryVerifyStrict(rc);
+
           TryVerifyStrict(db->Commit(txn));
         }
 
@@ -960,8 +1016,18 @@ protected:
         const size_t sz = Size(v);
         district_total_sz += sz;
         n_districts++;
-        TryVerifyStrict(tbl_district(w)->Insert(txn, Encode(str(Size(k)), k),
-                                                Encode(str(sz), v)));
+
+        rc_t rc = rc_t{RC_INVALID};
+        ermia::OID oid = 0;
+        ermia::dbtuple *tuple = nullptr;
+        ((ermia::DecoupledMasstreeIndex *)tbl_district(w))
+            ->SendInsert(txn, rc, Encode(str(Size(k)), k), Encode(str(sz), v),
+                         &oid, &tuple);
+        ALWAYS_ASSERT(tuple);
+        ((ermia::DecoupledMasstreeIndex *)tbl_district(w))
+            ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
+                         Encode(str(sz), v), tuple);
+        TryVerifyStrict(rc);
 
         TryVerifyStrict(db->Commit(txn));
       }
@@ -1090,9 +1156,19 @@ protected:
 
             arena.reset();
             txn = db->NewTransaction(0, arena, txn_buf());
-            TryVerifyStrict(
-                tbl_history(w)->Insert(txn, Encode(str(Size(k_hist)), k_hist),
-                                       Encode(str(Size(v_hist)), v_hist)));
+
+            rc_t rc = rc_t{RC_INVALID};
+            ermia::OID oid = 0;
+            ermia::dbtuple *tuple = nullptr;
+            ((ermia::DecoupledMasstreeIndex *)tbl_history(w))
+                ->SendInsert(txn, rc, Encode(str(Size(k_hist)), k_hist),
+                             Encode(str(Size(v_hist)), v_hist), &oid, &tuple);
+            ALWAYS_ASSERT(tuple);
+            ((ermia::DecoupledMasstreeIndex *)tbl_history(w))
+                ->RecvInsert(txn, rc, oid, Encode(str(Size(k_hist)), k_hist),
+                             Encode(str(Size(v_hist)), v_hist), tuple);
+            TryVerifyStrict(rc);
+
             TryVerifyStrict(db->Commit(txn));
           }
           batch++;
@@ -1160,6 +1236,9 @@ protected:
           c_ids_s.insert(x);
           c_ids.emplace_back(x);
         }
+        rc_t rc;
+        ermia::OID oid;
+        ermia::dbtuple *tuple;
         for (uint c = 1; c <= NumCustomersPerDistrict();) {
           ermia::scoped_str_arena s_arena(arena);
           arena.reset();
@@ -1209,8 +1288,17 @@ protected:
             const size_t sz = Size(v_no);
             new_order_total_sz += sz;
             n_new_orders++;
-            TryVerifyStrict(tbl_new_order(w)->Insert(
-                txn, Encode(str(Size(k_no)), k_no), Encode(str(sz), v_no)));
+            rc = rc_t{RC_INVALID};
+            oid = 0;
+            tuple = nullptr;
+            ((ermia::DecoupledMasstreeIndex *)tbl_new_order(w))
+                ->SendInsert(txn, rc, Encode(str(Size(k_no)), k_no),
+                             Encode(str(sz), v_no), &oid, &tuple);
+            ALWAYS_ASSERT(tuple);
+            ((ermia::DecoupledMasstreeIndex *)tbl_new_order(w))
+                ->RecvInsert(txn, rc, oid, Encode(str(Size(k_no)), k_no),
+                             Encode(str(sz), v_no), tuple);
+            TryVerifyStrict(rc);
             TryVerifyStrict(db->Commit(txn));
           }
 
@@ -1241,8 +1329,17 @@ protected:
             n_order_lines++;
             arena.reset();
             txn = db->NewTransaction(0, arena, txn_buf());
-            TryVerifyStrict(tbl_order_line(w)->Insert(
-                txn, Encode(str(Size(k_ol)), k_ol), Encode(str(sz), v_ol)));
+            rc = rc_t{RC_INVALID};
+            oid = 0;
+            tuple = nullptr;
+            ((ermia::DecoupledMasstreeIndex *)tbl_order_line(w))
+                ->SendInsert(txn, rc, Encode(str(Size(k_ol)), k_ol),
+                             Encode(str(sz), v_ol), &oid, &tuple);
+            ALWAYS_ASSERT(tuple);
+            ((ermia::DecoupledMasstreeIndex *)tbl_order_line(w))
+                ->RecvInsert(txn, rc, oid, Encode(str(Size(k_ol)), k_ol),
+                             Encode(str(sz), v_ol), tuple);
+            TryVerifyStrict(rc);
             TryVerifyStrict(db->Commit(txn));
           }
           c++;
