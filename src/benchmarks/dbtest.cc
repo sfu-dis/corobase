@@ -360,7 +360,6 @@ int main(int argc, char **argv) {
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;
-  std::cerr << "  worker-threads    : " << ermia::config::worker_threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
   std::cerr << "  physical-workers-only: " << ermia::config::physical_workers_only << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
