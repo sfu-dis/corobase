@@ -740,8 +740,8 @@ protected:
       ermia::OID oid = 0;
       ermia::dbtuple *tuple = nullptr;
       ((ermia::DecoupledMasstreeIndex *)tbl_warehouse(i))
-          ->SendInsert(txn, rc, Encode(str(Size(k)), k),
-                       Encode(str(sz), v), &oid, &tuple);
+          ->SendInsert(txn, rc, Encode(str(Size(k)), k), Encode(str(sz), v),
+                       &oid, &tuple);
       ALWAYS_ASSERT(tuple);
       ((ermia::DecoupledMasstreeIndex *)tbl_warehouse(i))
           ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
@@ -835,8 +835,8 @@ protected:
       ermia::OID oid = 0;
       ermia::dbtuple *tuple = nullptr;
       ((ermia::DecoupledMasstreeIndex *)tbl_item(1))
-          ->SendInsert(txn, rc, Encode(str(Size(k)), k),
-                       Encode(str(sz), v), &oid, &tuple);
+          ->SendInsert(txn, rc, Encode(str(Size(k)), k), Encode(str(sz), v),
+                       &oid, &tuple);
       ALWAYS_ASSERT(tuple);
       ((ermia::DecoupledMasstreeIndex *)tbl_item(1))
           ->RecvInsert(txn, rc, oid, Encode(str(Size(k)), k),
@@ -1124,8 +1124,17 @@ protected:
             total_sz += sz;
             ermia::OID c_oid =
                 0; // Get the OID and put in customer_name_idx later
-            TryVerifyStrict(tbl_customer(w)->Insert(
-                txn, Encode(str(Size(k)), k), Encode(str(sz), v), &c_oid));
+            rc_t rc = rc_t{RC_INVALID};
+            ermia::dbtuple *tuple = nullptr;
+            ((ermia::DecoupledMasstreeIndex *)tbl_customer(w))
+                ->SendInsert(txn, rc, Encode(str(Size(k)), k),
+                             Encode(str(sz), v), &c_oid, &tuple);
+            ALWAYS_ASSERT(tuple);
+            ((ermia::DecoupledMasstreeIndex *)tbl_customer(w))
+                ->RecvInsert(txn, rc, c_oid, Encode(str(Size(k)), k),
+                             Encode(str(sz), v), tuple);
+            TryVerifyStrict(rc);
+
             TryVerifyStrict(db->Commit(txn));
 
             // customer name index
@@ -1134,11 +1143,15 @@ protected:
 
             // index structure is:
             // (c_w_id, c_d_id, c_last, c_first) -> OID
-
             arena.reset();
             txn = db->NewTransaction(0, arena, txn_buf());
-            TryVerifyStrict(tbl_customer_name_idx(w)->Insert(
-                txn, Encode(str(Size(k_idx)), k_idx), c_oid));
+            rc = rc_t{RC_INVALID};
+            ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(w))
+                ->SendInsert(txn, rc, Encode(str(Size(k_idx)), k_idx), &c_oid);
+            ((ermia::DecoupledMasstreeIndex *)tbl_customer_name_idx(w))
+                ->RecvInsert(txn, rc, Encode(str(Size(k_idx)), k_idx), c_oid);
+            TryVerifyStrict(rc);
+
             TryVerifyStrict(db->Commit(txn));
             arena.reset();
 
@@ -1157,9 +1170,9 @@ protected:
             arena.reset();
             txn = db->NewTransaction(0, arena, txn_buf());
 
-            rc_t rc = rc_t{RC_INVALID};
+            rc = rc_t{RC_INVALID};
             ermia::OID oid = 0;
-            ermia::dbtuple *tuple = nullptr;
+            tuple = nullptr;
             ((ermia::DecoupledMasstreeIndex *)tbl_history(w))
                 ->SendInsert(txn, rc, Encode(str(Size(k_hist)), k_hist),
                              Encode(str(Size(v_hist)), v_hist), &oid, &tuple);
@@ -1263,17 +1276,32 @@ protected:
           n_oorders++;
           ermia::OID v_oo_oid =
               0; // Get the OID and put it in oorder_c_id_idx later
-          TryVerifyStrict(
-              tbl_oorder(w)->Insert(txn, Encode(str(Size(k_oo)), k_oo),
-                                    Encode(str(sz), v_oo), &v_oo_oid));
+          rc = rc_t{RC_INVALID};
+          tuple = nullptr;
+          ((ermia::DecoupledMasstreeIndex *)tbl_oorder(w))
+              ->SendInsert(txn, rc, Encode(str(Size(k_oo)), k_oo),
+                           Encode(str(sz), v_oo), &v_oo_oid, &tuple);
+          ALWAYS_ASSERT(tuple);
+          ((ermia::DecoupledMasstreeIndex *)tbl_oorder(w))
+              ->RecvInsert(txn, rc, v_oo_oid, Encode(str(Size(k_oo)), k_oo),
+                           Encode(str(sz), v_oo), tuple);
+          TryVerifyStrict(rc);
+
           TryVerifyStrict(db->Commit(txn));
           arena.reset();
           txn = db->NewTransaction(0, arena, txn_buf());
 
           const oorder_c_id_idx::key k_oo_idx(k_oo.o_w_id, k_oo.o_d_id,
                                               v_oo.o_c_id, k_oo.o_id);
-          TryVerifyStrict(tbl_oorder_c_id_idx(w)->Insert(
-              txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
+          rc = rc_t{RC_INVALID};
+          ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(w))
+              ->SendInsert(txn, rc, Encode(str(Size(k_oo_idx)), k_oo_idx),
+                           &v_oo_oid);
+          ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(w))
+              ->RecvInsert(txn, rc, Encode(str(Size(k_oo_idx)), k_oo_idx),
+                           v_oo_oid);
+          TryVerifyStrict(rc);
+
           TryVerifyStrict(db->Commit(txn));
 
           if (c >= 2101) {
@@ -1518,6 +1546,7 @@ rc_t tpcc_dia_worker::txn_new_order() {
       ->SendInsert(txn, rc, Encode(str(Size(k_oo_idx)), k_oo_idx), &v_oo_oid);
   ((ermia::DecoupledMasstreeIndex *)tbl_oorder_c_id_idx(warehouse_id))
       ->RecvInsert(txn, rc, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid);
+  TryCatch(rc);
 
   thread_local std::vector<ermia::varstr *> keys_item;
   keys_item.clear();
