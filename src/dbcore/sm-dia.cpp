@@ -48,7 +48,11 @@ uint32_t RoutingYcsb(const varstr *key) {
   return worker_id % index_threads.size();
 }
 
-uint32_t RoutingTpcc(const varstr *key) { return 0; }
+uint32_t RoutingTpcc(const varstr *key) {
+  // sizeof shortest key is 4 bytes
+  // FIXME(yongjunh): the current partition makes no sense
+  return (*(uint32_t *)key->data()) % index_threads.size();
+}
 
 // Prepare the extra index threads needed by DIA. The other compute threads
 // should already be initialized by sm-config.
@@ -389,11 +393,14 @@ void IndexThread::CoroutineHandler() {
 
     // Issued the requests in the scheduler
     uint32_t finished = 0;
-    for (auto &c : coroutines) {
-      while (c->advance()) {
+    while (finished < coroutines.size()) {
+      for (auto &c : coroutines) {
+        if (c && !c->advance()) {
+          delete c;
+          c = nullptr;
+          ++finished;
+        }
       }
-      delete c;
-      ++finished;
     }
 
     queue.MultiDequeue(finished);
