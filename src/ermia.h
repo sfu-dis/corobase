@@ -95,13 +95,6 @@ public:
    * (a copy is made).
    *
    * If a record with key k exists, overwrites. Otherwise, inserts.
-   *
-   * If the return value is not NULL, then it points to the actual stable
-   * location in memory where the value is located. Thus, [ret, ret+valuelen)
-   * will be valid memory, bytewise equal to [value, value+valuelen), since the
-   * implementations have immutable values for the time being. The value
-   * returned is guaranteed to be valid memory until the key associated with
-   * value is overriden.
    */
   virtual rc_t Put(transaction *t, const varstr &key, varstr &value) = 0;
 
