@@ -712,7 +712,6 @@ protected:
       arena.reset();
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       const warehouse::key k(i);
-
       const std::string w_name = RandomStr(r, RandomNumber(r, 6, 10));
       const std::string w_street_1 = RandomStr(r, RandomNumber(r, 10, 20));
       const std::string w_street_2 = RandomStr(r, RandomNumber(r, 10, 20));
