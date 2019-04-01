@@ -70,7 +70,7 @@ class unlocked_tcursor {
            perm_.size();
   }
 
- private:
+ public:
   leaf<P>* n_;
   key_type ka_;
   typename leaf<P>::nodeversion_type v_;
