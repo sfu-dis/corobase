@@ -245,7 +245,12 @@ public:
 
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) override;
-  void MultiGet(transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests);
+
+  // A multi-get operation using AMAC
+  void MultiGet(transaction *t,
+                std::vector<ConcurrentMasstree::AMACState> &requests,
+                std::vector<varstr *> &values);
+
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
