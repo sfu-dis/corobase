@@ -966,6 +966,9 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
   uint32_t finished = 0;
   while (finished < requests.size()) {
     for (auto &s : requests) {
+      if (s.done) {
+        continue;
+      }
       if (s.stage == 1) {
         s.tentative_next = s.cur_obj->GetNextVolatile();
         ASSERT(s.tentative_next.asi_type() == 0);
