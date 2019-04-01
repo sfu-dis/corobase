@@ -125,7 +125,7 @@ public:
 
     // Intermediate data for find_unlocked/reach_leaf
     bool sense;
-    Masstree::unlocked_tcursor<P> *lp;
+    Masstree::unlocked_tcursor<P> lp;
     const Masstree::node_base<P>* n[2];
     typename Masstree::node_base<P>::nodeversion_type v[2];
     key_indexed_position kx;
@@ -138,7 +138,6 @@ public:
     , ptr(nullptr)
     , key(key)
     , sense(false)
-    , lp(nullptr)
     , found(false)
     , out_oid(INVALID_OID)
     , done(false)
@@ -568,58 +567,58 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
       }
     retry:
       if (s.stage == 3) {
-        s.lp->perm_ = s.lp->n_->permutation();
-        s.kx = Masstree::leaf<P>::bound_type::lower(s.lp->ka_, *s.lp);
+        s.lp.perm_ = s.lp.n_->permutation();
+        s.kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
         int match;
         if (s.kx.p >= 0) {
-          s.lp->lv_ = s.lp->n_->lv_[s.kx.p];
-          s.lp->lv_.prefetch(s.lp->n_->keylenx_[s.kx.p]);
-          match = s.lp->n_->ksuf_matches(s.kx.p, s.lp->ka_);
+          s.lp.lv_ = s.lp.n_->lv_[s.kx.p];
+          s.lp.lv_.prefetch(s.lp.n_->keylenx_[s.kx.p]);
+          match = s.lp.n_->ksuf_matches(s.kx.p, s.lp.ka_);
         } else {
           match = 0;
         }
-        if (s.lp->n_->has_changed(s.lp->v_)) {
-          s.lp->n_ = s.lp->n_->advance_to_key(s.lp->ka_, s.lp->v_, ti);
+        if (s.lp.n_->has_changed(s.lp.v_)) {
+          s.lp.n_ = s.lp.n_->advance_to_key(s.lp.ka_, s.lp.v_, ti);
           // go to stage 2
-          if (s.lp->v_.deleted()) {
+          if (s.lp.v_.deleted()) {
             s.stage = 0;
             goto retry;
            } else {
             // Prefetch the node
-            s.lp->n_->prefetch();
+            s.lp.n_->prefetch();
             s.stage = 3;
           }
         } else {
           if (match < 0) {
-            s.lp->ka_.shift_by(-match);
-            s.lp->root_ = s.lp->lv_.layer();
+            s.lp.ka_.shift_by(-match);
+            s.lp.root_ = s.lp.lv_.layer();
             s.stage = 0;
             goto retry;
           } else {
             // Done!
             s.found = match;
             if (s.found) {
-              s.out_oid = s.lp->value();
+              s.out_oid = s.lp.value();
             }
-            delete s.lp;
-            s.lp = nullptr;
+            //delete s.lp;
+            //s.lp = nullptr;
             ++finished;
             s.done = true;
           }
         }
       } else if (s.stage == 2) {
         // Continue after reach_leaf in find_unlocked
-        if (s.lp->v_.deleted()) {
+        if (s.lp.v_.deleted()) {
           s.stage = 0;
           goto retry;
         } else {
           // Prefetch the node
-          s.lp->n_->prefetch();
+          s.lp.n_->prefetch();
           s.stage = 3;
         }
       } else if (s.stage == 1) {
         Masstree::internode<P>* in = (Masstree::internode<P>*)s.ptr;
-        int kp = Masstree::internode<P>::bound_type::upper(s.lp->ka_, *in);
+        int kp = Masstree::internode<P>::bound_type::upper(s.lp.ka_, *in);
         s.n[!s.sense] = in->child_[kp];
         if (!s.n[!s.sense]) {
           s.stage = 0;
@@ -630,8 +629,8 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
             s.sense = !s.sense;
             if (s.v[s.sense].isleaf()) {
                 // Done reach_leaf, enter stage 2
-                s.lp->v_ = s.v[s.sense];
-                s.lp->n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
+                s.lp.v_ = s.v[s.sense];
+                s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
                 s.stage = 2;
                 goto retry;
                 //continue;
@@ -645,14 +644,14 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
           } else {
             typename Masstree::node_base<P>::nodeversion_type oldv = s.v[s.sense];
             s.v[s.sense] = in->stable_annotated(ti.stable_fence());
-            if (oldv.has_split(s.v[s.sense]) && in->stable_last_key_compare(s.lp->ka_, s.v[s.sense], ti) > 0) {
+            if (oldv.has_split(s.v[s.sense]) && in->stable_last_key_compare(s.lp.ka_, s.v[s.sense], ti) > 0) {
               s.stage = 0;
               goto retry;
             } else  {
               if (s.v[s.sense].isleaf()) {
                 // Done reach_leaf, enter stage 2
-                s.lp->v_ = s.v[s.sense];
-                s.lp->n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
+                s.lp.v_ = s.v[s.sense];
+                s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
                 s.stage = 2;
                 goto retry;
                 //continue;
@@ -668,9 +667,9 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
         }
       } else if (s.stage == 0) {
         // Stage 0 - get and prefetch root
-        s.lp = new Masstree::unlocked_tcursor<P>(table_, s.key->data(), s.key->size());
+        new (&s.lp) Masstree::unlocked_tcursor<P>(table_, s.key->data(), s.key->size());
         s.sense = false;
-        s.n[s.sense] = s.lp->root_;
+        s.n[s.sense] = s.lp.root_;
         while (1) {
           s.v[s.sense] = s.n[s.sense]->stable_annotated(ti.stable_fence());
           if (!s.v[s.sense].has_split()) break;
@@ -678,8 +677,8 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
         }
 
         if (s.v[s.sense].isleaf()) {
-          s.lp->v_ = s.v[s.sense];
-          s.lp->n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
+          s.lp.v_ = s.v[s.sense];
+          s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
           s.stage = 2;
           //continue;
           goto retry;
