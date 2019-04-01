@@ -26,8 +26,6 @@
 #include "../dbcore/sm-index.h"
 #include "../tuple.h"
 
-#include "../dbcore/amac.h"
-
 namespace ermia {
 
 class simple_threadinfo {
