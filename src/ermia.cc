@@ -153,41 +153,33 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
-void ConcurrentMasstreeIndex::MultiGet(transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests) {
+void ConcurrentMasstreeIndex::MultiGet(transaction *t,
+                                       std::vector<ConcurrentMasstree::AMACState> &requests,
+                                       std::vector<varstr *> &values) {
   t->ensure_active();
   ConcurrentMasstree::versioned_node_t sinfo;
   masstree_.search_amac(requests, t->xc);
 
-/*
-  dbtuple *tuple = nullptr;
-  if (found) {
-    // Key-OID mapping exists, now try to get the actual tuple to be sure
-    if (config::is_backup_srv()) {
-      tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
-                                       descriptor_->GetPersistentAddressArray(),
-                                       oid, t->xc);
-    } else {
-      tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
-    }
-    if (!tuple) {
-      found = false;
+  for (uint32_t i = 0; i < requests.size(); ++i) {
+    auto &r = requests[i];
+    dbtuple *tuple = nullptr;
+    if (r.out_oid != INVALID_OID) {
+      // Key-OID mapping exists, now try to get the actual tuple to be sure
+      if (config::is_backup_srv()) {
+        tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
+                                         descriptor_->GetPersistentAddressArray(),
+                                         r.out_oid, t->xc);
+      } else {
+        tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), r.out_oid, t->xc);
+      }
+      if (tuple) {
+        t->DoTupleRead(tuple, values[i]);
+      } else if (config::phantom_prot) {
+        DoNodeRead(t, sinfo.first, sinfo.second);
+      }
     }
   }
-
-  if (found) {
-    if (out_oid) {
-      *out_oid = oid;
-    }
-    volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-  } else if (config::phantom_prot) {
-    volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
-  } else {
-    volatile_write(rc._val, RC_FALSE);
-  }
-  ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
-  */
 }
-
 
 void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
                                   varstr &value, OID *out_oid) {

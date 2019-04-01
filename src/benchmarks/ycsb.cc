@@ -22,6 +22,7 @@ uint g_rmw_additional_reads = 0;
 char g_workload = 'F';
 uint g_initial_table_size = 3000000;
 int g_sort_load_keys = 0;
+int g_amac_txn_read = 0;
 
 // { insert, read, update, scan, rmw }
 YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
@@ -50,7 +51,8 @@ class ycsb_worker : public bench_worker {
               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tbl(open_tables.at("USERTABLE")), rnd_record_select(477377 + worker_id) {}
+        tbl((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")),
+        rnd_record_select(477377 + worker_id) {}
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
@@ -62,7 +64,7 @@ class ycsb_worker : public bench_worker {
           "Insert", double(ycsb_workload.insert_percent()) / 100.0, TxnInsert));
     if (ycsb_workload.read_percent())
       w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0,
-                                TxnRead));
+                                g_amac_txn_read ? TxnReadAMAC : TxnRead));
     if (ycsb_workload.update_percent())
       w.push_back(workload_desc(
           "Update", double(ycsb_workload.update_percent()) / 100.0, TxnUpdate));
@@ -79,6 +81,10 @@ class ycsb_worker : public bench_worker {
 
   static rc_t TxnRead(bench_worker *w) {
     return static_cast<ycsb_worker *>(w)->txn_read();
+  }
+
+  static rc_t TxnReadAMAC(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_read_amac();
   }
 
   static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
@@ -105,9 +111,46 @@ class ycsb_worker : public bench_worker {
       ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
-      if (!ermia::config::index_probe_only)
+      if (!ermia::config::index_probe_only) {
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+      }
     }
+    TryCatch(db->Commit(txn));
+    return {RC_TRUE};
+  }
+
+  rc_t txn_read_amac() {
+    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+    arena.reset();
+
+    thread_local std::vector<ermia::ConcurrentMasstree::AMACState> as;
+    as.clear();
+
+    // Prepare states
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      auto &k = BuildKey(worker_id);
+      as.emplace_back(&k);
+    }
+
+    thread_local std::vector<ermia::varstr *> values;
+    values.clear();
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      if (ermia::config::index_probe_only) {
+        values.push_back(&str(0));
+      } else {
+        values.push_back(&str(sizeof(YcsbRecord)));
+      }
+    }
+
+    tbl->MultiGet(txn, as, values);
+
+    if (!ermia::config::index_probe_only) {
+      ermia::varstr &v = str(sizeof(YcsbRecord));
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+      }
+    }
+
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
   }
@@ -174,7 +217,7 @@ class ycsb_worker : public bench_worker {
   }
 
  private:
-  ermia::OrderedIndex *tbl;
+  ermia::ConcurrentMasstreeIndex *tbl;
   util::fast_random rnd_record_select;
 };
 
@@ -304,6 +347,7 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
         {"workload", required_argument, 0, 'w'},
         {"initial-table-size", required_argument, 0, 's'},
         {"sort-load-keys", no_argument, &g_sort_load_keys, 1},
+        {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
         {0, 0, 0, 0}};
 
     int option_index = 0;
@@ -368,7 +412,8 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
          << "  initial user table size:    " << g_initial_table_size << std::endl
          << "  operations per transaction: " << g_reps_per_tx << std::endl
          << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
-         << "  sort load keys:             " << g_sort_load_keys << std::endl;
+         << "  sort load keys:             " << g_sort_load_keys << std::endl
+         << "  amac txn_read:              " << g_amac_txn_read << std::endl;
   }
 
   ycsb_bench_runner r(db);
