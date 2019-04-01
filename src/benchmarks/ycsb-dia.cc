@@ -76,7 +76,7 @@ class ycsb_dia_worker : public bench_worker {
   static rc_t TxnInsert(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
   static rc_t TxnRead(bench_worker *w) {
-    return static_cast<ycsb_dia_worker *>(w)->txn_read();
+    return static_cast<ycsb_dia_worker *>(w)->txn_read_amac();
   }
 
   static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
@@ -102,6 +102,25 @@ class ycsb_dia_worker : public bench_worker {
     }
     *out_rcs = rcs;
     *out_oids = oids;
+  }
+
+  rc_t txn_read_amac() {
+    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+    arena.reset();
+
+    thread_local std::vector<ermia::ConcurrentMasstree::AMACState> as;
+    as.clear();
+
+    // Prepare states
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      auto &k = BuildKey(worker_id);
+      as.emplace_back(&k);
+    }
+
+    tbl->MultiGet(txn, as);
+
+    TryCatch(db->Commit(txn));
+    return {RC_TRUE};
   }
 
   rc_t txn_read() {
