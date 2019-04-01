@@ -600,8 +600,6 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
             if (s.found) {
               s.out_oid = s.lp.value();
             }
-            //delete s.lp;
-            //s.lp = nullptr;
             ++finished;
             s.done = true;
           }
