@@ -191,6 +191,19 @@ void ConcurrentMasstreeIndex::MultiGet(transaction *t,
         DoNodeRead(t, sinfo.first, sinfo.second);
       }
     }
+    /*
+    for (uint32_t i = 0; i < requests.size(); ++i) {
+      auto &r = requests[i];
+      if (r.out_oid != INVALID_OID) {
+        auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), r.out_oid, t->xc);
+        if (tuple) {
+          t->DoTupleRead(tuple, values[i]);
+        } else if (config::phantom_prot) {
+          DoNodeRead(t, sinfo.first, sinfo.second);
+        }
+      }
+    }
+    */
   }
 }
 
