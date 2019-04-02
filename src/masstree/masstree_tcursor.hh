@@ -52,6 +52,8 @@ class unlocked_tcursor {
         lv_(leafvalue<P>::make_empty()),
         root_(table.fix_root()) {}
 
+  inline unlocked_tcursor() {}
+
   bool find_unlocked(threadinfo& ti);
   // a coroutine variant of find_unlocked
   ermia::dia::generator<bool> coro_find_unlocked(threadinfo& ti);
@@ -70,7 +72,7 @@ class unlocked_tcursor {
            perm_.size();
   }
 
- private:
+ public:
   leaf<P>* n_;
   key_type ka_;
   typename leaf<P>::nodeversion_type v_;
