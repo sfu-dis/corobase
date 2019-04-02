@@ -12,17 +12,15 @@ namespace dia {
 
 void Initialize();
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index,
-                    const varstr *key, OID *oid, rc_t *rc);
+                    const varstr *key, OID *oid, rc_t *rc, uint32_t idx_no);
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
-                       const varstr *key, OID *oid, rc_t *rc);
+                       const varstr *key, OID *oid, rc_t *rc, uint32_t idx_no);
 void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *start_key, const varstr *end_key,
-                     OID *dia_callback, rc_t *rc);
+                     OID *dia_callback, rc_t *rc, uint32_t idx_no);
 void SendReverseScanRequest(ermia::transaction *t, OrderedIndex *index,
                             const varstr *start_key, const varstr *end_key,
-                            OID *dia_callback, rc_t *rc);
-uint32_t RoutingYcsb(const varstr *key);
-uint32_t RoutingTpcc(const varstr *key);
+                            OID *dia_callback, rc_t *rc, uint32_t idx_no);
 
 // Structure that represents an index access request
 struct Request {

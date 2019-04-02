@@ -445,7 +445,7 @@ int main(int argc, char **argv) {
   if (FLAGS_benchmark == "ycsb") {
     test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {
-    test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
+    //test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
   //} else if (FLAGS_benchmark == "tpce") {
   //  test_fn = tpce_do_test;
   } else {
