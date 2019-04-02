@@ -6,65 +6,40 @@ namespace ermia {
 namespace dia {
 
 std::vector<IndexThread *> index_threads;
-std::function<uint32_t(const varstr *)> routing;
 
 void SendGetRequest(ermia::transaction *t, OrderedIndex *index,
-                    const varstr *key, OID *oid, rc_t *rc) {
+                    const varstr *key, OID *oid, rc_t *rc, uint32_t idx_no) {
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
-  uint32_t index_thread_id = routing(key);
-  index_threads[index_thread_id]->AddRequest(t, index, key, nullptr, oid,
-                                             Request::kTypeGet, rc);
+  index_threads[idx_no]->AddRequest(t, index, key, nullptr, oid,
+                                    Request::kTypeGet, rc);
 }
 
 void SendInsertRequest(ermia::transaction *t, OrderedIndex *index,
-                       const varstr *key, OID *oid, rc_t *rc) {
+                       const varstr *key, OID *oid, rc_t *rc, uint32_t idx_no) {
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
-  uint32_t index_thread_id = routing(key);
-  index_threads[index_thread_id]->AddRequest(t, index, key, nullptr, oid,
-                                             Request::kTypeInsert, rc);
+  index_threads[idx_no]->AddRequest(t, index, key, nullptr, oid,
+                                    Request::kTypeInsert, rc);
 }
 
 void SendScanRequest(ermia::transaction *t, OrderedIndex *index,
                      const varstr *start_key, const varstr *end_key,
-                     OID *dia_callback, rc_t *rc) {
+                     OID *dia_callback, rc_t *rc, uint32_t idx_no) {
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
-  uint32_t index_thread_id = routing(start_key);
-  index_threads[index_thread_id]->AddRequest(
-      t, index, start_key, end_key, dia_callback, Request::kTypeScan, rc);
+  index_threads[idx_no]->AddRequest(t, index, start_key, end_key, dia_callback,
+                                    Request::kTypeScan, rc);
 }
 
 void SendReverseScanRequest(ermia::transaction *t, OrderedIndex *index,
                             const varstr *start_key, const varstr *end_key,
-                            OID *dia_callback, rc_t *rc) {
+                            OID *dia_callback, rc_t *rc, uint32_t idx_no) {
   ALWAYS_ASSERT(rc->_val == RC_INVALID);
-  uint32_t index_thread_id = routing(start_key);
-  index_threads[index_thread_id]->AddRequest(t, index, start_key, end_key,
-                                             dia_callback,
-                                             Request::kTypeReverseScan, rc);
-}
-
-uint32_t RoutingYcsb(const varstr *key) {
-  uint32_t worker_id = (uint32_t)(*(uint64_t *)key->data() >> 32);
-  return worker_id % index_threads.size();
-}
-
-uint32_t RoutingTpcc(const varstr *key) {
-  // sizeof shortest key is 4 bytes
-  // FIXME(yongjunh): the current partition makes no sense
-  return (*(uint32_t *)key->data()) % index_threads.size();
+  index_threads[idx_no]->AddRequest(t, index, start_key, end_key, dia_callback,
+                                    Request::kTypeReverseScan, rc);
 }
 
 // Prepare the extra index threads needed by DIA. The other compute threads
 // should already be initialized by sm-config.
 void Initialize() {
-  if (config::benchmark == "ycsb") {
-    routing = std::bind(RoutingYcsb, std::placeholders::_1);
-  } else if (config::benchmark == "tpcc") {
-    routing = std::bind(RoutingTpcc, std::placeholders::_1);
-  } else {
-    LOG(FATAL) << "Wrong routing type";
-  }
-
   LOG_IF(FATAL, thread::cpu_cores.size() == 0)
       << "No logical thread information available";
 
