@@ -153,6 +153,47 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
+void ConcurrentMasstreeIndex::MultiGet(transaction *t,
+                                       std::vector<ConcurrentMasstree::AMACState> &requests,
+                                       std::vector<varstr *> &values) {
+  t->ensure_active();
+  ConcurrentMasstree::versioned_node_t sinfo;
+  masstree_.search_amac(requests, t->xc);
+
+  if (config::is_backup_srv()) {
+    for (uint32_t i = 0; i < requests.size(); ++i) {
+      auto &r = requests[i];
+      if (r.out_oid != INVALID_OID) {
+        // Key-OID mapping exists, now try to get the actual tuple to be sure
+        auto *tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
+                                               descriptor_->GetPersistentAddressArray(),
+                                               r.out_oid, t->xc);
+        if (tuple) {
+          t->DoTupleRead(tuple, values[i]);
+        } else if (config::phantom_prot) {
+          DoNodeRead(t, sinfo.first, sinfo.second);
+        }
+      }
+    }
+  } else {
+    // AMAC style version chain traversal
+    thread_local std::vector<OIDAMACState> version_requests;
+    version_requests.clear();
+    for (auto &s : requests) {
+      version_requests.emplace_back(s.out_oid);
+    }
+    oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, t->xc);
+    uint32_t i = 0;
+    for (auto &vr: version_requests) {
+      if (vr.tuple) {
+        t->DoTupleRead(vr.tuple, values[i++]);
+      } else if (config::phantom_prot) {
+        DoNodeRead(t, sinfo.first, sinfo.second);
+      }
+    }
+  }
+}
+
 void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
                                   varstr &value, OID *out_oid) {
   t->ensure_active();
