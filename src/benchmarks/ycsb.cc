@@ -208,8 +208,9 @@ class ycsb_worker : public bench_worker {
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
   ermia::varstr &BuildKey(int worker_id) {
-    uint64_t hi = rnd_record_select.next_uniform() * ermia::config::worker_threads;
-    uint64_t lo = rnd_record_select.next_uniform() * local_key_counter[worker_id];
+    uint32_t r = rnd_record_select.next();
+    uint64_t hi = r / local_key_counter[worker_id];
+    uint64_t lo = r % local_key_counter[worker_id];
     ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
     new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(hi, lo, k);
