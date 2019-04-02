@@ -233,7 +233,6 @@ class ycsb_usertable_loader : public bench_loader {
   uint32_t loader_id;
 
  protected:
-  // XXX(tzwang): for now this is serial
   void load() {
     local_key_counter[loader_id] = 0;
     int64_t total_inserts = g_initial_table_size / ermia::config::worker_threads;
