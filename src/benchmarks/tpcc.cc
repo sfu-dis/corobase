@@ -2280,8 +2280,8 @@ rc_t tpcc_worker::txn_microbench_random() {
   ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);
 
   // pick start row, if it's not enough, later wrap to the first row
-  uint w = start_w = RandomNumber(r, 1, NumWarehouses() + 1);
-  uint s = start_s = RandomNumber(r, 1, NumItems() + 1);
+  uint w = start_w = RandomNumber(r, 1, NumWarehouses());
+  uint s = start_s = RandomNumber(r, 1, NumItems());
 
   // read rows
   stock::value v;
