@@ -45,7 +45,7 @@ static int g_new_order_fast_id_gen = 0;
 static int g_uniform_item_dist = 0;
 static int g_order_status_scan_hack = 0;
 static int g_wh_temperature = 0;
-static uint g_microbench_rows = 100000;  // this many rows
+static uint g_microbench_rows = 10;  // this many rows
 // can't have both ratio and rows at the same time
 static int g_microbench_wr_rows = 0;  // this number of rows to write
 static int g_nr_suppliers = 10000;
@@ -2284,7 +2284,6 @@ rc_t tpcc_worker::txn_microbench_random() {
   uint s = start_s = RandomNumber(r, 1, NumItems());
 
   // read rows
-  stock::value v;
   ermia::varstr sv;
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);

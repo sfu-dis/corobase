@@ -41,7 +41,7 @@ static int g_new_order_fast_id_gen = 0;
 static int g_uniform_item_dist = 0;
 static int g_order_status_scan_hack = 0;
 static int g_wh_temperature = 0;
-static uint g_microbench_rows = 100000; // this many rows
+static uint g_microbench_rows = 10; // this many rows
 // can't have both ratio and rows at the same time
 static int g_microbench_wr_rows = 0; // this number of rows to write
 static int g_nr_suppliers = 10000;
@@ -329,17 +329,16 @@ public:
     return buf;
   }
 
-  static uint32_t routing(uint32_t warehouse_id, uint32_t district_id,
-                          uint32_t item_id) {
-    return warehouse_id % (ermia::config::dia_logical_index_threads +
-                           ermia::config::dia_physical_index_threads);
+  static uint32_t routing(uint32_t warehouse_id, uint32_t stock_id) {
+    return stock_id % (ermia::config::dia_logical_index_threads +
+                       ermia::config::dia_physical_index_threads);
   }
 
   // Request result placeholders
   void PrepareForDIA(rc_t **out_rcs, ermia::OID **out_oids) {
     thread_local rc_t *rcs = nullptr;
     thread_local ermia::OID *oids = nullptr;
-    uint32_t n = 30;
+    uint32_t n = g_microbench_rows + g_microbench_wr_rows;
     if (!rcs) {
       rcs = (rc_t *)malloc(sizeof(rc_t) * n);
       oids = (ermia::OID *)malloc(sizeof(ermia::OID) * n);
@@ -2913,18 +2912,25 @@ rc_t tpcc_dia_worker::txn_microbench_random() {
   uint w = start_w = RandomNumber(r, 1, NumWarehouses());
   uint s = start_s = RandomNumber(r, 1, NumItems());
 
+  thread_local std::vector<ermia::varstr *> keys;
+  keys.clear();
+
+  thread_local std::vector<uint> warehouses;
+  warehouses.clear();
+
+  rc_t *rcs = nullptr;
+  ermia::OID *oids = nullptr;
+  PrepareForDIA(&rcs, &oids);
+
   // read rows
-  stock::value v;
-  ermia::varstr sv;
-  for (uint i = 0; i < g_microbench_rows; i++) {
+  for (uint i = 0; i < g_microbench_rows; ++i) {
     const stock::key k_s(w, s);
+    warehouses.emplace_back(w);
     DLOG(INFO) << "rd " << w << " " << s;
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::OID oid = 0;
+    keys.emplace_back(&Encode(str(Size(k_s)), k_s));
+
     ((ermia::DecoupledMasstreeIndex *)tbl_stock(w))
-        ->SendGet(txn, rc, Encode(str(Size(k_s)), k_s), &oid, routing(i, 0, 0));
-    ((ermia::DecoupledMasstreeIndex *)tbl_stock(w))->RecvGet(txn, rc, oid, sv);
-    TryCatch(rc);
+        ->SendGet(txn, rcs[i], *keys[i], &oids[i], routing(w, s));
 
     if (++s > NumItems()) {
       s = 1;
@@ -2933,12 +2939,26 @@ rc_t tpcc_dia_worker::txn_microbench_random() {
     }
   }
 
+  ermia::varstr sv;
+  for (uint i = 0; i < g_microbench_rows; ++i) {
+    ((ermia::DecoupledMasstreeIndex *)tbl_stock(warehouses[i]))
+        ->RecvGet(txn, rcs[i], oids[i], sv);
+  }
+
+  for (uint i = 0; i < g_microbench_rows; ++i) {
+    TryCatch(rcs[i]); // Might abort if we use SSI/SSN/MVOCC
+  }
+
+  if (g_microbench_wr_rows) {
+    keys.clear();
+    warehouses.clear();
+  }
+
   // now write, in the same read-set
-  uint n_write_rows = g_microbench_wr_rows;
-  for (uint i = 0; i < n_write_rows; i++) {
+  for (uint i = 0; i < g_microbench_wr_rows; ++i) {
     // generate key
     uint row_nr = RandomNumber(
-        r, 1, n_write_rows + 1); // XXX. do we need overlap checking?
+        r, 1, g_microbench_wr_rows + 1); // XXX. do we need overlap checking?
 
     // index starting with 1 is a pain with %, starting with 0 instead:
     // convert row number to (w, s) tuple
@@ -2954,28 +2974,37 @@ rc_t tpcc_dia_worker::txn_microbench_random() {
     ASSERT((ww - 1) * NumItems() + ss - 1 ==
            ((start_w - 1) * NumItems() + (start_s - 1 + row_nr) % NumItems()) %
                (NumItems() * (NumWarehouses())));
+    warehouses.emplace_back(ww);
 
     // TODO. more plausible update needed
     const stock::key k_s(ww, ss);
     DLOG(INFO) << "wr " << ww << " " << ss << " row_nr=" << row_nr;
 
+    keys.emplace_back(&Encode(str(Size(k_s)), k_s));
+
+#ifndef NDEBUG
+    checker::SanityCheckStock(&k_s);
+#endif
+
+    ((ermia::DecoupledMasstreeIndex *)tbl_stock(ww))
+        ->SendPut(txn, rcs[i + g_microbench_rows], *keys[i],
+                  &oids[i + g_microbench_rows], routing(ww, ss));
+  }
+
+  for (uint i = 0; i < g_microbench_wr_rows; ++i) {
     stock::value v;
     v.s_quantity = RandomNumber(r, 10, 100);
     v.s_ytd = 0;
     v.s_order_cnt = 0;
     v.s_remote_cnt = 0;
 
-#ifndef NDEBUG
-    checker::SanityCheckStock(&k_s);
-#endif
-    rc_t rc = rc_t{RC_INVALID};
-    ermia::OID oid = 0;
-    ((ermia::DecoupledMasstreeIndex *)tbl_stock(ww))
-        ->SendPut(txn, rc, Encode(str(Size(k_s)), k_s), &oid, routing(i, 0, 0));
-    ((ermia::DecoupledMasstreeIndex *)tbl_stock(ww))
-        ->RecvPut(txn, rc, oid, Encode(str(Size(k_s)), k_s),
-                  Encode(str(Size(v)), v));
-    TryCatch(rc);
+    ((ermia::DecoupledMasstreeIndex *)tbl_stock(warehouses[i]))
+        ->RecvPut(txn, rcs[i + g_microbench_rows], oids[i + g_microbench_rows],
+                  *keys[i], Encode(str(Size(v)), v));
+  }
+
+  for (uint i = 0; i < g_microbench_wr_rows; ++i) {
+    TryCatch(rcs[i + g_microbench_rows]);
   }
 
   DLOG(INFO) << "micro-random finished";
