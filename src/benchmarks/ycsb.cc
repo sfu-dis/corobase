@@ -96,7 +96,7 @@ class ycsb_worker : public bench_worker {
   }
 
   rc_t txn_read() {
-    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
@@ -120,7 +120,7 @@ class ycsb_worker : public bench_worker {
   }
 
   rc_t txn_read_amac() {
-    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     arena.reset();
 
     thread_local std::vector<ermia::ConcurrentMasstree::AMACState> as;

@@ -73,9 +73,14 @@ void transaction::initialize_read_write() {
     xc->last_safesnap = volatile_read(MM::safesnap_lsn);
 #endif
   }
-#else
+#elif defined(MVOCC)
   RCU::rcu_enter();
   log = logmgr->new_tx_log();
+  xc->begin = logmgr->cur_lsn().offset() + 1;
+#else
+  // SI - see if it's read only. If so, skip logging etc.
+  RCU::rcu_enter();
+  log = (flags & TXN_FLAG_READ_ONLY) ? nullptr : logmgr->new_tx_log();
   xc->begin = logmgr->cur_lsn().offset() + 1;
 #endif
 }
@@ -1094,7 +1099,11 @@ rc_t transaction::mvocc_commit() {
 }
 #else
 rc_t transaction::si_commit() {
-  if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
+  if ((!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv())) {
+    return rc_t{RC_TRUE};
+  }
+
+  if (flags & TXN_FLAG_READ_ONLY) {
     return rc_t{RC_TRUE};
   }
 
