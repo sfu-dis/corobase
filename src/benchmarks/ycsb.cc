@@ -208,8 +208,9 @@ class ycsb_worker : public bench_worker {
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
   ermia::varstr &BuildKey(int worker_id) {
-    uint64_t hi = rnd_record_select.next_uniform() * ermia::config::worker_threads;
-    uint64_t lo = rnd_record_select.next_uniform() * local_key_counter[worker_id];
+    uint32_t r = rnd_record_select.next();
+    uint64_t hi = r / local_key_counter[worker_id];
+    uint64_t lo = r % local_key_counter[worker_id];
     ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
     new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(hi, lo, k);
@@ -224,55 +225,34 @@ class ycsb_worker : public bench_worker {
 class ycsb_usertable_loader : public bench_loader {
  public:
   ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
-                        const std::map<std::string, ermia::OrderedIndex *> &open_tables)
-      : bench_loader(seed, db, open_tables) {}
+                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+                        uint32_t loader_id)
+      : bench_loader(seed, db, open_tables), loader_id(loader_id) {}
+
+ private:
+  uint32_t loader_id;
 
  protected:
-  // XXX(tzwang): for now this is serial
   void load() {
-    ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
+    local_key_counter[loader_id] = 0;
+    int64_t total_inserts = g_initial_table_size / ermia::config::worker_threads;
+    int64_t remaining_inserts = total_inserts;
+    uint32_t high = loader_id, low = 0;
     std::vector<ermia::varstr*> keys;
-    uint64_t requested = g_initial_table_size;
-    uint64_t records_per_thread = g_initial_table_size / ermia::config::worker_threads;
-    bool spread = true;
-    if (records_per_thread == 0) {
-      // Let one thread load all the keys if we don't have at least one record
-      // per **worker** thread
-      records_per_thread = g_initial_table_size;
-      spread = false;
-    } else {
-      g_initial_table_size = records_per_thread * ermia::config::worker_threads;
-    }
-
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << requested
-           << " records, will load "
-           << records_per_thread *ermia::config::worker_threads << std::endl;
-    }
-
-    // insert an equal number of records on behalf of each worker
-    uint64_t inserted = 0;
-    for (uint16_t worker_id = 0; worker_id < ermia::config::worker_threads;
-         worker_id++) {
-      local_key_counter[worker_id] = 0;
-      auto remaining_inserts = records_per_thread;
-      uint32_t high = worker_id, low = 0;
-      while (true) {
-        ermia::varstr *key = (ermia::varstr *)malloc(sizeof(ermia::varstr) + sizeof(uint64_t));  // 8-byte key
-        new (key) ermia::varstr((char *)key + sizeof(ermia::varstr), sizeof(uint64_t));
-        BuildKey(high, low++, *key);
-        keys.push_back(key);
-        inserted++;
-        local_key_counter[worker_id]++;
-        if (--remaining_inserts == 0) break;
-      }
-      if (not spread)  // do it on behalf of only one worker
-        break;
+    while (remaining_inserts-- > 0) {
+      ermia::varstr *key = (ermia::varstr *)malloc(sizeof(ermia::varstr) + sizeof(uint64_t));  // 8-byte key
+      new (key) ermia::varstr((char *)key + sizeof(ermia::varstr), sizeof(uint64_t));
+      BuildKey(high, low++, *key);
+      keys.push_back(key);
+      local_key_counter[loader_id]++;
     }
 
     ALWAYS_ASSERT(keys.size());
-    if (g_sort_load_keys) std::sort(keys.begin(), keys.end());
+    if (g_sort_load_keys) {
+      std::sort(keys.begin(), keys.end());
+    }
 
+    ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
     // start a transaction and insert all the records
     for (auto &key : keys) {
       arena.reset();
@@ -299,7 +279,8 @@ class ycsb_usertable_loader : public bench_loader {
     }
 
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] loaded " << inserted << " kyes in USERTABLE" << std::endl;
+      std::cerr << "[INFO] loader " << loader_id <<  " loaded "
+                << total_inserts << " kyes in USERTABLE" << std::endl;
     }
   }
 };
@@ -316,8 +297,20 @@ class ycsb_bench_runner : public bench_runner {
 
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
+    uint64_t requested = g_initial_table_size;
+    uint64_t records_per_thread = std::max<uint64_t>(1, g_initial_table_size / ermia::config::worker_threads);
+    g_initial_table_size = records_per_thread * ermia::config::worker_threads;
+
+    if (ermia::config::verbose) {
+      std::cerr << "[INFO] requested for " << requested
+           << " records, will load "
+           << records_per_thread *ermia::config::worker_threads << std::endl;
+    }
+
     std::vector<bench_loader *> ret;
-    ret.push_back(new ycsb_usertable_loader(0, db, open_tables));
+    for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
+      ret.push_back(new ycsb_usertable_loader(0, db, open_tables, i));
+    }
     return ret;
   }
 
