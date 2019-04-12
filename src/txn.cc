@@ -163,6 +163,7 @@ rc_t transaction::commit() {
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
   // This is the same for both SSN and SSI.
+  auto &write_set = GetWriteSet();
   if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
     ASSERT(not log);
     ASSERT(write_set.size() == 0);

@@ -141,6 +141,7 @@ protected:
 
   inline void add_to_write_set(fat_ptr *entry) {
 #ifndef NDEBUG
+    auto &write_set = GetWriteSet();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
       ASSERT(w.entry);
