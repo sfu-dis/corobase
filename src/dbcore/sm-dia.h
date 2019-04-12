@@ -174,16 +174,17 @@ public:
       : ermia::thread::Runner(physical /* default thread is logical*/) {
     if (config::dia_req_handler == "serial") {
       if (ermia::config::dia_req_coalesce)
-        request_handler =
-            std::bind(&IndexThread::TwopassSerialCoalesceHandler, this);
+        request_handler = std::bind(&IndexThread::SerialCoalesceHandler, this);
       else
         request_handler = std::bind(&IndexThread::SerialHandler, this);
     } else if (config::dia_req_handler == "coroutine") {
       if (ermia::config::dia_req_coalesce)
         request_handler =
-            std::bind(&IndexThread::TwopassCoroutineCoalesceHandler, this);
+            std::bind(&IndexThread::CoroutineCoalesceHandler, this);
       else
         request_handler = std::bind(&IndexThread::CoroutineHandler, this);
+    } else if (config::dia_req_handler == "amac") {
+      request_handler = std::bind(&IndexThread::AmacHandler, this);
     } else {
       LOG(FATAL) << "Wrong handler type: " << config::dia_req_handler;
     }
@@ -198,12 +199,10 @@ public:
 
 private:
   void SerialHandler();
-  void OnepassSerialCoalesceHandler();
-  void TwopassSerialCoalesceHandler();
+  void SerialCoalesceHandler();
   void CoroutineHandler();
-  void OnepassCoroutineCoalesceHandler();
-  void TwopassCoroutineCoalesceHandler();
-
+  void CoroutineCoalesceHandler();
+  void AmacHandler();
   uint32_t CoalesceRequests(
       std::unordered_map<std::string, std::vector<int>> &request_map);
 };

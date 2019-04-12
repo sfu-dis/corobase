@@ -121,7 +121,7 @@ public:
   public:
     uint32_t stage;
     void *ptr;  // The node to prefetch
-    varstr *key;
+    const varstr *key;
 
     // Intermediate data for find_unlocked/reach_leaf
     bool sense;
@@ -133,7 +133,7 @@ public:
     OID out_oid;
     bool done;
 
-    AMACState(varstr *key)
+    AMACState(const varstr *key)
     : stage(0)
     , ptr(nullptr)
     , key(key)
