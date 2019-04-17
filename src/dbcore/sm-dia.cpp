@@ -430,11 +430,8 @@ void IndexThread::CoroutineCoalesceHandler() {
 void IndexThread::AmacHandler() {
   while (true) {
     thread_local std::vector<ermia::ConcurrentMasstree::AMACState> tls_as;
-    tls_as.clear();
-    thread_local std::vector<Request *> tls_req;
-    tls_req.clear();
 
-    int finished = 0;
+    int dequeue_size = 0;
     uint32_t pos = queue.getPos();
     for (int i = 0; i < kBatchSize; ++i) {
       Request *req = queue.GetRequestByPos(pos + i, false);
@@ -449,15 +446,185 @@ void IndexThread::AmacHandler() {
       *req->rc = rc_t{RC_INVALID};
       ASSERT(req->oid_ptr);
 
-      ++finished;
+      ++dequeue_size;
       switch (req->type) {
         // Regardless the request is for record read or update, we only need to
         // get the OID, i.e., a Get operation on the index. For updating OID, we
         // need to use the Put interface
-      case Request::kTypeGet:
+      case Request::kTypeGet: {
+        tls_as.clear();
         tls_as.emplace_back(req->key);
-        tls_req.emplace_back(req);
-        break;
+
+        ermia::transaction *t = req->transaction;
+        t->ensure_active();
+        ermia::TXN::xid_context *xc = t->GetXIDContext();
+        ermia::ConcurrentMasstree::threadinfo ti(xc->begin_epoch);
+
+        uint32_t finished = 0;
+        while (finished < tls_as.size()) {
+          for (auto &s : tls_as) {
+            if (s.done) {
+              continue;
+            }
+          retry:
+            if (s.stage == 3) {
+              s.lp.perm_ = s.lp.n_->permutation();
+              s.kx = ermia::ConcurrentMasstree::leaf_type::bound_type::lower(
+                  s.lp.ka_, s.lp);
+              int match;
+              if (s.kx.p >= 0) {
+                s.lp.lv_ = s.lp.n_->lv_[s.kx.p];
+                s.lp.lv_.prefetch(s.lp.n_->keylenx_[s.kx.p]);
+                match = s.lp.n_->ksuf_matches(s.kx.p, s.lp.ka_);
+              } else {
+                match = 0;
+              }
+              if (s.lp.n_->has_changed(s.lp.v_)) {
+                s.lp.n_ = s.lp.n_->advance_to_key(s.lp.ka_, s.lp.v_, ti);
+                // go to stage 2
+                if (s.lp.v_.deleted()) {
+                  s.stage = 0;
+                  goto retry;
+                } else {
+                  // Prefetch the node
+                  s.lp.n_->prefetch();
+                  s.stage = 3;
+                }
+              } else {
+                if (match < 0) {
+                  s.lp.ka_.shift_by(-match);
+                  s.lp.root_ = s.lp.lv_.layer();
+                  s.stage = 0;
+                  goto retry;
+                } else {
+                  // Done!
+                  s.found = match;
+                  if (s.found) {
+                    s.out_oid = s.lp.value();
+                  }
+                  ++finished;
+                  s.done = true;
+                }
+              }
+            } else if (s.stage == 2) {
+              // Continue after reach_leaf in find_unlocked
+              if (s.lp.v_.deleted()) {
+                s.stage = 0;
+                goto retry;
+              } else {
+                // Prefetch the node
+                s.lp.n_->prefetch();
+                s.stage = 3;
+              }
+            } else if (s.stage == 1) {
+              ermia::ConcurrentMasstree::internode_type *in =
+                  (ermia::ConcurrentMasstree::internode_type *)s.ptr;
+              int kp =
+                  ermia::ConcurrentMasstree::internode_type::bound_type::upper(
+                      s.lp.ka_, *in);
+              s.n[!s.sense] = in->child_[kp];
+              if (!s.n[!s.sense]) {
+                s.stage = 0;
+                goto retry;
+              } else {
+                s.v[!s.sense] =
+                    s.n[!s.sense]->stable_annotated(ti.stable_fence());
+                if (likely(!in->has_changed(s.v[s.sense]))) {
+                  s.sense = !s.sense;
+                  if (s.v[s.sense].isleaf()) {
+                    // Done reach_leaf, enter stage 2
+                    s.lp.v_ = s.v[s.sense];
+                    s.lp.n_ =
+                        const_cast<ermia::ConcurrentMasstree::leaf_type *>(
+                            static_cast<
+                                const ermia::ConcurrentMasstree::leaf_type *>(
+                                s.n[s.sense]));
+                    s.stage = 2;
+                    goto retry;
+                    // continue;
+                  } else {
+                    // Prepare the next node to prefetch
+                    in = (ermia::ConcurrentMasstree::internode_type *)
+                             s.n[s.sense];
+                    in->prefetch();
+                    s.ptr = in;
+                    assert(s.stage == 1);
+                  }
+                } else {
+                  typename ermia::ConcurrentMasstree::nodeversion_type oldv =
+                      s.v[s.sense];
+                  s.v[s.sense] = in->stable_annotated(ti.stable_fence());
+                  if (oldv.has_split(s.v[s.sense]) &&
+                      in->stable_last_key_compare(s.lp.ka_, s.v[s.sense], ti) >
+                          0) {
+                    s.stage = 0;
+                    goto retry;
+                  } else {
+                    if (s.v[s.sense].isleaf()) {
+                      // Done reach_leaf, enter stage 2
+                      s.lp.v_ = s.v[s.sense];
+                      s.lp.n_ =
+                          const_cast<ermia::ConcurrentMasstree::leaf_type *>(
+                              static_cast<
+                                  const ermia::ConcurrentMasstree::leaf_type *>(
+                                  s.n[s.sense]));
+                      s.stage = 2;
+                      goto retry;
+                      // continue;
+                    } else {
+                      // Prepare the next node to prefetch
+                      ermia::ConcurrentMasstree::internode_type *in =
+                          (ermia::ConcurrentMasstree::internode_type *)
+                              s.n[s.sense];
+                      in->prefetch();
+                      s.ptr = in;
+                      assert(s.stage == 1);
+                    }
+                  }
+                }
+              }
+            } else if (s.stage == 0) {
+              // Stage 0 - get and prefetch root
+              new (&s.lp) ermia::ConcurrentMasstree::unlocked_tcursor_type(
+                  *(ConcurrentMasstree::basic_table_type *)(req->index
+                                                                ->GetTable()),
+                  s.key->data(), s.key->size());
+              s.sense = false;
+              s.n[s.sense] = s.lp.root_;
+              while (1) {
+                s.v[s.sense] =
+                    s.n[s.sense]->stable_annotated(ti.stable_fence());
+                if (!s.v[s.sense].has_split())
+                  break;
+                s.n[s.sense] = s.n[s.sense]->unsplit_ancestor();
+              }
+
+              if (s.v[s.sense].isleaf()) {
+                s.lp.v_ = s.v[s.sense];
+                s.lp.n_ = const_cast<ermia::ConcurrentMasstree::leaf_type *>(
+                    static_cast<const ermia::ConcurrentMasstree::leaf_type *>(
+                        s.n[s.sense]));
+                s.stage = 2;
+                // continue;
+                goto retry;
+              } else {
+                auto *in =
+                    (ermia::ConcurrentMasstree::internode_type *)s.n[s.sense];
+                in->prefetch();
+                s.ptr = in;
+                s.stage = 1;
+              }
+            }
+          }
+        }
+
+        if (tls_as[i].found) {
+          *req->oid_ptr = tls_as[i].out_oid;
+          volatile_write(req->rc->_val, RC_TRUE);
+        } else {
+          volatile_write(req->rc->_val, RC_FALSE);
+        }
+      } break;
       case Request::kTypeInsert:
         if (req->index->InsertIfAbsent(req->transaction, *req->key,
                                        *req->oid_ptr)) {
@@ -471,19 +638,7 @@ void IndexThread::AmacHandler() {
       }
     }
 
-    if (tls_req.size()) {
-      tls_req[0]->index->MultiGetOID(tls_req[0]->transaction, tls_as);
-      for (int i = 0; i < tls_req.size(); ++i) {
-        if (tls_as[i].found) {
-          *tls_req[i]->oid_ptr = tls_as[i].out_oid;
-          volatile_write(tls_req[i]->rc->_val, RC_TRUE);
-        } else {
-          volatile_write(tls_req[i]->rc->_val, RC_FALSE);
-        }
-      }
-    }
-
-    queue.MultiDequeue(finished);
+    queue.MultiDequeue(dequeue_size);
   }
 }
 
