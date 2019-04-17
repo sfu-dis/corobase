@@ -258,13 +258,6 @@ void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_failure() {
   spec_values.clear();
 }
 
-void ConcurrentMasstreeIndex::MultiGetOID(
-    transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests) {
-  t->ensure_active();
-  ConcurrentMasstree::versioned_node_t sinfo;
-  masstree_.search_amac(requests, t->xc);
-}
-
 bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
                                              OID oid) {
   typename ConcurrentMasstree::insert_info_t ins_info;

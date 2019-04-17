@@ -148,6 +148,8 @@ public:
   typedef Masstree::internode<P> internode_type;
   typedef Masstree::leaf<P> leaf_type;
   typedef Masstree::leaf<P> node_type;
+  typedef Masstree::basic_table<P> basic_table_type;
+  typedef Masstree::unlocked_tcursor<P> unlocked_tcursor_type;
   typedef typename node_base_type::nodeversion_type nodeversion_type;
 
   typedef varstr key_type;
@@ -197,6 +199,7 @@ public:
     table_.set_pdest_array(pdest_array_);
   }
 
+  inline Masstree::basic_table<P> *get_table() { return &table_; }
   inline IndexDescriptor *get_descriptor() { return descriptor_; }
   inline bool is_primary_idx() { return is_primary_idx_; }
 

@@ -67,6 +67,7 @@ public:
     descriptor_ = IndexDescriptor::New(this, name, primary);
   }
   inline IndexDescriptor *GetDescriptor() { return descriptor_; }
+  virtual void *GetTable() = 0;
 
   class ScanCallback {
   public:
@@ -151,10 +152,6 @@ public:
   virtual ermia::dia::generator<bool>
   coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
               ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
-  // An amac variant of GetOID
-  virtual void
-  MultiGetOID(transaction *t,
-              std::vector<ConcurrentMasstree::AMACState> &requests) = 0;
 
   /**
    * Insert key-oid pair to the underlying actual index structure.
@@ -247,6 +244,8 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char *primary)
       : OrderedIndex(name, primary) {}
 
+  inline void *GetTable() override { return masstree_.get_table(); }
+
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) override;
 
@@ -296,9 +295,6 @@ public:
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
     co_return found;
   }
-  void
-  MultiGetOID(transaction *t,
-              std::vector<ConcurrentMasstree::AMACState> &requests) override;
 
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
@@ -414,6 +410,8 @@ public:
   SingleThreadedBTree(std::string name, const char *primary)
       : OrderedIndex(name, primary) {}
 
+  void *GetTable() override { return nullptr; }
+
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) override;
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
@@ -472,9 +470,6 @@ public:
       ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
     co_return true;
   }
-  void
-  MultiGetOID(transaction *t,
-              std::vector<ConcurrentMasstree::AMACState> &requests) override {}
 
   ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t,
                                                   const varstr &key, rc_t &rc,
