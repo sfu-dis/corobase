@@ -1105,6 +1105,7 @@ rc_t transaction::si_commit() {
   }
 
   if (flags & TXN_FLAG_READ_ONLY) {
+    volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};
   }
 
