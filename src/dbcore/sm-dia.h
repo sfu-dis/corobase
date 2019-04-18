@@ -163,11 +163,54 @@ public:
       : oid(oid), insert_ok(insert_ok), rc(rc) {}
 };
 
+class DiaAMACState {
+public:
+  uint32_t stage;
+  void *ptr; // The node to prefetch
+  Request *req;
+
+  // Intermediate data for find_unlocked/reach_leaf
+  bool sense;
+  ermia::ConcurrentMasstree::threadinfo ti =
+      ermia::ConcurrentMasstree::threadinfo(0);
+  ermia::ConcurrentMasstree::unlocked_tcursor_type lp;
+  const ermia::ConcurrentMasstree::node_base_type *n[2];
+  typename ermia::ConcurrentMasstree::nodeversion_type v[2];
+  key_indexed_position kx;
+  bool found;
+  bool done;
+
+  DiaAMACState(Request *req)
+      : stage(0), ptr(nullptr), req(req), sense(false), found(false),
+        done(false) {
+    if (req)
+      ti = ermia::ConcurrentMasstree::threadinfo(
+          req->transaction->GetXIDContext()->begin_epoch);
+    else
+      done = true;
+  }
+
+  void reset(Request *new_req) {
+    if (new_req) {
+      stage = 0;
+      ptr = nullptr;
+      req = new_req;
+      sense = false;
+      found = false;
+      done = false;
+      ti = ermia::ConcurrentMasstree::threadinfo(
+          new_req->transaction->GetXIDContext()->begin_epoch);
+    } else {
+      done = true;
+    }
+  }
+};
+
 class IndexThread : public ermia::thread::Runner {
 private:
   RequestQueue queue;
   std::function<void()> request_handler;
-  static const uint32_t kBatchSize = 60;
+  static const uint32_t kBatchSize = 15;
 
 public:
   IndexThread(bool physical = false)
