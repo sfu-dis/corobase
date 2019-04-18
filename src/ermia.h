@@ -346,16 +346,6 @@ public:
   // overload RecvInsert for secondary index.
   void RecvInsert(transaction *t, rc_t &rc, varstr &key, OID value_oid);
 
-  void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-           OID *out_oid = nullptr) {
-    LOG(FATAL);
-    MARK_REFERENCED(rc);
-    MARK_REFERENCED(t);
-    MARK_REFERENCED(key);
-    MARK_REFERENCED(value);
-    MARK_REFERENCED(out_oid);
-  }
-
   inline void SendPut(transaction *t, rc_t &rc, const varstr &key, OID *out_oid,
                       uint32_t idx_no) {
     SendGet(t, rc, key, out_oid, idx_no);
@@ -384,18 +374,6 @@ public:
                                        (OID *)&dia_callback, &rc, idx_no);
   }
   void RecvReverseScan(transaction *t, rc_t &rc, DiaScanCallback &dia_callback);
-  /*
-  inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
-  }
-  inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
-  }
-  inline rc_t Remove(transaction *t, const varstr &key) override {
-  }
-  rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            ScanCallback &callback, str_arena *arena) override;
-  rc_t ReverseScan(transaction *t, const varstr &start_key, const varstr
-  *end_key, ScanCallback &callback, str_arena *arena) override;
-  */
 };
 
 class SingleThreadedBTree : public OrderedIndex {
