@@ -136,10 +136,9 @@ class ycsb_dia_worker : public bench_worker {
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       keys.push_back(&k);
-      if (ermia::config::index_probe_only)
-        values.push_back(&str(0));
-      else
-        values.push_back(&str(sizeof(YcsbRecord)));
+      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
+      values.push_back(&v);
+
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i],
@@ -154,7 +153,7 @@ class ycsb_dia_worker : public bench_worker {
       // have been sent.
 #if !defined(SSI) && !defined(SSN) && !defined(MVOCC)
       // Under SI this must succeed
-      ASSERT(rcs[i]._val == RC_TRUE);
+      ALWAYS_ASSERT(rcs[i]._val == RC_TRUE);
       ASSERT(*(char *)values[i]->data() == 'a');
 #endif
       if (!ermia::config::index_probe_only)
@@ -284,9 +283,11 @@ class ycsb_dia_worker : public bench_worker {
 protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
+
   ermia::varstr &BuildKey(int worker_id) {
     uint32_t r = rnd_record_select.next();
-    uint64_t hi = r / local_key_counter[worker_id];
+    uint64_t hi = r % ermia::config::worker_threads;
+    ASSERT(local_key_counter[worker_id] > 0);
     uint64_t lo = r % local_key_counter[worker_id];
     ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
     new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
@@ -333,12 +334,11 @@ protected:
     ermia::DecoupledMasstreeIndex *tbl = (ermia::DecoupledMasstreeIndex*)open_tables.at("USERTABLE");
     // start a transaction and insert all the records
     for (auto &key : keys) {
-      ermia::varstr &v = str(sizeof(uint64_t));
-      v.p = (uint8_t *)&v + sizeof(v);
-      *(char *)v.p = 'a';
-      v.l = 1;
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
+      ermia::varstr &v = str(sizeof(uint64_t));
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      *(char *)v.p = 'a';
+      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
 
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
@@ -350,6 +350,20 @@ protected:
       TryVerifyStrict(rc);
 
       TryVerifyStrict(db->Commit(txn));
+    }
+
+    // Verify inserted values
+    for (auto &key : keys) {
+      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+      arena.reset();
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::varstr &v = str(0);
+      tbl->Get(txn, rc, *key, v, &oid);
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+      TryVerifyStrict(rc);
+      TryVerifyStrict(db->Commit(txn));
+      free(key);
     }
 
     if (ermia::config::verbose) {
