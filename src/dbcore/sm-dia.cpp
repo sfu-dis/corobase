@@ -428,47 +428,48 @@ void IndexThread::CoroutineCoalesceHandler() {
 }
 
 void IndexThread::AmacHandler() {
-  thread_local std::vector<DiaAMACState> tls_das;
+  std::vector<DiaAMACState> tls_das;
   for (int i = 0; i < kBatchSize; ++i) {
     tls_das.emplace_back(nullptr);
   }
-  uint32_t pos = queue.getPos();
+
+  auto get_request = [this](DiaAMACState &s) {
+    uint32_t pos = queue.getPos();
+    Request *req = queue.GetRequestByPos(pos, false);
+    if (req) {
+      s.reset(req);
+      queue.Dequeue();
+      req = &s.req;
+
+      ermia::transaction *t = req->transaction;
+      ALWAYS_ASSERT(t);
+      ALWAYS_ASSERT(!((uint64_t)t &
+                      (1UL << 63))); // make sure we got a ready transaction
+      ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
+      ASSERT(req->oid_ptr);
+      if (req->type == Request::kTypeInsert) {
+        if (req->index->InsertIfAbsent(req->transaction, *req->key,
+                                       *req->oid_ptr)) {
+          volatile_write(req->rc->_val, RC_TRUE);
+        } else {
+          volatile_write(req->rc->_val, RC_FALSE);
+        }
+        s.reset(nullptr);
+      }
+    }
+  };
 
   while (true) {
     for (auto &s : tls_das) {
       if (s.done) {
-        Request *req = queue.GetRequestByPos(pos, false);
-        if (!req) {
+        get_request(s);
+        if (s.done) {
           continue;
-        }
-        pos = (pos + 1) % 32768;
-        ermia::transaction *t = req->transaction;
-        ALWAYS_ASSERT(t);
-        ALWAYS_ASSERT(!((uint64_t)t &
-                        (1UL << 63))); // make sure we got a ready transaction
-        ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
-        *req->rc = rc_t{RC_INVALID};
-        ASSERT(req->oid_ptr);
-        switch (req->type) {
-        case Request::kTypeGet:
-          s.reset(req);
-          break;
-        case Request::kTypeInsert:
-          if (req->index->InsertIfAbsent(req->transaction, *req->key,
-                                         *req->oid_ptr)) {
-            volatile_write(req->rc->_val, RC_TRUE);
-          } else {
-            volatile_write(req->rc->_val, RC_FALSE);
-          }
-          // dequeue
-          volatile_write(req->transaction, nullptr);
-          continue;
-        default:
-          LOG(FATAL) << "Wrong request type";
         }
       }
     retry:
       if (s.stage == 3) {
+      stage3:
         s.lp.perm_ = s.lp.n_->permutation();
         s.kx = ermia::ConcurrentMasstree::leaf_type::bound_type::lower(s.lp.ka_,
                                                                        s.lp);
@@ -485,7 +486,7 @@ void IndexThread::AmacHandler() {
           // go to stage 2
           if (s.lp.v_.deleted()) {
             s.stage = 0;
-            goto retry;
+            goto stage0;
           } else {
             // Prefetch the node
             s.lp.n_->prefetch();
@@ -496,32 +497,36 @@ void IndexThread::AmacHandler() {
             s.lp.ka_.shift_by(-match);
             s.lp.root_ = s.lp.lv_.layer();
             s.stage = 0;
-            goto retry;
+            goto stage0;
           } else {
             // Done!
             s.found = match;
             if (s.found) {
-              *(s.req->oid_ptr) = s.lp.value();
-              volatile_write(s.req->rc->_val, RC_TRUE);
+              *(s.req.oid_ptr) = s.lp.value();
+              volatile_write(s.req.rc->_val, RC_TRUE);
             } else {
-              volatile_write(s.req->rc->_val, RC_FALSE);
+              volatile_write(s.req.rc->_val, RC_FALSE);
             }
-            // dequeue
-            volatile_write(s.req->transaction, nullptr);
             s.done = true;
+            get_request(s);
+            if (!s.done) {
+              goto stage0;
+            }
           }
         }
       } else if (s.stage == 2) {
+      stage2:
         // Continue after reach_leaf in find_unlocked
         if (s.lp.v_.deleted()) {
           s.stage = 0;
-          goto retry;
+          goto stage0;
         } else {
           // Prefetch the node
           s.lp.n_->prefetch();
           s.stage = 3;
         }
       } else if (s.stage == 1) {
+      stage1:
         ermia::ConcurrentMasstree::internode_type *in =
             (ermia::ConcurrentMasstree::internode_type *)s.ptr;
         int kp = ermia::ConcurrentMasstree::internode_type::bound_type::upper(
@@ -529,7 +534,7 @@ void IndexThread::AmacHandler() {
         s.n[!s.sense] = in->child_[kp];
         if (!s.n[!s.sense]) {
           s.stage = 0;
-          goto retry;
+          goto stage0;
         } else {
           s.v[!s.sense] = s.n[!s.sense]->stable_annotated(s.ti.stable_fence());
           if (likely(!in->has_changed(s.v[s.sense]))) {
@@ -541,7 +546,7 @@ void IndexThread::AmacHandler() {
                   static_cast<const ermia::ConcurrentMasstree::leaf_type *>(
                       s.n[s.sense]));
               s.stage = 2;
-              goto retry;
+              goto stage2;
               // continue;
             } else {
               // Prepare the next node to prefetch
@@ -557,7 +562,7 @@ void IndexThread::AmacHandler() {
             if (oldv.has_split(s.v[s.sense]) &&
                 in->stable_last_key_compare(s.lp.ka_, s.v[s.sense], s.ti) > 0) {
               s.stage = 0;
-              goto retry;
+              goto stage0;
             } else {
               if (s.v[s.sense].isleaf()) {
                 // Done reach_leaf, enter stage 2
@@ -566,7 +571,7 @@ void IndexThread::AmacHandler() {
                     static_cast<const ermia::ConcurrentMasstree::leaf_type *>(
                         s.n[s.sense]));
                 s.stage = 2;
-                goto retry;
+                goto stage2;
                 // continue;
               } else {
                 // Prepare the next node to prefetch
@@ -580,11 +585,12 @@ void IndexThread::AmacHandler() {
           }
         }
       } else if (s.stage == 0) {
+      stage0:
         // Stage 0 - get and prefetch root
-        s.req->transaction->ensure_active();
+        s.req.transaction->ensure_active();
         new (&s.lp) ermia::ConcurrentMasstree::unlocked_tcursor_type(
-            *(ConcurrentMasstree::basic_table_type *)(s.req->index->GetTable()),
-            s.req->key->data(), s.req->key->size());
+            *(ConcurrentMasstree::basic_table_type *)(s.req.index->GetTable()),
+            s.req.key->data(), s.req.key->size());
         s.sense = false;
         s.n[s.sense] = s.lp.root_;
         while (1) {
@@ -601,7 +607,7 @@ void IndexThread::AmacHandler() {
                   s.n[s.sense]));
           s.stage = 2;
           // continue;
-          goto retry;
+          goto stage2;
         } else {
           auto *in = (ermia::ConcurrentMasstree::internode_type *)s.n[s.sense];
           in->prefetch();

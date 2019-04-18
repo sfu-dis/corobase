@@ -176,6 +176,7 @@ void ConcurrentMasstreeIndex::MultiGet(transaction *t,
       }
     }
   } else {
+    /*
     // AMAC style version chain traversal
     thread_local std::vector<OIDAMACState> version_requests;
     version_requests.clear();
@@ -191,7 +192,7 @@ void ConcurrentMasstreeIndex::MultiGet(transaction *t,
         DoNodeRead(t, sinfo.first, sinfo.second);
       }
     }
-    /*
+    */
     for (uint32_t i = 0; i < requests.size(); ++i) {
       auto &r = requests[i];
       if (r.out_oid != INVALID_OID) {
@@ -203,7 +204,6 @@ void ConcurrentMasstreeIndex::MultiGet(transaction *t,
         }
       }
     }
-    */
   }
 }
 
