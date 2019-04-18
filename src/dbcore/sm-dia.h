@@ -51,13 +51,15 @@ struct Request {
 // Request queue (multi-producer, single-consumer)
 class RequestQueue {
 private:
-  const static uint32_t kMaxSize = 32768;
-  Request requests[kMaxSize];
-  uint32_t start;
+  const static uint32_t kMaxSize = 128;
   std::atomic<uint32_t> next_free_pos;
+  char padding[CACHELINE_SIZE - sizeof(next_free_pos)];
+  uint32_t start;
+  char padding2[CACHELINE_SIZE - sizeof(start)];
+  Request requests[kMaxSize];
 
 public:
-  RequestQueue() : start(0), next_free_pos(0) {
+  RequestQueue() : next_free_pos(0), start(0) {
     ALWAYS_ASSERT(kMaxSize >= ermia::config::worker_threads);
   }
   ~RequestQueue() { start = next_free_pos = 0; }
@@ -109,7 +111,8 @@ public:
     // we may wrap around very quickly), so later we use a CAS to really claim
     // it by swapping in the transaction pointer.
     uint32_t pos =
-        next_free_pos.fetch_add(1, std::memory_order_release) % kMaxSize;
+        next_free_pos.fetch_add(1, std::memory_order_release);
+    pos %= kMaxSize;
     Request &req = requests[pos];
     while (volatile_read(req.transaction)) {
     }
@@ -167,7 +170,7 @@ class DiaAMACState {
 public:
   uint32_t stage;
   void *ptr; // The node to prefetch
-  Request *req;
+  Request req;
 
   // Intermediate data for find_unlocked/reach_leaf
   bool sense;
@@ -180,21 +183,29 @@ public:
   bool found;
   bool done;
 
-  DiaAMACState(Request *req)
-      : stage(0), ptr(nullptr), req(req), sense(false), found(false),
+  DiaAMACState(Request *request)
+      : stage(0), ptr(nullptr), sense(false), found(false),
         done(false) {
-    if (req)
+    if (request) {
+      req = *request;
       ti = ermia::ConcurrentMasstree::threadinfo(
-          req->transaction->GetXIDContext()->begin_epoch);
-    else
+          req.transaction->GetXIDContext()->begin_epoch);
+
+    } else {
       done = true;
+    }
+  }
+
+  DiaAMACState()
+    : stage(0), ptr(nullptr), sense(false), found(false),
+      done(true) {
   }
 
   void reset(Request *new_req) {
     if (new_req) {
       stage = 0;
       ptr = nullptr;
-      req = new_req;
+      req = *new_req;
       sense = false;
       found = false;
       done = false;
