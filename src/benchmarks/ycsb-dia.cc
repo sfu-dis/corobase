@@ -142,7 +142,7 @@ class ycsb_dia_worker : public bench_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i],
-                   routing(keys[i])); // Send out async Get request
+                   worker_id); // Send out async Get request
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
