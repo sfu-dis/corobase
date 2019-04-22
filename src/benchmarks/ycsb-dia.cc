@@ -142,7 +142,7 @@ class ycsb_dia_worker : public bench_worker {
       // TODO(tzwang): add read/write_all_fields knobs
       // FIXME(tzwang): DIA may need to copy the key?
       tbl->SendGet(txn, rcs[i], *keys[i], &oids[i],
-                   worker_id)); // Send out async Get request
+                   worker_id); // Send out async Get request
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
@@ -191,7 +191,7 @@ class ycsb_dia_worker : public bench_worker {
       keys.push_back(&k);
       values.push_back(&str(sizeof(YcsbRecord)));
       // TODO(tzwang): add read/write_all_fields knobs
-      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i], routing(keys[i]));
+      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i], worker_id);
     }
 
     for (uint32_t i = 0; i < g_reps_per_tx; ++i) {
@@ -225,7 +225,7 @@ class ycsb_dia_worker : public bench_worker {
           ermia::varstr((char *)r + sizeof(ermia::varstr), sizeof(YcsbRecord));
       memset((char *)r->data(), 'a', sizeof(YcsbRecord));
       tbl->SendPut(txn, rcs[i], *keys[i], &oids[i],
-                   routing(keys[i])); // Modify-write
+                   worker_id); // Modify-write
 
       // TODO(tzwang): similar to read-only case, see if we can rescind
       // subsequent requests for better performance. Note: before we have this
@@ -255,7 +255,7 @@ class ycsb_dia_worker : public bench_worker {
         values.push_back(&str(0));
       else
         values.push_back(&str(sizeof(YcsbRecord)));
-      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i], routing(keys[i]));
+      tbl->SendGet(txn, rcs[i], *keys[i], &oids[i], worker_id);
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
@@ -344,7 +344,7 @@ protected:
       ermia::OID oid = 0;
       ermia::dbtuple *tuple = nullptr;
       tbl->SendInsert(txn, rc, *key, v, &oid, &tuple,
-                      ycsb_dia_worker::routing(key));
+                      loader_id);
       ASSERT(tuple);
       tbl->RecvInsert(txn, rc, oid, *key, v, tuple);
       TryVerifyStrict(rc);

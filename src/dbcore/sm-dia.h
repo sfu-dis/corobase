@@ -53,9 +53,7 @@ class RequestQueue {
 private:
   const static uint32_t kMaxSize = 128;
   std::atomic<uint32_t> next_free_pos;
-  char padding[CACHELINE_SIZE - sizeof(next_free_pos)];
   uint32_t start;
-  char padding2[CACHELINE_SIZE - sizeof(start)];
   Request requests[kMaxSize];
 
 public:
