@@ -180,7 +180,10 @@ int main(int argc, char **argv) {
     ermia::config::threads = FLAGS_threads + FLAGS_dia_physical_index_threads;
   } else {
     ermia::config::physical_workers_only = FLAGS_physical_workers_only;
-    ermia::config::threads = FLAGS_threads;
+    if (ermia::config::physical_workers_only)
+      ermia::config::threads = FLAGS_threads;
+    else
+      ermia::config::threads = (FLAGS_threads + 1) / 2;
   }
   ermia::config::index_probe_only = FLAGS_index_probe_only;
   ermia::config::verbose = FLAGS_verbose;
