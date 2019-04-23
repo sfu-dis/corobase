@@ -120,7 +120,7 @@ class ycsb_dia_worker : public bench_worker {
   }
 
   rc_t txn_read() {
-    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     arena.reset();
 
     thread_local std::vector<ermia::varstr *> values;
