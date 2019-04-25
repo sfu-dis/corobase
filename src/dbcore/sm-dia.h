@@ -219,7 +219,7 @@ class IndexThread : public ermia::thread::Runner {
 private:
   RequestQueue queue;
   std::function<void()> request_handler;
-  static const uint32_t kBatchSize = 3;
+  static const uint32_t kBatchSize = ermia::config::dia_batch_size;
 
 public:
   IndexThread(bool physical = false)
