@@ -295,7 +295,7 @@ void IndexThread::CoroutineCoalesceHandler() {
 
     // Must store return codes locally (instead of using the first request's rc)
     // as they might get reused by the application (benchmark).
-    thread_local rc_t tls_rcs[kBatchSize];
+    rc_t tls_rcs[kBatchSize];
     uint32_t pos = queue.getPos();
 
     uint32_t count = 0;
