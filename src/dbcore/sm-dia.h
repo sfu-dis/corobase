@@ -219,11 +219,12 @@ class IndexThread : public ermia::thread::Runner {
 private:
   RequestQueue queue;
   std::function<void()> request_handler;
-  static const uint32_t kBatchSize = ermia::config::dia_batch_size;
+  uint32_t kBatchSize;
 
 public:
   IndexThread(bool physical = false)
       : ermia::thread::Runner(physical /* default thread is logical*/) {
+    kBatchSize = ermia::config::dia_batch_size;
     if (config::dia_req_handler == "serial") {
       if (ermia::config::dia_req_coalesce)
         request_handler = std::bind(&IndexThread::SerialCoalesceHandler, this);
