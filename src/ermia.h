@@ -148,10 +148,6 @@ public:
   virtual void
   GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
          ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
-  // a coroutine variant of GetOID
-  virtual ermia::dia::generator<bool>
-  coro_GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-              ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
   /**
    * Insert key-oid pair to the underlying actual index structure.
@@ -159,9 +155,6 @@ public:
    * Returns false if the record already exists or there is potential phantom.
    */
   virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
-  // a coroutine variant of InsertIfAbsent
-  virtual ermia::dia::generator<bool>
-  coro_InsertIfAbsent(transaction *t, const varstr &key, rc_t &rc, OID oid) = 0;
 
   virtual void ScanOID(transaction *t, const varstr &start_key,
                        const varstr *end_key, rc_t &rc, OID *dia_callback) = 0;
@@ -254,6 +247,12 @@ public:
                 std::vector<ConcurrentMasstree::AMACState> &requests,
                 std::vector<varstr *> &values);
 
+  // A multi-get operation using coroutines
+  void
+  coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
+                std::vector<varstr *> &values, std::vector<ermia::OID> &oids,
+                std::vector<ermia::dia::generator<bool> *> &coroutines);
+
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
@@ -283,25 +282,9 @@ public:
     bool found = masstree_.search(key, out_oid, xc, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
-  // a coroutine variant of getOID
-  inline ermia::dia::generator<bool> coro_GetOID(
-      const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    auto cs = masstree_.coro_search(key, out_oid, xc, out_sinfo);
-    while (co_await cs) {
-    }
-    bool found = cs.current_value();
-    // bool found = masstree_.search(key, out_oid, xc, out_sinfo);
-    volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
-    co_return found;
-  }
 
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
-  // a coroutine variant of InsertIfAbsent
-  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t,
-                                                  const varstr &key, rc_t &rc,
-                                                  OID oid) override;
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
                rc_t &rc, OID *dia_callback) override;
@@ -442,17 +425,6 @@ public:
     MARK_REFERENCED(xc);
     MARK_REFERENCED(out_oid);
     MARK_REFERENCED(out_sinfo);
-  }
-  ermia::dia::generator<bool> coro_GetOID(
-      const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    co_return true;
-  }
-
-  ermia::dia::generator<bool> coro_InsertIfAbsent(transaction *t,
-                                                  const varstr &key, rc_t &rc,
-                                                  OID oid) override {
-    co_return true;
   }
 
   void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,

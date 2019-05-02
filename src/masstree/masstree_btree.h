@@ -223,9 +223,8 @@ public:
 
   inline void search_amac(std::vector<AMACState> &states, TXN::xid_context *xc) const;
 
-  // a coroutine variant of search
   inline ermia::dia::generator<bool>
-  coro_search(const key_type &k, OID &o, TXN::xid_context *xc,
+  search_coro(const key_type &k, OID &o, TXN::xid_context *xc,
               versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -378,11 +377,6 @@ public:
    */
   inline bool insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
                                insert_info_t *insert_info = NULL);
-
-  // a coroutine variant of insert_if_absent
-  inline ermia::dia::generator<bool>
-  coro_insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
-                        insert_info_t *insert_info = NULL);
 
   /**
    * return true if a value was removed, false otherwise.
@@ -694,24 +688,91 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
   }
 }
 
-// a coroutine variant of search
+// Multi-key search using Coroutines
 template <typename P>
 inline ermia::dia::generator<bool>
-mbtree<P>::coro_search(const key_type &k, OID &o, TXN::xid_context *xc,
+mbtree<P>::search_coro(const key_type &k, OID &o, TXN::xid_context *xc,
                        versioned_node_t *search_info) const {
   threadinfo ti(xc->begin_epoch);
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
-  auto cfu = lp.coro_find_unlocked(ti);
-  while (co_await cfu) {
+
+  // variables in find_unlocked
+  int match;
+  key_indexed_position kx;
+  Masstree::node_base<P>* root = const_cast<Masstree::node_base<P>*>(lp.root_);
+
+  // variables in reach_leaf
+  const Masstree::node_base<P>* n[2];
+  typename Masstree::node_base<P>::nodeversion_type v[2];
+  bool sense;
+
+retry:
+  sense = false;
+  n[sense] = lp.root_;
+  while (1) {
+    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+    if (!v[sense].has_split()) break;
+    n[sense] = n[sense]->unsplit_ancestor();
   }
-  bool found = cfu.current_value();
-  if (found) {
+
+  // Loop over internal nodes.
+  while (!v[sense].isleaf()) {
+    const Masstree::internode<P>* in = static_cast<const Masstree::internode<P>*>(n[sense]);
+    in->prefetch();
+    co_await std::experimental::suspend_always{};
+    int kp = Masstree::internode<P>::bound_type::upper(lp.ka_, *in);
+    n[!sense] = in->child_[kp];
+    if (!n[!sense]) goto retry;
+    v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+    if (likely(!in->has_changed(v[sense]))) {
+      sense = !sense;
+      continue;
+    }
+
+    typename Masstree::node_base<P>::nodeversion_type oldv = v[sense];
+    v[sense] = in->stable_annotated(ti.stable_fence());
+    if (oldv.has_split(v[sense]) &&
+        in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
+      goto retry;
+    }
+  }
+
+  lp.v_ = v[sense];
+  lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(n[sense]));
+
+forward:
+  if (lp.v_.deleted()) goto retry;
+
+  lp.n_->prefetch();
+  co_await std::experimental::suspend_always{};
+  lp.perm_ = lp.n_->permutation();
+  kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
+  if (kx.p >= 0) {
+    lp.lv_ = lp.n_->lv_[kx.p];
+    lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
+    co_await std::experimental::suspend_always{};
+    match = lp.n_->ksuf_matches(kx.p, lp.ka_);
+  } else
+    match = 0;
+  if (lp.n_->has_changed(lp.v_)) {
+    lp.n_ = lp.n_->advance_to_key(lp.ka_, lp.v_, ti);
+    goto forward;
+  }
+
+  if (match < 0) {
+    lp.ka_.shift_by(-match);
+    root = lp.lv_.layer();
+    goto retry;
+  }
+  
+  if (match) {
     o = lp.value();
   }
   if (search_info) {
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   }
-  co_return found;
+  co_return match;
 }
 
 template <typename P>
@@ -769,47 +830,6 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
   }
   lp.finish(!found, ti);
   return !found;
-}
-
-// a coroutine variant of insert_if_absent
-template <typename P>
-inline ermia::dia::generator<bool>
-mbtree<P>::coro_insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
-                                 insert_info_t *insert_info) {
-  // Recovery will give a null xc, use epoch 0 for the memory allocated
-  epoch_num e = 0;
-  if (xc) {
-    e = xc->begin_epoch;
-  }
-  threadinfo ti(e);
-  Masstree::tcursor<P> lp(table_, k.data(), k.size());
-  auto cfi = lp.coro_find_insert(ti);
-  while (co_await cfi) {
-  }
-  bool found = cfi.current_value();
-  if (!found) {
-  insert_new:
-    found = false;
-    ti.advance_timestamp(lp.node_timestamp());
-    lp.value() = o;
-    if (insert_info) {
-      insert_info->node = lp.node();
-      insert_info->old_version = lp.previous_full_version_value();
-      insert_info->new_version = lp.next_full_version_value(1);
-    }
-  } else if (is_primary_idx_) {
-    // we have two cases: 1) predecessor's inserts are still remaining in tree,
-    // even though version chain is empty or 2) somebody else are making dirty
-    // data in this chain. If it's the first case, version chain is considered
-    // empty, then we retry insert.
-    OID oid = lp.value();
-    if (oidmgr->oid_get_latest_version(tuple_array_, oid))
-      found = true;
-    else
-      goto insert_new;
-  }
-  lp.finish(!found, ti);
-  co_return !found;
 }
 
 /**

@@ -23,6 +23,7 @@ char g_workload = 'F';
 uint g_initial_table_size = 3000000;
 int g_sort_load_keys = 0;
 int g_amac_txn_read = 0;
+int g_coro_txn_read = 0;
 
 // { insert, read, update, scan, rmw }
 YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
@@ -62,9 +63,17 @@ class ycsb_worker : public bench_worker {
     if (ycsb_workload.insert_percent())
       w.push_back(workload_desc(
           "Insert", double(ycsb_workload.insert_percent()) / 100.0, TxnInsert));
-    if (ycsb_workload.read_percent())
-      w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0,
-                                g_amac_txn_read ? TxnReadAMAC : TxnRead));
+    if (ycsb_workload.read_percent()) {
+      if (g_amac_txn_read)
+        w.push_back(workload_desc(
+            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAMAC));
+      else if (g_coro_txn_read)
+        w.push_back(workload_desc(
+            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadCORO));
+      else
+        w.push_back(workload_desc(
+            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+    }
     if (ycsb_workload.update_percent())
       w.push_back(workload_desc(
           "Update", double(ycsb_workload.update_percent()) / 100.0, TxnUpdate));
@@ -85,6 +94,10 @@ class ycsb_worker : public bench_worker {
 
   static rc_t TxnReadAMAC(bench_worker *w) {
     return static_cast<ycsb_worker *>(w)->txn_read_amac();
+  }
+
+  static rc_t TxnReadCORO(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_read_coro();
   }
 
   static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
@@ -154,6 +167,38 @@ class ycsb_worker : public bench_worker {
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
   }
+
+  rc_t txn_read_coro() {
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
+    arena.reset();
+
+    thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
+    coroutines.clear();
+    thread_local std::vector<ermia::varstr *> keys;
+    keys.clear();
+    thread_local std::vector<ermia::varstr *> values;
+    values.clear();
+    thread_local std::vector<ermia::OID> oids;
+    oids.clear();
+
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      auto &k = BuildKey(worker_id);
+      keys.emplace_back(&k);
+
+      if (ermia::config::index_probe_only) {
+        values.emplace_back(&str(0));
+      } else {
+        values.emplace_back(&str(sizeof(YcsbRecord)));
+      }
+      
+      oids.emplace_back(0);
+    }
+
+    tbl->coro_MultiGet(txn, keys, values, oids, coroutines);
+
+    TryCatch(db->Commit(txn));
+    return {RC_TRUE};
+}
 
   rc_t txn_rmw() {
     ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
@@ -343,6 +388,7 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
         {"initial-table-size", required_argument, 0, 's'},
         {"sort-load-keys", no_argument, &g_sort_load_keys, 1},
         {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
+        {"coro-txn-read", no_argument, &g_coro_txn_read, 1},
         {0, 0, 0, 0}};
 
     int option_index = 0;
@@ -408,7 +454,8 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
          << "  operations per transaction: " << g_reps_per_tx << std::endl
          << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
          << "  sort load keys:             " << g_sort_load_keys << std::endl
-         << "  amac txn_read:              " << g_amac_txn_read << std::endl;
+         << "  amac_txn_read:              " << g_amac_txn_read << std::endl
+         << "  coro_txn_read:              " << g_coro_txn_read << std::endl;
   }
 
   ycsb_bench_runner r(db);
