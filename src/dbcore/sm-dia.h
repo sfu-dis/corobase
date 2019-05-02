@@ -230,12 +230,6 @@ public:
         request_handler = std::bind(&IndexThread::SerialCoalesceHandler, this);
       else
         request_handler = std::bind(&IndexThread::SerialHandler, this);
-    } else if (config::dia_req_handler == "coroutine") {
-      if (ermia::config::dia_req_coalesce)
-        request_handler =
-            std::bind(&IndexThread::CoroutineCoalesceHandler, this);
-      else
-        request_handler = std::bind(&IndexThread::CoroutineHandler, this);
     } else if (config::dia_req_handler == "amac") {
       request_handler = std::bind(&IndexThread::AmacHandler, this);
     } else {

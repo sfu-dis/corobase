@@ -153,60 +153,6 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
-void ConcurrentMasstreeIndex::MultiGet(transaction *t,
-                                       std::vector<ConcurrentMasstree::AMACState> &requests,
-                                       std::vector<varstr *> &values) {
-  t->ensure_active();
-  ConcurrentMasstree::versioned_node_t sinfo;
-  masstree_.search_amac(requests, t->xc);
-
-  if (config::is_backup_srv()) {
-    for (uint32_t i = 0; i < requests.size(); ++i) {
-      auto &r = requests[i];
-      if (r.out_oid != INVALID_OID) {
-        // Key-OID mapping exists, now try to get the actual tuple to be sure
-        auto *tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
-                                               descriptor_->GetPersistentAddressArray(),
-                                               r.out_oid, t->xc);
-        if (tuple) {
-          t->DoTupleRead(tuple, values[i]);
-        } else if (config::phantom_prot) {
-          DoNodeRead(t, sinfo.first, sinfo.second);
-        }
-      }
-    }
-  } else {
-    /*
-    // AMAC style version chain traversal
-    thread_local std::vector<OIDAMACState> version_requests;
-    version_requests.clear();
-    for (auto &s : requests) {
-      version_requests.emplace_back(s.out_oid);
-    }
-    oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, t->xc);
-    uint32_t i = 0;
-    for (auto &vr: version_requests) {
-      if (vr.tuple) {
-        t->DoTupleRead(vr.tuple, values[i++]);
-      } else if (config::phantom_prot) {
-        DoNodeRead(t, sinfo.first, sinfo.second);
-      }
-    }
-    */
-    for (uint32_t i = 0; i < requests.size(); ++i) {
-      auto &r = requests[i];
-      if (r.out_oid != INVALID_OID) {
-        auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), r.out_oid, t->xc);
-        if (tuple) {
-          t->DoTupleRead(tuple, values[i]);
-        } else if (config::phantom_prot) {
-          DoNodeRead(t, sinfo.first, sinfo.second);
-        }
-      }
-    }
-  }
-}
-
 void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
                                   varstr &value, OID *out_oid) {
   t->ensure_active();
@@ -214,34 +160,110 @@ void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
   ConcurrentMasstree::versioned_node_t sinfo;
   rc = {RC_INVALID};
   GetOID(key, rc, t->xc, oid, &sinfo);
-  bool found = (rc._val == RC_TRUE);
+    bool found = (rc._val == RC_TRUE);
 
-  dbtuple *tuple = nullptr;
-  if (found) {
-    // Key-OID mapping exists, now try to get the actual tuple to be sure
-    if (config::is_backup_srv()) {
-      tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
-                                       descriptor_->GetPersistentAddressArray(),
-                                       oid, t->xc);
+    dbtuple *tuple = nullptr;
+    if (found) {
+      // Key-OID mapping exists, now try to get the actual tuple to be sure
+      if (config::is_backup_srv()) {
+        tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
+                                         descriptor_->GetPersistentAddressArray(),
+                                         oid, t->xc);
+      } else {
+        tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid,
+    t->xc);
+      }
+      if (!tuple) {
+        found = false;
+      }
+    }
+
+    if (found) {
+      if (out_oid) {
+        *out_oid = oid;
+      }
+      volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+    } else if (config::phantom_prot) {
+      volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
     } else {
-      tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
+      volatile_write(rc._val, RC_FALSE);
     }
-    if (!tuple) {
-      found = false;
+    ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
+}
+
+void ConcurrentMasstreeIndex::MultiGet(
+    transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests,
+    std::vector<varstr *> &values) {
+  t->ensure_active();
+  ConcurrentMasstree::versioned_node_t sinfo;
+  masstree_.search_amac(requests, t->xc);
+  /*
+    if (config::is_backup_srv()) {
+      for (uint32_t i = 0; i < requests.size(); ++i) {
+        auto &r = requests[i];
+        if (r.out_oid != INVALID_OID) {
+          // Key-OID mapping exists, now try to get the actual tuple to be sure
+          auto *tuple = oidmgr->BackupGetVersion(
+              descriptor_->GetTupleArray(),
+              descriptor_->GetPersistentAddressArray(), r.out_oid, t->xc);
+          if (tuple) {
+            t->DoTupleRead(tuple, values[i]);
+          } else if (config::phantom_prot) {
+            DoNodeRead(t, sinfo.first, sinfo.second);
+          }
+        }
+      }
+    } else {
+      // AMAC style version chain traversal
+      thread_local std::vector<OIDAMACState> version_requests;
+      version_requests.clear();
+      for (auto &s : requests) {
+        version_requests.emplace_back(s.out_oid);
+      }
+      oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(),
+    version_requests, t->xc); uint32_t i = 0; for (auto &vr: version_requests) {
+    if (vr.tuple) { t->DoTupleRead(vr.tuple, values[i++]); } else if
+    (config::phantom_prot) { DoNodeRead(t, sinfo.first, sinfo.second);
+        }
+      }
+      for (uint32_t i = 0; i < requests.size(); ++i) {
+        auto &r = requests[i];
+        if (r.out_oid != INVALID_OID) {
+          auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                                r.out_oid, t->xc);
+          if (tuple) {
+            t->DoTupleRead(tuple, values[i]);
+          } else if (config::phantom_prot) {
+            DoNodeRead(t, sinfo.first, sinfo.second);
+          }
+        }
+      }
     }
+  */
+}
+
+void ConcurrentMasstreeIndex::coro_MultiGet(
+    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
+    std::vector<ermia::OID> &oids,
+    std::vector<ermia::dia::generator<bool> *> &coroutines) {
+  t->ensure_active();
+  ConcurrentMasstree::versioned_node_t sinfo;
+
+  int finished = 0;
+  for (int i = 0; i < keys.size(); ++i) {
+    coroutines.emplace_back(new ermia::dia::generator<bool>(
+        masstree_.search_coro(*keys[i], oids[i], t->xc, &sinfo)));
   }
 
-  if (found) {
-    if (out_oid) {
-      *out_oid = oid;
+  while (finished < coroutines.size()) {
+    for (auto &c : coroutines) {
+      if (c && !c->advance()) {
+        delete c;
+        c = nullptr;
+        ++finished;
+      }
     }
-    volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-  } else if (config::phantom_prot) {
-    volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
-  } else {
-    volatile_write(rc._val, RC_FALSE);
   }
-  ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
 }
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
@@ -282,40 +304,6 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
     }
   }
   return true;
-}
-
-// a coroutine variant of InsertIfAbsent
-ermia::dia::generator<bool>
-ConcurrentMasstreeIndex::coro_InsertIfAbsent(transaction *t, const varstr &key,
-                                             rc_t &rc, OID oid) {
-  typename ConcurrentMasstree::insert_info_t ins_info;
-  auto ciia = masstree_.coro_insert_if_absent(key, oid, t->xc, &ins_info);
-  while (co_await ciia) {
-  }
-  bool inserted = ciia.current_value();
-
-  if (!inserted) {
-    volatile_write(rc._val, RC_FALSE);
-    co_return false;
-  }
-
-  if (config::phantom_prot && !t->masstree_absent_set.empty()) {
-    // Update node version number
-    ASSERT(ins_info.node);
-    auto it = t->masstree_absent_set.find(ins_info.node);
-    if (it != t->masstree_absent_set.end()) {
-      if (unlikely(it->second != ins_info.old_version)) {
-        // Important: caller should unlink the version, otherwise we risk
-        // leaving a dead version at chain head -> infinite loop or segfault...
-        volatile_write(rc._val, RC_FALSE);
-        co_return false;
-      }
-      // otherwise, bump the version
-      it->second = ins_info.new_version;
-    }
-  }
-  volatile_write(rc._val, RC_TRUE);
-  co_return true;
 }
 
 void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
