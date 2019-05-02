@@ -18,7 +18,6 @@
 #include "local_vector.hh"
 #include "masstree_key.hh"
 #include "masstree_struct.hh"
-#include "../dbcore/sm-coroutine.h"
 namespace Masstree {
 template <typename P>
 struct gc_layer_rcu_callback;

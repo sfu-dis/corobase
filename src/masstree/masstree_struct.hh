@@ -20,7 +20,6 @@
 #include "stringbag.hh"
 #include "mtcounters.hh"
 #include "timestamp.hh"
-#include "../dbcore/sm-coroutine.h"
 namespace Masstree {
 
 template <typename P>

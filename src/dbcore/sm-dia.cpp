@@ -1,6 +1,5 @@
 #include "sm-dia.h"
 #include "../ermia.h"
-#include "sm-coroutine.h"
 
 namespace ermia {
 namespace dia {

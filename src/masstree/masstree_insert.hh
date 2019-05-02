@@ -18,8 +18,6 @@
 #include "masstree_get.hh"
 #include "masstree_split.hh"
 
-#include "../dbcore/sm-coroutine.h"
-
 namespace Masstree {
 
 template <typename P>

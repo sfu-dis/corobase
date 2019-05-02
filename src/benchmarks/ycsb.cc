@@ -176,21 +176,13 @@ class ycsb_worker : public bench_worker {
     coroutines.clear();
     thread_local std::vector<ermia::varstr *> keys;
     keys.clear();
-    thread_local std::vector<ermia::varstr *> values;
-    values.clear();
     thread_local std::vector<ermia::OID> oids;
     oids.clear();
-
+    thread_local std::vector<ermia::varstr *> values;
+  
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       keys.emplace_back(&k);
-
-      if (ermia::config::index_probe_only) {
-        values.emplace_back(&str(0));
-      } else {
-        values.emplace_back(&str(sizeof(YcsbRecord)));
-      }
-      
       oids.emplace_back(0);
     }
 
