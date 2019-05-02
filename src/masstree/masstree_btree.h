@@ -224,7 +224,7 @@ public:
   inline void search_amac(std::vector<AMACState> &states, TXN::xid_context *xc) const;
 
   inline ermia::dia::generator<bool>
-  search_coro(const key_type &k, OID &o, TXN::xid_context *xc,
+  search_coro(const key_type &k, OID &o, threadinfo &ti,
               versioned_node_t *search_info = nullptr) const;
 
   /**
@@ -691,9 +691,8 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
 // Multi-key search using Coroutines
 template <typename P>
 inline ermia::dia::generator<bool>
-mbtree<P>::search_coro(const key_type &k, OID &o, TXN::xid_context *xc,
+mbtree<P>::search_coro(const key_type &k, OID &o, threadinfo &ti,
                        versioned_node_t *search_info) const {
-  threadinfo ti(xc->begin_epoch);
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
 
   // variables in find_unlocked

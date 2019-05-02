@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../dbcore/sm-coroutine.h"
 #include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "btree/btree.h"
