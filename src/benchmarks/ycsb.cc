@@ -121,7 +121,7 @@ class ycsb_worker : public bench_worker {
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(*(char*)v.data() == 'a');
+      ASSERT(ermia::config::index_probe_only || *(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only) {
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
@@ -232,9 +232,9 @@ class ycsb_worker : public bench_worker {
     if (g_zipfian_rng) {
       r = zipfian_rng.next();
     } else {
-      r = uniform_rng.next_uint64();
+      r = uniform_rng.uniform_within(0, g_initial_table_size - 1);
     }
-    uint64_t hi = r / ermia::config::worker_threads % ermia::config::worker_threads;
+    uint64_t hi = r / local_key_counter[worker_id];
     ASSERT(local_key_counter[worker_id] > 0);
     uint64_t lo = r % local_key_counter[worker_id];
     ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
