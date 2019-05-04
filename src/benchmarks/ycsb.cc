@@ -96,14 +96,19 @@ class ycsb_worker : public bench_worker {
   }
 
   rc_t txn_read() {
-    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     arena.reset();
+    ermia::transaction *txn = nullptr;
+    if (!ermia::config::index_probe_only) {
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
+    }
+
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = BuildKey(worker_id);
       ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
+
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
@@ -115,12 +120,13 @@ class ycsb_worker : public bench_worker {
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
       }
     }
-    TryCatch(db->Commit(txn));
+    if (!ermia::config::index_probe_only) {
+      TryCatch(db->Commit(txn));
+    }
     return {RC_TRUE};
   }
 
   rc_t txn_read_amac() {
-    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     arena.reset();
 
     thread_local std::vector<ermia::ConcurrentMasstree::AMACState> as;
@@ -142,6 +148,10 @@ class ycsb_worker : public bench_worker {
       }
     }
 
+    ermia::transaction *txn = nullptr;
+    if (!ermia::config::index_probe_only) {
+      db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
+    }
     tbl->MultiGet(txn, as, values);
 
     if (!ermia::config::index_probe_only) {
@@ -151,7 +161,9 @@ class ycsb_worker : public bench_worker {
       }
     }
 
-    TryCatch(db->Commit(txn));
+    if (!ermia::config::index_probe_only) {
+      TryCatch(db->Commit(txn));
+    }
     return {RC_TRUE};
   }
 

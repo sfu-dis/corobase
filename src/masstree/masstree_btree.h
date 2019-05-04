@@ -218,10 +218,10 @@ public:
   /** NOTE: the public interface assumes that the caller has taken care
    * of setting up RCU */
 
-  inline bool search(const key_type &k, OID &o, TXN::xid_context *xc,
+  inline bool search(const key_type &k, OID &o, epoch_num e,
                      versioned_node_t *search_info = nullptr) const;
 
-  inline void search_amac(std::vector<AMACState> &states, TXN::xid_context *xc) const;
+  inline void search_amac(std::vector<AMACState> &states, epoch_num epoch) const;
 
   // a coroutine variant of search
   inline ermia::dia::generator<bool>
@@ -544,9 +544,9 @@ template <typename P> inline size_t mbtree<P>::size() const {
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, OID &o, TXN::xid_context *xc,
+inline bool mbtree<P>::search(const key_type &k, OID &o, epoch_num e,
                               versioned_node_t *search_info) const {
-  threadinfo ti(xc->begin_epoch);
+  threadinfo ti(e);
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
   bool found = lp.find_unlocked(ti);
   if (found) {
@@ -560,8 +560,8 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, TXN::xid_context *xc,
 
 // Multi-key search using AMAC 
 template <typename P>
-inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_context *xc) const {
-  threadinfo ti(xc->begin_epoch);
+inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epoch) const {
+  threadinfo ti(epoch);
   uint32_t finished = 0;
   while (finished < states.size()) {
     for (auto &s : states) {
