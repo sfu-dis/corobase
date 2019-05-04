@@ -29,9 +29,8 @@ public:
   }
 
   varstr *next(uint64_t size) {
-    uint64_t off = n.fetch_add(
-        align_up(size + sizeof(varstr)),
-        std::memory_order_relaxed); // for adler32's 16-byte alignment
+    uint64_t off = n;
+    n += align_up(size + sizeof(varstr));
     ASSERT(n < ReserveBytes);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
