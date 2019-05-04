@@ -138,18 +138,17 @@ class ycsb_worker : public bench_worker {
       as.emplace_back(&k);
     }
 
-    thread_local std::vector<ermia::varstr *> values;
-    values.clear();
-    for (uint i = 0; i < g_reps_per_tx; ++i) {
-      if (ermia::config::index_probe_only) {
-        values.push_back(&str(0));
-      } else {
-        values.push_back(&str(sizeof(YcsbRecord)));
-      }
-    }
-
     ermia::transaction *txn = nullptr;
+    thread_local std::vector<ermia::varstr *> values;
     if (!ermia::config::index_probe_only) {
+      values.clear();
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        if (ermia::config::index_probe_only) {
+          values.push_back(&str(0));
+        } else {
+          values.push_back(&str(sizeof(YcsbRecord)));
+        }
+      }
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     }
     tbl->MultiGet(txn, as, values);
