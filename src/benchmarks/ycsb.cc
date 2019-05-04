@@ -232,9 +232,9 @@ class ycsb_worker : public bench_worker {
     if (g_zipfian_rng) {
       r = zipfian_rng.next();
     } else {
-      uniform_rng.next_uint64();
+      r = uniform_rng.next_uint64();
     }
-    uint64_t hi = r % ermia::config::worker_threads;
+    uint64_t hi = r / ermia::config::worker_threads % ermia::config::worker_threads;
     ASSERT(local_key_counter[worker_id] > 0);
     uint64_t lo = r % local_key_counter[worker_id];
     ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
