@@ -368,7 +368,7 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
         {"initial-table-size", required_argument, 0, 's'},
         {"sort-load-keys", no_argument, &g_sort_load_keys, 1},
         {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
-        {"zipfian", no_argument, &g_zipfian_rng, 0},
+        {"zipfian", no_argument, &g_zipfian_rng, 1},
         {"zipfian-theta", required_argument, 0, 'z'},
         {0, 0, 0, 0}};
 
