@@ -177,6 +177,8 @@ extern int log_ship_warm_up_policy;
 extern bool log_ship_by_rdma;
 extern bool log_key_for_update;
 
+extern bool amac_version_chain;
+
 extern double cycles_per_byte;
 
 inline bool is_backup_srv() { return primary_srv.size(); }
