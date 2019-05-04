@@ -15,6 +15,7 @@
 
 #include "bench.h"
 #include "ycsb.h"
+#include "../third-party/foedus/zipfian_random.hpp"
 
 uint64_t local_key_counter[ermia::config::MAX_THREADS];
 uint g_reps_per_tx = 1;
@@ -23,6 +24,8 @@ char g_workload = 'F';
 uint g_initial_table_size = 3000000;
 int g_sort_load_keys = 0;
 int g_amac_txn_read = 0;
+int g_zipfian_rng = 0;
+double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it approaches 1.
 
 // { insert, read, update, scan, rmw }
 YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
@@ -52,7 +55,11 @@ class ycsb_worker : public bench_worker {
               spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tbl((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")),
-        rnd_record_select(477377 + worker_id) {}
+        uniform_rng(1237 + worker_id) {
+    if (g_zipfian_rng) {
+      zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
+    }
+  }
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
@@ -103,7 +110,7 @@ class ycsb_worker : public bench_worker {
     }
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = BuildKey(worker_id);
+      auto &k = GenerateKey(worker_id);
       ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -134,7 +141,7 @@ class ycsb_worker : public bench_worker {
 
     // Prepare states
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = BuildKey(worker_id);
+      auto &k = GenerateKey(worker_id);
       as.emplace_back(&k);
     }
 
@@ -170,7 +177,7 @@ class ycsb_worker : public bench_worker {
     ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
     arena.reset();
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      ermia::varstr &k = BuildKey(worker_id);
+      ermia::varstr &k = GenerateKey(worker_id);
       ermia::varstr &v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -196,7 +203,7 @@ class ycsb_worker : public bench_worker {
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      ermia::varstr &k = BuildKey(worker_id);
+      ermia::varstr &k = GenerateKey(worker_id);
       ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -219,8 +226,14 @@ class ycsb_worker : public bench_worker {
  protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
-  ermia::varstr &BuildKey(int worker_id) {
-    uint32_t r = rnd_record_select.next();
+  ermia::varstr &GenerateKey(int worker_id) {
+    //uint32_t r = uniform_rng.next();
+    uint64_t r = 0;
+    if (g_zipfian_rng) {
+      r = zipfian_rng.next();
+    } else {
+      uniform_rng.next_uint64();
+    }
     uint64_t hi = r % ermia::config::worker_threads;
     ASSERT(local_key_counter[worker_id] > 0);
     uint64_t lo = r % local_key_counter[worker_id];
@@ -232,7 +245,8 @@ class ycsb_worker : public bench_worker {
 
  private:
   ermia::ConcurrentMasstreeIndex *tbl;
-  util::fast_random rnd_record_select;
+  foedus::assorted::UniformRandom uniform_rng;
+  foedus::assorted::ZipfianRandom zipfian_rng;
 };
 
 class ycsb_usertable_loader : public bench_loader {
@@ -354,6 +368,8 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
         {"initial-table-size", required_argument, 0, 's'},
         {"sort-load-keys", no_argument, &g_sort_load_keys, 1},
         {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
+        {"zipfian", no_argument, &g_zipfian_rng, 0},
+        {"zipfian-theta", required_argument, 0, 'z'},
         {0, 0, 0, 0}};
 
     int option_index = 0;
@@ -363,6 +379,10 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
       case 0:
         if (long_options[option_index].flag != 0) break;
         abort();
+        break;
+
+      case 'z':
+        g_zipfian_theta = strtod(optarg, NULL);
         break;
 
       case 'r':
@@ -419,7 +439,12 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
          << "  operations per transaction: " << g_reps_per_tx << std::endl
          << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
          << "  sort load keys:             " << g_sort_load_keys << std::endl
-         << "  amac txn_read:              " << g_amac_txn_read << std::endl;
+         << "  amac txn_read:              " << g_amac_txn_read << std::endl
+         << "  distribution:               " << (g_zipfian_rng ? "zipfian" : "uniform") << std::endl;
+
+    if (g_zipfian_rng) {
+      std::cerr << "  zipfian theta:              " << g_zipfian_theta << std::endl;
+    }
   }
 
   ycsb_bench_runner r(db);
