@@ -119,7 +119,7 @@ template <typename P> class mbtree {
 public:
   class AMACState {
   public:
-    uint32_t stage;
+    uint8_t stage;
     void *ptr;  // The node to prefetch
     const varstr *key;
 
@@ -128,19 +128,14 @@ public:
     Masstree::unlocked_tcursor<P> lp;
     const Masstree::node_base<P>* n[2];
     typename Masstree::node_base<P>::nodeversion_type v[2];
-    key_indexed_position kx;
-    bool found;
     OID out_oid;
-    bool done;
 
     AMACState(const varstr *key)
     : stage(0)
     , ptr(nullptr)
     , key(key)
     , sense(false)
-    , found(false)
     , out_oid(INVALID_OID)
-    , done(false)
     {}
   };
 
@@ -565,19 +560,19 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
   uint32_t finished = 0;
   while (finished < states.size()) {
     for (auto &s : states) {
-      if (s.done) {
+      if (!s.key) {
         continue;
       }
     retry:
       if (s.stage == 3) {
       stage3:
         s.lp.perm_ = s.lp.n_->permutation();
-        s.kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
+        auto kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
         int match;
-        if (s.kx.p >= 0) {
-          s.lp.lv_ = s.lp.n_->lv_[s.kx.p];
-          s.lp.lv_.prefetch(s.lp.n_->keylenx_[s.kx.p]);
-          match = s.lp.n_->ksuf_matches(s.kx.p, s.lp.ka_);
+        if (kx.p >= 0) {
+          s.lp.lv_ = s.lp.n_->lv_[kx.p];
+          s.lp.lv_.prefetch(s.lp.n_->keylenx_[kx.p]);
+          match = s.lp.n_->ksuf_matches(kx.p, s.lp.ka_);
         } else {
           match = 0;
         }
@@ -600,12 +595,11 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
             goto stage0;
           } else {
             // Done!
-            s.found = match;
-            if (s.found) {
+            if (match) {
               s.out_oid = s.lp.value();
             }
             ++finished;
-            s.done = true;
+            s.key = nullptr;
           }
         }
       } else if (s.stage == 2) {
