@@ -150,7 +150,7 @@ class ycsb_worker : public bench_worker {
 
     ermia::transaction *txn = nullptr;
     if (!ermia::config::index_probe_only) {
-      db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     }
     tbl->MultiGet(txn, as, values);
 
