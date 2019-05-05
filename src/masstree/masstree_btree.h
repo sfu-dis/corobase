@@ -117,25 +117,25 @@ struct masstree_single_threaded_params : public masstree_params {
 
 template <typename P> class mbtree {
 public:
-  class AMACState {
-  public:
-    uint8_t stage;
-    void *ptr;  // The node to prefetch
+  struct AMACState {
+    OID out_oid;
     const varstr *key;
+
+    uint64_t stage;
+    void *ptr;  // The node to prefetch
 
     // Intermediate data for find_unlocked/reach_leaf
     bool sense;
     Masstree::unlocked_tcursor<P> lp;
     const Masstree::node_base<P>* n[2];
     typename Masstree::node_base<P>::nodeversion_type v[2];
-    OID out_oid;
 
     AMACState(const varstr *key)
-    : stage(0)
-    , ptr(nullptr)
+    : out_oid(INVALID_OID)
     , key(key)
+    , stage(0)
+    , ptr(nullptr)
     , sense(false)
-    , out_oid(INVALID_OID)
     {}
   };
 
@@ -563,9 +563,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
       if (!s.key) {
         continue;
       }
-    retry:
-      if (s.stage == 3) {
-      stage3:
+      if (s.stage == 2) {
         s.lp.perm_ = s.lp.n_->permutation();
         auto kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
         int match = 0;
@@ -583,7 +581,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
             goto stage0;
            } else {
             s.lp.n_->prefetch();
-            s.stage = 3;
+            s.stage = 2;
           }
         } else {
           if (match < 0) {
@@ -600,18 +598,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
             s.key = nullptr;
           }
         }
-      } else if (s.stage == 2) {
-      stage2:
-        // Continue after reach_leaf in find_unlocked
-        if (s.lp.v_.deleted()) {
-          s.stage = 0;
-          goto stage0;
-        } else {
-          s.lp.n_->prefetch();
-          s.stage = 3;
-        }
       } else if (s.stage == 1) {
-      stage1:
         Masstree::internode<P>* in = (Masstree::internode<P>*)s.ptr;
         int kp = Masstree::internode<P>::bound_type::upper(s.lp.ka_, *in);
         s.n[!s.sense] = in->child_[kp];
@@ -623,11 +610,15 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
           if (likely(!in->has_changed(s.v[s.sense]))) {
             s.sense = !s.sense;
             if (s.v[s.sense].isleaf()) {
-              // Done reach_leaf, enter stage 2
               s.lp.v_ = s.v[s.sense];
               s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
-              s.stage = 2;
-              goto stage2;
+              if (s.lp.v_.deleted()) {
+                s.stage = 0;
+                goto stage0;
+              } else {
+                s.lp.n_->prefetch();
+                s.stage = 2;
+              }
             } else {
               in = (Masstree::internode<P>*)s.n[s.sense];
               in->prefetch();
@@ -642,11 +633,15 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
               goto stage0;
             } else  {
               if (s.v[s.sense].isleaf()) {
-                // Done reach_leaf, enter stage 2
                 s.lp.v_ = s.v[s.sense];
                 s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
-                s.stage = 2;
-                goto stage2;
+                if (s.lp.v_.deleted()) {
+                  s.stage = 0;
+                  goto stage0;
+                } else {
+                  s.lp.n_->prefetch();
+                  s.stage = 2;
+                }
               } else {
                 Masstree::internode<P>* in = (Masstree::internode<P>*)s.n[s.sense];
                 in->prefetch();
@@ -670,8 +665,13 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
         if (s.v[s.sense].isleaf()) {
           s.lp.v_ = s.v[s.sense];
           s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
-          s.stage = 2;
-          goto stage2;
+          if (s.lp.v_.deleted()) {
+            s.stage = 0;
+            goto stage0;
+          } else {
+            s.lp.n_->prefetch();
+            s.stage = 2;
+          }
         } else {
           auto *in = (Masstree::internode<P>*)s.n[s.sense];
           in->prefetch();
