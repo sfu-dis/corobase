@@ -578,12 +578,10 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
         }
         if (s.lp.n_->has_changed(s.lp.v_)) {
           s.lp.n_ = s.lp.n_->advance_to_key(s.lp.ka_, s.lp.v_, ti);
-          // go to stage 2
           if (s.lp.v_.deleted()) {
             s.stage = 0;
             goto stage0;
            } else {
-            // Prefetch the node
             s.lp.n_->prefetch();
             s.stage = 3;
           }
@@ -609,7 +607,6 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
           s.stage = 0;
           goto stage0;
         } else {
-          // Prefetch the node
           s.lp.n_->prefetch();
           s.stage = 3;
         }
@@ -626,19 +623,17 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
           if (likely(!in->has_changed(s.v[s.sense]))) {
             s.sense = !s.sense;
             if (s.v[s.sense].isleaf()) {
-                // Done reach_leaf, enter stage 2
-                s.lp.v_ = s.v[s.sense];
-                s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
-                s.stage = 2;
-                goto stage2;
-                //continue;
-              } else {
-                // Prepare the next node to prefetch
-                in = (Masstree::internode<P>*)s.n[s.sense];
-                in->prefetch();
-                s.ptr = in;
-                assert(s.stage == 1);
-              }
+              // Done reach_leaf, enter stage 2
+              s.lp.v_ = s.v[s.sense];
+              s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
+              s.stage = 2;
+              goto stage2;
+            } else {
+              in = (Masstree::internode<P>*)s.n[s.sense];
+              in->prefetch();
+              s.ptr = in;
+              assert(s.stage == 1);
+            }
           } else {
             typename Masstree::node_base<P>::nodeversion_type oldv = s.v[s.sense];
             s.v[s.sense] = in->stable_annotated(ti.stable_fence());
@@ -652,9 +647,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
                 s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
                 s.stage = 2;
                 goto stage2;
-                //continue;
               } else {
-                // Prepare the next node to prefetch
                 Masstree::internode<P>* in = (Masstree::internode<P>*)s.n[s.sense];
                 in->prefetch();
                 s.ptr = in;
@@ -665,7 +658,6 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
         }
       } else if (s.stage == 0) {
       stage0:
-        // Stage 0 - get and prefetch root
         new (&s.lp) Masstree::unlocked_tcursor<P>(table_, s.key->data(), s.key->size());
         s.sense = false;
         s.n[s.sense] = s.lp.root_;
@@ -679,7 +671,6 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
           s.lp.v_ = s.v[s.sense];
           s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
           s.stage = 2;
-          //continue;
           goto stage2;
         } else {
           auto *in = (Masstree::internode<P>*)s.n[s.sense];
