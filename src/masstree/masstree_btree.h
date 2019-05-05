@@ -568,13 +568,13 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
       stage3:
         s.lp.perm_ = s.lp.n_->permutation();
         auto kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
-        int match;
+        int match = 0;
         if (kx.p >= 0) {
           s.lp.lv_ = s.lp.n_->lv_[kx.p];
-          s.lp.lv_.prefetch(s.lp.n_->keylenx_[kx.p]);
+          if (s.lp.n_->keylenx_[kx.p]) {
+            s.lp.lv_.prefetch(s.lp.n_->keylenx_[kx.p]);
+          }
           match = s.lp.n_->ksuf_matches(kx.p, s.lp.ka_);
-        } else {
-          match = 0;
         }
         if (s.lp.n_->has_changed(s.lp.v_)) {
           s.lp.n_ = s.lp.n_->advance_to_key(s.lp.ka_, s.lp.v_, ti);
