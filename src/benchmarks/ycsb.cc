@@ -26,6 +26,7 @@ int g_sort_load_keys = 0;
 int g_amac_txn_read = 0;
 int g_zipfian_rng = 0;
 double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it approaches 1.
+int g_distinct_keys = 0;
 
 // { insert, read, update, scan, rmw }
 YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
@@ -102,6 +103,14 @@ class ycsb_worker : public bench_worker {
     return static_cast<ycsb_worker *>(w)->txn_rmw();
   }
 
+  struct KeyCompare : public std::unary_function<ermia::varstr, bool>{
+    explicit KeyCompare(ermia::varstr &baseline) : baseline(baseline) {}
+    bool operator() (const ermia::varstr &arg) {
+      return *(uint64_t*)arg.p == *(uint64_t*)baseline.p;
+    }
+    ermia::varstr &baseline;
+  };
+
   rc_t txn_read() {
     arena.reset();
     ermia::transaction *txn = nullptr;
@@ -109,8 +118,18 @@ class ycsb_worker : public bench_worker {
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     }
 
+    thread_local std::vector<uint64_t> int_keys;
+    int_keys.clear();
+
+    thread_local std::vector<ermia::varstr*> keys;
+    keys.clear();
+
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = GenerateKey(worker_id);
+      keys.push_back(&GenerateKey(worker_id, &int_keys));
+    }
+
+    for (auto &kp : keys) {
+      auto &k = *kp;
       ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -139,9 +158,12 @@ class ycsb_worker : public bench_worker {
     thread_local std::vector<ermia::ConcurrentMasstree::AMACState> as;
     as.clear();
 
+    thread_local std::vector<uint64_t> int_keys;
+    int_keys.clear();
+
     // Prepare states
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = GenerateKey(worker_id);
+      auto &k = GenerateKey(worker_id, &int_keys);
       as.emplace_back(&k);
     }
 
@@ -226,8 +248,8 @@ class ycsb_worker : public bench_worker {
  protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
-  ermia::varstr &GenerateKey(int worker_id) {
-    //uint32_t r = uniform_rng.next();
+  ermia::varstr &GenerateKey(int worker_id, std::vector<uint64_t> *keys = nullptr) {
+  retry:
     uint64_t r = 0;
     if (g_zipfian_rng) {
       r = zipfian_rng.next();
@@ -237,6 +259,11 @@ class ycsb_worker : public bench_worker {
     uint64_t hi = r / local_key_counter[worker_id];
     ASSERT(local_key_counter[worker_id] > 0);
     uint64_t lo = r % local_key_counter[worker_id];
+
+    if (g_distinct_keys && std::find(keys->begin(), keys->end(), (hi << 32) | lo) != keys->end()) {
+      goto retry;
+    }
+
     ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
     new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(hi, lo, k);
@@ -370,6 +397,7 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
         {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
         {"zipfian", no_argument, &g_zipfian_rng, 1},
         {"zipfian-theta", required_argument, 0, 'z'},
+        {"distinct-keys", no_argument, &g_distinct_keys, 1},
         {0, 0, 0, 0}};
 
     int option_index = 0;
@@ -440,6 +468,7 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
          << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
          << "  sort load keys:             " << g_sort_load_keys << std::endl
          << "  amac txn_read:              " << g_amac_txn_read << std::endl
+         << "  distinct keys:              " << g_distinct_keys << std::endl
          << "  distribution:               " << (g_zipfian_rng ? "zipfian" : "uniform") << std::endl;
 
     if (g_zipfian_rng) {
