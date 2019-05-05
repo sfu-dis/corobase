@@ -278,7 +278,7 @@ public:
   inline void
   GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
          ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    bool found = masstree_.search(key, out_oid, xc, out_sinfo);
+    bool found = masstree_.search(key, out_oid, xc->begin_epoch, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
 
