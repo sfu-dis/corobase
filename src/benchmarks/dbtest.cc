@@ -20,6 +20,7 @@
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
 DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
+DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
@@ -198,6 +199,8 @@ int main(int argc, char **argv) {
   ermia::config::recover_functor = new ermia::parallel_oid_replay(FLAGS_threads);
   ermia::config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
 
+  ermia::config::amac_version_chain = FLAGS_amac_version_chain;
+
 #if defined(SSI) || defined(SSN)
   ermia::config::enable_safesnap = FLAGS_safesnap;
 #endif
@@ -363,6 +366,7 @@ int main(int argc, char **argv) {
   std::cerr << "  dia-batch-size    : " << FLAGS_dia_batch_size << std::endl;
   std::cerr << "  dia-logical-index-threads  : " << FLAGS_dia_logical_index_threads << std::endl;
   std::cerr << "  dia-physical-index-threads : " << FLAGS_dia_physical_index_threads << std::endl;
+  std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;

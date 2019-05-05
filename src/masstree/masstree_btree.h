@@ -119,7 +119,7 @@ template <typename P> class mbtree {
 public:
   class AMACState {
   public:
-    uint32_t stage;
+    uint8_t stage;
     void *ptr;  // The node to prefetch
     const varstr *key;
 
@@ -128,19 +128,14 @@ public:
     Masstree::unlocked_tcursor<P> lp;
     const Masstree::node_base<P>* n[2];
     typename Masstree::node_base<P>::nodeversion_type v[2];
-    key_indexed_position kx;
-    bool found;
     OID out_oid;
-    bool done;
 
     AMACState(const varstr *key)
     : stage(0)
     , ptr(nullptr)
     , key(key)
     , sense(false)
-    , found(false)
     , out_oid(INVALID_OID)
-    , done(false)
     {}
   };
 
@@ -218,10 +213,10 @@ public:
   /** NOTE: the public interface assumes that the caller has taken care
    * of setting up RCU */
 
-  inline bool search(const key_type &k, OID &o, TXN::xid_context *xc,
+  inline bool search(const key_type &k, OID &o, epoch_num e,
                      versioned_node_t *search_info = nullptr) const;
 
-  inline void search_amac(std::vector<AMACState> &states, TXN::xid_context *xc) const;
+  inline void search_amac(std::vector<AMACState> &states, epoch_num epoch) const;
 
   inline ermia::dia::generator<bool>
   search_coro(const key_type &k, OID &o, threadinfo &ti,
@@ -538,9 +533,9 @@ template <typename P> inline size_t mbtree<P>::size() const {
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, OID &o, TXN::xid_context *xc,
+inline bool mbtree<P>::search(const key_type &k, OID &o, epoch_num e,
                               versioned_node_t *search_info) const {
-  threadinfo ti(xc->begin_epoch);
+  threadinfo ti(e);
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
   bool found = lp.find_unlocked(ti);
   if (found) {
@@ -554,32 +549,33 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, TXN::xid_context *xc,
 
 // Multi-key search using AMAC 
 template <typename P>
-inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_context *xc) const {
-  threadinfo ti(xc->begin_epoch);
+inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epoch) const {
+  threadinfo ti(epoch);
   uint32_t finished = 0;
   while (finished < states.size()) {
     for (auto &s : states) {
-      if (s.done) {
+      if (!s.key) {
         continue;
       }
     retry:
       if (s.stage == 3) {
+      stage3:
         s.lp.perm_ = s.lp.n_->permutation();
-        s.kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
-        int match;
-        if (s.kx.p >= 0) {
-          s.lp.lv_ = s.lp.n_->lv_[s.kx.p];
-          s.lp.lv_.prefetch(s.lp.n_->keylenx_[s.kx.p]);
-          match = s.lp.n_->ksuf_matches(s.kx.p, s.lp.ka_);
-        } else {
-          match = 0;
+        auto kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
+        int match = 0;
+        if (kx.p >= 0) {
+          s.lp.lv_ = s.lp.n_->lv_[kx.p];
+          if (s.lp.n_->keylenx_[kx.p]) {
+            s.lp.lv_.prefetch(s.lp.n_->keylenx_[kx.p]);
+          }
+          match = s.lp.n_->ksuf_matches(kx.p, s.lp.ka_);
         }
         if (s.lp.n_->has_changed(s.lp.v_)) {
           s.lp.n_ = s.lp.n_->advance_to_key(s.lp.ka_, s.lp.v_, ti);
           // go to stage 2
           if (s.lp.v_.deleted()) {
             s.stage = 0;
-            goto retry;
+            goto stage0;
            } else {
             // Prefetch the node
             s.lp.n_->prefetch();
@@ -590,34 +586,35 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
             s.lp.ka_.shift_by(-match);
             s.lp.root_ = s.lp.lv_.layer();
             s.stage = 0;
-            goto retry;
+            goto stage0;
           } else {
             // Done!
-            s.found = match;
-            if (s.found) {
+            if (match) {
               s.out_oid = s.lp.value();
             }
             ++finished;
-            s.done = true;
+            s.key = nullptr;
           }
         }
       } else if (s.stage == 2) {
+      stage2:
         // Continue after reach_leaf in find_unlocked
         if (s.lp.v_.deleted()) {
           s.stage = 0;
-          goto retry;
+          goto stage0;
         } else {
           // Prefetch the node
           s.lp.n_->prefetch();
           s.stage = 3;
         }
       } else if (s.stage == 1) {
+      stage1:
         Masstree::internode<P>* in = (Masstree::internode<P>*)s.ptr;
         int kp = Masstree::internode<P>::bound_type::upper(s.lp.ka_, *in);
         s.n[!s.sense] = in->child_[kp];
         if (!s.n[!s.sense]) {
           s.stage = 0;
-          goto retry;
+          goto stage0;
         } else {
           s.v[!s.sense] = s.n[!s.sense]->stable_annotated(ti.stable_fence());
           if (likely(!in->has_changed(s.v[s.sense]))) {
@@ -627,7 +624,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
                 s.lp.v_ = s.v[s.sense];
                 s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
                 s.stage = 2;
-                goto retry;
+                goto stage2;
                 //continue;
               } else {
                 // Prepare the next node to prefetch
@@ -641,14 +638,14 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
             s.v[s.sense] = in->stable_annotated(ti.stable_fence());
             if (oldv.has_split(s.v[s.sense]) && in->stable_last_key_compare(s.lp.ka_, s.v[s.sense], ti) > 0) {
               s.stage = 0;
-              goto retry;
+              goto stage0;
             } else  {
               if (s.v[s.sense].isleaf()) {
                 // Done reach_leaf, enter stage 2
                 s.lp.v_ = s.v[s.sense];
                 s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
                 s.stage = 2;
-                goto retry;
+                goto stage2;
                 //continue;
               } else {
                 // Prepare the next node to prefetch
@@ -661,6 +658,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
           }
         }
       } else if (s.stage == 0) {
+      stage0:
         // Stage 0 - get and prefetch root
         new (&s.lp) Masstree::unlocked_tcursor<P>(table_, s.key->data(), s.key->size());
         s.sense = false;
@@ -676,7 +674,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, TXN::xid_cont
           s.lp.n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(s.n[s.sense]));
           s.stage = 2;
           //continue;
-          goto retry;
+          goto stage2;
         } else {
           auto *in = (Masstree::internode<P>*)s.n[s.sense];
           in->prefetch();
