@@ -118,10 +118,7 @@ class ycsb_worker : public bench_worker {
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     }
 
-    thread_local std::vector<uint64_t> int_keys;
     int_keys.clear();
-
-    thread_local std::vector<ermia::varstr*> keys;
     keys.clear();
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
@@ -154,11 +151,7 @@ class ycsb_worker : public bench_worker {
 
   rc_t txn_read_amac() {
     arena.reset();
-
-    thread_local std::vector<ermia::ConcurrentMasstree::AMACState> as;
     as.clear();
-
-    thread_local std::vector<uint64_t> int_keys;
     int_keys.clear();
 
     // Prepare states
@@ -168,7 +161,6 @@ class ycsb_worker : public bench_worker {
     }
 
     ermia::transaction *txn = nullptr;
-    thread_local std::vector<ermia::varstr *> values;
     if (!ermia::config::index_probe_only) {
       values.clear();
       for (uint i = 0; i < g_reps_per_tx; ++i) {
@@ -274,6 +266,10 @@ class ycsb_worker : public bench_worker {
   ermia::ConcurrentMasstreeIndex *tbl;
   foedus::assorted::UniformRandom uniform_rng;
   foedus::assorted::ZipfianRandom zipfian_rng;
+  std::vector<ermia::ConcurrentMasstree::AMACState> as;
+  std::vector<uint64_t> int_keys;
+  std::vector<ermia::varstr*> keys;
+  std::vector<ermia::varstr *> values;
 };
 
 class ycsb_usertable_loader : public bench_loader {

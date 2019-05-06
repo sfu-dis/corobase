@@ -75,6 +75,7 @@ uint32_t dia_batch_size = 1;
 uint32_t dia_logical_index_threads = 0;
 uint32_t dia_physical_index_threads = 0;
 bool amac_version_chain = false;
+bool numa_spread = false;
 
 void init() {
   ALWAYS_ASSERT(threads);
@@ -82,8 +83,13 @@ void init() {
   // Here [threads] refers to worker threads, so use the number of physical cores
   // to calculate # of numa nodes
   uint32_t max = thread::cpu_cores.size() / (numa_max_node() + 1);
-  numa_nodes = (threads + max - 1) / max;
-  ALWAYS_ASSERT(numa_nodes);
+  if (numa_spread) {
+    numa_nodes = threads >= max ? max : threads;
+  } else {
+    numa_nodes = (threads + max - 1) / max;
+    ALWAYS_ASSERT(numa_nodes);
+  }
+
   if (num_backups) {
     enable_chkpt = true;
   }
