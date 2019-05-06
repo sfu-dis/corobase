@@ -24,6 +24,7 @@ extern uint32_t benchmark_scale_factor;
 extern uint32_t threads;
 extern uint32_t worker_threads;
 extern int numa_nodes;
+extern bool numa_spread;
 extern std::string tmpfs_dir;
 extern bool htt_is_on;
 extern bool physical_workers_only;
