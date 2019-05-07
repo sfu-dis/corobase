@@ -36,8 +36,10 @@ static std::vector<T> unique_filter(const std::vector<T> &v) {
 class bench_loader : public ermia::thread::Runner {
  public:
   bench_loader(unsigned long seed, ermia::Engine *db,
-               const std::map<std::string, ermia::OrderedIndex *> &open_tables)
-      : Runner(), r(seed), db(db), open_tables(open_tables) {
+               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+               uint32_t loader_id = 0)
+      : Runner(loader_id < ermia::config::threads ? true : false)
+      , r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load. The way we
     // reuse
     // threads relies on this fact (see bench_runner::run()).

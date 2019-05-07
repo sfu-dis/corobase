@@ -318,7 +318,7 @@ class ycsb_usertable_loader : public bench_loader {
   ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
                         const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                         uint32_t loader_id)
-      : bench_loader(seed, db, open_tables), loader_id(loader_id) {}
+      : bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
 
  private:
   uint32_t loader_id;
