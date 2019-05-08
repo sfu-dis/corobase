@@ -84,7 +84,7 @@ void init() {
   // to calculate # of numa nodes
   uint32_t max = thread::cpu_cores.size() / (numa_max_node() + 1);
   if (numa_spread) {
-    numa_nodes = threads >= max ? max : threads;
+    numa_nodes = threads > numa_max_node() + 1 ? numa_max_node() + 1 : threads;
   } else {
     numa_nodes = (threads + max - 1) / max;
     ALWAYS_ASSERT(numa_nodes);
