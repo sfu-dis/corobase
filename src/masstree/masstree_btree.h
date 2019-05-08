@@ -565,13 +565,11 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
       case 2:
         s.lp.perm_ = s.lp.n_->permutation();
         kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
-        match = 0;
         if (kx.p >= 0) {
           s.lp.lv_ = s.lp.n_->lv_[kx.p];
           if (s.lp.n_->keylenx_[kx.p]) {
             s.lp.lv_.prefetch(s.lp.n_->keylenx_[kx.p]);
           }
-          match = s.lp.n_->ksuf_matches(kx.p, s.lp.ka_);
         }
         if (s.lp.n_->has_changed(s.lp.v_)) {
           s.lp.n_ = s.lp.n_->advance_to_key(s.lp.ka_, s.lp.v_, ti);
@@ -583,6 +581,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
             s.stage = 2;
           }
         } else {
+          match = kx.p >= 0 ? s.lp.n_->ksuf_matches(kx.p, s.lp.ka_) : 0;
           if (match < 0) {
             s.lp.ka_.shift_by(-match);
             s.lp.root_ = s.lp.lv_.layer();
