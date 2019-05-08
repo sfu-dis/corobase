@@ -557,7 +557,6 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
   int match, kp;
   Masstree::internode<P>* in = nullptr;
   key_indexed_position kx;
-  int i = 0;
   while (todo) {
     for (auto &s : states) {
       switch (s.stage) {
