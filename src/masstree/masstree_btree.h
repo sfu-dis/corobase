@@ -130,6 +130,8 @@ public:
     const Masstree::node_base<P>* n[2];
     typename Masstree::node_base<P>::nodeversion_type v[2];
 
+    static const uint64_t kInvalidStage = ~uint64_t{0};
+
     AMACState(const varstr *key)
     : out_oid(INVALID_OID)
     , key(key)
@@ -551,16 +553,20 @@ inline bool mbtree<P>::search(const key_type &k, OID &o, epoch_num e,
 template <typename P>
 inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epoch) const {
   threadinfo ti(epoch);
-  uint32_t finished = 0;
-  while (finished < states.size()) {
+  uint32_t todo = states.size();
+  int match, kp;
+  Masstree::internode<P>* in = nullptr;
+  key_indexed_position kx;
+  int i = 0;
+  while (todo) {
     for (auto &s : states) {
-      if (!s.key) {
-        continue;
-      }
-      if (s.stage == 2) {
+      switch (s.stage) {
+      case AMACState::kInvalidStage:
+        break;
+      case 2:
         s.lp.perm_ = s.lp.n_->permutation();
-        auto kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
-        int match = 0;
+        kx = Masstree::leaf<P>::bound_type::lower(s.lp.ka_, s.lp);
+        match = 0;
         if (kx.p >= 0) {
           s.lp.lv_ = s.lp.n_->lv_[kx.p];
           if (s.lp.n_->keylenx_[kx.p]) {
@@ -588,13 +594,14 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
             if (match) {
               s.out_oid = s.lp.value();
             }
-            ++finished;
-            s.key = nullptr;
+            --todo;
+            s.stage = AMACState::kInvalidStage;
           }
         }
-      } else if (s.stage == 1) {
-        Masstree::internode<P>* in = (Masstree::internode<P>*)s.ptr;
-        int kp = Masstree::internode<P>::bound_type::upper(s.lp.ka_, *in);
+        break;
+      case 1:
+        in = (Masstree::internode<P>*)s.ptr;
+        kp = Masstree::internode<P>::bound_type::upper(s.lp.ka_, *in);
         s.n[!s.sense] = in->child_[kp];
         if (!s.n[!s.sense]) {
           s.stage = 0;
@@ -645,7 +652,8 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
             }
           }
         }
-      } else if (s.stage == 0) {
+        break;
+      case 0:
       stage0:
         new (&s.lp) Masstree::unlocked_tcursor<P>(table_, s.key->data(), s.key->size());
         s.sense = false;
@@ -672,6 +680,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
           s.ptr = in;
           s.stage = 1;
         }
+        break;
       }
     }
   }
