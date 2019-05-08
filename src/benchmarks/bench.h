@@ -73,7 +73,7 @@ class bench_worker : public ermia::thread::Runner {
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
                ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
-      : Runner(ermia::config::physical_workers_only ? true : (worker_id % 2 == 0)),
+      : Runner(ermia::config::physical_workers_only ? true : (worker_id >= ermia::config::worker_threads / 2)),
         worker_id(worker_id),
         is_worker(is_worker),
         r(seed),
@@ -95,7 +95,12 @@ class bench_worker : public ermia::thread::Runner {
         ntxn_phantom_aborts(0),
         ntxn_query_commits(0) {
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
-    TryImpersonate();
+    if (ermia::config::numa_spread) {
+      LOG(INFO) << "Worker " << worker_id << " going to node " << worker_id % ermia::config::numa_nodes;
+      TryImpersonate(worker_id % ermia::config::numa_nodes);
+    } else {
+      TryImpersonate();
+    }
   }
   ~bench_worker() {}
 
