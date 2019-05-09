@@ -153,9 +153,9 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
-void ConcurrentMasstreeIndex::MultiGet(transaction *t,
-                                       std::vector<ConcurrentMasstree::AMACState> &requests,
-                                       std::vector<varstr *> &values) {
+void ConcurrentMasstreeIndex::MultiGet(
+    transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests,
+    std::vector<varstr *> &values) {
   ConcurrentMasstree::versioned_node_t sinfo;
   if (!t) {
     auto e = MM::epoch_enter();
@@ -169,9 +169,9 @@ void ConcurrentMasstreeIndex::MultiGet(transaction *t,
         auto &r = requests[i];
         if (r.out_oid != INVALID_OID) {
           // Key-OID mapping exists, now try to get the actual tuple to be sure
-          auto *tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
-                                                 descriptor_->GetPersistentAddressArray(),
-                                                 r.out_oid, t->xc);
+          auto *tuple = oidmgr->BackupGetVersion(
+              descriptor_->GetTupleArray(),
+              descriptor_->GetPersistentAddressArray(), r.out_oid, t->xc);
           if (tuple) {
             t->DoTupleRead(tuple, values[i]);
           } else if (config::phantom_prot) {
@@ -187,9 +187,10 @@ void ConcurrentMasstreeIndex::MultiGet(transaction *t,
         for (auto &s : requests) {
           version_requests.emplace_back(s.out_oid);
         }
-        oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, t->xc);
+        oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(),
+                                     version_requests, t->xc);
         uint32_t i = 0;
-        for (auto &vr: version_requests) {
+        for (auto &vr : version_requests) {
           if (vr.tuple) {
             t->DoTupleRead(vr.tuple, values[i++]);
           } else if (config::phantom_prot) {
@@ -200,7 +201,8 @@ void ConcurrentMasstreeIndex::MultiGet(transaction *t,
         for (uint32_t i = 0; i < requests.size(); ++i) {
           auto &r = requests[i];
           if (r.out_oid != INVALID_OID) {
-            auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), r.out_oid, t->xc);
+            auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                                  r.out_oid, t->xc);
             if (tuple) {
               t->DoTupleRead(tuple, values[i]);
             } else if (config::phantom_prot) {
@@ -231,11 +233,12 @@ void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
     if (found) {
       // Key-OID mapping exists, now try to get the actual tuple to be sure
       if (config::is_backup_srv()) {
-        tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
-                                         descriptor_->GetPersistentAddressArray(),
-                                         oid, t->xc);
+        tuple = oidmgr->BackupGetVersion(
+            descriptor_->GetTupleArray(),
+            descriptor_->GetPersistentAddressArray(), oid, t->xc);
       } else {
-        tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
+        tuple =
+            oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
       }
       if (!tuple) {
         found = false;
@@ -262,27 +265,31 @@ void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
 
 void ConcurrentMasstreeIndex::coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<ermia::OID> &oids,
-    std::vector<ermia::dia::generator<bool> *> &coroutines) {
-  t->ensure_active();
-  ConcurrentMasstree::threadinfo ti(t->GetXIDContext()->begin_epoch);
+    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> &handles) {
+  auto e = MM::epoch_enter();
+  ConcurrentMasstree::threadinfo ti(e);
   ConcurrentMasstree::versioned_node_t sinfo;
 
-  int finished = 0;
+  OID oid = 0;
   for (int i = 0; i < keys.size(); ++i) {
-    coroutines.emplace_back(new ermia::dia::generator<bool>(
-        masstree_.search_coro(*keys[i], oids[i], ti, &sinfo)));
+    handles[i] = masstree_.search_coro(*keys[i], oid, ti, &sinfo).get_handle();
   }
 
-  while (finished < coroutines.size()) {
-    for (auto &c : coroutines) {
-      if (c && !c->advance()) {
-        delete c;
-        c = nullptr;
-        ++finished;
+  int finished = 0;
+  while (finished < handles.size()) {
+    for (auto &h : handles) {
+      if (h) {
+        if (h.done()) {
+          ++finished;
+          h.destroy();
+          h = nullptr;
+        } else {
+          h.resume();
+        }
       }
     }
   }
+  MM::epoch_exit(0, e);
 }
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(

@@ -192,26 +192,22 @@ class ycsb_worker : public bench_worker {
   }
 
   rc_t txn_read_coro() {
-    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
     arena.reset();
+    ermia::transaction *txn = nullptr;
 
-    thread_local std::vector<ermia::dia::generator<bool> *> coroutines;
-    thread_local std::vector<ermia::OID> oids;
-
-    coroutines.clear();
+    thread_local std::vector<std::experimental::coroutine_handle<
+        ermia::dia::generator<bool>::promise_type>>
+        handles(g_reps_per_tx);
     keys.clear();
-    oids.clear();
     values.clear();
   
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = GenerateKey();
       keys.emplace_back(&k);
-      oids.emplace_back(0);
     }
 
-    tbl->coro_MultiGet(txn, keys, values, oids, coroutines);
+    tbl->coro_MultiGet(txn, keys, values, handles);
 
-    TryCatch(db->Commit(txn));
     return {RC_TRUE};
 }
 

@@ -11,7 +11,7 @@ template <typename T> struct generator {
   struct promise_type {
     T current_value;
     auto get_return_object() { return generator{handle::from_promise(*this)}; }
-    auto initial_suspend() { return std::experimental::suspend_always{}; }
+    auto initial_suspend() { return std::experimental::never{}; }
     auto final_suspend() { return std::experimental::suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
     auto return_value(T value) {
@@ -19,8 +19,12 @@ template <typename T> struct generator {
       return std::experimental::suspend_always{};
     }
   };
-  bool advance() { return coro ? (coro.resume(), !coro.done()) : false; }
-  T current_value() { return coro.promise().current_value; }
+
+  auto get_handle() {
+    auto result = coro;
+    coro = nullptr;
+    return result;
+  }
 
   generator(generator const &) = delete;
   generator(handle h = nullptr) : coro(h) {}
