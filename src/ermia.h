@@ -247,10 +247,10 @@ public:
                 std::vector<varstr *> &values);
 
   // A multi-get operation using coroutines
-  void
-  coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
-                std::vector<varstr *> &values, std::vector<ermia::OID> &oids,
-                std::vector<ermia::dia::generator<bool> *> &coroutines);
+  void coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
+                     std::vector<varstr *> &values,
+                     std::vector<std::experimental::coroutine_handle<
+                         ermia::dia::generator<bool>::promise_type>> &handles);
 
   inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
