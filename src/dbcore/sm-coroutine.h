@@ -11,7 +11,7 @@ template <typename T> struct generator {
   struct promise_type {
     T current_value;
     auto get_return_object() { return generator{handle::from_promise(*this)}; }
-    auto initial_suspend() { return std::experimental::never{}; }
+    auto initial_suspend() { return std::experimental::suspend_never{}; }
     auto final_suspend() { return std::experimental::suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
     auto return_value(T value) {
