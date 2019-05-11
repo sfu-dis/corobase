@@ -156,12 +156,14 @@ class ycsb_worker : public bench_worker {
 
   rc_t txn_read_amac() {
     arena.reset();
-    as.clear();
 
     // Prepare states
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = GenerateKey();
-      as.emplace_back(&k);
+      if (as.size() < g_reps_per_tx)
+        as.emplace_back(&k);
+      else
+        as[i].reset(&k);
     }
 
     ermia::transaction *txn = nullptr;
