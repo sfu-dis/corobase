@@ -139,6 +139,14 @@ public:
     , ptr(nullptr)
     , sense(false)
     {}
+
+    void reset(const varstr *new_key) {
+      out_oid = INVALID_OID;
+      key = new_key;
+      stage = 0;
+      ptr = nullptr;
+      sense = false;
+    }
   };
 
   typedef Masstree::node_base<P> node_base_type;
