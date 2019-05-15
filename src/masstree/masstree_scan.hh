@@ -15,14 +15,13 @@
  */
 #ifndef MASSTREE_SCAN_HH
 #define MASSTREE_SCAN_HH
-#include "masstree_tcursor.hh"
 #include "masstree_struct.hh"
+#include "masstree_tcursor.hh"
 
 namespace Masstree {
 
-template <typename P>
-class scanstackelt {
- public:
+template <typename P> class scanstackelt {
+public:
   typedef leaf<P> leaf_type;
   typedef typename leaf_type::leafvalue_type leafvalue_type;
   typedef typename leaf_type::bound_type bound_type;
@@ -42,7 +41,7 @@ class scanstackelt {
     return n.n_->compare_key(k, p);
   }
 
- private:
+private:
   node_base<P> *root_;
   leaf<P> *n_;
   nodeversion_type v_;
@@ -56,8 +55,7 @@ class scanstackelt {
   template <typename H>
   int find_initial(H &helper, key_type &ka, bool emit_equal,
                    leafvalue_type &entry, threadinfo &ti);
-  template <typename H>
-  int find_retry(H &helper, key_type &ka, threadinfo &ti);
+  template <typename H> int find_retry(H &helper, key_type &ka, threadinfo &ti);
   template <typename H>
   int find_next(H &helper, key_type &ka, leafvalue_type &entry);
 
@@ -68,8 +66,7 @@ class scanstackelt {
       return -1;
   }
 
-  template <typename PX>
-  friend class basic_table;
+  template <typename PX> friend class basic_table;
 };
 
 struct forward_scan_helper {
@@ -80,8 +77,7 @@ struct forward_scan_helper {
   bool is_duplicate(const K &k, typename K::ikey_type ikey, int keylenx) const {
     return k.compare(ikey, keylenx) >= 0;
   }
-  template <typename K, typename N>
-  int lower(const K &k, const N *n) const {
+  template <typename K, typename N> int lower(const K &k, const N *n) const {
     return N::bound_type::lower_by(k, *n, *n).i;
   }
   template <typename K, typename N>
@@ -92,18 +88,14 @@ struct forward_scan_helper {
   }
   void found() const {}
   int next(int ki) const { return ki + 1; }
-  template <typename N, typename K>
-  N *advance(const N *n, const K &) const {
+  template <typename N, typename K> N *advance(const N *n, const K &) const {
     return n->safe_next();
   }
   template <typename N, typename K>
   typename N::nodeversion_type stable(const N *n, const K &) const {
     return n->stable();
   }
-  template <typename K>
-  void shift_clear(K &ka) const {
-    ka.shift_clear();
-  }
+  template <typename K> void shift_clear(K &ka) const { ka.shift_clear(); }
 };
 
 struct reverse_scan_helper {
@@ -123,9 +115,9 @@ struct reverse_scan_helper {
   bool is_duplicate(const K &k, typename K::ikey_type ikey, int keylenx) const {
     return k.compare(ikey, keylenx) <= 0 && !upper_bound_;
   }
-  template <typename K, typename N>
-  int lower(const K &k, const N *n) const {
-    if (upper_bound_) return n->size() - 1;
+  template <typename K, typename N> int lower(const K &k, const N *n) const {
+    if (upper_bound_)
+      return n->size() - 1;
     key_indexed_position kx = N::bound_type::lower_by(k, *n, *n);
     return kx.i - (kx.p < 0);
   }
@@ -137,8 +129,7 @@ struct reverse_scan_helper {
   }
   int next(int ki) const { return ki - 1; }
   void found() const { upper_bound_ = false; }
-  template <typename N, typename K>
-  N *advance(const N *n, K &k) const {
+  template <typename N, typename K> N *advance(const N *n, K &k) const {
     k.assign_store_ikey(n->ikey_bound());
     k.assign_store_length(0);
     return n->prev_;
@@ -155,13 +146,12 @@ struct reverse_scan_helper {
       n = next;
     }
   }
-  template <typename K>
-  void shift_clear(K &ka) const {
+  template <typename K> void shift_clear(K &ka) const {
     ka.shift_clear_reverse();
     upper_bound_ = true;
   }
 
- private:
+private:
   mutable bool upper_bound_;
 };
 
@@ -177,7 +167,8 @@ retry_root:
   n_ = root_->reach_leaf(ka, v_, ti);
 
 retry_node:
-  if (v_.deleted()) goto retry_root;
+  if (v_.deleted())
+    goto retry_root;
   n_->prefetch();
   perm_ = n_->permutation();
 
@@ -223,7 +214,8 @@ template <typename H>
 int scanstackelt<P>::find_retry(H &helper, key_type &ka, threadinfo &ti) {
 retry:
   n_ = root_->reach_leaf(ka, v_, ti);
-  if (v_.deleted()) goto retry;
+  if (v_.deleted())
+    goto retry;
 
   n_->prefetch();
   perm_ = n_->permutation();
@@ -236,7 +228,8 @@ template <typename H>
 int scanstackelt<P>::find_next(H &helper, key_type &ka, leafvalue_type &entry) {
   int kp;
 
-  if (v_.deleted()) return scan_retry;
+  if (v_.deleted())
+    return scan_retry;
 
 retry_entry:
   kp = this->kp();
@@ -271,7 +264,8 @@ retry_entry:
 
   if (!n_->has_changed(v_)) {
     n_ = helper.advance(n_, ka);
-    if (!n_) return scan_up;
+    if (!n_)
+      return scan_up;
     n_->prefetch();
   }
 
@@ -311,53 +305,56 @@ int basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
   while (1) {
     state = stack[stackpos].find_initial(helper, ka, emit_firstkey, entry, ti);
     scanner.visit_leaf(stack[stackpos], ka, ti);
-    if (state != mystack_type::scan_down) break;
+    if (state != mystack_type::scan_down)
+      break;
     ka.shift();
     ++stackpos;
   }
 
   while (1) {
     switch (state) {
-      case mystack_type::scan_emit: {  // surpress cross init warning about v
-        ++scancount;
-        ermia::dbtuple *v = NULL;
-        ermia::OID o = entry.value();
-        if (ermia::config::is_backup_srv()) {
-          v = ermia::oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
-        } else {
-          v = ermia::oidmgr->oid_get_version(tuple_array_, o, xc);
-        }
-        if (v) {
-          if (!scanner.visit_value(ka, v)) goto done;
-        }
+    case mystack_type::scan_emit: { // surpress cross init warning about v
+      ++scancount;
+      ermia::dbtuple *v = NULL;
+      ermia::OID o = entry.value();
+      if (ermia::config::is_backup_srv()) {
+        v = ermia::oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
+      } else {
+        v = ermia::oidmgr->oid_get_version(tuple_array_, o, xc);
+      }
+      if (v) {
+        if (!scanner.visit_value(ka, v))
+          goto done;
+      }
+      stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
+      state = stack[stackpos].find_next(helper, ka, entry);
+    } break;
+
+    case mystack_type::scan_find_next:
+    find_next:
+      state = stack[stackpos].find_next(helper, ka, entry);
+      if (state != mystack_type::scan_up)
+        scanner.visit_leaf(stack[stackpos], ka, ti);
+      break;
+
+    case mystack_type::scan_up:
+      do {
+        if (--stackpos < 0)
+          goto done;
+        ka.unshift();
         stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
-        state = stack[stackpos].find_next(helper, ka, entry);
-      } break;
+      } while (unlikely(ka.empty()));
+      goto find_next;
 
-      case mystack_type::scan_find_next:
-      find_next:
-        state = stack[stackpos].find_next(helper, ka, entry);
-        if (state != mystack_type::scan_up)
-          scanner.visit_leaf(stack[stackpos], ka, ti);
-        break;
+    case mystack_type::scan_down:
+      helper.shift_clear(ka);
+      ++stackpos;
+      goto retry;
 
-      case mystack_type::scan_up:
-        do {
-          if (--stackpos < 0) goto done;
-          ka.unshift();
-          stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
-        } while (unlikely(ka.empty()));
-        goto find_next;
-
-      case mystack_type::scan_down:
-        helper.shift_clear(ka);
-        ++stackpos;
-        goto retry;
-
-      case mystack_type::scan_retry:
-      retry:
-        state = stack[stackpos].find_retry(helper, ka, ti);
-        break;
+    case mystack_type::scan_retry:
+    retry:
+      state = stack[stackpos].find_retry(helper, ka, ti);
+      break;
     }
   }
 
@@ -379,5 +376,98 @@ int basic_table<P>::rscan(Str firstkey, bool emit_firstkey, F &scanner,
   return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
-}  // namespace Masstree
+template <typename P>
+template <typename H, typename F>
+int basic_table<P>::scan_oid(H helper, Str firstkey, bool emit_firstkey, F &scanner,
+                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  typedef typename P::ikey_type ikey_type;
+  typedef typename node_type::key_type key_type;
+  typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
+  union {
+    ikey_type
+        x[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+    char s[MASSTREE_MAXKEYLEN];
+  } keybuf;
+  masstree_precondition(firstkey.len <= (int)sizeof(keybuf));
+  memcpy(keybuf.s, firstkey.s, firstkey.len);
+  key_type ka(keybuf.s, firstkey.len);
+
+  typedef scanstackelt<param_type> mystack_type;
+  mystack_type
+      stack[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+  int stackpos = 0;
+  stack[0].root_ = root_;
+  leafvalue_type entry = leafvalue_type::make_empty();
+
+  int scancount = 0;
+  int state;
+
+  while (1) {
+    state = stack[stackpos].find_initial(helper, ka, emit_firstkey, entry, ti);
+    scanner.visit_leaf(stack[stackpos], ka, ti);
+    if (state != mystack_type::scan_down)
+      break;
+    ka.shift();
+    ++stackpos;
+  }
+
+  while (1) {
+    switch (state) {
+    case mystack_type::scan_emit: { // surpress cross init warning about v
+      ++scancount;
+      ermia::dbtuple *v = NULL;
+      ermia::OID oid = entry.value();
+      if (!scanner.visit_oid(ka, oid))
+        goto done;
+      stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
+      state = stack[stackpos].find_next(helper, ka, entry);
+    } break;
+
+    case mystack_type::scan_find_next:
+    find_next:
+      state = stack[stackpos].find_next(helper, ka, entry);
+      if (state != mystack_type::scan_up)
+        scanner.visit_leaf(stack[stackpos], ka, ti);
+      break;
+
+    case mystack_type::scan_up:
+      do {
+        if (--stackpos < 0)
+          goto done;
+        ka.unshift();
+        stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
+      } while (unlikely(ka.empty()));
+      goto find_next;
+
+    case mystack_type::scan_down:
+      helper.shift_clear(ka);
+      ++stackpos;
+      goto retry;
+
+    case mystack_type::scan_retry:
+    retry:
+      state = stack[stackpos].find_retry(helper, ka, ti);
+      break;
+    }
+  }
+
+done:
+  return scancount;
+}
+
+template <typename P>
+template <typename F>
+int basic_table<P>::scan_oid(Str firstkey, bool emit_firstkey, F &scanner,
+                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  return scan_oid(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+}
+
+template <typename P>
+template <typename F>
+int basic_table<P>::rscan_oid(Str firstkey, bool emit_firstkey, F &scanner,
+                          ermia::TXN::xid_context *xc, threadinfo &ti) const {
+  return scan_oid(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+}
+
+} // namespace Masstree
 #endif

@@ -51,6 +51,8 @@ class unlocked_tcursor {
         lv_(leafvalue<P>::make_empty()),
         root_(table.fix_root()) {}
 
+  inline unlocked_tcursor() {}
+
   bool find_unlocked(threadinfo& ti);
 
   inline value_type value() const { return lv_.value(); }
@@ -67,7 +69,7 @@ class unlocked_tcursor {
            perm_.size();
   }
 
- private:
+ public:
   leaf<P>* n_;
   key_type ka_;
   typename leaf<P>::nodeversion_type v_;
@@ -127,6 +129,7 @@ class tcursor {
   inline const new_nodes_type& new_nodes() const { return new_nodes_; }
 
   inline bool find_locked(threadinfo& ti);
+
   inline bool find_insert(threadinfo& ti);
 
   inline void finish(int answer, threadinfo& ti);

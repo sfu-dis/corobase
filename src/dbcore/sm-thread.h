@@ -155,7 +155,7 @@ inline void PutThread(Thread *t) { thread_pools[t->node].PutThread(t); }
 // not with Thread.
 struct Runner {
   Runner(bool physical = true) : me(nullptr), physical(physical) {}
-  virtual ~Runner() {
+  ~Runner() {
     if (me) {
       Join();
     }
@@ -173,6 +173,16 @@ struct Runner {
   inline bool TryImpersonate(bool sleep_when_idle = true) {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(physical);
+    if (me) {
+      LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
+      me->sleep_when_idle = sleep_when_idle;
+    }
+    return me != nullptr;
+  }
+
+  inline bool TryImpersonate(uint32_t node, bool sleep_when_idle = true) {
+    ALWAYS_ASSERT(not me);
+    me = thread::GetThread(node, physical);
     if (me) {
       LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;

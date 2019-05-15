@@ -45,7 +45,7 @@ static int g_new_order_fast_id_gen = 0;
 static int g_uniform_item_dist = 0;
 static int g_order_status_scan_hack = 0;
 static int g_wh_temperature = 0;
-static uint g_microbench_rows = 100000;  // this many rows
+static uint g_microbench_rows = 10;  // this many rows
 // can't have both ratio and rows at the same time
 static int g_microbench_wr_rows = 0;  // this number of rows to write
 static int g_nr_suppliers = 10000;
@@ -2280,11 +2280,10 @@ rc_t tpcc_worker::txn_microbench_random() {
   ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);
 
   // pick start row, if it's not enough, later wrap to the first row
-  uint w = start_w = RandomNumber(r, 1, NumWarehouses() + 1);
-  uint s = start_s = RandomNumber(r, 1, NumItems() + 1);
+  uint w = start_w = RandomNumber(r, 1, NumWarehouses());
+  uint s = start_s = RandomNumber(r, 1, NumItems());
 
   // read rows
-  stock::value v;
   ermia::varstr sv;
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
@@ -2399,7 +2398,7 @@ class tpcc_bench_runner : public bench_runner {
             s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(i);
           }
           auto ss_name = s_name + "_" + std::to_string(i);
-          db->CreateMasstreeTable(ss_name.c_str(), s_primary_name.c_str());
+          db->CreateMasstreeTable(ss_name.c_str(), false, s_primary_name.c_str());
         }
       } else {
         const unsigned nwhse_per_partition =
@@ -2414,11 +2413,11 @@ class tpcc_bench_runner : public bench_runner {
             s_primary_name = std::string(primary_idx_name) + "_" + std::to_string(partid);
           }
           db->CreateMasstreeTable((s_name + std::string("_") + std::to_string(partid)).c_str(),
-                          s_primary_name.c_str());
+                                  false, s_primary_name.c_str());
         }
       }
     } else {
-      db->CreateMasstreeTable(name, primary_idx_name);
+      db->CreateMasstreeTable(name, false, primary_idx_name);
     }
   }
 

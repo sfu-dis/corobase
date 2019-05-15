@@ -10,7 +10,10 @@
 #include "../dbcore/sm-log-alloc.h"
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
+extern void ycsb_dia_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_do_test(ermia::Engine *db, int argc, char **argv);
+extern void tpcc_dia_do_test(ermia::Engine *db, int argc, char **argv);
+extern void tpcc_dora_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpce_do_test(ermia::Engine *db, int argc, char **argv);
 
 enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
@@ -33,8 +36,10 @@ static std::vector<T> unique_filter(const std::vector<T> &v) {
 class bench_loader : public ermia::thread::Runner {
  public:
   bench_loader(unsigned long seed, ermia::Engine *db,
-               const std::map<std::string, ermia::OrderedIndex *> &open_tables)
-      : Runner(), r(seed), db(db), open_tables(open_tables) {
+               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+               uint32_t loader_id = 0)
+      : Runner(loader_id < ermia::config::threads ? true : false)
+      , r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load. The way we
     // reuse
     // threads relies on this fact (see bench_runner::run()).
@@ -68,7 +73,7 @@ class bench_worker : public ermia::thread::Runner {
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
                ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
-      : Runner(ermia::config::physical_workers_only ? true : (worker_id % 2 == 0)),
+      : Runner(ermia::config::physical_workers_only ? true : (worker_id >= ermia::config::worker_threads / 2)),
         worker_id(worker_id),
         is_worker(is_worker),
         r(seed),
@@ -90,7 +95,12 @@ class bench_worker : public ermia::thread::Runner {
         ntxn_phantom_aborts(0),
         ntxn_query_commits(0) {
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
-    TryImpersonate();
+    if (ermia::config::numa_spread) {
+      LOG(INFO) << "Worker " << worker_id << " going to node " << worker_id % ermia::config::numa_nodes;
+      TryImpersonate(worker_id % ermia::config::numa_nodes);
+    } else {
+      TryImpersonate();
+    }
   }
   ~bench_worker() {}
 

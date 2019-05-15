@@ -127,15 +127,28 @@ protected:
 
   inline str_arena &string_allocator() { return *sa; }
 
+#if defined(SSN) || defined(SSI) || defined(MVOCC)
+  inline read_set_t &GetReadSet() {
+    thread_local read_set_t read_set;
+    return read_set;
+  }
+#endif
+
+  inline write_set_t &GetWriteSet() {
+    thread_local write_set_t write_set;
+    return write_set;
+  }
+
   inline void add_to_write_set(fat_ptr *entry) {
 #ifndef NDEBUG
+    auto &write_set = GetWriteSet();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
     }
 #endif
-    write_set.emplace_back(entry);
+    GetWriteSet().emplace_back(entry);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
@@ -146,10 +159,6 @@ protected:
   TXN::xid_context *xc;
   sm_tx_log *log;
   str_arena *sa;
-  write_set_t &write_set;
-#if defined(SSN) || defined(SSI) || defined(MVOCC)
-  read_set_t *read_set;
-#endif
 };
 
 }  // namespace ermia

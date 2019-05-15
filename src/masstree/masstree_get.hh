@@ -17,6 +17,7 @@
 #define MASSTREE_GET_HH 1
 #include "masstree_tcursor.hh"
 #include "masstree_key.hh"
+#include "../dbcore/sm-coroutine.h"
 namespace Masstree {
 
 template <typename P>
