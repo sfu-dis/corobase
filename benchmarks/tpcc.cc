@@ -169,7 +169,7 @@ class tpcc_worker_mixin : private _dummy {
   tpcc_worker_mixin(const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions)
       : _dummy()  // so hacky...
         TPCC_TABLE_LIST(DEFN_TBL_INIT_X) {
-    ermia::ALWAYS_ASSERT(NumWarehouses() >= 1);
+    ALWAYS_ASSERT(NumWarehouses() >= 1);
   }
 
 #undef DEFN_TBL_INIT_X
@@ -193,7 +193,7 @@ class tpcc_worker_mixin : private _dummy {
  public:
   static inline uint32_t GetCurrentTimeMillis() {
     // struct timeval tv;
-    // ermia::ALWAYS_ASSERT(gettimeofday(&tv, 0) == 0);
+    // ALWAYS_ASSERT(gettimeofday(&tv, 0) == 0);
     // return tv.tv_sec * 1000;
 
     // XXX(stephentu): implement a scalable GetCurrentTimeMillis()
@@ -453,7 +453,7 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
     unsigned m = 0;
     for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
       m += g_txn_workload_mix[i];
-    ermia::ALWAYS_ASSERT(m == 100);
+    ALWAYS_ASSERT(m == 100);
     if (g_txn_workload_mix[0])
       w.push_back(workload_desc(
           "NewOrder", double(g_txn_workload_mix[0]) / 100.0, TxnNewOrder));
@@ -669,7 +669,7 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       TryVerifyStrict(rc);
 
       const warehouse::value *v = Decode(warehouse_v, warehouse_temp);
-      ermia::ALWAYS_ASSERT(warehouses[i - 1] == *v);
+      ALWAYS_ASSERT(warehouses[i - 1] == *v);
 
 #ifndef NDEBUG
       checker::SanityCheckWarehouse(&k, v);
@@ -751,7 +751,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
         warehouse_id(warehouse_id) {
-    ermia::ALWAYS_ASSERT(warehouse_id == -1 ||
+    ALWAYS_ASSERT(warehouse_id == -1 ||
                   (warehouse_id >= 1 &&
                    static_cast<size_t>(warehouse_id) <= NumWarehouses()));
   }
@@ -900,7 +900,7 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
         warehouse_id(warehouse_id) {
-    ermia::ALWAYS_ASSERT(warehouse_id == -1 ||
+    ALWAYS_ASSERT(warehouse_id == -1 ||
                   (warehouse_id >= 1 &&
                    static_cast<size_t>(warehouse_id) <= NumWarehouses()));
   }
@@ -1039,7 +1039,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpcc_worker_mixin(partitions),
         warehouse_id(warehouse_id) {
-    ermia::ALWAYS_ASSERT(warehouse_id == -1 ||
+    ALWAYS_ASSERT(warehouse_id == -1 ||
                   (warehouse_id >= 1 &&
                    static_cast<size_t>(warehouse_id) <= NumWarehouses()));
   }
@@ -1660,7 +1660,7 @@ rc_t tpcc_worker::txn_credit_check() {
                 ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
                        &Encode(str(Size(k_no_1)), k_no_1), c_no,
                        s_arena.get()));
-  ermia::ALWAYS_ASSERT(c_no.output.size());
+  ALWAYS_ASSERT(c_no.output.size());
 
   double sum = 0;
   for (auto &k : c_no.output) {
@@ -1685,7 +1685,7 @@ rc_t tpcc_worker::txn_credit_check() {
                   ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                          &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
                          s_arena.get()));
-    ermia::ALWAYS_ASSERT(c_ol._v_ol.size());
+    ALWAYS_ASSERT(c_ol._v_ol.size());
 
     for (auto &v_ol : c_ol._v_ol) {
       order_line::value v_ol_temp;
@@ -1805,7 +1805,7 @@ rc_t tpcc_worker::txn_payment() {
                   ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
                          &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
                          s_arena.get()));
-    ermia::ALWAYS_ASSERT(c.size() > 0);
+    ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
     if (c.size() % 2 == 0) index--;
@@ -1892,7 +1892,7 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
  public:
   latest_key_callback(ermia::varstr &k, int32_t limit = -1)
       : limit(limit), n(0), k(&k) {
-    ermia::ALWAYS_ASSERT(limit == -1 || limit > 0);
+    ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
 
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
@@ -1961,7 +1961,7 @@ rc_t tpcc_worker::txn_order_status() {
                   ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
                          &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
                          s_arena.get()));
-    ermia::ALWAYS_ASSERT(c.size() > 0);
+    ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
     if (c.size() % 2 == 0) index--;
@@ -2010,7 +2010,7 @@ rc_t tpcc_worker::txn_order_status() {
                            &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
                            s_arena.get()));
     }
-    ermia::ALWAYS_ASSERT(c_oorder.size());
+    ALWAYS_ASSERT(c_oorder.size());
   } else {
     latest_key_callback c_oorder(*newest_o_c_id, 1);
     const oorder_c_id_idx::key k_oo_idx_hi(warehouse_id, districtID, k_c.c_id,
@@ -2018,7 +2018,7 @@ rc_t tpcc_worker::txn_order_status() {
     TryCatch(tbl_oorder_c_id_idx(warehouse_id)
                   ->ReverseScan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
                                 nullptr, c_oorder, s_arena.get()));
-    ermia::ALWAYS_ASSERT(c_oorder.size() == 1);
+    ALWAYS_ASSERT(c_oorder.size() == 1);
   }
 
   oorder_c_id_idx::key k_oo_idx_temp;
@@ -2033,7 +2033,7 @@ rc_t tpcc_worker::txn_order_status() {
                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                        &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line,
                        s_arena.get()));
-  ermia::ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
+  ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
   TryCatch(db->Commit(txn));
   return {RC_TRUE};
@@ -2146,7 +2146,7 @@ rc_t tpcc_worker::txn_query2() {
   TryCatch(tbl_region(1)->Scan(txn, Encode(str(sizeof(k_r_0)), k_r_0),
                                 &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner,
                                 s_arena.get()));
-  ermia::ALWAYS_ASSERT(r_scanner.output.size() == 5);
+  ALWAYS_ASSERT(r_scanner.output.size() == 5);
 
   static thread_local tpcc_table_scanner n_scanner(&arena);
   n_scanner.clear();
@@ -2155,12 +2155,12 @@ rc_t tpcc_worker::txn_query2() {
   TryCatch(tbl_nation(1)->Scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
                                 &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
                                 s_arena.get()));
-  ermia::ALWAYS_ASSERT(n_scanner.output.size() == 62);
+  ALWAYS_ASSERT(n_scanner.output.size() == 62);
 
   // Pick a target region
   auto target_region = RandomNumber(r, 0, 4);
   //	auto target_region = 3;
-  ermia::ALWAYS_ASSERT(0 <= target_region and target_region <= 4);
+  ALWAYS_ASSERT(0 <= target_region and target_region <= 4);
 
   // Scan region
   for (auto &r_r : r_scanner.output) {
@@ -2524,7 +2524,7 @@ class tpcc_bench_runner : public bench_runner {
   }
 
   virtual std::vector<bench_worker *> make_cmdlog_redoers() {
-    ermia::ALWAYS_ASSERT(ermia::config::is_backup_srv() && ermia::config::command_log);
+    ALWAYS_ASSERT(ermia::config::is_backup_srv() && ermia::config::command_log);
     util::fast_random r(23984543);
     std::vector<bench_worker *> ret;
     for (size_t i = 0; i < ermia::config::replay_threads; i++) {
@@ -2575,7 +2575,7 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
 
       case 'n':
         g_microbench_rows = strtoul(optarg, NULL, 10);
-        ermia::ALWAYS_ASSERT(g_microbench_rows > 0);
+        ALWAYS_ASSERT(g_microbench_rows > 0);
         break;
 
       case 'q':
@@ -2584,26 +2584,26 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
 
       case 'r':
         g_new_order_remote_item_pct = strtoul(optarg, NULL, 10);
-        ermia::ALWAYS_ASSERT(g_new_order_remote_item_pct >= 0 &&
+        ALWAYS_ASSERT(g_new_order_remote_item_pct >= 0 &&
                       g_new_order_remote_item_pct <= 100);
         did_spec_remote_pct = true;
         break;
 
       case 'w': {
         const std::vector<std::string> toks = util::split(optarg, ',');
-        ermia::ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
+        ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
         unsigned s = 0;
         for (size_t i = 0; i < toks.size(); i++) {
           unsigned p = strtoul(toks[i].c_str(), nullptr, 10);
-          ermia::ALWAYS_ASSERT(p >= 0 && p <= 100);
+          ALWAYS_ASSERT(p >= 0 && p <= 100);
           s += p;
           g_txn_workload_mix[i] = p;
         }
-        ermia::ALWAYS_ASSERT(s == 100);
+        ALWAYS_ASSERT(s == 100);
       } break;
       case 'z':
         g_nr_suppliers = strtoul(optarg, NULL, 10);
-        ermia::ALWAYS_ASSERT(g_nr_suppliers > 0);
+        ALWAYS_ASSERT(g_nr_suppliers > 0);
         break;
 
       case '?':
@@ -2623,7 +2623,7 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
 
   if (g_wh_temperature) {
     // set up hot and cold WHs
-    ermia::ALWAYS_ASSERT(NumWarehouses() * 0.2 >= 1);
+    ALWAYS_ASSERT(NumWarehouses() * 0.2 >= 1);
     uint num_hot_whs = NumWarehouses() * 0.2;
     util::fast_random r(23984543);
     for (uint i = 1; i <= num_hot_whs; i++) {
@@ -2641,7 +2641,7 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
           tpcc_worker::hot_whs.end())
         tpcc_worker::cold_whs.push_back(i);
     }
-    ermia::ALWAYS_ASSERT(tpcc_worker::cold_whs.size() + tpcc_worker::hot_whs.size() ==
+    ALWAYS_ASSERT(tpcc_worker::cold_whs.size() + tpcc_worker::hot_whs.size() ==
                   NumWarehouses());
   }
 
@@ -2952,7 +2952,7 @@ rc_t tpcc_cmdlog_redoer::txn_payment(uint warehouse_id) {
                   ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
                          &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
                          s_arena.get()));
-    ermia::ALWAYS_ASSERT(c.size() > 0);
+    ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
     if (c.size() % 2 == 0) index--;

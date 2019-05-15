@@ -288,11 +288,6 @@ void ConcurrentMasstreeIndex::coro_MultiGet(
         }
       }
     }
-    volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-  } else if (config::phantom_prot) {
-    volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
-  } else {
-    volatile_write(rc._val, RC_FALSE);
   }
   MM::epoch_exit(0, e);
 }

@@ -122,8 +122,8 @@ class bench_worker : public ermia::thread::Runner {
     workload_desc() {}
     workload_desc(const std::string &name, double frequency, txn_fn_t fn)
         : name(name), frequency(frequency), fn(fn) {
-      ermia::ALWAYS_ASSERT(frequency > 0.0);
-      ermia::ALWAYS_ASSERT(frequency <= 1.0);
+      ALWAYS_ASSERT(frequency > 0.0);
+      ALWAYS_ASSERT(frequency <= 1.0);
     }
     std::string name;
     double frequency;
@@ -246,7 +246,7 @@ class bench_runner {
 class limit_callback : public ermia::OrderedIndex::ScanCallback {
  public:
   limit_callback(ssize_t limit = -1) : limit(limit), n(0) {
-    ermia::ALWAYS_ASSERT(limit == -1 || limit > 0);
+    ALWAYS_ASSERT(limit == -1 || limit > 0);
   }
 
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
@@ -306,7 +306,7 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort() or r._val == RC_FALSE) __abort_txn(r); \
 }
 
-// combines the try...catch block with ermia::ALWAYS_ASSERT and allows abort.
+// combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
 // abort (by SSN). Use try_verify_strict if you need rc=true.

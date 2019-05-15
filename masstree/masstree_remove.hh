@@ -255,7 +255,6 @@ struct destroy_rcu_callback : public P::threadinfo_type::rcu_callback {
   node_base<P>* root_;
   int count_;
   destroy_rcu_callback(node_base<P>* root) : root_(root), count_(0) {}
-  virtual ~destroy_rcu_callback() {}
   void operator()(threadinfo& ti);
   static void make(node_base<P>* root, Str prefix, threadinfo& ti);
 

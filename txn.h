@@ -50,7 +50,7 @@ struct write_set_t {
 
 class transaction {
   friend class ConcurrentMasstreeIndex;
-  friend struct sm_oid_mgr;
+  friend class sm_oid_mgr;
 
 public:
   typedef TXN::txn_state txn_state;

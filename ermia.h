@@ -65,7 +65,6 @@ public:
   OrderedIndex(std::string name, const char *primary = nullptr) {
     descriptor_ = IndexDescriptor::New(this, name, primary);
   }
-  virtual ~OrderedIndex() {}
   inline IndexDescriptor *GetDescriptor() { return descriptor_; }
   virtual void *GetTable() = 0;
 
@@ -83,8 +82,6 @@ public:
     virtual bool Receive(transaction *t, IndexDescriptor *descriptor_) = 0;
   };
 
-  virtual void GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-                      ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
   /**
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
@@ -167,7 +164,7 @@ public:
 
 // User-facing concurrent Masstree
 class ConcurrentMasstreeIndex : public OrderedIndex {
-  friend struct sm_log_recover_impl;
+  friend class sm_log_recover_impl;
   friend class sm_chkpt_mgr;
 
 private:
