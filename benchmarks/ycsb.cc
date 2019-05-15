@@ -28,8 +28,6 @@ int g_zipfian_rng = 0;
 double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it approaches 1.
 int g_distinct_keys = 0;
 
-util::fast_random rnd_record_select(477377);
-
 // { insert, read, update, scan, rmw }
 YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
 YcsbWorkload YcsbWorkloadB('B', 0, 95U, 100U, 0, 0);  // Workload B - 95% read, 5% update
@@ -283,15 +281,6 @@ class ycsb_worker : public bench_worker {
     return k;
   }
 
-  ermia::varstr &BuildKey(int worker_id) {
-    uint64_t hi = rnd_record_select.next_uniform() * ermia::config::worker_threads;
-    uint64_t lo = rnd_record_select.next_uniform() * local_key_counter[worker_id];
-    ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
-    new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
-    ::BuildKey(hi, lo, k);
-    return k;
-  }
-
  private:
   ermia::ConcurrentMasstreeIndex *tbl;
   foedus::assorted::UniformRandom uniform_rng;
@@ -472,7 +461,7 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
     }
   }
 
-  ermia::ALWAYS_ASSERT(g_initial_table_size);
+  ALWAYS_ASSERT(g_initial_table_size);
 
   if (ermia::config::verbose) {
     std::cerr << "ycsb settings:" << std::endl

@@ -19,9 +19,9 @@
 
 namespace ermia {
 class object;
-struct sm_log_file_mgr;
-struct segment_id;
-struct sm_log_recover_impl;
+class sm_log_file_mgr;
+class segment_id;
+class sm_log_recover_impl;
 
 struct sm_tx_log {
   /* Record an insertion. The payload of the version will be

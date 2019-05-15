@@ -7,7 +7,7 @@
 namespace ermia {
 
 struct dbtuple;
-struct sm_log_recover_mgr;
+class sm_log_recover_mgr;
 
 class Object {
  private:

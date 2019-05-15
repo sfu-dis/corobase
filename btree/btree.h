@@ -13,7 +13,6 @@ protected:
 
 public:
   Node() : num_keys_(0) {}
-  virtual ~Node() {}
   inline uint32_t NumKeys() { return num_keys_; }
   virtual bool IsLeaf() = 0;
   virtual void Dump() = 0;

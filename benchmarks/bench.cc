@@ -89,7 +89,7 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
         inc_ntxn_user_aborts();
         break;
       default:
-        ermia::ALWAYS_ASSERT(false);
+        ALWAYS_ASSERT(false);
     }
     if (ermia::config::retry_aborted_transactions && !ret.IsUserAbort() && running) {
       if (ermia::config::backoff_aborted_transactions) {
@@ -137,7 +137,7 @@ void bench_worker::MyWork(char *) {
 }
 
 void bench_runner::create_files_task(char *) {
-  ermia::ALWAYS_ASSERT(!ermia::sm_log::need_recovery && !ermia::config::is_backup_srv());
+  ALWAYS_ASSERT(!ermia::sm_log::need_recovery && !ermia::config::is_backup_srv());
   // Allocate an FID for each index, set 2nd indexes to use
   // the primary index's record FID/array
   ASSERT(ermia::logmgr);
@@ -216,7 +216,7 @@ void bench_runner::run() {
     }
     ermia::RCU::rcu_enter();
     ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::logmgr->cur_lsn().offset());
-    ermia::ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
+    ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
     // Persist the database
     ermia::logmgr->flush();
@@ -258,7 +258,7 @@ void bench_runner::run() {
     }
   } else {
     if (ermia::config::num_backups) {
-      ermia::ALWAYS_ASSERT(not ermia::config::is_backup_srv());
+      ALWAYS_ASSERT(not ermia::config::is_backup_srv());
       ermia::rep::start_as_primary();
       if (ermia::config::wait_for_backups) {
         while (ermia::volatile_read(ermia::config::num_active_backups) !=
@@ -346,7 +346,7 @@ void bench_runner::measure_read_view_lsn() {
 
 void bench_runner::start_measurement() {
   workers = make_workers();
-  ermia::ALWAYS_ASSERT(!workers.empty());
+  ALWAYS_ASSERT(!workers.empty());
   for (std::vector<bench_worker *>::const_iterator it = workers.begin();
        it != workers.end(); ++it) {
     while (!(*it)->IsImpersonated()) {

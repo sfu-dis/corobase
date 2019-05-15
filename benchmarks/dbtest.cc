@@ -234,7 +234,7 @@ int main(int argc, char **argv) {
       ermia::config::nvram_delay_type = ermia::config::kDelayClflush;
       ermia::config::cycles_per_byte = 0;
     } else {
-      ermia::ALWAYS_ASSERT(FLAGS_nvram_delay_type == "none");
+      ALWAYS_ASSERT(FLAGS_nvram_delay_type == "none");
       ermia::config::nvram_delay_type = ermia::config::kDelayNone;
       ermia::config::cycles_per_byte = 0;
     }
@@ -273,9 +273,9 @@ int main(int argc, char **argv) {
     ermia::config::worker_threads = FLAGS_threads - FLAGS_replay_threads;
 
     ermia::RCU::rcu_register();
-    ermia::ALWAYS_ASSERT(ermia::config::log_dir.size());
-    ermia::ALWAYS_ASSERT(not ermia::logmgr);
-    ermia::ALWAYS_ASSERT(not ermia::oidmgr);
+    ALWAYS_ASSERT(ermia::config::log_dir.size());
+    ALWAYS_ASSERT(not ermia::logmgr);
+    ALWAYS_ASSERT(not ermia::oidmgr);
     ermia::RCU::rcu_enter();
     ermia::sm_log::allocate_log_buffer();
     if (ermia::config::log_ship_by_rdma) {

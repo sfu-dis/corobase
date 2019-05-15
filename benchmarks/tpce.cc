@@ -17,7 +17,7 @@ using namespace TPCE;
 #define TryTPCEOutput(op)                   \
 {                                           \
   rc_t r = op;                              \
-  if (r.IsAbort()) return r;             \
+  if (rc_is_abort(r)) return r;             \
   if (output.status == 0) return {RC_TRUE}; \
   return {RC_ABORT_USER};                   \
 }
@@ -102,14 +102,14 @@ class tpce_table_scanner : public ermia::OrderedIndex::ScanCallback {
 int64_t GetLastListID() {
   // TODO. decentralize,  thread ID + local counter and TLS
   auto ret = __sync_add_and_fetch(&last_list, 1);
-  ermia::ALWAYS_ASSERT(ret);
+  ALWAYS_ASSERT(ret);
   return ret;
 }
 
 int64_t GetLastTradeID() {
   // TODO. decentralize,  thread ID + local counter and TLS
   auto ret = __sync_add_and_fetch(&lastTradeId, 1);
-  ermia::ALWAYS_ASSERT(ret);
+  ALWAYS_ASSERT(ret);
   return ret;
 }
 
@@ -199,10 +199,17 @@ class tpce_worker_mixin : private _dummy {
 
 #undef DEFN_TBL_ACCESSOR_X
 
+  // only TPCE loaders need to call this- workers are automatically
+  // pinned by their worker id (which corresponds to partition id
+  // in TPCE)
+  //
+  // pins the *calling* thread
+  static void PinToPartition(unsigned int pid) {}
+
  public:
   static inline uint32_t GetCurrentTimeMillis() {
     // struct timeval tv;
-    // ermia::ALWAYS_ASSERT(gettimeofday(&tv, 0) == 0);
+    // ALWAYS_ASSERT(gettimeofday(&tv, 0) == 0);
     // return tv.tv_sec * 1000;
 
     // XXX(stephentu): implement a scalable GetCurrentTimeMillis()
@@ -216,8 +223,6 @@ class tpce_worker_mixin : private _dummy {
 
   static ALWAYS_INLINE int CheckBetweenInclusive(int v, int lower,
                                                         int upper) {
-    MARK_REFERENCED(lower);
-    MARK_REFERENCED(upper);
     ASSERT(v >= lower);
     ASSERT(v <= upper);
     return v;
@@ -300,10 +305,10 @@ class tpce_worker : public bench_worker,
 
     auto i = worker_id % ermia::config::worker_threads;
     mee = mees[i];
-    ermia::ALWAYS_ASSERT(i >= 0 and i < mees.size());
+    ALWAYS_ASSERT(i >= 0 and i < mees.size());
     MarketFeedInputBuffer = MarketFeedInputBuffers[i];
     TradeResultInputBuffer = TradeResultInputBuffers[i];
-    ermia::ALWAYS_ASSERT(TradeResultInputBuffer and MarketFeedInputBuffer and mee);
+    ALWAYS_ASSERT(TradeResultInputBuffer and MarketFeedInputBuffer and mee);
   }
 
   // Market Interface
@@ -367,7 +372,7 @@ class tpce_worker : public bench_worker,
     auto ret = harness->DoTxn((PMarketFeedTxnInput)input,
                               (PMarketFeedTxnOutput)&output);
     delete input;
-    if (not ret.IsAbort()) {
+    if (not rc_is_abort(ret)) {
       if (output.status == 0)
         return {RC_TRUE};
       else {
@@ -484,7 +489,7 @@ class tpce_worker : public bench_worker,
     auto ret = harness->DoTxn((PTradeResultTxnInput)input,
                               (PTradeResultTxnOutput)&output);
     delete input;
-    if (not ret.IsAbort()) {
+    if (not rc_is_abort(ret)) {
       if (output.status == 0)
         return {RC_TRUE};
       else
@@ -594,7 +599,7 @@ class tpce_worker : public bench_worker,
     double m = 0;
     for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
       m += g_txn_workload_mix[i];
-    ermia::ALWAYS_ASSERT(m == 100);
+    ALWAYS_ASSERT(m == 100);
     if (g_txn_workload_mix[0])
       w.push_back(workload_desc(
           "BrokerVolume", double(g_txn_workload_mix[0]) / 100.0, BrokerVolume));
@@ -714,7 +719,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
   TryCatch(tbl_sector(1)->Scan(txn, Encode(str(sizeof(k_sc_0)), k_sc_0),
                                 &Encode(str(sizeof(k_sc_1)), k_sc_1),
                                 sc_scanner, &arena));
-  ermia::ALWAYS_ASSERT(sc_scanner.output.size() == 1);
+  ALWAYS_ASSERT(sc_scanner.output.size() == 1);
   for (auto &r_sc : sc_scanner.output) {
     sector::key k_sc_temp;
     const sector::key *k_sc = Decode(*r_sc.first, k_sc_temp);
@@ -727,7 +732,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
     TryCatch(tbl_in_sc_id_index(1)->Scan(
         txn, Encode(str(sizeof(k_in_0)), k_in_0),
         &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
-    ermia::ALWAYS_ASSERT(in_scanner.output.size());
+    ALWAYS_ASSERT(in_scanner.output.size());
 
     for (auto &r_in : in_scanner.output) {
       in_sc_id_index::key k_in_temp;
@@ -740,7 +745,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
       TryCatch(tbl_co_in_id_index(1)->Scan(
           txn, Encode(str(sizeof(k_in_0)), k_in_0),
           &Encode(str(sizeof(k_in_1)), k_in_1), co_scanner, &arena));
-      ermia::ALWAYS_ASSERT(co_scanner.output.size());
+      ALWAYS_ASSERT(co_scanner.output.size());
       for (auto &r_co : co_scanner.output) {
         co_in_id_index::key k_co_temp;
         const co_in_id_index::key *k_co = Decode(*r_co.first, k_co_temp);
@@ -756,7 +761,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
         TryCatch(tbl_security_index(1)->Scan(
             txn, Encode(str(sizeof(k_s_0)), k_s_0),
             &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
-        ermia::ALWAYS_ASSERT(s_scanner.output.size());
+        ALWAYS_ASSERT(s_scanner.output.size());
         for (auto &r_s : s_scanner.output) {
           security_index::key k_s_temp;
           const security_index::key *k_s = Decode(*r_s.first, k_s_temp);
@@ -775,7 +780,7 @@ rc_t tpce_worker::DoBrokerVolumeFrame1(const TBrokerVolumeFrame1Input *pIn,
             TryCatch(tbl_trade_request(1)->Scan(
                 txn, Encode(str(sizeof(k_tr_0)), k_tr_0),
                 &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
-            // ermia::ALWAYS_ASSERT(tr_scanner.output.size()); // XXX. If there's no
+            // ALWAYS_ASSERT(tr_scanner.output.size()); // XXX. If there's no
             // previous trade, this can happen
 
             for (auto &r_tr : tr_scanner.output) {
@@ -827,14 +832,13 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
         Decode(*(c_scanner.output.front().first), k_c_temp);
     pOut->cust_id = k_c->c_id;
   }
-  ermia::ALWAYS_ASSERT(pOut->cust_id);
+  ALWAYS_ASSERT(pOut->cust_id);
 
   // probe Customers
   const customers::key k_c(pOut->cust_id);
   customers::value v_c_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_customers(1)->Get(txn, rc, Encode(str(sizeof(k_c)), k_c), obj_v);
-  TryVerifyStrict(rc);
+  TryVerifyStrict(tbl_customers(1)->Get(txn, Encode(str(sizeof(k_c)), k_c),
+                                          obj_v = str(sizeof(v_c_temp))));
   const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   memcpy(pOut->c_st_id, v_c->c_st_id.data(), v_c->c_st_id.size());
@@ -868,7 +872,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
   TryCatch(tbl_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_ca_0)), k_ca_0),
                                      &Encode(str(sizeof(k_ca_1)), k_ca_1),
                                      ca_scanner, &arena));
-  ermia::ALWAYS_ASSERT(ca_scanner.output.size());
+  ALWAYS_ASSERT(ca_scanner.output.size());
 
   for (auto &r_ca : ca_scanner.output) {
     ca_id_index::key k_ca_temp;
@@ -885,7 +889,7 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
     TryCatch(tbl_holding_summary(1)->Scan(
         txn, Encode(str(sizeof(k_hs_0)), k_hs_0),
         &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-    // ermia::ALWAYS_ASSERT(hs_scanner.output.size());  // left-outer join. S table
+    // ALWAYS_ASSERT(hs_scanner.output.size());  // left-outer join. S table
     // could be empty.
 
     auto asset = 0;
@@ -898,9 +902,9 @@ rc_t tpce_worker::DoCustomerPositionFrame1(
       // LastTrade probe & equi-join
       const last_trade::key k_lt(k_hs->hs_s_symb);
       last_trade::value v_lt_temp;
-      auto rc = rc_t{RC_INVALID};
-      tbl_last_trade(1)->Get(txn, rc, Encode(str(sizeof(k_lt)), k_lt), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(tbl_last_trade(1)->Get(txn,
+                                              Encode(str(sizeof(k_lt)), k_lt),
+                                              obj_v = str(sizeof(v_lt_temp))));
       const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
       asset += v_hs->hs_qty * v_lt->lt_price;
@@ -936,7 +940,7 @@ rc_t tpce_worker::DoCustomerPositionFrame2(
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ermia::ALWAYS_ASSERT(t_scanner.output.size());
+  ALWAYS_ASSERT(t_scanner.output.size());
 
   std::vector<std::pair<ermia::varstr *, const ermia::varstr *>> tids;
   for (auto &r_t : t_scanner.output) {
@@ -972,7 +976,7 @@ rc_t tpce_worker::DoCustomerPositionFrame2(
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ermia::ALWAYS_ASSERT(th_scanner.output.size());
+    ALWAYS_ASSERT(th_scanner.output.size());
 
     for (auto &r_th : th_scanner.output) {
       trade_history::key k_th_temp;
@@ -980,9 +984,9 @@ rc_t tpce_worker::DoCustomerPositionFrame2(
 
       status_type::key k_st(k_th->th_st_id);
       status_type::value v_st_temp;
-      auto rc = rc_t{RC_INVALID};
-      tbl_status_type(1)->Get(txn, rc, Encode(str(sizeof(k_st)), k_st), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(tbl_status_type(1)->Get(txn,
+                                               Encode(str(sizeof(k_st)), k_st),
+                                               obj_v = str(sizeof(v_st_temp))));
       const status_type::value *v_st = Decode(obj_v, v_st_temp);
 
       // TODO. order by and grab 30 rows
@@ -1013,7 +1017,6 @@ rc_t tpce_worker::DoCustomerPositionFrame3(void) {
 rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
                                      TMarketFeedFrame1Output *pOut,
                                      CSendToMarketInterface *pSendToMarket) {
-  MARK_REFERENCED(pSendToMarket);
   auto now_dts = CDateTime().GetDate();
   std::vector<TTradeRequest> TradeRequestBuffer;
   double req_price_quote = 0;
@@ -1038,9 +1041,8 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
 
     last_trade::key k_lt(ticker.symbol);
     last_trade::value v_lt_temp;
-    auto rc = rc_t{RC_INVALID};
-    tbl_last_trade(1)->Get(txn, rc, Encode(str(sizeof(k_lt)), k_lt), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_last_trade(1)->Get(
+        txn, Encode(str(sizeof(k_lt)), k_lt), obj_v = str(sizeof(v_lt_temp))));
     const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
     last_trade::value v_lt_new(*v_lt);
     v_lt_new.lt_dts = now_dts;
@@ -1061,7 +1063,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
     TryCatch(tbl_trade_request(1)->Scan(
         txn, Encode(str(sizeof(k_tr_0)), k_tr_0),
         &Encode(str(sizeof(k_tr_1)), k_tr_1), tr_scanner, &arena));
-    // ermia::ALWAYS_ASSERT(tr_scanner.output.size());  // XXX. If there's no previous
+    // ALWAYS_ASSERT(tr_scanner.output.size());  // XXX. If there's no previous
     // trade, this can happen. Higher initial trading days would enlarge this
     // scan set
 
@@ -1094,9 +1096,9 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
       const trade::key k_t(req_trade_id);
       trade::value v_t_temp;
       ermia::OID t_oid = 0;
-      rc = rc_t{RC_INVALID};
-      tbl_trade(1)->Get(txn, rc, Encode(str(sizeof(k_t)), k_t), obj_v, &t_oid);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(tbl_trade(1)->Get(txn, Encode(str(sizeof(k_t)), k_t),
+                                         obj_v = str(sizeof(v_t_temp)),
+                                         &t_oid));
       const trade::value *v_t = Decode(obj_v, v_t_temp);
       trade::value v_t_new;
       memcpy(&v_t_new, v_t, sizeof(trade::value));
@@ -1173,7 +1175,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_watch_list(1)->Scan(txn, Encode(str(sizeof(k_wl_0)), k_wl_0),
                                       &Encode(str(sizeof(k_wl_1)), k_wl_1),
                                       wl_scanner, &arena));
-    ermia::ALWAYS_ASSERT(wl_scanner.output.size());
+    ALWAYS_ASSERT(wl_scanner.output.size());
 
     for (auto &r_wl : wl_scanner.output) {
       watch_list::key k_wl_temp;
@@ -1185,7 +1187,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
       TryCatch(tbl_watch_item(1)->Scan(
           txn, Encode(str(sizeof(k_wi_0)), k_wi_0),
           &Encode(str(sizeof(k_wi_1)), k_wi_1), wi_scanner, &arena));
-      ermia::ALWAYS_ASSERT(wi_scanner.output.size());
+      ALWAYS_ASSERT(wi_scanner.output.size());
       for (auto &r_wi : wi_scanner.output) {
         watch_item::key k_wi_temp;
         const watch_item::key *k_wi = Decode(*r_wi.first, k_wi_temp);
@@ -1202,7 +1204,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_in_name_index(1)->Scan(
         txn, Encode(str(sizeof(k_in_0)), k_in_0),
         &Encode(str(sizeof(k_in_1)), k_in_1), in_scanner, &arena));
-    ermia::ALWAYS_ASSERT(in_scanner.output.size());
+    ALWAYS_ASSERT(in_scanner.output.size());
 
     const company::key k_co_0(pIn->starting_co_id);
     const company::key k_co_1(pIn->ending_co_id);
@@ -1210,7 +1212,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_company(1)->Scan(txn, Encode(str(sizeof(k_co_0)), k_co_0),
                                    &Encode(str(sizeof(k_co_1)), k_co_1),
                                    co_scanner, &arena));
-    ermia::ALWAYS_ASSERT(co_scanner.output.size());
+    ALWAYS_ASSERT(co_scanner.output.size());
 
     const security::key k_s_0(std::string(cSYMBOL_len, (char)0));
     const security::key k_s_1(std::string(cSYMBOL_len, (char)255));
@@ -1218,7 +1220,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
     TryCatch(tbl_security(1)->Scan(txn, Encode(str(sizeof(k_s_0)), k_s_0),
                                     &Encode(str(sizeof(k_s_1)), k_s_1),
                                     s_scanner, &arena));
-    ermia::ALWAYS_ASSERT(s_scanner.output.size());
+    ALWAYS_ASSERT(s_scanner.output.size());
 
     for (auto &r_in : in_scanner.output) {
       in_name_index::key k_in_temp;
@@ -1261,7 +1263,7 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
       stock_list_cursor.push_back(k_hs->hs_s_symb);
     }
   } else
-    ermia::ALWAYS_ASSERT(false);
+    ALWAYS_ASSERT(false);
 
   double old_mkt_cap = 0;
   double new_mkt_cap = 0;
@@ -1269,27 +1271,21 @@ rc_t tpce_worker::DoMarketWatchFrame1(const TMarketWatchFrame1Input *pIn,
   for (auto &s : stock_list_cursor) {
     const last_trade::key k_lt(s);
     last_trade::value v_lt_temp;
-    rc_t rc = rc_t{RC_INVALID};
-    tbl_last_trade(1)->Get(txn, rc, Encode(str(sizeof(k_lt)), k_lt), obj_v);
-    TryCatch(rc);
+    TryCatch(tbl_last_trade(1)->Get(txn, Encode(str(sizeof(k_lt)), k_lt),
+                                     obj_v = str(sizeof(v_lt_temp))));
     const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
     const security::key k_s(s);
     security::value v_s_temp;
-
-    rc = rc_t{RC_INVALID};
-    tbl_security(1)->Get(txn, rc, Encode(str(sizeof(k_s)), k_s), obj_v);
-    TryCatch(rc);
-
+    TryCatch(tbl_security(1)->Get(txn, Encode(str(sizeof(k_s)), k_s),
+                                   obj_v = str(sizeof(v_s_temp))));
     const security::value *v_s = Decode(obj_v, v_s_temp);
 
     const daily_market::key k_dm(
         s, CDateTime((TIMESTAMP_STRUCT *)&pIn->start_day).GetDate());
     daily_market::value v_dm_temp;
-
-    rc = rc_t{RC_INVALID};
-    tbl_daily_market(1)->Get(txn, rc, Encode(str(sizeof(k_dm)), k_dm), obj_v);
-    TryCatch(rc);
+    TryCatch(tbl_daily_market(1)->Get(txn, Encode(str(sizeof(k_dm)), k_dm),
+                                       obj_v = str(sizeof(v_dm_temp))));
     const daily_market::value *v_dm = Decode(obj_v, v_dm_temp);
 
     auto s_num_out = v_s->s_num_out;
@@ -1319,53 +1315,45 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
 
   const security::key k_s(std::string(pIn->symbol));
   security::value v_s_temp;
-  rc_t rc = rc_t{RC_INVALID};
-  tbl_security(1)->Get(txn, rc, Encode(str(sizeof(k_s)), k_s), obj_v);
-  TryVerifyRelaxed(rc);
-
+  TryVerifyRelaxed(tbl_security(1)->Get(txn, Encode(str(sizeof(k_s)), k_s),
+                                        obj_v = str(sizeof(v_s_temp))));
   const security::value *v_s = Decode(obj_v, v_s_temp);
   co_id = v_s->s_co_id;
 
   const company::key k_co(co_id);
   company::value v_co_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_company(1)->Get(txn, rc, Encode(str(sizeof(k_co)), k_co), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_company(1)->Get(txn, Encode(str(sizeof(k_co)), k_co),
+                                       obj_v = str(sizeof(v_co_temp))));
   const company::value *v_co = Decode(obj_v, v_co_temp);
 
   const address::key k_ca(v_co->co_ad_id);
   address::value v_ca_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_address(1)->Get(txn, rc, Encode(str(sizeof(k_ca)), k_ca), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_address(1)->Get(txn, Encode(str(sizeof(k_ca)), k_ca),
+                                       obj_v = str(sizeof(v_ca_temp))));
   const address::value *v_ca = Decode(obj_v, v_ca_temp);
 
   const zip_code::key k_zca(v_ca->ad_zc_code);
   zip_code::value v_zca_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_zip_code(1)->Get(txn, rc, Encode(str(sizeof(k_zca)), k_zca), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_zip_code(1)->Get(txn, Encode(str(sizeof(k_zca)), k_zca),
+                                        obj_v = str(sizeof(v_zca_temp))));
   const zip_code::value *v_zca = Decode(obj_v, v_zca_temp);
 
   const exchange::key k_ex(v_s->s_ex_id);
   exchange::value v_ex_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_exchange(1)->Get(txn, rc, Encode(str(sizeof(k_ex)), k_ex), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_exchange(1)->Get(txn, Encode(str(sizeof(k_ex)), k_ex),
+                                        obj_v = str(sizeof(v_ex_temp))));
   const exchange::value *v_ex = Decode(obj_v, v_ex_temp);
 
   const address::key k_ea(v_ex->ex_ad_id);
   address::value v_ea_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_address(1)->Get(txn, rc, Encode(str(sizeof(k_ea)), k_ea), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_address(1)->Get(txn, Encode(str(sizeof(k_ea)), k_ea),
+                                       obj_v = str(sizeof(v_ea_temp))));
   const address::value *v_ea = Decode(obj_v, v_ea_temp);
 
   const zip_code::key k_zea(v_ea->ad_zc_code);
   zip_code::value v_zea_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_zip_code(1)->Get(txn, rc, Encode(str(sizeof(k_zea)), k_zea), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_zip_code(1)->Get(txn, Encode(str(sizeof(k_zea)), k_zea),
+                                        obj_v = str(sizeof(v_zea_temp))));
   const zip_code::value *v_zea = Decode(obj_v, v_zea_temp);
 
   memcpy(pOut->s_name, v_s->s_name.data(), v_s->s_name.size());
@@ -1411,7 +1399,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_company_competitor(1)->Scan(
       txn, Encode(str(sizeof(k_cp_0)), k_cp_0),
       &Encode(str(sizeof(k_cp_1)), k_cp_1), cp_scanner, &arena));
-  ermia::ALWAYS_ASSERT(cp_scanner.output.size());
+  ALWAYS_ASSERT(cp_scanner.output.size());
 
   for (auto i = 0; i < max_comp_len; i++) {
     auto &r_cp = cp_scanner.output[i];
@@ -1420,16 +1408,14 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
 
     const company::key k_co3(k_cp->cp_comp_co_id);
     company::value v_co3_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_company(1)->Get(txn, rc, Encode(str(sizeof(k_co3)), k_co3), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_company(1)->Get(txn, Encode(str(sizeof(k_co3)), k_co3),
+                                         obj_v = str(sizeof(v_co3_temp))));
     const company::value *v_co3 = Decode(obj_v, v_co3_temp);
 
     const industry::key k_in(k_cp->cp_in_id);
     industry::value v_in_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_industry(1)->Get(txn, rc, Encode(str(sizeof(k_in)), k_in), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_industry(1)->Get(txn, Encode(str(sizeof(k_in)), k_in),
+                                          obj_v = str(sizeof(v_in_temp))));
     const industry::value *v_in = Decode(obj_v, v_in_temp);
 
     memcpy(pOut->cp_co_name[i], v_co3->co_name.data(), v_co3->co_name.size());
@@ -1444,7 +1430,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_financial(1)->Scan(txn, Encode(str(sizeof(k_fi_0)), k_fi_0),
                                    &Encode(str(sizeof(k_fi_1)), k_fi_1),
                                    fi_scanner, &arena));
-  ermia::ALWAYS_ASSERT(fi_scanner.output.size());
+  ALWAYS_ASSERT(fi_scanner.output.size());
   for (uint64_t i = 0; i < max_fin_len; i++) {
     auto &r_fi = fi_scanner.output[i];
     financial::key k_fi_temp;
@@ -1478,7 +1464,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_daily_market(1)->Scan(txn, Encode(str(sizeof(k_dm_0)), k_dm_0),
                                       &Encode(str(sizeof(k_dm_1)), k_dm_1),
                                       dm_scanner, &arena));
-  ermia::ALWAYS_ASSERT(dm_scanner.output.size());
+  ALWAYS_ASSERT(dm_scanner.output.size());
   for (size_t i = 0;
        i < (size_t)pIn->max_rows_to_return and i < dm_scanner.output.size();
        i++) {
@@ -1502,9 +1488,8 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
 
   const last_trade::key k_lt(std::string(pIn->symbol));
   last_trade::value v_lt_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_last_trade(1)->Get(txn, rc, Encode(str(sizeof(k_lt)), k_lt), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_last_trade(1)->Get(txn, Encode(str(sizeof(k_lt)), k_lt),
+                                          obj_v = str(sizeof(v_lt_temp))));
   const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
   pOut->last_price = v_lt->lt_price;
@@ -1517,7 +1502,7 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
   TryCatch(tbl_news_xref(1)->Scan(txn, Encode(str(sizeof(k_nx_0)), k_nx_0),
                                    &Encode(str(sizeof(k_nx_1)), k_nx_1),
                                    nx_scanner, &arena));
-  ermia::ALWAYS_ASSERT(nx_scanner.output.size());
+  ALWAYS_ASSERT(nx_scanner.output.size());
 
   for (int i = 0; i < max_news_len; i++) {
     auto &r_nx = nx_scanner.output[i];
@@ -1526,9 +1511,8 @@ rc_t tpce_worker::DoSecurityDetailFrame1(const TSecurityDetailFrame1Input *pIn,
 
     const news_item::key k_ni(k_nx->nx_ni_id);
     news_item::value v_ni_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_news_item(1)->Get(txn, rc, Encode(str(sizeof(k_ni)), k_ni), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_news_item(1)->Get(txn, Encode(str(sizeof(k_ni)), k_ni),
+                                           obj_v = str(sizeof(v_ni_temp))));
     const news_item::value *v_ni = Decode(obj_v, v_ni_temp);
 
     if (pIn->access_lob_flag) {
@@ -1568,20 +1552,17 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn,
   txn = db->NewTransaction(read_only_mask, arena, txn_buf());
 
   pOut->num_found = 0;
-  auto rc = rc_t{RC_INVALID};
   for (i = 0; i < pIn->max_trades; i++) {
     const trade::key k_t(pIn->trade_id[i]);
     trade::value v_t_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_trade(1)->Get(txn, rc, Encode(str(sizeof(k_t)), k_t), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_trade(1)->Get(txn, Encode(str(sizeof(k_t)), k_t),
+                                       obj_v = str(sizeof(v_t_temp))));
     const trade::value *v_t = Decode(obj_v, v_t_temp);
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_trade_type(1)->Get(txn, rc, Encode(str(sizeof(k_tt)), k_tt), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_trade_type(1)->Get(
+        txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
     const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     pOut->trade_info[i].bid_price = v_t->t_bid_price;
@@ -1595,9 +1576,8 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn,
 
     const settlement::key k_se(pIn->trade_id[i]);
     settlement::value v_se_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_settlement(1)->Get(txn, rc, Encode(str(sizeof(k_se)), k_se), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_settlement(1)->Get(
+        txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
     const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
@@ -1609,9 +1589,9 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn,
     if (pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pIn->trade_id[i]);
       cash_transaction::value v_ct_temp;
-      rc = rc_t{RC_INVALID};
-      tbl_cash_transaction(1)->Get(txn, rc, Encode(str(sizeof(k_ct)), k_ct), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(
+          tbl_cash_transaction(1)->Get(txn, Encode(str(sizeof(k_ct)), k_ct),
+                                       obj_v = str(sizeof(v_ct_temp))));
       const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
@@ -1631,7 +1611,7 @@ rc_t tpce_worker::DoTradeLookupFrame1(const TTradeLookupFrame1Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ermia::ALWAYS_ASSERT(th_scanner.output.size());
+    ALWAYS_ASSERT(th_scanner.output.size());
 
     int th_cursor = 0;
     for (auto &r_th : th_scanner.output) {
@@ -1669,7 +1649,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ermia::ALWAYS_ASSERT(t_scanner.output.size());
+  ALWAYS_ASSERT(t_scanner.output.size());
 
   auto num_found = 0;
   for (auto &r_t : t_scanner.output) {
@@ -1698,13 +1678,11 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
 
   pOut->num_found = num_found;
 
-  auto rc = rc_t{RC_INVALID};
   for (auto i = 0; i < num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_settlement(1)->Get(txn, rc, Encode(str(sizeof(k_se)), k_se), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_settlement(1)->Get(
+        txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
     const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
@@ -1716,9 +1694,9 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
     if (pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      rc = rc_t{RC_INVALID};
-      tbl_cash_transaction(1)->Get(txn, rc, Encode(str(sizeof(k_ct)), k_ct), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(
+          tbl_cash_transaction(1)->Get(txn, Encode(str(sizeof(k_ct)), k_ct),
+                                       obj_v = str(sizeof(v_ct_temp))));
       const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
@@ -1738,7 +1716,7 @@ rc_t tpce_worker::DoTradeLookupFrame2(const TTradeLookupFrame2Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ermia::ALWAYS_ASSERT(th_scanner.output.size());
+    ALWAYS_ASSERT(th_scanner.output.size());
 
     int th_cursor = 0;
     for (auto &r_th : th_scanner.output) {
@@ -1777,7 +1755,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
   TryCatch(tbl_t_s_symb_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                         &Encode(str(sizeof(k_t_1)), k_t_1),
                                         t_scanner, &arena));
-  ermia::ALWAYS_ASSERT(t_scanner.output.size());
+  ALWAYS_ASSERT(t_scanner.output.size());
 
   auto num_found = 0;
   for (auto &r_t : t_scanner.output) {
@@ -1810,13 +1788,11 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
 
   pOut->num_found = num_found;
 
-  auto rc = rc_t{RC_INVALID};
   for (int i = 0; i < num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_settlement(1)->Get(txn, rc, Encode(str(sizeof(k_se)), k_se), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_settlement(1)->Get(
+        txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
     const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
@@ -1828,9 +1804,9 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
     if (pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      rc = rc_t{RC_INVALID};
-      tbl_cash_transaction(1)->Get(txn, rc, Encode(str(sizeof(k_ct)), k_ct), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(
+          tbl_cash_transaction(1)->Get(txn, Encode(str(sizeof(k_ct)), k_ct),
+                                       obj_v = str(sizeof(v_ct_temp))));
       const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
@@ -1850,7 +1826,7 @@ rc_t tpce_worker::DoTradeLookupFrame3(const TTradeLookupFrame3Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ermia::ALWAYS_ASSERT(th_scanner.output.size());
+    ALWAYS_ASSERT(th_scanner.output.size());
 
     // TODO. order by
     int th_cursor = 0;
@@ -1925,7 +1901,7 @@ rc_t tpce_worker::DoTradeLookupFrame4(const TTradeLookupFrame4Input *pIn,
   TryCatch(tbl_holding_history(1)->Scan(
       txn, Encode(str(sizeof(k_hh_0)), k_hh_0),
       &Encode(str(sizeof(k_hh_1)), k_hh_1), hh_scanner, &arena));
-  ermia::ALWAYS_ASSERT(
+  ALWAYS_ASSERT(
       hh_scanner.output.size());  // possible case. no holding for the customer
 
   auto hh_cursor = 0;
@@ -1956,9 +1932,8 @@ rc_t tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn,
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_customer_account(1)->Get(txn, rc, Encode(str(sizeof(k_ca)), k_ca), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_customer_account(1)->Get(
+      txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
   const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
 
   memcpy(pOut->acct_name, v_ca->ca_name.data(), v_ca->ca_name.size());
@@ -1969,9 +1944,8 @@ rc_t tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn,
 
   const customers::key k_c(pOut->cust_id);
   customers::value v_c_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_customers(1)->Get(txn, rc, Encode(str(sizeof(k_c)), k_c), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_customers(1)->Get(txn, Encode(str(sizeof(k_c)), k_c),
+                                         obj_v = str(sizeof(v_c_temp))));
   const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   memcpy(pOut->cust_f_name, v_c->c_f_name.data(), v_c->c_f_name.size());
@@ -1981,9 +1955,8 @@ rc_t tpce_worker::DoTradeOrderFrame1(const TTradeOrderFrame1Input *pIn,
 
   const broker::key k_b(pOut->broker_id);
   broker::value v_b_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_broker(1)->Get(txn, rc, Encode(str(sizeof(k_b)), k_b), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_broker(1)->Get(txn, Encode(str(sizeof(k_b)), k_b),
+                                      obj_v = str(sizeof(v_b_temp))));
   const broker::value *v_b = Decode(obj_v, v_b_temp);
   memcpy(pOut->broker_name, v_b->b_name.data(), v_b->b_name.size());
 
@@ -1994,9 +1967,10 @@ rc_t tpce_worker::DoTradeOrderFrame2(const TTradeOrderFrame2Input *pIn,
                                      TTradeOrderFrame2Output *pOut) {
   const account_permission::key k_ap(pIn->acct_id, std::string(pIn->exec_tax_id));
   account_permission::value v_ap_temp;
-  rc_t ret = rc_t{RC_INVALID};
-  tbl_account_permission(1)->Get(txn, ret, Encode(str(sizeof(k_ap)), k_ap), obj_v);
-  TryCatch(ret);
+  rc_t ret;
+  TryCatch(
+      ret = tbl_account_permission(1)->Get(txn, Encode(str(sizeof(k_ap)), k_ap),
+                                           obj_v = str(sizeof(v_ap_temp))));
   if (ret._val == RC_TRUE) {
     const account_permission::value *v_ap = Decode(obj_v, v_ap_temp);
     if (v_ap->ap_f_name == std::string(pIn->exec_f_name) and
@@ -2024,14 +1998,14 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_co_name_index(1)->Scan(
         txn, Encode(str(sizeof(k_co_0)), k_co_0),
         &Encode(str(sizeof(k_co_1)), k_co_1), co_scanner, &arena));
-    ermia::ALWAYS_ASSERT(co_scanner.output.size());
+    ALWAYS_ASSERT(co_scanner.output.size());
 
     co_name_index::key k_co_temp;
     const co_name_index::key *k_co =
         Decode(*co_scanner.output.front().first, k_co_temp);
 
     co_id = k_co->co_id;
-    ermia::ALWAYS_ASSERT(co_id);
+    ALWAYS_ASSERT(co_id);
 
     const security_index::key k_s_0(co_id, pIn->issue,
                                     std::string(cSYMBOL_len, (char)0));
@@ -2041,7 +2015,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_security_index(1)->Scan(
         txn, Encode(str(sizeof(k_s_0)), k_s_0),
         &Encode(str(sizeof(k_s_1)), k_s_1), s_scanner, &arena));
-    ermia::ALWAYS_ASSERT(s_scanner.output.size());
+    ALWAYS_ASSERT(s_scanner.output.size());
     for (auto &r_s : s_scanner.output) {
       security_index::key k_s_temp;
       security::value v_s_temp;
@@ -2059,9 +2033,8 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     memcpy(pOut->symbol, pIn->symbol, cSYMBOL_len);
     const security::key k_s(std::string(pIn->symbol));
     security::value v_s_temp;
-    rc_t rc = rc_t{RC_INVALID};
-    tbl_security(1)->Get(txn, rc, Encode(str(sizeof(k_s)), k_s), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_security(1)->Get(txn, Encode(str(sizeof(k_s)), k_s),
+                                          obj_v = str(sizeof(v_s_temp))));
     const security::value *v_s = Decode(obj_v, v_s_temp);
 
     co_id = v_s->s_co_id;
@@ -2070,26 +2043,23 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
 
     const company::key k_co(co_id);
     company::value v_co_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_company(1)->Get(txn, rc, Encode(str(sizeof(k_co)), k_co), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_company(1)->Get(txn, Encode(str(sizeof(k_co)), k_co),
+                                         obj_v = str(sizeof(v_co_temp))));
     const company::value *v_co = Decode(obj_v, v_co_temp);
     memcpy(pOut->co_name, v_co->co_name.data(), v_co->co_name.size());
   }
   const last_trade::key k_lt(std::string(pOut->symbol));
   last_trade::value v_lt_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_last_trade(1)->Get(txn, rc, Encode(str(sizeof(k_lt)), k_lt), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_last_trade(1)->Get(txn, Encode(str(sizeof(k_lt)), k_lt),
+                                          obj_v = str(sizeof(v_lt_temp))));
   const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
   pOut->market_price = v_lt->lt_price;
 
   const trade_type::key k_tt(pIn->trade_type_id);
   trade_type::value v_tt_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_trade_type(1)->Get(txn, rc, Encode(str(sizeof(k_tt)), k_tt), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_trade_type(1)->Get(txn, Encode(str(sizeof(k_tt)), k_tt),
+                                          obj_v = str(sizeof(v_tt_temp))));
   const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
   pOut->type_is_market = v_tt->tt_is_mrkt;
@@ -2109,9 +2079,10 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
 
   const holding_summary::key k_hs(pIn->acct_id, std::string(pOut->symbol));
   holding_summary::value v_hs_temp;
-  rc_t ret = rc_t{RC_INVALID};
-  tbl_holding_summary(1)->Get(txn, ret, Encode(str(sizeof(k_hs)), k_hs), obj_v);
-  TryCatch(ret);
+  rc_t ret;
+  TryCatch(ret = tbl_holding_summary(1)->Get(txn,
+                                              Encode(str(sizeof(k_hs)), k_hs),
+                                              obj_v = str(sizeof(v_hs_temp))));
   if (ret._val == RC_TRUE) {
     const holding_summary::value *v_hs = Decode(obj_v, v_hs_temp);
     hs_qty = v_hs->hs_qty;
@@ -2128,7 +2099,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
       TryCatch(tbl_holding(1)->Scan(txn, Encode(str(sizeof(k_h_0)), k_h_0),
                                      &Encode(str(sizeof(k_h_1)), k_h_1),
                                      h_scanner, &arena));
-      // ermia::ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
+      // ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
       for (auto &r_h : h_scanner.output) {
         holding::value v_h_temp;
@@ -2169,7 +2140,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
       TryCatch(tbl_holding(1)->Scan(txn, Encode(str(sizeof(k_h_0)), k_h_0),
                                      &Encode(str(sizeof(k_h_1)), k_h_1),
                                      h_scanner, &arena));
-      // ermia::ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
+      // ALWAYS_ASSERT(h_scanner.output.size());  // this set could be empty
 
       for (auto &r_h : h_scanner.output) {
         holding::value v_h_temp;
@@ -2213,7 +2184,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_customer_taxrate(1)->Scan(
         txn, Encode(str(sizeof(k_cx_0)), k_cx_0),
         &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
-    ermia::ALWAYS_ASSERT(cx_scanner.output.size());
+    ALWAYS_ASSERT(cx_scanner.output.size());
 
     auto tax_rates = 0.0;
     for (auto &r_cx : cx_scanner.output) {
@@ -2222,9 +2193,9 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
 
       const tax_rate::key k_tx(k_cx->cx_tx_id);
       tax_rate::value v_tx_temp;
-      ret = rc_t{RC_INVALID};
-      tbl_tax_rate(1)->Get(txn, ret, Encode(str(sizeof(k_tx)), k_tx), obj_v);
-      TryVerifyRelaxed(ret);
+      TryVerifyRelaxed(tbl_tax_rate(1)->Get(txn,
+                                            Encode(str(sizeof(k_tx)), k_tx),
+                                            obj_v = str(sizeof(v_tx_temp))));
       const tax_rate::value *v_tx = Decode(obj_v, v_tx_temp);
 
       tax_rates += v_tx->tx_rate;
@@ -2241,7 +2212,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
   TryCatch(tbl_commission_rate(1)->Scan(
       txn, Encode(str(sizeof(k_cr_0)), k_cr_0),
       &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
-  ermia::ALWAYS_ASSERT(cr_scanner.output.size());
+  ALWAYS_ASSERT(cr_scanner.output.size());
 
   for (auto &r_cr : cr_scanner.output) {
     commission_rate::value v_cr_temp;
@@ -2255,9 +2226,8 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
 
   const charge::key k_ch(pIn->trade_type_id, pIn->cust_tier);
   charge::value v_ch_temp;
-  ret = rc_t{RC_INVALID};
-  tbl_charge(1)->Get(txn, ret, Encode(str(sizeof(k_ch)), k_ch), obj_v);
-  TryVerifyRelaxed(ret);
+  TryVerifyRelaxed(tbl_charge(1)->Get(txn, Encode(str(sizeof(k_ch)), k_ch),
+                                      obj_v = str(sizeof(v_ch_temp))));
   const charge::value *v_ch = Decode(obj_v, v_ch_temp);
   pOut->charge_amount = v_ch->ch_chrg;
 
@@ -2268,9 +2238,8 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
   if (pIn->type_is_margin) {
     const customer_account::key k_ca(pIn->acct_id);
     customer_account::value v_ca_temp;
-    ret = rc_t{RC_INVALID};
-    tbl_customer_account(1)->Get( txn, ret, Encode(str(sizeof(k_ca)), k_ca), obj_v);
-    TryVerifyRelaxed(ret);
+    TryVerifyRelaxed(tbl_customer_account(1)->Get(
+        txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
     const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
     acct_bal = v_ca->ca_bal;
 
@@ -2282,7 +2251,7 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
     TryCatch(tbl_holding_summary(1)->Scan(
         txn, Encode(str(sizeof(k_hs_0)), k_hs_0),
         &Encode(str(sizeof(k_hs_1)), k_hs_1), hs_scanner, &arena));
-    // ermia::ALWAYS_ASSERT(hs_scanner.output.size());  // XXX. allowed?
+    // ALWAYS_ASSERT(hs_scanner.output.size());  // XXX. allowed?
 
     for (auto &r_hs : hs_scanner.output) {
       holding_summary::key k_hs_temp;
@@ -2292,9 +2261,9 @@ rc_t tpce_worker::DoTradeOrderFrame3(const TTradeOrderFrame3Input *pIn,
 
       const last_trade::key k_lt(k_hs->hs_s_symb);
       last_trade::value v_lt_temp;
-      ret = rc_t{RC_INVALID};
-      tbl_last_trade(1)->Get(txn, ret, Encode(str(sizeof(k_lt)), k_lt), obj_v);
-      TryVerifyRelaxed(ret);
+      TryVerifyRelaxed(tbl_last_trade(1)->Get(txn,
+                                              Encode(str(sizeof(k_lt)), k_lt),
+                                              obj_v = str(sizeof(v_lt_temp))));
       const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
       hold_assets += v_hs->hs_qty * v_lt->lt_price;
@@ -2393,9 +2362,8 @@ rc_t tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn,
 
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_trade(1)->Get(txn, rc, Encode(str(sizeof(k_t)), k_t), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_trade(1)->Get(txn, Encode(str(sizeof(k_t)), k_t),
+                                     obj_v = str(sizeof(v_t_temp))));
   const trade::value *v_t = Decode(obj_v, v_t_temp);
   pOut->acct_id = v_t->t_ca_id;
   memcpy(pOut->type_id, v_t->t_tt_id.data(), v_t->t_tt_id.size());
@@ -2408,9 +2376,8 @@ rc_t tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn,
 
   const trade_type::key k_tt(pOut->type_id);
   trade_type::value v_tt_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_trade_type(1)->Get(txn, rc, Encode(str(sizeof(k_tt)), k_tt), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_trade_type(1)->Get(txn, Encode(str(sizeof(k_tt)), k_tt),
+                                          obj_v = str(sizeof(v_tt_temp))));
   const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
   memcpy(pOut->type_name, v_tt->tt_name.data(), v_tt->tt_name.size());
   pOut->type_is_sell = v_tt->tt_is_sell;
@@ -2419,10 +2386,11 @@ rc_t tpce_worker::DoTradeResultFrame1(const TTradeResultFrame1Input *pIn,
   pOut->hs_qty = 0;
   const holding_summary::key k_hs(pOut->acct_id, std::string(pOut->symbol));
   holding_summary::value v_hs_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_holding_summary(1)->Get(txn, rc, Encode(str(sizeof(k_hs)), k_hs), obj_v);
-  TryCatch(rc);
-  if (rc._val == RC_TRUE) {
+  rc_t ret;
+  TryCatch(ret = tbl_holding_summary(1)->Get(txn,
+                                              Encode(str(sizeof(k_hs)), k_hs),
+                                              obj_v = str(sizeof(v_hs_temp))));
+  if (ret._val == RC_TRUE) {
     const holding_summary::value *v_hs = Decode(obj_v, v_hs_temp);
     pOut->hs_qty = v_hs->hs_qty;
   }
@@ -2443,9 +2411,8 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn,
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_customer_account(1)->Get( txn, rc, Encode(str(sizeof(k_ca)), k_ca), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_customer_account(1)->Get(
+      txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
   const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
   pOut->broker_id = v_ca->ca_b_id;
   pOut->cust_id = v_ca->ca_c_id;
@@ -2628,7 +2595,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn,
       TryCatch(tbl_holding(1)->Scan(txn, Encode(str(sizeof(k_h_0)), k_h_0),
                                      &Encode(str(sizeof(k_h_1)), k_h_1),
                                      h_scanner, &arena));
-      // ermia::ALWAYS_ASSERT(h_scanner.output.size());  // XXX. guessing could be
+      // ALWAYS_ASSERT(h_scanner.output.size());  // XXX. guessing could be
       // empty
 
       if (pIn->is_lifo) {
@@ -2755,10 +2722,9 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn,
   TryCatch(tbl_customer_taxrate(1)->Scan(
       txn, Encode(str(sizeof(k_cx_0)), k_cx_0),
       &Encode(str(sizeof(k_cx_1)), k_cx_1), cx_scanner, &arena));
-  ermia::ALWAYS_ASSERT(cx_scanner.output.size());
+  ALWAYS_ASSERT(cx_scanner.output.size());
 
   double tax_rates = 0.0;
-  auto rc = rc_t{RC_INVALID};
   for (auto &r_cx : cx_scanner.output) {
     customer_taxrate::key k_cx_temp;
     customer_taxrate::value v_cx_temp;
@@ -2766,9 +2732,8 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn,
 
     const tax_rate::key k_tx(k_cx->cx_tx_id);
     tax_rate::value v_tx_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_tax_rate(1)->Get(txn, rc, Encode(str(sizeof(k_tx)), k_tx), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_tax_rate(1)->Get(txn, Encode(str(sizeof(k_tx)), k_tx),
+                                          obj_v = str(sizeof(v_tx_temp))));
     const tax_rate::value *v_tx = Decode(obj_v, v_tx_temp);
 
     tax_rates += v_tx->tx_rate;
@@ -2778,9 +2743,8 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn,
 
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_trade(1)->Get(txn, rc, Encode(str(sizeof(k_t)), k_t), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_trade(1)->Get(txn, Encode(str(sizeof(k_t)), k_t),
+                                     obj_v = str(sizeof(v_t_temp))));
   const trade::value *v_t = Decode(obj_v, v_t_temp);
   trade::value v_t_new;
   memcpy(&v_t_new, v_t, sizeof(trade::value));
@@ -2797,17 +2761,15 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn,
                                       TTradeResultFrame4Output *pOut) {
   const security::key k_s(std::string(pIn->symbol));
   security::value v_s_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_security(1)->Get(txn, rc, Encode(str(sizeof(k_s)), k_s), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_security(1)->Get(txn, Encode(str(sizeof(k_s)), k_s),
+                                        obj_v = str(sizeof(v_s_temp))));
   const security::value *v_s = Decode(obj_v, v_s_temp);
   memcpy(pOut->s_name, v_s->s_name.data(), v_s->s_name.size());
 
   const customers::key k_c(pIn->cust_id);
   customers::value v_c_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_customers(1)->Get(txn, rc, Encode(str(sizeof(k_c)), k_c), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_customers(1)->Get(txn, Encode(str(sizeof(k_c)), k_c),
+                                         obj_v = str(sizeof(v_c_temp))));
   const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   const commission_rate::key k_cr_0(v_c->c_tier, std::string(pIn->type_id),
@@ -2819,7 +2781,7 @@ rc_t tpce_worker::DoTradeResultFrame4(const TTradeResultFrame4Input *pIn,
   TryCatch(tbl_commission_rate(1)->Scan(
       txn, Encode(str(sizeof(k_cr_0)), k_cr_0),
       &Encode(str(sizeof(k_cr_1)), k_cr_1), cr_scanner, &arena));
-  ermia::ALWAYS_ASSERT(cr_scanner.output.size());
+  ALWAYS_ASSERT(cr_scanner.output.size());
 
   for (auto &r_cr : cr_scanner.output) {
     commission_rate::value v_cr_temp;
@@ -2836,9 +2798,8 @@ rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   const trade::key k_t(pIn->trade_id);
   trade::value v_t_temp;
   ermia::OID t_oid = 0;
-  auto rc = rc_t{RC_INVALID};
-  tbl_trade(1)->Get(txn, rc, Encode(str(sizeof(k_t)), k_t), obj_v, &t_oid);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_trade(1)->Get(txn, Encode(str(sizeof(k_t)), k_t),
+                                     obj_v = str(sizeof(v_t_temp)), &t_oid));
   const trade::value *v_t = Decode(obj_v, v_t_temp);
   trade::value v_t_new;
   memcpy(&v_t_new, v_t, sizeof(trade::value));
@@ -2877,9 +2838,8 @@ rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
 
   const broker::key k_b(pIn->broker_id);
   broker::value v_b_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_broker(1)->Get(txn, rc, Encode(str(sizeof(k_b)), k_b), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_broker(1)->Get(txn, Encode(str(sizeof(k_b)), k_b),
+                                      obj_v = str(sizeof(v_b_temp))));
   const broker::value *v_b = Decode(obj_v, v_b_temp);
   broker::value v_b_new(*v_b);
   v_b_new.b_comm_total += pIn->comm_amount;
@@ -2911,9 +2871,8 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn,
   if (pIn->trade_is_cash) {
     const customer_account::key k_ca(pIn->acct_id);
     customer_account::value v_ca_temp;
-    auto rc = rc_t{RC_INVALID};
-    tbl_customer_account(1)->Get(txn, rc, Encode(str(sizeof(k_ca)), k_ca), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_customer_account(1)->Get(
+        txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
     const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
     customer_account::value v_ca_new(*v_ca);
     v_ca_new.ca_bal += pIn->se_amount;
@@ -2934,9 +2893,8 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn,
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_customer_account(1)->Get(txn, rc, Encode(str(sizeof(k_ca)), k_ca), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_customer_account(1)->Get(
+      txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
   const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
   pOut->acct_bal = v_ca->ca_bal;
 
@@ -2958,7 +2916,7 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn,
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ermia::ALWAYS_ASSERT(t_scanner.output.size());
+  ALWAYS_ASSERT(t_scanner.output.size());
 
   int t_cursor = 0;
   for (auto &r_t : t_scanner.output) {
@@ -2976,30 +2934,26 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn,
 
     const status_type::key k_st(v_t->t_st_id);
     status_type::value v_st_temp;
-    auto rc = rc_t{RC_INVALID};
-    tbl_status_type(1)->Get(txn, rc, Encode(str(sizeof(k_st)), k_st), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_status_type(1)->Get(
+        txn, Encode(str(sizeof(k_st)), k_st), obj_v = str(sizeof(v_st_temp))));
     const status_type::value *v_st = Decode(obj_v, v_st_temp);
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_trade_type(1)->Get(txn, rc, Encode(str(sizeof(k_tt)), k_tt), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_trade_type(1)->Get(
+        txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
     const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     const security::key k_s(v_t->t_s_symb);
     security::value v_s_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_security(1)->Get(txn, rc, Encode(str(sizeof(k_s)), k_s), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_security(1)->Get(txn, Encode(str(sizeof(k_s)), k_s),
+                                          obj_v = str(sizeof(v_s_temp))));
     const security::value *v_s = Decode(obj_v, v_s_temp);
 
     const exchange::key k_ex(v_s->s_ex_id);
     exchange::value v_ex_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_exchange(1)->Get(txn, rc, Encode(str(sizeof(k_ex)), k_ex), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_exchange(1)->Get(txn, Encode(str(sizeof(k_ex)), k_ex),
+                                          obj_v = str(sizeof(v_ex_temp))));
     const exchange::value *v_ex = Decode(obj_v, v_ex_temp);
 
     pOut->trade_id[t_cursor] = k_t->t_id;
@@ -3024,23 +2978,20 @@ rc_t tpce_worker::DoTradeStatusFrame1(const TTradeStatusFrame1Input *pIn,
 
   const customer_account::key k_ca(pIn->acct_id);
   customer_account::value v_ca_temp;
-  auto rc = rc_t{RC_INVALID};
-  tbl_customer_account(1)->Get(txn, rc, Encode(str(sizeof(k_ca)), k_ca), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_customer_account(1)->Get(
+      txn, Encode(str(sizeof(k_ca)), k_ca), obj_v = str(sizeof(v_ca_temp))));
   const customer_account::value *v_ca = Decode(obj_v, v_ca_temp);
 
   const customers::key k_c(v_ca->ca_c_id);
   customers::value v_c_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_customers(1)->Get(txn, rc, Encode(str(sizeof(k_c)), k_c), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_customers(1)->Get(txn, Encode(str(sizeof(k_c)), k_c),
+                                         obj_v = str(sizeof(v_c_temp))));
   const customers::value *v_c = Decode(obj_v, v_c_temp);
 
   const broker::key k_b(v_ca->ca_b_id);
   broker::value v_b_temp;
-  rc = rc_t{RC_INVALID};
-  tbl_broker(1)->Get(txn, rc, Encode(str(sizeof(k_b)), k_b), obj_v);
-  TryVerifyRelaxed(rc);
+  TryVerifyRelaxed(tbl_broker(1)->Get(txn, Encode(str(sizeof(k_b)), k_b),
+                                      obj_v = str(sizeof(v_b_temp))));
   const broker::value *v_b = Decode(obj_v, v_b_temp);
 
   memcpy(pOut->cust_f_name, v_c->c_f_name.data(), v_c->c_f_name.size());
@@ -3055,21 +3006,18 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn,
                                       TTradeUpdateFrame1Output *pOut) {
   txn = db->NewTransaction(0, arena, txn_buf());
 
-  auto rc = rc_t{RC_INVALID};
   for (auto i = 0; i < pIn->max_trades; i++) {
     const trade::key k_t(pIn->trade_id[i]);
     trade::value v_t_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_trade(1)->Get(txn, rc, Encode(str(sizeof(k_t)), k_t), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_trade(1)->Get(txn, Encode(str(sizeof(k_t)), k_t),
+                                       obj_v = str(sizeof(v_t_temp))));
     const trade::value *v_t = Decode(obj_v, v_t_temp);
     pOut->num_found++;
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_trade_type(1)->Get(txn, rc, Encode(str(sizeof(k_tt)), k_tt), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_trade_type(1)->Get(
+        txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
     const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     pOut->trade_info[i].bid_price = v_t->t_bid_price;
@@ -3104,9 +3052,8 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn,
 
     const settlement::key k_se(pIn->trade_id[i]);
     settlement::value v_se_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_settlement(1)->Get(txn, rc, Encode(str(sizeof(k_se)), k_se), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_settlement(1)->Get(
+        txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
     const settlement::value *v_se = Decode(obj_v, v_se_temp);
     pOut->trade_info[i].settlement_amount = v_se->se_amt;
     CDateTime(v_se->se_cash_due_date)
@@ -3117,9 +3064,9 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn,
     if (pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pIn->trade_id[i]);
       cash_transaction::value v_ct_temp;
-      rc = rc_t{RC_INVALID};
-      tbl_cash_transaction(1)->Get(txn, rc, Encode(str(sizeof(k_ct)), k_ct), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(
+          tbl_cash_transaction(1)->Get(txn, Encode(str(sizeof(k_ct)), k_ct),
+                                       obj_v = str(sizeof(v_ct_temp))));
       const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
       CDateTime(v_ct->ct_dts)
@@ -3137,7 +3084,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ermia::ALWAYS_ASSERT(th_scanner.output.size());
+    ALWAYS_ASSERT(th_scanner.output.size());
 
     for (size_t th_cursor = 0;
          th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -3172,7 +3119,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn,
   TryCatch(tbl_t_ca_id_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                        &Encode(str(sizeof(k_t_1)), k_t_1),
                                        t_scanner, &arena));
-  ermia::ALWAYS_ASSERT(t_scanner.output.size());
+  ALWAYS_ASSERT(t_scanner.output.size());
 
   for (size_t i = 0;
        i < (size_t)pIn->max_trades and i < t_scanner.output.size(); i++) {
@@ -3200,13 +3147,11 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn,
   }
   pOut->num_updated = 0;
 
-  auto rc = rc_t{RC_INVALID};
   for (int i = 0; i < pOut->num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_settlement(1)->Get(txn, rc, Encode(str(sizeof(k_se)), k_se), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_settlement(1)->Get(
+        txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
     const settlement::value *v_se = Decode(obj_v, v_se_temp);
 
     if (pOut->num_updated < pIn->max_updates) {
@@ -3239,9 +3184,9 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn,
     if (pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      rc = rc_t{RC_INVALID};
-      tbl_cash_transaction(1)->Get(txn, rc, Encode(str(sizeof(k_ct)), k_ct), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(
+          tbl_cash_transaction(1)->Get(txn, Encode(str(sizeof(k_ct)), k_ct),
+                                       obj_v = str(sizeof(v_ct_temp))));
       const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
       pOut->trade_info[i].cash_transaction_amount = v_ct->ct_amt;
       CDateTime(v_ct->ct_dts)
@@ -3260,7 +3205,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ermia::ALWAYS_ASSERT(th_scanner.output.size());
+    ALWAYS_ASSERT(th_scanner.output.size());
 
     for (size_t th_cursor = 0;
          th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -3295,7 +3240,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
   TryCatch(tbl_t_s_symb_index(1)->Scan(txn, Encode(str(sizeof(k_t_0)), k_t_0),
                                         &Encode(str(sizeof(k_t_1)), k_t_1),
                                         t_scanner, &arena));
-  ermia::ALWAYS_ASSERT(t_scanner.output.size());  // XXX. short innitial trading day
+  ALWAYS_ASSERT(t_scanner.output.size());  // XXX. short innitial trading day
                                            // can make this case happening?
 
   for (size_t i = 0;
@@ -3315,16 +3260,14 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
 
     const trade_type::key k_tt(v_t->t_tt_id);
     trade_type::value v_tt_temp;
-    auto rc = rc_t{RC_INVALID};
-    tbl_trade_type(1)->Get(txn, rc, Encode(str(sizeof(k_tt)), k_tt), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_trade_type(1)->Get(
+        txn, Encode(str(sizeof(k_tt)), k_tt), obj_v = str(sizeof(v_tt_temp))));
     const trade_type::value *v_tt = Decode(obj_v, v_tt_temp);
 
     const security::key k_s(k_t->t_s_symb);
     security::value v_s_temp;
-    rc = rc_t{RC_INVALID};
-    tbl_security(1)->Get(txn, rc, Encode(str(sizeof(k_s)), k_s), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_security(1)->Get(txn, Encode(str(sizeof(k_s)), k_s),
+                                          obj_v = str(sizeof(v_s_temp))));
     const security::value *v_s = Decode(obj_v, v_s_temp);
 
     /*
@@ -3360,16 +3303,15 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
   for (int i = 0; i < pOut->num_found; i++) {
     const settlement::key k_se(pOut->trade_info[i].trade_id);
     settlement::value v_se_temp;
-    auto rc = rc_t{RC_INVALID};
-    tbl_settlement(1)->Get( txn, rc, Encode(str(sizeof(k_se)), k_se), obj_v);
-    TryVerifyRelaxed(rc);
+    TryVerifyRelaxed(tbl_settlement(1)->Get(
+        txn, Encode(str(sizeof(k_se)), k_se), obj_v = str(sizeof(v_se_temp))));
 
     if (pOut->trade_info[i].is_cash) {
       const cash_transaction::key k_ct(pOut->trade_info[i].trade_id);
       cash_transaction::value v_ct_temp;
-      rc = rc_t{RC_INVALID};
-      tbl_cash_transaction(1)->Get(txn, rc, Encode(str(sizeof(k_ct)), k_ct), obj_v);
-      TryVerifyRelaxed(rc);
+      TryVerifyRelaxed(
+          tbl_cash_transaction(1)->Get(txn, Encode(str(sizeof(k_ct)), k_ct),
+                                       obj_v = str(sizeof(v_ct_temp))));
       const cash_transaction::value *v_ct = Decode(obj_v, v_ct_temp);
 
       if (pOut->num_updated < pIn->max_updates) {
@@ -3419,7 +3361,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
     TryCatch(tbl_trade_history(1)->Scan(
         txn, Encode(str(sizeof(k_th_0)), k_th_0),
         &Encode(str(sizeof(k_th_1)), k_th_1), th_scanner, &arena));
-    ermia::ALWAYS_ASSERT(th_scanner.output.size());
+    ALWAYS_ASSERT(th_scanner.output.size());
 
     for (size_t th_cursor = 0;
          th_cursor < 3 and th_cursor < th_scanner.output.size(); th_cursor++) {
@@ -3453,7 +3395,7 @@ rc_t tpce_worker::DoLongQueryFrame1() {
   TryCatch(tbl_customer_account(1)->Scan(
       txn, Encode(str(sizeof(k_ca_0)), k_ca_0),
       &Encode(str(sizeof(k_ca_1)), k_ca_1), ca_scanner, &arena));
-  ermia::ALWAYS_ASSERT(ca_scanner.output.size());
+  ALWAYS_ASSERT(ca_scanner.output.size());
 
   auto asset = 0;
   for (auto &r_ca : ca_scanner.output) {
@@ -3479,9 +3421,8 @@ rc_t tpce_worker::DoLongQueryFrame1() {
       // LastTrade probe & equi-join
       const last_trade::key k_lt(k_hs->hs_s_symb);
       last_trade::value v_lt_temp;
-      auto rc = rc_t{RC_INVALID};
-      tbl_last_trade(1)->Get(txn, rc, Encode(str(sizeof(k_lt)), k_lt), obj_v);
-      TryCatch(rc);
+      TryCatch(tbl_last_trade(1)->Get(txn, Encode(str(sizeof(k_lt)), k_lt),
+                                       obj_v = str(sizeof(v_lt_temp))));
       const last_trade::value *v_lt = Decode(obj_v, v_lt_temp);
 
       asset += v_hs->hs_qty * v_lt->lt_price;
@@ -3505,11 +3446,9 @@ rc_t tpce_worker::DoLongQueryFrame1() {
 
 rc_t tpce_worker::DoDataMaintenanceFrame1(
     const TDataMaintenanceFrame1Input *pIn) {
-  MARK_REFERENCED(pIn);
   return {RC_INVALID};
 }
 rc_t tpce_worker::DoTradeCleanupFrame1(const TTradeCleanupFrame1Input *pIn) {
-  MARK_REFERENCED(pIn);
   return {RC_INVALID};
 }
 
@@ -3522,7 +3461,7 @@ class tpce_charge_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3575,7 +3514,7 @@ class tpce_commission_rate_loader : public bench_loader,
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3623,7 +3562,7 @@ class tpce_exchange_loader : public bench_loader, public tpce_worker_mixin {
                        const map<std::string, ermia::OrderedIndex *> &open_tables,
                        const map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                        ssize_t partition_id)
-      : bench_loader(seed, db, open_tables), tpce_worker_mixin(partitions) { MARK_REFERENCED(partition_id); }
+      : bench_loader(seed, db, open_tables), tpce_worker_mixin(partitions) {}
 
  protected:
   virtual void load() {
@@ -3669,7 +3608,7 @@ class tpce_industry_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3731,7 +3670,7 @@ class tpce_sector_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3781,7 +3720,7 @@ class tpce_status_type_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3830,7 +3769,7 @@ class tpce_tax_rate_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3880,7 +3819,7 @@ class tpce_trade_type_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3931,7 +3870,7 @@ class tpce_zip_code_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -3979,7 +3918,7 @@ class tpce_address_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4033,7 +3972,7 @@ class tpce_customer_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4114,7 +4053,7 @@ class tpce_ca_and_ap_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4209,7 +4148,7 @@ class tpce_customer_taxrate_loader : public bench_loader,
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4265,7 +4204,7 @@ class tpce_wl_and_wi_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4339,7 +4278,7 @@ class tpce_company_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4411,7 +4350,7 @@ class tpce_company_competitor_loader : public bench_loader,
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4466,7 +4405,7 @@ class tpce_daily_market_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4521,7 +4460,7 @@ class tpce_financial_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4585,7 +4524,7 @@ class tpce_last_trade_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4639,7 +4578,7 @@ class tpce_ni_and_nx_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4718,7 +4657,7 @@ class tpce_security_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -4791,7 +4730,7 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
       : bench_loader(seed, db, open_tables),
         tpce_worker_mixin(partitions),
         partition_id(partition_id) {
-    ermia::ALWAYS_ASSERT(partition_id == -1 ||
+    ALWAYS_ASSERT(partition_id == -1 ||
                   (partition_id >= 1 &&
                    static_cast<size_t>(partition_id) <= NumPartitions()));
   }
@@ -5090,13 +5029,11 @@ class tpce_growing_loader : public bench_loader, public tpce_worker_mixin {
 class tpce_bench_runner : public bench_runner {
  private:
   static bool IsTableReadOnly(const char *name) {
-    MARK_REFERENCED(name);
     // TODO.
     return false;
   }
 
   static bool IsTableAppendOnly(const char *name) {
-    MARK_REFERENCED(name);
     // TODO.
     return true;
   }
@@ -5302,7 +5239,7 @@ void tpce_do_test(ermia::Engine *db, int argc, char **argv) {
 
       case 'r':
         long_query_scan_range = atoi(optarg);
-        ermia::ALWAYS_ASSERT(long_query_scan_range >= 0 or
+        ALWAYS_ASSERT(long_query_scan_range >= 0 or
                       long_query_scan_range <= 100);
         break;
 
@@ -5319,15 +5256,15 @@ void tpce_do_test(ermia::Engine *db, int argc, char **argv) {
         break;
       case 'w': {
         const std::vector<std::string> toks = util::split(optarg, ',');
-        ermia::ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
+        ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
         double s = 0;
         for (size_t i = 0; i < toks.size(); i++) {
           double p = atof(toks[i].c_str());
-          ermia::ALWAYS_ASSERT(p >= 0.0 && p <= 100.0);
+          ALWAYS_ASSERT(p >= 0.0 && p <= 100.0);
           s += p;
           g_txn_workload_mix[i] = p;
         }
-        ermia::ALWAYS_ASSERT(s == 100.0);
+        ALWAYS_ASSERT(s == 100.0);
       } break;
 
       case '?':

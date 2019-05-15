@@ -34,8 +34,6 @@ public:
   class rcu_callback {
   public:
     virtual void operator()(simple_threadinfo &ti) = 0;
-    rcu_callback() {}
-    virtual ~rcu_callback() {}
   };
 
 public:

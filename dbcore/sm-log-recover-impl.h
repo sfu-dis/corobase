@@ -13,8 +13,6 @@ namespace ermia {
  * parallel replay by file/OID partition, etc.
  */
 struct sm_log_recover_impl {
-  sm_log_recover_impl() {}
-  virtual ~sm_log_recover_impl() {}
   void recover_insert(sm_log_scan_mgr::record_scan *logrec,
                       bool latest = false);
   void recover_index_insert(sm_log_scan_mgr::record_scan *logrec);
@@ -55,7 +53,6 @@ struct parallel_oid_replay : public sm_log_recover_impl {
   LSN end_lsn;
 
   parallel_oid_replay(uint32_t threads) : nredoers(threads) {}
-  virtual ~parallel_oid_replay() {}
   virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
                          LSN to);
 };
@@ -88,7 +85,6 @@ struct parallel_offset_replay : public sm_log_recover_impl {
   parallel_offset_replay() : nredoers(config::replay_threads) {
     LOG(INFO) << "[Backup] " << nredoers << " replay threads";
   }
-  virtual ~parallel_offset_replay() {}
   virtual LSN operator()(void *arg, sm_log_scan_mgr *scanner, LSN from,
                          LSN to);
 };
