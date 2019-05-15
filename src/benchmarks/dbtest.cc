@@ -7,6 +7,7 @@
 #include <gflags/gflags.h>
 
 #include "bench.h"
+#include "../dbcore/sm-dia.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
@@ -19,11 +20,20 @@
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
 DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
+DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
+DEFINE_bool(index_probe_only, true, "Whether the read is only probing into index");
+DEFINE_bool(dia, false, "Whether to use decoupled index access (DIA)");
+DEFINE_string(dia_request_handler, "serial", "DIA request handler: serial, coroutine or amac");
+DEFINE_bool(dia_request_coalesce, false, "Whether to coalesce requests in DIA");
+DEFINE_uint64(dia_batch_size, 1, "Batch size of requests processed in DIA handler.");
+DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to run transactions in DIA.");
+DEFINE_uint64(dia_physical_index_threads, 0, "Number of physical index threads to run transactions in DIA.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
+DEFINE_bool(numa_spread, false, "Whether to pin threads in spread mode (compact if false)");
 DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
@@ -161,10 +171,28 @@ int main(int argc, char **argv) {
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
   ermia::config::htt_is_on = FLAGS_htt;
-  ermia::config::physical_workers_only = FLAGS_physical_workers_only;
+  if (FLAGS_dia){
+    if (!FLAGS_physical_workers_only){
+      LOG(INFO) << "DIA is on, ignoring the physical-workers-only option";
+      ermia::config::physical_workers_only = true;
+    }
+    ermia::config::dia_req_handler = FLAGS_dia_request_handler;
+    ermia::config::dia_req_coalesce = FLAGS_dia_request_coalesce;
+    ermia::config::dia_batch_size = FLAGS_dia_batch_size;
+    ermia::config::dia_logical_index_threads = FLAGS_dia_logical_index_threads;
+    ermia::config::dia_physical_index_threads = FLAGS_dia_physical_index_threads;
+    ermia::config::threads = FLAGS_threads + FLAGS_dia_physical_index_threads;
+  } else {
+    ermia::config::physical_workers_only = FLAGS_physical_workers_only;
+    if (ermia::config::physical_workers_only)
+      ermia::config::threads = FLAGS_threads;
+    else
+      ermia::config::threads = (FLAGS_threads + 1) / 2;
+  }
+  ermia::config::index_probe_only = FLAGS_index_probe_only;
   ermia::config::verbose = FLAGS_verbose;
   ermia::config::node_memory_gb = FLAGS_node_memory_gb;
-  ermia::config::threads = FLAGS_threads;
+  ermia::config::numa_spread = FLAGS_numa_spread;
   ermia::config::tmpfs_dir = FLAGS_tmpfs_dir;
   ermia::config::log_dir = FLAGS_log_data_dir;
   ermia::config::log_segment_mb = FLAGS_log_segment_mb;
@@ -172,6 +200,8 @@ int main(int argc, char **argv) {
   ermia::config::phantom_prot = FLAGS_phantom_prot;
   ermia::config::recover_functor = new ermia::parallel_oid_replay(FLAGS_threads);
   ermia::config::log_ship_by_rdma = FLAGS_log_ship_by_rdma;
+
+  ermia::config::amac_version_chain = FLAGS_amac_version_chain;
 
 #if defined(SSI) || defined(SSN)
   ermia::config::enable_safesnap = FLAGS_safesnap;
@@ -240,7 +270,7 @@ int main(int argc, char **argv) {
 
     ermia::config::replay_threads = FLAGS_replay_threads;
     LOG_IF(FATAL, ermia::config::threads < ermia::config::replay_threads);
-    ermia::config::worker_threads = ermia::config::threads - ermia::config::replay_threads;
+    ermia::config::worker_threads = FLAGS_threads - FLAGS_replay_threads;
 
     ermia::RCU::rcu_register();
     ermia::ALWAYS_ASSERT(ermia::config::log_dir.size());
@@ -332,9 +362,18 @@ int main(int argc, char **argv) {
   std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
+  std::cerr << "  dia               : " << FLAGS_dia << std::endl;
+  std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;
+  std::cerr << "  dia-req-coalsece  : " << FLAGS_dia_request_coalesce << std::endl;
+  std::cerr << "  dia-batch-size    : " << FLAGS_dia_batch_size << std::endl;
+  std::cerr << "  dia-logical-index-threads  : " << FLAGS_dia_logical_index_threads << std::endl;
+  std::cerr << "  dia-physical-index-threads : " << FLAGS_dia_physical_index_threads << std::endl;
+  std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain << std::endl;
+  std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
-  std::cerr << "  num-threads       : " << ermia::config::worker_threads << std::endl;
+  std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
+  std::cerr << "  numa-mode         : " << (ermia::config::numa_spread ? "spread" : "compact") << std::endl;
   std::cerr << "  physical-workers-only: " << ermia::config::physical_workers_only << std::endl;
   std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
 #ifdef USE_VARINT_ENCODING
@@ -412,13 +451,17 @@ int main(int argc, char **argv) {
   ermia::config::sanity_check();
   ermia::Engine *db = NULL;
   db = new ermia::Engine();
+  if (FLAGS_dia) {
+    ermia::dia::Initialize();
+  }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
+    //test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
     test_fn = ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {
-    test_fn = tpcc_do_test;
-  } else if (FLAGS_benchmark == "tpce") {
-    test_fn = tpce_do_test;
+    test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
+  //} else if (FLAGS_benchmark == "tpce") {
+  //  test_fn = tpce_do_test;
   } else {
     LOG(FATAL) << "Invalid benchmark: " << FLAGS_benchmark;
   }

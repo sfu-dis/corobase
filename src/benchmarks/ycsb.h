@@ -63,4 +63,4 @@ struct YcsbWorkload {
   bool distinct_keys_;
 };
 
-void BuildKey(uint64_t hi, uint64_t lo, ermia::varstr &k);
+void BuildKey(uint64_t key, ermia::varstr &k);

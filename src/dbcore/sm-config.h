@@ -9,7 +9,7 @@
 
 namespace ermia {
 
-struct sm_log_recover_impl;
+class sm_log_recover_impl;
 
 namespace config {
 
@@ -24,6 +24,7 @@ extern uint32_t benchmark_scale_factor;
 extern uint32_t threads;
 extern uint32_t worker_threads;
 extern int numa_nodes;
+extern bool numa_spread;
 extern std::string tmpfs_dir;
 extern bool htt_is_on;
 extern bool physical_workers_only;
@@ -70,7 +71,12 @@ extern bool persist_nvram_on_replay;
 extern int persist_policy;
 
 // DIA-specific settings
+extern bool index_probe_only;
 extern std::string dia_req_handler;
+extern bool dia_req_coalesce;
+extern uint32_t dia_batch_size;
+extern uint32_t dia_logical_index_threads;
+extern uint32_t dia_physical_index_threads;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the
@@ -171,6 +177,8 @@ extern std::string primary_port;
 extern int log_ship_warm_up_policy;
 extern bool log_ship_by_rdma;
 extern bool log_key_for_update;
+
+extern bool amac_version_chain;
 
 extern double cycles_per_byte;
 

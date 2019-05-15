@@ -6,9 +6,13 @@ endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Woverloaded-virtual -Werror=reorder -Werror=unused-parameter -Wno-address-of-packed-member")
-set(LINK_FLAGS "-libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Wno-address-of-packed-member")
+set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
 link_libraries(${LINK_FLAGS})
+
+# Pre-build glog and gflags with libc++
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/glog/lib)
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/gflags/lib)
 
 # Use masstree for index
 add_definitions(-DMASSTREE)
@@ -29,6 +33,10 @@ include_directories(btree)
 include_directories(dbcore)
 include_directories(masstree)
 include_directories(third-party/sparsehash/src)
+
+# The required headers for libc++.
+include_directories(third-party/glog/include)
+include_directories(third-party/gflags/include)
 
 add_subdirectory(benchmarks)
 add_subdirectory(btree)
