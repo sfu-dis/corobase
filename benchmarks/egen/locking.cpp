@@ -106,9 +106,8 @@ CMutex::~CMutex()
 {
     int rc = pthread_mutex_destroy(&mutex_);
     if (rc != 0) {
-        std::ostringstream strm;
-        strm << "pthread_mutex_destroy error: " << strerror(rc) << "(" << rc << ")";
-        throw std::runtime_error(strm.str());
+        std::cout << "pthread_mutex_destroy error: " << strerror(rc) << "(" << rc << ")" << std::endl;
+        abort();
     }
 }
 
