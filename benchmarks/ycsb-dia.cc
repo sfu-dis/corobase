@@ -368,7 +368,7 @@ protected:
 
     if (ermia::config::verbose) {
       std::cerr << "[INFO] loader " << loader_id <<  " loaded "
-                << total_inserts << " kyes in USERTABLE" << std::endl;
+                << total_inserts << " keys in USERTABLE" << std::endl;
     }
   }
 };
