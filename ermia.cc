@@ -60,9 +60,6 @@ void Engine::CreateTable(uint16_t index_type, const char *name,
     index_desc =
         (new DecoupledMasstreeIndex(name, primary_name))->GetDescriptor();
     break;
-  case kIndexSingleThreadedBTree:
-    index_desc = (new SingleThreadedBTree(name, primary_name))->GetDescriptor();
-    break;
   default:
     LOG(FATAL) << "Wrong index type: " << index_type;
     break;
@@ -484,66 +481,6 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
                     << std::endl
                     << " oid: " << oid << std::endl);
   return caller_callback->Invoke(k, oid);
-}
-
-void SingleThreadedBTree::Get(transaction *t, rc_t &rc, const varstr &key,
-                              varstr &value, OID *oid) {
-  t->ensure_active();
-
-  // search the underlying btree to map key=>(btree_node|tuple)
-  OID out_oid;
-  bool found = btree_.Search((char *)key.data(), key.size(), &out_oid);
-
-  if (oid) {
-    *oid = out_oid;
-  }
-
-  if (found) {
-    dbtuple *tuple = nullptr;
-    auto *xc = t->GetXIDContext();
-    // Look at version chain to read the actual tuple data
-    if (config::is_backup_srv()) {
-      tuple = oidmgr->BackupGetVersion(descriptor_->GetTupleArray(),
-                                       descriptor_->GetPersistentAddressArray(),
-                                       out_oid, xc);
-    } else {
-      tuple =
-          oidmgr->oid_get_version(descriptor_->GetTupleArray(), out_oid, xc);
-    }
-    if (tuple) {
-      rc = t->DoTupleRead(tuple, &value);
-      return;
-    }
-  }
-  rc = rc_t{RC_FALSE};
-}
-
-rc_t SingleThreadedBTree::DoTreePut(transaction &t, const varstr *k, varstr *v,
-                                    bool expect_new, bool upsert,
-                                    OID *inserted_oid) {
-  t.ensure_active();
-
-  if (expect_new) {
-    rc_t rc = TryInsert(t, k, v, upsert, inserted_oid);
-    if (rc._val != RC_FALSE) {
-      return rc;
-    }
-  }
-
-  dbtuple *bv = nullptr;
-  OID oid = 0;
-  if (btree_.Search((char *)k->data(), k->size(), &oid)) {
-    return t.Update(descriptor_, oid, k, v);
-  } else {
-    return rc_t{RC_ABORT_INTERNAL};
-  }
-}
-
-bool SingleThreadedBTree::InsertIfAbsent(transaction *t, const varstr &key,
-                                         OID oid) {
-  MARK_REFERENCED(t);
-  return btree_.Insert((char *)key.data(), key.size(), oid);
-  // TODO(tzwang): phantom protection
 }
 
 DecoupledMasstreeIndex::DecoupledMasstreeIndex(std::string name,

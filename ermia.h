@@ -2,7 +2,6 @@
 
 #include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
-#include "btree/btree.h"
 #include "txn.h"
 #include <experimental/coroutine>
 #include <map>
@@ -21,17 +20,11 @@ public:
   // All supported index types
   static const uint16_t kIndexConcurrentMasstree = 0x1;
   static const uint16_t kIndexDecoupledMasstree = 0x2;
-  static const uint16_t kIndexSingleThreadedBTree = 0x3;
 
   inline void CreateMasstreeTable(const char *name, bool decoupled,
                                   const char *primary_name = nullptr) {
     CreateTable(decoupled ? kIndexDecoupledMasstree : kIndexConcurrentMasstree,
                 name, primary_name);
-  }
-  inline void
-  CreateSingleThreadedBTreeTable(const char *name,
-                                 const char *primary_name = nullptr) {
-    CreateTable(kIndexSingleThreadedBTree, name, primary_name);
   }
 
   inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena,
@@ -356,80 +349,5 @@ public:
                                        (OID *)&dia_callback, &rc, idx_no);
   }
   void RecvReverseScan(transaction *t, rc_t &rc, DiaScanCallback &dia_callback);
-};
-
-class SingleThreadedBTree : public OrderedIndex {
-private:
-  btree::BTree<256, OID> btree_;
-
-  bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
-  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
-                 bool upsert, OID *inserted_oid);
-
-public:
-  SingleThreadedBTree(std::string name, const char *primary)
-      : OrderedIndex(name, primary) {}
-
-  void *GetTable() override { return nullptr; }
-
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                   OID *out_oid = nullptr) override;
-  inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
-    return DoTreePut(*t, &key, &value, false, true, nullptr);
-  }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value,
-                     OID *out_oid = nullptr) override {
-    return DoTreePut(*t, &key, &value, true, true, out_oid);
-  }
-  inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
-    return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
-  }
-  inline rc_t Remove(transaction *t, const varstr &key) override {
-    return DoTreePut(*t, &key, nullptr, false, false, nullptr);
-  }
-  rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            ScanCallback &callback, str_arena *arena) override {
-    MARK_REFERENCED(t);
-    MARK_REFERENCED(start_key);
-    MARK_REFERENCED(end_key);
-    MARK_REFERENCED(callback);
-    MARK_REFERENCED(arena);
-    return rc_t{RC_TRUE};
-  }
-  rc_t ReverseScan(transaction *t, const varstr &start_key,
-                   const varstr *end_key, ScanCallback &callback,
-                   str_arena *arena) override {
-    MARK_REFERENCED(t);
-    MARK_REFERENCED(start_key);
-    MARK_REFERENCED(end_key);
-    MARK_REFERENCED(callback);
-    MARK_REFERENCED(arena);
-    return rc_t{RC_TRUE};
-  }
-
-  inline size_t Size() override { return 0; /* Not implemented */ }
-  std::map<std::string, uint64_t> Clear() override {
-    std::map<std::string, uint64_t> unused;
-    return unused; /* Not implemented */
-  }
-  inline void SetArrays() override { /* Not implemented */
-  }
-
-  // needless functions
-  void
-  GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-         ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    MARK_REFERENCED(key);
-    MARK_REFERENCED(rc);
-    MARK_REFERENCED(xc);
-    MARK_REFERENCED(out_oid);
-    MARK_REFERENCED(out_sinfo);
-  }
-
-  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc, OID *dia_callback) override {}
-  void ReverseScanOID(transaction *t, const varstr &start_key,
-                      const varstr *end_key, rc_t &rc,
-                      OID *dia_callback) override {}
 };
 } // namespace ermia

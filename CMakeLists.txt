@@ -30,7 +30,6 @@ endif()
 # Assume 64-byte cache line
 add_definitions(-DCACHELINE_SIZE=64)
 
-include_directories(btree)
 include_directories(dbcore)
 include_directories(masstree)
 include_directories(third-party/sparsehash/src)
@@ -40,7 +39,6 @@ include_directories(third-party/glog/include)
 include_directories(third-party/gflags/include)
 
 add_subdirectory(benchmarks)
-add_subdirectory(btree)
 add_subdirectory(dbcore)
 add_subdirectory(masstree)
 
