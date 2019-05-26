@@ -337,7 +337,7 @@ class ycsb_usertable_loader : public bench_loader {
 
     if (ermia::config::verbose) {
       std::cerr << "[INFO] loader " << loader_id <<  " loaded "
-                << to_insert << " kyes in USERTABLE" << std::endl;
+                << to_insert << " keys in USERTABLE" << std::endl;
     }
   }
 };
