@@ -183,8 +183,9 @@ class ycsb_worker : public bench_worker {
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(YcsbRecord));
       for (uint i = 0; i < g_reps_per_tx; ++i) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
       }
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
     }
 
     if (!ermia::config::index_probe_only) {
@@ -201,14 +202,37 @@ class ycsb_worker : public bench_worker {
         ermia::dia::generator<bool>::promise_type>>
         handles(g_reps_per_tx);
     keys.clear();
-    values.clear();
   
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = GenerateKey();
       keys.emplace_back(&k);
     }
 
+    if (!ermia::config::index_probe_only) {
+      values.clear();
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        if (ermia::config::index_probe_only) {
+          values.push_back(&str(0));
+        } else {
+          values.push_back(&str(sizeof(YcsbRecord)));
+        }
+      }
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
+    }
+
     tbl->coro_MultiGet(txn, keys, values, handles);
+
+    if (!ermia::config::index_probe_only) {
+      ermia::varstr &v = str(sizeof(YcsbRecord));
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
+      }
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+    }
+
+    if (!ermia::config::index_probe_only) {
+      TryCatch(db->Commit(txn));
+    }
 
     return {RC_TRUE};
 }
@@ -231,9 +255,7 @@ class ycsb_worker : public bench_worker {
       ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
-      if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
-      }
+      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
@@ -245,7 +267,7 @@ class ycsb_worker : public bench_worker {
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       ermia::varstr &k = GenerateKey();
-      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->Get(txn, rc, k, v);  // Read
@@ -256,10 +278,7 @@ class ycsb_worker : public bench_worker {
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
-      if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
-      }
-
+      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
@@ -328,7 +347,6 @@ class ycsb_usertable_loader : public bench_loader {
       ermia::varstr &k = str(sizeof(uint64_t));
       BuildKey(start_key + i, k);
       ermia::varstr &v = str(0);
-      BuildKey(start_key + i, k);
       tbl->Get(txn, rc, k, v, &oid);
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
       TryVerifyStrict(rc);

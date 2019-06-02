@@ -176,35 +176,33 @@ void ConcurrentMasstreeIndex::MultiGet(
           }
         }
       }
-    } else if (!config::index_probe_only) {
-      if (config::amac_version_chain) {
-        // AMAC style version chain traversal
-        thread_local std::vector<OIDAMACState> version_requests;
-        version_requests.clear();
-        for (auto &s : requests) {
-          version_requests.emplace_back(s.out_oid);
+    } else if (config::amac_version_chain) {
+      // AMAC style version chain traversal
+      thread_local std::vector<OIDAMACState> version_requests;
+      version_requests.clear();
+      for (auto &s : requests) {
+        version_requests.emplace_back(s.out_oid);
+      }
+      oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(),
+                                   version_requests, t->xc);
+      uint32_t i = 0;
+      for (auto &vr : version_requests) {
+        if (vr.tuple) {
+          t->DoTupleRead(vr.tuple, values[i++]);
+        } else if (config::phantom_prot) {
+          DoNodeRead(t, sinfo.first, sinfo.second);
         }
-        oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(),
-                                     version_requests, t->xc);
-        uint32_t i = 0;
-        for (auto &vr : version_requests) {
-          if (vr.tuple) {
-            t->DoTupleRead(vr.tuple, values[i++]);
+      }
+    } else {
+      for (uint32_t i = 0; i < requests.size(); ++i) {
+        auto &r = requests[i];
+        if (r.out_oid != INVALID_OID) {
+          auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                                r.out_oid, t->xc);
+          if (tuple) {
+            t->DoTupleRead(tuple, values[i]);
           } else if (config::phantom_prot) {
             DoNodeRead(t, sinfo.first, sinfo.second);
-          }
-        }
-      } else {
-        for (uint32_t i = 0; i < requests.size(); ++i) {
-          auto &r = requests[i];
-          if (r.out_oid != INVALID_OID) {
-            auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(),
-                                                  r.out_oid, t->xc);
-            if (tuple) {
-              t->DoTupleRead(tuple, values[i]);
-            } else if (config::phantom_prot) {
-              DoNodeRead(t, sinfo.first, sinfo.second);
-            }
           }
         }
       }
@@ -262,18 +260,26 @@ void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
 
 void ConcurrentMasstreeIndex::coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> &handles) {
-  auto e = MM::epoch_enter();
-  ConcurrentMasstree::threadinfo ti(e);
+    std::vector<std::experimental::coroutine_handle<
+        ermia::dia::generator<bool>::promise_type>> &handles) {
+  ermia::epoch_num e;
   ConcurrentMasstree::versioned_node_t sinfo;
-
-  OID oid = 0;
-  for (int i = 0; i < keys.size(); ++i) {
-    handles[i] = masstree_.search_coro(*keys[i], oid, ti, &sinfo).get_handle();
+  if (!t) {
+    e = MM::epoch_enter();
+  } else {
+    e = t->xc->begin_epoch;
   }
+  ConcurrentMasstree::threadinfo ti(e);
+  thread_local std::vector<OID> oids;
+  oids.clear();
 
+  for (int i = 0; i < keys.size(); ++i) {
+    oids.emplace_back(INVALID_OID);
+    handles[i] =
+        masstree_.search_coro(*keys[i], oids[i], ti, &sinfo).get_handle();
+  }
   int finished = 0;
-  while (finished < handles.size()) {
+  while (finished < keys.size()) {
     for (auto &h : handles) {
       if (h) {
         if (h.done()) {
@@ -286,7 +292,56 @@ void ConcurrentMasstreeIndex::coro_MultiGet(
       }
     }
   }
-  MM::epoch_exit(0, e);
+
+  if (!t) {
+    MM::epoch_exit(0, e);
+  } else {
+    t->ensure_active();
+    if (config::is_backup_srv()) {
+      for (uint32_t i = 0; i < keys.size(); ++i) {
+        if (oids[i] != INVALID_OID) {
+          // Key-OID mapping exists, now try to get the actual tuple to be sure
+          auto *tuple = oidmgr->BackupGetVersion(
+              descriptor_->GetTupleArray(),
+              descriptor_->GetPersistentAddressArray(), oids[i], t->xc);
+          if (tuple) {
+            t->DoTupleRead(tuple, values[i]);
+          } else if (config::phantom_prot) {
+            DoNodeRead(t, sinfo.first, sinfo.second);
+          }
+        }
+      }
+    } else if (config::amac_version_chain) {
+      // AMAC style version chain traversal
+      thread_local std::vector<OIDAMACState> version_requests;
+      version_requests.clear();
+      for (uint32_t i = 0; i < keys.size(); ++i) {
+        version_requests.emplace_back(oids[i]);
+      }
+      oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(),
+                                   version_requests, t->xc);
+      uint32_t i = 0;
+      for (auto &vr : version_requests) {
+        if (vr.tuple) {
+          t->DoTupleRead(vr.tuple, values[i++]);
+        } else if (config::phantom_prot) {
+          DoNodeRead(t, sinfo.first, sinfo.second);
+        }
+      }
+    } else {
+      for (uint32_t i = 0; i < keys.size(); ++i) {
+        if (oids[i] != INVALID_OID) {
+          auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                                oids[i], t->xc);
+          if (tuple) {
+            t->DoTupleRead(tuple, values[i]);
+          } else if (config::phantom_prot) {
+            DoNodeRead(t, sinfo.first, sinfo.second);
+          }
+        }
+      }
+    }
+  }
 }
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
@@ -492,7 +547,7 @@ void DecoupledMasstreeIndex::RecvGet(transaction *t, rc_t &rc, OID &oid,
   // Wait for the traversal to finish
   while (volatile_read(rc._val) == RC_INVALID) {
   }
-  if (rc._val == RC_TRUE) {
+  if (!config::index_probe_only && rc._val == RC_TRUE) {
     dbtuple *tuple = oidmgr->oid_get_version(
         descriptor_->GetTupleArray(), volatile_read(oid), t->GetXIDContext());
     if (tuple) {

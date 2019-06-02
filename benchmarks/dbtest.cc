@@ -24,7 +24,7 @@ DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing versi
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
-DEFINE_bool(index_probe_only, true, "Whether the read is only probing into index");
+DEFINE_bool(index_probe_only, false, "Whether the read is only probing into index");
 DEFINE_bool(dia, false, "Whether to use decoupled index access (DIA)");
 DEFINE_string(dia_request_handler, "serial", "DIA request handler: serial, coroutine or amac");
 DEFINE_bool(dia_request_coalesce, false, "Whether to coalesce requests in DIA");
@@ -456,10 +456,10 @@ int main(int argc, char **argv) {
   }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
-    //test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
-    test_fn = ycsb_do_test;
+    test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
   } else if (FLAGS_benchmark == "tpcc") {
-    test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
+    //test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
+    test_fn = tpcc_do_test;
   //} else if (FLAGS_benchmark == "tpce") {
   //  test_fn = tpce_do_test;
   } else {

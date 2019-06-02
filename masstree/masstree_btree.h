@@ -704,12 +704,13 @@ mbtree<P>::search_coro(const key_type &k, OID &o, threadinfo &ti,
   key_indexed_position kx;
   Masstree::node_base<P>* root = const_cast<Masstree::node_base<P>*>(lp.root_);
 
+retry:
   // variables in reach_leaf
   const Masstree::node_base<P>* n[2];
   typename Masstree::node_base<P>::nodeversion_type v[2];
   bool sense;
 
-retry:
+retry2:
   sense = false;
   n[sense] = lp.root_;
   while (1) {
@@ -725,7 +726,7 @@ retry:
     co_await std::experimental::suspend_always{};
     int kp = Masstree::internode<P>::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
-    if (!n[!sense]) goto retry;
+    if (!n[!sense]) goto retry2;
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -737,7 +738,7 @@ retry:
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
-      goto retry;
+      goto retry2;
     }
   }
 

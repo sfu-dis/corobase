@@ -108,8 +108,7 @@ public:
     // slot number (when number of threads > number of request slots such that
     // we may wrap around very quickly), so later we use a CAS to really claim
     // it by swapping in the transaction pointer.
-    uint32_t pos =
-        next_free_pos.fetch_add(1, std::memory_order_release);
+    uint32_t pos = next_free_pos.fetch_add(1, std::memory_order_release);
     pos %= kMaxSize;
     Request &req = requests[pos];
     while (volatile_read(req.transaction)) {
@@ -166,51 +165,41 @@ public:
 
 class DiaAMACState {
 public:
-  uint32_t stage;
-  void *ptr; // The node to prefetch
   Request req;
+
+  uint64_t stage;
+  void *ptr; // The node to prefetch
 
   // Intermediate data for find_unlocked/reach_leaf
   bool sense;
-  ermia::ConcurrentMasstree::threadinfo ti =
-      ermia::ConcurrentMasstree::threadinfo(0);
   ermia::ConcurrentMasstree::unlocked_tcursor_type lp;
   const ermia::ConcurrentMasstree::node_base_type *n[2];
   typename ermia::ConcurrentMasstree::nodeversion_type v[2];
-  key_indexed_position kx;
-  bool found;
-  bool done;
+  ermia::ConcurrentMasstree::threadinfo ti =
+      ermia::ConcurrentMasstree::threadinfo(0);
 
-  DiaAMACState(Request *request)
-      : stage(0), ptr(nullptr), sense(false), found(false),
-        done(false) {
+  static const uint64_t kInvalidStage = ~uint64_t{0};
+
+  DiaAMACState(Request *request) : stage(0), ptr(nullptr), sense(false) {
     if (request) {
       req = *request;
       ti = ermia::ConcurrentMasstree::threadinfo(
           req.transaction->GetXIDContext()->begin_epoch);
-
     } else {
-      done = true;
+      stage = kInvalidStage;
     }
   }
 
-  DiaAMACState()
-    : stage(0), ptr(nullptr), sense(false), found(false),
-      done(true) {
-  }
-
-  void reset(Request *new_req) {
-    if (new_req) {
+  void reset(Request *request) {
+    if (request) {
+      req = *request;
       stage = 0;
       ptr = nullptr;
-      req = *new_req;
       sense = false;
-      found = false;
-      done = false;
       ti = ermia::ConcurrentMasstree::threadinfo(
-          new_req->transaction->GetXIDContext()->begin_epoch);
+          request->transaction->GetXIDContext()->begin_epoch);
     } else {
-      done = true;
+      stage = kInvalidStage;
     }
   }
 };

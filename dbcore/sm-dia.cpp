@@ -236,11 +236,6 @@ void IndexThread::CoroutineHandler() {}
 void IndexThread::CoroutineCoalesceHandler() {}
 
 void IndexThread::AmacHandler() {
-  std::vector<DiaAMACState> tls_das;
-  for (int i = 0; i < kBatchSize; ++i) {
-    tls_das.emplace_back(nullptr);
-  }
-
   auto get_request = [this](DiaAMACState &s) {
     uint32_t pos = queue.getPos();
     Request *req = queue.GetRequestByPos(pos, false);
@@ -267,40 +262,41 @@ void IndexThread::AmacHandler() {
     }
   };
 
+  std::vector<DiaAMACState> tls_das;
+  for (int i = 0; i < kBatchSize; ++i) {
+    tls_das.emplace_back(nullptr);
+  }
+  int match, kp;
+  ermia::ConcurrentMasstree::internode_type *in = nullptr;
+  key_indexed_position kx;
+
   while (true) {
     for (auto &s : tls_das) {
-      if (s.done) {
+      switch (s.stage) {
+      case DiaAMACState::kInvalidStage:
         get_request(s);
-        if (s.done) {
-          continue;
-        }
-      }
-    retry:
-      if (s.stage == 3) {
-      stage3:
+        break;
+      case 2:
         s.lp.perm_ = s.lp.n_->permutation();
-        s.kx = ermia::ConcurrentMasstree::leaf_type::bound_type::lower(s.lp.ka_,
-                                                                       s.lp);
-        int match;
-        if (s.kx.p >= 0) {
-          s.lp.lv_ = s.lp.n_->lv_[s.kx.p];
-          s.lp.lv_.prefetch(s.lp.n_->keylenx_[s.kx.p]);
-          match = s.lp.n_->ksuf_matches(s.kx.p, s.lp.ka_);
-        } else {
-          match = 0;
+        kx = ermia::ConcurrentMasstree::leaf_type::bound_type::lower(s.lp.ka_,
+                                                                     s.lp);
+        if (kx.p >= 0) {
+          s.lp.lv_ = s.lp.n_->lv_[kx.p];
+          if (s.lp.n_->keylenx_[kx.p]) {
+            s.lp.lv_.prefetch(s.lp.n_->keylenx_[kx.p]);
+          }
         }
         if (s.lp.n_->has_changed(s.lp.v_)) {
           s.lp.n_ = s.lp.n_->advance_to_key(s.lp.ka_, s.lp.v_, s.ti);
-          // go to stage 2
           if (s.lp.v_.deleted()) {
             s.stage = 0;
             goto stage0;
           } else {
-            // Prefetch the node
             s.lp.n_->prefetch();
-            s.stage = 3;
+            s.stage = 2;
           }
         } else {
+          match = kx.p >= 0 ? s.lp.n_->ksuf_matches(kx.p, s.lp.ka_) : 0;
           if (match < 0) {
             s.lp.ka_.shift_by(-match);
             s.lp.root_ = s.lp.lv_.layer();
@@ -308,36 +304,19 @@ void IndexThread::AmacHandler() {
             goto stage0;
           } else {
             // Done!
-            s.found = match;
-            if (s.found) {
+            if (match) {
               *(s.req.oid_ptr) = s.lp.value();
               volatile_write(s.req.rc->_val, RC_TRUE);
             } else {
               volatile_write(s.req.rc->_val, RC_FALSE);
             }
-            s.done = true;
-            get_request(s);
-            if (!s.done) {
-              goto stage0;
-            }
+            s.stage = DiaAMACState::kInvalidStage;
           }
         }
-      } else if (s.stage == 2) {
-      stage2:
-        // Continue after reach_leaf in find_unlocked
-        if (s.lp.v_.deleted()) {
-          s.stage = 0;
-          goto stage0;
-        } else {
-          // Prefetch the node
-          s.lp.n_->prefetch();
-          s.stage = 3;
-        }
-      } else if (s.stage == 1) {
-      stage1:
-        ermia::ConcurrentMasstree::internode_type *in =
-            (ermia::ConcurrentMasstree::internode_type *)s.ptr;
-        int kp = ermia::ConcurrentMasstree::internode_type::bound_type::upper(
+        break;
+      case 1:
+        in = (ermia::ConcurrentMasstree::internode_type *)s.ptr;
+        kp = ermia::ConcurrentMasstree::internode_type ::bound_type::upper(
             s.lp.ka_, *in);
         s.n[!s.sense] = in->child_[kp];
         if (!s.n[!s.sense]) {
@@ -348,24 +327,26 @@ void IndexThread::AmacHandler() {
           if (likely(!in->has_changed(s.v[s.sense]))) {
             s.sense = !s.sense;
             if (s.v[s.sense].isleaf()) {
-              // Done reach_leaf, enter stage 2
               s.lp.v_ = s.v[s.sense];
               s.lp.n_ = const_cast<ermia::ConcurrentMasstree::leaf_type *>(
                   static_cast<const ermia::ConcurrentMasstree::leaf_type *>(
                       s.n[s.sense]));
-              s.stage = 2;
-              goto stage2;
-              // continue;
+              if (s.lp.v_.deleted()) {
+                s.stage = 0;
+                goto stage0;
+              } else {
+                s.lp.n_->prefetch();
+                s.stage = 2;
+              }
             } else {
-              // Prepare the next node to prefetch
               in = (ermia::ConcurrentMasstree::internode_type *)s.n[s.sense];
               in->prefetch();
               s.ptr = in;
               assert(s.stage == 1);
             }
           } else {
-            typename ermia::ConcurrentMasstree::nodeversion_type oldv =
-                s.v[s.sense];
+            typename ermia::ConcurrentMasstree::node_base_type::nodeversion_type
+                oldv = s.v[s.sense];
             s.v[s.sense] = in->stable_annotated(s.ti.stable_fence());
             if (oldv.has_split(s.v[s.sense]) &&
                 in->stable_last_key_compare(s.lp.ka_, s.v[s.sense], s.ti) > 0) {
@@ -373,16 +354,18 @@ void IndexThread::AmacHandler() {
               goto stage0;
             } else {
               if (s.v[s.sense].isleaf()) {
-                // Done reach_leaf, enter stage 2
                 s.lp.v_ = s.v[s.sense];
                 s.lp.n_ = const_cast<ermia::ConcurrentMasstree::leaf_type *>(
                     static_cast<const ermia::ConcurrentMasstree::leaf_type *>(
                         s.n[s.sense]));
-                s.stage = 2;
-                goto stage2;
-                // continue;
+                if (s.lp.v_.deleted()) {
+                  s.stage = 0;
+                  goto stage0;
+                } else {
+                  s.lp.n_->prefetch();
+                  s.stage = 2;
+                }
               } else {
-                // Prepare the next node to prefetch
                 ermia::ConcurrentMasstree::internode_type *in =
                     (ermia::ConcurrentMasstree::internode_type *)s.n[s.sense];
                 in->prefetch();
@@ -392,10 +375,9 @@ void IndexThread::AmacHandler() {
             }
           }
         }
-      } else if (s.stage == 0) {
+        break;
+      case 0:
       stage0:
-        // Stage 0 - get and prefetch root
-        s.req.transaction->ensure_active();
         new (&s.lp) ermia::ConcurrentMasstree::unlocked_tcursor_type(
             *(ConcurrentMasstree::basic_table_type *)(s.req.index->GetTable()),
             s.req.key->data(), s.req.key->size());
@@ -413,15 +395,20 @@ void IndexThread::AmacHandler() {
           s.lp.n_ = const_cast<ermia::ConcurrentMasstree::leaf_type *>(
               static_cast<const ermia::ConcurrentMasstree::leaf_type *>(
                   s.n[s.sense]));
-          s.stage = 2;
-          // continue;
-          goto stage2;
+          if (s.lp.v_.deleted()) {
+            s.stage = 0;
+            goto stage0;
+          } else {
+            s.lp.n_->prefetch();
+            s.stage = 2;
+          }
         } else {
           auto *in = (ermia::ConcurrentMasstree::internode_type *)s.n[s.sense];
           in->prefetch();
           s.ptr = in;
           s.stage = 1;
         }
+        break;
       }
     }
   }
