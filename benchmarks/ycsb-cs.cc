@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "../dbcore/rcu.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
 #include "ycsb.h"
@@ -107,9 +108,25 @@ public:
 
   rc_t txn_read() {
     arena.reset();
-    ermia::transaction *txn = db->NewTransaction(
-        ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
-    TryCatch(db->Commit(txn));
+    ermia::transaction *txn;
+    thread_local ermia::transaction *txn_obj_buf;
+    if (!txn_obj_buf)
+      txn_obj_buf =
+          (ermia::transaction *)malloc(10 * sizeof(ermia::transaction));
+
+    ermia::RCU::rcu_enter();
+
+    for (int i = 0; i < 10; ++i) {
+      new (txn_obj_buf + i)
+          ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, arena);
+    }
+    for (int i = 0; i < 10; ++i) {
+      txn = txn_obj_buf + i;
+      TryCatch(db->Commit(txn));
+    }
+
+    ermia::RCU::rcu_exit();
+
     return {RC_TRUE};
   }
 
@@ -234,8 +251,8 @@ protected:
     util::fast_random r(8544290);
     std::vector<bench_worker *> ret;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-      ret.push_back(new ycsb_cs_worker(i, r.next(), db, open_tables,
-                                        &barrier_a, &barrier_b));
+      ret.push_back(new ycsb_cs_worker(i, r.next(), db, open_tables, &barrier_a,
+                                       &barrier_b));
     }
     return ret;
   }

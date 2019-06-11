@@ -9,7 +9,11 @@ namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa)
     : flags(flags), sa(&sa) {
-  if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
+  if (flags == TXN_FLAG_CSWITCH) {
+    xid = TXN::xid_alloc();
+    xc = TXN::xid_get_context(xid);
+    xc->xct = this;
+  } else if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a
     // consistent snapshot back in time. No CC involved.
@@ -86,6 +90,11 @@ void transaction::initialize_read_write() {
 }
 
 transaction::~transaction() {
+  if (flags & TXN_FLAG_CSWITCH) {
+    TXN::xid_free(xid); // must do this after epoch_exit, which uses xc.end
+    return;
+  }
+
   if (config::is_backup_srv() && !(flags & TXN_FLAG_CMD_REDO)) {
     RCU::rcu_exit();
     return;
@@ -1104,7 +1113,7 @@ rc_t transaction::si_commit() {
     return rc_t{RC_TRUE};
   }
 
-  if (flags & TXN_FLAG_READ_ONLY) {
+  if (flags & TXN_FLAG_READ_ONLY || flags & TXN_FLAG_CSWITCH) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};
   }
