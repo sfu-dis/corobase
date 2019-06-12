@@ -10,6 +10,7 @@ namespace ermia {
 transaction::transaction(uint64_t flags, str_arena &sa)
     : flags(flags), sa(&sa) {
   if (flags & TXN_FLAG_CSWITCH) {
+    GetWriteSet().clear();
     xid = TXN::xid_alloc();
     xc = TXN::xid_get_context(xid);
     xc->xct = this;

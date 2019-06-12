@@ -124,6 +124,17 @@ public:
       ermia::TXN::xid_context *xc = txn->GetXIDContext();
       xc->begin_epoch = e;
     }
+
+    for (int i = 0; i < 10; ++i) {
+      auto &k = GenerateKey();
+      ermia::varstr &v = str(0);
+      rc_t rc = rc_t{RC_INVALID};
+      txn = txn_obj_buf + i;
+      tbl->Get(txn, rc, k, v); // Read
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(*(char *)v.data() == 'a');
+    }
+
     for (int i = 0; i < 10; ++i) {
       txn = txn_obj_buf + i;
       TryCatch(db->Commit(txn));
