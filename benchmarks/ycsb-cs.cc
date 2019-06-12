@@ -115,16 +115,21 @@ public:
           (ermia::transaction *)malloc(10 * sizeof(ermia::transaction));
 
     ermia::RCU::rcu_enter();
+    ermia::epoch_num e = ermia::MM::epoch_enter();
 
     for (int i = 0; i < 10; ++i) {
       new (txn_obj_buf + i)
           ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, arena);
+      txn = txn_obj_buf + i;
+      ermia::TXN::xid_context *xc = txn->GetXIDContext();
+      xc->begin_epoch = e;
     }
     for (int i = 0; i < 10; ++i) {
       txn = txn_obj_buf + i;
       TryCatch(db->Commit(txn));
     }
 
+    ermia::MM::epoch_exit(0, e);
     ermia::RCU::rcu_exit();
 
     return {RC_TRUE};
