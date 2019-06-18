@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include "../dbcore/rcu.h"
+#include "../dbcore/sm-log.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
 #include "ycsb.h"
@@ -141,6 +142,43 @@ public:
     }
 
     ermia::MM::epoch_exit(0, e);
+    ermia::RCU::rcu_exit();
+
+    return {RC_TRUE};
+  }
+
+  rc_t txn_rmw() {
+    arena.reset();
+    ermia::transaction *txn;
+    thread_local ermia::transaction *txn_obj_buf;
+    if (!txn_obj_buf)
+      txn_obj_buf =
+          (ermia::transaction *)malloc(10 * sizeof(ermia::transaction));
+
+    ermia::RCU::rcu_enter();
+    ermia::epoch_num begin = ermia::MM::epoch_enter();
+    ermia::epoch_num end = 0;
+
+    for (int i = 0; i < 10; ++i) {
+      new (txn_obj_buf + i)
+          ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, arena);
+      txn = txn_obj_buf + i;
+      ermia::TXN::xid_context *xc = txn->GetXIDContext();
+      xc->begin_epoch = begin;
+      ermia::sm_tx_log *log = txn->GetTxnLog();
+      log = ermia::logmgr->new_tx_log();
+      xc->begin = ermia::logmgr->cur_lsn().offset() + 1;
+    }
+
+    for (int i = 0; i < 10; ++i) {
+      txn = txn_obj_buf + i;
+      ermia::TXN::xid_context *xc = txn->GetXIDContext();
+      if (xc->end > end)
+        end = xc->end;
+      TryCatch(db->Commit(txn));
+    }
+
+    ermia::MM::epoch_exit(end, begin);
     ermia::RCU::rcu_exit();
 
     return {RC_TRUE};

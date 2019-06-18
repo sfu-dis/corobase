@@ -153,6 +153,7 @@ protected:
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
+  inline sm_tx_log *GetTxnLog() { return log; }
 
  protected:
   const uint64_t flags;
