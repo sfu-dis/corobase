@@ -103,8 +103,7 @@ public:
   }
 
   static rc_t TxnRMW(bench_worker *w) {
-    MARK_REFERENCED(w);
-    return {RC_TRUE};
+    return static_cast<ycsb_cs_worker *>(w)->txn_rmw();
   }
 
   rc_t txn_read() {
@@ -158,6 +157,7 @@ public:
     ermia::RCU::rcu_enter();
     ermia::epoch_num begin = ermia::MM::epoch_enter();
     ermia::epoch_num end = 0;
+    ermia::sm_tx_log *log = ermia::logmgr->new_tx_log();
 
     for (int i = 0; i < 10; ++i) {
       new (txn_obj_buf + i)
@@ -165,9 +165,36 @@ public:
       txn = txn_obj_buf + i;
       ermia::TXN::xid_context *xc = txn->GetXIDContext();
       xc->begin_epoch = begin;
-      ermia::sm_tx_log *log = txn->GetTxnLog();
-      log = ermia::logmgr->new_tx_log();
+      txn->SetTxnLog(log);
       xc->begin = ermia::logmgr->cur_lsn().offset() + 1;
+    }
+
+    keys.clear();
+    for (int i = 0; i < 10; ++i) {
+      ermia::varstr &k = str(sizeof(uint64_t));
+      int64_t key = __sync_fetch_and_add(&g_initial_table_size, 1);
+      BuildKey(key, k);
+      keys.push_back(&k);
+
+      ermia::varstr &v = str(sizeof(YcsbRecord));
+      new (&v)
+          ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      *(char *)v.p = 'a';
+
+      txn = txn_obj_buf + i;
+      TryVerifyStrict(tbl->Insert(txn, k, v));
+    }
+
+    // Verify inserted values
+    for (int i = 0; i < 10; ++i) {
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = 0;
+      ermia::varstr &v = str(0);
+
+      txn = txn_obj_buf + i;
+      tbl->Get(txn, rc, *keys[i], v, &oid);
+      ALWAYS_ASSERT(*(char *)v.data() == 'a');
+      TryVerifyStrict(rc);
     }
 
     for (int i = 0; i < 10; ++i) {
@@ -178,6 +205,7 @@ public:
       TryCatch(db->Commit(txn));
     }
 
+    log->commit(nullptr);
     ermia::MM::epoch_exit(end, begin);
     ermia::RCU::rcu_exit();
 
