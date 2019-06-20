@@ -155,7 +155,7 @@ inline void PutThread(Thread *t) { thread_pools[t->node].PutThread(t); }
 // not with Thread.
 struct Runner {
   Runner(bool physical = true) : me(nullptr), physical(physical) {}
-  ~Runner() {
+  virtual ~Runner() {
     if (me) {
       Join();
     }
