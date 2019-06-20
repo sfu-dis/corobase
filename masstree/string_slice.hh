@@ -70,12 +70,12 @@ struct string_slice {
     if (len <= 0) return 0;
 #if HAVE_UNALIGNED_ACCESS
     if (len >= size) return *reinterpret_cast<const T *>(s);
-#if WORDS_BIGENDIAN
+#if MT_WORDS_BIGENDIAN
     return *reinterpret_cast<const T *>(s) & (~T(0) << (8 * (size - len)));
-#elif WORDS_BIGENDIAN_SET
+#elif MT_WORDS_BIGENDIAN_SET
     return *reinterpret_cast<const T *>(s - (size - len)) >> (8 * (size - len));
 #else
-#error "WORDS_BIGENDIAN has not been set!"
+#error "MT_WORDS_BIGENDIAN has not been set!"
 #endif
 #else
     union_type u(0);
@@ -140,7 +140,7 @@ struct string_slice {
       typename std::make_unsigned<T>::type delta =
           *reinterpret_cast<const T *>(a) ^ *reinterpret_cast<const T *>(b);
       if (unlikely(len <= 0)) return true;
-#if WORDS_BIGENDIAN
+#if MT_WORDS_BIGENDIAN
       return (delta >> (8 * (size - len))) == 0;
 #else
       return (delta << (8 * (size - len))) == 0;
