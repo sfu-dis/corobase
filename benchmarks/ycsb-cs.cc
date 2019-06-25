@@ -113,6 +113,8 @@ public:
     if (!txn_obj_buf)
       txn_obj_buf =
           (ermia::transaction *)malloc(10 * sizeof(ermia::transaction));
+    else
+      memset(txn_obj_buf, 0, 10 * sizeof(ermia::transaction));
 
     ermia::RCU::rcu_enter();
     ermia::epoch_num e = ermia::MM::epoch_enter();
@@ -126,13 +128,15 @@ public:
     }
 
     for (int i = 0; i < 10; ++i) {
-      auto &k = GenerateKey();
-      ermia::varstr &v = str(0);
-      rc_t rc = rc_t{RC_INVALID};
       txn = txn_obj_buf + i;
-      tbl->Get(txn, rc, k, v); // Read
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ALWAYS_ASSERT(*(char *)v.data() == 'a');
+      for (int j = 0; j < g_reps_per_tx; ++j) {
+        auto &k = GenerateKey();
+        ermia::varstr &v = str(0);
+        rc_t rc = rc_t{RC_INVALID};
+        tbl->Get(txn, rc, k, v); // Read
+        ALWAYS_ASSERT(rc._val == RC_TRUE);
+        ALWAYS_ASSERT(*(char *)v.data() == 'a');
+      }
     }
 
     for (int i = 0; i < 10; ++i) {
@@ -153,6 +157,8 @@ public:
     if (!txn_obj_buf)
       txn_obj_buf =
           (ermia::transaction *)malloc(10 * sizeof(ermia::transaction));
+    else
+      memset(txn_obj_buf, 0, 10 * sizeof(ermia::transaction));
 
     ermia::RCU::rcu_enter();
     ermia::epoch_num begin = ermia::MM::epoch_enter();
@@ -171,30 +177,33 @@ public:
 
     keys.clear();
     for (int i = 0; i < 10; ++i) {
-      ermia::varstr &k = str(sizeof(uint64_t));
-      int64_t key = __sync_fetch_and_add(&g_initial_table_size, 1);
-      BuildKey(key, k);
-      keys.push_back(&k);
-
-      ermia::varstr &v = str(sizeof(YcsbRecord));
-      new (&v)
-          ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      *(char *)v.p = 'a';
-
       txn = txn_obj_buf + i;
-      TryVerifyStrict(tbl->Insert(txn, k, v));
+      for (int j = 0; j < g_reps_per_tx; ++j) {
+        ermia::varstr &k = str(sizeof(uint64_t));
+        int64_t key = __sync_fetch_and_add(&g_initial_table_size, 1);
+        BuildKey(key, k);
+        keys.push_back(&k);
+
+        ermia::varstr &v = str(sizeof(YcsbRecord));
+        new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr),
+                               sizeof(YcsbRecord));
+        *(char *)v.p = 'a';
+        TryVerifyStrict(tbl->Insert(txn, k, v));
+      }
     }
 
     // Verify inserted values
     for (int i = 0; i < 10; ++i) {
-      rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = 0;
-      ermia::varstr &v = str(0);
-
       txn = txn_obj_buf + i;
-      tbl->Get(txn, rc, *keys[i], v, &oid);
-      ALWAYS_ASSERT(*(char *)v.data() == 'a');
-      TryVerifyStrict(rc);
+      for (int j = 0; j < g_reps_per_tx; ++j) {
+        rc_t rc = rc_t{RC_INVALID};
+        ermia::OID oid = 0;
+        ermia::varstr &v = str(0);
+
+        tbl->Get(txn, rc, *keys[i * g_reps_per_tx + j], v, &oid);
+        ALWAYS_ASSERT(*(char *)v.data() == 'a');
+        TryVerifyStrict(rc);
+      }
     }
 
     for (int i = 0; i < 10; ++i) {
