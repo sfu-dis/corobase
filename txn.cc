@@ -1114,7 +1114,7 @@ rc_t transaction::si_commit() {
     return rc_t{RC_TRUE};
   }
 
-  if (flags & TXN_FLAG_READ_ONLY || flags & TXN_FLAG_CSWITCH) {
+  if (flags & TXN_FLAG_READ_ONLY) {
     volatile_write(xc->state, TXN::TXN_CMMTD);
     return rc_t{RC_TRUE};
   }
@@ -1128,7 +1128,8 @@ rc_t transaction::si_commit() {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
-  log->commit(NULL);  // will populate log block
+  if (!(flags & TXN_FLAG_CSWITCH))
+    log->commit(NULL);  // will populate log block
 
   // post-commit cleanup: install clsn to tuples
   // (traverse write-tuple)

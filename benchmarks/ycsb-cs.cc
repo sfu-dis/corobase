@@ -116,15 +116,17 @@ public:
     else
       memset(txn_obj_buf, 0, 10 * sizeof(ermia::transaction));
 
+    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     ermia::RCU::rcu_enter();
-    ermia::epoch_num e = ermia::MM::epoch_enter();
 
     for (int i = 0; i < 10; ++i) {
       new (txn_obj_buf + i)
-          ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, arena);
+          ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
+                                 ermia::transaction::TXN_FLAG_READ_ONLY,
+                             arena);
       txn = txn_obj_buf + i;
       ermia::TXN::xid_context *xc = txn->GetXIDContext();
-      xc->begin_epoch = e;
+      xc->begin_epoch = begin_epoch;
     }
 
     for (int i = 0; i < 10; ++i) {
@@ -144,8 +146,8 @@ public:
       TryCatch(db->Commit(txn));
     }
 
-    ermia::MM::epoch_exit(0, e);
     ermia::RCU::rcu_exit();
+    ermia::MM::epoch_exit(0, begin_epoch);
 
     return {RC_TRUE};
   }
@@ -160,9 +162,8 @@ public:
     else
       memset(txn_obj_buf, 0, 10 * sizeof(ermia::transaction));
 
+    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     ermia::RCU::rcu_enter();
-    ermia::epoch_num begin = ermia::MM::epoch_enter();
-    ermia::epoch_num end = 0;
     ermia::sm_tx_log *log = ermia::logmgr->new_tx_log();
 
     for (int i = 0; i < 10; ++i) {
@@ -170,7 +171,7 @@ public:
           ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, arena);
       txn = txn_obj_buf + i;
       ermia::TXN::xid_context *xc = txn->GetXIDContext();
-      xc->begin_epoch = begin;
+      xc->begin_epoch = begin_epoch;
       txn->SetTxnLog(log);
       xc->begin = ermia::logmgr->cur_lsn().offset() + 1;
     }
@@ -209,14 +210,13 @@ public:
     for (int i = 0; i < 10; ++i) {
       txn = txn_obj_buf + i;
       ermia::TXN::xid_context *xc = txn->GetXIDContext();
-      if (xc->end > end)
-        end = xc->end;
       TryCatch(db->Commit(txn));
     }
 
-    log->commit(nullptr);
-    ermia::MM::epoch_exit(end, begin);
+    ermia::epoch_num end_epoch = log->pre_commit().offset();
+    log->commit(NULL);
     ermia::RCU::rcu_exit();
+    ermia::MM::epoch_exit(end_epoch, begin_epoch);
 
     return {RC_TRUE};
   }
