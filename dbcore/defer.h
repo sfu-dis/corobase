@@ -104,6 +104,7 @@ struct __defer {
   T &fn;
   __defer(T &fn) : fn(fn) {}
   ~__defer() { fn(); }
+  __defer(const __defer &) = default;
 };
 
 #endif
