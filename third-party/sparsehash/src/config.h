@@ -88,12 +88,6 @@
 /* Define to 1 if the system has the type `__uint16'. */
 /* #undef HAVE___UINT16 */
 
-/* Name of package */
-#define PACKAGE "sparsehash"
-
-/* Define to the address where bug reports for this package should be sent. */
-#define PACKAGE_BUGREPORT "google-sparsehash@googlegroups.com"
-
 /* Define to the full name of this package. */
 #define PACKAGE_NAME "sparsehash"
 
@@ -105,9 +99,6 @@
 
 /* Define to the home page for this package. */
 #define PACKAGE_URL ""
-
-/* Define to the version of this package. */
-#define PACKAGE_VERSION "2.0.2"
 
 /* Define to necessary symbol if this constant uses a non-standard name on
    your system. */
@@ -121,9 +112,6 @@
 
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
-
-/* Version number of package */
-#define VERSION "2.0.2"
 
 /* Stops putting the code inside the Google namespace */
 #define _END_GOOGLE_NAMESPACE_ }

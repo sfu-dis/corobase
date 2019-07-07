@@ -84,7 +84,6 @@ struct illegal_argument {
   illegal_argument(char const *m = "Illegal argument") : msg(m), free_msg(0) {}
   illegal_argument(char const volatile *m, ...)
       __attribute__((format(printf, 2, 3)));
-  ~illegal_argument() { free(free_msg); }
 };
 
 struct os_error {
