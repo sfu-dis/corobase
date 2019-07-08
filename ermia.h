@@ -229,6 +229,8 @@ public:
   ConcurrentMasstreeIndex(std::string name, const char *primary)
       : OrderedIndex(name, primary) {}
 
+  ConcurrentMasstree &GetMasstree() { return masstree_; }
+
   inline void *GetTable() override { return masstree_.get_table(); }
 
   virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,

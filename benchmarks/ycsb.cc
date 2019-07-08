@@ -235,7 +235,7 @@ class ycsb_worker : public bench_worker {
     }
 
     return {RC_TRUE};
-}
+  }
 
   rc_t txn_rmw() {
     ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());

@@ -26,6 +26,7 @@ extern uint g_initial_table_size;
 extern int g_zipfian_rng;
 extern double g_zipfian_theta; // zipfian constant, [0, 1), more skewed as it
                                // approaches 1.
+int g_max_inflight_tx = 10;
 
 // { insert, read, update, scan, rmw }
 extern YcsbWorkload YcsbWorkloadA;
@@ -62,163 +63,65 @@ public:
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
   }
-
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
+
     if (ycsb_workload.insert_percent())
       w.push_back(workload_desc(
-          "Insert", double(ycsb_workload.insert_percent()) / 100.0, TxnInsert));
+          "Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr, nullptr));
     if (ycsb_workload.read_percent())
       w.push_back(workload_desc(
-          "Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+          "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, TxnRead));
     if (ycsb_workload.update_percent())
       w.push_back(workload_desc(
-          "Update", double(ycsb_workload.update_percent()) / 100.0, TxnUpdate));
+          "Update", double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr));
     if (ycsb_workload.scan_percent())
       w.push_back(workload_desc(
-          "Scan", double(ycsb_workload.scan_percent()) / 100.0, TxnScan));
+          "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, nullptr));
     if (ycsb_workload.rmw_percent())
       w.push_back(workload_desc(
-          "RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+          "RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
+
     return w;
   }
 
-  static rc_t TxnInsert(bench_worker *w) {
-    MARK_REFERENCED(w);
-    return {RC_TRUE};
-  }
-
-  static rc_t TxnRead(bench_worker *w) {
+  static CoroHandle TxnRead(bench_worker *w) {
     return static_cast<ycsb_cs_worker *>(w)->txn_read();
   }
 
-  static rc_t TxnUpdate(bench_worker *w) {
-    MARK_REFERENCED(w);
-    return {RC_TRUE};
-  }
-
-  static rc_t TxnScan(bench_worker *w) {
-    MARK_REFERENCED(w);
-    return {RC_TRUE};
-  }
-
-  static rc_t TxnRMW(bench_worker *w) {
+  static CoroHandle TxnRMW(bench_worker *w) {
     return static_cast<ycsb_cs_worker *>(w)->txn_rmw();
   }
 
-  rc_t txn_read() {
-    arena.reset();
-    ermia::transaction *txn;
-    thread_local ermia::transaction *txn_obj_buf;
-    if (!txn_obj_buf)
-      txn_obj_buf =
-          (ermia::transaction *)malloc(10 * sizeof(ermia::transaction));
-    else
-      memset(txn_obj_buf, 0, 10 * sizeof(ermia::transaction));
-
+  CoroHandle txn_read() {
+    //arena.reset();
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     ermia::RCU::rcu_enter();
 
-    for (int i = 0; i < 10; ++i) {
-      new (txn_obj_buf + i)
-          ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
-                                 ermia::transaction::TXN_FLAG_READ_ONLY,
-                             arena);
-      txn = txn_obj_buf + i;
-      ermia::TXN::xid_context *xc = txn->GetXIDContext();
-      xc->begin_epoch = begin_epoch;
-    }
+    ermia::transaction *txn = (ermia::transaction *)malloc(g_max_inflight_tx * sizeof(ermia::transaction));
+    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
+                                 ermia::transaction::TXN_FLAG_READ_ONLY, arena);
+    ermia::TXN::xid_context *xc = txn->GetXIDContext();
+    xc->begin_epoch = begin_epoch;
 
-    for (int i = 0; i < 10; ++i) {
-      txn = txn_obj_buf + i;
-      for (int j = 0; j < g_reps_per_tx; ++j) {
-        auto &k = GenerateKey();
-        ermia::varstr &v = str(0);
-        rc_t rc = rc_t{RC_INVALID};
-        tbl->Get(txn, rc, k, v); // Read
-        ALWAYS_ASSERT(rc._val == RC_TRUE);
-        ALWAYS_ASSERT(*(char *)v.data() == 'a');
-      }
+    thread_local std::vector<ermia::varstr *> keys;
+    thread_local std::vector<ermia::OID> oids;
+    keys.clear();
+    oids.clear();
+    for (int j = 0; j < g_reps_per_tx; ++j) {
+      auto &k = GenerateKey();
+      keys.push_back(&k);
+      oids.push_back(ermia::INVALID_OID);
     }
-
-    for (int i = 0; i < 10; ++i) {
-      txn = txn_obj_buf + i;
-      TryCatch(db->Commit(txn));
-    }
-
     ermia::RCU::rcu_exit();
     ermia::MM::epoch_exit(0, begin_epoch);
 
-    return {RC_TRUE};
+    ermia::ConcurrentMasstree::threadinfo ti(xc->begin_epoch);
+    return tbl->GetMasstree().ycsb_read_coro(txn, keys, oids, ti, nullptr).get_handle();
   }
 
-  rc_t txn_rmw() {
-    arena.reset();
-    ermia::transaction *txn;
-    thread_local ermia::transaction *txn_obj_buf;
-    if (!txn_obj_buf)
-      txn_obj_buf =
-          (ermia::transaction *)malloc(10 * sizeof(ermia::transaction));
-    else
-      memset(txn_obj_buf, 0, 10 * sizeof(ermia::transaction));
-
-    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-    ermia::RCU::rcu_enter();
-    ermia::sm_tx_log *log = ermia::logmgr->new_tx_log();
-
-    for (int i = 0; i < 10; ++i) {
-      new (txn_obj_buf + i)
-          ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, arena);
-      txn = txn_obj_buf + i;
-      ermia::TXN::xid_context *xc = txn->GetXIDContext();
-      xc->begin_epoch = begin_epoch;
-      txn->SetTxnLog(log);
-      xc->begin = ermia::logmgr->cur_lsn().offset() + 1;
-    }
-
-    keys.clear();
-    for (int i = 0; i < 10; ++i) {
-      txn = txn_obj_buf + i;
-      for (int j = 0; j < g_reps_per_tx; ++j) {
-        ermia::varstr &k = str(sizeof(uint64_t));
-        int64_t key = __sync_fetch_and_add(&g_initial_table_size, 1);
-        BuildKey(key, k);
-        keys.push_back(&k);
-
-        ermia::varstr &v = str(sizeof(YcsbRecord));
-        new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr),
-                               sizeof(YcsbRecord));
-        *(char *)v.p = 'a';
-        TryVerifyStrict(tbl->Insert(txn, k, v));
-      }
-    }
-
-    // Verify inserted values
-    for (int i = 0; i < 10; ++i) {
-      txn = txn_obj_buf + i;
-      for (int j = 0; j < g_reps_per_tx; ++j) {
-        rc_t rc = rc_t{RC_INVALID};
-        ermia::OID oid = 0;
-        ermia::varstr &v = str(0);
-
-        tbl->Get(txn, rc, *keys[i * g_reps_per_tx + j], v, &oid);
-        ALWAYS_ASSERT(*(char *)v.data() == 'a');
-        TryVerifyStrict(rc);
-      }
-    }
-
-    for (int i = 0; i < 10; ++i) {
-      txn = txn_obj_buf + i;
-      ermia::TXN::xid_context *xc = txn->GetXIDContext();
-      TryCatch(db->Commit(txn));
-    }
-
-    ermia::epoch_num end_epoch = log->pre_commit().offset();
-    log->commit(NULL);
-    ermia::RCU::rcu_exit();
-    ermia::MM::epoch_exit(end_epoch, begin_epoch);
-
-    return {RC_TRUE};
+  CoroHandle txn_rmw() {
+    return nullptr;
   }
 
 protected:
@@ -305,7 +208,7 @@ protected:
 class ycsb_cs_bench_runner : public bench_runner {
 public:
   ycsb_cs_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    db->CreateMasstreeTable("USERTABLE", true /* decoupled index access */);
+    db->CreateMasstreeTable("USERTABLE", false);
   }
 
   virtual void prepare(char *) {
@@ -355,6 +258,7 @@ void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv) {
   while (1) {
     static struct option long_options[] = {
         {"reps-per-tx", required_argument, 0, 'r'},
+        {"max-inflight-tx", required_argument, 0, 'i'},
         {"rmw-additional-reads", required_argument, 0, 'a'},
         {"workload", required_argument, 0, 'w'},
         {"initial-table-size", required_argument, 0, 's'},
@@ -377,6 +281,10 @@ void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv) {
 
     case 'a':
       g_rmw_additional_reads = strtoul(optarg, NULL, 10);
+      break;
+
+    case 'i':
+      g_max_inflight_tx = strtoul(optarg, NULL, 10);
       break;
 
     case 's':
@@ -427,7 +335,9 @@ void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv) {
               << "  additional reads after RMW: " << g_rmw_additional_reads
               << std::endl
               << "  distribution:               "
-              << (g_zipfian_rng ? "zipfian" : "uniform") << std::endl;
+              << (g_zipfian_rng ? "zipfian" : "uniform")
+              << std::endl
+              << "  max in-flight transactoins: " << g_max_inflight_tx << std::endl;
 
     if (g_zipfian_rng) {
       std::cerr << "  zipfian theta:              " << g_zipfian_theta

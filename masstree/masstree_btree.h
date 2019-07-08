@@ -232,6 +232,10 @@ public:
   search_coro(const key_type &k, OID &o, threadinfo &ti,
               versioned_node_t *search_info = nullptr) const;
 
+  ermia::dia::generator<bool>
+  ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *> &keys, std::vector<OID> &oids,
+                 threadinfo &ti, versioned_node_t *search_info) const;
+
   /**
    * The low level callback interface is as follows:
    *
