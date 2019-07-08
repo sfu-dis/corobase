@@ -86,7 +86,12 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
     }
     
     if (match) {
-      oids[i] = lp.value();
+      auto o = lp.value();
+      auto tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext());
+      if (tuple) {
+        varstr value;
+        auto rc = txn->DoTupleRead(tuple, &value);
+      }
     }
     if (search_info) {
       *search_info = versioned_node_t(lp.node(), lp.full_version_value());
