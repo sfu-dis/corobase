@@ -130,26 +130,15 @@ protected:
 
   inline str_arena &string_allocator() { return *sa; }
 
-#if defined(SSN) || defined(SSI) || defined(MVOCC)
-  inline read_set_t &GetReadSet() {
-    return read_set;
-  }
-#endif
-
-  inline write_set_t &GetWriteSet() {
-    return write_set;
-  }
-
   inline void add_to_write_set(fat_ptr *entry) {
 #ifndef NDEBUG
-    auto &write_set = GetWriteSet();
     for (uint32_t i = 0; i < write_set.size(); ++i) {
       auto &w = write_set[i];
       ASSERT(w.entry);
       ASSERT(w.entry != entry);
     }
 #endif
-    GetWriteSet().emplace_back(entry);
+    write_set.emplace_back(entry);
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
