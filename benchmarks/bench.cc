@@ -107,7 +107,54 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
   return false;
 }
 
+void bench_worker::MyWorkCoro() {
+  // No replication support
+  ALWAYS_ASSERT(is_worker);
+  workload = get_workload();
+  txn_counts.resize(workload.size());
+
+  const static uint32_t kHandles = 5;
+  std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> handles(kHandles);
+
+  barrier_a->count_down();
+  barrier_b->wait_for();
+  util::timer t;
+  while (running) {
+    // Keep looking at the in-flight transactions (handles) and add more when we
+    // finish a transaction
+    for (uint32_t i = 0; i < handles.size(); ++i) {
+      auto h = handles[i];
+      if (h) {
+        if (h.done()) {
+          h.destroy();
+          handles[i] = nullptr;
+          // FIXME(tzwang): get proper stats
+          finish_workload(rc_t{RC_TRUE}, 0, t);
+        } else {
+          h.resume();
+        }
+      }
+
+      // Note: don't change this to 'else...' - we may change h in the prevous if (h)
+      if (!h && running) {
+        double d = r.next_uniform();
+        for (size_t j = 0; j < workload.size(); i++) {
+          if ((i + 1) == workload.size() || d < workload[j].frequency) {
+            const unsigned long old_seed = r.get_seed();
+            handles[i] = workload[j].coro_fn(this);
+            break;
+          }
+          d -= workload[j].frequency;
+        }
+      }
+    }
+  }
+}
+
 void bench_worker::MyWork(char *) {
+  MyWorkCoro();
+  return;
+
   if (is_worker) {
     workload = get_workload();
     txn_counts.resize(workload.size());

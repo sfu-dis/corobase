@@ -119,19 +119,23 @@ class bench_worker : public ermia::thread::Runner {
 
   /* For 'normal' workload (r/w on primary, r/o on backups) */
   typedef rc_t (*txn_fn_t)(bench_worker *);
+  typedef std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type> CoroHandle;
+  typedef CoroHandle (*coro_txn_fn_t)(bench_worker *);
   struct workload_desc {
     workload_desc() {}
-    workload_desc(const std::string &name, double frequency, txn_fn_t fn)
-        : name(name), frequency(frequency), fn(fn) {
+    workload_desc(const std::string &name, double frequency, txn_fn_t fn, coro_txn_fn_t cf = nullptr)
+        : name(name), frequency(frequency), fn(fn), coro_fn(cf) {
       ALWAYS_ASSERT(frequency > 0.0);
       ALWAYS_ASSERT(frequency <= 1.0);
     }
     std::string name;
     double frequency;
     txn_fn_t fn;
+    coro_txn_fn_t coro_fn;
   };
   typedef std::vector<workload_desc> workload_desc_vec;
   virtual workload_desc_vec get_workload() const = 0;
+
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const = 0;
   workload_desc_vec workload;
 
@@ -169,6 +173,7 @@ class bench_worker : public ermia::thread::Runner {
 
  private:
   virtual void MyWork(char *);
+  void MyWorkCoro();
 
  protected:
   inline ermia::transaction *txn_buf() { return txn_obj_buf; }
