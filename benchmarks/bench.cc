@@ -141,7 +141,7 @@ void bench_worker::MyWorkCoro() {
         for (size_t j = 0; j < workload.size(); i++) {
           if ((i + 1) == workload.size() || d < workload[j].frequency) {
             const unsigned long old_seed = r.get_seed();
-            handles[i] = workload[j].coro_fn(this);
+            handles[i] = workload[j].coro_fn(this, i);
             break;
           }
           d -= workload[j].frequency;
@@ -152,8 +152,10 @@ void bench_worker::MyWorkCoro() {
 }
 
 void bench_worker::MyWork(char *) {
-  MyWorkCoro();
-  return;
+  if (ermia::config::coro_tx) {
+    MyWorkCoro();
+    return;
+  }
 
   if (is_worker) {
     workload = get_workload();
