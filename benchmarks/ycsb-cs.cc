@@ -85,20 +85,26 @@ public:
     return w;
   }
 
-  static CoroHandle TxnRead(bench_worker *w) {
-    return static_cast<ycsb_cs_worker *>(w)->txn_read();
+  static CoroHandle TxnRead(bench_worker *w, uint32_t idx) {
+    return static_cast<ycsb_cs_worker *>(w)->txn_read(idx);
   }
 
-  static CoroHandle TxnRMW(bench_worker *w) {
+  static CoroHandle TxnRMW(bench_worker *w, uint32_t) {
     return static_cast<ycsb_cs_worker *>(w)->txn_rmw();
   }
 
-  CoroHandle txn_read() {
+  CoroHandle txn_read(uint32_t idx) {
+    const static uint32_t kHandles = 100;
+    thread_local ermia::transaction *tx_buffers = nullptr;
+    if (!tx_buffers) {
+      tx_buffers = (ermia::transaction *)malloc(sizeof(ermia::transaction) * kHandles);
+    }
+
     //arena.reset();
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     ermia::RCU::rcu_enter();
 
-    ermia::transaction *txn = (ermia::transaction *)malloc(g_max_inflight_tx * sizeof(ermia::transaction));
+    ermia::transaction *txn = &tx_buffers[idx];
     new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
                                  ermia::transaction::TXN_FLAG_READ_ONLY, arena);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
@@ -109,7 +115,7 @@ public:
     keys.clear();
     oids.clear();
     for (int j = 0; j < g_reps_per_tx; ++j) {
-      auto &k = GenerateKey();
+      auto &k = GenerateKey(txn);
       keys.push_back(&k);
       oids.push_back(ermia::INVALID_OID);
     }
@@ -127,7 +133,7 @@ public:
 protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
 
-  ermia::varstr &GenerateKey() {
+  ermia::varstr &GenerateKey(ermia::transaction *t) {
     uint64_t r = 0;
     if (g_zipfian_rng) {
       r = zipfian_rng.next();
@@ -135,7 +141,7 @@ protected:
       r = uniform_rng.uniform_within(0, g_initial_table_size - 1);
     }
 
-    ermia::varstr &k = str(sizeof(uint64_t)); // 8-byte key
+    ermia::varstr &k = *t->string_allocator().next(sizeof(uint64_t)); // 8-byte key
     new (&k)
         ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(r, k);

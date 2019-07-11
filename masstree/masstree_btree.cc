@@ -99,7 +99,6 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
   }
   txn->commit();
   txn->~transaction();
-  free(txn);
   co_return committed;
 }
 

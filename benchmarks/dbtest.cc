@@ -21,6 +21,7 @@ DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
 DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
 DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
+DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
@@ -224,6 +225,8 @@ int main(int argc, char **argv) {
   ermia::config::command_log = FLAGS_command_log;
   ermia::config::command_log_buffer_mb = FLAGS_command_log_buffer_mb;
 
+  ermia::config::coro_tx = FLAGS_coro_tx;
+
   // Backup specific arguments
   if (ermia::config::is_backup_srv()) {
     ermia::config::nvram_log_buffer = FLAGS_nvram_log_buffer;
@@ -362,6 +365,7 @@ int main(int argc, char **argv) {
   std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
+  std::cerr << "  coro-tx           : " << FLAGS_coro_tx << std::endl;
   std::cerr << "  dia               : " << FLAGS_dia << std::endl;
   std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;
   std::cerr << "  dia-req-coalsece  : " << FLAGS_dia_request_coalesce << std::endl;
@@ -458,8 +462,11 @@ int main(int argc, char **argv) {
   }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
-    test_fn = ycsb_cs_do_test;
-    //test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
+    if (FLAGS_coro_tx) {
+      test_fn = ycsb_cs_do_test;
+    } else {
+      test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
+    }
   } else if (FLAGS_benchmark == "tpcc") {
     //test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
     test_fn = tpcc_do_test;

@@ -128,7 +128,7 @@ protected:
 
   // expected public overrides
 
-  inline str_arena &string_allocator() { return *sa; }
+  inline str_arena &string_allocator() { return sa; }
 
   inline void add_to_write_set(fat_ptr *entry) {
 #ifndef NDEBUG
@@ -149,7 +149,7 @@ protected:
   XID xid;
   TXN::xid_context *xc;
   sm_tx_log *log;
-  str_arena *sa;
+  str_arena sa;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;

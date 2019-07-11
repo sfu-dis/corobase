@@ -8,13 +8,13 @@
 namespace ermia {
 class str_arena {
 public:
-  static const uint64_t ReserveBytes = 128 * 1024 * 1024;
+  static const uint64_t ReserveBytes = 32 * 1024 * 1024;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
   str_arena() : n(0) {
     // adler32 (log checksum) needs it aligned
     ALWAYS_ASSERT(
         not posix_memalign((void **)&str, DEFAULT_ALIGNMENT, ReserveBytes));
-    memset(str, '\0', ReserveBytes);
+    //memset(str, '\0', ReserveBytes);
     reset();
   }
 

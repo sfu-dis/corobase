@@ -10,6 +10,7 @@ namespace ermia {
 namespace config {
 
 bool verbose = true;
+bool coro_tx = false;
 std::string benchmark("");
 uint32_t worker_threads = 0;
 uint32_t benchmark_seconds = 30;
