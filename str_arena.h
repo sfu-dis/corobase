@@ -14,7 +14,7 @@ public:
     // adler32 (log checksum) needs it aligned
     ALWAYS_ASSERT(
         not posix_memalign((void **)&str, DEFAULT_ALIGNMENT, ReserveBytes));
-    //memset(str, '\0', ReserveBytes);
+    memset(str, '\0', ReserveBytes);
     reset();
   }
 

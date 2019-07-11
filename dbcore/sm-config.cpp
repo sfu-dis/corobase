@@ -11,6 +11,7 @@ namespace config {
 
 bool verbose = true;
 bool coro_tx = false;
+uint32_t coro_batch_size = 1;
 std::string benchmark("");
 uint32_t worker_threads = 0;
 uint32_t benchmark_seconds = 30;

@@ -149,7 +149,7 @@ protected:
   XID xid;
   TXN::xid_context *xc;
   sm_tx_log *log;
-  str_arena sa;
+  str_arena &sa;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;

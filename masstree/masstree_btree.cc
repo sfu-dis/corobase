@@ -6,9 +6,9 @@ namespace ermia {
 // Multi-key search using Coroutines
 template <typename P>
 ermia::dia::generator<bool>
-mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *> &keys, std::vector<OID> &oids,
+mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *> &keys,
                           threadinfo &ti, versioned_node_t *search_info) const {
-  bool committed = false;
+  std::vector<OIDAMACState> version_requests;
   for (uint32_t i = 0; i < keys.size(); ++i) {
     auto &k = *keys[i];
 
@@ -87,25 +87,40 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
     
     if (match) {
       auto o = lp.value();
+      version_requests.emplace_back(o);
+      /*
       auto tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext());
       if (tuple) {
         varstr value;
         auto rc = txn->DoTupleRead(tuple, &value);
       }
+      */
     }
     if (search_info) {
       *search_info = versioned_node_t(lp.node(), lp.full_version_value());
     }
   }
+
+  oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, txn->GetXIDContext());
+  uint32_t i = 0;
+  for (auto &vr : version_requests) {
+    if (vr.tuple) {
+      varstr value;
+      txn->DoTupleRead(vr.tuple, &value);
+    } else if (config::phantom_prot) {
+      //DoNodeRead(txn, sinfo.first, sinfo.second);
+    }
+  }
+
+  // Use AMAC to access the versions
   txn->commit();
   txn->~transaction();
-  co_return committed;
+  co_return true;
 }
 
 template
 ermia::dia::generator<bool>
 mbtree<masstree_params>::ycsb_read_coro(ermia::transaction *txn,
                                         const std::vector<varstr *> &keys,
-                                        std::vector<OID> &oids,
                                         threadinfo &ti, versioned_node_t *search_info) const;
 } // namespace ermia

@@ -22,6 +22,7 @@ DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
 DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
 DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
 DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
+DEFINE_uint64(coro_batch_size, 5, "Number of in-flight coroutines");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
@@ -226,6 +227,7 @@ int main(int argc, char **argv) {
   ermia::config::command_log_buffer_mb = FLAGS_command_log_buffer_mb;
 
   ermia::config::coro_tx = FLAGS_coro_tx;
+  ermia::config::coro_batch_size = FLAGS_coro_batch_size;
 
   // Backup specific arguments
   if (ermia::config::is_backup_srv()) {
@@ -366,6 +368,7 @@ int main(int argc, char **argv) {
 
   std::cerr << "Settings and properties" << std::endl;
   std::cerr << "  coro-tx           : " << FLAGS_coro_tx << std::endl;
+  std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
   std::cerr << "  dia               : " << FLAGS_dia << std::endl;
   std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;
   std::cerr << "  dia-req-coalsece  : " << FLAGS_dia_request_coalesce << std::endl;

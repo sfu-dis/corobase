@@ -8,7 +8,7 @@
 namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa)
-    : flags(flags) {//, sa(&sa) {
+    : flags(flags), sa(sa) {
   if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a

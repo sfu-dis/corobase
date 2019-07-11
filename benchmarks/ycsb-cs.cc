@@ -58,6 +58,10 @@ public:
     if (g_zipfian_rng) {
       zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
     }
+    tx_arena = (ermia::str_arena *)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
+    for (uint32_t i = 0; i < ermia::config::coro_batch_size; ++i) {
+      new (&tx_arena[i]) ermia::str_arena;
+    }
   }
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
@@ -94,36 +98,36 @@ public:
   }
 
   CoroHandle txn_read(uint32_t idx) {
-    const static uint32_t kHandles = 100;
     thread_local ermia::transaction *tx_buffers = nullptr;
     if (!tx_buffers) {
-      tx_buffers = (ermia::transaction *)malloc(sizeof(ermia::transaction) * kHandles);
+      tx_buffers = (ermia::transaction *)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
+      keys = (std::vector<ermia::varstr *> *)malloc(
+        sizeof(std::vector<ermia::varstr *>) * ermia::config::coro_batch_size);
+      for (uint32_t i = 0; i < ermia::config::coro_batch_size; ++i) {
+        new (&keys[i]) std::vector<ermia::varstr *>;
+      }
     }
 
-    //arena.reset();
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     ermia::RCU::rcu_enter();
 
     ermia::transaction *txn = &tx_buffers[idx];
+    tx_arena[idx].reset();
     new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
-                                 ermia::transaction::TXN_FLAG_READ_ONLY, arena);
+                                 ermia::transaction::TXN_FLAG_READ_ONLY, tx_arena[idx]);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
-    thread_local std::vector<ermia::varstr *> keys;
-    thread_local std::vector<ermia::OID> oids;
-    keys.clear();
-    oids.clear();
+    keys[idx].clear();
     for (int j = 0; j < g_reps_per_tx; ++j) {
       auto &k = GenerateKey(txn);
-      keys.push_back(&k);
-      oids.push_back(ermia::INVALID_OID);
+      keys[idx].push_back(&k);
     }
     ermia::RCU::rcu_exit();
     ermia::MM::epoch_exit(0, begin_epoch);
 
     ermia::ConcurrentMasstree::threadinfo ti(xc->begin_epoch);
-    return tbl->GetMasstree().ycsb_read_coro(txn, keys, oids, ti, nullptr).get_handle();
+    return tbl->GetMasstree().ycsb_read_coro(txn, keys[idx], ti, nullptr).get_handle();
   }
 
   CoroHandle txn_rmw() {
@@ -152,8 +156,9 @@ private:
   ermia::ConcurrentMasstreeIndex *tbl;
   foedus::assorted::UniformRandom uniform_rng;
   foedus::assorted::ZipfianRandom zipfian_rng;
-  std::vector<ermia::varstr *> keys;
+  std::vector<ermia::varstr *> *keys;
   std::vector<ermia::varstr *> values;
+  ermia::str_arena *tx_arena;
 };
 
 class ycsb_cs_usertable_loader : public bench_loader {
