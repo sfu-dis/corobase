@@ -87,28 +87,30 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
     
     if (match) {
       auto o = lp.value();
-      version_requests.emplace_back(o);
-      /*
-      auto tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext());
-      if (tuple) {
-        varstr value;
-        auto rc = txn->DoTupleRead(tuple, &value);
+      if (!config::amac_version_chain) {
+        version_requests.emplace_back(o);
+        auto tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext());
+        if (tuple) {
+          varstr value;
+          auto rc = txn->DoTupleRead(tuple, &value);
+        }
       }
-      */
     }
     if (search_info) {
       *search_info = versioned_node_t(lp.node(), lp.full_version_value());
     }
   }
 
-  oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, txn->GetXIDContext());
-  uint32_t i = 0;
-  for (auto &vr : version_requests) {
-    if (vr.tuple) {
-      varstr value;
-      txn->DoTupleRead(vr.tuple, &value);
-    } else if (config::phantom_prot) {
-      //DoNodeRead(txn, sinfo.first, sinfo.second);
+  if (config::amac_version_chain) {
+    oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, txn->GetXIDContext());
+    uint32_t i = 0;
+    for (auto &vr : version_requests) {
+      if (vr.tuple) {
+        varstr value;
+        txn->DoTupleRead(vr.tuple, &value);
+      } else if (config::phantom_prot) {
+        //DoNodeRead(txn, sinfo.first, sinfo.second);
+      }
     }
   }
 
