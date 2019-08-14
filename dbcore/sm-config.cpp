@@ -70,7 +70,7 @@ uint32_t read_view_stat_interval_ms;
 std::string read_view_stat_file;
 bool command_log = false;
 uint32_t command_log_buffer_mb = 16;
-bool index_probe_only = true;
+bool index_probe_only = false;
 std::string dia_req_handler = "serial";
 bool dia_req_coalesce = false;
 uint32_t dia_batch_size = 1;
