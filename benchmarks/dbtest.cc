@@ -446,7 +446,7 @@ int main(int argc, char **argv) {
     std::cerr << "  wait-for-backups  : " << ermia::config::wait_for_backups << std::endl;
   }
 
-  system("rm /dev/shm/tzwang/ermia-log/*");
+  system("rm /dev/shm/$(whoami)/ermia-log/*");
 
   ermia::MM::prepare_node_memory();
   std::vector<std::string> bench_toks = split_ws(FLAGS_benchmark_options);
