@@ -1,7 +1,6 @@
 #ifndef SM_COROUTINE_H
 #define SM_COROUTINE_H
 #include <experimental/coroutine>
-#include <vector>
 namespace ermia {
 namespace dia {
 
@@ -106,6 +105,17 @@ private:
 // promise_base.awaiting_promise_ points to the promise which depends on `this`
 // promise. (i.e. promise_base.awaiting_promise_ depends on `this` to be
 // resolved first)
+//
+// XXX:
+// Probably the current 'link list' implementation can be replaced by a single
+// vector<coroutine_handle> to track the coroutine call stack, which can have
+// positve effect on performance.
+// The idea is to let each `promise_base` hold a pointer of vector<>, namely
+// `pCallStack`. Initialy let `pCallStack` be a nullptr. When a task<>
+// being co_awaited, it will have knowledge of the its dependency in the chained
+// coroutine call. It can initialize the vector<> if its the first call in the,
+// or it takes the reference `pCallStack` of its parent and append itself into
+// the vector<>.
 struct promise_base {
   promise_base()
       : coroutine_handle_addr(nullptr), depend_on_promise_(nullptr),
@@ -134,7 +144,7 @@ struct promise_base {
 
   // TODO: Use arena allocator. Probably one arena for
   // each chain of coroutine task.
-  // It is very important to use arena to reduce the 
+  // It is very important to use arena to reduce the
   // cache miss in access promise_base * which happens
   // a lot in task<T>.resume();
 
@@ -229,8 +239,6 @@ template <> struct task<void>::promise_type : coro_task_private::promise_base {
   using coroutine_handle =
       std::experimental::coroutine_handle<typename task<void>::promise_type>;
 
-  friend struct task<void>::awaiter;
-
   promise_type() {}
   ~promise_type() {}
 
@@ -264,8 +272,9 @@ struct task<T>::promise_type : coro_task_private::promise_base {
     return_value_ = &value;
   }
 
-private:
   T &&transfer_return_value() { return std::move(*return_value_); }
+
+private:
   T *return_value_;
 };
 
