@@ -1,6 +1,8 @@
 #ifndef SM_COROUTINE_H
 #define SM_COROUTINE_H
 #include <experimental/coroutine>
+
+#include "sm-defs.h"
 namespace ermia {
 namespace dia {
 
@@ -231,6 +233,13 @@ public:
 
   awaiter operator co_await() const { return awaiter(coroutine_); }
 
+  // Call get_return_value() on task<> for more than one time is undefined
+  template<typename U = T>
+  typename std::enable_if<not std::is_same<U, void>::value, U>::type 
+  get_return_value() const {
+    return coroutine_.promise().transfer_return_value();
+  }
+
 private:
   coroutine_handle coroutine_;
 };
@@ -248,7 +257,7 @@ template <> struct task<void>::promise_type : coro_task_private::promise_base {
     return task{coroutine_handle};
   }
 
-  void return_void(){};
+  void return_void() {};
 };
 
 template <typename T>
@@ -259,7 +268,9 @@ struct task<T>::promise_type : coro_task_private::promise_base {
   friend struct task<T>::awaiter;
 
   promise_type() : return_value_(nullptr) {}
-  ~promise_type() {}
+  ~promise_type() {
+      delete return_value_;
+  }
 
   auto get_return_object() {
     auto coroutine_handle = coroutine_handle::from_promise(*this);
@@ -267,12 +278,13 @@ struct task<T>::promise_type : coro_task_private::promise_base {
     return task{coroutine_handle};
   }
 
-  void return_value(T &value) {
-    // XXX: not sure if it's really safe.
-    return_value_ = &value;
+  // XXX: explore if there is anyway to get ride of
+  // the new copy constructing.
+  void return_value(const T &value) {
+    return_value_ = new T(value);
   }
 
-  T &&transfer_return_value() { return std::move(*return_value_); }
+  T transfer_return_value() { return T(std::move(*return_value_)); }
 
 private:
   T *return_value_;
@@ -287,7 +299,9 @@ template <typename T> struct task<T>::awaiter {
   ~awaiter() {}
 
   awaiter(const awaiter &) = delete;
-  awaiter(awaiter &&) = delete;
+  awaiter(awaiter && other) : suspended_task_coroutine_(nullptr){
+      std::swap(suspended_task_coroutine_, suspended_task_coroutine_);
+  }
 
   template <typename awaiting_promise_t>
   auto await_suspend(std::experimental::coroutine_handle<awaiting_promise_t>
@@ -309,20 +323,20 @@ template <typename T> struct task<T>::awaiter {
   using void_T =
       typename std::enable_if<std::is_same<U, void>::value, void>::type;
 
-  template <typename U = T> constexpr non_void_T<U> &&await_resume() noexcept {
+  template <typename U = T> non_void_T<U> await_resume() noexcept {
     ASSERT(suspended_task_coroutine_.done());
-    return std::move(
-        suspended_task_coroutine_.promise().transfer_return_value());
+    return suspended_task_coroutine_.promise().transfer_return_value();
   }
 
-  template <typename U = T> constexpr void_T<U> await_resume() noexcept {
+  template <typename U = T> void_T<U> await_resume() noexcept {
     ASSERT(suspended_task_coroutine_.done());
   }
 
 private:
-  const coroutine_handle suspended_task_coroutine_;
+  coroutine_handle suspended_task_coroutine_;
 };
 
 } // namespace dia
 } // namespace ermia
 #endif
+

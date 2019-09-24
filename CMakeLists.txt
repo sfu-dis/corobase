@@ -6,6 +6,8 @@ endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
+option(BUILD_TESTS "build tests along with the benchmarks" ON)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Wno-address-of-packed-member")
 set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
 link_libraries(${LINK_FLAGS})
@@ -78,6 +80,13 @@ set_target_properties(ermia_mvocc PROPERTIES COMPILE_FLAGS "-DMVOCC")
 add_executable(ermia_MVOCC ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_MVOCC PROPERTIES COMPILE_FLAGS "-DMVOCC")
 target_link_libraries(ermia_MVOCC ermia_mvocc)
+
+if(BUILD_TESTS)
+    set(BUILD_GMOCK OFF CACHE BOOL "Gmock Not Used")
+    set(INSTALL_GTEST OFF CACHE BOOL "Static Link Gtest")
+    add_subdirectory(third-party/googletest)
+    add_subdirectory(tests)
+endif()
 
 # Benchmark scripts
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
