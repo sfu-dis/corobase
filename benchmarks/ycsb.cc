@@ -17,6 +17,18 @@
 #include "ycsb.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 
+
+#ifdef USE_STATIC_COROUTINE
+  #include "ycsb-cs-task.h"
+
+  #define BENCH_RUNNER ycsb_cs_task_bench_runner
+
+#else
+
+  #define BENCH_RUNNER ycsb_bench_runner
+
+#endif
+
 uint64_t global_key_counter = 0;
 uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
@@ -497,6 +509,6 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
     }
   }
 
-  ycsb_bench_runner r(db);
+  BENCH_RUNNER r(db);
   r.run();
 }

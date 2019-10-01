@@ -223,7 +223,7 @@ public:
   /** NOTE: the public interface assumes that the caller has taken care
    * of setting up RCU */
 
-  inline bool search(const key_type &k, OID &o, epoch_num e,
+  inline MAYBE_PROMISE(bool) search(const key_type &k, OID &o, epoch_num e,
                      versioned_node_t *search_info = nullptr) const;
 
   inline void search_amac(std::vector<AMACState> &states, epoch_num epoch) const;
@@ -547,18 +547,18 @@ template <typename P> inline size_t mbtree<P>::size() const {
 }
 
 template <typename P>
-inline bool mbtree<P>::search(const key_type &k, OID &o, epoch_num e,
+inline MAYBE_PROMISE(bool) mbtree<P>::search(const key_type &k, OID &o, epoch_num e,
                               versioned_node_t *search_info) const {
   threadinfo ti(e);
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
-  bool found = lp.find_unlocked(ti);
+  bool found = MAYBE_AWAIT lp.find_unlocked(ti);
   if (found) {
     o = lp.value();
   }
   if (search_info) {
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   }
-  return found;
+  MAYBE_CO_RETURN found;
 }
 
 // Multi-key search using AMAC 
