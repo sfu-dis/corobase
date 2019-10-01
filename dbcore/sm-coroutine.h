@@ -336,6 +336,17 @@ private:
   coroutine_handle suspended_task_coroutine_;
 };
 
+
+#ifdef USE_STATIC_COROUTINE
+  #define MAYBE_PROMISE(t) task<t>
+  #define MAYBE_CO_RETURN co_return
+  #define MAYBE_AWAIT co_await
+#else
+  #define MAYBE_PROMISE(t) t
+  #define MAYBE_CO_RETURN return
+  #define MAYBE_AWAIT 
+#endif
+
 } // namespace dia
 } // namespace ermia
 #endif

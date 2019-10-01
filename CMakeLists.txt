@@ -7,6 +7,7 @@ project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
 option(BUILD_TESTS "build tests along with the benchmarks" ON)
+option(BUILD_STATIC_COROUTINE "build with coroutine at transaction level" OFF)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Wno-address-of-packed-member")
 set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
@@ -18,6 +19,10 @@ link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/gflags/lib)
 
 # Use masstree for index
 add_definitions(-DMASSTREE)
+
+if(BUILD_STATIC_COROUTINE)
+  add_definitions(-DUSE_STATIC_COROUTINE)
+endif()
 
 set(MASSTREE_CONFIG "--enable-max-key-len=1024 --with-malloc=malloc")
 
