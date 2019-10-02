@@ -1,5 +1,12 @@
 #pragma once
 
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "../third-party/foedus/zipfian_random.hpp"
+#include "bench.h"
+
 // FIXME(tzwang): since we don't have the read/write_all_fields knobs, here we
 // assume one field
 // In FOEDUS, we have 10 and with the knobs it can choose from any one field
@@ -63,4 +70,94 @@ struct YcsbWorkload {
   bool distinct_keys_;
 };
 
-void BuildKey(uint64_t key, ermia::varstr &k);
+inline void BuildKey(uint64_t key, ermia::varstr &k) { *(uint64_t *)k.p = key; }
+
+class ycsb_worker : public bench_worker {
+public:
+  ycsb_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+              const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+              spin_barrier *barrier_a, spin_barrier *barrier_b);
+
+  virtual cmdlog_redo_workload_desc_vec
+  get_cmdlog_redo_workload() const override {
+    LOG(FATAL) << "Not applicable";
+  }
+
+  virtual workload_desc_vec get_workload() const override;
+
+  static rc_t TxnInsert(bench_worker *w) {
+    MARK_REFERENCED(w);
+    return {RC_TRUE};
+  }
+  static rc_t TxnRead(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_read();
+  }
+  static rc_t TxnReadAMAC(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_read_amac();
+  }
+  static rc_t TxnReadCORO(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_read_coro();
+  }
+  static rc_t TxnUpdate(bench_worker *w) {
+    MARK_REFERENCED(w);
+    return {RC_TRUE};
+  }
+  static rc_t TxnScan(bench_worker *w) {
+    MARK_REFERENCED(w);
+    return {RC_TRUE};
+  }
+  static rc_t TxnRMW(bench_worker *w) {
+    return static_cast<ycsb_worker *>(w)->txn_rmw();
+  }
+
+  struct KeyCompare : public std::unary_function<ermia::varstr, bool> {
+    explicit KeyCompare(ermia::varstr &baseline) : baseline(baseline) {}
+    bool operator()(const ermia::varstr &arg) {
+      return *(uint64_t *)arg.p == *(uint64_t *)baseline.p;
+    }
+    ermia::varstr &baseline;
+  };
+
+  rc_t txn_read();
+  rc_t txn_read_amac();
+  rc_t txn_read_coro();
+  rc_t txn_rmw();
+
+protected:
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ermia::varstr &GenerateKey();
+
+private:
+  ermia::ConcurrentMasstreeIndex *tbl;
+  foedus::assorted::UniformRandom uniform_rng;
+  foedus::assorted::ZipfianRandom zipfian_rng;
+  std::vector<ermia::ConcurrentMasstree::AMACState> as;
+  std::vector<ermia::varstr *> keys;
+  std::vector<ermia::varstr *> values;
+};
+
+class ycsb_usertable_loader : public bench_loader {
+public:
+  ycsb_usertable_loader(
+      unsigned long seed, ermia::Engine *db,
+      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+      uint32_t loader_id): bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
+
+protected:
+  void load();
+
+private:
+  uint32_t loader_id;
+};
+
+class ycsb_bench_runner : public bench_runner {
+public:
+  ycsb_bench_runner(ermia::Engine *db);
+
+  virtual void prepare(char *) override;
+
+protected:
+  virtual std::vector<bench_loader *> make_loaders() override;
+  virtual std::vector<bench_worker *> make_cmdlog_redoers() override;
+  virtual std::vector<bench_worker *> make_workers() override;
+};
