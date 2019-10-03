@@ -4,7 +4,7 @@ add_subdirectory(record)
 if(BUILD_STATIC_COROUTINE)
 
 set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
-  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-coro-task.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-cs-task.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ycsb.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/bench.cc
 )

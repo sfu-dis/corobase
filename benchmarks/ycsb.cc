@@ -11,9 +11,9 @@
 
 #ifdef USE_STATIC_COROUTINE
 #include "ycsb-cs-task.h"
-#define BENCH_RUNNER ycsb_cs_task_bench_runner
+#define BENCH_RUNNER ycsb_bench_runner<ycsb_usertable_coro_task_loader, ycsb_coro_task_worker>
 #else
-#define BENCH_RUNNER ycsb_bench_runner
+#define BENCH_RUNNER ycsb_bench_runner<ycsb_usertable_loader, ycsb_worker>
 #endif
 
 uint64_t global_key_counter = 0;
@@ -317,47 +317,52 @@ void ycsb_usertable_loader::load() {
   }
 }
 
-ycsb_bench_runner::ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
-  db->CreateMasstreeTable("USERTABLE", false);
-}
-
-void ycsb_bench_runner::prepare(char *) {
-  open_tables["USERTABLE"] = ermia::IndexDescriptor::GetIndex("USERTABLE");
-}
-
-std::vector<bench_loader *> ycsb_bench_runner::make_loaders() {
-  uint64_t requested = g_initial_table_size;
-  uint64_t records_per_thread = std::max<uint64_t>(
-      1, g_initial_table_size / ermia::config::worker_threads);
-  g_initial_table_size = records_per_thread * ermia::config::worker_threads;
-
-  if (ermia::config::verbose) {
-    std::cerr << "[INFO] requested for " << requested << " records, will load "
-              << records_per_thread * ermia::config::worker_threads
-              << std::endl;
+template <typename loader_t, typename worker_t>
+class ycsb_bench_runner : public bench_runner {
+public:
+  ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
+    db->CreateMasstreeTable("USERTABLE", false);
   }
 
-  std::vector<bench_loader *> ret;
-  for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
-    ret.push_back(new ycsb_usertable_loader(0, db, open_tables, i));
+  virtual void prepare(char *) override {
+    open_tables["USERTABLE"] = ermia::IndexDescriptor::GetIndex("USERTABLE");
   }
-  return ret;
-}
 
-std::vector<bench_worker *> ycsb_bench_runner::make_cmdlog_redoers() {
-  // Not implemented
-  std::vector<bench_worker *> ret;
-  return ret;
-}
-std::vector<bench_worker *> ycsb_bench_runner::make_workers() {
-  util::fast_random r(8544290);
-  std::vector<bench_worker *> ret;
-  for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-    ret.push_back(
-        new ycsb_worker(i, r.next(), db, open_tables, &barrier_a, &barrier_b));
+protected:
+  virtual std::vector<bench_loader *> make_loaders() override {
+    uint64_t requested = g_initial_table_size;
+    uint64_t records_per_thread = std::max<uint64_t>(
+        1, g_initial_table_size / ermia::config::worker_threads);
+    g_initial_table_size = records_per_thread * ermia::config::worker_threads;
+
+    if (ermia::config::verbose) {
+      std::cerr << "[INFO] requested for " << requested
+                << " records, will load "
+                << records_per_thread * ermia::config::worker_threads
+                << std::endl;
+    }
+
+    std::vector<bench_loader *> ret;
+    for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
+      ret.push_back(new loader_t(0, db, open_tables, i));
+    }
+    return ret;
   }
-  return ret;
-}
+  virtual std::vector<bench_worker *> make_cmdlog_redoers() override {
+    // Not implemented
+    std::vector<bench_worker *> ret;
+    return ret;
+  }
+  virtual std::vector<bench_worker *> make_workers() override {
+    util::fast_random r(8544290);
+    std::vector<bench_worker *> ret;
+    for (size_t i = 0; i < ermia::config::worker_threads; i++) {
+      ret.push_back(new worker_t(i, r.next(), db, open_tables, &barrier_a,
+                                    &barrier_b));
+    }
+    return ret;
+  }
+};
 
 void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
   // parse options

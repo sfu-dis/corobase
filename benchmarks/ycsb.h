@@ -144,20 +144,8 @@ public:
       uint32_t loader_id): bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
 
 protected:
-  void load();
+  virtual void load() override;
 
 private:
   uint32_t loader_id;
-};
-
-class ycsb_bench_runner : public bench_runner {
-public:
-  ycsb_bench_runner(ermia::Engine *db);
-
-  virtual void prepare(char *) override;
-
-protected:
-  virtual std::vector<bench_loader *> make_loaders() override;
-  virtual std::vector<bench_worker *> make_cmdlog_redoers() override;
-  virtual std::vector<bench_worker *> make_workers() override;
 };

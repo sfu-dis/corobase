@@ -64,7 +64,50 @@ public:
     }
   }
 
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
+  virtual void MyWork(char *) override {
+    // No replication support
+    ALWAYS_ASSERT(is_worker);
+    workload = get_workload();
+    txn_counts.resize(workload.size());
+
+    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> handles(ermia::config::coro_batch_size);
+
+    barrier_a->count_down();
+    barrier_b->wait_for();
+    util::timer t;
+    while (running) {
+      // Keep looking at the in-flight transactions (handles) and add more when we
+      // finish a transaction
+      for (uint32_t i = 0; i < handles.size(); ++i) {
+        if (handles[i]) {
+          if (handles[i].done()) {
+            handles[i].destroy();
+            handles[i] = nullptr;
+            // FIXME(tzwang): get proper stats
+            finish_workload(rc_t{RC_TRUE}, 0, t);
+          } else {
+            handles[i].resume();
+          }
+        }
+
+        // Note: don't change this to 'else...' - we may change h in the prevous if (h)
+        if (!handles[i] && running) {
+          double d = r.next_uniform();
+          for (size_t j = 0; j < workload.size(); j++) {
+            if ((j + 1) == workload.size() || d < workload[j].frequency) {
+              const unsigned long old_seed = r.get_seed();
+              handles[i] = workload[j].coro_fn(this, i);
+              handles[i].resume();
+              break;
+            }
+            d -= workload[j].frequency;
+          }
+        }
+      }
+    }
+  }
+
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
     LOG(FATAL) << "Not applicable";
   }
   virtual workload_desc_vec get_workload() const {
@@ -72,16 +115,16 @@ public:
 
     if (ycsb_workload.insert_percent())
       w.push_back(workload_desc(
-          "Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr, nullptr));
+          "Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr));
     if (ycsb_workload.read_percent())
       w.push_back(workload_desc(
           "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, TxnRead));
     if (ycsb_workload.update_percent())
       w.push_back(workload_desc(
-          "Update", double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr));
+          "Update", double(ycsb_workload.update_percent()) / 100.0, nullptr));
     if (ycsb_workload.scan_percent())
       w.push_back(workload_desc(
-          "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, nullptr));
+          "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr));
     if (ycsb_workload.rmw_percent())
       w.push_back(workload_desc(
           "RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
