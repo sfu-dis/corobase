@@ -89,7 +89,7 @@ void Engine::CreateTable(uint16_t index_type, const char *name,
   }
 }
 
-rc_t ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
+MAYBE_PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
                                    const varstr *end_key,
                                    ScanCallback &callback, str_arena *arena) {
   MARK_REFERENCED(arena);
@@ -114,13 +114,13 @@ rc_t ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
     if (end_key) {
       uppervk = *end_key;
     }
-    masstree_.search_range_call(start_key, end_key ? &uppervk : nullptr, cb,
+    MAYBE_AWAIT masstree_.search_range_call(start_key, end_key ? &uppervk : nullptr, cb,
                                 t->xc);
   }
-  return c.return_code;
+  MAYBE_CO_RETURN c.return_code;
 }
 
-rc_t ConcurrentMasstreeIndex::ReverseScan(transaction *t,
+MAYBE_PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
                                           const varstr &start_key,
                                           const varstr *end_key,
                                           ScanCallback &callback,
@@ -137,10 +137,10 @@ rc_t ConcurrentMasstreeIndex::ReverseScan(transaction *t,
     if (end_key) {
       lowervk = *end_key;
     }
-    masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb,
+    MAYBE_AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb,
                                  t->xc);
   }
-  return c.return_code;
+  MAYBE_CO_RETURN c.return_code;
 }
 
 std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
@@ -210,7 +210,7 @@ void ConcurrentMasstreeIndex::MultiGet(
   }
 }
 
-void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
+MAYBE_PROMISE(void) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
                                   varstr &value, OID *out_oid) {
   OID oid = 0;
   rc = {RC_INVALID};
@@ -218,11 +218,11 @@ void ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
 
   if (!t) {
     auto e = MM::epoch_enter();
-    rc._val = masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
+    rc._val = MAYBE_AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
     MM::epoch_exit(0, e);
   } else {
     t->ensure_active();
-    bool found = masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
+    bool found = MAYBE_AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
 
     dbtuple *tuple = nullptr;
     if (found) {
@@ -384,7 +384,7 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
   return true;
 }
 
-void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
+MAYBE_PROMISE(void) ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
                                       const varstr *end_key, rc_t &rc,
                                       OID *dia_callback) {
   SearchRangeCallback c(*(DiaScanCallback *)dia_callback);
@@ -406,13 +406,13 @@ void ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
     if (end_key) {
       uppervk = *end_key;
     }
-    scancount = masstree_.search_range_oid(
+    scancount = MAYBE_AWAIT masstree_.search_range_oid(
         start_key, end_key ? &uppervk : nullptr, cb, t->xc);
   }
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
 
-void ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
+MAYBE_PROMISE(void) ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
                                              const varstr &start_key,
                                              const varstr *end_key, rc_t &rc,
                                              OID *dia_callback) {
@@ -425,7 +425,7 @@ void ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
     if (end_key) {
       lowervk = *end_key;
     }
-    scancount = masstree_.rsearch_range_oid(
+    scancount = MAYBE_AWAIT masstree_.rsearch_range_oid(
         start_key, end_key ? &lowervk : nullptr, cb, t->xc);
   }
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);

@@ -313,20 +313,20 @@ public:
    *   B) no concurrent mutation of string
    * note that string contents upon return are arbitrary
    */
-  void search_range_call(const key_type &lower, const key_type *upper,
+  MAYBE_PROMISE(void) search_range_call(const key_type &lower, const key_type *upper,
                          low_level_search_range_callback &callback,
                          TXN::xid_context *xc) const;
 
   // (lower, upper]
-  void rsearch_range_call(const key_type &upper, const key_type *lower,
+  MAYBE_PROMISE(void) rsearch_range_call(const key_type &upper, const key_type *lower,
                           low_level_search_range_callback &callback,
                           TXN::xid_context *xc) const;
 
-  int search_range_oid(const key_type &lower, const key_type *upper,
+  MAYBE_PROMISE(int) search_range_oid(const key_type &lower, const key_type *upper,
                        low_level_search_range_callback &callback,
                        TXN::xid_context *xc) const;
 
-  int rsearch_range_oid(const key_type &upper, const key_type *lower,
+  MAYBE_PROMISE(int) rsearch_range_oid(const key_type &upper, const key_type *lower,
                         low_level_search_range_callback &callback,
                         TXN::xid_context *xc) const;
 
@@ -355,7 +355,7 @@ public:
    * where the callback returns true if it wants to keep going, false otherwise
    */
   template <typename F>
-  inline void search_range(const key_type &lower, const key_type *upper,
+  inline MAYBE_PROMISE(void) search_range(const key_type &lower, const key_type *upper,
                            F &callback, TXN::xid_context *xc) const;
 
   /**
@@ -366,7 +366,7 @@ public:
    * where the callback returns true if it wants to keep going, false otherwise
    */
   template <typename F>
-  inline void rsearch_range(const key_type &upper, const key_type *lower,
+  inline MAYBE_PROMISE(void) rsearch_range(const key_type &upper, const key_type *lower,
                             F &callback, TXN::xid_context *xc) const;
 
   /**
@@ -960,67 +960,67 @@ private:
 };
 
 template <typename P>
-inline void
+inline MAYBE_PROMISE(void)
 mbtree<P>::search_range_call(const key_type &lower, const key_type *upper,
                              low_level_search_range_callback &callback,
                              TXN::xid_context *xc) const {
   low_level_search_range_scanner<false> scanner(this, upper, callback);
   threadinfo ti(xc->begin_epoch);
-  table_.scan(lcdf::Str(lower.data(), lower.size()), true, scanner, xc, ti);
+  MAYBE_AWAIT table_.scan(lcdf::Str(lower.data(), lower.size()), true, scanner, xc, ti);
 }
 
 template <typename P>
-inline void
+inline MAYBE_PROMISE(void)
 mbtree<P>::rsearch_range_call(const key_type &upper, const key_type *lower,
                               low_level_search_range_callback &callback,
                               TXN::xid_context *xc) const {
   low_level_search_range_scanner<true> scanner(this, lower, callback);
   threadinfo ti(xc->begin_epoch);
-  table_.rscan(lcdf::Str(upper.data(), upper.size()), true, scanner, xc, ti);
+  MAYBE_AWAIT table_.rscan(lcdf::Str(upper.data(), upper.size()), true, scanner, xc, ti);
 }
 
 template <typename P>
-inline int
+inline MAYBE_PROMISE(int)
 mbtree<P>::search_range_oid(const key_type &lower, const key_type *upper,
                             low_level_search_range_callback &callback,
                             TXN::xid_context *xc) const {
   low_level_search_range_scanner<false> scanner(this, upper, callback);
   threadinfo ti(xc->begin_epoch);
-  return table_.scan_oid(lcdf::Str(lower.data(), lower.size()), true, scanner,
+  MAYBE_CO_RETURN MAYBE_AWAIT table_.scan_oid(lcdf::Str(lower.data(), lower.size()), true, scanner,
                          xc, ti);
 }
 
 template <typename P>
-inline int
+inline MAYBE_PROMISE(int)
 mbtree<P>::rsearch_range_oid(const key_type &upper, const key_type *lower,
                              low_level_search_range_callback &callback,
                              TXN::xid_context *xc) const {
   low_level_search_range_scanner<true> scanner(this, lower, callback);
   threadinfo ti(xc->begin_epoch);
-  return table_.rscan_oid(lcdf::Str(upper.data(), upper.size()), true, scanner,
+  MAYBE_CO_RETURN MAYBE_AWAIT table_.rscan_oid(lcdf::Str(upper.data(), upper.size()), true, scanner,
                           xc, ti);
 }
 
 template <typename P>
 template <typename F>
-inline void mbtree<P>::search_range(const key_type &lower,
-                                    const key_type *upper, F &callback,
-                                    TXN::xid_context *xc) const {
+inline MAYBE_PROMISE(void) mbtree<P>::search_range(const key_type &lower,
+                                                   const key_type *upper, F &callback,
+                                                   TXN::xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(this, upper, wrapper);
   threadinfo ti(xc->begin_epoch);
-  table_.scan(lcdf::Str(lower.data(), lower.size()), true, scanner, xc, ti);
+  MAYBE_AWAIT table_.scan(lcdf::Str(lower.data(), lower.size()), true, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename F>
-inline void mbtree<P>::rsearch_range(const key_type &upper,
-                                     const key_type *lower, F &callback,
-                                     TXN::xid_context *xc) const {
+inline MAYBE_PROMISE(void) mbtree<P>::rsearch_range(const key_type &upper,
+                                                    const key_type *lower, F &callback,
+                                                    TXN::xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti(xc->begin_epoch);
-  table_.rscan(lcdf::Str(upper.data(), upper.size()), true, scanner, xc, ti);
+  MAYBE_AWAIT table_.rscan(lcdf::Str(upper.data(), upper.size()), true, scanner, xc, ti);
 }
 
 template <typename P>

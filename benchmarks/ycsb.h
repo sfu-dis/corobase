@@ -85,12 +85,12 @@ public:
 
   virtual workload_desc_vec get_workload() const override;
 
-  static rc_t TxnInsert(bench_worker *w) {
+  static MAYBE_PROMISE(rc_t) TxnInsert(bench_worker *w) {
     MARK_REFERENCED(w);
-    return {RC_TRUE};
+    MAYBE_CO_RETURN {RC_TRUE};
   }
-  static rc_t TxnRead(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read();
+  static MAYBE_PROMISE(rc_t) TxnRead(bench_worker *w) {
+    MAYBE_CO_RETURN MAYBE_AWAIT static_cast<ycsb_worker *>(w)->txn_read();
   }
   static rc_t TxnReadAMAC(bench_worker *w) {
     return static_cast<ycsb_worker *>(w)->txn_read_amac();
@@ -98,16 +98,16 @@ public:
   static rc_t TxnReadCORO(bench_worker *w) {
     return static_cast<ycsb_worker *>(w)->txn_read_coro();
   }
-  static rc_t TxnUpdate(bench_worker *w) {
+  static MAYBE_PROMISE(rc_t) TxnUpdate(bench_worker *w) {
     MARK_REFERENCED(w);
-    return {RC_TRUE};
+    MAYBE_CO_RETURN {RC_TRUE};
   }
-  static rc_t TxnScan(bench_worker *w) {
+  static MAYBE_PROMISE(rc_t) TxnScan(bench_worker *w) {
     MARK_REFERENCED(w);
-    return {RC_TRUE};
+    MAYBE_CO_RETURN {RC_TRUE};
   }
-  static rc_t TxnRMW(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_rmw();
+  static MAYBE_PROMISE(rc_t) TxnRMW(bench_worker *w) {
+    MAYBE_CO_RETURN MAYBE_AWAIT static_cast<ycsb_worker *>(w)->txn_rmw();
   }
 
   struct KeyCompare : public std::unary_function<ermia::varstr, bool> {
@@ -118,10 +118,10 @@ public:
     ermia::varstr &baseline;
   };
 
-  rc_t txn_read();
+  MAYBE_PROMISE(rc_t) txn_read();
   rc_t txn_read_amac();
   rc_t txn_read_coro();
-  rc_t txn_rmw();
+  MAYBE_PROMISE(rc_t) txn_rmw();
 
 protected:
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
