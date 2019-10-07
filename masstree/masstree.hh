@@ -20,6 +20,7 @@
 
 #include "../dbcore/sm-oid.h"
 #include "../dbcore/xid.h"
+#include "../dbcore/sm-coroutine.h"
 #include "../macros.h"
 
 namespace Masstree {
@@ -70,20 +71,20 @@ public:
   inline node_type *root() const;
   inline node_type *fix_root();
 
-  bool get(Str key, value_type &value, threadinfo &ti) const;
+  MAYBE_PROMISE(bool) get(Str key, value_type &value, threadinfo &ti) const;
 
   template <typename F>
-  int scan(Str firstkey, bool matchfirst, F &scanner,
+  MAYBE_PROMISE(int) scan(Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
   template <typename F>
-  int rscan(Str firstkey, bool matchfirst, F &scanner,
+  MAYBE_PROMISE(int) rscan(Str firstkey, bool matchfirst, F &scanner,
             ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
   template <typename F>
-  int scan_oid(Str firstkey, bool matchfirst, F &scanner,
+  MAYBE_PROMISE(int) scan_oid(Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
   template <typename F>
-  int rscan_oid(Str firstkey, bool matchfirst, F &scanner,
+  MAYBE_PROMISE(int) rscan_oid(Str firstkey, bool matchfirst, F &scanner,
             ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
   template <typename F> inline int modify(Str key, F &f, threadinfo &ti);
@@ -99,11 +100,11 @@ private:
   ermia::oid_array *pdest_array_;
 
   template <typename H, typename F>
-  int scan(H helper, Str firstkey, bool matchfirst, F &scanner,
+  MAYBE_PROMISE(int) scan(H helper, Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
   template <typename H, typename F>
-  int scan_oid(H helper, Str firstkey, bool matchfirst, F &scanner,
+  MAYBE_PROMISE(int) scan_oid(H helper, Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
   friend class unlocked_tcursor<P>;

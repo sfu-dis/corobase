@@ -2,8 +2,8 @@
 
 #include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
+#include "../dbcore/sm-coroutine.h"
 #include "txn.h"
-#include <experimental/coroutine>
 #include <map>
 
 namespace ermia {
@@ -79,7 +79,7 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
    */
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+  virtual MAYBE_PROMISE(void) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) = 0;
 
   /**
@@ -112,7 +112,7 @@ public:
    * Search [start_key, *end_key) if end_key is not null, otherwise
    * search [start_key, +infty)
    */
-  virtual rc_t Scan(transaction *t, const varstr &start_key,
+  virtual MAYBE_PROMISE(rc_t) Scan(transaction *t, const varstr &start_key,
                     const varstr *end_key, ScanCallback &callback,
                     str_arena *arena) = 0;
   /**
@@ -120,7 +120,7 @@ public:
    * search (-infty, start_key] (starting at start_key and traversing
    * backwards)
    */
-  virtual rc_t ReverseScan(transaction *t, const varstr &start_key,
+  virtual MAYBE_PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
                            const varstr *end_key, ScanCallback &callback,
                            str_arena *arena) = 0;
 
@@ -137,7 +137,7 @@ public:
   rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert,
                  OID *inserted_oid);
 
-  virtual void
+  virtual MAYBE_PROMISE(void)
   GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
          ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
@@ -148,9 +148,9 @@ public:
    */
   virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
 
-  virtual void ScanOID(transaction *t, const varstr &start_key,
+  virtual MAYBE_PROMISE(void) ScanOID(transaction *t, const varstr &start_key,
                        const varstr *end_key, rc_t &rc, OID *dia_callback) = 0;
-  virtual void ReverseScanOID(transaction *t, const varstr &start_key,
+  virtual MAYBE_PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
                               const varstr *end_key, rc_t &rc,
                               OID *dia_callback) = 0;
 };
@@ -233,7 +233,7 @@ public:
 
   inline void *GetTable() override { return masstree_.get_table(); }
 
-  virtual void Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+  virtual MAYBE_PROMISE(void) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) override;
 
   // A multi-get operation using AMAC
@@ -260,9 +260,9 @@ public:
   inline rc_t Remove(transaction *t, const varstr &key) override {
     return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
-  rc_t Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+  MAYBE_PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,
             ScanCallback &callback, str_arena *arena) override;
-  rc_t ReverseScan(transaction *t, const varstr &start_key,
+  MAYBE_PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
                    const varstr *end_key, ScanCallback &callback,
                    str_arena *arena) override;
 
@@ -270,19 +270,19 @@ public:
   std::map<std::string, uint64_t> Clear() override;
   inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
 
-  inline void
+  inline MAYBE_PROMISE(void)
   GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
          ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) override {
-    bool found = masstree_.search(key, out_oid, xc->begin_epoch, out_sinfo);
+    bool found = MAYBE_AWAIT masstree_.search(key, out_oid, xc->begin_epoch, out_sinfo);
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
 
 private:
   bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 
-  void ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
+  MAYBE_PROMISE(void) ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
                rc_t &rc, OID *dia_callback) override;
-  void ReverseScanOID(transaction *t, const varstr &start_key,
+  MAYBE_PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
                       const varstr *end_key, rc_t &rc,
                       OID *dia_callback) override;
 };
