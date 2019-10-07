@@ -315,6 +315,7 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort() or r._val == RC_FALSE) __abort_txn(r); \
 }
 
+
 // combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
@@ -330,4 +331,37 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 // No abort is allowed, usually for loading
 inline void TryVerifyStrict(rc_t rc) {
   LOG_IF(FATAL, rc._val != RC_TRUE) << "Wrong return value " << rc._val;
+}
+
+// TryCatch in Coroutine
+#define __abort_txn_coro(r)                             \
+{                                                       \
+  db->Abort(txn);                                       \
+  if (!r.IsAbort()) MAYBE_CO_RETURN {RC_ABORT_USER};    \
+  MAYBE_CO_RETURN r;                                    \
+}
+
+#define TryCatch_MAYBE_CORO(rc)         \
+{                                       \
+  rc_t r = rc;                          \
+  if (r.IsAbort()) __abort_txn_coro(r); \
+}
+
+#define TryReturn_MAYBE_CORO(rc)        \
+{                                       \
+  rc_t r = rc;                          \
+  if (r.IsAbort()) MAYBE_CO_RETURN r;   \
+}
+
+#define TryCatchCond_MAYBE_CORO(rc, op)       \
+{                                             \
+  rc_t r = rc;                                \
+  if (r.IsAbort()) __abort_txn_coro(r);       \
+  if (r._val == RC_FALSE) op;                 \
+}
+
+#define TryCatchCondAbort_MAYBE_CORO(rc)                         \
+{                                                                \
+  rc_t r = rc;                                                   \
+  if (r.IsAbort() or r._val == RC_FALSE) __abort_txn_coro(r);    \
 }
