@@ -53,7 +53,7 @@ class unlocked_tcursor {
 
   inline unlocked_tcursor() {}
 
-  MAYBE_PROMISE(bool) find_unlocked(threadinfo& ti);
+  PROMISE(bool) find_unlocked(threadinfo& ti);
 
   inline value_type value() const { return lv_.value(); }
   inline leaf<P>* node() const { return n_; }
@@ -128,7 +128,7 @@ class tcursor {
 
   inline const new_nodes_type& new_nodes() const { return new_nodes_; }
 
-  inline MAYBE_PROMISE(bool) find_locked(threadinfo& ti);
+  inline PROMISE(bool) find_locked(threadinfo& ti);
 
   inline bool find_insert(threadinfo& ti);
 

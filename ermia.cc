@@ -89,7 +89,7 @@ void Engine::CreateTable(uint16_t index_type, const char *name,
   }
 }
 
-MAYBE_PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
+PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
                                    const varstr *end_key,
                                    ScanCallback &callback, str_arena *arena) {
   MARK_REFERENCED(arena);
@@ -114,13 +114,13 @@ MAYBE_PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &
     if (end_key) {
       uppervk = *end_key;
     }
-    MAYBE_AWAIT masstree_.search_range_call(start_key, end_key ? &uppervk : nullptr, cb,
+    AWAIT masstree_.search_range_call(start_key, end_key ? &uppervk : nullptr, cb,
                                 t->xc);
   }
-  MAYBE_CO_RETURN c.return_code;
+  RETURN c.return_code;
 }
 
-MAYBE_PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
+PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
                                           const varstr &start_key,
                                           const varstr *end_key,
                                           ScanCallback &callback,
@@ -137,10 +137,10 @@ MAYBE_PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
     if (end_key) {
       lowervk = *end_key;
     }
-    MAYBE_AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb,
+    AWAIT masstree_.rsearch_range_call(start_key, end_key ? &lowervk : nullptr, cb,
                                  t->xc);
   }
-  MAYBE_CO_RETURN c.return_code;
+  RETURN c.return_code;
 }
 
 std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
@@ -210,7 +210,7 @@ void ConcurrentMasstreeIndex::MultiGet(
   }
 }
 
-MAYBE_PROMISE(void) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
+PROMISE(void) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
                                   varstr &value, OID *out_oid) {
   OID oid = 0;
   rc = {RC_INVALID};
@@ -218,11 +218,11 @@ MAYBE_PROMISE(void) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const
 
   if (!t) {
     auto e = MM::epoch_enter();
-    rc._val = MAYBE_AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
+    rc._val = AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
     MM::epoch_exit(0, e);
   } else {
     t->ensure_active();
-    bool found = MAYBE_AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
+    bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
 
     dbtuple *tuple = nullptr;
     if (found) {
@@ -384,7 +384,7 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
   return true;
 }
 
-MAYBE_PROMISE(void) ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
+PROMISE(void) ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
                                       const varstr *end_key, rc_t &rc,
                                       OID *dia_callback) {
   SearchRangeCallback c(*(DiaScanCallback *)dia_callback);
@@ -406,13 +406,13 @@ MAYBE_PROMISE(void) ConcurrentMasstreeIndex::ScanOID(transaction *t, const varst
     if (end_key) {
       uppervk = *end_key;
     }
-    scancount = MAYBE_AWAIT masstree_.search_range_oid(
+    scancount = AWAIT masstree_.search_range_oid(
         start_key, end_key ? &uppervk : nullptr, cb, t->xc);
   }
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
 
-MAYBE_PROMISE(void) ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
+PROMISE(void) ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
                                              const varstr &start_key,
                                              const varstr *end_key, rc_t &rc,
                                              OID *dia_callback) {
@@ -425,7 +425,7 @@ MAYBE_PROMISE(void) ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
     if (end_key) {
       lowervk = *end_key;
     }
-    scancount = MAYBE_AWAIT masstree_.rsearch_range_oid(
+    scancount = AWAIT masstree_.rsearch_range_oid(
         start_key, end_key ? &lowervk : nullptr, cb, t->xc);
   }
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);

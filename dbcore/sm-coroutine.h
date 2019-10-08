@@ -340,13 +340,13 @@ private:
 } // namespace ermia
 
 #ifdef USE_STATIC_COROUTINE
-  #define MAYBE_PROMISE(t) ermia::dia::task<t>
-  #define MAYBE_CO_RETURN co_return
-  #define MAYBE_AWAIT co_await
+  #define PROMISE(t) ermia::dia::task<t>
+  #define RETURN co_return
+  #define AWAIT co_await
 #else
-  #define MAYBE_PROMISE(t) t
-  #define MAYBE_CO_RETURN return
-  #define MAYBE_AWAIT 
+  #define PROMISE(t) t
+  #define RETURN return
+  #define AWAIT
 #endif
 
 #endif

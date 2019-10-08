@@ -21,13 +21,13 @@
 namespace Masstree {
 
 template <typename P>
-MAYBE_PROMISE(bool) unlocked_tcursor<P>::find_unlocked(threadinfo& ti) {
+PROMISE(bool) unlocked_tcursor<P>::find_unlocked(threadinfo& ti) {
   int match;
   key_indexed_position kx;
   node_base<P>* root = const_cast<node_base<P>*>(root_);
 
 retry:
-  n_ = MAYBE_AWAIT root->reach_leaf(ka_, v_, ti);
+  n_ = AWAIT root->reach_leaf(ka_, v_, ti);
 
 forward:
   if (v_.deleted()) goto retry;
@@ -51,27 +51,27 @@ forward:
     root = lv_.layer();
     goto retry;
   } else
-    MAYBE_CO_RETURN match;
+    RETURN match;
 }
 
 template <typename P>
-inline MAYBE_PROMISE(bool) basic_table<P>::get(
+inline PROMISE(bool) basic_table<P>::get(
                                 Str key, value_type& value,
                                 threadinfo& ti) const {
   unlocked_tcursor<P> lp(*this, key);
-  bool found = MAYBE_AWAIT lp.find_unlocked(ti);
+  bool found = AWAIT lp.find_unlocked(ti);
   if (found) value = lp.value();
-  MAYBE_CO_RETURN found;
+  RETURN found;
 }
 
 template <typename P>
-MAYBE_PROMISE(bool) tcursor<P>::find_locked(threadinfo& ti) {
+PROMISE(bool) tcursor<P>::find_locked(threadinfo& ti) {
   node_base<P>* root = const_cast<node_base<P>*>(root_);
   nodeversion_type v;
   permuter_type perm;
 
 retry:
-  n_ = MAYBE_AWAIT root->reach_leaf(ka_, v, ti);
+  n_ = AWAIT root->reach_leaf(ka_, v, ti);
 
 forward:
   if (v.deleted()) goto retry;
@@ -107,7 +107,7 @@ forward:
     root = const_cast<node_base<P>*>(root_);
     goto retry;
   }
-  MAYBE_CO_RETURN state_;
+  RETURN state_;
 }
 
 }  // namespace Masstree

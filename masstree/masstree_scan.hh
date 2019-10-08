@@ -53,10 +53,10 @@ private:
   scanstackelt() {}
 
   template <typename H>
-  MAYBE_PROMISE(int) find_initial(H &helper, key_type &ka, bool emit_equal,
+  PROMISE(int) find_initial(H &helper, key_type &ka, bool emit_equal,
                                   leafvalue_type &entry, threadinfo &ti);
   template <typename H> 
-  MAYBE_PROMISE(int) find_retry(H &helper, key_type &ka, threadinfo &ti);
+  PROMISE(int) find_retry(H &helper, key_type &ka, threadinfo &ti);
   template <typename H>
   int find_next(H &helper, key_type &ka, leafvalue_type &entry);
 
@@ -158,14 +158,14 @@ private:
 
 template <typename P>
 template <typename H>
-MAYBE_PROMISE(int) scanstackelt<P>::find_initial(H &helper, key_type &ka, bool emit_equal,
+PROMISE(int) scanstackelt<P>::find_initial(H &helper, key_type &ka, bool emit_equal,
                                                  leafvalue_type &entry, threadinfo &ti) {
   int kp, keylenx = 0;
   char suffixbuf[MASSTREE_MAXKEYLEN];
   Str suffix;
 
 retry_root:
-  n_ = MAYBE_AWAIT root_->reach_leaf(ka, v_, ti);
+  n_ = AWAIT root_->reach_leaf(ka, v_, ti);
 
 retry_node:
   if (v_.deleted())
@@ -193,35 +193,35 @@ retry_node:
   if (kp >= 0) {
     if (n_->keylenx_is_layer(keylenx)) {
       this[1].root_ = entry.layer();
-      MAYBE_CO_RETURN scan_down;
+      RETURN scan_down;
     } else if (n_->keylenx_has_ksuf(keylenx)) {
       int ksuf_compare = suffix.compare(ka.suffix());
       if (helper.initial_ksuf_match(ksuf_compare, emit_equal)) {
         int keylen = ka.assign_store_suffix(suffix);
         ka.assign_store_length(keylen);
-        MAYBE_CO_RETURN scan_emit;
+        RETURN scan_emit;
       }
     } else if (emit_equal)
-      MAYBE_CO_RETURN scan_emit;
+      RETURN scan_emit;
     // otherwise, this entry must be skipped
     ki_ = helper.next(ki_);
   }
 
-  MAYBE_CO_RETURN scan_find_next;
+  RETURN scan_find_next;
 }
 
 template <typename P>
 template <typename H>
-MAYBE_PROMISE(int) scanstackelt<P>::find_retry(H &helper, key_type &ka, threadinfo &ti) {
+PROMISE(int) scanstackelt<P>::find_retry(H &helper, key_type &ka, threadinfo &ti) {
 retry:
-  n_ = MAYBE_AWAIT root_->reach_leaf(ka, v_, ti);
+  n_ = AWAIT root_->reach_leaf(ka, v_, ti);
   if (v_.deleted())
     goto retry;
 
   n_->prefetch();
   perm_ = n_->permutation();
   ki_ = helper.lower(ka, this);
-  MAYBE_CO_RETURN scan_find_next;
+  RETURN scan_find_next;
 }
 
 template <typename P>
@@ -279,7 +279,7 @@ changed:
 
 template <typename P>
 template <typename H, typename F>
-MAYBE_PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
+PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
                                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
   typedef typename P::ikey_type ikey_type;
   typedef typename node_type::key_type key_type;
@@ -304,7 +304,7 @@ MAYBE_PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstk
   int state;
 
   while (1) {
-    state = MAYBE_AWAIT stack[stackpos].find_initial(helper, ka, emit_firstkey, entry, ti);
+    state = AWAIT stack[stackpos].find_initial(helper, ka, emit_firstkey, entry, ti);
     scanner.visit_leaf(stack[stackpos], ka, ti);
     if (state != mystack_type::scan_down)
       break;
@@ -354,32 +354,32 @@ MAYBE_PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstk
 
     case mystack_type::scan_retry:
     retry:
-      state = MAYBE_AWAIT stack[stackpos].find_retry(helper, ka, ti);
+      state = AWAIT stack[stackpos].find_retry(helper, ka, ti);
       break;
     }
   }
 
 done:
-  MAYBE_CO_RETURN scancount;
+  RETURN scancount;
 }
 
 template <typename P>
 template <typename F>
-MAYBE_PROMISE(int) basic_table<P>::scan(Str firstkey, bool emit_firstkey, F &scanner,
+PROMISE(int) basic_table<P>::scan(Str firstkey, bool emit_firstkey, F &scanner,
                          ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  MAYBE_CO_RETURN MAYBE_AWAIT scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  RETURN AWAIT scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename F>
-MAYBE_PROMISE(int) basic_table<P>::rscan(Str firstkey, bool emit_firstkey, F &scanner,
+PROMISE(int) basic_table<P>::rscan(Str firstkey, bool emit_firstkey, F &scanner,
                           ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  MAYBE_CO_RETURN MAYBE_AWAIT scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  RETURN AWAIT scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename H, typename F>
-MAYBE_PROMISE(int) basic_table<P>::scan_oid(H helper, Str firstkey, bool emit_firstkey, F &scanner,
+PROMISE(int) basic_table<P>::scan_oid(H helper, Str firstkey, bool emit_firstkey, F &scanner,
                                             ermia::TXN::xid_context *xc, threadinfo &ti) const {
   typedef typename P::ikey_type ikey_type;
   typedef typename node_type::key_type key_type;
@@ -404,7 +404,7 @@ MAYBE_PROMISE(int) basic_table<P>::scan_oid(H helper, Str firstkey, bool emit_fi
   int state;
 
   while (1) {
-    state = MAYBE_AWAIT stack[stackpos].find_initial(helper, ka, emit_firstkey, entry, ti);
+    state = AWAIT stack[stackpos].find_initial(helper, ka, emit_firstkey, entry, ti);
     scanner.visit_leaf(stack[stackpos], ka, ti);
     if (state != mystack_type::scan_down)
       break;
@@ -447,27 +447,27 @@ MAYBE_PROMISE(int) basic_table<P>::scan_oid(H helper, Str firstkey, bool emit_fi
 
     case mystack_type::scan_retry:
     retry:
-      state = MAYBE_AWAIT stack[stackpos].find_retry(helper, ka, ti);
+      state = AWAIT stack[stackpos].find_retry(helper, ka, ti);
       break;
     }
   }
 
 done:
-  MAYBE_CO_RETURN scancount;
+  RETURN scancount;
 }
 
 template <typename P>
 template <typename F>
-MAYBE_PROMISE(int) basic_table<P>::scan_oid(Str firstkey, bool emit_firstkey, F &scanner,
+PROMISE(int) basic_table<P>::scan_oid(Str firstkey, bool emit_firstkey, F &scanner,
                                             ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  MAYBE_CO_RETURN MAYBE_AWAIT scan_oid(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  RETURN AWAIT scan_oid(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename F>
-MAYBE_PROMISE(int) basic_table<P>::rscan_oid(Str firstkey, bool emit_firstkey, F &scanner,
+PROMISE(int) basic_table<P>::rscan_oid(Str firstkey, bool emit_firstkey, F &scanner,
                           ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  MAYBE_CO_RETURN MAYBE_AWAIT scan_oid(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  RETURN AWAIT scan_oid(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 } // namespace Masstree

@@ -94,7 +94,7 @@ bench_worker::workload_desc_vec ycsb_worker::get_workload() const {
   return w;
 }
 
-MAYBE_PROMISE(rc_t) ycsb_worker::txn_read() {
+PROMISE(rc_t) ycsb_worker::txn_read() {
   arena.reset();
   ermia::transaction *txn = nullptr;
   if (!ermia::config::index_probe_only) {
@@ -108,10 +108,10 @@ MAYBE_PROMISE(rc_t) ycsb_worker::txn_read() {
         str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
     // TODO(tzwang): add read/write_all_fields knobs
     rc_t rc = rc_t{RC_INVALID};
-    MAYBE_AWAIT tbl->Get(txn, rc, k, v); // Read
+    AWAIT tbl->Get(txn, rc, k, v); // Read
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-    TryCatch_MAYBE_CORO(rc); // Might abort if we use SSI/SSN/MVOCC
+    TryCatch_CORO(rc); // Might abort if we use SSI/SSN/MVOCC
 #else
     // Under SI this must succeed
     ALWAYS_ASSERT(rc._val == RC_TRUE);
@@ -123,9 +123,9 @@ MAYBE_PROMISE(rc_t) ycsb_worker::txn_read() {
     }
   }
   if (!ermia::config::index_probe_only) {
-    TryCatch_MAYBE_CORO(db->Commit(txn));
+    TryCatch_CORO(db->Commit(txn));
   }
-  MAYBE_CO_RETURN {RC_TRUE};
+  RETURN {RC_TRUE};
 }
 
 rc_t ycsb_worker::txn_read_amac() {
@@ -215,7 +215,7 @@ rc_t ycsb_worker::txn_read_coro() {
   return {RC_TRUE};
 }
 
-MAYBE_PROMISE(rc_t) ycsb_worker::txn_rmw() {
+PROMISE(rc_t) ycsb_worker::txn_rmw() {
   ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
   arena.reset();
   for (uint i = 0; i < g_reps_per_tx; ++i) {
@@ -224,9 +224,9 @@ MAYBE_PROMISE(rc_t) ycsb_worker::txn_rmw() {
     // TODO(tzwang): add read/write_all_fields knobs
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = 0;
-    MAYBE_AWAIT tbl->Get(txn, rc, k, v, &oid); // Read
+    AWAIT tbl->Get(txn, rc, k, v, &oid); // Read
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-    TryCatch_MAYBE_CORO(rc); // Might abort if we use SSI/SSN/MVOCC
+    TryCatch_CORO(rc); // Might abort if we use SSI/SSN/MVOCC
 #else
     // Under SI this must succeed
     LOG_IF(FATAL, rc._val != RC_TRUE);
@@ -242,7 +242,7 @@ MAYBE_PROMISE(rc_t) ycsb_worker::txn_rmw() {
     new (&v)
         ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
     memset(v.data(), 'a', sizeof(YcsbRecord));
-    TryCatch_MAYBE_CORO(tbl->Put(txn, k, v)); // Modify-write
+    TryCatch_CORO(tbl->Put(txn, k, v)); // Modify-write
   }
 
   for (uint i = 0; i < g_rmw_additional_reads; ++i) {
@@ -250,9 +250,9 @@ MAYBE_PROMISE(rc_t) ycsb_worker::txn_rmw() {
     ermia::varstr &v = str(sizeof(YcsbRecord));
     // TODO(tzwang): add read/write_all_fields knobs
     rc_t rc = rc_t{RC_INVALID};
-    MAYBE_AWAIT tbl->Get(txn, rc, k, v); // Read
+    AWAIT tbl->Get(txn, rc, k, v); // Read
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-    TryCatch_MAYBE_CORO(rc); // Might abort if we use SSI/SSN/MVOCC
+    TryCatch_CORO(rc); // Might abort if we use SSI/SSN/MVOCC
 #else
     // Under SI this must succeed
     ALWAYS_ASSERT(rc._val == RC_TRUE);
@@ -261,8 +261,8 @@ MAYBE_PROMISE(rc_t) ycsb_worker::txn_rmw() {
     memcpy((char *)(&v) + sizeof(ermia::varstr), (char *)v.data(),
            sizeof(YcsbRecord));
   }
-  TryCatch_MAYBE_CORO(db->Commit(txn));
-  MAYBE_CO_RETURN {RC_TRUE};
+  TryCatch_CORO(db->Commit(txn));
+  RETURN {RC_TRUE};
 }
 
 ermia::varstr &ycsb_worker::GenerateKey() {
