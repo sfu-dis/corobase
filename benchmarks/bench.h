@@ -337,30 +337,30 @@ inline void TryVerifyStrict(rc_t rc) {
 #define __abort_txn_coro(r)                             \
 {                                                       \
   db->Abort(txn);                                       \
-  if (!r.IsAbort()) MAYBE_CO_RETURN {RC_ABORT_USER};    \
-  MAYBE_CO_RETURN r;                                    \
+  if (!r.IsAbort()) RETURN {RC_ABORT_USER};    \
+  RETURN r;                                    \
 }
 
-#define TryCatch_MAYBE_CORO(rc)         \
+#define TryCatch_CORO(rc)         \
 {                                       \
   rc_t r = rc;                          \
   if (r.IsAbort()) __abort_txn_coro(r); \
 }
 
-#define TryReturn_MAYBE_CORO(rc)        \
+#define TryReturn_CORO(rc)        \
 {                                       \
   rc_t r = rc;                          \
-  if (r.IsAbort()) MAYBE_CO_RETURN r;   \
+  if (r.IsAbort()) RETURN r;   \
 }
 
-#define TryCatchCond_MAYBE_CORO(rc, op)       \
+#define TryCatchCond_CORO(rc, op)       \
 {                                             \
   rc_t r = rc;                                \
   if (r.IsAbort()) __abort_txn_coro(r);       \
   if (r._val == RC_FALSE) op;                 \
 }
 
-#define TryCatchCondAbort_MAYBE_CORO(rc)                         \
+#define TryCatchCondAbort_CORO(rc)                         \
 {                                                                \
   rc_t r = rc;                                                   \
   if (r.IsAbort() or r._val == RC_FALSE) __abort_txn_coro(r);    \

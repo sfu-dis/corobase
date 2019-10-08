@@ -94,7 +94,7 @@ class node_base : public make_nodeversion<P>::type {
     return x;
   }
 
-  inline MAYBE_PROMISE(leaf_type*) reach_leaf(const key_type& k, nodeversion_type& version,
+  inline PROMISE(leaf_type*) reach_leaf(const key_type& k, nodeversion_type& version,
                                               threadinfo& ti) const;
 
   void prefetch_full() const {
@@ -544,7 +544,7 @@ inline int leaf<P>::stable_last_key_compare(const key_type& k,
 
     Returns a stable leaf. Sets @a version to the stable version. */
 template <typename P>
-inline MAYBE_PROMISE(leaf<P>*) node_base<P>::reach_leaf(
+inline PROMISE(leaf<P>*) node_base<P>::reach_leaf(
                                          const key_type& ka,
                                          nodeversion_type& version,
                                          threadinfo& ti) const {
@@ -587,7 +587,7 @@ retry:
   }
 
   version = v[sense];
-  MAYBE_CO_RETURN const_cast<leaf<P>*>(static_cast<const leaf<P>*>(n[sense]));
+  RETURN const_cast<leaf<P>*>(static_cast<const leaf<P>*>(n[sense]));
 }
 
 /** @brief Return the leaf at or after *this responsible for @a ka.
