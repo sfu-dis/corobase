@@ -1,3 +1,5 @@
+#pragma once
+
 #include <dbcore/xid.h>
 #include <dbcore/sm-oid.h>
 #include <dbcore/epoch.h>

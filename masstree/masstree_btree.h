@@ -851,7 +851,7 @@ inline bool mbtree<P>::remove(const key_type &k, TXN::xid_context *xc,
                               dbtuple **old_v) {
   threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
-  bool found = lp.find_locked(ti);
+  bool found = sync_wait_coro(lp.find_locked(ti));
   if (found && old_v)
     *old_v = oidmgr->oid_get_latest_version(tuple_array_, lp.value());
   // XXX. need to look at lp.finish that physically removes records in tree and
