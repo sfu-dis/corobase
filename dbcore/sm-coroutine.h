@@ -336,6 +336,7 @@ private:
   coroutine_handle suspended_task_coroutine_;
 };
 
+
 } // namespace dia
 } // namespace ermia
 
@@ -343,11 +344,32 @@ private:
   #define PROMISE(t) ermia::dia::task<t>
   #define RETURN co_return
   #define AWAIT co_await
+
+template<typename T>
+inline T sync_wait_coro(const task<T> &coro_task) {
+    while(!coro_task.done()) {
+        coro_task.resume();
+    }
+
+    return coro_task.get_return_value();
+}
+
+template<>
+inline void sync_wait_coro(const task<void> &coro_task) {
+    while(!coro_task.done()) {
+        coro_task.resume();
+    }
+}
+
 #else
   #define PROMISE(t) t
   #define RETURN return
   #define AWAIT
-#endif
+
+template<typename T>
+T sync_wait_coro(const T &t) { return t; }
+
+#endif // USE_STATIC_COROUTINE
 
 #endif
 

@@ -3,8 +3,8 @@ set(DB_CORE_INCLUDES
 ) 
 
 set(TEST_SRCS
+    ${TEST_MAIN}
     coroutine_test_base.h
-    main.cpp
     return_primary_type.cpp
     return_complex_type.cpp
     resume_order.cpp
