@@ -53,6 +53,8 @@ namespace MM {
 void gc_version_chain(fat_ptr *oid_entry);
 
 extern epoch_num gc_epoch;
+extern uint64_t* allocated_node_memory; 
+extern char** node_memory; 
 
 // A hashtab storing recycled (freed) objects by size. No CC.
 class TlsFreeObjectPool {
