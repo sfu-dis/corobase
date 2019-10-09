@@ -346,7 +346,7 @@ private:
   #define AWAIT co_await
 
 template<typename T>
-inline T sync_wait_coro(const task<T> &coro_task) {
+inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
     while(!coro_task.done()) {
         coro_task.resume();
     }
@@ -355,7 +355,7 @@ inline T sync_wait_coro(const task<T> &coro_task) {
 }
 
 template<>
-inline void sync_wait_coro(const task<void> &coro_task) {
+inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
     while(!coro_task.done()) {
         coro_task.resume();
     }
