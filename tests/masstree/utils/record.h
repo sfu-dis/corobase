@@ -1,19 +1,19 @@
 #pragma once
 
-#include <sstream>
-
-#include <masstree/str.hh>
 #include <dbcore/sm-oid.h>
+#include <string>
+#include <vector>
 
-template<typename key_t>
 struct Record {
-    key_t key;
+    std::string key;
     ermia::OID value;
-
-    std::string key_to_str() const {
-        std::stringstream st;
-        st << key;
-        return st.str();
-    }
 };
+
+std::vector<Record> genRandRecords(uint32_t record_num, uint32_t key_len_avg);
+
+std::string genKeyNotInRecords(const std::vector<Record>& records);
+
+std::vector<Record> recordsSearchRange(const std::vector<Record>& records,
+                                       const std::string& beg,
+                                       const std::string& end);
 
