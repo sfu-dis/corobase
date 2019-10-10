@@ -2,6 +2,7 @@
 #include <numa.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <array>
 #include <vector>
 
 #include <dbcore/sm-alloc.h>
@@ -11,7 +12,6 @@
 #include <varstr.h>
 
 #include "utils/context_mock.h"
-#include "utils/rand.h"
 #include "utils/record.h"
 
 using ermia::MM::allocated_node_memory;
@@ -19,8 +19,6 @@ using ermia::MM::node_memory;
 
 template <typename T>
 using task = ermia::dia::task<T>;
-
-static constexpr size_t kPerNodeMemorySize = 128 * ermia::config::MB;
 
 class SingleThreadMasstree : public ::testing::Test {
    private:
@@ -35,9 +33,10 @@ class SingleThreadMasstree : public ::testing::Test {
         node_memory = new char *[ermia::config::numa_nodes];
 
         // pre-allocate memory for current thread node
+        ermia::config::node_memory_gb = 1;
         allocated_node_memory[node] = 0;
-        node_memory[node] = new char[kPerNodeMemorySize];
-
+        node_memory[node] =
+            new char[ermia::config::node_memory_gb * ermia::config::GB];
         ALWAYS_ASSERT(node_memory[node]);
         LOG(INFO) << "Memory allocated for node " << node;
     }
@@ -63,77 +62,110 @@ class SingleThreadMasstree : public ::testing::Test {
         freeMemoryOnNumaNode();
     }
 
-    template <typename record_key_t>
-    bool insertRecord(const Record<record_key_t> &record) {
-        std::string key_str = record.key_to_str();
-        return tree_->insert(ermia::varstr(key_str.data(), key_str.size()),
-                             record.value, mock_xid_get_context(), nullptr,
-                             nullptr);
+    bool insertRecord(const Record &record) {
+        return tree_->insert(
+            ermia::varstr(record.key.data(), record.key.size()), record.value,
+            mock_xid_get_context(), nullptr, nullptr);
     }
 
-    template <typename record_key_t>
     PROMISE(bool)
-    searchRecord(Record<record_key_t> *out_record) {
-        std::string key_str = out_record->key_to_str();
-        RETURN AWAIT tree_->search(ermia::varstr(key_str.data(), key_str.size()),
-                                   out_record->value, mock_get_cur_epoch(),
-                                   nullptr);
+    searchByKey(const std::string &key, ermia::OID *out_value) {
+        RETURN AWAIT tree_->search(ermia::varstr(key.data(), key.size()),
+                                   *out_value, mock_get_cur_epoch(), nullptr);
     }
 
     ermia::SingleThreadedMasstree *tree_;
 };
 
 TEST_F(SingleThreadMasstree, InsertOnly) {
-    Record<uint32_t> record{1, 1};
-
+    Record record = Record{"absd", 1423};
     EXPECT_TRUE(insertRecord(record));
 }
 
 TEST_F(SingleThreadMasstree, InsertAndSearch_Found) {
-    Record<uint32_t> insert_record{1, 2};
-    EXPECT_TRUE(insertRecord(insert_record));
+    Record record = Record{"absd", 1423};
+    EXPECT_TRUE(insertRecord(record));
 
-    Record<uint32_t> search_result{1, 0};
-    EXPECT_TRUE(sync_wait_coro(searchRecord(&search_result)));
-    EXPECT_EQ(search_result.value, insert_record.value);
+    ermia::OID value_out;
+    EXPECT_TRUE(sync_wait_coro(searchByKey(record.key, &value_out)));
+    EXPECT_EQ(record.value, value_out);
 }
 
 TEST_F(SingleThreadMasstree, InsertAndSearch_NotFound) {
-    Record<uint32_t> insert_record{1, 2};
-    EXPECT_TRUE(insertRecord(insert_record));
+    Record record = Record{"absd", 1423};
+    EXPECT_TRUE(insertRecord(record));
 
-    Record<uint32_t> search_result{2, 0};
-    EXPECT_FALSE(sync_wait_coro(searchRecord(&search_result)));
+    ermia::OID value_out;
+    EXPECT_FALSE(sync_wait_coro(searchByKey("ccc", &value_out)));
 }
 
-TEST_F(SingleThreadMasstree, VarKey_InsertAndSearch) {
-    const int kRecordNum = 10;
-    std::vector<Record<std::string>> data;
-    data.reserve(kRecordNum);
-    for (uint32_t i = 0; i < kRecordNum; i++) {
-        data.emplace_back(Record<std::string>{randString(), randUInt32()});
-    }
-
-    for (const auto &record : data) {
+TEST_F(SingleThreadMasstree, InsertAndSearch_ManyRecords) {
+    const std::vector<Record> records_to_insert = genRandRecords(400, 128);
+    for (const Record &record : records_to_insert) {
         EXPECT_TRUE(insertRecord(record));
     }
 
-    for (const auto &inserted_record : data) {
-        Record<std::string> search_result{inserted_record.key, 0};
-        EXPECT_TRUE(sync_wait_coro(searchRecord(&search_result)));
-        EXPECT_EQ(inserted_record.value, search_result.value);
+    for (const Record &record : records_to_insert) {
+        ermia::OID value_out;
+        EXPECT_TRUE(sync_wait_coro(searchByKey(record.key, &value_out)));
+        EXPECT_EQ(record.value, value_out);
     }
+
+    ermia::OID value_out;
+    std::string non_key = genKeyNotInRecords(records_to_insert);
+    EXPECT_FALSE(sync_wait_coro(searchByKey(non_key, &value_out)));
 }
 
 #ifdef USE_STATIC_COROUTINE
 
-// TEST_F(SingleThreadMasstree, CoroutineGet) {
-//    std::vector<Record<uint32_t>> data;
-//
-//    const int kRecordNum = 100;
-//    for (uint32_t i = 0; i < kRecordNum; i++) {
-//    }
-//}
+TEST_F(SingleThreadMasstree, InsertAndSearch_Coro) {
+    std::vector<Record> records_to_insert = genRandRecords(50, 10);
+    for (const Record &record : records_to_insert) {
+        EXPECT_TRUE(insertRecord(record));
+    }
+
+    std::vector<ermia::OID> coro_return_values;
+    coro_return_values.resize(records_to_insert.size());
+    
+    constexpr int task_queue_size= 5;
+    std::array<task<bool>, task_queue_size> task_queue;
+    uint32_t next_task_index = 0;
+    for (task<bool> & coro_task : task_queue) {
+        const Record & record = records_to_insert[next_task_index];
+        ermia::OID & result = coro_return_values[next_task_index];
+        next_task_index++;
+        coro_task = searchByKey(record.key, &result);
+    }
+
+    uint32_t completed_task_cnt = 0;
+    while (completed_task_cnt < records_to_insert.size()) {
+        for(task<bool> & coro_task : task_queue) {
+            if(!coro_task.valid()) {
+                continue;
+            }
+
+            if(!coro_task.done()) {
+                coro_task.resume();
+            } else {
+                EXPECT_TRUE(coro_task.get_return_value());
+                completed_task_cnt++;
+
+                if(next_task_index < records_to_insert.size()) {
+                    const Record & record = records_to_insert[next_task_index];
+                    ermia::OID & result = coro_return_values[next_task_index];
+                    next_task_index++;
+                    coro_task = searchByKey(record.key, &result);
+                } else {
+                    coro_task = task<bool>(nullptr);
+                }
+            }
+        }
+    }
+
+    for(uint32_t i = 0; i < records_to_insert.size(); i++) {
+        EXPECT_EQ(records_to_insert[i].value, coro_return_values[i]);
+    }
+}
 
 #endif  // USE_STATIC_COROUTINE
 

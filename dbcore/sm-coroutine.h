@@ -185,6 +185,7 @@ public:
   struct awaiter;
   using coroutine_handle = std::experimental::coroutine_handle<promise_type>;
 
+  task() : coroutine_(nullptr) {}
   task(coroutine_handle coro) : coroutine_(coro) {}
   ~task() {
     if (coroutine_) {
@@ -196,6 +197,21 @@ public:
     std::swap(coroutine_, other.coroutine_);
   }
   task(const task &) = delete;
+
+  task & operator=(task &&other) {
+    if (coroutine_) {
+      destroy();
+    }
+
+    coroutine_ = other.coroutine_;
+    other.coroutine_ = nullptr;
+    return *this;
+  }
+  task & operator=(const task &other) = delete;
+
+  bool valid() const {
+      return coroutine_ != nullptr;
+  }
 
   bool done() const {
     ASSERT(coroutine_);
