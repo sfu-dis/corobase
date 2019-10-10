@@ -8,6 +8,7 @@
 #include <dbcore/sm-config.h>
 #include <dbcore/sm-coroutine.h>
 #include <masstree/masstree_btree.h>
+#include <varstr.h>
 
 #include "utils/context_mock.h"
 #include "utils/rand.h"
@@ -64,14 +65,17 @@ class SingleThreadMasstree : public ::testing::Test {
 
     template <typename record_key_t>
     bool insertRecord(const Record<record_key_t> &record) {
-        return tree_->insert(record.key_to_varstr(), record.value,
-                             mock_xid_get_context(), nullptr, nullptr);
+        std::string key_str = record.key_to_str();
+        return tree_->insert(ermia::varstr(key_str.data(), key_str.size()),
+                             record.value, mock_xid_get_context(), nullptr,
+                             nullptr);
     }
 
     template <typename record_key_t>
     PROMISE(bool)
     searchRecord(Record<record_key_t> *out_record) {
-        RETURN AWAIT tree_->search(out_record->key_to_varstr(),
+        std::string key_str = out_record->key_to_str();
+        RETURN AWAIT tree_->search(ermia::varstr(key_str.data(), key_str.size()),
                                    out_record->value, mock_get_cur_epoch(),
                                    nullptr);
     }
@@ -110,7 +114,7 @@ TEST_F(SingleThreadMasstree, VarKey_InsertAndSearch) {
         data.emplace_back(Record<std::string>{randString(), randUInt32()});
     }
 
-    for (const auto & record : data) {
+    for (const auto &record : data) {
         EXPECT_TRUE(insertRecord(record));
     }
 
