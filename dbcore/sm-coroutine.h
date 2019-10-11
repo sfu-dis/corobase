@@ -360,6 +360,7 @@ private:
   #define PROMISE(t) ermia::dia::task<t>
   #define RETURN co_return
   #define AWAIT co_await
+  #define SUSPEND co_await std::experimental::suspend_always{}
 
 template<typename T>
 inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
@@ -381,6 +382,7 @@ inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
   #define PROMISE(t) t
   #define RETURN return
   #define AWAIT
+  #define SUSPEND 
 
 template<typename T>
 T sync_wait_coro(const T &t) { return t; }

@@ -568,6 +568,7 @@ retry:
   while (!v[sense].isleaf()) {
     const internode<P>* in = static_cast<const internode<P>*>(n[sense]);
     in->prefetch();
+    SUSPEND;
     int kp = internode<P>::bound_type::upper(ka, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry;
