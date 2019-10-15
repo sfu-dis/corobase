@@ -130,7 +130,7 @@ class tcursor {
 
   inline PROMISE(bool) find_locked(threadinfo& ti);
 
-  inline bool find_insert(threadinfo& ti);
+  inline PROMISE(bool) find_insert(threadinfo& ti);
 
   inline void finish(int answer, threadinfo& ti);
 

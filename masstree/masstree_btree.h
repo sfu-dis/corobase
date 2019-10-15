@@ -376,7 +376,7 @@ public:
    * If false and old_v is not NULL, then the overwritten value of v
    * is written into old_v
    */
-  inline bool insert(const key_type &k, OID o, TXN::xid_context *xc,
+  inline PROMISE(bool) insert(const key_type &k, OID o, TXN::xid_context *xc,
                      value_type *old_oid = NULL,
                      insert_info_t *insert_info = NULL);
 
@@ -784,11 +784,11 @@ forward:
 }
 
 template <typename P>
-inline bool mbtree<P>::insert(const key_type &k, OID o, TXN::xid_context *xc,
+inline PROMISE(bool) mbtree<P>::insert(const key_type &k, OID o, TXN::xid_context *xc,
                               value_type *old_oid, insert_info_t *insert_info) {
   threadinfo ti(xc->begin_epoch);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
-  bool found = lp.find_insert(ti);
+  bool found = AWAIT lp.find_insert(ti);
   if (!found)
     ti.advance_timestamp(lp.node_timestamp());
   if (found && old_oid)
@@ -800,7 +800,7 @@ inline bool mbtree<P>::insert(const key_type &k, OID o, TXN::xid_context *xc,
     insert_info->new_version = lp.next_full_version_value(1);
   }
   lp.finish(1, ti);
-  return !found;
+  RETURN !found;
 }
 
 template <typename P>
@@ -814,7 +814,7 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
   }
   threadinfo ti(e);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
-  bool found = lp.find_insert(ti);
+  bool found = sync_wait_coro(lp.find_insert(ti));
   if (!found) {
   insert_new:
     found = false;
