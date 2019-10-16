@@ -56,7 +56,8 @@ set(TEST_SRCS
     ${MASSTREE_SRCS}
     ${TEST_MAIN}
     ${TEST_UTILS_SRCS}
-    insert_and_search.cpp
+    single_threaded.cpp
+    concurrent.cpp
 )
 
 add_executable(test_masstree ${TEST_SRCS})
