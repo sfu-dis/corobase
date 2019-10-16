@@ -316,7 +316,7 @@ template <typename T> struct task<T>::awaiter {
 
   awaiter(const awaiter &) = delete;
   awaiter(awaiter && other) : suspended_task_coroutine_(nullptr){
-      std::swap(suspended_task_coroutine_, suspended_task_coroutine_);
+      std::swap(suspended_task_coroutine_, other.suspended_task_coroutine_);
   }
 
   template <typename awaiting_promise_t>
