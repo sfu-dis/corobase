@@ -11,7 +11,6 @@
 #include <masstree/masstree_btree.h>
 #include <varstr.h>
 
-#include "utils/context_mock.h"
 #include "utils/record.h"
 
 using ermia::MM::allocated_node_memory;
@@ -19,6 +18,22 @@ using ermia::MM::node_memory;
 
 template <typename T>
 using task = ermia::dia::task<T>;
+
+
+ermia::TXN::xid_context *mock_xid_get_context() {
+    static ermia::XID dummy_xid = ermia::XID::make(0, 0);
+    static ermia::TXN::xid_context dummy_xid_context;
+    dummy_xid_context.begin_epoch = 0;
+    dummy_xid_context.owner = dummy_xid;
+    dummy_xid_context.xct = nullptr;
+    return &dummy_xid_context;
+}
+
+
+ermia::epoch_num mock_get_cur_epoch() {
+    return 0;
+}
+
 
 class SingleThreadMasstree : public ::testing::Test {
    private:
