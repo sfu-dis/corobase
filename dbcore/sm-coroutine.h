@@ -134,13 +134,15 @@ struct promise_base {
     // does not be co_awaited on and has no awaiting_promise_.
     // In its final suspend, it returns control flow to its caller by
     // returning std::experimental::noop_coroutine.
-    if (awaiting_promise_) {
-      awaiting_promise_->clear_depend();
+    if (!awaiting_promise_)
       return coro_task_private::final_awaiter(
-          awaiting_promise_->get_promise_coroutine());
-    }
-    return coro_task_private::final_awaiter(
         std::experimental::noop_coroutine());
+    // Every other coroutine in the coroutine chain returns control flow to the
+    // caller instead of the top-level function by returning the final_awaiter
+    // object which will resume its awaiting_promise_
+    awaiting_promise_->clear_depend();
+    return coro_task_private::final_awaiter(
+        awaiting_promise_->get_promise_coroutine());
   }
   void unhandled_exception() { std::terminate(); }
 
@@ -306,6 +308,37 @@ private:
   T *return_value_;
 };
 
+/*
+ * In the first traversal of nested coroutines, a chain of coroutine_handles 
+ * will be created by co_await(more exactly, await_suspend) layer-by-layer.
+ * Then on the surface it feels like that the deepest coroutine returns the 
+ * control to the top-level corutine directly, but in fact the compiler
+ * generates return_to_the_caller() to return the control flow layer-by-layer.
+ *
+ * In the following traversals, since the top-level coroutine is the direct
+ * caller or resumer of the deepest coroutine, the deepest coroutine will
+ * actually return the control flow to the top-level coroutine directly.
+ *
+ * The semantics of co_await <expr> can be translated (roughly) as follows:
+ * {
+ *   if (not awaiter.await_ready()) {
+ *     //if await_suspend returns void
+ *     ...
+ *     //if await_suspend returns bool
+ *     ...
+ *     //if await_suspend returns another coroutine_handle
+ *     try {
+ *       another_coro_handle = awaiter.await_suspend(coroutine_handle);
+ *     } catch (...) {
+ *       goto resume_point;
+ *     }
+ *     another_coro_handle.resume();
+ *     return_to_the_caller();
+ *   }
+ *  return awaiter.await_resume();
+ * }
+ *
+ */
 template <typename T> struct task<T>::awaiter {
   using coroutine_handle =
       std::experimental::coroutine_handle<typename task<T>::promise_type>;
