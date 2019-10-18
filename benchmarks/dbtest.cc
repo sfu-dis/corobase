@@ -35,7 +35,7 @@ DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to 
 DEFINE_uint64(dia_physical_index_threads, 0, "Number of physical index threads to run transactions in DIA.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
-DEFINE_bool(numa_spread, false, "Whether to pin threads in spread mode (compact if false)");
+DEFINE_bool(numa_spread, true, "Whether to pin threads in spread mode (compact if false)");
 DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");

@@ -82,15 +82,6 @@ bool numa_spread = false;
 void init() {
   ALWAYS_ASSERT(threads);
   thread::Initialize();
-  // Here [threads] refers to worker threads, so use the number of physical cores
-  // to calculate # of numa nodes
-  uint32_t max = thread::cpu_cores.size() / (numa_max_node() + 1);
-  if (numa_spread) {
-    numa_nodes = threads > numa_max_node() + 1 ? numa_max_node() + 1 : threads;
-  } else {
-    numa_nodes = (threads + max - 1) / max;
-    ALWAYS_ASSERT(numa_nodes);
-  }
 
   if (num_backups) {
     enable_chkpt = true;

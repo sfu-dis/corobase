@@ -10,7 +10,7 @@ namespace thread {
 std::atomic<uint32_t> next_thread_id(0);
 PerNodeThreadPool *thread_pools = nullptr;
 thread_local bool thread_initialized CACHE_ALIGNED;
-uint32_t PerNodeThreadPool::max_threads_per_node = 0;
+uint32_t PerNodeThreadPool::threads_count = 0;
 
 std::vector<CPUCore> cpu_cores;
 bool DetectCPUCores() {
@@ -94,38 +94,64 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
 
 PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
   ALWAYS_ASSERT(!numa_run_on_node(node));
-  threads = (Thread *)numa_alloc_onnode(
-      sizeof(Thread) * max_threads_per_node, node);
+  threads = (Thread *)numa_alloc_onnode(sizeof(Thread) * threads_count, node);
 
   if (cpu_cores.size()) {
-    uint32_t total_numa_nodes = numa_max_node() + 1;
-    ALWAYS_ASSERT(cpu_cores.size() / total_numa_nodes <= max_threads_per_node);
-    LOG(INFO) << "Node " << n << " has " << cpu_cores.size() / total_numa_nodes
-              << " physical cores, " << max_threads_per_node
-              << " threads"; uint32_t core = 0;
+    const uint32_t total_numa_nodes = numa_max_node() + 1;
+    const uint32_t node_core_count = cpu_cores.size() / total_numa_nodes;
+    LOG(INFO) << "Node " << n << " has " <<  node_core_count
+              << " physical cores, " << threads_count << " threads";
+
+    // Allocate physical threads first
+    uint32_t core = 0;
     for (uint32_t i = 0; i < cpu_cores.size(); ++i) {
       auto &c = cpu_cores[i];
-      if (c.node == n) {
+      if (c.node == n && core < threads_count) {
         uint32_t sys_cpu = c.physical_thread;
         new (threads + core) Thread(node, core, sys_cpu, true);
-        for (auto &sib : c.logical_threads) {
-          ++core;
-          new (threads + core) Thread(node, core, sib, false);
-        }
         ++core;
+      }
+    }
+
+    for (uint32_t i = 0; i < cpu_cores.size(); ++i) {
+      auto &c = cpu_cores[i];
+      if (c.node == n && core < threads_count) {
+        for (auto &sib : c.logical_threads) {
+          if (core >= threads_count) {
+              break;
+          }
+          new (threads + core) Thread(node, core, sib, false);
+          ++core;
+        }
       }
     }
   }
 }
 
 void Initialize() {
-  uint32_t nodes = numa_max_node() + 1;
-  PerNodeThreadPool::max_threads_per_node = std::thread::hardware_concurrency() / nodes;
+  ALWAYS_ASSERT(config::threads > 0);
+  const uint32_t numa_node_count = numa_max_node() + 1;
+  const uint32_t max_threads_per_node = std::thread::hardware_concurrency() / numa_node_count;
+  config::threads = std::min(config::threads, max_threads_per_node * numa_node_count);
+
   bool detected = thread::DetectCPUCores();
   LOG_IF(FATAL, !detected);
-  thread_pools =
-      (PerNodeThreadPool *)malloc(sizeof(PerNodeThreadPool) * nodes);
-  for (uint16_t i = 0; i < nodes; i++) {
+
+  // Here [threads] refers to threads (physical or logical), so use the number of physical cores
+  // to calculate # of numa nodes
+  if (config::numa_spread) {
+    config::numa_nodes = config::threads > numa_node_count ? numa_node_count : config::threads;
+  } else {
+    config::numa_nodes = std::ceil(config::threads / static_cast<float>(max_threads_per_node));
+  }
+  ALWAYS_ASSERT(config::numa_nodes > 0);
+
+  // For simplicity, it allocates same number of threads for each node. So the actually number of
+  // threads in thread_pool may be more than config::threads
+  PerNodeThreadPool::threads_count = std::ceil(config::threads / static_cast<float>(config::numa_nodes));
+
+  thread_pools = (PerNodeThreadPool *)malloc(sizeof(PerNodeThreadPool) * config::numa_nodes);
+  for (uint16_t i = 0; i < config::numa_nodes; i++) {
     new (thread_pools + i) PerNodeThreadPool(i);
   }
 }
@@ -193,7 +219,7 @@ retry:
   Thread *t = nullptr;
   // Find the thread that matches the preferred type
   while (true) {
-    if (pos >= max_threads_per_node) {
+    if (pos >= threads_count) {
       return nullptr;
     }
     t = &threads[pos];
@@ -206,7 +232,7 @@ retry:
   if (not __sync_bool_compare_and_swap(&bitmap, b, b | (1UL << pos))) {
     goto retry;
   }
-  ALWAYS_ASSERT(pos < max_threads_per_node);
+  ALWAYS_ASSERT(pos < threads_count);
   return t;
 }
 
@@ -220,7 +246,7 @@ retry:
   Thread *t = nullptr;
   // Find the thread that matches the preferred type
   while (true) {
-    if (pos >= max_threads_per_node) {
+    if (pos >= threads_count) {
       return false;
     }
     t = &threads[pos];
@@ -253,7 +279,7 @@ retry:
   if (not __sync_bool_compare_and_swap(&bitmap, b, b | bits)) {
     goto retry;
   }
-  ALWAYS_ASSERT(pos < max_threads_per_node);
+  ALWAYS_ASSERT(pos < threads_count);
   return true;
 }
 
