@@ -95,7 +95,7 @@ struct Thread {
 };
 
 struct PerNodeThreadPool {
-  static uint32_t max_threads_per_node;
+  static uint32_t threads_count;
   uint16_t node CACHE_ALIGNED;
   Thread *threads CACHE_ALIGNED;
   uint64_t bitmap CACHE_ALIGNED;  // max 64 threads per node, 1 - busy, 0 - free
