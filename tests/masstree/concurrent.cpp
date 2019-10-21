@@ -37,7 +37,7 @@ class ConcurrentMasstree: public ::testing::Test {
         ermia::config::node_memory_gb = 2;
         ermia::config::num_backups = 0;
         ermia::config::numa_spread = false;
-        ermia::config::threads = 2;
+        ermia::config::threads = 5;
 
         ermia::config::init();
         ermia::MM::prepare_node_memory();
@@ -47,6 +47,9 @@ class ConcurrentMasstree: public ::testing::Test {
 
     virtual void TearDown() override {
         delete tree_;
+
+        ermia::MM::free_node_memory();
+        ermia::thread::Finalize();
     }
 
     PROMISE(bool) insertRecord(const Record &record) {

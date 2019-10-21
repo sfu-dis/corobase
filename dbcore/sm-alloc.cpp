@@ -85,6 +85,21 @@ void prepare_node_memory() {
   }
 }
 
+void free_node_memory() {
+  ALWAYS_ASSERT(node_memory);
+  ALWAYS_ASSERT(config::node_memory_gb);
+
+  for (int i = 0; i < config::numa_nodes; i++) {
+    allocated_node_memory[i] = 0;
+    munmap(node_memory[i], config::node_memory_gb);
+  }
+
+  free(allocated_node_memory);
+  allocated_node_memory = nullptr;
+  free(node_memory);
+  node_memory = nullptr;
+}
+
 void gc_version_chain(fat_ptr *oid_entry) {
   fat_ptr ptr = *oid_entry;
   Object *cur_obj = (Object *)ptr.offset();
