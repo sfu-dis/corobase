@@ -92,6 +92,12 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
   ALWAYS_ASSERT(rc == 0);
 }
 
+Thread::~Thread() {
+  ASSERT(IsDestroyed());
+  int res = pthread_join(thd, nullptr);
+  ASSERT(res == 0);
+}
+
 PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
   ALWAYS_ASSERT(!numa_run_on_node(node));
   threads = (Thread *)numa_alloc_onnode(sizeof(Thread) * threads_count, node);
@@ -128,23 +134,17 @@ PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
   }
 }
 
-void Initialize() {
-  ALWAYS_ASSERT(config::threads > 0);
-  const uint32_t numa_node_count = numa_max_node() + 1;
-  const uint32_t max_threads_per_node = std::thread::hardware_concurrency() / numa_node_count;
-  config::threads = std::min(config::threads, max_threads_per_node * numa_node_count);
+PerNodeThreadPool::~PerNodeThreadPool() {
+  for(uint32_t i = 0; i < threads_count; i++) {
+    threads[i].Destroy();
+    threads[i].~Thread();
+  }
+  numa_free(threads, sizeof(Thread) * threads_count);
+}
 
+void Initialize() {
   bool detected = thread::DetectCPUCores();
   LOG_IF(FATAL, !detected);
-
-  // Here [threads] refers to threads (physical or logical), so use the number of physical cores
-  // to calculate # of numa nodes
-  if (config::numa_spread) {
-    config::numa_nodes = config::threads > numa_node_count ? numa_node_count : config::threads;
-  } else {
-    config::numa_nodes = std::ceil(config::threads / static_cast<float>(max_threads_per_node));
-  }
-  ALWAYS_ASSERT(config::numa_nodes > 0);
 
   // For simplicity, it allocates same number of threads for each node. So the actually number of
   // threads in thread_pool may be more than config::threads
@@ -154,6 +154,16 @@ void Initialize() {
   for (uint16_t i = 0; i < config::numa_nodes; i++) {
     new (thread_pools + i) PerNodeThreadPool(i);
   }
+}
+
+void Finalize() {
+    for(uint32_t i = 0; i < config::numa_nodes; i++) {
+        thread_pools[i].~PerNodeThreadPool();
+    }
+    free(thread_pools);
+    thread_pools = nullptr;
+
+    cpu_cores.clear();
 }
 
 void Thread::IdleTask() {
@@ -198,7 +208,8 @@ void Thread::IdleTask() {
       trigger.wait(lock);
       volatile_write(state, kStateNoWork);
       // Somebody woke me up, wait for work to do
-      while (volatile_read(state) != kStateHasWork) { /** spin **/
+      while (!volatile_read(shutdown) &&
+             volatile_read(state) != kStateHasWork) { /** spin **/
       }
     }  // else can't sleep, go check another round
   }

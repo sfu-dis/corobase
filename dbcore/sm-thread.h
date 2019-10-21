@@ -29,6 +29,7 @@ extern std::vector<CPUCore> cpu_cores;
 
 bool DetectCPUCores();
 void Initialize();
+void Finalize();
 
 // == total number of threads had so far - never decreases
 extern std::atomic<uint32_t> next_thread_id;
@@ -66,7 +67,7 @@ struct Thread {
   std::mutex trigger_lock;
 
   Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical);
-  ~Thread() {}
+  ~Thread();
 
   void IdleTask();
   static void *StaticIdleTask(void *context) {
@@ -91,7 +92,14 @@ struct Thread {
 
   inline void Join() { while (volatile_read(state) == kStateHasWork) {} }
   inline bool TryJoin() { return volatile_read(state) != kStateHasWork; }
-  inline void Destroy() { volatile_write(shutdown, true); }
+  inline void Destroy() {
+    volatile_write(shutdown, true);
+    auto s = __sync_val_compare_and_swap(&state, kStateHasWork, kStateNoWork);
+    if (s == kStateSleep) {
+        trigger.notify_all();
+    }
+  }
+  inline bool IsDestroyed() { return volatile_read(shutdown); }
 };
 
 struct PerNodeThreadPool {
@@ -101,6 +109,7 @@ struct PerNodeThreadPool {
   uint64_t bitmap CACHE_ALIGNED;  // max 64 threads per node, 1 - busy, 0 - free
 
   PerNodeThreadPool(uint16_t n);
+  ~PerNodeThreadPool();
 
   // Get a single new thread which can be physical or logical
   Thread *GetThread(bool physical);
