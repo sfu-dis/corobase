@@ -1,7 +1,7 @@
-
-#include <gtest/gtest.h>
 #include <array>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include <dbcore/sm-alloc.h>
 #include <dbcore/sm-config.h>
@@ -76,9 +76,48 @@ class ConcurrentMasstree: public ::testing::Test {
         RETURN res;
     }
 
+    void concurrentInsertSequential(const std::vector<Record> & records) {
+        initRunningThreads();
+
+        const size_t per_thread_records_num = records.size() / runnable_threads_.size();
+
+        ermia::thread::Thread::Task insert_task = [&] (char *beg) {
+            size_t begin_index = static_cast<size_t>(reinterpret_cast<uint64_t>(beg));
+            for (uint32_t i = begin_index;
+                 i < std::min(begin_index + per_thread_records_num, records.size());
+                 i++) {
+                const Record & record = records[i];
+                EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
+            }
+        };
+
+        size_t thread_begin_idx = 0;
+        for(ermia::thread::Thread * th : runnable_threads_) {
+            // hack: pass a int by casting the pointer value
+            th->StartTask(insert_task, reinterpret_cast<char *>(thread_begin_idx));
+            thread_begin_idx += per_thread_records_num;
+        }
+
+        finiRunningThreads();
+    }
+
+    void concurrentSearchSequential(const std::vector<Record> & records_found,
+                                    const std::vector<Record> & records_not_found) {
+
+        initRunningThreads();
+
+        ermia::thread::Thread::Task search_task = [&] (char *beg) {
+        };
+
+        // TODO
+
+        finiRunningThreads();
+    }
+
     void initRunningThreads() {
         for(uint32_t i = 0; i < ermia::config::threads; i++) {
             ermia::thread::Thread* th = ermia::thread::GetThread(true);
+            EXPECT_TRUE(th);
             runnable_threads_.emplace_back(th);
         } 
 
@@ -87,39 +126,43 @@ class ConcurrentMasstree: public ::testing::Test {
     void finiRunningThreads() {
         for(ermia::thread::Thread * th : runnable_threads_) {
             th->Join();
-            th->Destroy();
+            ermia::thread::PutThread(th);
         }
+
+        runnable_threads_.clear();
     }
 
-    std::vector<ermia::thread::Thread *> runnable_threads_;
     ermia::ConcurrentMasstree *tree_;
+  private:
+    std::vector<ermia::thread::Thread *> runnable_threads_;
 };
 
 TEST_F(ConcurrentMasstree, InsertSequential) {
-    const size_t per_thread_records = 10;
-    const size_t all_records_num = per_thread_records * runnable_threads_.size();
-    const std::vector<Record> all_records = genRandRecords(all_records_num, 128);
+    constexpr size_t per_thread_insert_num = 10;
+    const size_t all_records_num = per_thread_insert_num * ermia::config::threads;
+    const std::vector<Record> all_records = genRandRecords(all_records_num);
 
-    ermia::thread::Thread::Task insert_task = [&] (char *beg) {
-        size_t begin_index = static_cast<size_t>(reinterpret_cast<uint64_t>(beg));
-        for (uint32_t i = begin_index; 
-             i < std::min(begin_index + per_thread_records, all_records.size());
-             i++) {
-            const Record & record = all_records[i];
-            EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
-        }
-    };
+    concurrentInsertSequential(all_records);
+}
 
-    initRunningThreads();
+TEST_F(ConcurrentMasstree, InsertSequentialAndSearchSequential) {
+    constexpr size_t per_thread_insert_num = 10;
+    const size_t insert_records_num = per_thread_insert_num * ermia::config::threads;
+    const std::vector<Record> records_to_insert = genRandRecords(insert_records_num);
 
-    size_t thread_begin_idx = 0;
-    for(ermia::thread::Thread * th : runnable_threads_) {
-        // hack: pass a int by casting the pointer value
-        th->StartTask(insert_task, reinterpret_cast<char *>(thread_begin_idx));
-        thread_begin_idx += per_thread_records;
-    }
+    concurrentInsertSequential(records_to_insert);
 
-    finiRunningThreads();
+
+    constexpr size_t per_thread_search_num = 15;
+    constexpr size_t per_thread_search_not_found_num =
+        per_thread_search_num - per_thread_insert_num;
+    const size_t not_found_records_num =
+        per_thread_search_not_found_num * ermia::config::threads;
+
+    const std::vector<Record> records_not_found = genDisjointRecords(
+            records_to_insert, not_found_records_num);
+
+    concurrentSearchSequential(records_to_insert, records_not_found);
 }
 
 #ifdef USE_STATIC_COROUTINE
