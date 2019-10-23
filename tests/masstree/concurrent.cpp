@@ -82,10 +82,15 @@ class ConcurrentMasstree: public ::testing::Test {
     void concurrentInsertSequential(const std::vector<Record> & records) {
         initRunningThreads();
 
-        const size_t per_thread_records_num = records.size() / runnable_threads_.size();
+        const size_t per_thread_records_num = std::ceil(
+                records.size() / static_cast<float>(runnable_threads_.size()));
 
-        ermia::thread::Thread::Task insert_task = [&] (char *beg) {
-            size_t begin_index = static_cast<size_t>(reinterpret_cast<uint64_t>(beg));
+        std::vector<size_t> records_begin_idxs;
+        records_begin_idxs.reserve(runnable_threads_.size());
+
+        ermia::thread::Thread::Task insert_task = [&] (char *tid) {
+            size_t thread_id = static_cast<size_t>(reinterpret_cast<intptr_t>(tid));
+            size_t begin_index = records_begin_idxs[thread_id];
             for (uint32_t i = begin_index;
                  i < std::min(begin_index + per_thread_records_num, records.size());
                  i++) {
@@ -94,11 +99,16 @@ class ConcurrentMasstree: public ::testing::Test {
             }
         };
 
+        size_t thread_id = 0;
         size_t thread_begin_idx = 0;
         for(ermia::thread::Thread * th : runnable_threads_) {
-            // hack: pass a int by casting the pointer value
-            th->StartTask(insert_task, reinterpret_cast<char *>(thread_begin_idx));
+            records_begin_idxs.emplace_back(thread_begin_idx);
+
+            // hack: pass a thread id through value a pointer(intptr_t)
+            th->StartTask(insert_task, reinterpret_cast<char *>(thread_id));
+
             thread_begin_idx += per_thread_records_num;
+            thread_id++;
         }
 
         finiRunningThreads();
@@ -109,10 +119,26 @@ class ConcurrentMasstree: public ::testing::Test {
 
         initRunningThreads();
 
-        ermia::thread::Thread::Task search_task = [&] (char *beg) {
+        ermia::thread::Thread::Task search_task = [&] (char *tid) {
+            size_t thread_id = static_cast<size_t>(reinterpret_cast<intptr_t>(tid));
+            
+            ermia::OID out_value;
+            for(const Record & record : records_found) {
+                EXPECT_TRUE(sync_wait_coro(searchByKey(record.key, &out_value)));
+                EXPECT_EQ(out_value, record.value);
+            }
+
+            for(const Record & record : records_not_found) {
+                EXPECT_FALSE(sync_wait_coro(searchByKey(record.key, &out_value)));
+            }
         };
 
-        // TODO
+        size_t thread_id = 0;
+        for(ermia::thread::Thread * th : runnable_threads_) {
+            th->StartTask(search_task, reinterpret_cast<char *>(thread_id));
+
+            thread_id++;
+        }
 
         finiRunningThreads();
     }
@@ -136,7 +162,6 @@ class ConcurrentMasstree: public ::testing::Test {
     }
 
     ermia::ConcurrentMasstree *tree_;
-  private:
     std::vector<ermia::thread::Thread *> runnable_threads_;
 };
 
@@ -149,27 +174,91 @@ TEST_F(ConcurrentMasstree, InsertSequential) {
 }
 
 TEST_F(ConcurrentMasstree, InsertSequentialAndSearchSequential) {
-    constexpr size_t per_thread_insert_num = 10;
+    constexpr size_t per_thread_insert_num = 50;
     const size_t insert_records_num = per_thread_insert_num * ermia::config::threads;
     const std::vector<Record> records_to_insert = genRandRecords(insert_records_num);
 
     concurrentInsertSequential(records_to_insert);
 
 
-    constexpr size_t per_thread_search_num = 15;
-    constexpr size_t per_thread_search_not_found_num =
-        per_thread_search_num - per_thread_insert_num;
-    const size_t not_found_records_num =
-        per_thread_search_not_found_num * ermia::config::threads;
-
+    constexpr size_t search_not_found_num = 100;
     const std::vector<Record> records_not_found = genDisjointRecords(
-            records_to_insert, not_found_records_num);
+            records_to_insert, search_not_found_num);
 
     concurrentSearchSequential(records_to_insert, records_not_found);
 }
 
 #ifdef USE_STATIC_COROUTINE
 
+TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
+    constexpr size_t per_thread_insert_num = 50;
+    const size_t insert_records_num = per_thread_insert_num * ermia::config::threads;
+    const std::vector<Record> records_to_insert = genRandRecords(insert_records_num);
+
+    concurrentInsertSequential(records_to_insert);
+
+
+    initRunningThreads();
+
+    ermia::thread::Thread::Task search_task = [&] (char *tid) {
+        constexpr int task_queue_size= 5;
+
+        std::array<task<bool>, task_queue_size> task_queue;
+
+        std::vector<ermia::OID> coro_return_values;
+        coro_return_values.resize(records_to_insert.size());
+
+        uint32_t next_task_index = 0;
+        for (task<bool> & coro_task : task_queue) {
+            const Record & record = records_to_insert[next_task_index];
+            ermia::OID & result = coro_return_values[next_task_index];
+            next_task_index++;
+            coro_task = searchByKey(record.key, &result);
+        }
+
+        uint32_t completed_task_cnt = 0;
+        while (completed_task_cnt < records_to_insert.size()) {
+            for(task<bool> & coro_task : task_queue) {
+                if(!coro_task.valid()) {
+                    continue;
+                }
+
+                if(!coro_task.done()) {
+                    coro_task.resume();
+                } else {
+                    EXPECT_TRUE(coro_task.get_return_value());
+                    completed_task_cnt++;
+
+                    if(next_task_index < records_to_insert.size()) {
+                        const Record & record = records_to_insert[next_task_index];
+                        ermia::OID & result = coro_return_values[next_task_index];
+                        next_task_index++;
+                        coro_task = searchByKey(record.key, &result);
+                    } else {
+                        coro_task = task<bool>(nullptr);
+                    }
+                }
+            }
+        }
+
+        for(uint32_t i = 0; i < records_to_insert.size(); i++) {
+            EXPECT_EQ(records_to_insert[i].value, coro_return_values[i]);
+        }
+
+        for(task<bool> & coro_task : task_queue) {
+            EXPECT_TRUE(!coro_task.valid() || coro_task.done());
+        }
+    };
+
+    size_t thread_id = 0;
+    for(ermia::thread::Thread * th : runnable_threads_) {
+        th->StartTask(search_task, reinterpret_cast<char *>(thread_id));
+
+        thread_id++;
+    }
+
+    finiRunningThreads();
+}
+
 
 #endif
-
