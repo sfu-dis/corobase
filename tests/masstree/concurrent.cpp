@@ -52,30 +52,34 @@ class ConcurrentMasstree: public ::testing::Test {
         ermia::thread::Finalize();
     }
 
-    PROMISE(bool) insertRecord(const Record &record) {
+    ermia::TXN::xid_context thread_begin() {
         ermia::TXN::xid_context xid_ctx = mock_create_xid_context();
         ermia::epoch_num e = ermia::MM::epoch_enter();         
         xid_ctx.begin_epoch = e;
 
+        return xid_ctx;
+    }
+
+    void thread_end(ermia::TXN::xid_context * xid_ctx) {
+        ermia::MM::epoch_exit(0, xid_ctx->begin_epoch);
+        mock_destroy_xid_context(xid_ctx);
+    }
+
+    PROMISE(bool) insertRecord(const Record &record,
+                               ermia::TXN::xid_context * xid_ctx) {
         bool res = AWAIT tree_->insert(
             ermia::varstr(record.key.data(), record.key.size()),
             record.value,
-            &xid_ctx, nullptr, nullptr);
-
-        ermia::MM::epoch_exit(0, e);
-        mock_destroy_xid_context(&xid_ctx);
+            xid_ctx, nullptr, nullptr);
 
         RETURN res;
     }
 
     PROMISE(bool)
-    searchByKey(const std::string &key, ermia::OID *out_value) {
-        ermia::epoch_num e = ermia::MM::epoch_enter();         
-
+    searchByKey(const std::string &key, ermia::OID *out_value, ermia::epoch_num e) {
         bool res = AWAIT tree_->search(ermia::varstr(key.data(), key.size()),
                                        *out_value, e, nullptr);
 
-        ermia::MM::epoch_exit(0, e);
         RETURN res;
     }
 
@@ -89,14 +93,18 @@ class ConcurrentMasstree: public ::testing::Test {
         records_begin_idxs.reserve(runnable_threads_.size());
 
         ermia::thread::Thread::Task insert_task = [&] (char *tid) {
+            ermia::TXN::xid_context xid_context = thread_begin();
+
             size_t thread_id = static_cast<size_t>(reinterpret_cast<intptr_t>(tid));
             size_t begin_index = records_begin_idxs[thread_id];
             for (uint32_t i = begin_index;
                  i < std::min(begin_index + per_thread_records_num, records.size());
                  i++) {
                 const Record & record = records[i];
-                EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
+                EXPECT_TRUE(sync_wait_coro(insertRecord(record, &xid_context)));
             }
+
+            thread_end(&xid_context);
         };
 
         size_t thread_id = 0;
@@ -120,17 +128,23 @@ class ConcurrentMasstree: public ::testing::Test {
         initRunningThreads();
 
         ermia::thread::Thread::Task search_task = [&] (char *tid) {
+            ermia::TXN::xid_context xid_context = thread_begin();
+
             size_t thread_id = static_cast<size_t>(reinterpret_cast<intptr_t>(tid));
             
             ermia::OID out_value;
             for(const Record & record : records_found) {
-                EXPECT_TRUE(sync_wait_coro(searchByKey(record.key, &out_value)));
+                EXPECT_TRUE(sync_wait_coro(
+                            searchByKey(record.key, &out_value, xid_context.begin_epoch)));
                 EXPECT_EQ(out_value, record.value);
             }
 
             for(const Record & record : records_not_found) {
-                EXPECT_FALSE(sync_wait_coro(searchByKey(record.key, &out_value)));
+                EXPECT_FALSE(sync_wait_coro(
+                            searchByKey(record.key, &out_value, xid_context.begin_epoch)));
             }
+
+            thread_end(&xid_context);
         };
 
         size_t thread_id = 0;
@@ -203,6 +217,8 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
     ermia::thread::Thread::Task search_task = [&] (char *tid) {
         constexpr int task_queue_size= 5;
 
+        ermia::TXN::xid_context xid_context = thread_begin();
+
         std::array<task<bool>, task_queue_size> task_queue;
 
         std::vector<ermia::OID> coro_return_values;
@@ -213,7 +229,7 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
             const Record & record = records_to_insert[next_task_index];
             ermia::OID & result = coro_return_values[next_task_index];
             next_task_index++;
-            coro_task = searchByKey(record.key, &result);
+            coro_task = searchByKey(record.key, &result, xid_context.begin_epoch);
         }
 
         uint32_t completed_task_cnt = 0;
@@ -233,7 +249,8 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
                         const Record & record = records_to_insert[next_task_index];
                         ermia::OID & result = coro_return_values[next_task_index];
                         next_task_index++;
-                        coro_task = searchByKey(record.key, &result);
+                        coro_task = searchByKey(record.key, &result,
+                                                xid_context.begin_epoch);
                     } else {
                         coro_task = task<bool>(nullptr);
                     }
@@ -248,6 +265,8 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
         for(task<bool> & coro_task : task_queue) {
             EXPECT_TRUE(!coro_task.valid() || coro_task.done());
         }
+
+        thread_end(&xid_context);
     };
 
     size_t thread_id = 0;
