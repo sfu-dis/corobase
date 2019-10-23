@@ -92,29 +92,23 @@ class SingleThreadMasstree : public ::testing::Test {
     ermia::SingleThreadedMasstree *tree_;
 };
 
-TEST_F(SingleThreadMasstree, InsertOnly) {
+TEST_F(SingleThreadMasstree, InsertSequential) {
     Record record = Record{"absd", 1423};
     EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
 }
 
-TEST_F(SingleThreadMasstree, InsertAndSearch_Found) {
+TEST_F(SingleThreadMasstree, InsertSequentialAndSearchSequential) {
     Record record = Record{"absd", 1423};
     EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
 
     ermia::OID value_out;
     EXPECT_TRUE(sync_wait_coro(searchByKey(record.key, &value_out)));
     EXPECT_EQ(record.value, value_out);
-}
 
-TEST_F(SingleThreadMasstree, InsertAndSearch_NotFound) {
-    Record record = Record{"absd", 1423};
-    EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
-
-    ermia::OID value_out;
     EXPECT_FALSE(sync_wait_coro(searchByKey("ccc", &value_out)));
 }
 
-TEST_F(SingleThreadMasstree, InsertAndSearch_ManyRecords) {
+TEST_F(SingleThreadMasstree, InsertSequentialAndSearchSequential_ManyRecords) {
     const std::vector<Record> records_to_insert = genRandRecords(400, 128);
     for (const Record &record : records_to_insert) {
         EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
@@ -134,7 +128,7 @@ TEST_F(SingleThreadMasstree, InsertAndSearch_ManyRecords) {
 
 #ifdef USE_STATIC_COROUTINE
 
-TEST_F(SingleThreadMasstree, InsertAndSearch_Coro) {
+TEST_F(SingleThreadMasstree, InsertSequentialAndSearchInterleaved) {
     std::vector<Record> records_to_insert = genRandRecords(50, 10);
     for (const Record &record : records_to_insert) {
         EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
@@ -185,6 +179,67 @@ TEST_F(SingleThreadMasstree, InsertAndSearch_Coro) {
     for(task<bool> & coro_task : task_queue) {
         EXPECT_TRUE(!coro_task.valid() || coro_task.done());
     }
+}
+
+TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved) {
+    constexpr uint32_t iterations = 50;
+    constexpr uint32_t record_num_per_iter = 20;
+
+    /*
+     * Interleaved search and insert in each iteration.
+     * In every iteration, it searchs the records inserted in last interation.
+     */
+
+    // Initially insert a batch of records
+    std::vector<Record> cur_iter_records = genRandRecords(record_num_per_iter);
+    for(const Record & record : cur_iter_records) {
+       EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
+    }
+
+    constexpr uint32_t task_queue_size = 2 * record_num_per_iter;
+    std::array<task<bool>, task_queue_size> task_queue;
+    std::array<ermia::OID, task_queue_size> return_values;
+
+    std::vector<Record> last_iter_records;
+    for(uint32_t i = 0; i < iterations; i++) {
+        uint32_t completed_task_cnt = 0;
+        last_iter_records = cur_iter_records;
+        // Ensure records inserting this iteration differs from any of last iteration
+        cur_iter_records = genDisjointRecords(last_iter_records, record_num_per_iter);
+
+        uint32_t task_index = 0;
+        for(const Record & search_record : last_iter_records) {
+            task_queue[task_index] =
+                searchByKey(search_record.key, &return_values[task_index]);
+            task_index++;
+        }
+        for(const Record & insert_record : cur_iter_records) {
+            task_queue[task_index] = insertRecord(insert_record);
+            task_index++;
+        }
+        EXPECT_EQ(task_index, task_queue.size());
+
+        while (completed_task_cnt < task_queue.size()) {
+            for(task<bool> & coro_task : task_queue) {
+                if(!coro_task.valid()) {
+                    continue;
+                }
+
+                if(!coro_task.done()) {
+                    coro_task.resume();
+                } else {
+                    EXPECT_TRUE(coro_task.get_return_value());
+                    completed_task_cnt++;
+                    coro_task = task<bool>(nullptr);
+                }
+            }
+        }
+
+        for(uint32_t i = 0; i < last_iter_records.size(); i++) {
+            EXPECT_EQ(last_iter_records[i].value, return_values[i]);
+        }
+    }
+
 }
 
 #endif  // USE_STATIC_COROUTINE
