@@ -38,11 +38,16 @@ static inline std::string genKeyNotInKeysSet(
 std::vector<Record> genRandRecords(uint32_t record_num, uint32_t key_len_avg) {
     std::normal_distribution<int> distribution(key_len_avg, 10);
 
-    std::vector<Record> records;
-    records.resize(record_num);
-    for (Record& record : records) {
+    std::unordered_set<std::string> key_set;
+    while(key_set.size() != record_num) {
         uint32_t key_len = distribution(generator);
-        record = Record{randString(key_len), randUint()};
+        key_set.insert(randString(key_len));
+    }
+
+    std::vector<Record> records;
+    records.reserve(record_num);
+    for (const std::string & key : key_set) {
+        records.emplace_back(key, randUint());
     }
 
     return records;
