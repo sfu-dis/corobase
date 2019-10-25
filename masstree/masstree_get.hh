@@ -33,11 +33,13 @@ forward:
   if (v_.deleted()) goto retry;
 
   n_->prefetch();
+  SUSPEND;
   perm_ = n_->permutation();
   kx = leaf<P>::bound_type::lower(ka_, *this);
   if (kx.p >= 0) {
     lv_ = n_->lv_[kx.p];
     lv_.prefetch(n_->keylenx_[kx.p]);
+    SUSPEND;
     match = n_->ksuf_matches(kx.p, ka_);
   } else
     match = 0;
