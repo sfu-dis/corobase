@@ -91,7 +91,7 @@ void free_node_memory() {
 
   for (int i = 0; i < config::numa_nodes; i++) {
     allocated_node_memory[i] = 0;
-    munmap(node_memory[i], config::node_memory_gb);
+    munmap(node_memory[i], config::node_memory_gb * config::GB);
   }
 
   free(allocated_node_memory);

@@ -69,7 +69,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 
         int node = numa_node_of_cpu(sched_getcpu());
 
-        munmap(node_memory[node], ermia::config::node_memory_gb);
+        munmap(node_memory[node], ermia::config::node_memory_gb * ermia::config::GB);
         delete[] allocated_node_memory;
         delete[] node_memory;
     }
