@@ -64,3 +64,16 @@ add_executable(test_masstree ${TEST_SRCS})
 target_include_directories(test_masstree PRIVATE ${GTEST_INCLUDES})
 target_include_directories(test_masstree PRIVATE ${ERMIA_INCLUDES})
 target_link_libraries(test_masstree gtest_main)
+
+
+set(PERF_SRCS
+    ${DBCORE_SRCS}
+    ${MASSTREE_SRCS}
+    ${TEST_UTILS_SRCS}
+    ${PERF_MAIN}
+    perf_single_threaded.cpp
+)
+
+add_executable(perf_masstree ${PERF_SRCS})
+target_include_directories(perf_masstree PRIVATE ${ERMIA_INCLUDES})
+target_link_libraries(perf_masstree benchmark_main)
