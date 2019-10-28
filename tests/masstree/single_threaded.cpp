@@ -181,6 +181,67 @@ TEST_F(SingleThreadMasstree, InsertSequentialAndSearchInterleaved) {
     }
 }
 
+TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved_Debug) {
+    constexpr uint32_t iterations = 36;
+    constexpr uint32_t record_num_per_iter = 1;
+
+    uint32_t record_begin = 1;
+
+    std::vector<Record> cur_iter_records =
+        genRecordsIntSequence(record_begin, record_begin + record_num_per_iter);
+    record_begin += record_num_per_iter;
+
+    for(const Record & record : cur_iter_records) {
+       EXPECT_TRUE(sync_wait_coro(insertRecord(record)));
+    }
+
+    constexpr uint32_t task_queue_size = 2 * record_num_per_iter;
+    std::array<task<bool>, task_queue_size> task_queue;
+    std::array<ermia::OID, task_queue_size> return_values;
+
+    std::vector<Record> last_iter_records;
+    for(uint32_t i = 0; i < iterations; i++) {
+        uint32_t completed_task_cnt = 0;
+        last_iter_records = cur_iter_records;
+        cur_iter_records =
+            genRecordsIntSequence(record_begin, record_begin + record_num_per_iter);
+        record_begin += record_num_per_iter;
+
+        uint32_t task_index = 0;
+        for(const Record & search_record : last_iter_records) {
+            task_queue[task_index] =
+                searchByKey(search_record.key, &return_values[task_index]);
+            task_index++;
+        }
+        for(const Record & insert_record : cur_iter_records) {
+            task_queue[task_index] = insertRecord(insert_record);
+            task_index++;
+        }
+        EXPECT_EQ(task_index, task_queue.size());
+
+        while (completed_task_cnt < task_queue.size()) {
+            for(task<bool> & coro_task : task_queue) {
+                if(!coro_task.valid()) {
+                    continue;
+                }
+
+                if(!coro_task.done()) {
+                    coro_task.resume();
+                } else {
+                    EXPECT_TRUE(coro_task.get_return_value());
+                    completed_task_cnt++;
+                    coro_task = task<bool>(nullptr);
+                }
+            }
+        }
+
+        for(uint32_t i = 0; i < last_iter_records.size(); i++) {
+            EXPECT_EQ(last_iter_records[i].value, return_values[i]);
+        }
+    }
+
+}
+
 TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved) {
     constexpr uint32_t iterations = 50;
     constexpr uint32_t record_num_per_iter = 20;
