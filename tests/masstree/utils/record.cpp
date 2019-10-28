@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <random>
+#include <sstream>
 #include <unordered_set>
 
 static std::default_random_engine generator;
@@ -38,6 +39,19 @@ static inline std::string genKeyNotInKeysSet(
 void setRandomSeed(uint32_t seed) {
     generator.seed(seed);
     std::srand(seed);
+}
+
+std::vector<Record> genRecordsIntSequence(uint32_t beg, uint32_t end) {
+    std::vector<Record> records;
+    records.reserve(end - beg);
+
+    for(uint32_t i = beg; i < end; i++) {
+        std::stringstream st;
+        st << i;
+        records.emplace_back(st.str(), i);
+    }
+
+    return records;
 }
 
 std::vector<Record> genRandRecords(uint32_t record_num, uint32_t key_len_avg) {
