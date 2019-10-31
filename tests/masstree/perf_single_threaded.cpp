@@ -93,8 +93,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
         while (completed_task_cnt < records.size()) {
             for(uint32_t i= 0; i < queue_size; i++) {
                 task<bool> & coro_task = task_queue[i];
-                if(coro_task.valid() ){
-                    if(coro_task.done()) {
+                if(coro_task.valid()){
+                    if(!coro_task.done()) {
                         coro_task.resume();
                     } else {
                         completed_task_cnt++;
