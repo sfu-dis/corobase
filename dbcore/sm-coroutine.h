@@ -281,7 +281,7 @@ struct task<T>::promise_type : coro_task_private::promise_base {
 
   promise_type() {}
   ~promise_type() {
-    reinterpret_cast<T*>(ret_val_buf_)->~T();
+    reinterpret_cast<T*>(&ret_val_buf_)->~T();
   }
 
   auto get_return_object() {
@@ -293,15 +293,18 @@ struct task<T>::promise_type : coro_task_private::promise_base {
   // XXX: explore if there is anyway to get ride of
   // the copy constructing.
   void return_value(const T &value) {
-    new (ret_val_buf_) T(value);
+    new (&ret_val_buf_) T(value);
   }
 
   T transfer_return_value() {
-      return T(std::move(*reinterpret_cast<T*>(ret_val_buf_)));
+      return T(std::move(*reinterpret_cast<T*>(&ret_val_buf_)));
   }
 
 private:
-  uint8_t ret_val_buf_[sizeof(T)];
+  struct alignas(alignof(T)) T_Buf {
+    uint8_t buf[sizeof(T)];
+  };
+  T_Buf ret_val_buf_;
 };
 
 /*
