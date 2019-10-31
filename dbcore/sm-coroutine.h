@@ -279,9 +279,9 @@ struct task<T>::promise_type : coro_task_private::promise_base {
 
   friend struct task<T>::awaiter;
 
-  promise_type() : return_value_(nullptr) {}
+  promise_type() {}
   ~promise_type() {
-      delete return_value_;
+    reinterpret_cast<T*>(ret_val_buf_)->~T();
   }
 
   auto get_return_object() {
@@ -291,15 +291,17 @@ struct task<T>::promise_type : coro_task_private::promise_base {
   }
 
   // XXX: explore if there is anyway to get ride of
-  // the new copy constructing.
+  // the copy constructing.
   void return_value(const T &value) {
-    return_value_ = new T(value);
+    new (ret_val_buf_) T(value);
   }
 
-  T transfer_return_value() { return T(std::move(*return_value_)); }
+  T transfer_return_value() {
+      return T(std::move(*reinterpret_cast<T*>(ret_val_buf_)));
+  }
 
 private:
-  T *return_value_;
+  uint8_t ret_val_buf_[sizeof(T)];
 };
 
 /*
@@ -420,5 +422,4 @@ inline T sync_wait_coro(const T &t) { return t; }
 #endif // USE_STATIC_COROUTINE
 
 #endif
-
 
