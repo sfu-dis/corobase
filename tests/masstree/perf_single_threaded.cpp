@@ -6,9 +6,6 @@
 #include <array>
 #include <vector>
 
-#include <dbcore/sm-alloc.h>
-#include <dbcore/sm-config.h>
-#include <dbcore/sm-coroutine.h>
 #include <masstree/masstree_btree.h>
 
 #include "utils/record.h"
@@ -25,31 +22,12 @@ using generator_handle = std::experimental::coroutine_handle<
 class PerfSingleThreadSearch : public benchmark::Fixture {
   public:
     void SetUp(const ::benchmark::State &state) {
-        // allocate memory for node of current thread
-        int node = numa_node_of_cpu(sched_getcpu());
-
-        // hack, only allocate enough space to fit the current
-        // thread node value (which is the index).
-        ermia::config::numa_nodes = node + 1;
-        allocated_node_memory = new uint64_t[ermia::config::numa_nodes];
-        node_memory = new char *[ermia::config::numa_nodes];
-
-        // pre-allocate memory on node for current thread node
-        ermia::config::node_memory_gb = 2;
-        allocated_node_memory[node] = 0;
-
-        numa_set_preferred(node);
-        node_memory[node] = (char *)mmap(
-          nullptr, ermia::config::node_memory_gb * ermia::config::GB,
-          PROT_READ | PROT_WRITE,
-          MAP_ANONYMOUS | MAP_PRIVATE | MAP_HUGETLB | MAP_POPULATE, -1, 0);
-
         // create masstree
-        tree_ = new ermia::SingleThreadedMasstree();
+        tree_ = new ermia::ConcurrentMasstree();
 
         // generate records
-        constexpr uint32_t key_length = 128;
-        records = genRandRecords(state.range(0), 128);
+        const uint32_t key_length = state.range(1);
+        records = genRandRecords(state.range(0), key_length);
 
         // insert records
         ermia::TXN::xid_context context_mock;
@@ -69,16 +47,33 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
     void TearDown(const ::benchmark::State &state) {
         delete tree_;
         records.clear();
+    }
 
-        int node = numa_node_of_cpu(sched_getcpu());
+    static void InterleavedArguments(benchmark::internal::Benchmark *b) {
+        std::vector<uint32_t> record_num = {10000, 1000000, 10000000};
+        std::vector<uint32_t> key_size = {8};
+        std::vector<uint32_t> group_size = {5, 15, 50};
+        for(uint32_t r : record_num) {
+            for(uint32_t k : key_size) {
+                for(uint32_t g : group_size) {
+                    b->Args({r, k, g});
+                }
+            }
+        }
+    }
 
-        munmap(node_memory[node], ermia::config::node_memory_gb * ermia::config::GB);
-        delete[] allocated_node_memory;
-        delete[] node_memory;
+    static void SequentialArguments(benchmark::internal::Benchmark *b) {
+        std::vector<uint32_t> record_num = {10000, 1000000, 10000000};
+        std::vector<uint32_t> key_size = {8};
+        for(uint32_t r : record_num) {
+            for(uint32_t k : key_size) {
+                b->Args({r, k});
+            }
+        }
     }
 
     std::vector<Record> records;
-    ermia::SingleThreadedMasstree *tree_;
+    ermia::ConcurrentMasstree *tree_;
 };
 
 
@@ -86,7 +81,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) {
     for (auto _ : st) {
-        constexpr uint32_t queue_size = 3; // TODO move to benchmark::State 
+        const uint32_t queue_size = st.range(2);
 
         constexpr ermia::epoch_num cur_epoch = 0;
 
@@ -120,7 +115,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
     }    
 }
 
-BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoro)->Range(8<<4, 8<<10);
+BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoro)
+    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
 
 #else
 
@@ -135,11 +131,12 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Sequential) (benchmark::State &st) {
     }
 }
 
-BENCHMARK_REGISTER_F(PerfSingleThreadSearch, Sequential)->Range(8<<4, 8<<10);
+BENCHMARK_REGISTER_F(PerfSingleThreadSearch, Sequential)
+    ->Apply(PerfSingleThreadSearch::SequentialArguments);
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, SimpleCoro) (benchmark::State &st) {
     for (auto _ : st) {
-        constexpr uint32_t queue_size = 3; // TODO move to benchmark::State 
+        const uint32_t queue_size = st.range(2);
 
         std::vector<generator_handle> generator_queue(queue_size, nullptr);
         std::vector<ermia::OID> out_values(queue_size, 0);
@@ -175,15 +172,16 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, SimpleCoro) (benchmark::State &st) {
     }
 }
 
-BENCHMARK_REGISTER_F(PerfSingleThreadSearch, SimpleCoro)->Range(8<<4, 8<<10);
+BENCHMARK_REGISTER_F(PerfSingleThreadSearch, SimpleCoro)
+    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
     for (auto _ : st) {
-        constexpr uint32_t parellel_amac_num = 3;
+        const uint32_t parellel_amac_num = st.range(2);
 
         constexpr ermia::epoch_num cur_epoch = 0;
 
-        std::vector<ermia::SingleThreadedMasstree::AMACState> amac_states;
+        std::vector<ermia::ConcurrentMasstree::AMACState> amac_states;
         std::vector<ermia::varstr> amac_params;
         amac_states.reserve(parellel_amac_num);
         amac_params.reserve(parellel_amac_num);
@@ -212,6 +210,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
     }
 }
 
-BENCHMARK_REGISTER_F(PerfSingleThreadSearch, Amac)->Range(8<<4, 8<<10);
+BENCHMARK_REGISTER_F(PerfSingleThreadSearch, Amac)
+    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
 
 #endif
