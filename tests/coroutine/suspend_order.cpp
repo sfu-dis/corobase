@@ -37,7 +37,9 @@ task<void> CoroutineCall_LevelOne(int *counter) {
 
 TEST(CoroutineSuspendOrder, FixedLogic) {
     int counter = 0;
+    std::vector<std::experimental::coroutine_handle<void>> coro_stack;
     task<void> future_task = CoroutineCall_LevelOne(&counter);
+    future_task.set_call_stack(&coro_stack);
 
     future_task.resume();
     ASSERT_EQ(counter, 1);
