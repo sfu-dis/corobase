@@ -110,12 +110,16 @@ struct promise_base {
 
   auto initial_suspend() { return std::experimental::suspend_always{}; }
   auto final_suspend() {
-    // 1. if call_stack_ is nullptr, this promise is created for the top
-    // level coroutine in the coroutine chain, and has no co_await in it.
+    // 1. if call_stack_ has size 1, the coroutine pointed by this promise is
+    //    the top level coroutine call, so after its final suspend,
+    //    we hand the control flow back to non-coroutine execution by return
+    //    noop_coroutine().
     //
-    // 2. if call_stack_ has size 1, this promise is the top-level coroutine
-    // and has co_await in it.
-    // After its final_suspend, the stack needs to be destroyed.
+    // 2. if call_stack_ has size more than 1, we pop it out of the call stack
+    //    also we find the caller of this coroutine by looking at the call stack.
+    //
+    // Note that there is no need to coroutine_handle.destroy() call here,
+    // the destroy all happens in the destruction of task<> class.
     ASSERT(call_stack_);
     ASSERT(call_stack_->size() > 0);
     if (call_stack_->size() == 1) {
@@ -123,7 +127,7 @@ struct promise_base {
         std::experimental::noop_coroutine());
     }
 
-    // Other cases, pop this promise from the call_stack_ and hand over
+    // Other cases, pop this coroutine from the call_stack_ and hand over
     // the control flow to its caller.
     call_stack_->pop_back();
     return coro_task_private::final_awaiter(call_stack_->back());
