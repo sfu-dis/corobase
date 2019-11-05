@@ -94,6 +94,7 @@ class ConcurrentMasstree: public ::testing::Test {
 
         ermia::thread::Thread::Task insert_task = [&] (char *tid) {
             ermia::TXN::xid_context xid_context = thread_begin();
+            ermia::dia::coro_task_private::memory_pool memory_pool;
 
             size_t thread_id = static_cast<size_t>(reinterpret_cast<intptr_t>(tid));
             size_t begin_index = records_begin_idxs[thread_id];
@@ -129,6 +130,7 @@ class ConcurrentMasstree: public ::testing::Test {
 
         ermia::thread::Thread::Task search_task = [&] (char *tid) {
             ermia::TXN::xid_context xid_context = thread_begin();
+            ermia::dia::coro_task_private::memory_pool memory_pool;
 
             size_t thread_id = static_cast<size_t>(reinterpret_cast<intptr_t>(tid));
             
@@ -218,6 +220,7 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
         constexpr int task_queue_size= 5;
 
         ermia::TXN::xid_context xid_context = thread_begin();
+        ermia::dia::coro_task_private::memory_pool memory_pool;
 
         std::array<task<bool>, task_queue_size> task_queue;
         std::array<

@@ -18,6 +18,8 @@ void ermia_init() {
 
 int main(int argc, char** argv) {
     ermia_init();
+    // FIXME:
+    ermia::dia::coro_task_private::memory_pool memory_pool;
     ::benchmark::Initialize(&argc, argv);
     ::benchmark::RunSpecifiedBenchmarks();
 }

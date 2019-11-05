@@ -1,8 +1,10 @@
 #ifndef SM_COROUTINE_H
 #define SM_COROUTINE_H
 #include <experimental/coroutine>
+#include <array>
 
 #include "sm-defs.h"
+#include "sm-alloc.h"
 namespace ermia {
 namespace dia {
 
@@ -98,6 +100,91 @@ private:
   generic_coroutine_handle caller_coroutine_;
 };
 
+class memory_pool {
+private:
+  struct mem_node {
+    size_t size;
+    mem_node *next;
+  };
+
+public:
+  memory_pool() noexcept {
+    ASSERT(!instance_);
+    headers_size_ = 0;
+    instance_ = this;
+  }
+  ~memory_pool() {
+    instance_ = nullptr;
+  }
+
+  static memory_pool *instance() {
+      ASSERT(instance_);
+      return instance_;
+  }
+
+  void *allocate_bytes(size_t bytes) {
+    // FIXME: reclaim free memory
+
+    mem_node * cur_bytes_header = nullptr;
+    for(uint32_t i = 0; i < headers_size_; i++) {
+      if (headers_[i].size == bytes) {
+        cur_bytes_header = &headers_[i];
+        break;
+      }
+    }
+
+    if (!cur_bytes_header) {
+      ASSERT(headers_size_ < kHeadersCapacity);
+      headers_[headers_size_].next = nullptr;
+      headers_[headers_size_].size = bytes;
+      cur_bytes_header = &headers_[headers_size_];
+      headers_size_++;
+    }
+
+    if (!cur_bytes_header->next) {
+        // FIXME: pay attention to alignment,
+        // the default alignment in emia is 16, which is fine here.
+        // However, it would be better to explicitly say the alignment
+        mem_node *new_node = static_cast<mem_node*>(
+          ermia::MM::allocate_onnode(sizeof(mem_node) + bytes)
+        );
+
+        new_node->size = bytes;
+        return static_cast<void*>(new_node + 1);
+    }
+
+    mem_node * ret_node = cur_bytes_header->next;
+    ASSERT(ret_node->size == bytes);
+    cur_bytes_header->next = ret_node->next;
+    return static_cast<void*>(ret_node + 1);
+  }
+
+  void deallocate_bytes(void *p) {
+    mem_node * cur_node = static_cast<mem_node*>(p) - 1;
+    const size_t bytes = cur_node->size;
+
+    mem_node * cur_bytes_header = nullptr;
+    for(uint32_t i = 0; i < headers_size_; i++) {
+      if (headers_[i].size == bytes) {
+        cur_bytes_header = &headers_[i];
+        break;
+      }
+    }
+    ASSERT(cur_bytes_header);
+
+    cur_node->next = cur_bytes_header->next;
+    cur_bytes_header->next = cur_node;
+  }
+
+private:
+  static thread_local memory_pool * instance_;
+
+  // FIXME: dynamic increase
+  static constexpr size_t kHeadersCapacity = 20;
+  std::array<mem_node, kHeadersCapacity> headers_;
+  size_t headers_size_;
+};
+
 // task<T>::promise_type inherits promise_base. promise_base keeps track
 // of the coroutine call stack.
 struct promise_base {
@@ -140,8 +227,12 @@ struct promise_base {
   // cache miss in access promise_base * which happens
   // a lot in task<T>.resume();
 
-  // void *operator new(std::size_t) noexcept {}
-  // void operator delete( void* ptr ) noexcept {}
+  void *operator new(std::size_t sz) noexcept {
+    return memory_pool::instance()->allocate_bytes(sz);
+  }
+  void operator delete( void* ptr ) noexcept {
+    memory_pool::instance()->deallocate_bytes(ptr);
+  }
 
   void add_to_stack(std::vector<generic_coroutine_handle> * stack) {
     call_stack_ = stack;

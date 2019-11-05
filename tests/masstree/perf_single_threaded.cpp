@@ -27,7 +27,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 
         // generate records
         const uint32_t key_length = state.range(1);
-        records = genRandRecords(state.range(0), key_length);
+        records = genSequentialRecords(state.range(0), key_length);
 
         // insert records
         ermia::TXN::xid_context context_mock;
@@ -74,6 +74,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 
     std::vector<Record> records;
     ermia::ConcurrentMasstree *tree_;
+    ermia::dia::coro_task_private::memory_pool *pool_;
 };
 
 
