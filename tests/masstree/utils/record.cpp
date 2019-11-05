@@ -1,5 +1,6 @@
 #include "record.h"
 
+#include <cmath>
 #include <algorithm>
 #include <random>
 #include <sstream>
@@ -8,7 +9,7 @@
 static std::default_random_engine generator;
 
 static inline std::string randString(int len) {
-    std::uniform_int_distribution<int> distribution{'0', 'z'};
+    std::uniform_int_distribution<uint8_t> distribution{1, 255};
 
     std::string rand_str(len - 1, '\0');
     for (char& ch : rand_str) {
@@ -54,7 +55,50 @@ std::vector<Record> genRecordsIntSequence(uint32_t beg, uint32_t end) {
     return records;
 }
 
+std::vector<Record> genSequentialRecords(uint32_t record_num, uint32_t key_len) {
+    ASSERT(key_len < 127);
+    ASSERT((double)record_num < pow(127 - key_len, key_len));
+
+    std::vector<Record> records;
+    records.reserve(record_num);
+
+    // reference: http://rosettacode.org/wiki/Combinations#C.2B.2B
+    std::vector<bool> bitmask(key_len, true);
+    bitmask.resize(127, false);
+    do {
+        // use bitmask to generate combinations
+        std::string perm_begin;
+        perm_begin.reserve(key_len);
+        for (uint8_t i = 0; i < bitmask.size(); i++) {
+            if (bitmask[i]) {
+                perm_begin.push_back(static_cast<char>(i + 1));
+            }
+        }
+
+        // make records from all permutations of a combination
+        std::string cur_perm = perm_begin;
+        do {
+            if(records.size() >= record_num) {
+                goto JUMP_OUT;
+            }
+            records.emplace_back(cur_perm, randUint());
+        } while (std::prev_permutation(cur_perm.begin(), cur_perm.end()));
+
+    } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
+
+JUMP_OUT:
+    ASSERT(records.size() == record_num);
+
+    for(uint32_t i = 0; i < 2; i++) {
+        std::shuffle(records.begin(), records.end(), generator);
+    }
+
+    return records;
+}
+
 std::vector<Record> genRandRecords(uint32_t record_num, uint32_t key_len_avg) {
+    ASSERT((double)record_num < pow(50, key_len_avg));
+
     constexpr float deviation = 1;
     std::normal_distribution<float> distribution(key_len_avg, deviation);
 
@@ -104,12 +148,5 @@ std::vector<Record> genDisjointRecords(const std::vector<Record>& ref_records,
     }
 
     return disjoint_records;
-}
-
-std::vector<Record> recordsSearchRange(
-    const std::vector<Record>& records, const std::string& beg,
-    const std::string& end) {
-    // TODO
-    return std::vector<Record>();
 }
 
