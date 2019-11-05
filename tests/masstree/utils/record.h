@@ -16,6 +16,8 @@ struct Record {
 // perf tests.
 void setRandomSeed(uint32_t seed);
 
+std::vector<Record> genSequentialRecords(uint32_t record_num, uint32_t key_len);
+
 std::vector<Record> genRandRecords(uint32_t record_num,
                                    uint32_t key_len_avg=128);
 
@@ -28,8 +30,4 @@ std::vector<Record> genDisjointRecords(const std::vector<Record>& ref_records,
 
 std::string genKeyNotInRecords(const std::vector<Record>& records,
                                uint32_t key_len=128);
-
-std::vector<Record> recordsSearchRange(const std::vector<Record>& records,
-                                       const std::string& beg,
-                                       const std::string& end);
 
