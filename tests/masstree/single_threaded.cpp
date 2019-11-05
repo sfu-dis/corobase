@@ -90,6 +90,7 @@ class SingleThreadMasstree : public ::testing::Test {
     }
 
     ermia::ConcurrentMasstree *tree_;
+    ermia::dia::coro_task_private::memory_pool pool_;
 };
 
 TEST_F(SingleThreadMasstree, InsertSequential) {

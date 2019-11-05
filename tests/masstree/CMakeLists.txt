@@ -26,6 +26,7 @@ set(DBCORE_SRCS
     ${CMAKE_SOURCE_DIR}/dbcore/sm-cmd-log.cpp
     ${CMAKE_SOURCE_DIR}/dbcore/sm-common.cpp
     ${CMAKE_SOURCE_DIR}/dbcore/sm-config.cpp
+    ${CMAKE_SOURCE_DIR}/dbcore/sm-coroutine.cpp
     ${CMAKE_SOURCE_DIR}/dbcore/sm-dia.cpp
     ${CMAKE_SOURCE_DIR}/dbcore/sm-exceptions.cpp
     ${CMAKE_SOURCE_DIR}/dbcore/sm-index.cpp

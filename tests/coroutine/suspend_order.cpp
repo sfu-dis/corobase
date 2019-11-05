@@ -36,6 +36,8 @@ task<void> CoroutineCall_LevelOne(int *counter) {
 }
 
 TEST(CoroutineSuspendOrder, FixedLogic) {
+    coro_task_private::memory_pool memory_pool;
+
     int counter = 0;
     std::vector<std::experimental::coroutine_handle<void>> coro_stack;
     task<void> future_task = CoroutineCall_LevelOne(&counter);

@@ -57,7 +57,9 @@ class CoroutineTestBase : public ::testing::Test {
 
     virtual void run() = 0;
 
-    virtual void SetUp() override { std::srand(std::time(nullptr)); }
+    virtual void SetUp() override {
+        std::srand(std::time(nullptr));
+    }
     virtual void TearDown() override {
         for (task<T> &task : future_tasks_) {
             task.destroy();
@@ -66,5 +68,6 @@ class CoroutineTestBase : public ::testing::Test {
 
    private:
     std::vector<task<T>> future_tasks_;
+    coro_task_private::memory_pool memory_pool_;
 };
 

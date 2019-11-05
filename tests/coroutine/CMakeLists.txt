@@ -9,6 +9,7 @@ set(TEST_SRCS
     return_complex_type.cpp
     resume_order.cpp
     suspend_order.cpp
+    ${CMAKE_SOURCE_DIR}/dbcore/sm-coroutine.cpp
 )
 
 add_executable(test_coroutine ${TEST_SRCS})
