@@ -4,7 +4,6 @@
 #include <array>
 
 #include "sm-defs.h"
-#include "sm-alloc.h"
 namespace ermia {
 namespace dia {
 
@@ -114,6 +113,15 @@ public:
     instance_ = this;
   }
   ~memory_pool() {
+    for(uint32_t i = 0; i < headers_size_; i++) {
+        mem_node *p = headers_[i].next;
+        while(p != nullptr) {
+          mem_node *q = p->next;
+          free(p);
+          p = q;
+        }
+    }
+
     instance_ = nullptr;
   }
 
@@ -142,15 +150,16 @@ public:
     }
 
     if (!cur_bytes_header->next) {
-        // FIXME: pay attention to alignment,
-        // the default alignment in emia is 16, which is fine here.
-        // However, it would be better to explicitly say the alignment
-        mem_node *new_node = static_cast<mem_node*>(
-          ermia::MM::allocate_onnode(sizeof(mem_node) + bytes)
-        );
+      // FIXME: pay attention to alignment,
+      // the default alignment in emia is 16, which is fine here.
+      // However, it would be better to explicitly say the alignment
+      // TODO: use allocate_onnode()
+      mem_node *new_node = static_cast<mem_node*>(
+        malloc(sizeof(mem_node) + bytes)
+      );
 
-        new_node->size = bytes;
-        return static_cast<void*>(new_node + 1);
+      new_node->size = bytes;
+      return static_cast<void*>(new_node + 1);
     }
 
     mem_node * ret_node = cur_bytes_header->next;
