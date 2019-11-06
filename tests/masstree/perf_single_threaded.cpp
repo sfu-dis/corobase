@@ -52,7 +52,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
     static void InterleavedArguments(benchmark::internal::Benchmark *b) {
         std::vector<uint32_t> record_num = {10000, 1000000, 10000000};
         std::vector<uint32_t> key_size = {8};
-        std::vector<uint32_t> group_size = {5, 15, 50};
+        std::vector<uint32_t> group_size = {5, 15, 25};
         for(uint32_t r : record_num) {
             for(uint32_t k : key_size) {
                 for(uint32_t g : group_size) {
@@ -99,6 +99,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
                     if(!coro_task.done()) {
                         coro_task.resume();
                     } else {
+                        bool res = coro_task.get_return_value();
+                        ASSERT(res);
                         completed_task_cnt++;
                         coro_task = task<bool>(nullptr);
                     }
@@ -111,8 +113,9 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
                             out_values[i], cur_epoch, nullptr);
                     call_stacks[i].reserve(20);
                     coro_task.set_call_stack(&call_stacks[i]);
+                    // XXX: remove this line improve performance about 25% ??
                     // initial suspended
-                    coro_task.resume();
+                    // coro_task.resume();
                 }
             }
         }
@@ -129,8 +132,9 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Sequential) (benchmark::State &st) {
         constexpr ermia::epoch_num cur_epoch = 0;
         ermia::OID out_value;
         for(const Record & record : records) {
-            tree_->search(ermia::varstr(record.key.data(), record.key.size()),
-                          out_value, cur_epoch, nullptr);
+            bool res = tree_->search(ermia::varstr(record.key.data(), record.key.size()),
+                                     out_value, cur_epoch, nullptr);
+            ASSERT(res && out_value == record.value);
         }
     }
 }
