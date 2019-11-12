@@ -89,7 +89,7 @@ public:
    *
    * If a record with key k exists, overwrites. Otherwise, inserts.
    */
-  virtual rc_t Put(transaction *t, const varstr &key, varstr &value) = 0;
+  virtual PROMISE(rc_t) Put(transaction *t, const varstr &key, varstr &value) = 0;
 
   /**
    * Insert a key of length keylen.
@@ -100,13 +100,13 @@ public:
    *
    * Default implementation calls put(). See put() for meaning of return value.
    */
-  virtual rc_t Insert(transaction *t, const varstr &key, varstr &value,
+  virtual PROMISE(rc_t) Insert(transaction *t, const varstr &key, varstr &value,
                       OID *out_oid = nullptr) = 0;
 
   /**
    * Insert into a secondary index. Maps key to OID.
    */
-  virtual rc_t Insert(transaction *t, const varstr &key, OID oid) = 0;
+  virtual PROMISE(rc_t) Insert(transaction *t, const varstr &key, OID oid) = 0;
 
   /**
    * Search [start_key, *end_key) if end_key is not null, otherwise
@@ -127,14 +127,14 @@ public:
   /**
    * Default implementation calls put() with NULL (zero-length) value
    */
-  virtual rc_t Remove(transaction *t, const varstr &key) = 0;
+  virtual PROMISE(rc_t) Remove(transaction *t, const varstr &key) = 0;
 
   virtual size_t Size() = 0;
   virtual std::map<std::string, uint64_t> Clear() = 0;
   virtual void SetArrays() = 0;
 
   // Use transaction's TryInsertNewTuple to try insert a new tuple
-  rc_t TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert,
+  PROMISE(rc_t) TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert,
                  OID *inserted_oid);
 
   virtual PROMISE(void)
@@ -146,7 +146,7 @@ public:
    *
    * Returns false if the record already exists or there is potential phantom.
    */
-  virtual bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
+  virtual PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
 
   virtual PROMISE(void) ScanOID(transaction *t, const varstr &start_key,
                        const varstr *end_key, rc_t &rc, OID *dia_callback) = 0;
@@ -218,8 +218,8 @@ private:
   // expect_new indicates if we expect the record to not exist in the tree- is
   // just a hint that affects perf, not correctness. remove is put with
   // nullptr as value.
-  rc_t DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
-                 bool upsert, OID *inserted_oid);
+  PROMISE(rc_t) DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
+                          bool upsert, OID *inserted_oid);
 
   static rc_t DoNodeRead(transaction *t,
                          const ConcurrentMasstree::node_opaque_t *node,
@@ -247,17 +247,17 @@ public:
                      std::vector<std::experimental::coroutine_handle<
                          ermia::dia::generator<bool>::promise_type>> &handles);
 
-  inline rc_t Put(transaction *t, const varstr &key, varstr &value) override {
+  inline PROMISE(rc_t) Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, varstr &value,
+  inline PROMISE(rc_t) Insert(transaction *t, const varstr &key, varstr &value,
                      OID *out_oid = nullptr) override {
     return DoTreePut(*t, &key, &value, true, true, out_oid);
   }
-  inline rc_t Insert(transaction *t, const varstr &key, OID oid) override {
+  inline PROMISE(rc_t) Insert(transaction *t, const varstr &key, OID oid) override {
     return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
   }
-  inline rc_t Remove(transaction *t, const varstr &key) override {
+  inline PROMISE(rc_t) Remove(transaction *t, const varstr &key) override {
     return DoTreePut(*t, &key, nullptr, false, false, nullptr);
   }
   PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,
@@ -278,7 +278,7 @@ public:
   }
 
 private:
-  bool InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
+  PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 
   PROMISE(void) ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
                rc_t &rc, OID *dia_callback) override;

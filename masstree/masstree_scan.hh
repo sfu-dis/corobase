@@ -321,7 +321,7 @@ PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F 
       if (ermia::config::is_backup_srv()) {
         v = ermia::oidmgr->BackupGetVersion(tuple_array_, pdest_array_, o, xc);
       } else {
-        v = ermia::oidmgr->oid_get_version(tuple_array_, o, xc);
+        v = AWAIT ermia::oidmgr->oid_get_version(tuple_array_, o, xc);
       }
       if (v) {
         if (!scanner.visit_value(ka, v))

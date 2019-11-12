@@ -117,7 +117,7 @@ protected:
 
   OID PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out_tuple);
   void FinishInsert(OrderedIndex *index, OID oid, const varstr *key, varstr *value, dbtuple *tuple);
-  bool TryInsertNewTuple(OrderedIndex *index, const varstr *key,
+  PROMISE(bool) TryInsertNewTuple(OrderedIndex *index, const varstr *key,
                          varstr *value, OID *inserted_oid);
 
   rc_t Update(IndexDescriptor *index_desc, OID oid, const varstr *k, varstr *v);

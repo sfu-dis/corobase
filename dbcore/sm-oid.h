@@ -4,6 +4,7 @@
 #include "sm-common.h"
 #include "sm-oid-alloc-impl.h"
 #include "sm-log.h"
+#include "sm-coroutine.h"
 
 #include "dynarray.h"
 
@@ -202,8 +203,8 @@ struct sm_oid_mgr {
 
   dbtuple *oid_get_latest_version(FID f, OID o);
 
-  dbtuple *oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc);
-  dbtuple *oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
+  PROMISE(dbtuple *) oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc);
+  PROMISE(dbtuple *) oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
 
   void oid_get_version_backup(fat_ptr &ptr,
                               fat_ptr &tentative_next,

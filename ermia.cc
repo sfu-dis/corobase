@@ -197,8 +197,8 @@ void ConcurrentMasstreeIndex::MultiGet(
       for (uint32_t i = 0; i < requests.size(); ++i) {
         auto &r = requests[i];
         if (r.out_oid != INVALID_OID) {
-          auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(),
-                                                r.out_oid, t->xc);
+          auto *tuple = sync_wait_coro(oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                                r.out_oid, t->xc));
           if (tuple) {
             t->DoTupleRead(tuple, values[i]);
           } else if (config::phantom_prot) {
@@ -233,7 +233,7 @@ PROMISE(void) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varst
             descriptor_->GetPersistentAddressArray(), oid, t->xc);
       } else {
         tuple =
-            oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
+            AWAIT oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
       }
       if (!tuple) {
         found = false;
@@ -331,8 +331,8 @@ void ConcurrentMasstreeIndex::coro_MultiGet(
     } else {
       for (uint32_t i = 0; i < keys.size(); ++i) {
         if (oids[i] != INVALID_OID) {
-          auto *tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(),
-                                                oids[i], t->xc);
+          auto *tuple = sync_wait_coro(oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+                                                oids[i], t->xc));
           if (tuple) {
             t->DoTupleRead(tuple, values[i]);
           } else if (config::phantom_prot) {
@@ -358,13 +358,13 @@ void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_failure() {
   spec_values.clear();
 }
 
-bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
+PROMISE(bool) ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
                                              OID oid) {
   typename ConcurrentMasstree::insert_info_t ins_info;
-  bool inserted = masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
+  bool inserted = AWAIT masstree_.insert_if_absent(key, oid, t->xc, &ins_info);
 
   if (!inserted) {
-    return false;
+    RETURN false;
   }
 
   if (config::phantom_prot && !t->masstree_absent_set.empty()) {
@@ -375,13 +375,13 @@ bool ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const varstr &key,
       if (unlikely(it->second != ins_info.old_version)) {
         // Important: caller should unlink the version, otherwise we risk
         // leaving a dead version at chain head -> infinite loop or segfault...
-        return false;
+        RETURN false;
       }
       // otherwise, bump the version
       it->second = ins_info.new_version;
     }
   }
-  return true;
+  RETURN true;
 }
 
 PROMISE(void) ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
@@ -431,18 +431,18 @@ PROMISE(void) ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
 
-rc_t OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v,
+PROMISE(rc_t) OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v,
                              bool upsert, OID *inserted_oid) {
-  if (t.TryInsertNewTuple(this, k, v, inserted_oid)) {
-    return rc_t{RC_TRUE};
+  if (AWAIT t.TryInsertNewTuple(this, k, v, inserted_oid)) {
+    RETURN rc_t{RC_TRUE};
   } else if (!upsert) {
-    return rc_t{RC_ABORT_INTERNAL};
+    RETURN rc_t{RC_ABORT_INTERNAL};
   } else {
-    return rc_t{RC_FALSE};
+    RETURN rc_t{RC_FALSE};
   }
 }
 
-rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k,
+PROMISE(rc_t) ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k,
                                         varstr *v, bool expect_new, bool upsert,
                                         OID *inserted_oid) {
   ASSERT(k);
@@ -451,9 +451,9 @@ rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k,
   t.ensure_active();
 
   if (expect_new) {
-    rc_t rc = TryInsert(t, k, v, upsert, inserted_oid);
+    rc_t rc = AWAIT TryInsert(t, k, v, upsert, inserted_oid);
     if (rc._val != RC_FALSE) {
-      return rc;
+      RETURN rc;
     }
   }
 
@@ -462,9 +462,9 @@ rc_t ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k,
   rc_t rc = {RC_INVALID};
   GetOID(*k, rc, t.xc, oid);
   if (rc._val == RC_TRUE) {
-    return t.Update(descriptor_, oid, k, v);
+    RETURN t.Update(descriptor_, oid, k, v);
   } else {
-    return rc_t{RC_ABORT_INTERNAL};
+    RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }
 
@@ -548,8 +548,8 @@ void DecoupledMasstreeIndex::RecvGet(transaction *t, rc_t &rc, OID &oid,
   while (volatile_read(rc._val) == RC_INVALID) {
   }
   if (!config::index_probe_only && rc._val == RC_TRUE) {
-    dbtuple *tuple = oidmgr->oid_get_version(
-        descriptor_->GetTupleArray(), volatile_read(oid), t->GetXIDContext());
+    dbtuple *tuple = sync_wait_coro(oidmgr->oid_get_version(
+        descriptor_->GetTupleArray(), volatile_read(oid), t->GetXIDContext()));
     if (tuple) {
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
     } else {

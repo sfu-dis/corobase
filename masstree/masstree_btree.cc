@@ -89,7 +89,7 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
       auto o = lp.value();
       if (!config::amac_version_chain) {
         version_requests.emplace_back(o);
-        auto tuple = oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext());
+        auto tuple = sync_wait_coro(oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext()));
         if (tuple) {
           varstr value;
           auto rc = txn->DoTupleRead(tuple, &value);

@@ -152,7 +152,7 @@ protected:
       *(char *)v.p = 'a';
 
       ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-      TryVerifyStrict(tbl->Insert(txn, k, v));
+      TryVerifyStrict(sync_wait_coro(tbl->Insert(txn, k, v)));
       TryVerifyStrict(db->Commit(txn));
     }
 
@@ -165,7 +165,7 @@ protected:
       ermia::varstr &k = str(sizeof(uint64_t));
       BuildKey(start_key + i, k);
       ermia::varstr &v = str(0);
-      tbl->Get(txn, rc, k, v, &oid);
+      sync_wait_coro(tbl->Get(txn, rc, k, v, &oid));
       ALWAYS_ASSERT(*(char *)v.data() == 'a');
       TryVerifyStrict(rc);
       TryVerifyStrict(db->Commit(txn));
