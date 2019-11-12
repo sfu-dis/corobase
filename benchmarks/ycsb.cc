@@ -15,39 +15,34 @@
 
 #include "bench.h"
 #include "ycsb.h"
-#include "../third-party/foedus/zipfian_random.hpp"
 
-uint64_t global_key_counter = 0;
-uint g_reps_per_tx = 1;
-uint g_rmw_additional_reads = 0;
-char g_workload = 'F';
-uint g_initial_table_size = 3000000;
-int g_amac_txn_read = 0;
-int g_coro_txn_read = 0;
-int g_zipfian_rng = 0;
-double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it approaches 1.
-int g_distinct_keys = 0;
+extern uint64_t global_key_counter;
+extern uint g_reps_per_tx;
+extern uint g_rmw_additional_reads;
+extern char g_workload;
+extern uint g_initial_table_size;
+extern int g_amac_txn_read;
+extern int g_coro_txn_read;
+extern int g_zipfian_rng;
+extern double g_zipfian_theta;
+extern int g_distinct_keys;
 
 // { insert, read, update, scan, rmw }
-YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
-YcsbWorkload YcsbWorkloadB('B', 0, 95U, 100U, 0, 0);  // Workload B - 95% read, 5% update
-YcsbWorkload YcsbWorkloadC('C', 0, 100U, 0, 0, 0);  // Workload C - 100% read
-YcsbWorkload YcsbWorkloadD('D', 5U, 100U, 0, 0, 0);  // Workload D - 95% read, 5% insert
-YcsbWorkload YcsbWorkloadE('E', 5U, 0, 0, 100U, 0);  // Workload E - 5% insert, 95% scan
+extern YcsbWorkload YcsbWorkloadA;
+extern YcsbWorkload YcsbWorkloadB;
+extern YcsbWorkload YcsbWorkloadC;
+extern YcsbWorkload YcsbWorkloadD;
+extern YcsbWorkload YcsbWorkloadE;
 
 // Combine reps_per_tx and rmw_additional_reads to have "10R+10RMW" style
 // transactions.
-YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
+extern YcsbWorkload YcsbWorkloadF;
 
 // Extra workloads (not in spec)
-YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
-YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
+extern YcsbWorkload YcsbWorkloadG;
+extern YcsbWorkload YcsbWorkloadH;
 
-YcsbWorkload ycsb_workload = YcsbWorkloadF;
-
-void BuildKey(uint64_t key, ermia::varstr &k) {
-  *(uint64_t*)k.p = key;
-}
+extern YcsbWorkload ycsb_workload;
 
 class ycsb_worker : public bench_worker {
  public:

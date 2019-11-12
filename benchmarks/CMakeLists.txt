@@ -4,8 +4,12 @@ add_subdirectory(record)
 if(BUILD_STATIC_COROUTINE)
 
 set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
-  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-cs-task.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/tpcc.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/tpcc-dia.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/tpcc-dora.cc
+  #${CMAKE_CURRENT_SOURCE_DIR}/tpce.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-cs-advance.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-config.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/bench.cc
 )
 
@@ -16,8 +20,9 @@ set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
   #${CMAKE_CURRENT_SOURCE_DIR}/tpcc-dia.cc
   #${CMAKE_CURRENT_SOURCE_DIR}/tpcc-dora.cc
   #${CMAKE_CURRENT_SOURCE_DIR}/tpce.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-config.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ycsb.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-cs.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-cs-simple.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/ycsb-dia.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/bench.cc
 )

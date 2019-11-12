@@ -11,7 +11,8 @@
 #include "../dbcore/sm-coroutine.h"
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
-extern void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv);
+extern void ycsb_cs_simple_do_test(ermia::Engine *db, int argc, char **argv);
+extern void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_dia_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_dia_do_test(ermia::Engine *db, int argc, char **argv);

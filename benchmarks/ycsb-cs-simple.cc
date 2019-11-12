@@ -110,7 +110,7 @@ public:
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
     LOG(FATAL) << "Not applicable";
   }
-  virtual workload_desc_vec get_workload() const {
+  virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
 
     if (ycsb_workload.insert_percent())
@@ -306,7 +306,7 @@ protected:
   }
 };
 
-void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv) {
+void ycsb_cs_simple_do_test(ermia::Engine *db, int argc, char **argv) {
   // parse options
   optind = 1;
   while (1) {
