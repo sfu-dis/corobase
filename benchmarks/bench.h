@@ -333,35 +333,3 @@ inline void TryVerifyStrict(rc_t rc) {
   LOG_IF(FATAL, rc._val != RC_TRUE) << "Wrong return value " << rc._val;
 }
 
-// TryCatch in Coroutine
-#define __abort_txn_coro(r)                             \
-{                                                       \
-  db->Abort(txn);                                       \
-  if (!r.IsAbort()) RETURN {RC_ABORT_USER};    \
-  RETURN r;                                    \
-}
-
-#define TryCatch_CORO(rc)         \
-{                                       \
-  rc_t r = rc;                          \
-  if (r.IsAbort()) __abort_txn_coro(r); \
-}
-
-#define TryReturn_CORO(rc)        \
-{                                       \
-  rc_t r = rc;                          \
-  if (r.IsAbort()) RETURN r;   \
-}
-
-#define TryCatchCond_CORO(rc, op)       \
-{                                             \
-  rc_t r = rc;                                \
-  if (r.IsAbort()) __abort_txn_coro(r);       \
-  if (r._val == RC_FALSE) op;                 \
-}
-
-#define TryCatchCondAbort_CORO(rc)                         \
-{                                                                \
-  rc_t r = rc;                                                   \
-  if (r.IsAbort() or r._val == RC_FALSE) __abort_txn_coro(r);    \
-}

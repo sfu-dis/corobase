@@ -465,17 +465,9 @@ int main(int argc, char **argv) {
   }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
 
-#ifdef USE_STATIC_COROUTINE
-  if (!(FLAGS_benchmark == "ycsb" && FLAGS_coro_tx)) {
-    LOG(FATAL) << FLAGS_benchmark
-               << " not valid in static coroutine build and flag coro_tx "
-                  "must be set";
-  }
-  test_fn = ycsb_do_test;
-#else
   if (FLAGS_benchmark == "ycsb") {
     if (FLAGS_coro_tx) {
-      test_fn = ycsb_cs_do_test;
+      test_fn = ycsb_do_test;
     } else {
       test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
     }
@@ -487,7 +479,6 @@ int main(int argc, char **argv) {
   } else {
     LOG(FATAL) << "Invalid benchmark: " << FLAGS_benchmark;
   }
-#endif
 
   // FIXME(tzwang): the current thread doesn't belong to the thread pool, and
   // it could be on any node. But not all nodes will be used by benchmark
