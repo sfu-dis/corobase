@@ -466,14 +466,17 @@ int main(int argc, char **argv) {
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
 
   if (FLAGS_benchmark == "ycsb") {
+#ifndef USE_STATIC_COROUTINE
     if (FLAGS_coro_tx) {
-      test_fn = ycsb_do_test;
+      test_fn = ycsb_cs_simple_do_test;
     } else {
       test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
     }
+#else
+    test_fn = ycsb_cs_advance_do_test;
+#endif
   } else if (FLAGS_benchmark == "tpcc") {
-    //test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
-    test_fn = tpcc_do_test;
+  //  test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
   //} else if (FLAGS_benchmark == "tpce") {
   //  test_fn = tpce_do_test;
   } else {
