@@ -384,7 +384,7 @@ public:
    * Only puts k=>v if k does not exist in map. returns true
    * if k inserted, false otherwise (k exists already)
    */
-  inline bool insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
+  inline PROMISE(bool) insert_if_absent(const key_type &k, OID o, TXN::xid_context *xc,
                                insert_info_t *insert_info = NULL);
 
   /**
@@ -804,7 +804,7 @@ inline PROMISE(bool) mbtree<P>::insert(const key_type &k, OID o, TXN::xid_contex
 }
 
 template <typename P>
-inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
+inline PROMISE(bool) mbtree<P>::insert_if_absent(const key_type &k, OID o,
                                         TXN::xid_context *xc,
                                         insert_info_t *insert_info) {
   // Recovery will give a null xc, use epoch 0 for the memory allocated
@@ -814,7 +814,7 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
   }
   threadinfo ti(e);
   Masstree::tcursor<P> lp(table_, k.data(), k.size());
-  bool found = sync_wait_coro(lp.find_insert(ti));
+  bool found = AWAIT lp.find_insert(ti);
   if (!found) {
   insert_new:
     found = false;
@@ -837,7 +837,7 @@ inline bool mbtree<P>::insert_if_absent(const key_type &k, OID o,
       goto insert_new;
   }
   lp.finish(!found, ti);
-  return !found;
+  RETURN !found;
 }
 
 /**

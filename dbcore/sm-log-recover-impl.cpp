@@ -134,8 +134,9 @@ void sm_log_recover_impl::recover_index_insert(
 
   varstr payload_key((char*)payload_buf + sizeof(varstr), len);
   // FIXME(tzwang): support other index types
-  if (((ConcurrentMasstreeIndex*)index)->masstree_.insert_if_absent(payload_key, logrec->oid(),
-                                                     NULL)) {
+  if (sync_wait_coro(
+        ((ConcurrentMasstreeIndex*)index)->masstree_.insert_if_absent(payload_key, logrec->oid(), NULL)
+      )) {
     // Don't add the key on backup - on backup chkpt will traverse OID arrays
     if (!config::is_backup_srv()) {
       // Construct the varkey to be inserted in the oid array

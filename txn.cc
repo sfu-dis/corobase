@@ -1278,7 +1278,7 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
 
     ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
     ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
-    ASSERT(oidmgr->oid_get_version(tuple_fid, oid, xc) == tuple);
+    ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
     ASSERT(log);
 
     // FIXME(tzwang): mark deleted in all 2nd indexes as well?
@@ -1349,7 +1349,7 @@ OID transaction::PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out
   return oid;
 }
 
-bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
+PROMISE(bool) transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
                                     varstr *value, OID *inserted_oid) {
   ASSERT((char *)key->data() == (char *)key + sizeof(varstr));
   dbtuple *tuple = nullptr;
@@ -1363,17 +1363,17 @@ bool transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
 
   ASSERT(key);
   bool is_primary_idx = id->IsPrimary();
-  if (!index->InsertIfAbsent(this, *key, oid)) {
+  if (!AWAIT index->InsertIfAbsent(this, *key, oid)) {
     if (is_primary_idx) {
       oidmgr->PrimaryTupleUnlink(tuple_array, oid);
     }
     if (config::enable_chkpt) {
       volatile_write(key_array->get(oid)->_ptr, 0);
     }
-    return false;
+    RETURN false;
   }
   FinishInsert(index, oid, key, value, tuple);
-  return true;
+  RETURN true;
 }
 
 void transaction::FinishInsert(OrderedIndex *index, OID oid, const varstr *key, varstr *value, dbtuple *tuple) {

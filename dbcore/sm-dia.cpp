@@ -116,7 +116,7 @@ void IndexThread::SerialHandler() {
                         *req.oid_ptr);
       break;
     case Request::kTypeInsert:
-      if (req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr)) {
+      if (sync_wait_coro(req.index->InsertIfAbsent(req.transaction, *req.key, *req.oid_ptr))) {
         volatile_write(req.rc->_val, RC_TRUE);
       } else {
         volatile_write(req.rc->_val, RC_FALSE);
@@ -184,8 +184,8 @@ void IndexThread::SerialCoalesceHandler() {
             } else {
               // Previous insert failed or previous reads returned false, do
               // it again (serially)
-              result.insert_ok = req->index->InsertIfAbsent(
-                  req->transaction, *req->key, *req->oid_ptr);
+              result.insert_ok = sync_wait_coro(req->index->InsertIfAbsent(
+                  req->transaction, *req->key, *req->oid_ptr));
               // Now if insert_ok becomes true, then subsequent reads will
               // also succeed; otherwise, subsequent reads will automatically
               // fail without having to issue new read requests (rc will be
@@ -210,8 +210,8 @@ void IndexThread::SerialCoalesceHandler() {
                              req->transaction->GetXIDContext(), *req->oid_ptr);
           break;
         case Request::kTypeInsert:
-          result.insert_ok = req->index->InsertIfAbsent(
-              req->transaction, *req->key, *req->oid_ptr);
+          result.insert_ok = sync_wait_coro(req->index->InsertIfAbsent(
+              req->transaction, *req->key, *req->oid_ptr));
           if (result.insert_ok)
             result.rc._val = RC_TRUE;
           else
@@ -251,8 +251,8 @@ void IndexThread::AmacHandler() {
       ALWAYS_ASSERT(req->type != Request::kTypeInvalid);
       ASSERT(req->oid_ptr);
       if (req->type == Request::kTypeInsert) {
-        if (req->index->InsertIfAbsent(req->transaction, *req->key,
-                                       *req->oid_ptr)) {
+        if (sync_wait_coro(req->index->InsertIfAbsent(req->transaction, *req->key,
+                                       *req->oid_ptr))) {
           volatile_write(req->rc->_val, RC_TRUE);
         } else {
           volatile_write(req->rc->_val, RC_FALSE);
