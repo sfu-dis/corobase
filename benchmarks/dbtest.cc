@@ -19,7 +19,7 @@
 // Options that are shared by the primary and backup servers
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
-DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
+DEFINE_bool(physical_workers_only, false, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
 DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
 DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
 DEFINE_uint64(coro_batch_size, 5, "Number of in-flight coroutines");
@@ -35,7 +35,7 @@ DEFINE_uint64(dia_logical_index_threads, 1, "Number of logical index threads to 
 DEFINE_uint64(dia_physical_index_threads, 0, "Number of physical index threads to run transactions in DIA.");
 DEFINE_uint64(threads, 1, "Number of worker threads to run transactions.");
 DEFINE_uint64(node_memory_gb, 12, "GBs of memory to allocate per node.");
-DEFINE_bool(numa_spread, true, "Whether to pin threads in spread mode (compact if false)");
+DEFINE_bool(numa_spread, false, "Whether to pin threads in spread mode (compact if false)");
 DEFINE_string(tmpfs_dir, "/dev/shm",
               "Path to a tmpfs location. Used by log buffer.");
 DEFINE_string(log_data_dir, "/tmpfs/ermia-log", "Log directory.");
