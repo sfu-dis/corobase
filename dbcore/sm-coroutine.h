@@ -492,6 +492,8 @@ inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
 
 template<>
 inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
+    std::vector<std::experimental::coroutine_handle<void>> call_stack;
+    coro_task.set_call_stack(&call_stack);
     while(!coro_task.done()) {
         coro_task.resume();
     }
