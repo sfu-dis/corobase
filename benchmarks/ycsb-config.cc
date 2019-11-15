@@ -3,7 +3,7 @@
 uint64_t global_key_counter = 0;
 uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
-char g_workload = 'F';
+char g_workload = 'C';
 uint g_initial_table_size = 3000000;
 int g_amac_txn_read = 0;
 int g_coro_txn_read = 0;
@@ -26,5 +26,5 @@ YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
 YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
 
-YcsbWorkload ycsb_workload = YcsbWorkloadF;
+YcsbWorkload ycsb_workload = YcsbWorkloadC;
 
