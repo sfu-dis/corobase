@@ -186,10 +186,7 @@ int main(int argc, char **argv) {
     ermia::config::threads = FLAGS_threads + FLAGS_dia_physical_index_threads;
   } else {
     ermia::config::physical_workers_only = FLAGS_physical_workers_only;
-    if (ermia::config::physical_workers_only)
-      ermia::config::threads = FLAGS_threads;
-    else
-      ermia::config::threads = (FLAGS_threads + 1) / 2;
+    ermia::config::threads = FLAGS_threads;
   }
   ermia::config::index_probe_only = FLAGS_index_probe_only;
   ermia::config::verbose = FLAGS_verbose;
@@ -297,7 +294,12 @@ int main(int argc, char **argv) {
     ermia::config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
 
     ermia::config::replay_threads = 0;
-    ermia::config::worker_threads = FLAGS_threads;
+    if (ermia::config::physical_workers_only) {
+      // XXX: hack, two hyperthread per core
+      ermia::config::worker_threads = (FLAGS_threads + 1) / 2;
+    } else {
+      ermia::config::worker_threads = FLAGS_threads;
+    }
 
     ermia::config::group_commit = FLAGS_group_commit;
     ermia::config::group_commit_queue_length = FLAGS_group_commit_queue_length;

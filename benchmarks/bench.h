@@ -41,7 +41,7 @@ class bench_loader : public ermia::thread::Runner {
   bench_loader(unsigned long seed, ermia::Engine *db,
                const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                uint32_t loader_id = 0)
-      : Runner(loader_id < ermia::config::threads ? true : false)
+      : Runner(false)
       , r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load. The way we
     // reuse
@@ -76,7 +76,7 @@ class bench_worker : public ermia::thread::Runner {
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
                ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
-      : Runner(ermia::config::physical_workers_only ? true : (worker_id >= ermia::config::worker_threads / 2)),
+      : Runner(ermia::config::physical_workers_only),
         worker_id(worker_id),
         is_worker(is_worker),
         r(seed),
@@ -121,9 +121,9 @@ class bench_worker : public ermia::thread::Runner {
 
   /* For 'normal' workload (r/w on primary, r/o on backups) */
   typedef rc_t (*txn_fn_t)(bench_worker *);
-  typedef ermia::dia::task<rc_t> (*task_fn_t)(bench_worker *);
   typedef std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type> CoroHandle;
   typedef CoroHandle (*coro_txn_fn_t)(bench_worker *, uint32_t);
+  typedef ermia::dia::task<rc_t> (*task_fn_t)(bench_worker *, uint32_t);
   struct workload_desc {
     workload_desc() {}
     workload_desc(const std::string &name, double frequency, txn_fn_t fn,
