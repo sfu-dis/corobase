@@ -150,6 +150,12 @@ void Initialize() {
   // threads in thread_pool may be more than config::threads
   PerNodeThreadPool::threads_count = std::ceil(config::threads / static_cast<float>(config::numa_nodes));
 
+  if (config::physical_workers_only) {
+    const uint32_t max_physical_threads_per_node = cpu_cores.size() / (numa_max_node() + 1);
+    ALWAYS_ASSERT(config::worker_threads <=
+      config::numa_nodes * std::min(PerNodeThreadPool::threads_count, max_physical_threads_per_node));
+  }
+
   thread_pools = (PerNodeThreadPool *)malloc(sizeof(PerNodeThreadPool) * config::numa_nodes);
   for (uint16_t i = 0; i < config::numa_nodes; i++) {
     new (thread_pools + i) PerNodeThreadPool(i);
@@ -234,7 +240,8 @@ retry:
       return nullptr;
     }
     t = &threads[pos];
-    if ((!((1UL << pos) & b)) && (t->is_physical == physical)) {
+    // If request physical threads, must return a physical one
+    if ((!((1UL << pos) & b)) && ((t->is_physical && physical) || !physical)) {
       break;
     }
     ++pos;

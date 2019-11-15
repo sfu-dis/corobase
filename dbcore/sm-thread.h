@@ -183,7 +183,7 @@ struct Runner {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(physical);
     if (me) {
-      LOG_IF(FATAL, me->is_physical != physical) << "Not the requested thread type";
+      LOG_IF(FATAL, physical && !me->is_physical) << "Request physical thread but get non-physical";
       me->sleep_when_idle = sleep_when_idle;
     }
     return me != nullptr;
