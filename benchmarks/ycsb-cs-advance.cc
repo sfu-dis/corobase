@@ -113,7 +113,7 @@ public:
           call_stacks[i].reserve(20);
 
           ASSERT(workload[workload_idx].task_fn);
-          coro_task = workload[workload_idx].task_fn(this, workload_idx);
+          coro_task = workload[workload_idx].task_fn(this, i);
           coro_task.set_call_stack(&call_stacks[i]);
         }
       }
@@ -148,16 +148,19 @@ public:
 
 private:
   task<rc_t> txn_read(uint32_t idx) {
-// FIXME
+    tx_arenas[idx].reset();
+
+// FIXME(lujc): we can not enter epoch here, otherwise we have multiple
+//              epoch enter in each thread, which is not allowed.
 //    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
 //    ermia::RCU::rcu_enter();
 
-    tx_arenas[idx].reset();
     ermia::transaction * txn = &transactions[idx];
     new (txn) ermia::transaction(
       ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, tx_arenas[idx]);
+//    ermia::TXN::xid_context * xc = txn->GetXIDContext();
+//    xc->begin_epoch = begin_epoch;
 
-// FIXME
     for (int j = 0; j < g_reps_per_tx; ++j) {
       ermia::varstr &k = GenerateKey(txn);
       ermia::varstr &v = AllocValue(txn, sizeof(YcsbRecord));
@@ -185,7 +188,16 @@ private:
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
       }
     }
+//    std::stringstream st;
+//    st << "transaction index: " << idx << " " << txn->GetXIDContext() << std::endl;
+//    std::cout <<  st.str() << std::flush;
 
+    db->Commit(txn);
+
+// FIXME(lujc): xid_free() seg fault?
+//    transactions[idx].ermia::transaction::~transaction();
+
+// FIXME(lujc):
 //    ermia::RCU::rcu_exit();
 //    ermia::MM::epoch_exit(0, begin_epoch);
 
