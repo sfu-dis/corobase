@@ -85,38 +85,52 @@ public:
     util::timer t;
 
     while (running) {
+      ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+      ermia::RCU::rcu_enter();
+
       for(uint32_t i = 0; i < batch_size; i++) {
         task<rc_t> & coro_task = task_queue[i];
+        ASSERT(!coro_task.valid());
+        size_t workload_idx = 0;
 
-        if (coro_task.valid()) {
+        double d = r.next_uniform();
+        for (size_t j = 0; j < workload.size(); j++) {
+          if ((j + 1) == workload.size() || d < workload[j].frequency) {
+            workload_idx = j;
+            break;
+          }
+          d -= workload[j].frequency;
+        }
+
+        task_workload_idxs[i] = workload_idx;
+        call_stacks[i].reserve(20);
+
+        ASSERT(workload[workload_idx].task_fn);
+        coro_task = workload[workload_idx].task_fn(this, i, begin_epoch);
+        coro_task.set_call_stack(&call_stacks[i]);
+      }
+
+      bool batch_completed = false;
+      while (!batch_completed && running) {
+        batch_completed = true;
+        for(uint32_t i = 0; i < batch_size; i++) {
+          task<rc_t> & coro_task = task_queue[i];
+          if (!coro_task.valid()) {
+            continue;
+          }
+
           if (!coro_task.done()) {
             coro_task.resume();
+            batch_completed = false;
           } else {
             finish_workload(coro_task.get_return_value(), task_workload_idxs[i], t);
             coro_task = task<rc_t>(nullptr);
           }
         }
-
-        if (!coro_task.valid() && running) {
-          size_t workload_idx = 0;
-
-          double d = r.next_uniform();
-          for (size_t j = 0; j < workload.size(); j++) {
-            if ((j + 1) == workload.size() || d < workload[j].frequency) {
-              workload_idx = j;
-              break;
-            }
-            d -= workload[j].frequency;
-          }
-
-          task_workload_idxs[i] = workload_idx;
-          call_stacks[i].reserve(20);
-
-          ASSERT(workload[workload_idx].task_fn);
-          coro_task = workload[workload_idx].task_fn(this, i);
-          coro_task.set_call_stack(&call_stacks[i]);
-        }
       }
+
+      ermia::RCU::rcu_exit();
+      ermia::MM::epoch_exit(0, begin_epoch);
     }
   }
 
@@ -147,19 +161,14 @@ public:
   }
 
 private:
-  task<rc_t> txn_read(uint32_t idx) {
+  task<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
     tx_arenas[idx].reset();
-
-// FIXME(lujc): we can not enter epoch here, otherwise we have multiple
-//              epoch enter in each thread, which is not allowed.
-//    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-//    ermia::RCU::rcu_enter();
 
     ermia::transaction * txn = &transactions[idx];
     new (txn) ermia::transaction(
       ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, tx_arenas[idx]);
-//    ermia::TXN::xid_context * xc = txn->GetXIDContext();
-//    xc->begin_epoch = begin_epoch;
+      ermia::TXN::xid_context * xc = txn->GetXIDContext();
+      xc->begin_epoch = begin_epoch;
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
       ermia::varstr &k = GenerateKey(txn);
@@ -188,24 +197,13 @@ private:
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
       }
     }
-//    std::stringstream st;
-//    st << "transaction index: " << idx << " " << txn->GetXIDContext() << std::endl;
-//    std::cout <<  st.str() << std::flush;
-
     db->Commit(txn);
-
-// FIXME(lujc): xid_free() seg fault?
-//    transactions[idx].ermia::transaction::~transaction();
-
-// FIXME(lujc):
-//    ermia::RCU::rcu_exit();
-//    ermia::MM::epoch_exit(0, begin_epoch);
 
     co_return {RC_TRUE};
   }
 
-  static task<rc_t> TxnRead(bench_worker *w, uint32_t idx) {
-    return static_cast<ycsb_cs_adv_worker *>(w)->txn_read(idx);
+  static task<rc_t> TxnRead(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<ycsb_cs_adv_worker *>(w)->txn_read(idx, begin_epoch);
   }
 
 protected:
