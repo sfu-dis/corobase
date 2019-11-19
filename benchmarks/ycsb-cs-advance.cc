@@ -14,8 +14,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "../str_arena.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-log.h"
+#include "../dbcore/sm-coroutine.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
 #include "ycsb.h"
@@ -27,7 +29,6 @@ extern uint g_initial_table_size;
 extern int g_zipfian_rng;
 extern double g_zipfian_theta; // zipfian constant, [0, 1), more skewed as it
                                // approaches 1.
-int g_max_inflight_tx = 10;
 
 // { insert, read, update, scan, rmw }
 extern YcsbWorkload YcsbWorkloadA;
@@ -46,6 +47,9 @@ extern YcsbWorkload YcsbWorkloadH;
 
 extern YcsbWorkload ycsb_workload;
 
+template<typename T>
+using task = ermia::dia::task<T>;
+
 class ycsb_cs_adv_worker : public bench_worker {
 public:
   ycsb_cs_adv_worker(
@@ -59,14 +63,61 @@ public:
     if (g_zipfian_rng) {
       zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
     }
-    tx_arena = (ermia::str_arena *)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
-    for (uint32_t i = 0; i < ermia::config::coro_batch_size; ++i) {
-      new (&tx_arena[i]) ermia::str_arena;
-    }
+
+    tx_arenas = new ermia::str_arena[ermia::config::coro_batch_size];
+    transactions = static_cast<ermia::transaction*>(malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size));
   }
 
   virtual void MyWork(char *) override {
-      // TODO
+    ALWAYS_ASSERT(is_worker);
+    workload = get_workload();
+    txn_counts.resize(workload.size());
+
+    ermia::dia::coro_task_private::memory_pool memory_pool;
+
+    const size_t batch_size = ermia::config::coro_batch_size;
+    std::vector<task<rc_t>> task_queue(batch_size);
+    std::vector<std::vector<std::experimental::coroutine_handle<void>>> call_stacks(batch_size);
+    std::vector<uint32_t> task_workload_idxs(batch_size);
+
+    barrier_a->count_down();
+    barrier_b->wait_for();
+    util::timer t;
+
+    while (running) {
+      for(uint32_t i = 0; i < batch_size; i++) {
+        task<rc_t> & coro_task = task_queue[i];
+
+        if (coro_task.valid()) {
+          if (!coro_task.done()) {
+            coro_task.resume();
+          } else {
+            finish_workload(coro_task.get_return_value(), task_workload_idxs[i], t);
+            coro_task = task<rc_t>(nullptr);
+          }
+        }
+
+        if (!coro_task.valid() && running) {
+          size_t workload_idx = 0;
+
+          double d = r.next_uniform();
+          for (size_t j = 0; j < workload.size(); j++) {
+            if ((j + 1) == workload.size() || d < workload[j].frequency) {
+              workload_idx = j;
+              break;
+            }
+            d -= workload[j].frequency;
+          }
+
+          task_workload_idxs[i] = workload_idx;
+          call_stacks[i].reserve(20);
+
+          ASSERT(workload[workload_idx].task_fn);
+          coro_task = workload[workload_idx].task_fn(this, workload_idx);
+          coro_task.set_call_stack(&call_stacks[i]);
+        }
+      }
+    }
   }
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
@@ -78,27 +129,74 @@ public:
 
     if (ycsb_workload.insert_percent())
       w.push_back(workload_desc(
-          "Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr));
+          "Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr, nullptr, nullptr));
     if (ycsb_workload.read_percent())
       w.push_back(workload_desc(
-          "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr));
+          "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
     if (ycsb_workload.update_percent())
       w.push_back(workload_desc(
-          "Update", double(ycsb_workload.update_percent()) / 100.0, nullptr));
+          "Update", double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr, nullptr));
     if (ycsb_workload.scan_percent())
       w.push_back(workload_desc(
-          "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr));
+          "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, nullptr, nullptr));
     if (ycsb_workload.rmw_percent())
       w.push_back(workload_desc(
-          "RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr));
+          "RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, nullptr, nullptr));
 
     return w;
   }
 
+private:
+  task<rc_t> txn_read(uint32_t idx) {
+// FIXME
+//    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+//    ermia::RCU::rcu_enter();
+
+    tx_arenas[idx].reset();
+    ermia::transaction * txn = &transactions[idx];
+    new (txn) ermia::transaction(
+      ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, tx_arenas[idx]);
+
+// FIXME
+    for (int j = 0; j < g_reps_per_tx; ++j) {
+      ermia::varstr &k = GenerateKey(txn);
+      ermia::varstr &v = AllocValue(txn, sizeof(YcsbRecord));
+
+      // TODO(tzwang): add read/write_all_fields knobs
+      rc_t rc = rc_t{RC_INVALID};
+      co_await tbl->Get(txn, rc, k, v);  // Read
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      rc_t r = rc;
+      if (r.IsAbort()) {
+        db->Abort(txn);
+        if (!r.IsAbort()) {
+          co_return {RC_ABORT_USER};
+        }
+        co_return r;
+      }
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ASSERT(ermia::config::index_probe_only || *(char*)v.data() == 'a');
+#endif
+
+      if (!ermia::config::index_probe_only) {
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+      }
+    }
+
+//    ermia::RCU::rcu_exit();
+//    ermia::MM::epoch_exit(0, begin_epoch);
+
+    co_return {RC_TRUE};
+  }
+
+  static task<rc_t> TxnRead(bench_worker *w, uint32_t idx) {
+    return static_cast<ycsb_cs_adv_worker *>(w)->txn_read(idx);
+  }
 
 protected:
-  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
-
   ermia::varstr &GenerateKey(ermia::transaction *t) {
     uint64_t r = 0;
     if (g_zipfian_rng) {
@@ -114,13 +212,16 @@ protected:
     return k;
   }
 
+  ermia::varstr &AllocValue(ermia::transaction *t, size_t value_size) {
+    return *(t->string_allocator().next(value_size));
+  }
+
 private:
   ermia::ConcurrentMasstreeIndex *tbl;
   foedus::assorted::UniformRandom uniform_rng;
   foedus::assorted::ZipfianRandom zipfian_rng;
-  std::vector<ermia::varstr *> *keys;
-  std::vector<ermia::varstr *> values;
-  ermia::str_arena *tx_arena;
+  ermia::transaction *transactions;
+  ermia::str_arena *tx_arenas;
 };
 
 class ycsb_cs_adv_usertable_loader : public bench_loader {
@@ -135,12 +236,14 @@ private:
   uint32_t loader_id;
 
 protected:
-  // XXX(tzwang): for now this is serial
+  // XXX(lujc): for now this is serial
   void load() {
+    ermia::dia::coro_task_private::memory_pool memory_pool;
+
     ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
     int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
     uint64_t start_key = loader_id * to_insert;
-    ;
+
     for (uint64_t i = 0; i < to_insert; ++i) {
       arena.reset();
       ermia::varstr &k = str(sizeof(uint64_t));
@@ -211,6 +314,7 @@ protected:
 
   virtual std::vector<bench_worker *> make_cmdlog_redoers() {
     // Not implemented
+    LOG(FATAL) << "Not applicable";
     std::vector<bench_worker *> ret;
     return ret;
   }
@@ -255,10 +359,6 @@ void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv) {
 
     case 'a':
       g_rmw_additional_reads = strtoul(optarg, NULL, 10);
-      break;
-
-    case 'i':
-      g_max_inflight_tx = strtoul(optarg, NULL, 10);
       break;
 
     case 's':
@@ -310,8 +410,7 @@ void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv) {
               << std::endl
               << "  distribution:               "
               << (g_zipfian_rng ? "zipfian" : "uniform")
-              << std::endl
-              << "  max in-flight transactoins: " << g_max_inflight_tx << std::endl;
+              << std::endl;
 
     if (g_zipfian_rng) {
       std::cerr << "  zipfian theta:              " << g_zipfian_theta
