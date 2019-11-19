@@ -125,6 +125,61 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
 BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoro)
     ->Apply(PerfSingleThreadSearch::InterleavedArguments);
 
+BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped) (benchmark::State &st) {
+    for (auto _ : st) {
+        const uint32_t queue_size = st.range(2);
+
+        constexpr ermia::epoch_num cur_epoch = 0;
+
+        std::vector<task<bool>> task_queue(queue_size);
+        std::vector<ermia::OID> out_values(queue_size);
+        std::vector<std::vector<std::experimental::coroutine_handle<void>>> call_stacks(queue_size);
+
+        uint32_t completed_task_cnt = 0;
+        uint32_t next_record_idx = 0;
+        while (completed_task_cnt < records.size()) {
+            for (uint32_t i= 0; i < queue_size; i++) {
+                if (next_record_idx >= records.size()) {
+                    break;
+                }
+
+                task<bool> & coro_task = task_queue[i];
+                ASSERT(!coro_task.valid());
+                const Record & record = records[next_record_idx++];
+                coro_task = tree_->search(
+                        ermia::varstr(record.key.data(), record.key.size()),
+                        out_values[i], cur_epoch, nullptr);
+                call_stacks[i].reserve(20);
+                coro_task.set_call_stack(&call_stacks[i]);
+            }
+
+            bool batch_completed = false;
+            while (!batch_completed) {
+                batch_completed = true;
+                for (uint32_t i= 0; i < queue_size; i++) {
+                    task<bool> & coro_task = task_queue[i];
+                    if (!coro_task.valid()){
+                        continue;
+                    }
+
+                    if (!coro_task.done()) {
+                        coro_task.resume();
+                        batch_completed = false;
+                    } else {
+                        bool res = coro_task.get_return_value();
+                        ASSERT(res);
+                        completed_task_cnt++;
+                        coro_task = task<bool>(nullptr);
+                    }
+                }
+            }
+        }
+    }
+}
+
+BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped)
+    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
+
 #else
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Sequential) (benchmark::State &st) {
