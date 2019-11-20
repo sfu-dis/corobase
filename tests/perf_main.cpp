@@ -10,6 +10,7 @@ void ermia_init() {
 
     // FIXME: hack to cover all the numa nodes
     ermia::config::numa_spread = true;
+    ermia::config::physical_workers_only = false;
     ermia::config::threads = 4;
 
     ermia::config::init();

@@ -37,6 +37,7 @@ class ConcurrentMasstree: public ::testing::Test {
         ermia::config::node_memory_gb = 2;
         ermia::config::num_backups = 0;
         ermia::config::numa_spread = false;
+        ermia::config::physical_workers_only = false;
         ermia::config::threads = 5;
 
         ermia::config::init();

@@ -82,16 +82,21 @@ bool numa_spread = false;
 void init() {
   ALWAYS_ASSERT(threads);
   const uint32_t numa_node_count = numa_max_node() + 1;
-  const uint32_t max_threads_per_node = std::thread::hardware_concurrency() / numa_node_count;
+  const uint32_t max_cores = std::thread::hardware_concurrency();
+  const uint32_t max_threads_per_node =  max_cores / numa_node_count;
+  config::threads = std::min(config::threads, max_cores);
 
-  config::threads = std::min(config::threads, max_threads_per_node * numa_node_count);
-
-  // Here [threads] refers to threads (physical or logical), so use the number of physical cores
-  // to calculate # of numa nodes
-  if (config::numa_spread) {
-    config::numa_nodes = config::threads > numa_node_count ? numa_node_count : config::threads;
+  if (config::physical_workers_only) {
+    config::numa_nodes = numa_node_count;
+    config::threads = max_cores;
   } else {
-    config::numa_nodes = std::ceil(config::threads / static_cast<float>(max_threads_per_node));
+    // Here [threads] refers to threads (physical or logical), so use the number of physical cores
+    // to calculate # of numa nodes
+    if (config::numa_spread) {
+      config::numa_nodes = config::threads > numa_node_count ? numa_node_count : config::threads;
+    } else {
+      config::numa_nodes = std::ceil(config::threads / static_cast<float>(max_threads_per_node));
+    }
   }
   ALWAYS_ASSERT(config::numa_nodes > 0);
 
