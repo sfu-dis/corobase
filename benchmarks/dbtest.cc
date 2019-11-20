@@ -19,7 +19,7 @@
 // Options that are shared by the primary and backup servers
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
-DEFINE_bool(physical_workers_only, false, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
+DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
 DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
 DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
 DEFINE_uint64(coro_batch_size, 5, "Number of in-flight coroutines");
@@ -294,12 +294,7 @@ int main(int argc, char **argv) {
     ermia::config::truncate_at_bench_start = FLAGS_truncate_at_bench_start;
 
     ermia::config::replay_threads = 0;
-    if (ermia::config::physical_workers_only) {
-      // XXX: hack, two hyperthread per core
-      ermia::config::worker_threads = (FLAGS_threads + 1) / 2;
-    } else {
-      ermia::config::worker_threads = FLAGS_threads;
-    }
+    ermia::config::worker_threads = FLAGS_threads;
 
     ermia::config::group_commit = FLAGS_group_commit;
     ermia::config::group_commit_queue_length = FLAGS_group_commit_queue_length;
