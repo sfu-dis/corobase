@@ -179,13 +179,9 @@ private:
       co_await tbl->Get(txn, rc, k, v);  // Read
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      rc_t r = rc;
-      if (r.IsAbort()) {
+      if (rc.IsAbort()) {
         db->Abort(txn);
-        if (!r.IsAbort()) {
-          co_return {RC_ABORT_USER};
-        }
-        co_return r;
+        co_return rc;
       }
 #else
       // Under SI this must succeed
