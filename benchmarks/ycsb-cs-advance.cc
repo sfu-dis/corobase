@@ -162,17 +162,18 @@ public:
 
 private:
   task<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
-    tx_arenas[idx].reset();
-
     ermia::transaction * txn = &transactions[idx];
+    ermia::str_arena & txn_arena = tx_arenas[idx];
+
+    txn_arena.reset();
     new (txn) ermia::transaction(
-      ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, tx_arenas[idx]);
+      ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, txn_arena);
       ermia::TXN::xid_context * xc = txn->GetXIDContext();
       xc->begin_epoch = begin_epoch;
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
       ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = AllocValue(txn, sizeof(YcsbRecord));
+      ermia::varstr &v = *(txn->string_allocator().next(sizeof(YcsbRecord)));
 
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -216,10 +217,6 @@ protected:
         ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(r, k);
     return k;
-  }
-
-  ermia::varstr &AllocValue(ermia::transaction *t, size_t value_size) {
-    return *(t->string_allocator().next(value_size));
   }
 
 private:
