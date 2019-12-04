@@ -64,7 +64,6 @@ public:
       zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
     }
 
-    tx_arenas = new ermia::str_arena[ermia::config::coro_batch_size];
     transactions = static_cast<ermia::transaction*>(malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size));
   }
 
@@ -87,6 +86,8 @@ public:
     while (running) {
       ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
       ermia::RCU::rcu_enter();
+
+      arena.reset();
 
       for(uint32_t i = 0; i < batch_size; i++) {
         task<rc_t> & coro_task = task_queue[i];
@@ -162,22 +163,28 @@ public:
 
 private:
   task<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
-    ermia::transaction * txn = &transactions[idx];
-    ermia::str_arena & txn_arena = tx_arenas[idx];
-
-    txn_arena.reset();
-    new (txn) ermia::transaction(
-      ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, txn_arena);
-      ermia::TXN::xid_context * xc = txn->GetXIDContext();
-      xc->begin_epoch = begin_epoch;
+    ermia::transaction *txn = nullptr;
+    if (!ermia::config::index_probe_only) {
+        txn = &transactions[idx];
+        new (txn) ermia::transaction(
+          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, arena);
+          ermia::TXN::xid_context * xc = txn->GetXIDContext();
+          xc->begin_epoch = begin_epoch;
+    }
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
-      ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = *(txn->string_allocator().next(sizeof(YcsbRecord)));
+      ermia::varstr &k = GenerateKey();
+      ermia::varstr &v = str(sizeof(YcsbRecord));
 
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
-      co_await tbl->Get(txn, rc, k, v);  // Read
+      if (!ermia::config::index_probe_only) {
+        co_await tbl->Get(txn, rc, k, v);  // Read
+      } else {
+        ermia::OID oid = 0;
+        ermia::ConcurrentMasstree::versioned_node_t sinfo;
+        rc = (co_await tbl->GetMasstree().search(k, oid, begin_epoch, &sinfo)) ? RC_TRUE : RC_FALSE;
+      }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       if (rc.IsAbort()) {
@@ -192,9 +199,17 @@ private:
 
       if (!ermia::config::index_probe_only) {
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        ALWAYS_ASSERT(*(char*)v.data() == 'a');
       }
     }
-    db->Commit(txn);
+
+    if (!ermia::config::index_probe_only) {
+        rc_t rc = db->Commit(txn);
+        if (rc.IsAbort()) {
+            db->Abort(txn);
+            co_return rc;
+        }
+    }
 
     co_return {RC_TRUE};
   }
@@ -204,7 +219,8 @@ private:
   }
 
 protected:
-  ermia::varstr &GenerateKey(ermia::transaction *t) {
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ermia::varstr &GenerateKey() {
     uint64_t r = 0;
     if (g_zipfian_rng) {
       r = zipfian_rng.next();
@@ -212,7 +228,7 @@ protected:
       r = uniform_rng.uniform_within(0, g_initial_table_size - 1);
     }
 
-    ermia::varstr &k = *t->string_allocator().next(sizeof(uint64_t)); // 8-byte key
+    ermia::varstr &k = str(sizeof(uint64_t)); // 8-byte key
     new (&k)
         ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(r, k);
@@ -224,7 +240,6 @@ private:
   foedus::assorted::UniformRandom uniform_rng;
   foedus::assorted::ZipfianRandom zipfian_rng;
   ermia::transaction *transactions;
-  ermia::str_arena *tx_arenas;
 };
 
 class ycsb_cs_adv_usertable_loader : public bench_loader {
@@ -271,6 +286,7 @@ protected:
       ermia::varstr &k = str(sizeof(uint64_t));
       BuildKey(start_key + i, k);
       ermia::varstr &v = str(0);
+
       sync_wait_coro(tbl->Get(txn, rc, k, v, &oid));
       ALWAYS_ASSERT(*(char *)v.data() == 'a');
       TryVerifyStrict(rc);
