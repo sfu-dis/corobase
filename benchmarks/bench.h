@@ -174,6 +174,7 @@ class bench_worker : public ermia::thread::Runner {
 
   void do_workload_function(uint32_t i);
   void do_cmdlog_redo_workload_function(uint32_t i, void *param);
+  uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t);
 
  private:

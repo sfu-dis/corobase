@@ -92,16 +92,7 @@ public:
       for(uint32_t i = 0; i < batch_size; i++) {
         task<rc_t> & coro_task = task_queue[i];
         ASSERT(!coro_task.valid());
-        size_t workload_idx = 0;
-
-        double d = r.next_uniform();
-        for (size_t j = 0; j < workload.size(); j++) {
-          if ((j + 1) == workload.size() || d < workload[j].frequency) {
-            workload_idx = j;
-            break;
-          }
-          d -= workload[j].frequency;
-        }
+        uint32_t workload_idx = fetch_workload();
 
         task_workload_idxs[i] = workload_idx;
         call_stacks[i].reserve(20);
