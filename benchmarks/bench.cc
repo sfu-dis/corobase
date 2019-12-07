@@ -51,6 +51,20 @@ retry:
   }
 }
 
+uint32_t bench_worker::fetch_workload() {
+  double d = r.next_uniform();
+  for (size_t i = 0; i < workload.size(); i++) {
+    if ((i + 1) == workload.size() || d < workload[i].frequency) {
+        return i;
+        break;
+    }
+    d -= workload[i].frequency;
+  }
+
+  // unreachable
+  return 0;
+}
+
 bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t) {
   if (!ret.IsAbort()) {
     ++ntxn_commits;
@@ -113,16 +127,12 @@ void bench_worker::MyWork(char *) {
     txn_counts.resize(workload.size());
     barrier_a->count_down();
     barrier_b->wait_for();
+
     while (running) {
-      double d = r.next_uniform();
-      for (size_t i = 0; i < workload.size(); i++) {
-        if ((i + 1) == workload.size() || d < workload[i].frequency) {
-          do_workload_function(i);
-          break;
-        }
-        d -= workload[i].frequency;
-      }
+      uint32_t workload_idx = fetch_workload();
+      do_workload_function(workload_idx);
     }
+
   } else {
     cmdlog_redo_workload = get_cmdlog_redo_workload();
     txn_counts.resize(cmdlog_redo_workload.size());
