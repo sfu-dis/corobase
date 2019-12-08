@@ -50,6 +50,7 @@ DEFINE_string(read_view_stat_file, "/dev/shm/ermia_read_view_stat",
   "Where to store all the read view LSN outputs. Recommend tmpfs.");
 DEFINE_bool(print_cpu_util, false, "Whether to print CPU utilization.");
 DEFINE_bool(enable_perf, false, "Whether to run Linux perf along with benchmark.");
+DEFINE_string(perf_record_event, "", "Perf record event");
 #if defined(SSN) || defined(SSI)
 DEFINE_bool(safesnap, false,
             "Whether to use the safe snapshot (for SSI and SSN only).");
@@ -173,8 +174,9 @@ int main(int argc, char **argv) {
   ermia::config::benchmark = FLAGS_benchmark;
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
-  ermia::config::enable_perf = FLAGS_enable_perf;
   ermia::config::htt_is_on = FLAGS_htt;
+  ermia::config::enable_perf = FLAGS_enable_perf;
+  ermia::config::perf_record_event = FLAGS_perf_record_event;
   if (FLAGS_dia){
     if (!FLAGS_physical_workers_only){
       LOG(INFO) << "DIA is on, ignoring the physical-workers-only option";
@@ -389,6 +391,7 @@ int main(int argc, char **argv) {
 #endif
   std::cerr << "  print-cpu-util    : " << ermia::config::print_cpu_util << std::endl;
   std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
+  std::cerr << "  perf-record-event : " << ermia::config::perf_record_event << std::endl;
   std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
   std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir << std::endl;
   std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;

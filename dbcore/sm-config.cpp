@@ -42,6 +42,7 @@ bool htt_is_on = true;
 bool physical_workers_only = true;
 bool print_cpu_util = false;
 bool enable_perf = false;
+std::string perf_record_event("");
 uint64_t node_memory_gb = 12;
 bool log_ship_offset_replay = false;
 int recovery_warm_up_policy = WARM_UP_NONE;
