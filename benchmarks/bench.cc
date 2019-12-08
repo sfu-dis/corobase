@@ -378,8 +378,13 @@ void bench_runner::start_measurement() {
     pid_t pid = fork();
     // Launch profiler
     if (pid == 0) {
-      execl("/usr/bin/perf","perf","stat", "-B", "-e",  "cache-references,cache-misses,cycles,instructions,branches,faults", 
-            "-p", parent_pid.str().c_str(), nullptr);
+      if(ermia::config::perf_record_event != "") {
+        exit(execl("/usr/bin/perf","perf","record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(),
+                   "-p", parent_pid.str().c_str(), nullptr));
+      } else {
+        exit(execl("/usr/bin/perf","perf","stat", "-B", "-e",  "cache-references,cache-misses,cycles,instructions,branches,faults", 
+                   "-p", parent_pid.str().c_str(), nullptr));
+      }
     } else {
       perf_pid = pid;
     }
