@@ -509,13 +509,14 @@ void bench_runner::start_measurement() {
     ermia::rep::PrimaryShutdown();
   }
 
+  const unsigned long elapsed_nosync = t_nosync.lap();
+
   if (ermia::config::enable_perf) {
     std::cerr << "stop perf..." << std::endl;
     kill(perf_pid, SIGINT);
     waitpid(perf_pid, nullptr, 0);
   }
 
-  const unsigned long elapsed_nosync = t_nosync.lap();
   size_t n_commits = 0;
   size_t n_aborts = 0;
   size_t n_user_aborts = 0;
