@@ -367,14 +367,14 @@ template <typename P>
 template <typename F>
 PROMISE(int) basic_table<P>::scan(Str firstkey, bool emit_firstkey, F &scanner,
                          ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  RETURN AWAIT scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename F>
 PROMISE(int) basic_table<P>::rscan(Str firstkey, bool emit_firstkey, F &scanner,
                           ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  RETURN AWAIT scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  return scan(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
@@ -460,14 +460,14 @@ template <typename P>
 template <typename F>
 PROMISE(int) basic_table<P>::scan_oid(Str firstkey, bool emit_firstkey, F &scanner,
                                             ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  RETURN AWAIT scan_oid(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  return scan_oid(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 template <typename P>
 template <typename F>
 PROMISE(int) basic_table<P>::rscan_oid(Str firstkey, bool emit_firstkey, F &scanner,
                           ermia::TXN::xid_context *xc, threadinfo &ti) const {
-  RETURN AWAIT scan_oid(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+  return scan_oid(reverse_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
 }
 
 } // namespace Masstree
