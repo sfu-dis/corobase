@@ -311,12 +311,9 @@ public:
 
     using namespace coro_task_private;
 
-    const std::vector<generic_coroutine_handle> *call_stack =
-        coroutine_.promise().get_call_stack();
-    ASSERT(call_stack);
+    ASSERT(coroutine_.promise().get_call_stack());
 
-    generic_coroutine_handle coroutine_to_resume = nullptr;
-    coroutine_to_resume = call_stack->back();
+    generic_coroutine_handle coroutine_to_resume = coroutine_.promise().get_call_stack()->back();
     coroutine_to_resume.resume();
   }
 
