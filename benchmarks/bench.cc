@@ -11,6 +11,9 @@
 #include <sys/sysinfo.h>
 #include <sys/times.h>
 #include <sys/vtimes.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 #include "bench.h"
 
@@ -365,6 +368,23 @@ void bench_runner::start_measurement() {
     (*it)->Start();
   }
 
+  pid_t perf_pid;
+  if (ermia::config::enable_perf) {
+    std::cerr << "start perf..." << std::endl;
+
+    std::stringstream parent_pid;
+    parent_pid << getpid();
+
+    pid_t pid = fork();
+    // Launch profiler
+    if (pid == 0) {
+      execl("/usr/bin/perf","perf","stat", "-B", "-e",  "cache-references,cache-misses,cycles,instructions,branches,faults", 
+            "-p", parent_pid.str().c_str(), nullptr);
+    } else {
+      perf_pid = pid;
+    }
+  }
+
   barrier_a.wait_for();  // wait for all threads to start up
   std::map<std::string, size_t> table_sizes_before;
   if (ermia::config::verbose) {
@@ -482,6 +502,12 @@ void bench_runner::start_measurement() {
       }
     }
     ermia::rep::PrimaryShutdown();
+  }
+
+  if (ermia::config::enable_perf) {
+    std::cerr << "stop perf..." << std::endl;
+    kill(perf_pid, SIGINT);
+    waitpid(perf_pid, nullptr, 0);
   }
 
   const unsigned long elapsed_nosync = t_nosync.lap();

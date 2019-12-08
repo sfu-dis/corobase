@@ -39,6 +39,7 @@ extern std::string read_view_stat_file;
 extern bool command_log;
 extern uint32_t command_log_buffer_mb;
 extern bool print_cpu_util;
+extern bool enable_perf;
 
 // NVRAM settings - for backup servers only, the primary doesn't care.
 extern bool nvram_log_buffer;
