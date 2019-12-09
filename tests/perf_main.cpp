@@ -13,15 +13,20 @@ void ermia_init() {
     ermia::config::physical_workers_only = false;
     ermia::config::threads = 4;
 
+    // Enable profiling
+    ermia::config::enable_perf = false;
+    ermia::config::perf_record_event = "cycles";
+
     ermia::config::init();
     ermia::MM::prepare_node_memory();
 }
 
 int main(int argc, char** argv) {
+    ::benchmark::Initialize(&argc, argv);
+
     ermia_init();
     // FIXME:
     ermia::dia::coro_task_private::memory_pool memory_pool;
-    ::benchmark::Initialize(&argc, argv);
     ::benchmark::RunSpecifiedBenchmarks();
 }
 

@@ -3,8 +3,13 @@
 #include <numa.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <signal.h>
+
 #include <array>
 #include <vector>
+#include <sstream>
 
 #include <masstree/masstree_btree.h>
 
@@ -42,9 +47,17 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
                     record.value,
                     &context_mock, nullptr, nullptr));
         }
+
+        if (ermia::config::enable_perf) {
+            startPerf();
+        }
     }
 
     void TearDown(const ::benchmark::State &state) {
+        if (ermia::config::enable_perf) {
+            stopPerf();
+        }
+
         delete tree_;
         records.clear();
     }
@@ -72,6 +85,35 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
         }
     }
 
+    void startPerf() {
+       std::cerr << "start perf..." << std::endl;
+
+       std::stringstream parent_pid;
+       parent_pid << getpid();
+
+       pid_t pid = fork();
+       // Launch profiler
+       if (pid == 0) {
+           if(ermia::config::perf_record_event != "") {
+             exit(execl("/usr/bin/perf","perf","record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(),
+                        "-p", parent_pid.str().c_str(), nullptr));
+           } else {
+             exit(execl("/usr/bin/perf","perf","stat", "-B", "-e",  "cache-references,cache-misses,cycles,instructions,branches,faults", 
+                        "-p", parent_pid.str().c_str(), nullptr));
+           }
+       } else {
+           perf_pid_ = pid;
+       }
+    }
+
+    void stopPerf() {
+        std::cerr << "stop perf..." << std::endl;
+
+        kill(perf_pid_, SIGINT);
+        waitpid(perf_pid_, nullptr, 0);
+    }
+
+    pid_t perf_pid_;
     std::vector<Record> records;
     ermia::ConcurrentMasstree *tree_;
     ermia::dia::coro_task_private::memory_pool *pool_;
