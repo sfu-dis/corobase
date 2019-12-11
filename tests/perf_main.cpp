@@ -14,7 +14,7 @@ void ermia_init() {
     ermia::config::threads = 4;
 
     // Enable profiling
-    ermia::config::enable_perf = false;
+    ermia::config::enable_perf = true;
     ermia::config::perf_record_event = "cycles";
 
     ermia::config::init();

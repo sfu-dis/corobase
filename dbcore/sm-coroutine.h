@@ -1,5 +1,7 @@
 #ifndef SM_COROUTINE_H
 #define SM_COROUTINE_H
+#include <mmintrin.h>
+#include <xmmintrin.h>
 #include <experimental/coroutine>
 #include <array>
 
@@ -322,7 +324,10 @@ public:
     coroutine_ = nullptr;
   }
 
-  awaiter operator co_await() const { return awaiter(coroutine_); }
+  awaiter operator co_await() const {
+    _mm_prefetch(coroutine_.promise().get_call_stack(), _MM_HINT_T0);
+    return awaiter(coroutine_);
+  }
 
   // Call get_return_value() on task<> for more than one time is undefined
   template<typename U = T>
