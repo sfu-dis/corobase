@@ -225,6 +225,10 @@ public:
 
   inline PROMISE(bool) search(const key_type &k, OID &o, epoch_num e,
                      versioned_node_t *search_info = nullptr) const;
+  dia::task<bool> search_adv_coro_l1(const key_type &k, OID &o, epoch_num e, 
+                     versioned_node_t *search_info = nullptr) const;
+  dia::task<bool> search_adv_coro_l2(const key_type &k, OID &o, epoch_num e,
+                     versioned_node_t *search_info = nullptr) const;
 
   inline void search_amac(std::vector<AMACState> &states, epoch_num epoch) const;
 
@@ -245,7 +249,7 @@ public:
    *   2) invoke() is called per <k, v>-pair such that k is in [a, b)
    *
    * The order of calling on_resp_node() and invoke() is up to the
-   *implementation.
+   * implementation.
    */
   class low_level_search_range_callback {
   public:
