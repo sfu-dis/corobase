@@ -87,7 +87,7 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
     
     if (match) {
       auto o = lp.value();
-      if (!config::amac_version_chain) {
+      if (!config::index_probe_only && !config::amac_version_chain) {
         version_requests.emplace_back(o);
         auto tuple = sync_wait_coro(oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext()));
         if (tuple) {
@@ -101,7 +101,7 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
     }
   }
 
-  if (config::amac_version_chain) {
+  if (!config::index_probe_only && config::amac_version_chain) {
     oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, txn->GetXIDContext());
     uint32_t i = 0;
     for (auto &vr : version_requests) {
@@ -122,7 +122,7 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
 
 
 template <typename P>
-dia::task<bool>
+PROMISE(bool)
 mbtree<P>::search_adv_coro_l2(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const {
   threadinfo ti(e);
 
@@ -152,7 +152,7 @@ retry2:
   while (!v[sense].isleaf()) {
     const Masstree::internode<P>* in = static_cast<const Masstree::internode<P>*>(n[sense]);
     in->prefetch();
-    co_await std::experimental::suspend_always{};
+    AWAIT SUSPEND;
     int kp = Masstree::internode<P>::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry2;
@@ -178,13 +178,13 @@ forward:
   if (lp.v_.deleted()) goto retry;
 
   lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
+  AWAIT SUSPEND; 
   lp.perm_ = lp.n_->permutation();
   kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
+    AWAIT SUSPEND; 
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -205,11 +205,11 @@ forward:
   if (search_info) {
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   }
-  co_return match;
+  RETURN match;
 }
 
 template <typename P>
-dia::task<bool>
+PROMISE(bool)
 mbtree<P>::search_adv_coro_l1(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const {
   threadinfo ti(e);
 
@@ -221,19 +221,19 @@ mbtree<P>::search_adv_coro_l1(const key_type &k, OID &o, epoch_num e, versioned_
   Masstree::node_base<P>* root = const_cast<Masstree::node_base<P>*>(lp.root_);
 
 retry:
-  lp.n_ = co_await root->reach_leaf(lp.ka_, lp.v_, ti);
+  lp.n_ = AWAIT root->reach_leaf(lp.ka_, lp.v_, ti);
 
 forward:
   if (lp.v_.deleted()) goto retry;
 
   lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
+  AWAIT SUSPEND;
   lp.perm_ = lp.n_->permutation();
   kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
+    AWAIT SUSPEND;
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -254,7 +254,7 @@ forward:
   if (search_info) {
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   }
-  co_return match;
+  RETURN match;
 }
 
 template
@@ -264,11 +264,11 @@ mbtree<masstree_params>::ycsb_read_coro(ermia::transaction *txn,
                                         threadinfo &ti, versioned_node_t *search_info) const;
 
 template
-dia::task<bool>
+PROMISE(bool)
 mbtree<masstree_params>::search_adv_coro_l1(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
 
 template
-dia::task<bool>
+PROMISE(bool)
 mbtree<masstree_params>::search_adv_coro_l2(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
 
 } // namespace ermia
