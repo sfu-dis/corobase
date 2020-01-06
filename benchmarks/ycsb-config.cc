@@ -1,7 +1,7 @@
 #include "ycsb.h"
 
 uint64_t global_key_counter = 0;
-uint g_reps_per_tx = 1;
+uint g_reps_per_tx = 16;
 uint g_rmw_additional_reads = 0;
 char g_workload = 'C';
 uint g_initial_table_size = 30000000;

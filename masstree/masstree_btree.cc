@@ -152,7 +152,7 @@ retry2:
   while (!v[sense].isleaf()) {
     const Masstree::internode<P>* in = static_cast<const Masstree::internode<P>*>(n[sense]);
     in->prefetch();
-    AWAIT SUSPEND;
+    SUSPEND;
     int kp = Masstree::internode<P>::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry2;
@@ -178,13 +178,13 @@ forward:
   if (lp.v_.deleted()) goto retry;
 
   lp.n_->prefetch();
-  AWAIT SUSPEND; 
+  SUSPEND;
   lp.perm_ = lp.n_->permutation();
   kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    AWAIT SUSPEND; 
+    SUSPEND;
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -227,13 +227,13 @@ forward:
   if (lp.v_.deleted()) goto retry;
 
   lp.n_->prefetch();
-  AWAIT SUSPEND;
+  SUSPEND;
   lp.perm_ = lp.n_->permutation();
   kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    AWAIT SUSPEND;
+    SUSPEND;
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
