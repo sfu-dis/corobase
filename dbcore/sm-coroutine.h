@@ -53,6 +53,71 @@ private:
   handle coro;
 };
 
+
+template<typename T, int cap>
+class FixLenStack {
+public:
+    FixLenStack() : top_(-1) {}
+    ~FixLenStack() {}
+
+    FixLenStack(const FixLenStack &) = delete;
+
+    const T & back() const {
+        ASSERT(top_ >= 0);
+        return data_[top_];
+    }
+
+    T & back() {
+        ASSERT(top_ >= 0);
+        return data_[top_];
+    }
+
+    void pop_back() {
+        ASSERT(top_ >= 0);
+        top_--;
+    }
+
+    void push_back(const T & item) {
+        ASSERT(size() < cap);
+        data_[++top_] = item;
+    }
+
+    void emplace_back(const T & item) {
+        ASSERT(size() < cap);
+        data_[++top_] = item;
+    }
+
+    void push_back(T && item) {
+        ASSERT(size() < cap);
+        data_[++top_] = std::move(item);
+    }
+
+    void emplace_back(T && item) {
+        ASSERT(size() < cap);
+        data_[++top_] = std::move(item);
+    }
+
+    void reserve(uint32_t newSize) {
+        // mock std container, no op
+    }
+
+    void clear() {
+        top_ = -1;
+    }
+
+    bool empty() const {
+       return top_ == -1; 
+    }
+
+    uint32_t size() const {
+        return static_cast<uint32_t>(top_ + 1);
+    }
+
+private:
+    int top_;
+    T data_[cap]; 
+};
+
 /*
  *  task<T> is implementation of coroutine promise. It supports chained
  *  co_await, which enables writing coroutine as easy as writing normal
@@ -77,6 +142,7 @@ private:
 namespace coro_task_private {
 
 using generic_coroutine_handle = std::experimental::coroutine_handle<void>;
+using coro_stack = FixLenStack<generic_coroutine_handle, 12>;
 
 // final_awaiter is the awaiter returned on task<T> coroutine's `final_suspend`.
 // It returns the control flow directly to the caller instead of the top-level
@@ -219,16 +285,19 @@ struct promise_base {
     // Note that there is no need to coroutine_handle.destroy() call here,
     // the destroy all happens in the destruction of task<> class.
     ASSERT(call_stack_);
-    ASSERT(call_stack_->size() > 0);
-    if (call_stack_->size() == 1) {
-      return coro_task_private::final_awaiter(
-        std::experimental::noop_coroutine());
-    }
 
-    // Other cases, pop this coroutine from the call_stack_ and hand over
-    // the control flow to its caller.
+    // call_stack_ has a sentinel value
+    ASSERT(call_stack_->size() > 1);
     call_stack_->pop_back();
-    return coro_task_private::final_awaiter(call_stack_->back());
+
+    coro_task_private::final_awaiter awaiters[2] = {
+        coro_task_private::final_awaiter(std::experimental::noop_coroutine()),
+        coro_task_private::final_awaiter(call_stack_->back())
+    };
+
+    // if the current coroutine is the last one in call_stack_, then hand over
+    // the control flow to its caller.
+    return std::move(awaiters[call_stack_->size() == 1 ? 0 : 1]);
   }
   void unhandled_exception() { std::terminate(); }
 
@@ -245,19 +314,19 @@ struct promise_base {
     memory_pool::instance()->deallocate_bytes(ptr);
   }
 
-  void add_to_stack(std::vector<generic_coroutine_handle> * stack) {
+  void add_to_stack(ermia::dia::coro_task_private::coro_stack * stack) {
     call_stack_ = stack;
     call_stack_->emplace_back(handle_);
   }
 
-  std::vector<generic_coroutine_handle> *get_call_stack() const {
+  ermia::dia::coro_task_private::coro_stack *get_call_stack() const {
     return call_stack_;
   }
 
 protected:
   generic_coroutine_handle handle_;
 
-  std::vector<generic_coroutine_handle> * call_stack_;
+  ermia::dia::coro_task_private::coro_stack * call_stack_;
 };
 
 } // namespace coro_task_private
@@ -303,8 +372,10 @@ public:
   }
 
   void set_call_stack(
-      std::vector<std::experimental::coroutine_handle<void>> *stack) {
+      ermia::dia::coro_task_private::coro_stack * stack) {
     stack->clear();
+    // insert sentinel
+    stack->emplace_back(nullptr);
     coroutine_.promise().add_to_stack(stack);
   }
 
@@ -442,9 +513,8 @@ template <typename T> struct task<T>::awaiter {
   template <typename awaiting_promise_t>
   auto await_suspend(std::experimental::coroutine_handle<awaiting_promise_t>
                          awaiting_coroutine) noexcept {
-    std::vector<std::experimental::coroutine_handle<void>> *call_stack =
-        awaiting_coroutine.promise().get_call_stack();
-    suspended_task_coroutine_.promise().add_to_stack(call_stack);
+    suspended_task_coroutine_.promise().add_to_stack(
+        awaiting_coroutine.promise().get_call_stack());
     return suspended_task_coroutine_;
   }
   constexpr bool await_ready() const noexcept {
@@ -483,7 +553,7 @@ private:
 
 template<typename T>
 inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
-    std::vector<std::experimental::coroutine_handle<void>> call_stack;
+    ermia::dia::coro_task_private::coro_stack call_stack;
     coro_task.set_call_stack(&call_stack);
     while(!coro_task.done()) {
         coro_task.resume();
@@ -494,7 +564,7 @@ inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
 
 template<>
 inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
-    std::vector<std::experimental::coroutine_handle<void>> call_stack;
+    ermia::dia::coro_task_private::coro_stack call_stack;
     coro_task.set_call_stack(&call_stack);
     while(!coro_task.done()) {
         coro_task.resume();

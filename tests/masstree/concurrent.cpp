@@ -225,7 +225,7 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
 
         std::array<task<bool>, task_queue_size> task_queue;
         std::array<
-            std::vector<std::experimental::coroutine_handle<void>>,
+            ermia::dia::coro_task_private::coro_stack,
             task_queue_size> coro_stacks;
 
         std::vector<ermia::OID> coro_return_values;

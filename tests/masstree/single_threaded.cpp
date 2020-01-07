@@ -141,7 +141,7 @@ TEST_F(SingleThreadMasstree, InsertSequentialAndSearchInterleaved) {
     constexpr int task_queue_size= 5;
     std::array<task<bool>, task_queue_size> task_queue;
     std::array<
-        std::vector<std::experimental::coroutine_handle<void>>,
+        ermia::dia::coro_task_private::coro_stack,
         task_queue_size> coro_stacks;
 
     uint32_t next_task_index = 0;
@@ -210,7 +210,7 @@ TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved) {
     std::array<task<bool>, task_queue_size> task_queue;
     std::array<ermia::OID, task_queue_size> return_values;
     std::array<
-        std::vector<std::experimental::coroutine_handle<void>>,
+        ermia::dia::coro_task_private::coro_stack,
         task_queue_size> coro_stacks;
 
     std::vector<Record> last_iter_records;
