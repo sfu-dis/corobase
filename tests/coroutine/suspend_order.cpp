@@ -39,9 +39,9 @@ TEST(CoroutineSuspendOrder, FixedLogic) {
     coro_task_private::memory_pool memory_pool;
 
     int counter = 0;
-    std::vector<std::experimental::coroutine_handle<void>> coro_stack;
+    ermia::dia::coro_task_private::coro_stack stack;
     task<void> future_task = CoroutineCall_LevelOne(&counter);
-    future_task.set_call_stack(&coro_stack);
+    future_task.set_call_stack(&stack);
 
     future_task.resume();
     ASSERT_EQ(counter, 1);

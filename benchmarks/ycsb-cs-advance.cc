@@ -77,7 +77,7 @@ public:
 
     const size_t batch_size = ermia::config::coro_batch_size;
     std::vector<task<rc_t>> task_queue(batch_size);
-    std::vector<std::vector<std::experimental::coroutine_handle<void>>> call_stacks(batch_size);
+    std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(batch_size);
     std::vector<uint32_t> task_workload_idxs(batch_size);
 
     barrier_a->count_down();

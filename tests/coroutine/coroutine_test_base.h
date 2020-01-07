@@ -21,8 +21,7 @@ class CoroutineTestBase : public ::testing::Test {
     }
 
     void runTasksUntilComplete() {
-        std::vector<std::vector<std::experimental::coroutine_handle<void>>> call_stacks;
-        call_stacks.resize(future_tasks_.size());
+        std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(future_tasks_.size());
 
         for(uint32_t i = 0; i < future_tasks_.size(); i++) {
             future_tasks_[i].set_call_stack(&(call_stacks[i]));

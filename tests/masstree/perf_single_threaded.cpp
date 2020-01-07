@@ -130,8 +130,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
 
         std::vector<task<bool>> task_queue(queue_size);
         std::vector<ermia::OID> out_values(queue_size);
-        std::vector<std::vector<std::experimental::coroutine_handle<void>>> call_stacks(
-                queue_size, std::vector<std::experimental::coroutine_handle<void>>(10));
+        std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(
+                queue_size);
 
         uint32_t completed_task_cnt = 0;
         uint32_t next_record_idx = 0;
@@ -176,7 +176,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped) (benchmark:
 
         std::vector<task<bool>> task_queue(queue_size);
         std::vector<ermia::OID> out_values(queue_size);
-        std::vector<std::vector<std::experimental::coroutine_handle<void>>> call_stacks(queue_size);
+        std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(queue_size);
 
         uint32_t completed_task_cnt = 0;
         uint32_t next_record_idx = 0;
