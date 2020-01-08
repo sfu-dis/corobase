@@ -125,6 +125,9 @@ bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer 
 }
 
 void bench_worker::MyWork(char *) {
+  // Only used for coroutine execution
+  ermia::dia::coro_task_private::memory_pool memory_pool;
+
   if (is_worker) {
     workload = get_workload();
     txn_counts.resize(workload.size());

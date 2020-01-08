@@ -247,6 +247,12 @@ public:
                      std::vector<std::experimental::coroutine_handle<
                          ermia::dia::generator<bool>::promise_type>> &handles);
 
+  void adv_coro_MultiGet(
+    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
+    std::vector<ermia::dia::task<bool>> & index_probe_tasks,
+    std::vector<ermia::dia::task<ermia::dbtuple*>> & value_fetch_tasks,
+    std::vector<ermia::dia::coro_task_private::coro_stack> & coro_stacks);
+
   inline PROMISE(rc_t) Put(transaction *t, const varstr &key, varstr &value) override {
     return DoTreePut(*t, &key, &value, false, true, nullptr);
   }

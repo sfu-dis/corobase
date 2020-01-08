@@ -476,7 +476,11 @@ int main(int argc, char **argv) {
       test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
     }
 #else
-    test_fn = ycsb_cs_advance_do_test;
+    if (FLAGS_coro_tx) {
+      test_fn = ycsb_cs_advance_do_test;
+    } else {
+      test_fn = ycsb_do_test;
+    }
 #endif
   } else if (FLAGS_benchmark == "tpcc") {
   //  test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;

@@ -7,6 +7,7 @@ char g_workload = 'C';
 uint g_initial_table_size = 30000000;
 int g_amac_txn_read = 0;
 int g_coro_txn_read = 0;
+int g_adv_coro_txn_read = 0;
 int g_zipfian_rng = 0;
 double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it approaches 1.
 int g_distinct_keys = 0;
