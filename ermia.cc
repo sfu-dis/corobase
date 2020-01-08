@@ -210,7 +210,7 @@ void ConcurrentMasstreeIndex::MultiGet(
   }
 }
 
-PROMISE(void) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
+PROMISE(bool) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
                                   varstr &value, OID *out_oid) {
   OID oid = 0;
   rc = {RC_INVALID};
@@ -256,6 +256,8 @@ PROMISE(void) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varst
   if (out_oid) {
     *out_oid = oid;
   }
+
+  RETURN true;
 }
 
 void ConcurrentMasstreeIndex::coro_MultiGet(
@@ -349,6 +351,7 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
     std::vector<ermia::dia::task<bool>> & index_probe_tasks,
     std::vector<ermia::dia::task<ermia::dbtuple*>> & value_fetch_tasks,
     std::vector<ermia::dia::coro_task_private::coro_stack> & coro_stacks) {
+#ifdef USE_STATIC_COROUTINE
   ermia::epoch_num e;
   ConcurrentMasstree::versioned_node_t sinfo;
   if (!t) {
@@ -424,6 +427,7 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
       }
     }
   }
+#endif
 }
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(

@@ -79,7 +79,7 @@ public:
    * Get a key of length keylen. The underlying DB does not manage
    * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
    */
-  virtual PROMISE(void) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+  virtual PROMISE(bool) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) = 0;
 
   /**
@@ -233,7 +233,7 @@ public:
 
   inline void *GetTable() override { return masstree_.get_table(); }
 
-  virtual PROMISE(void) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+  virtual PROMISE(bool) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) override;
 
   // A multi-get operation using AMAC
