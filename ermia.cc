@@ -344,6 +344,88 @@ void ConcurrentMasstreeIndex::coro_MultiGet(
   }
 }
 
+void ConcurrentMasstreeIndex::adv_coro_MultiGet(
+    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
+    std::vector<ermia::dia::task<bool>> & index_probe_tasks,
+    std::vector<ermia::dia::task<ermia::dbtuple*>> & value_fetch_tasks,
+    std::vector<ermia::dia::coro_task_private::coro_stack> & coro_stacks) {
+  ermia::epoch_num e;
+  ConcurrentMasstree::versioned_node_t sinfo;
+  if (!t) {
+    e = MM::epoch_enter();
+  } else {
+    e = t->xc->begin_epoch;
+  }
+  thread_local std::vector<OID> oids;
+  oids.clear();
+
+  for (int i = 0; i < keys.size(); ++i) {
+    oids.emplace_back(INVALID_OID);
+    index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
+    index_probe_tasks[i].set_call_stack(&coro_stacks[i]);
+  }
+
+  int finished = 0;
+  while (finished < keys.size()) {
+    for (auto &t : index_probe_tasks) {
+      if (t.valid()) {
+        if (t.done()) {
+          ++finished;
+          t = ermia::dia::task<bool>(nullptr);
+        } else {
+          t.resume();
+        }
+      }
+    }
+  }
+
+  if (!t) {
+    MM::epoch_exit(0, e);
+  } else {
+    t->ensure_active();
+    if (config::is_backup_srv()) {
+      // TODO
+      assert(false && "Backup not supported in coroutine execution");
+    } else {
+      int finished = 0;
+
+      for (uint32_t i = 0; i < keys.size(); ++i) {
+        if (oids[i] != INVALID_OID) {
+          value_fetch_tasks[i] = oidmgr->oid_get_version(descriptor_->GetTupleArray(), oids[i], t->xc);
+          value_fetch_tasks[i].set_call_stack(&coro_stacks[i]);
+        } else {
+          ++finished;
+        }
+      }
+
+      while (finished < keys.size()) {
+        for (auto &t : value_fetch_tasks) {
+          if (t.valid()) {
+            if (t.done()) {
+              ++finished;
+            } else {
+              t.resume();
+            }
+          }
+        }
+      }
+
+      for (uint32_t i = 0; i < keys.size(); ++i) {
+        if (oids[i] != INVALID_OID) {
+          auto *tuple = value_fetch_tasks[i].get_return_value();
+          if (tuple) {
+            t->DoTupleRead(tuple, values[i]);
+          } else if (config::phantom_prot) {
+            DoNodeRead(t, sinfo.first, sinfo.second);
+          }
+
+          value_fetch_tasks[i].destroy();
+        }
+      }
+    }
+  }
+}
+
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
     const typename ConcurrentMasstree::node_opaque_t *n) {
   ASSERT(spec_values.empty());
