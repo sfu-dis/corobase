@@ -1,12 +1,8 @@
-#include <gflags/gflags.h>
 #include <benchmark/benchmark.h>
 
 #include <dbcore/sm-alloc.h>
 #include <dbcore/sm-config.h>
 #include <dbcore/sm-coroutine.h>
-
-DEFINE_bool(enable_perf, false, "enable linux perf");
-DEFINE_string(perf_record_event, "", "linux perf event, empty means show all");
 
 void ermia_init() {
     ermia::config::node_memory_gb = 10;
@@ -22,7 +18,23 @@ void ermia_init() {
 }
 
 int main(int argc, char** argv) {
-    google::ParseCommandLineFlags(&argc, &argv, true);
+    const char PERF_EVENT[] = "--perf_record_event";
+    const char ENABLE_PERF[] = "--enable_perf";
+    bool FLAGS_enable_perf = false;
+    std::string FLAGS_perf_record_event = "";
+    for(uint32_t i = 1; i < argc; i++) {
+        std::string curArg = std::string(argv[i]);
+        if(curArg == ENABLE_PERF) {
+            FLAGS_enable_perf = true;
+            continue;
+        }
+        if(curArg.size() > strlen(PERF_EVENT) &&
+           curArg.substr(0, strlen(PERF_EVENT)) == PERF_EVENT &&
+           curArg[strlen(PERF_EVENT)] == '=') {
+            FLAGS_perf_record_event = curArg.substr(strlen(PERF_EVENT) + 1);
+        }
+    }
+    std::cout << "perf event: " <<  FLAGS_perf_record_event << std::endl;
 
     if (FLAGS_enable_perf) {
         std::vector<char *> nargv;
@@ -31,8 +43,8 @@ int main(int argc, char** argv) {
         }
 
         // ensure each perf runs only 1 iteration
-        char* ss = "--benchmark_min_time=0"; 
-        nargv.emplace_back(ss);
+        std::string ss = "--benchmark_min_time=0";
+        nargv.emplace_back(const_cast<char *>(ss.c_str()));
 
         ermia::config::enable_perf = FLAGS_enable_perf;
         ermia::config::perf_record_event = FLAGS_perf_record_event;
