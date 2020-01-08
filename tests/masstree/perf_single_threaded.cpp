@@ -62,25 +62,18 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
         records.clear();
     }
 
-    static void InterleavedArguments(benchmark::internal::Benchmark *b) {
-        std::vector<uint32_t> record_num = {10000, 1000000, 10000000};
+    static void BatchArguments(benchmark::internal::Benchmark *bench) {
+        std::vector<uint32_t> record_num = {10000000};
         std::vector<uint32_t> key_size = {8};
         std::vector<uint32_t> group_size = {5, 15, 25};
+        std::vector<uint32_t> batch_to_run = {10000};
         for(uint32_t r : record_num) {
             for(uint32_t k : key_size) {
                 for(uint32_t g : group_size) {
-                    b->Args({r, k, g});
+                    for(uint32_t b : batch_to_run) {
+                        bench->Args({r, k, g, b});
+                    }
                 }
-            }
-        }
-    }
-
-    static void SequentialArguments(benchmark::internal::Benchmark *b) {
-        std::vector<uint32_t> record_num = {10000, 1000000, 10000000};
-        std::vector<uint32_t> key_size = {8};
-        for(uint32_t r : record_num) {
-            for(uint32_t k : key_size) {
-                b->Args({r, k});
             }
         }
     }
@@ -125,6 +118,8 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) {
     for (auto _ : st) {
         const uint32_t queue_size = st.range(2);
+        const uint32_t batch_to_run = st.range(3);
+        const uint32_t task_to_run = batch_to_run * queue_size;
 
         constexpr ermia::epoch_num cur_epoch = 0;
 
@@ -133,28 +128,28 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
         std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(
                 queue_size);
 
+        // Run tasks with the same number of records
         uint32_t completed_task_cnt = 0;
-        uint32_t next_record_idx = 0;
-        while (completed_task_cnt < records.size()) {
+        while (completed_task_cnt < task_to_run) {
             for(uint32_t i= 0; i < queue_size; i++) {
                 task<bool> & coro_task = task_queue[i];
                 if(coro_task.valid()){
                     if(!coro_task.done()) {
                         coro_task.resume();
                     } else {
+                        completed_task_cnt++;
                         bool res = coro_task.get_return_value();
                         ASSERT(res);
-                        completed_task_cnt++;
                         coro_task = task<bool>(nullptr);
                     }
                 }
 
-                if(!coro_task.valid() && next_record_idx < records.size()) {
-                    const Record & record = records[next_record_idx++];
+                if(!coro_task.valid()) {
+                    const Record & record = records[std::rand() % records.size()];
                     coro_task = tree_->search(
-                            ermia::varstr(record.key.data(), record.key.size()),
-                            out_values[i], cur_epoch, nullptr);
-                    // call_stacks[i].reserve(20);
+                        ermia::varstr(record.key.data(), record.key.size()),
+                        out_values[i], cur_epoch, nullptr);
+
                     coro_task.set_call_stack(&call_stacks[i]);
                     // XXX: remove this line improve performance about 25% ??
                     // initial suspended
@@ -166,11 +161,12 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
 }
 
 BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoro)
-    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
+    ->Apply(PerfSingleThreadSearch::BatchArguments);
 
-BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped) (benchmark::State &st) {
+BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::State &st) {
     for (auto _ : st) {
         const uint32_t queue_size = st.range(2);
+        const uint32_t batch_to_run = st.range(3);
 
         constexpr ermia::epoch_num cur_epoch = 0;
 
@@ -178,28 +174,21 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped) (benchmark:
         std::vector<ermia::OID> out_values(queue_size);
         std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(queue_size);
 
-        uint32_t completed_task_cnt = 0;
-        uint32_t next_record_idx = 0;
-        while (completed_task_cnt < records.size()) {
-            for (uint32_t i= 0; i < queue_size; i++) {
-                if (next_record_idx >= records.size()) {
-                    break;
-                }
-
+        for(uint32_t b = 0; b < batch_to_run; b++) {
+            for (uint32_t i = 0; i < queue_size; i++) {
                 task<bool> & coro_task = task_queue[i];
                 ASSERT(!coro_task.valid());
-                const Record & record = records[next_record_idx++];
+
+                const Record & record = records[std::rand() % records.size()];
                 coro_task = tree_->search(
-                        ermia::varstr(record.key.data(), record.key.size()),
-                        out_values[i], cur_epoch, nullptr);
-                call_stacks[i].reserve(20);
+                    ermia::varstr(record.key.data(), record.key.size()),
+                    out_values[i], cur_epoch, nullptr);
                 coro_task.set_call_stack(&call_stacks[i]);
             }
 
-            bool batch_completed = false;
-            while (!batch_completed) {
-                batch_completed = true;
-                for (uint32_t i= 0; i < queue_size; i++) {
+            int finished = 0;
+            while (finished < queue_size) {
+                for (uint32_t i = 0; i < queue_size; i++) {
                     task<bool> & coro_task = task_queue[i];
                     if (!coro_task.valid()){
                         continue;
@@ -207,11 +196,10 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped) (benchmark:
 
                     if (!coro_task.done()) {
                         coro_task.resume();
-                        batch_completed = false;
                     } else {
+                        finished++;
                         bool res = coro_task.get_return_value();
                         ASSERT(res);
-                        completed_task_cnt++;
                         coro_task = task<bool>(nullptr);
                     }
                 }
@@ -220,58 +208,64 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped) (benchmark:
     }
 }
 
-BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoroForceGrouped)
-    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
+BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoroBatched)
+    ->Apply(PerfSingleThreadSearch::BatchArguments);
 
 #else
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Sequential) (benchmark::State &st) {
     for (auto _ : st) {
+        const uint32_t queue_size = st.range(2);
+        const uint32_t batch_to_run = st.range(3);
+
         constexpr ermia::epoch_num cur_epoch = 0;
         ermia::OID out_value;
-        for(const Record & record : records) {
-            bool res = tree_->search(ermia::varstr(record.key.data(), record.key.size()),
-                                     out_value, cur_epoch, nullptr);
-            ASSERT(res && out_value == record.value);
+        for(uint32_t b = 0; b < batch_to_run; b++) {
+            [&] () -> void {
+                for(uint32_t i = 0; i < queue_size; i++) {
+                    const Record & record = records[std::rand() % records.size()];
+                    bool res = tree_->search(ermia::varstr(record.key.data(), record.key.size()),
+                                             out_value, cur_epoch, nullptr);
+                    ASSERT(res && out_value == record.value);
+                }
+            }();
         }
     }
 }
 
 BENCHMARK_REGISTER_F(PerfSingleThreadSearch, Sequential)
-    ->Apply(PerfSingleThreadSearch::SequentialArguments);
+    ->Apply(PerfSingleThreadSearch::BatchArguments);
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, SimpleCoro) (benchmark::State &st) {
     for (auto _ : st) {
         const uint32_t queue_size = st.range(2);
-
-        std::vector<generator_handle> generator_queue(queue_size, nullptr);
-        std::vector<ermia::OID> out_values(queue_size, 0);
+        const uint32_t batch_to_run = st.range(3);
 
         constexpr ermia::epoch_num cur_epoch = 0;
         ermia::SingleThreadedMasstree::threadinfo ti(cur_epoch);
 
-        uint32_t completed_search_num = 0;
-        uint32_t next_record_idx = 0;
-
-        while(completed_search_num < records.size()) {
+        std::vector<generator_handle> generator_queue(queue_size, nullptr);
+        std::vector<ermia::varstr> keys(queue_size);
+        std::vector<ermia::OID> out_values(queue_size, 0);
+        for(uint32_t b = 0; b < batch_to_run; b++) {
             for(uint32_t i = 0; i < queue_size; i++) {
-                generator_handle & handle = generator_queue[i];
+                const Record & record = records[std::rand() % records.size()];
+                keys[i] = ermia::varstr(record.key.data(), record.key.size());
+                generator_queue[i] = tree_->search_coro(keys[i], out_values[i], ti, nullptr).get_handle();
+            }
 
-                if (handle) {
-                    if(!handle.done()) {
-                        handle.resume();
-                    } else {
-                        completed_search_num++;
-                        handle.destroy();
-                        handle = nullptr;
+            int finished = 0;
+            while(finished < queue_size) {
+                for (auto & handle : generator_queue) {
+                    if (handle) {
+                        if(!handle.done()) {
+                            handle.resume();
+                        } else {
+                            finished++;
+                            handle.destroy();
+                            handle = nullptr;
+                        }
                     }
-                }
-                
-                if(!handle && next_record_idx < records.size()) {
-                    const Record & record = records[next_record_idx++];
-                    handle = tree_->search_coro(
-                        ermia::varstr(record.key.data(), record.key.size()),
-                        out_values[i], ti, nullptr).get_handle();
                 }
             }
         }
@@ -279,27 +273,23 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, SimpleCoro) (benchmark::State &st) {
 }
 
 BENCHMARK_REGISTER_F(PerfSingleThreadSearch, SimpleCoro)
-    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
+    ->Apply(PerfSingleThreadSearch::BatchArguments);
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
     for (auto _ : st) {
-        const uint32_t parellel_amac_num = st.range(2);
+        const uint32_t queue_size = st.range(2);
+        const uint32_t batch_to_run = st.range(3);
 
         constexpr ermia::epoch_num cur_epoch = 0;
 
         std::vector<ermia::ConcurrentMasstree::AMACState> amac_states;
         std::vector<ermia::varstr> amac_params;
-        amac_states.reserve(parellel_amac_num);
-        amac_params.reserve(parellel_amac_num);
+        amac_states.reserve(queue_size);
+        amac_params.reserve(queue_size);
 
-        uint32_t next_record_idx = 0;
-        while(next_record_idx < records.size()) {
-            for(uint32_t i = 0; i < parellel_amac_num; i++) {
-                if (next_record_idx >= records.size()) {
-                    break;
-                }
-
-                const Record & record = records[next_record_idx++];
+        for(uint32_t b = 0; b < batch_to_run; b++) {
+            for(uint32_t i = 0; i < queue_size; i++) {
+                const Record & record = records[std::rand() % records.size()];
                 amac_params.emplace_back(record.key.data(), record.key.size());
                 amac_states.emplace_back(&amac_params.back());
             }
@@ -317,6 +307,6 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
 }
 
 BENCHMARK_REGISTER_F(PerfSingleThreadSearch, Amac)
-    ->Apply(PerfSingleThreadSearch::InterleavedArguments);
+    ->Apply(PerfSingleThreadSearch::BatchArguments);
 
 #endif
