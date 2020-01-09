@@ -66,7 +66,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
         std::vector<uint32_t> record_num = {10000000};
         std::vector<uint32_t> key_size = {8};
         std::vector<uint32_t> group_size = {5, 15, 25};
-        std::vector<uint32_t> batch_to_run = {10000};
+        std::vector<uint32_t> batch_to_run = {1000000};
         for(uint32_t r : record_num) {
             for(uint32_t k : key_size) {
                 for(uint32_t g : group_size) {
