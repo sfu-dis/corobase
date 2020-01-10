@@ -2,9 +2,11 @@
 
 #include <numa.h>
 #include <sched.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/syscall.h>
 #include <signal.h>
 
 #include <array>
@@ -84,15 +86,21 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
        std::stringstream parent_pid;
        parent_pid << getpid();
 
+       int cpu = -1;
+       syscall(SYS_getcpu, &cpu, nullptr, nullptr);
+
+       std::stringstream cpu_id;
+       cpu_id << cpu;
+
        pid_t pid = fork();
        // Launch profiler
        if (pid == 0) {
            if(ermia::config::perf_record_event != "") {
-             exit(execl("/usr/bin/perf","perf","record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(),
-                        "-p", parent_pid.str().c_str(), nullptr));
+             exit(execl("/usr/bin/perf", "perf", "record", "-F", "99", "-e", ermia::config::perf_record_event.c_str(),
+                        "-p", parent_pid.str().c_str(), "--cpu", cpu_id.str().c_str(), nullptr));
            } else {
-             exit(execl("/usr/bin/perf","perf","stat", "-B", "-e",  "cache-references,cache-misses,cycles,instructions,branches,faults", 
-                        "-p", parent_pid.str().c_str(), nullptr));
+             exit(execl("/usr/bin/perf", "perf", "stat", "-B", "-e", "cache-references,cache-misses,cycles,instructions,branches,faults", 
+                        "-p", parent_pid.str().c_str(), "--cpu", cpu_id.str().c_str(), nullptr));
            }
        } else {
            perf_pid_ = pid;
