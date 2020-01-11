@@ -285,19 +285,16 @@ struct promise_base {
     // Note that there is no need to coroutine_handle.destroy() call here,
     // the destroy all happens in the destruction of task<> class.
     ASSERT(call_stack_);
+    ASSERT(call_stack_->size() > 0);
+    if (call_stack_->size() == 1) {
+      return coro_task_private::final_awaiter(
+        std::experimental::noop_coroutine());
+    }
 
-    // call_stack_ has a sentinel value
-    ASSERT(call_stack_->size() > 1);
-    call_stack_->pop_back();
-
-    coro_task_private::final_awaiter awaiters[2] = {
-        coro_task_private::final_awaiter(std::experimental::noop_coroutine()),
-        coro_task_private::final_awaiter(call_stack_->back())
-    };
-
-    // if the current coroutine is the last one in call_stack_, then hand over
+    // Other cases, pop this coroutine from the call_stack_ and hand over
     // the control flow to its caller.
-    return std::move(awaiters[call_stack_->size() == 1 ? 0 : 1]);
+    call_stack_->pop_back();
+    return coro_task_private::final_awaiter(call_stack_->back());
   }
   void unhandled_exception() { std::terminate(); }
 
@@ -374,8 +371,6 @@ public:
   void set_call_stack(
       ermia::dia::coro_task_private::coro_stack * stack) {
     stack->clear();
-    // insert sentinel
-    stack->emplace_back(nullptr);
     coroutine_.promise().add_to_stack(stack);
   }
 
@@ -396,7 +391,6 @@ public:
   }
 
   awaiter operator co_await() const {
-    _mm_prefetch(coroutine_.promise().get_call_stack(), _MM_HINT_T0);
     return awaiter(coroutine_);
   }
 
