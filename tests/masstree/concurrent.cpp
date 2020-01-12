@@ -224,9 +224,6 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
         ermia::dia::coro_task_private::memory_pool memory_pool;
 
         std::array<task<bool>, task_queue_size> task_queue;
-        std::array<
-            ermia::dia::coro_task_private::coro_stack,
-            task_queue_size> coro_stacks;
 
         std::vector<ermia::OID> coro_return_values;
         coro_return_values.resize(records_to_insert.size());
@@ -238,7 +235,6 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
             ermia::OID & result = coro_return_values[next_task_index];
             next_task_index++;
             coro_task = searchByKey(record.key, &result, xid_context.begin_epoch);
-            coro_task.set_call_stack(&coro_stacks[i]);
         }
 
         uint32_t completed_task_cnt = 0;
@@ -262,7 +258,6 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
                         next_task_index++;
                         coro_task = searchByKey(record.key, &result,
                                                 xid_context.begin_epoch);
-                        coro_task.set_call_stack(&coro_stacks[i]);
                     } else {
                         coro_task = task<bool>(nullptr);
                     }

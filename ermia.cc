@@ -295,8 +295,7 @@ void ConcurrentMasstreeIndex::simple_coro_MultiGet(
 void ConcurrentMasstreeIndex::adv_coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
     std::vector<ermia::dia::task<bool>> &index_probe_tasks,
-    std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks,
-    std::vector<ermia::dia::coro_task_private::coro_stack> &coro_stacks) {
+    std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks) {
   ermia::epoch_num e = t ? t->xc->begin_epoch : MM::epoch_enter();
   ConcurrentMasstree::versioned_node_t sinfo;
   thread_local std::vector<OID> oids;
@@ -305,7 +304,6 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
   for (int i = 0; i < keys.size(); ++i) {
     oids.emplace_back(INVALID_OID);
     index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
-    index_probe_tasks[i].set_call_stack(&coro_stacks[i]);
   }
 
   int finished = 0;
@@ -335,7 +333,6 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
       for (uint32_t i = 0; i < keys.size(); ++i) {
         if (oids[i] != INVALID_OID) {
           value_fetch_tasks[i] = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oids[i], t->xc);
-          value_fetch_tasks[i].set_call_stack(&coro_stacks[i]);
         } else {
           ++finished;
         }
