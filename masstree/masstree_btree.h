@@ -225,9 +225,9 @@ public:
 
   inline PROMISE(bool) search(const key_type &k, OID &o, epoch_num e,
                      versioned_node_t *search_info = nullptr) const;
-  PROMISE(bool) search_adv_coro_l1(const key_type &k, OID &o, epoch_num e, 
+  ermia::dia::task<bool> search_coro_1_layer(const key_type &k, OID &o, epoch_num e,
                      versioned_node_t *search_info = nullptr) const;
-  PROMISE(bool) search_adv_coro_l2(const key_type &k, OID &o, epoch_num e,
+  ermia::dia::task<bool> search_coro_2_layer(const key_type &k, OID &o, epoch_num e, 
                      versioned_node_t *search_info = nullptr) const;
 
   inline void search_amac(std::vector<AMACState> &states, epoch_num epoch) const;

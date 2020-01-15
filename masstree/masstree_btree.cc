@@ -122,8 +122,8 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
 
 
 template <typename P>
-PROMISE(bool)
-mbtree<P>::search_adv_coro_l2(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const {
+ermia::dia::task<bool>
+mbtree<P>::search_coro_1_layer(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const {
   threadinfo ti(e);
 
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
@@ -152,7 +152,7 @@ retry2:
   while (!v[sense].isleaf()) {
     const Masstree::internode<P>* in = static_cast<const Masstree::internode<P>*>(n[sense]);
     in->prefetch();
-    SUSPEND;
+    co_await std::experimental::suspend_always{};
     int kp = Masstree::internode<P>::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
     if (!n[!sense]) goto retry2;
@@ -178,13 +178,13 @@ forward:
   if (lp.v_.deleted()) goto retry;
 
   lp.n_->prefetch();
-  SUSPEND;
+  co_await std::experimental::suspend_always{};
   lp.perm_ = lp.n_->permutation();
   kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    SUSPEND;
+    co_await std::experimental::suspend_always{};
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -205,12 +205,12 @@ forward:
   if (search_info) {
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   }
-  RETURN match;
+  co_return match;
 }
 
 template <typename P>
-PROMISE(bool)
-mbtree<P>::search_adv_coro_l1(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const {
+ermia::dia::task<bool>
+mbtree<P>::search_coro_2_layer(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const {
   threadinfo ti(e);
 
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
@@ -227,13 +227,13 @@ forward:
   if (lp.v_.deleted()) goto retry;
 
   lp.n_->prefetch();
-  SUSPEND;
+  co_await std::experimental::suspend_always{};
   lp.perm_ = lp.n_->permutation();
   kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
     lp.lv_ = lp.n_->lv_[kx.p];
     lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    SUSPEND;
+    co_await std::experimental::suspend_always{};
     match = lp.n_->ksuf_matches(kx.p, lp.ka_);
   } else
     match = 0;
@@ -254,7 +254,7 @@ forward:
   if (search_info) {
     *search_info = versioned_node_t(lp.node(), lp.full_version_value());
   }
-  RETURN match;
+  co_return match;
 }
 
 template
@@ -264,11 +264,11 @@ mbtree<masstree_params>::ycsb_read_coro(ermia::transaction *txn,
                                         threadinfo &ti, versioned_node_t *search_info) const;
 
 template
-PROMISE(bool)
-mbtree<masstree_params>::search_adv_coro_l1(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
+ermia::dia::task<bool>
+mbtree<masstree_params>::search_coro_1_layer(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
 
 template
-PROMISE(bool)
-mbtree<masstree_params>::search_adv_coro_l2(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
+ermia::dia::task<bool>
+mbtree<masstree_params>::search_coro_2_layer(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
 
 } // namespace ermia
