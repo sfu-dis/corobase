@@ -25,7 +25,6 @@ transaction::transaction(uint64_t flags, str_arena &sa)
   } else {
     initialize_read_write();
   }
-  sa.reset();
 }
 
 void transaction::initialize_read_write() {

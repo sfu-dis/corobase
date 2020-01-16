@@ -58,13 +58,12 @@ public:
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
                      barrier_b),
-        tbl((ermia::DecoupledMasstreeIndex *)open_tables.at("USERTABLE")),
+        tbl((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")),
         uniform_rng(1237 + worker_id) {
     if (g_zipfian_rng) {
       zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
     }
 
-    tx_arenas = new ermia::str_arena[ermia::config::coro_batch_size];
     transactions = static_cast<ermia::transaction*>(malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size));
   }
 
@@ -156,8 +155,6 @@ public:
 private:
   task<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
     ermia::transaction *txn = nullptr;
-    ermia::str_arena & txn_arena = tx_arenas[idx];
-    txn_arena.reset();
 
     if (!ermia::config::index_probe_only) {
         txn = &transactions[idx];
@@ -168,8 +165,8 @@ private:
     }
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
-      ermia::varstr &k = GenerateKey(&txn_arena);
-      ermia::varstr &v = str(&txn_arena, sizeof(YcsbRecord));
+      ermia::varstr &k = GenerateKey();
+      ermia::varstr &v = str(sizeof(YcsbRecord));
 
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -212,12 +209,9 @@ private:
   static task<rc_t> TxnRead(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<ycsb_cs_adv_worker *>(w)->txn_read(idx, begin_epoch);
   }
-
 protected:
-  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena *cur_arena, uint64_t size) {
-    return *(cur_arena->next(size));
-  }
-  ermia::varstr &GenerateKey(ermia::str_arena *cur_arena) {
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ermia::varstr &GenerateKey() {
     uint64_t r = 0;
     if (g_zipfian_rng) {
       r = zipfian_rng.next();
@@ -225,9 +219,8 @@ protected:
       r = uniform_rng.uniform_within(0, g_initial_table_size - 1);
     }
 
-    ermia::varstr &k = str(cur_arena, sizeof(uint64_t)); // 8-byte key
-    new (&k)
-        ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
+    ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
+    new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
     ::BuildKey(r, k);
     return k;
   }
@@ -237,7 +230,6 @@ private:
   foedus::assorted::UniformRandom uniform_rng;
   foedus::assorted::ZipfianRandom zipfian_rng;
   ermia::transaction *transactions;
-  ermia::str_arena *tx_arenas;
 };
 
 class ycsb_cs_adv_usertable_loader : public bench_loader {
@@ -277,8 +269,8 @@ protected:
 
     // Verify inserted values
     for (uint64_t i = 0; i < to_insert; ++i) {
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       arena.reset();
+      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
       ermia::varstr &k = str(sizeof(uint64_t));
