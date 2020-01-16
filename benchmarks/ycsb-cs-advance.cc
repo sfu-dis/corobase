@@ -173,13 +173,7 @@ private:
 
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
-      if (!ermia::config::index_probe_only) {
-        co_await tbl->Get(txn, rc, k, v);  // Read
-      } else {
-        ermia::OID oid = 0;
-        ermia::ConcurrentMasstree::versioned_node_t sinfo;
-        rc = (co_await tbl->GetMasstree().search(k, oid, begin_epoch, &sinfo)) ? RC_TRUE : RC_FALSE;
-      }
+      co_await tbl->Get(txn, rc, k, v);  // Read
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       if (rc.IsAbort()) {
