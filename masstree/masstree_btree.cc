@@ -208,54 +208,6 @@ forward:
   co_return match;
 }
 
-template <typename P>
-ermia::dia::task<bool>
-mbtree<P>::search_coro_2_layer(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const {
-  threadinfo ti(e);
-
-  Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());
-
-  // variables in find_unlocked
-  int match;
-  key_indexed_position kx;
-  Masstree::node_base<P>* root = const_cast<Masstree::node_base<P>*>(lp.root_);
-
-retry:
-  lp.n_ = AWAIT root->reach_leaf(lp.ka_, lp.v_, ti);
-
-forward:
-  if (lp.v_.deleted()) goto retry;
-
-  lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
-  lp.perm_ = lp.n_->permutation();
-  kx = Masstree::leaf<P>::bound_type::lower(lp.ka_, lp);
-  if (kx.p >= 0) {
-    lp.lv_ = lp.n_->lv_[kx.p];
-    lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
-    match = lp.n_->ksuf_matches(kx.p, lp.ka_);
-  } else
-    match = 0;
-  if (lp.n_->has_changed(lp.v_)) {
-    lp.n_ = lp.n_->advance_to_key(lp.ka_, lp.v_, ti);
-    goto forward;
-  }
-
-  if (match < 0) {
-    lp.ka_.shift_by(-match);
-    root = lp.lv_.layer();
-    goto retry;
-  }
-  
-  if (match) {
-    o = lp.value();
-  }
-  if (search_info) {
-    *search_info = versioned_node_t(lp.node(), lp.full_version_value());
-  }
-  co_return match;
-}
 
 template
 ermia::dia::generator<bool>
@@ -266,9 +218,5 @@ mbtree<masstree_params>::ycsb_read_coro(ermia::transaction *txn,
 template
 ermia::dia::task<bool>
 mbtree<masstree_params>::search_coro_1_layer(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
-
-template
-ermia::dia::task<bool>
-mbtree<masstree_params>::search_coro_2_layer(const key_type &k, OID &o, epoch_num e, versioned_node_t *search_info ) const;
 
 } // namespace ermia
