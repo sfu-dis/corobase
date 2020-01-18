@@ -82,6 +82,8 @@ void transaction::initialize_read_write() {
     log = (flags & TXN_FLAG_READ_ONLY) ? nullptr : logmgr->new_tx_log();
     xc->begin = logmgr->cur_lsn().offset() + 1;
 #endif
+  } else {
+    xc->begin = logmgr->cur_lsn().offset() + 1;
   }
 }
 
