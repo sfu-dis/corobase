@@ -9,8 +9,6 @@
 
 namespace ermia {
 struct varstr {
-  friend std::ostream &operator<<(std::ostream &o, const varstr &k);
-
  public:
   inline varstr() : l(0), p(NULL) {}
 
@@ -87,6 +85,15 @@ struct varstr {
   inline const uint8_t *data() const { return p; }
   inline uint8_t *data() { return (uint8_t *)p; }
   inline bool empty() const { return not size(); }
+
+  friend std::ostream &operator<<(std::ostream &o, const varstr &k) {
+      for(uint32_t i = 0; i < k.size(); i++) {
+          std::cout << "/" << (uint16_t)(k.data()[i]);
+      }
+      std::cout << std::endl;
+      return o;
+  }
+
 
 #ifdef MASSTREE
   inline operator lcdf::Str() const { return lcdf::Str(p, l); }
