@@ -67,7 +67,7 @@ target_include_directories(test_masstree PRIVATE ${ERMIA_INCLUDES})
 target_link_libraries(test_masstree gtest_main)
 
 
-set(PERF_SRCS
+set(SS_PERF_SRCS
     ${DBCORE_SRCS}
     ${MASSTREE_SRCS}
     ${TEST_UTILS_SRCS}
@@ -75,6 +75,16 @@ set(PERF_SRCS
     perf_single_threaded.cpp
 )
 
-add_executable(perf_masstree ${PERF_SRCS})
-target_include_directories(perf_masstree PRIVATE ${ERMIA_INCLUDES})
-target_link_libraries(perf_masstree benchmark_main)
+add_executable(perf_single_thread_masstree ${SS_PERF_SRCS})
+target_include_directories(perf_single_thread_masstree PRIVATE ${ERMIA_INCLUDES})
+target_link_libraries(perf_single_thread_masstree benchmark_main)
+
+set(CONCURRENT_PERF_SRCS
+    ${DBCORE_SRCS}
+    ${MASSTREE_SRCS}
+    ${TEST_UTILS_SRCS}
+    perf_concurrent.cpp
+)
+
+add_executable(perf_concurrent_masstree ${CONCURRENT_PERF_SRCS})
+target_include_directories(perf_concurrent_masstree PRIVATE ${ERMIA_INCLUDES})
