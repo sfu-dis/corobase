@@ -65,7 +65,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
     }
 
     static void BatchArguments(benchmark::internal::Benchmark *bench) {
-        std::vector<uint32_t> record_num = {10000000};
+        std::vector<uint32_t> record_num = {30000000};
         std::vector<uint32_t> key_size = {8};
         std::vector<uint32_t> group_size = {5, 15, 25};
         std::vector<uint32_t> batch_to_run = {1000000};
@@ -179,6 +179,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::Stat
         constexpr ermia::epoch_num cur_epoch = 0;
 
         std::vector<task<bool>> task_queue(queue_size);
+        std::vector<ermia::varstr> task_params(queue_size);
         std::vector<ermia::OID> out_values(queue_size);
         std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(queue_size);
 
@@ -188,9 +189,9 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::Stat
                 ASSERT(!coro_task.valid());
 
                 const Record & record = records[std::rand() % records.size()];
+                task_params[i] = ermia::varstr(record.key.data(), record.key.size());
                 coro_task = tree_->search(
-                    ermia::varstr(record.key.data(), record.key.size()),
-                    out_values[i], cur_epoch, nullptr);
+                    task_params[i], out_values[i], cur_epoch, nullptr);
                 coro_task.set_call_stack(&call_stacks[i]);
             }
 
