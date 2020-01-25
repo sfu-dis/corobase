@@ -17,6 +17,7 @@
 
 template <typename T>
 using task = ermia::dia::task<T>;
+using key_buffer_t = uint64_t;
 
 class Context {
    public:
@@ -33,8 +34,14 @@ class Context {
                   << " threads" << std::endl;
         setUpMasstree();
 
-        loadRecords(all_records_);
-        verifyInserted(all_records_);
+        std::cout << "Randomly generating " << k_record_num << " records..."
+                  << std::endl;
+        std::vector<Record> records = genSequentialRecords(k_record_num, k_key_len);
+
+        static_assert(sizeof(key_buffer_t) <= k_key_len, "Key buffer does not have enough space");
+
+        loadRecords(records);
+        verifyInserted(records);
 
         spin_barrier setup_barrier(running_threads_.size());
         spin_barrier start_barrier(running_threads_.size() > 0 ? 1 : 0);
@@ -83,7 +90,6 @@ class Context {
     bool is_running_;
 
     ermia::ConcurrentMasstree *masstree_;
-    std::vector<Record> all_records_;
     std::vector<ermia::thread::Thread *> running_threads_;
 
    private:
@@ -96,10 +102,6 @@ class Context {
         ermia::thread::Thread::Task masstree_alloc_task = [&](char *) {
             masstree_ = new (ermia::MM::allocate(sizeof(ermia::ConcurrentMasstree)))
                         ermia::ConcurrentMasstree();
-
-            std::cout << "Randomly generating " << k_record_num << " records..."
-                      << std::endl;
-            all_records_ = genSequentialRecords(k_record_num, k_key_len);
         };
         th->StartTask(masstree_alloc_task, nullptr);
         th->Join();
@@ -204,10 +206,10 @@ class ContextNestedCoro : public Context {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
                 std::default_random_engine generator(seed);
-                std::uniform_int_distribution<int> distribution(
-                    0, all_records_.size() - 1);
+                std::uniform_int_distribution<uint64_t> distribution;
                 std::array<task<bool>, k_batch_size> task_queue;
-                std::array<ermia::OID, k_batch_size> task_rets = {0};
+                std::array<ermia::OID, k_batch_size> task_rets;
+                std::array<key_buffer_t, k_batch_size> task_key_bufs;
                 std::array<ermia::varstr, k_batch_size> task_params;
                 std::array<ermia::dia::coro_task_private::coro_stack,
                            k_batch_size>
@@ -226,8 +228,7 @@ class ContextNestedCoro : public Context {
                         task<bool> &t = task_queue[j];
                         if (t.valid()) {
                             if (t.done()) {
-                                ASSERT(t.get_return_value());
-                                ASSERT(task_rets[j] == task_records[j]->value);
+                                bool res = t.get_return_value();
                                 t = task<bool>(nullptr);
                                 (*counter)++;
                             } else {
@@ -236,8 +237,8 @@ class ContextNestedCoro : public Context {
                         }
 
                         if (!t.valid()) {
-                            const Record &record = all_records_[distribution(generator)];
-                            task_params[j] = ermia::varstr(record.key.data(), record.key.size());
+                            task_key_bufs[j] = distribution(generator);
+                            task_params[j] = ermia::varstr((const char*)(&task_key_bufs[j]), k_key_len);
                             t = masstree_->search(task_params[j], task_rets[j], 0, nullptr);
                             t.set_call_stack(&(coro_stacks[j]));
                         }
@@ -264,8 +265,8 @@ class ContextSequential : public Context {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
                 std::default_random_engine generator(seed);
-                std::uniform_int_distribution<int> distribution(
-                    0, all_records_.size() - 1);
+                std::uniform_int_distribution<uint64_t> distribution;
+                key_buffer_t key_buf;
 
                 uint32_t *counter = (uint32_t*)(ermia::MM::allocate(sizeof(uint32_t)));
                 *counter = 0;
@@ -275,13 +276,11 @@ class ContextSequential : public Context {
 
                 start_barrier.wait_for();
                 while (ermia::volatile_read(is_running_)) {
-                    const Record & record = all_records_[distribution(generator)];
                     ermia::OID value_out;
+                    key_buf = distribution(generator);
                     bool res = sync_wait_coro(
-                        masstree_->search(ermia::varstr(record.key.data(), record.key.size()),
+                        masstree_->search(ermia::varstr((const char*)(&key_buf), k_key_len),
                                           value_out, 0, nullptr));
-                    ASSERT(res);
-                    ASSERT(value_out = record.value);
                     (*counter)++;
                 }
             };
@@ -299,10 +298,10 @@ class ContextAmac : public Context {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
                 std::default_random_engine generator(seed);
-                std::uniform_int_distribution<int> distribution(
-                    0, all_records_.size() - 1);
+                std::uniform_int_distribution<uint64_t> distribution;
                 std::vector<ermia::ConcurrentMasstree::AMACState> amac_states;
                 amac_states.reserve(k_batch_size);
+                std::array<key_buffer_t, k_batch_size> key_bufs;
                 std::array<ermia::varstr, k_batch_size> amac_params;
 
                 uint32_t *counter = (uint32_t*)(ermia::MM::allocate(sizeof(uint32_t)));
@@ -314,8 +313,8 @@ class ContextAmac : public Context {
                 start_barrier.wait_for();
                 while (ermia::volatile_read(is_running_)) {
                     for(uint32_t j = 0; j < k_batch_size; j++) {
-                        const Record & record = all_records_[distribution(generator)];
-                        amac_params[j] = ermia::varstr(record.key.data(), record.key.size());
+                        key_bufs[j] = distribution(generator);
+                        amac_params[j] = ermia::varstr((const char*)(&key_bufs[j]), k_key_len);
                         amac_states.emplace_back(&(amac_params[j]));
                     }
 
