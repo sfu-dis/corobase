@@ -33,10 +33,6 @@ class Context {
                   << " threads" << std::endl;
         setUpMasstree();
 
-        std::cout << "Randomly generating " << k_record_num << " records..."
-                  << std::endl;
-        all_records_ = genSequentialRecords(k_record_num, k_key_len);
-
         loadRecords(all_records_);
         verifyInserted(all_records_);
 
@@ -100,6 +96,10 @@ class Context {
         ermia::thread::Thread::Task masstree_alloc_task = [&](char *) {
             masstree_ = new (ermia::MM::allocate(sizeof(ermia::ConcurrentMasstree)))
                         ermia::ConcurrentMasstree();
+
+            std::cout << "Randomly generating " << k_record_num << " records..."
+                      << std::endl;
+            all_records_ = genSequentialRecords(k_record_num, k_key_len);
         };
         th->StartTask(masstree_alloc_task, nullptr);
         th->Join();
