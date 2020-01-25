@@ -81,15 +81,6 @@ class Context {
     std::vector<Record> all_records_;
     std::vector<ermia::thread::Thread *> running_threads_;
 
-    PROMISE(bool)
-    searchByKey(const std::string &key, ermia::OID *out_value,
-                ermia::epoch_num e) {
-        bool res = AWAIT masstree_->search(ermia::varstr(key.data(), key.size()),
-                                           *out_value, e, nullptr);
-
-        RETURN res;
-    }
-
    private:
     void loadRecords(const std::vector<Record> &records) {
         const uint32_t records_per_threads =
@@ -194,8 +185,8 @@ class ContextNestedCoro : public Context {
                 std::uniform_int_distribution<int> distribution(
                     0, all_records_.size() - 1);
                 std::array<task<bool>, k_batch_size> task_queue;
-                std::array<const Record *, k_batch_size> task_records = {nullptr};
                 std::array<ermia::OID, k_batch_size> task_rets = {0};
+                std::array<ermia::varstr, k_batch_size> task_params;
                 std::array<ermia::dia::coro_task_private::coro_stack,
                            k_batch_size>
                     coro_stacks;
@@ -219,8 +210,8 @@ class ContextNestedCoro : public Context {
 
                         if (!t.valid()) {
                             const Record &record = all_records_[distribution(generator)];
-                            task_records[j] = &record;
-                            t = searchByKey(record.key, &task_rets[j], 0);
+                            task_params[j] = ermia::varstr(record.key.data(), record.key.size());
+                            t = masstree_->search(task_params[j], task_rets[j], 0, nullptr);
                             t.set_call_stack(&(coro_stacks[j]));
                         }
                     }
@@ -255,7 +246,8 @@ class ContextSequential : public Context {
                     const Record & record = all_records_[distribution(generator)];
                     ermia::OID value_out;
                     bool res = sync_wait_coro(
-                        searchByKey(record.key, &value_out, 0));
+                        masstree_->search(ermia::varstr(record.key.data(), record.key.size()),
+                                          value_out, 0, nullptr));
                     ASSERT(res);
                     ASSERT(value_out = record.value);
                     counter[i]++;
