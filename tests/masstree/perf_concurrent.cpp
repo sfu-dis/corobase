@@ -20,23 +20,22 @@ using task = ermia::dia::task<T>;
 
 class Context {
    public:
-    Context() {
+    Context() : masstree_(nullptr) {
         init();
-        masstree_ = new ermia::ConcurrentMasstree();
     }
     ~Context() {
-        delete masstree_;
         fini();
     }
 
     void run() {
-        std::cout << "Randomly generating " << k_record_num << " records..."
-                  << std::endl;
-        all_records_ = genSequentialRecords(k_record_num, k_key_len);
-
         running_threads_ = getThreads(k_threads);
         std::cout << "Running perf use " << running_threads_.size()
                   << " threads" << std::endl;
+        setUpMasstree();
+
+        std::cout << "Randomly generating " << k_record_num << " records..."
+                  << std::endl;
+        all_records_ = genSequentialRecords(k_record_num, k_key_len);
 
         loadRecords(all_records_);
         verifyInserted(all_records_);
@@ -92,6 +91,20 @@ class Context {
     std::vector<ermia::thread::Thread *> running_threads_;
 
    private:
+    void setUpMasstree() {
+        assert(!masstree_);
+        assert(!running_threads_.empty());
+
+        ermia::thread::Thread *th = running_threads_[0];
+
+        ermia::thread::Thread::Task masstree_alloc_task = [&](char *) {
+            masstree_ = new (ermia::MM::allocate(sizeof(ermia::ConcurrentMasstree)))
+                        ermia::ConcurrentMasstree();
+        };
+        th->StartTask(masstree_alloc_task, nullptr);
+        th->Join();
+    }
+
     void loadRecords(const std::vector<Record> &records) {
         const uint32_t records_per_threads =
             ceil(records.size() / static_cast<float>(running_threads_.size()));
