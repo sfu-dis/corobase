@@ -81,7 +81,7 @@ class Context {
     static constexpr int k_record_num = 30000000;
     static constexpr int k_key_len = 8;
     static constexpr int k_threads = 10;
-    static constexpr int k_batch_size = 25;
+    static constexpr int k_batch_size = 10;
     static constexpr int k_running_secs = 10;
 
     bool is_running_;
@@ -292,7 +292,7 @@ class ContextSequential : public Context {
 
 class ContextAmac : public Context {
    public:
-    void search(spin_barrier &setup_barrier, spin_barrier &start_barrier,
+    void searchRecords(spin_barrier &setup_barrier, spin_barrier &start_barrier,
                 std::vector<uint32_t*> &counters) {
         for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task search_task = [&, i](char *) {
@@ -313,10 +313,10 @@ class ContextAmac : public Context {
 
                 start_barrier.wait_for();
                 while (ermia::volatile_read(is_running_)) {
-                    for(uint32_t i = 0; i < k_batch_size; i++) {
+                    for(uint32_t j = 0; j < k_batch_size; j++) {
                         const Record & record = all_records_[distribution(generator)];
-                        amac_params[i] = ermia::varstr(record.key.data(), record.key.size());
-                        amac_states.emplace_back(&(amac_params[i]));
+                        amac_params[j] = ermia::varstr(record.key.data(), record.key.size());
+                        amac_states.emplace_back(&(amac_params[j]));
                     }
 
                     if(amac_states.empty()) {
@@ -340,7 +340,7 @@ int main() {
 #ifdef USE_STATIC_COROUTINE
     ContextNestedCoro context;
 #else
-    ContextSequential context;
+    ContextAmac context;
 #endif
     context.run();
     return 0;
