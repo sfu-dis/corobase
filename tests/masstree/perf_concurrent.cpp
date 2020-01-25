@@ -34,19 +34,18 @@ class Context {
                   << std::endl;
         all_records_ = genSequentialRecords(k_record_num, k_key_len);
 
+        running_threads_ = getThreads(k_threads);
+        std::cout << "Running perf use " << running_threads_.size()
+                  << " threads" << std::endl;
+
         loadRecords(all_records_);
         verifyInserted(all_records_);
 
-        std::vector<ermia::thread::Thread *> searching_threads =
-            getThreads(k_searching_threads);
-        std::cout << "Running perf use " << searching_threads.size()
-                  << " threads" << std::endl;
+        spin_barrier setup_barrier(running_threads_.size());
+        spin_barrier start_barrier(running_threads_.size() > 0 ? 1 : 0);
+        std::vector<uint32_t> counter(running_threads_.size(), 0);
 
-        spin_barrier setup_barrier(searching_threads.size());
-        spin_barrier start_barrier(searching_threads.size() > 0 ? 1 : 0);
-        std::vector<uint32_t> counter(searching_threads.size(), 0);
-
-        search(searching_threads, setup_barrier, start_barrier, counter);
+        searchRecords(setup_barrier, start_barrier, counter);
 
         ermia::volatile_write(is_running_, true);
         start_barrier.count_down();
@@ -54,9 +53,7 @@ class Context {
             sleep(1);
             std::cout << "Run after " << i << " seconds..." << std::endl;
         }
-
         ermia::volatile_write(is_running_, false);
-        returnThreads(searching_threads);
 
         std::cout << "Perf completed" << std::endl;
         uint32_t counter_sum =
@@ -64,46 +61,43 @@ class Context {
         std::cout << "Total throughput: " << counter_sum << std::endl;
         std::cout << "Avg throughput(per sec): " << counter_sum / k_running_secs
                   << std::endl;
+
+        returnThreads(running_threads_);
     }
 
-    virtual void search(std::vector<ermia::thread::Thread *> &threads,
-                spin_barrier &setup_barrier, spin_barrier &start_barrier,
+    virtual void searchRecords(spin_barrier &setup_barrier, spin_barrier &start_barrier,
                 std::vector<uint32_t> &counter) = 0;
 
    protected:
     static constexpr int k_record_num = 30000000;
     static constexpr int k_key_len = 8;
-    static constexpr int k_loading_threads = 10;
-    static constexpr int k_searching_threads = 10;
+    static constexpr int k_threads = 10;
     static constexpr int k_batch_size = 25;
     static constexpr int k_running_secs = 10;
 
+    bool is_running_;
+
     ermia::ConcurrentMasstree *masstree_;
     std::vector<Record> all_records_;
-    bool is_running_;
+    std::vector<ermia::thread::Thread *> running_threads_;
 
     PROMISE(bool)
     searchByKey(const std::string &key, ermia::OID *out_value,
                 ermia::epoch_num e) {
         bool res = AWAIT masstree_->search(ermia::varstr(key.data(), key.size()),
-                                       *out_value, e, nullptr);
+                                           *out_value, e, nullptr);
 
         RETURN res;
     }
 
    private:
     void loadRecords(const std::vector<Record> &records) {
-        std::vector<ermia::thread::Thread *> loading_threads =
-            getThreads(k_loading_threads);
-        std::cout << "Loading use " << loading_threads.size() << " threads"
-                  << std::endl;
-
         const uint32_t records_per_threads =
-            ceil(records.size() / static_cast<float>(loading_threads.size()));
+            ceil(records.size() / static_cast<float>(running_threads_.size()));
         std::cout << "Start loading " << records.size() << " records..."
                   << std::endl;
         uint32_t loading_begin_idx = 0;
-        for (uint32_t i = 0; i < loading_threads.size(); i++) {
+        for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task load_task = [&, i, loading_begin_idx](
                                                         char *) {
                 uint32_t records_to_load = std::min(
@@ -131,10 +125,12 @@ class Context {
                 printf("thread ID(%d): finish loading %d records\n", i,
                        records_to_load);
             };
-            loading_threads[i]->StartTask(load_task, nullptr);
+            running_threads_[i]->StartTask(load_task, nullptr);
             loading_begin_idx += records_per_threads;
         }
-        returnThreads(loading_threads);
+        for(auto & th : running_threads_) {
+            th->Join();
+        }
         std::cout << "Finish loading " << records.size() << " records"
                   << std::endl;
     }
@@ -175,12 +171,12 @@ class Context {
     }
 
     static void returnThreads(
-        std::vector<ermia::thread::Thread *> &running_threads) {
-        for (ermia::thread::Thread *th : running_threads) {
+        std::vector<ermia::thread::Thread *> &running_threads_) {
+        for (ermia::thread::Thread *th : running_threads_) {
             th->Join();
             ermia::thread::PutThread(th);
         }
-        running_threads.clear();
+        running_threads_.clear();
     }
 };
 
@@ -188,10 +184,9 @@ class Context {
 
 class ContextNestedCoro : public Context {
    public:
-    void search(std::vector<ermia::thread::Thread *> &threads,
-                spin_barrier &setup_barrier, spin_barrier &start_barrier,
+    void searchRecords(spin_barrier &setup_barrier, spin_barrier &start_barrier,
                 std::vector<uint32_t> &counter) {
-        for (uint32_t i = 0; i < threads.size(); i++) {
+        for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task search_task = [&, i](char *) {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
@@ -235,7 +230,7 @@ class ContextNestedCoro : public Context {
                     t.destroy();
                 }
             };
-            threads[i]->StartTask(search_task, nullptr);
+            running_threads_[i]->StartTask(search_task, nullptr);
         }
     }
 };
@@ -244,10 +239,9 @@ class ContextNestedCoro : public Context {
 
 class ContextSequential : public Context {
    public:
-    void search(std::vector<ermia::thread::Thread *> &threads,
-                spin_barrier &setup_barrier, spin_barrier &start_barrier,
+    void searchRecords(spin_barrier &setup_barrier, spin_barrier &start_barrier,
                 std::vector<uint32_t> &counter) {
-        for (uint32_t i = 0; i < threads.size(); i++) {
+        for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task search_task = [&, i](char *) {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
@@ -267,17 +261,16 @@ class ContextSequential : public Context {
                     counter[i]++;
                 }
             };
-            threads[i]->StartTask(search_task, nullptr);
+            running_threads_[i]->StartTask(search_task, nullptr);
         }
     }
 };
 
 class ContextAmac : public Context {
    public:
-    void search(std::vector<ermia::thread::Thread *> &threads,
-                spin_barrier &setup_barrier, spin_barrier &start_barrier,
+    void search(spin_barrier &setup_barrier, spin_barrier &start_barrier,
                 std::vector<uint32_t> &counter) {
-        for (uint32_t i = 0; i < threads.size(); i++) {
+        for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task search_task = [&, i](char *) {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
@@ -307,7 +300,7 @@ class ContextAmac : public Context {
                     counter[i] += k_batch_size;
                 }
             };
-            threads[i]->StartTask(search_task, nullptr);
+            running_threads_[i]->StartTask(search_task, nullptr);
         }
     }
 };
