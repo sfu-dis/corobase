@@ -65,8 +65,6 @@ struct sm_log_record_scan_impl : sm_log_scan_mgr::record_scan {
    can't just allocate a log block to put log records into.
  */
 struct sm_tx_log_impl : sm_tx_log {
-  static void *alloc_storage();
-
   sm_tx_log_impl(sm_log_impl *l)
       : _log(l),
         _nreq(0),
@@ -89,6 +87,8 @@ struct sm_tx_log_impl : sm_tx_log {
 
   log_allocation *_install_commit_block(log_allocation *a);
   void _populate_block(log_block *b);
+
+  log_request log_requests[sm_log_recover_mgr::MAX_BLOCK_RECORDS];
 };
 
 DEF_IMPL(sm_log);

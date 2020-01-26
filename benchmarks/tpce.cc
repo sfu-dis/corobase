@@ -1048,7 +1048,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
     v_lt_new.lt_dts = now_dts;
     v_lt_new.lt_price = v_lt->lt_price + ticker.price_quote;
     v_lt_new.lt_vol = ticker.price_quote;
-    TryCatch(tbl_last_trade(1)->Put(txn, Encode(str(sizeof(k_lt)), k_lt),
+    TryCatch(tbl_last_trade(1)->UpdateRecord(txn, Encode(str(sizeof(k_lt)), k_lt),
                                      Encode(str(sizeof(v_lt_new)), v_lt_new)));
 
     pOut->num_updated++;
@@ -1104,7 +1104,7 @@ rc_t tpce_worker::DoMarketFeedFrame1(const TMarketFeedFrame1Input *pIn,
       memcpy(&v_t_new, v_t, sizeof(trade::value));
       v_t_new.t_dts = now_dts;
       v_t_new.t_st_id = std::string(type.status_submitted);
-      TryCatch(tbl_trade(1)->Put(txn, Encode(str(sizeof(k_t)), k_t),
+      TryCatch(tbl_trade(1)->UpdateRecord(txn, Encode(str(sizeof(k_t)), k_t),
                                   Encode(str(sizeof(v_t_new)), v_t_new)));
 
       // DTS field is updated - invalidating the key in 2nd indexes.
@@ -2437,7 +2437,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn,
         k_hs.hs_ca_id = pIn->acct_id;
         k_hs.hs_s_symb = std::string(pIn->symbol);
         v_hs.hs_qty = pIn->hs_qty - pIn->trade_qty;
-        TryCatch(tbl_holding_summary(1)->Put(txn,
+        TryCatch(tbl_holding_summary(1)->UpdateRecord(txn,
                                               Encode(str(sizeof(k_hs)), k_hs),
                                               Encode(str(sizeof(v_hs)), v_hs)));
       }
@@ -2483,7 +2483,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn,
           holding::key k_h_new(*k_h);
           holding::value v_h_new(*v_h);
           v_h_new.h_qty = hold_qty - needed_qty;
-          TryCatch(tbl_holding(1)->Put(txn,
+          TryCatch(tbl_holding(1)->UpdateRecord(txn,
                                         Encode(str(sizeof(k_h_new)), k_h_new),
                                         Encode(str(sizeof(v_h_new)), v_h_new)));
 
@@ -2581,7 +2581,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn,
       k_hs.hs_ca_id = pIn->acct_id;
       k_hs.hs_s_symb = std::string(pIn->symbol);
       v_hs.hs_qty = pIn->trade_qty + pIn->hs_qty;
-      TryCatch(tbl_holding_summary(1)->Put(txn,
+      TryCatch(tbl_holding_summary(1)->UpdateRecord(txn,
                                             Encode(str(sizeof(k_hs)), k_hs),
                                             Encode(str(sizeof(v_hs)), v_hs)));
     }
@@ -2631,7 +2631,7 @@ rc_t tpce_worker::DoTradeResultFrame2(const TTradeResultFrame2Input *pIn,
           holding::key k_h_new(*k_h);
           holding::value v_h_new(*v_h);
           v_h_new.h_qty = hold_qty + needed_qty;
-          TryCatch(tbl_holding(1)->Put(txn,
+          TryCatch(tbl_holding(1)->UpdateRecord(txn,
                                         Encode(str(sizeof(k_h_new)), k_h_new),
                                         Encode(str(sizeof(v_h_new)), v_h_new)));
 
@@ -2751,7 +2751,7 @@ rc_t tpce_worker::DoTradeResultFrame3(const TTradeResultFrame3Input *pIn,
   v_t_new.t_tax = pOut->tax_amount;  // secondary indices don't have t_tax
                                      // field. no need for cascading update
 
-  TryCatch(tbl_trade(1)->Put(txn, Encode(str(sizeof(k_t)), k_t),
+  TryCatch(tbl_trade(1)->UpdateRecord(txn, Encode(str(sizeof(k_t)), k_t),
                               Encode(str(sizeof(v_t_new)), v_t_new)));
 
   return {RC_TRUE};
@@ -2807,7 +2807,7 @@ rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   v_t_new.t_dts = CDateTime((TIMESTAMP_STRUCT *)&pIn->trade_dts).GetDate();
   v_t_new.t_st_id = std::string(pIn->st_completed_id);
   v_t_new.t_trade_price = pIn->trade_price;
-  TryCatch(tbl_trade(1)->Put(txn, Encode(str(sizeof(k_t)), k_t),
+  TryCatch(tbl_trade(1)->UpdateRecord(txn, Encode(str(sizeof(k_t)), k_t),
                               Encode(str(sizeof(v_t_new)), v_t_new)));
 
   // DTS field is updated - invalidating the key in 2nd indexes.
@@ -2844,7 +2844,7 @@ rc_t tpce_worker::DoTradeResultFrame5(const TTradeResultFrame5Input *pIn) {
   broker::value v_b_new(*v_b);
   v_b_new.b_comm_total += pIn->comm_amount;
   v_b_new.b_num_trades += 1;
-  TryCatch(tbl_broker(1)->Put(txn, Encode(str(sizeof(k_b)), k_b),
+  TryCatch(tbl_broker(1)->UpdateRecord(txn, Encode(str(sizeof(k_b)), k_b),
                                Encode(str(sizeof(v_b_new)), v_b_new)));
   return {RC_TRUE};
 }
@@ -2877,7 +2877,7 @@ rc_t tpce_worker::DoTradeResultFrame6(const TTradeResultFrame6Input *pIn,
     customer_account::value v_ca_new(*v_ca);
     v_ca_new.ca_bal += pIn->se_amount;
     TryCatch(
-        tbl_customer_account(1)->Put(txn, Encode(str(sizeof(k_ca)), k_ca),
+        tbl_customer_account(1)->UpdateRecord(txn, Encode(str(sizeof(k_ca)), k_ca),
                                      Encode(str(sizeof(v_ca_new)), v_ca_new)));
 
     cash_transaction::key k_ct;
@@ -3038,7 +3038,7 @@ rc_t tpce_worker::DoTradeUpdateFrame1(const TTradeUpdateFrame1Input *pIn,
       trade::value v_t_new;
       memcpy(&v_t_new, v_t, sizeof(trade::value));
       v_t_new.t_exec_name = temp_exec_name;
-      TryCatch(tbl_trade(1)->Put(txn, Encode(str(sizeof(k_t)), k_t),
+      TryCatch(tbl_trade(1)->UpdateRecord(txn, Encode(str(sizeof(k_t)), k_t),
                                   Encode(str(sizeof(v_t_new)), v_t_new)));
       // Nothing changes in 2nd indexes, we're done
 
@@ -3169,7 +3169,7 @@ rc_t tpce_worker::DoTradeUpdateFrame2(const TTradeUpdateFrame2Input *pIn,
           v_se_new.se_cash_type = "Margin Account";
       }
       TryCatch(
-          tbl_settlement(1)->Put(txn, Encode(str(sizeof(k_se)), k_se),
+          tbl_settlement(1)->UpdateRecord(txn, Encode(str(sizeof(k_se)), k_se),
                                  Encode(str(sizeof(v_se_new)), v_se_new)));
 
       pOut->num_updated++;
@@ -3335,7 +3335,7 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
         v_ct_new.ct_name = temp_ct_name;
 
         TryCatch(tbl_cash_transaction(1)
-                      ->Put(txn, Encode(str(sizeof(k_ct)), k_ct),
+                      ->UpdateRecord(txn, Encode(str(sizeof(k_ct)), k_ct),
                             Encode(str(sizeof(v_ct_new)), v_ct_new)));
         pOut->num_updated++;
 

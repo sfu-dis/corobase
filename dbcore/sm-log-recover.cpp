@@ -83,13 +83,13 @@ sm_log_recover_mgr::block_scanner::block_scanner(sm_log_recover_mgr *lm,
     : _lm(lm),
       _follow_overflow(follow_overflow),
       _fetch_payloads(fetch_payloads),
-      _force_fetch_from_logbuf(force_fetch_from_logbuf),
-      _buf((log_block *)RCU::rcu_alloc(fetch_payloads ? MAX_BLOCK_SIZE
-                                                 : MIN_BLOCK_FETCH)) {
+      _force_fetch_from_logbuf(force_fetch_from_logbuf) {
+  int err = posix_memalign((void **)&_buf, DEFAULT_ALIGNMENT, fetch_payloads ? MAX_BLOCK_SIZE : MIN_BLOCK_FETCH);
+  LOG_IF(FATAL, err != 0);
   _load_block(start, _follow_overflow);
 }
 
-sm_log_recover_mgr::block_scanner::~block_scanner() { RCU::rcu_free(_buf); };
+sm_log_recover_mgr::block_scanner::~block_scanner() { free(_buf); };
 
 void sm_log_recover_mgr::block_scanner::operator++() {
   /* If there are any remembered overflow blocks, process them

@@ -11,7 +11,6 @@
 #include "../dbcore/sm-coroutine.h"
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
-extern void ycsb_cs_simple_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_dia_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_do_test(ermia::Engine *db, int argc, char **argv);
@@ -41,16 +40,17 @@ class bench_loader : public ermia::thread::Runner {
   bench_loader(unsigned long seed, ermia::Engine *db,
                const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                uint32_t loader_id = 0)
-      : Runner(false)
+      : Runner(loader_id < ermia::config::threads ? true : false)
       , r(seed), db(db), open_tables(open_tables) {
     // don't try_instantiate() here; do it when we start to load. The way we
     // reuse
     // threads relies on this fact (see bench_runner::run()).
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
+    arena = new ermia::str_arena(ermia::config::arena_size_mb);
   }
 
   virtual ~bench_loader() {}
-  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
 
  private:
   virtual void MyWork(char *) { load(); }
@@ -63,7 +63,7 @@ class bench_loader : public ermia::thread::Runner {
   ermia::Engine *const db;
   std::map<std::string, ermia::OrderedIndex *> open_tables;
   ermia::transaction *txn_obj_buf;
-  ermia::str_arena arena;
+  ermia::str_arena *arena;
 };
 
 typedef std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> tx_stat;
@@ -76,7 +76,7 @@ class bench_worker : public ermia::thread::Runner {
   bench_worker(unsigned int worker_id, bool is_worker, unsigned long seed,
                ermia::Engine *db, const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                spin_barrier *barrier_a = nullptr, spin_barrier *barrier_b = nullptr)
-      : Runner(ermia::config::physical_workers_only),
+      : Runner(ermia::config::physical_workers_only ? true : (worker_id >= ermia::config::worker_threads / 2)),
         worker_id(worker_id),
         is_worker(is_worker),
         r(seed),
@@ -98,6 +98,7 @@ class bench_worker : public ermia::thread::Runner {
         ntxn_phantom_aborts(0),
         ntxn_query_commits(0) {
     txn_obj_buf = (ermia::transaction *)malloc(sizeof(ermia::transaction));
+    arena = new ermia::str_arena(ermia::config::arena_size_mb);
     if (ermia::config::numa_spread) {
       LOG(INFO) << "Worker " << worker_id << " going to node " << worker_id % ermia::config::numa_nodes;
       TryImpersonate(worker_id % ermia::config::numa_nodes);
@@ -140,7 +141,6 @@ class bench_worker : public ermia::thread::Runner {
   };
   typedef std::vector<workload_desc> workload_desc_vec;
   virtual workload_desc_vec get_workload() const = 0;
-
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const = 0;
   workload_desc_vec workload;
 
@@ -210,7 +210,7 @@ class bench_worker : public ermia::thread::Runner {
   std::vector<tx_stat> txn_counts;  // commits and aborts breakdown
 
   ermia::transaction *txn_obj_buf;
-  ermia::str_arena arena;
+  ermia::str_arena *arena;
 };
 
 class bench_runner {
@@ -226,7 +226,6 @@ class bench_runner {
   virtual ~bench_runner() {}
   virtual void prepare(char *) = 0;
   void run();
-  void create_files_task(char *);
   void start_measurement();
 
   static std::vector<bench_worker *> workers;
@@ -317,7 +316,6 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort() or r._val == RC_FALSE) __abort_txn(r); \
 }
 
-
 // combines the try...catch block with ALWAYS_ASSERT and allows abort.
 // The rc_is_abort case is there because sometimes we want to make
 // sure say, a get, succeeds, but the read itsef could also cause
@@ -334,4 +332,3 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 inline void TryVerifyStrict(rc_t rc) {
   LOG_IF(FATAL, rc._val != RC_TRUE) << "Wrong return value " << rc._val;
 }
-

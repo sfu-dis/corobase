@@ -8,7 +8,7 @@
 namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa)
-    : flags(flags), sa(sa) {
+    : flags(flags), sa(&sa) {
   if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a
@@ -18,7 +18,6 @@ transaction::transaction(uint64_t flags, str_arena &sa)
       ctx = TXN::xid_get_context(TXN::xid_alloc());
     }
     xc = ctx;
-    RCU::rcu_enter();
     xc->begin = rep::GetReadView();
     ASSERT(xc->begin);
     xc->xct = this;
@@ -32,69 +31,62 @@ void transaction::initialize_read_write() {
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
   }
+  GetWriteSet().clear();
+#if defined(SSN) || defined(SSI) || defined(MVOCC)
+  GetReadSet().clear();
+#endif
   xid = TXN::xid_alloc();
   xc = TXN::xid_get_context(xid);
+  xc->begin_epoch = config::tls_alloc ? MM::epoch_enter() : 0;
   xc->xct = this;
-
-  // "Normal" transactions
-  if (!(flags & TXN_FLAG_CSWITCH)) {
-    xc->begin_epoch = MM::epoch_enter();
 #if defined(SSN) || defined(SSI)
-    // If there's a safesnap, then SSN treats the snapshot as a transaction
-    // that has read all the versions, which means every update transaction
-    // should have a initial pstamp of the safesnap.
-    //
-    // Readers under SSI using safesnap are free from SSI checks, but writers
-    // will have to see whether they have a ct3 that's before the safesnap lsn
-    // (ie the safesnap is T1, updater is T2). So for SSI updaters also needs
-    // to take a look at the safesnap lsn.
+  // If there's a safesnap, then SSN treats the snapshot as a transaction
+  // that has read all the versions, which means every update transaction
+  // should have a initial pstamp of the safesnap.
+  //
+  // Readers under SSI using safesnap are free from SSI checks, but writers
+  // will have to see whether they have a ct3 that's before the safesnap lsn
+  // (ie the safesnap is T1, updater is T2). So for SSI updaters also needs
+  // to take a look at the safesnap lsn.
 
-    // Take a safe snapshot if read-only.
-    if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
-      ASSERT(MM::safesnap_lsn);
-      xc->begin = volatile_read(MM::safesnap_lsn);
-      log = NULL;
-    } else {
-      TXN::serial_register_tx(xid);
-      RCU::rcu_enter();
-      log = logmgr->new_tx_log();
-      // Must +1: a tx T can only update a tuple if its latest version was
-      // created before T's begin timestamp (i.e., version.clsn < T.begin,
-      // note the range is exclusive; see first updater wins rule in
-      // oid_put_update() in sm-oid.cpp). Otherwise we risk making no
-      // progress when retrying an aborted transaction: everyone is trying
-      // to update the same tuple with latest version stamped at cur_lsn()
-      // but no one can succeed (because version.clsn == cur_lsn == t.begin).
-      xc->begin = logmgr->cur_lsn().offset() + 1;
-#ifdef SSN
-      xc->pstamp = volatile_read(MM::safesnap_lsn);
-#elif defined(SSI)
-      xc->last_safesnap = volatile_read(MM::safesnap_lsn);
-#endif
-    }
-#elif defined(MVOCC)
-    RCU::rcu_enter();
-    log = logmgr->new_tx_log();
-    xc->begin = logmgr->cur_lsn().offset() + 1;
-#else
-    // SI - see if it's read only. If so, skip logging etc.
-    RCU::rcu_enter();
-    log = (flags & TXN_FLAG_READ_ONLY) ? nullptr : logmgr->new_tx_log();
-    xc->begin = logmgr->cur_lsn().offset() + 1;
-#endif
+  // Take a safe snapshot if read-only.
+  if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
+    ASSERT(MM::safesnap_lsn);
+    xc->begin = volatile_read(MM::safesnap_lsn);
+    log = NULL;
   } else {
+    TXN::serial_register_tx(xid);
+    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log_impl))->data());
+    // Must +1: a tx T can only update a tuple if its latest version was
+    // created before T's begin timestamp (i.e., version.clsn < T.begin,
+    // note the range is exclusive; see first updater wins rule in
+    // oid_put_update() in sm-oid.cpp). Otherwise we risk making no
+    // progress when retrying an aborted transaction: everyone is trying
+    // to update the same tuple with latest version stamped at cur_lsn()
+    // but no one can succeed (because version.clsn == cur_lsn == t.begin).
     xc->begin = logmgr->cur_lsn().offset() + 1;
+#ifdef SSN
+    xc->pstamp = volatile_read(MM::safesnap_lsn);
+#elif defined(SSI)
+    xc->last_safesnap = volatile_read(MM::safesnap_lsn);
+#endif
   }
+#elif defined(MVOCC)
+  log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log_impl))->data());
+  xc->begin = logmgr->cur_lsn().offset() + 1;
+#else
+  // SI - see if it's read only. If so, skip logging etc.
+  if (flags & TXN_FLAG_READ_ONLY) {
+    log = nullptr;
+  } else {
+    log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log_impl))->data());
+  }
+  xc->begin = logmgr->cur_lsn().offset() + 1;
+#endif
 }
 
 transaction::~transaction() {
-  if (flags & TXN_FLAG_CSWITCH) {
-    TXN::xid_free(xid); // must do this after epoch_exit, which uses xc.end
-    return;
-  }
-
   if (config::is_backup_srv() && !(flags & TXN_FLAG_CMD_REDO)) {
-    RCU::rcu_exit();
     return;
   }
 
@@ -102,19 +94,17 @@ transaction::~transaction() {
   // resolution means TXN_CMMTD, and TXN_ABRTD
   ASSERT(state() != TXN::TXN_ACTIVE && state() != TXN::TXN_COMMITTING);
 #if defined(SSN) || defined(SSI)
-  if (not config::enable_safesnap or (not(flags & TXN_FLAG_READ_ONLY)))
-    RCU::rcu_exit();
-#else
-  RCU::rcu_exit();
-#endif
-#if defined(SSN) || defined(SSI)
-  if (not config::enable_safesnap or (not(flags & TXN_FLAG_READ_ONLY)))
+  if (!config::enable_safesnap || (!(flags & TXN_FLAG_READ_ONLY))) {
     TXN::serial_deregister_tx(xid);
+  }
 #endif
-  if (config::enable_safesnap and flags & TXN_FLAG_READ_ONLY)
-    MM::epoch_exit(0, xc->begin_epoch);
-  else
-    MM::epoch_exit(xc->end, xc->begin_epoch);
+  if (config::tls_alloc) {
+    if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
+      MM::epoch_exit(0, xc->begin_epoch);
+    } else {
+      MM::epoch_exit(xc->end, xc->begin_epoch);
+    }
+  }
   TXN::xid_free(xid);  // must do this after epoch_exit, which uses xc.end
 }
 
@@ -123,23 +113,31 @@ void transaction::Abort() {
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
 
-#if defined(SSN) || defined(SSI)
+#if defined(SSN) || defined(SSI) || defined(NOWAIT) || defined(WAITDIE)
   // Go over the read set first, to deregister from the tuple
   // asap so the updater won't wait for too long.
+  auto &read_set = GetReadSet();
   for (uint32_t i = 0; i < read_set.size(); ++i) {
     auto &r = read_set[i];
     ASSERT(r->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
+#if defined(SSN) || defined(SSI)
     // remove myself from reader list
     serial_deregister_reader_tx(&r->readers_bitmap);
+#endif
   }
+#endif
+
+  auto &write_set = GetWriteSet();
+#if defined(NOWAIT) || defined(WAITDIE)
+  SortWriteSet();
 #endif
 
   for (uint32_t i = 0; i < write_set.size(); ++i) {
     auto &w = write_set[i];
     dbtuple *tuple = (dbtuple *)w.get_object()->GetPayload();
     ASSERT(tuple);
-    ASSERT(XID::from_ptr(tuple->GetObject()->GetClsn()) == xid);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
+    ASSERT(XID::from_ptr(tuple->GetObject()->GetClsn()) == xid);
     if (tuple->NextVolatile()) {
       volatile_write(tuple->NextVolatile()->sstamp, NULL_PTR);
 #ifdef SSN
@@ -147,12 +145,13 @@ void transaction::Abort() {
 #endif
     }
 #endif
+
     Object *obj = w.get_object();
-    fat_ptr entry = *w.entry;
-    oidmgr->PrimaryTupleUnlink(w.entry);
-    obj->SetClsn(NULL_PTR);
-    ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
-    MM::deallocate(entry);
+  fat_ptr entry = *w.entry;
+  oidmgr->PrimaryTupleUnlink(w.entry);
+  obj->SetClsn(NULL_PTR);
+  ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
+  MM::deallocate(entry);
   }
 
   // Read-only tx on a safesnap won't have log
@@ -168,6 +167,7 @@ rc_t transaction::commit() {
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
   // This is the same for both SSN and SSI.
+  auto &write_set = GetWriteSet();
   if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
     ASSERT(not log);
     ASSERT(write_set.size() == 0);
@@ -1116,8 +1116,7 @@ rc_t transaction::si_commit() {
     return rc_t{RC_ABORT_PHANTOM};
   }
 
-  if (!(flags & TXN_FLAG_CSWITCH))
-    log->commit(NULL);  // will populate log block
+  log->commit(NULL);  // will populate log block
 
   // post-commit cleanup: install clsn to tuples
   // (traverse write-tuple)
@@ -1159,9 +1158,9 @@ bool transaction::MasstreeCheckPhantom() {
   return true;
 }
 
-rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, varstr *v) {
-  oid_array *tuple_array = index_desc->GetTupleArray();
-  FID tuple_fid = index_desc->GetTupleFid();
+rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v) {
+  oid_array *tuple_array = td->GetTupleArray();
+  FID tuple_fid = td->GetTupleFid();
 
   // first *updater* wins
   fat_ptr new_obj_ptr = NULL_PTR;
@@ -1298,7 +1297,7 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
     }
     ASSERT(v);
     v->ptr = prev_persistent_ptr;
-    ASSERT(v->ptr.offset() && v->ptr.asi_type() == fat_ptr::ASI_LOG);
+    ASSERT(is_delete || (v->ptr.offset() && v->ptr.asi_type() == fat_ptr::ASI_LOG));
 
     // log the whole varstr so that recovery can figure out the real size
     // of the tuple, instead of using the decoded (larger-than-real) size.
@@ -1314,6 +1313,7 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
                         tuple->GetObject()->GetPersistentAddressPtr());
 
       if (config::log_key_for_update) {
+        ALWAYS_ASSERT(k);
         auto key_size = align_up(k->size() + sizeof(varstr));
         auto key_size_code = encode_size_aligned(key_size);
         log->log_update_key(tuple_fid, oid,
@@ -1327,111 +1327,55 @@ rc_t transaction::Update(IndexDescriptor *index_desc, OID oid, const varstr *k, 
   }
 }
 
-OID transaction::PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out_tuple) {
-  IndexDescriptor *id = index->GetDescriptor();
-  bool is_primary_idx = id->IsPrimary();
-  auto *tuple_array = id->GetTupleArray();
-  FID tuple_fid = id->GetTupleFid();
-  *out_tuple = nullptr;
-  OID oid = 0;
-  if (likely(is_primary_idx)) {
-    fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
-    ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
-    ASSERT(new_head.asi_type() == 0);
-    *out_tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
-    ASSERT(decode_size_aligned(new_head.size_code()) >= (*out_tuple)->size);
-    (*out_tuple)->GetObject()->SetClsn(xid.to_ptr());
-    oid = oidmgr->alloc_oid(tuple_fid);
-    oidmgr->oid_put_new(tuple_array, oid, new_head);
-  } else {
-    // Inserting into a secondary index - just key-OID mapping is enough
-    oid = *(OID *)value;  // It's actually a pointer to an OID in user space
+OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple) {
+  auto *tuple_array = td->GetTupleArray();
+  FID tuple_fid = td->GetTupleFid();
+
+  fat_ptr new_head = Object::Create(value, false, xc->begin_epoch);
+  ASSERT(new_head.size_code() != INVALID_SIZE_CODE);
+  ASSERT(new_head.asi_type() == 0);
+  auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
+  ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
+  tuple->GetObject()->SetClsn(xid.to_ptr());
+#if defined(NOWAIT) || defined(WAITDIE)
+  bool locked = tuple->GetObject()->WriteLock(xc);
+  ALWAYS_ASSERT(locked);
+#endif
+  OID oid = oidmgr->alloc_oid(tuple_fid);
+  ALWAYS_ASSERT(oid != INVALID_OID);
+  oidmgr->oid_put_new(tuple_array, oid, new_head);
+
+  // Log the insert
+  ASSERT(tuple->size == value->size());
+  value->ptr = NULL_PTR;
+  auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
+  auto size_code = encode_size_aligned(record_size);
+  ASSERT(not((uint64_t)value & ((uint64_t)0xf)));
+  ASSERT(tuple->size);
+  // log the whole varstr so that recovery can figure out the real size
+  // of the tuple, instead of using the decoded (larger-than-real) size.
+  log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
+                  DEFAULT_ALIGNMENT_BITS,
+                  tuple->GetObject()->GetPersistentAddressPtr());
+
+  add_to_write_set(tuple_array->get(oid));
+
+  if (out_tuple) {
+    *out_tuple = tuple;
   }
   return oid;
 }
 
-PROMISE(bool) transaction::TryInsertNewTuple(OrderedIndex *index, const varstr *key,
-                                    varstr *value, OID *inserted_oid) {
-  ASSERT((char *)key->data() == (char *)key + sizeof(varstr));
-  dbtuple *tuple = nullptr;
-  OID oid = PrepareInsert(index, value, &tuple);
-  if (inserted_oid) {
-    *inserted_oid = oid;
-  }
-  IndexDescriptor *id = index->GetDescriptor();
-  auto *tuple_array = id->GetTupleArray();
-  auto *key_array = id->GetKeyArray();
-
-  ASSERT(key);
-  bool is_primary_idx = id->IsPrimary();
-  if (!AWAIT index->InsertIfAbsent(this, *key, oid)) {
-    if (is_primary_idx) {
-      oidmgr->PrimaryTupleUnlink(tuple_array, oid);
-    }
-    if (config::enable_chkpt) {
-      volatile_write(key_array->get(oid)->_ptr, 0);
-    }
-    RETURN false;
-  }
-  FinishInsert(index, oid, key, value, tuple);
-  RETURN true;
-}
-
-void transaction::FinishInsert(OrderedIndex *index, OID oid, const varstr *key, varstr *value, dbtuple *tuple) {
-  IndexDescriptor *id = index->GetDescriptor();
-  auto *tuple_array = id->GetTupleArray();
-  auto *key_array = id->GetKeyArray();
-
-  // Succeeded, now put the key there if we need it
-  if (config::enable_chkpt) {
-    // XXX(tzwang): only need to install this key if we need chkpt; not a
-    // realistic setting here to not generate it, the purpose of skipping
-    // this is solely for benchmarking CC.
-    varstr *new_key =
-        (varstr *)MM::allocate(sizeof(varstr) + key->size());
-    new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
-    new_key->copy_from(key);
-    key_array->ensure_size(oid);
-    oidmgr->oid_put(key_array, oid,
-                    fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
-  }
-
-  // insert to log
-  bool is_primary_idx = id->IsPrimary();
-  ASSERT(log);
-  if (likely(tuple)) {  // Primary index, "real tuple"
-    ASSERT(is_primary_idx);
-    ASSERT(tuple->size == value->size());
-    value->ptr = NULL_PTR;
-    auto record_size = align_up((size_t)tuple->size) + sizeof(varstr);
-    auto size_code = encode_size_aligned(record_size);
-    ASSERT(not((uint64_t)value & ((uint64_t)0xf)));
-    ASSERT(tuple->size);
-    // log the whole varstr so that recovery can figure out the real size
-    // of the tuple, instead of using the decoded (larger-than-real) size.
-    FID tuple_fid = id->GetTupleFid();
-    log->log_insert(tuple_fid, oid, fat_ptr::make((void *)value, size_code),
-                    DEFAULT_ALIGNMENT_BITS,
-                    tuple->GetObject()->GetPersistentAddressPtr());
-  }
-
-  // Note: here we log the whole key varstr so that recovery
-  // can figure out the real key length with key->size(), otherwise
-  // it'll have to use the decoded (inaccurate) size (and so will
-  // build a different index...).
+void transaction::LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key) {
+  // Note: here we log the whole key varstr so that recovery can figure out the
+  // real key length with key->size(), otherwise it'll have to use the decoded
+  // (inaccurate) size (and so will build a different index).
   auto record_size = align_up(sizeof(varstr) + key->size());
   ASSERT((char *)key->data() == (char *)key + sizeof(varstr));
   auto size_code = encode_size_aligned(record_size);
-  log->log_insert_index(id->GetKeyFid(), oid,
+  log->log_insert_index(index->GetIndexFid(), oid,
                         fat_ptr::make((void *)key, size_code),
                         DEFAULT_ALIGNMENT_BITS, NULL);
-
-  // FIXME(tzwang): correct?
-  if (likely(is_primary_idx)) {
-    // update write_set
-    ASSERT(tuple->pvalue->size() == tuple->size);
-    add_to_write_set(tuple_array->get(oid));
-  }
 }
 
 rc_t transaction::DoTupleRead(dbtuple *tuple, varstr *out_v) {
@@ -1567,7 +1511,7 @@ rc_t transaction::ssi_read(dbtuple *tuple) {
 
 #ifdef MVOCC
 rc_t transaction::mvocc_read(dbtuple *tuple) {
-  read_set.emplace_back(tuple);
+  GetReadSet().emplace_back(tuple);
   return rc_t{RC_TRUE};
 }
 #endif

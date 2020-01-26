@@ -151,4 +151,230 @@ fat_ptr Object::GenerateClsnPtr(uint64_t clsn) {
   }
   return clsn_ptr;
 }
+
+#if defined(NOWAIT) || defined(WAITDIE)
+bool Object::ReadLock(TXN::xid_context *xc) {
+#ifdef WAITDIE
+  ASSERT(xc);
+  xc->read_req = false;
+  mcs_lock::qnode mutex;
+
+  olock_.acquire(&mutex);
+  uint64_t exp = lock_.load(std::memory_order_acquire);
+  bool granted = false;
+  if (exp & kLockX) {
+    ASSERT(owners.size() == 1);
+    ASSERT((uint64_t)owners.front() == (exp & ~kLockX));
+
+    // Can't get lock, see if allowed to wait
+    bool canwait = owners.front()->owner._val > xc->owner._val;
+
+    // Check waiters
+    for (auto &w : waiters) {
+      if (w->owner._val < xc->owner._val) {
+        canwait = false;
+        break;
+      }
+    }
+
+    if (canwait) {
+      xc->lock_ready = false;
+      waiters.push_back(xc);
+      olock_.release(&mutex);
+      while (!xc->lock_ready) {}
+      ALWAYS_ASSERT(lock_ > 0);
+      granted = true;
+    } else {
+      olock_.release(&mutex);
+      granted = false;
+    }
+  } else {
+    if (exp == 0) {
+      owners.push_back(xc);
+      ++lock_;
+      olock_.release(&mutex);
+      granted = true;
+    } else {
+      // Readers only - see if there are writers waiting
+      bool has_writer = false;
+      for (auto &w : waiters) {
+        if (!w->read_req) {
+          has_writer = true;
+          break;
+        }
+      }
+      if (has_writer) {
+        // See if allowed to wait
+        bool canwait = true;
+        for (auto &o : owners) {
+          if (o->owner._val < xc->owner._val) {
+            canwait = false;
+            break;
+          }
+        }
+
+        // Check waiters
+        for (auto &w : waiters) {
+          if (w->owner._val < xc->owner._val) {
+            canwait = false;
+            break;
+          }
+        }
+
+        if (canwait) {
+          waiters.push_back(xc);
+          xc->lock_ready = false;
+          olock_.release(&mutex);
+          while (!xc->lock_ready) {}
+          granted = true;
+        } else {
+          olock_.release(&mutex);
+          granted = false;
+        }
+      } else {
+        // No need to wait - all readers
+        ++lock_;
+        owners.push_back(xc);
+        olock_.release(&mutex);
+        granted = true;
+      }
+    }
+  }
+  return granted;
+#elif defined NOWAIT
+  ASSERT(!xc);
+  while (true) {
+    uint64_t exp = lock_.load(std::memory_order_acquire);
+    if (exp & kLockX) {
+      return false;
+    } else if (lock_.compare_exchange_strong(exp, exp + 1)) {
+      return true;
+    }
+  }
+#endif
+}
+
+bool Object::WriteLock(TXN::xid_context *xc) {
+#ifdef NOWAIT
+  uint64_t lock = lock_.load(std::memory_order_acquire);
+  if (lock == 0) {
+    return lock_.compare_exchange_strong(lock, kLockX | (uint64_t)xc);
+  } else if ((lock & ~kLockX) == (uint64_t)xc) {  // Already holding the lock
+    return true;
+  } else {
+    return false;
+  }
+#elif defined(WAITDIE)
+  uint64_t lock = lock_.load(std::memory_order_acquire);
+  if ((lock & ~kLockX) == (uint64_t)xc) {  // Already holding the lock
+    return true;
+  }
+
+  xc->read_req = false;
+  mcs_lock::qnode mutex;
+  olock_.acquire(&mutex);
+  bool granted = false;
+
+  if (owners.empty()) {
+    ALWAYS_ASSERT(waiters.empty());
+    // Lock can be granted
+    lock_ = kLockX | (uint64_t)xc;
+    owners.push_back(xc);
+    olock_.release(&mutex);
+    granted = true;
+  } else {
+    // Can't get lock immediately, see if we are allowed to wait
+    bool canwait = true;
+    for (auto &o : owners) {
+      ASSERT(o->owner._val != xc->owner._val);
+      if (o->owner._val < xc->owner._val){
+        canwait = false;
+        break;
+      }
+    }
+
+    for (auto &w : waiters) {
+      if (w->owner._val < xc->owner._val){
+        canwait = false;
+        break;
+      }
+    }
+
+    if (canwait) {
+      xc->lock_ready = false;
+      bool inserted = false;
+      waiters.push_back(xc);
+      olock_.release(&mutex);
+
+      // Now wait
+      while (!xc->lock_ready) {}
+      granted = true;
+      ASSERT(lock_ == (kLockX | (uint64_t)xc));
+    } else {
+      olock_.release(&mutex);
+      granted = false;
+    }
+  }
+  return granted;
+#endif
+}
+
+void Object::ReleaseLock(TXN::xid_context *xc) {
+#if defined(WAITDIE)
+  mcs_lock::qnode mutex;
+  olock_.acquire(&mutex);
+  uint64_t lock = lock_.load(std::memory_order_acquire);
+  ALWAYS_ASSERT(lock);
+  
+  bool erased = false;
+  for (auto it = owners.begin(); it != owners.end(); ++it) {
+    if ((*it)->owner._val == xc->owner._val) {
+      owners.erase(it);
+      erased = true;
+      break;
+    }
+  }
+  ALWAYS_ASSERT(erased);
+
+  if (waiters.empty()){
+    if (lock & kLockX) {
+      lock_ = 0;
+    } else {
+      --lock_;
+    }
+  } else {
+    bool is_reader = false;
+    lock_ = 0;
+check_reader:
+    auto &w = waiters.front();
+    if (w->read_req) {
+      is_reader = true;
+      ++lock_;
+    } else {
+      lock_ = kLockX | (uint64_t)w;
+      is_reader = false;
+    }
+    w->lock_ready = true;
+    owners.push_back(w);
+    waiters.pop_front();
+
+    if (is_reader) {
+      goto check_reader;
+    }
+  }
+  olock_.release(&mutex);
+#else
+  uint64_t lock = lock_.load(std::memory_order_acquire);
+  ALWAYS_ASSERT(lock);
+  
+  if (lock & kLockX) {
+    ALWAYS_ASSERT((lock & ~kLockX) == (uint64_t)xc);
+    lock_.store(0, std::memory_order_release);
+  } else {
+    lock_.fetch_sub(1, std::memory_order_release);
+  }
+#endif
+}
+#endif
+
 }  // namespace ermia

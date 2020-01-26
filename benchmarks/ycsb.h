@@ -8,10 +8,9 @@
 #include "bench.h"
 
 // FIXME(tzwang): since we don't have the read/write_all_fields knobs, here we
-// assume one field
-// In FOEDUS, we have 10 and with the knobs it can choose from any one field
-// randomly.
-const uint32_t kFields = 1;
+// assume 10 fields, 100-byte each. In FOEDUS, we have 10 and with the knobs it
+// can choose from any one field randomly.
+const uint32_t kFields = 10;
 const uint32_t kFieldLength = 10;
 const uint64_t kRecordSize = kFieldLength * kFields;
 const uint32_t kMaxWorkers = 1024;
@@ -73,4 +72,3 @@ struct YcsbWorkload {
 inline void BuildKey(uint64_t key, ermia::varstr &k) {
   *(uint64_t*)k.p = key;
 }
-

@@ -723,7 +723,9 @@ grab_buffer:
     goto start_over;
   }
 
-  log_allocation *x = RCU::rcu_alloc();
+  log_allocation *x = nullptr;
+  int err = posix_memalign((void **)&x, DEFAULT_ALIGNMENT, sizeof(log_allocation));
+  LOG_IF(FATAL, err != 0);
   x->lsn_offset = lsn_offset;
   x->block = b;
 
@@ -739,7 +741,7 @@ void sm_log_alloc_mgr::release(log_allocation *x) {
     // backups don't do updates
     set_tls_lsn_offset(x->block->next_lsn().offset());
   }
-  RCU::rcu_free(x);
+  free(x);
   bool should_kick = config::group_commit ?
       cur_lsn_offset() - _durable_flushed_lsn_offset >= config::group_commit_bytes :
       cur_lsn_offset() - _durable_flushed_lsn_offset >= config::log_buffer_mb * config::MB / 2;
@@ -804,10 +806,6 @@ uint64_t sm_log_alloc_mgr::smallest_tls_lsn_offset() {
    raised while new log records might still be generated.
  */
 void sm_log_alloc_mgr::_log_write_daemon() {
-  RCU::rcu_register();
-  RCU::rcu_enter();
-  DEFER(RCU::rcu_exit());
-
   // every 100 ms or so, update the durable mark on disk
   static uint64_t const DURABLE_MARK_TIMEOUT_NS = uint64_t(5000) * 1000 * 1000;
   uint64_t last_dmark = stopwatch_t::now();
@@ -833,8 +831,6 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     if (new_dlsn_offset > _durable_flushed_lsn_offset) {
       durable_sid = PrimaryFlushLog(new_dlsn_offset);
     }
-
-    RCU::rcu_exit();
 
     /* Having completed a round of writes, notify waiting threads
        and take care of special cases
@@ -899,7 +895,6 @@ void sm_log_alloc_mgr::_log_write_daemon() {
 
     // next loop iteration!
     volatile_write(_write_daemon_state, 0);
-    RCU::rcu_enter();
   }
 }
 

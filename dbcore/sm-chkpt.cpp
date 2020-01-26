@@ -4,7 +4,7 @@
 
 #include "rcu.h"
 #include "sm-chkpt.h"
-#include "sm-index.h"
+#include "sm-table.h"
 #include "sm-thread.h"
 
 namespace ermia {
@@ -132,6 +132,7 @@ void sm_chkpt_mgr::write_buffer(void* p, size_t s) {
 
 void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
                                uint64_t start_offset) {
+#if 0
   int fd = os_openat(oidmgr->dfd, chkpt_name, O_RDONLY);
   lseek(fd, start_offset, SEEK_SET);
   DEFER(close(fd));
@@ -181,8 +182,8 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
     nbytes += sizeof(FID);
 
     // Benchmark code should have already registered the table with the engine
-    ALWAYS_ASSERT(IndexDescriptor::FidExists(tuple_fid));
-    ALWAYS_ASSERT(IndexDescriptor::FidExists(key_fid));
+    ALWAYS_ASSERT(TableDescriptor::FidExists(tuple_fid));
+    ALWAYS_ASSERT(TableDescriptor::FidExists(key_fid));
     ALWAYS_ASSERT(oidmgr->file_exists(tuple_fid));
     ALWAYS_ASSERT(oidmgr->file_exists(key_fid));
 
@@ -209,7 +210,8 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
         new (key) varstr((char*)key + sizeof(varstr), key_size);
         memcpy((void*)key->p, read_buffer(key->l), key->l);
         ALWAYS_ASSERT(key->size());
-        ALWAYS_ASSERT(sync_wait_coro(index->masstree_.insert_if_absent(*key, o, NULL, 0)));
+        ALWAYS_ASSERT(
+            index->masstree_.insert_if_absent(*key, o, NULL, 0));
         if (!config::is_backup_srv()) {
           oidmgr->oid_put_new(ka, o, fat_ptr::make(key, INVALID_SIZE_CODE));
         }
@@ -243,9 +245,11 @@ void sm_chkpt_mgr::do_recovery(char* chkpt_name, OID oid_partition,
       }
     }
   }
+#endif
 }
 
 void sm_chkpt_mgr::recover(LSN chkpt_start) {
+#if 0
   util::scoped_timer t("chkpt_recovery");
   // Take the sum to make sure we have threads to to the work
   num_recovery_threads = config::worker_threads + config::replay_threads;
@@ -339,6 +343,7 @@ void sm_chkpt_mgr::recover(LSN chkpt_start) {
     thread::PutThread(w);
   }
   LOG(INFO) << "[Checkpoint] Recovered";
+#endif
 }
 
 }  // namespace ermia

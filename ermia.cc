@@ -17,11 +17,6 @@ Engine::Engine() {
   if (config::is_backup_srv()) {
     rep::BackupStartReplication();
   } else {
-    if (!RCU::rcu_is_registered()) {
-      RCU::rcu_register();
-    }
-    RCU::rcu_enter();
-
     ALWAYS_ASSERT(config::log_dir.size());
     ALWAYS_ASSERT(not logmgr);
     ALWAYS_ASSERT(not oidmgr);
@@ -43,50 +38,58 @@ Engine::Engine() {
     if (sm_log::need_recovery) {
       logmgr->recover();
     }
-    RCU::rcu_exit();
   }
 }
 
-void Engine::CreateTable(uint16_t index_type, const char *name,
-                         const char *primary_name) {
-  IndexDescriptor *index_desc = nullptr;
-
-  switch (index_type) {
-  case kIndexConcurrentMasstree:
-    index_desc =
-        (new ConcurrentMasstreeIndex(name, primary_name))->GetDescriptor();
-    break;
-  case kIndexDecoupledMasstree:
-    index_desc =
-        (new DecoupledMasstreeIndex(name, primary_name))->GetDescriptor();
-    break;
-  default:
-    LOG(FATAL) << "Wrong index type: " << index_type;
-    break;
-  }
+TableDescriptor *Engine::CreateTable(const char *name) {
+  auto *td = TableDescriptor::New(name);
 
   if (!sm_log::need_recovery && !config::is_backup_srv()) {
-    ASSERT(ermia::logmgr);
-    auto create_file = [=](char *) {
-      ermia::RCU::rcu_enter();
-      DEFER(ermia::RCU::rcu_exit());
-      ermia::sm_tx_log *log = ermia::logmgr->new_tx_log();
-
-      index_desc->Initialize();
-      log->log_index(index_desc->GetTupleFid(), index_desc->GetKeyFid(),
-                     index_desc->GetName());
-
-      log->commit(nullptr);
-    };
-
     // Note: this will insert to the log and therefore affect min_flush_lsn,
-    // so must be done in an sm-thread.
-    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
-    ALWAYS_ASSERT(thread);
-    thread->StartTask(create_file);
-    thread->Join();
-    ermia::thread::PutThread(thread);
+    // so must be done in an sm-thread which must be created by the user
+    // application (not here in ERMIA library).
+    ASSERT(ermia::logmgr);
+
+    // TODO(tzwang): perhaps make this transactional to allocate it from
+    // transaction string arena to avoid malloc-ing memory (~10k size).
+    char *log_space = (char *)malloc(sizeof(sm_tx_log_impl));
+    ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
+    td->Initialize();
+    log->log_table(td->GetTupleFid(), td->GetKeyFid(), td->GetName());
+    log->commit(nullptr);
+    free(log_space);
   }
+  return td;
+}
+
+void Engine::LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name) {
+  if (!sm_log::need_recovery && !config::is_backup_srv()) {
+    // Note: this will insert to the log and therefore affect min_flush_lsn,
+    // so must be done in an sm-thread which must be created by the user
+    // application (not here in ERMIA library).
+    ASSERT(ermia::logmgr);
+
+    // TODO(tzwang): perhaps make this transactional to allocate it from
+    // transaction string arena to avoid malloc-ing memory (~10k size).
+    char *log_space = (char *)malloc(sizeof(sm_tx_log_impl));
+    ermia::sm_tx_log *log = ermia::logmgr->new_tx_log(log_space);
+    log->log_index(table_fid, index_fid, index_name, primary);
+    log->commit(nullptr);
+    free(log_space);
+  }
+}
+
+void Engine::CreateIndex(const char *table_name, const std::string &index_name, bool is_primary) {
+  auto *td = TableDescriptor::Get(table_name);
+  ALWAYS_ASSERT(td);
+  auto *index = new ConcurrentMasstreeIndex(table_name, is_primary);
+  if (is_primary) {
+    td->SetPrimaryIndex(index, index_name);
+  } else {
+    td->AddSecondaryIndex(index, index_name);
+  }
+  FID index_fid = index->GetIndexFid();
+  LogIndexCreation(is_primary, td->GetTupleFid(), index_fid, index_name);
 }
 
 PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
@@ -150,9 +153,10 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
   return std::map<std::string, uint64_t>();
 }
 
-void ConcurrentMasstreeIndex::MultiGet(
+void ConcurrentMasstreeIndex::amac_MultiGet(
     transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests,
     std::vector<varstr *> &values) {
+#ifndef USE_STATIC_COROUTINE
   ConcurrentMasstree::versioned_node_t sinfo;
   if (!t) {
     auto e = MM::epoch_enter();
@@ -167,8 +171,8 @@ void ConcurrentMasstreeIndex::MultiGet(
         if (r.out_oid != INVALID_OID) {
           // Key-OID mapping exists, now try to get the actual tuple to be sure
           auto *tuple = oidmgr->BackupGetVersion(
-              descriptor_->GetTupleArray(),
-              descriptor_->GetPersistentAddressArray(), r.out_oid, t->xc);
+              table_descriptor->GetTupleArray(),
+              table_descriptor->GetPersistentAddressArray(), r.out_oid, t->xc);
           if (tuple) {
             t->DoTupleRead(tuple, values[i]);
           } else if (config::phantom_prot) {
@@ -176,43 +180,46 @@ void ConcurrentMasstreeIndex::MultiGet(
           }
         }
       }
-    } else if (config::amac_version_chain) {
-      // AMAC style version chain traversal
-      thread_local std::vector<OIDAMACState> version_requests;
-      version_requests.clear();
-      for (auto &s : requests) {
-        version_requests.emplace_back(s.out_oid);
-      }
-      oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(),
-                                   version_requests, t->xc);
-      uint32_t i = 0;
-      for (auto &vr : version_requests) {
-        if (vr.tuple) {
-          t->DoTupleRead(vr.tuple, values[i++]);
-        } else if (config::phantom_prot) {
-          DoNodeRead(t, sinfo.first, sinfo.second);
+    } else if (!config::index_probe_only) {
+      if (config::amac_version_chain) {
+        // AMAC style version chain traversal
+        thread_local std::vector<OIDAMACState> version_requests;
+        version_requests.clear();
+        for (auto &s : requests) {
+          version_requests.emplace_back(s.out_oid);
         }
-      }
-    } else {
-      for (uint32_t i = 0; i < requests.size(); ++i) {
-        auto &r = requests[i];
-        if (r.out_oid != INVALID_OID) {
-          auto *tuple = sync_wait_coro(oidmgr->oid_get_version(descriptor_->GetTupleArray(),
-                                                r.out_oid, t->xc));
-          if (tuple) {
-            t->DoTupleRead(tuple, values[i]);
+        oidmgr->oid_get_version_amac(table_descriptor->GetTupleArray(),
+                                     version_requests, t->xc);
+        uint32_t i = 0;
+        for (auto &vr : version_requests) {
+          if (vr.tuple) {
+            t->DoTupleRead(vr.tuple, values[i++]);
           } else if (config::phantom_prot) {
             DoNodeRead(t, sinfo.first, sinfo.second);
+          }
+        }
+      } else {
+        for (uint32_t i = 0; i < requests.size(); ++i) {
+          auto &r = requests[i];
+          if (r.out_oid != INVALID_OID) {
+            auto *tuple = oidmgr->oid_get_version(table_descriptor->GetTupleArray(),
+                                                  r.out_oid, t->xc);
+            if (tuple) {
+              t->DoTupleRead(tuple, values[i]);
+            } else if (config::phantom_prot) {
+              DoNodeRead(t, sinfo.first, sinfo.second);
+            }
           }
         }
       }
     }
   }
+#endif
 }
 
-PROMISE(bool) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varstr &key,
-                                  varstr &value, OID *out_oid) {
-  OID oid = 0;
+PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
+                                        varstr &value, OID *out_oid) {
+  OID oid = INVALID_OID;
   rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
 
@@ -229,11 +236,11 @@ PROMISE(bool) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varst
       // Key-OID mapping exists, now try to get the actual tuple to be sure
       if (config::is_backup_srv()) {
         tuple = oidmgr->BackupGetVersion(
-            descriptor_->GetTupleArray(),
-            descriptor_->GetPersistentAddressArray(), oid, t->xc);
+            table_descriptor->GetTupleArray(),
+            table_descriptor->GetPersistentAddressArray(), oid, t->xc);
       } else {
         tuple =
-            AWAIT oidmgr->oid_get_version(descriptor_->GetTupleArray(), oid, t->xc);
+            AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
       }
       if (!tuple) {
         found = false;
@@ -241,9 +248,6 @@ PROMISE(bool) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varst
     }
 
     if (found) {
-      if (out_oid) {
-        *out_oid = oid;
-      }
       volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
     } else if (config::phantom_prot) {
       volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
@@ -256,32 +260,22 @@ PROMISE(bool) ConcurrentMasstreeIndex::Get(transaction *t, rc_t &rc, const varst
   if (out_oid) {
     *out_oid = oid;
   }
-
-  RETURN true;
 }
 
-void ConcurrentMasstreeIndex::coro_MultiGet(
+void ConcurrentMasstreeIndex::simple_coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<std::experimental::coroutine_handle<
-        ermia::dia::generator<bool>::promise_type>> &handles) {
-  ermia::epoch_num e;
-  ConcurrentMasstree::versioned_node_t sinfo;
-  if (!t) {
-    e = MM::epoch_enter();
-  } else {
-    e = t->xc->begin_epoch;
-  }
+    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> &handles) {
+  auto e = MM::epoch_enter();
   ConcurrentMasstree::threadinfo ti(e);
-  thread_local std::vector<OID> oids;
-  oids.clear();
+  ConcurrentMasstree::versioned_node_t sinfo;
 
+  OID oid = INVALID_OID;
   for (int i = 0; i < keys.size(); ++i) {
-    oids.emplace_back(INVALID_OID);
-    handles[i] =
-        masstree_.search_coro(*keys[i], oids[i], ti, &sinfo).get_handle();
+    handles[i] = masstree_.search_coro(*keys[i], oid, ti, &sinfo).get_handle();
   }
+
   int finished = 0;
-  while (finished < keys.size()) {
+  while (finished < handles.size()) {
     for (auto &h : handles) {
       if (h) {
         if (h.done()) {
@@ -294,71 +288,17 @@ void ConcurrentMasstreeIndex::coro_MultiGet(
       }
     }
   }
-
-  if (!t) {
-    MM::epoch_exit(0, e);
-  } else {
-    t->ensure_active();
-    if (config::is_backup_srv()) {
-      for (uint32_t i = 0; i < keys.size(); ++i) {
-        if (oids[i] != INVALID_OID) {
-          // Key-OID mapping exists, now try to get the actual tuple to be sure
-          auto *tuple = oidmgr->BackupGetVersion(
-              descriptor_->GetTupleArray(),
-              descriptor_->GetPersistentAddressArray(), oids[i], t->xc);
-          if (tuple) {
-            t->DoTupleRead(tuple, values[i]);
-          } else if (config::phantom_prot) {
-            DoNodeRead(t, sinfo.first, sinfo.second);
-          }
-        }
-      }
-    } else if (config::amac_version_chain) {
-      // AMAC style version chain traversal
-      thread_local std::vector<OIDAMACState> version_requests;
-      version_requests.clear();
-      for (uint32_t i = 0; i < keys.size(); ++i) {
-        version_requests.emplace_back(oids[i]);
-      }
-      oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(),
-                                   version_requests, t->xc);
-      uint32_t i = 0;
-      for (auto &vr : version_requests) {
-        if (vr.tuple) {
-          t->DoTupleRead(vr.tuple, values[i++]);
-        } else if (config::phantom_prot) {
-          DoNodeRead(t, sinfo.first, sinfo.second);
-        }
-      }
-    } else {
-      for (uint32_t i = 0; i < keys.size(); ++i) {
-        if (oids[i] != INVALID_OID) {
-          auto *tuple = sync_wait_coro(oidmgr->oid_get_version(descriptor_->GetTupleArray(),
-                                                oids[i], t->xc));
-          if (tuple) {
-            t->DoTupleRead(tuple, values[i]);
-          } else if (config::phantom_prot) {
-            DoNodeRead(t, sinfo.first, sinfo.second);
-          }
-        }
-      }
-    }
-  }
+  MM::epoch_exit(0, e);
 }
 
+#ifdef USE_STATIC_COROUTINE
 void ConcurrentMasstreeIndex::adv_coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<ermia::dia::task<bool>> & index_probe_tasks,
-    std::vector<ermia::dia::task<ermia::dbtuple*>> & value_fetch_tasks,
-    std::vector<ermia::dia::coro_task_private::coro_stack> & coro_stacks) {
-#ifdef USE_STATIC_COROUTINE
-  ermia::epoch_num e;
+    std::vector<ermia::dia::task<bool>> &index_probe_tasks,
+    std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks,
+    std::vector<ermia::dia::coro_task_private::coro_stack> &coro_stacks) {
+  ermia::epoch_num e = t ? t->xc->begin_epoch : MM::epoch_enter();
   ConcurrentMasstree::versioned_node_t sinfo;
-  if (!t) {
-    e = MM::epoch_enter();
-  } else {
-    e = t->xc->begin_epoch;
-  }
   thread_local std::vector<OID> oids;
   oids.clear();
 
@@ -394,7 +334,7 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
 
       for (uint32_t i = 0; i < keys.size(); ++i) {
         if (oids[i] != INVALID_OID) {
-          value_fetch_tasks[i] = oidmgr->oid_get_version(descriptor_->GetTupleArray(), oids[i], t->xc);
+          value_fetch_tasks[i] = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oids[i], t->xc);
           value_fetch_tasks[i].set_call_stack(&coro_stacks[i]);
         } else {
           ++finished;
@@ -427,8 +367,8 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
       }
     }
   }
-#endif
 }
+#endif  // USE_STATIC_COROUTINE
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
     const typename ConcurrentMasstree::node_opaque_t *n) {
@@ -517,38 +457,103 @@ PROMISE(void) ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
 
-PROMISE(rc_t) OrderedIndex::TryInsert(transaction &t, const varstr *k, varstr *v,
-                             bool upsert, OID *inserted_oid) {
-  if (AWAIT t.TryInsertNewTuple(this, k, v, inserted_oid)) {
-    RETURN rc_t{RC_TRUE};
-  } else if (!upsert) {
+////////////////// Index interfaces /////////////////
+
+PROMISE(bool) ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
+  bool inserted = AWAIT InsertIfAbsent(t, key, oid);
+  if (inserted) {
+    t->LogIndexInsert(this, oid, &key);
+    if (config::enable_chkpt) {
+      auto *key_array = GetTableDescriptor()->GetKeyArray();
+      volatile_write(key_array->get(oid)->_ptr, 0);
+    }
+  }
+  RETURN inserted;
+}
+
+PROMISE(rc_t) ConcurrentMasstreeIndex::InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid) {
+  // For primary index only
+  ALWAYS_ASSERT(IsPrimary());
+
+  ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
+  t->ensure_active();
+
+  // Insert to the table first
+  dbtuple *tuple = nullptr;
+  OID oid = t->Insert(table_descriptor, &value, &tuple);
+
+  // Done with table record, now set up index
+  ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
+  if (!AWAIT InsertOID(t, key, oid)) {
+    if (config::enable_chkpt) {
+      volatile_write(table_descriptor->GetKeyArray()->get(oid)->_ptr, 0);
+    }
     RETURN rc_t{RC_ABORT_INTERNAL};
+  }
+
+  // Succeeded, now put the key there if we need it
+  if (config::enable_chkpt) {
+    // XXX(tzwang): only need to install this key if we need chkpt; not a
+    // realistic setting here to not generate it, the purpose of skipping
+    // this is solely for benchmarking CC.
+    varstr *new_key =
+        (varstr *)MM::allocate(sizeof(varstr) + key.size());
+    new (new_key) varstr((char *)new_key + sizeof(varstr), 0);
+    new_key->copy_from(&key);
+    auto *key_array = table_descriptor->GetKeyArray();
+    key_array->ensure_size(oid);
+    oidmgr->oid_put(key_array, oid,
+                    fat_ptr::make((void *)new_key, INVALID_SIZE_CODE));
+  }
+
+  if (out_oid) {
+    *out_oid = oid;
+  }
+
+  RETURN rc_t{RC_TRUE};
+}
+
+PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr &key, varstr &value) {
+  // For primary index only
+  ALWAYS_ASSERT(IsPrimary());
+
+  // Search for OID
+  OID oid = 0;
+  rc_t rc = {RC_INVALID};
+  GetOID(key, rc, t->xc, oid);
+
+  if (rc._val == RC_TRUE) {
+    rc_t rc = t->Update(table_descriptor, oid, &key, &value);
+#if defined(WAITDIE)
+    if (rc._val == RC_WAIT) {
+      while (!t->xc->lock_ready) {}
+      rc = t->Update(table_descriptor, oid, &key, &value);
+    }
+#endif
+    RETURN rc;
   } else {
-    RETURN rc_t{RC_FALSE};
+    RETURN rc_t{RC_ABORT_INTERNAL};
   }
 }
 
-PROMISE(rc_t) ConcurrentMasstreeIndex::DoTreePut(transaction &t, const varstr *k,
-                                        varstr *v, bool expect_new, bool upsert,
-                                        OID *inserted_oid) {
-  ASSERT(k);
-  ASSERT((char *)k->data() == (char *)k + sizeof(varstr));
-  ASSERT(!expect_new || v);
-  t.ensure_active();
+PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr &key) {
+  // For primary index only
+  ALWAYS_ASSERT(IsPrimary());
 
-  if (expect_new) {
-    rc_t rc = AWAIT TryInsert(t, k, v, upsert, inserted_oid);
-    if (rc._val != RC_FALSE) {
-      RETURN rc;
-    }
-  }
-
-  // do regular search
+  // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
-  GetOID(*k, rc, t.xc, oid);
+  GetOID(key, rc, t->xc, oid);
+
   if (rc._val == RC_TRUE) {
-    RETURN t.Update(descriptor_, oid, k, v);
+		rc_t rc = t->Update(table_descriptor, oid, &key, nullptr);
+#if defined(WAITDIE)
+		if (rc._val == RC_WAIT) {
+			while (!t->xc->lock_ready) {}
+			rc = t->Update(table_descriptor, oid, &key, nullptr);
+		}
+#endif
+		RETURN rc ;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }
@@ -624,113 +629,44 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
   return caller_callback->Invoke(k, oid);
 }
 
-DecoupledMasstreeIndex::DecoupledMasstreeIndex(std::string name,
-                                               const char *primary)
-    : ConcurrentMasstreeIndex(name, primary) {}
+////////////////// End of index interfaces //////////
 
-void DecoupledMasstreeIndex::RecvGet(transaction *t, rc_t &rc, OID &oid,
-                                     varstr &value) {
-  // Wait for the traversal to finish
-  while (volatile_read(rc._val) == RC_INVALID) {
+////////////////// Table interfaces /////////////////
+rc_t Table::Insert(transaction &t, varstr *value, OID *out_oid) {
+  t.ensure_active();
+  OID oid = t.Insert(td, value);
+  if (out_oid) {
+    *out_oid = oid;
   }
-  if (!config::index_probe_only && rc._val == RC_TRUE) {
-    dbtuple *tuple = sync_wait_coro(oidmgr->oid_get_version(
-        descriptor_->GetTupleArray(), volatile_read(oid), t->GetXIDContext()));
-    if (tuple) {
-      volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-    } else {
-      volatile_write(rc._val, RC_FALSE);
-    }
-  }
+  return oid == INVALID_OID ? rc_t{RC_FALSE} : rc_t{RC_FALSE};
 }
 
-void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc, OID oid,
-                                        varstr &key, varstr &value,
-                                        dbtuple *tuple) {
-  while (volatile_read(rc._val) == RC_INVALID) {
-  }
-  if (rc._val == RC_TRUE) {
-    // key-OID installed successfully
-    t->FinishInsert(this, oid, &key, &value, tuple);
-    volatile_write(rc._val, RC_TRUE);
+rc_t Table::Read(transaction &t, OID oid, varstr *out_value) {
+  auto *tuple = sync_wait_coro(oidmgr->oid_get_version(td->GetTupleArray(), oid, t.GetXIDContext()));
+  rc_t rc = {RC_INVALID};
+  if (tuple) {
+    // Record exists
+    volatile_write(rc._val, t.DoTupleRead(tuple, out_value)._val);
   } else {
-    ASSERT(rc._val == RC_FALSE);
-    if (descriptor_->IsPrimary()) {
-      oidmgr->PrimaryTupleUnlink(descriptor_->GetTupleArray(), oid);
-    }
-    if (config::enable_chkpt) {
-      volatile_write(descriptor_->GetKeyArray()->get(oid)->_ptr, 0);
-    }
     volatile_write(rc._val, RC_FALSE);
   }
-}
-// overload RecvInsert for secondary index
-void DecoupledMasstreeIndex::RecvInsert(transaction *t, rc_t &rc, varstr &key,
-                                        OID value_oid) {
-  while (volatile_read(rc._val) == RC_INVALID) {
-  }
-  if (rc._val == RC_TRUE) {
-    // key-OID installed successfully
-    t->FinishInsert(this, value_oid, &key, nullptr, nullptr);
-    volatile_write(rc._val, RC_TRUE);
-  } else {
-    ASSERT(rc._val == RC_FALSE);
-    if (config::enable_chkpt) {
-      volatile_write(descriptor_->GetKeyArray()->get(value_oid)->_ptr, 0);
-    }
-    volatile_write(rc._val, RC_FALSE);
-  }
+  ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
+  return rc;
 }
 
-void DecoupledMasstreeIndex::RecvPut(transaction *t, rc_t &rc, OID &oid,
-                                     const varstr &key, varstr &value) {
-  while (volatile_read(rc._val) == RC_INVALID) {
-  }
-  switch (rc._val) {
-  case RC_TRUE:
-    rc = t->Update(descriptor_, oid, &key, &value);
-    break;
-  case RC_FALSE:
-    rc._val = RC_ABORT_INTERNAL;
-    break;
-  default:
-    LOG(FATAL) << "Wrong SendPut result";
-  }
+rc_t Table::Update(transaction &t, OID oid, varstr &value) {
+  return t.Update(td, oid, &value);
 }
 
-void DecoupledMasstreeIndex::RecvRemove(transaction *t, rc_t &rc, OID &oid,
-                                        const varstr &key) {
-  while (volatile_read(rc._val) == RC_INVALID) {
-  }
-  switch (rc._val) {
-  case RC_TRUE:
-    rc = t->Update(descriptor_, oid, &key, nullptr);
-    break;
-  case RC_FALSE:
-    rc._val = RC_ABORT_INTERNAL;
-    break;
-  default:
-    LOG(FATAL) << "Wrong SendRemove result";
-  }
+rc_t Table::Remove(transaction &t, OID oid) {
+  return t.Update(td, oid, nullptr);
 }
 
-void DecoupledMasstreeIndex::RecvScan(transaction *t, rc_t &rc,
-                                      DiaScanCallback &dia_callback) {
-  while (volatile_read(rc._val) == RC_INVALID) {
-  }
-  if (rc._val == RC_TRUE) {
-    if (!dia_callback.Receive(t, descriptor_))
-      volatile_write(rc._val, RC_FALSE);
-  }
+////////////////// End of Table interfaces //////////
+
+OrderedIndex::OrderedIndex(std::string table_name, bool is_primary) : is_primary(is_primary) {
+  table_descriptor = TableDescriptor::Get(table_name);
+  self_fid = oidmgr->create_file(true);
 }
 
-void DecoupledMasstreeIndex::RecvReverseScan(transaction *t, rc_t &rc,
-                                             DiaScanCallback &dia_callback) {
-  while (volatile_read(rc._val) == RC_INVALID) {
-  }
-  if (rc._val == RC_TRUE) {
-    if (!dia_callback.Receive(t, descriptor_))
-      volatile_write(rc._val, RC_FALSE);
-  }
-}
 } // namespace ermia

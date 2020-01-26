@@ -2,16 +2,19 @@
 
 #include "../dbcore/sm-dia.h"
 #include "../dbcore/sm-log-recover-impl.h"
-#include "../dbcore/sm-coroutine.h"
 #include "txn.h"
-#include <map>
+#include "../benchmarks/record/encoder.h"
+#include "ermia_internal.h"
+#include <experimental/coroutine>
 
 namespace ermia {
 
+class Table;
+
 class Engine {
 private:
-  void CreateTable(uint16_t index_type, const char *name,
-                   const char *primary_name);
+  void LogIndexCreation(bool primary, FID table_fid, FID index_fid, const std::string &index_name);
+  void CreateIndex(const char *table_name, const std::string &index_name, bool is_primary);
 
 public:
   Engine();
@@ -21,14 +24,22 @@ public:
   static const uint16_t kIndexConcurrentMasstree = 0x1;
   static const uint16_t kIndexDecoupledMasstree = 0x2;
 
-  inline void CreateMasstreeTable(const char *name, bool decoupled,
-                                  const char *primary_name = nullptr) {
-    CreateTable(decoupled ? kIndexDecoupledMasstree : kIndexConcurrentMasstree,
-                name, primary_name);
+  // Create a table without any index (at least yet)
+  TableDescriptor *CreateTable(const char *name);
+
+  // Create the primary index for a table
+  inline void CreateMasstreePrimaryIndex(const char *table_name, const std::string &index_name) {
+    CreateIndex(table_name, index_name, true);
   }
 
-  inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena,
-                                     transaction *buf) {
+  // Create a secondary masstree index
+  inline void CreateMasstreeSecondaryIndex(const char *table_name, const std::string &index_name) {
+    CreateIndex(table_name, index_name, false);
+  }
+
+  inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena, transaction *buf) {
+    // Reset the arena here - can't rely on the benchmark/user code to do it
+    arena.reset();
     new (buf) transaction(txn_flags, arena);
     return buf;
   }
@@ -47,117 +58,21 @@ public:
   }
 };
 
-// Base class for user-facing index implementations
-class OrderedIndex {
-  friend class transaction;
-
-protected:
-  IndexDescriptor *descriptor_;
+// User-facing table abstraction, operates on OIDs only
+class Table {
+private:
+  TableDescriptor *td;
 
 public:
-  OrderedIndex(std::string name, const char *primary = nullptr) {
-    descriptor_ = IndexDescriptor::New(this, name, primary);
-  }
-  inline IndexDescriptor *GetDescriptor() { return descriptor_; }
-  virtual void *GetTable() = 0;
-
-  class ScanCallback {
-  public:
-    ~ScanCallback() {}
-    virtual bool Invoke(const char *keyp, size_t keylen,
-                        const varstr &value) = 0;
-  };
-
-  class DiaScanCallback {
-  public:
-    ~DiaScanCallback() {}
-    virtual bool Invoke(const char *keyp, size_t keylen, OID oid) = 0;
-    virtual bool Receive(transaction *t, IndexDescriptor *descriptor_) = 0;
-  };
-
-  /**
-   * Get a key of length keylen. The underlying DB does not manage
-   * the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
-   */
-  virtual PROMISE(bool) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                   OID *out_oid = nullptr) = 0;
-
-  /**
-   * Put a key of length keylen, with mapping of length valuelen.
-   * The underlying DB does not manage the memory pointed to by key or value
-   * (a copy is made).
-   *
-   * If a record with key k exists, overwrites. Otherwise, inserts.
-   */
-  virtual PROMISE(rc_t) Put(transaction *t, const varstr &key, varstr &value) = 0;
-
-  /**
-   * Insert a key of length keylen.
-   *
-   * If a record with key k exists, behavior is unspecified- this function
-   * is only to be used when you can guarantee no such key exists (ie in loading
-   *phase)
-   *
-   * Default implementation calls put(). See put() for meaning of return value.
-   */
-  virtual PROMISE(rc_t) Insert(transaction *t, const varstr &key, varstr &value,
-                      OID *out_oid = nullptr) = 0;
-
-  /**
-   * Insert into a secondary index. Maps key to OID.
-   */
-  virtual PROMISE(rc_t) Insert(transaction *t, const varstr &key, OID oid) = 0;
-
-  /**
-   * Search [start_key, *end_key) if end_key is not null, otherwise
-   * search [start_key, +infty)
-   */
-  virtual PROMISE(rc_t) Scan(transaction *t, const varstr &start_key,
-                    const varstr *end_key, ScanCallback &callback,
-                    str_arena *arena) = 0;
-  /**
-   * Search (*end_key, start_key] if end_key is not null, otherwise
-   * search (-infty, start_key] (starting at start_key and traversing
-   * backwards)
-   */
-  virtual PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                           const varstr *end_key, ScanCallback &callback,
-                           str_arena *arena) = 0;
-
-  /**
-   * Default implementation calls put() with NULL (zero-length) value
-   */
-  virtual PROMISE(rc_t) Remove(transaction *t, const varstr &key) = 0;
-
-  virtual size_t Size() = 0;
-  virtual std::map<std::string, uint64_t> Clear() = 0;
-  virtual void SetArrays() = 0;
-
-  // Use transaction's TryInsertNewTuple to try insert a new tuple
-  PROMISE(rc_t) TryInsert(transaction &t, const varstr *k, varstr *v, bool upsert,
-                 OID *inserted_oid);
-
-  virtual PROMISE(void)
-  GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
-         ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
-
-  /**
-   * Insert key-oid pair to the underlying actual index structure.
-   *
-   * Returns false if the record already exists or there is potential phantom.
-   */
-  virtual PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
-
-  virtual PROMISE(void) ScanOID(transaction *t, const varstr &start_key,
-                       const varstr *end_key, rc_t &rc, OID *dia_callback) = 0;
-  virtual PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
-                              const varstr *end_key, rc_t &rc,
-                              OID *dia_callback) = 0;
+  rc_t Insert(transaction &t, varstr *value, OID *out_oid);
+  rc_t Update(transaction &t, OID oid, varstr &value);
+  rc_t Read(transaction &t, OID oid, varstr *out_value);
+  rc_t Remove(transaction &t, OID oid);
 };
 
 // User-facing concurrent Masstree
 class ConcurrentMasstreeIndex : public OrderedIndex {
-  friend class sm_log_recover_impl;
+  friend struct sm_log_recover_impl;
   friend class sm_chkpt_mgr;
 
 private:
@@ -215,66 +130,57 @@ private:
         spec_values;
   };
 
-  // expect_new indicates if we expect the record to not exist in the tree- is
-  // just a hint that affects perf, not correctness. remove is put with
-  // nullptr as value.
-  PROMISE(rc_t) DoTreePut(transaction &t, const varstr *k, varstr *v, bool expect_new,
-                          bool upsert, OID *inserted_oid);
-
   static rc_t DoNodeRead(transaction *t,
                          const ConcurrentMasstree::node_opaque_t *node,
                          uint64_t version);
 
 public:
-  ConcurrentMasstreeIndex(std::string name, const char *primary)
-      : OrderedIndex(name, primary) {}
+  ConcurrentMasstreeIndex(const char *table_name, bool primary) : OrderedIndex(table_name, primary) {}
 
   ConcurrentMasstree &GetMasstree() { return masstree_; }
 
   inline void *GetTable() override { return masstree_.get_table(); }
 
-  virtual PROMISE(bool) Get(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+  virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
+                         OID *out_oid = nullptr) override;
+
+#if defined(NOWAIT) || defined(WAITDIE)
+  virtual void GetRecordForUpdate(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                    OID *out_oid = nullptr) override;
+#endif
 
   // A multi-get operation using AMAC
-  void MultiGet(transaction *t,
-                std::vector<ConcurrentMasstree::AMACState> &requests,
-                std::vector<varstr *> &values);
+  void amac_MultiGet(transaction *t,
+                     std::vector<ConcurrentMasstree::AMACState> &requests,
+                     std::vector<varstr *> &values);
 
   // A multi-get operation using coroutines
-  void coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
-                     std::vector<varstr *> &values,
-                     std::vector<std::experimental::coroutine_handle<
-                         ermia::dia::generator<bool>::promise_type>> &handles);
+  void simple_coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
+                            std::vector<varstr *> &values,
+                            std::vector<std::experimental::coroutine_handle<
+                            ermia::dia::generator<bool>::promise_type>> &handles);
 
-  void adv_coro_MultiGet(
-    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<ermia::dia::task<bool>> & index_probe_tasks,
-    std::vector<ermia::dia::task<ermia::dbtuple*>> & value_fetch_tasks,
-    std::vector<ermia::dia::coro_task_private::coro_stack> & coro_stacks);
+#ifdef USE_STATIC_COROUTINE
+  void adv_coro_MultiGet(transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
+                         std::vector<ermia::dia::task<bool>> &index_probe_tasks,
+                         std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks,
+                         std::vector<ermia::dia::coro_task_private::coro_stack> &coro_stacks);
+#endif
 
-  inline PROMISE(rc_t) Put(transaction *t, const varstr &key, varstr &value) override {
-    return DoTreePut(*t, &key, &value, false, true, nullptr);
-  }
-  inline PROMISE(rc_t) Insert(transaction *t, const varstr &key, varstr &value,
-                     OID *out_oid = nullptr) override {
-    return DoTreePut(*t, &key, &value, true, true, out_oid);
-  }
-  inline PROMISE(rc_t) Insert(transaction *t, const varstr &key, OID oid) override {
-    return DoTreePut(*t, &key, (varstr *)&oid, true, false, nullptr);
-  }
-  inline PROMISE(rc_t) Remove(transaction *t, const varstr &key) override {
-    return DoTreePut(*t, &key, nullptr, false, false, nullptr);
-  }
+  PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;
+  PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
+  PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key) override;
+  PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
+
   PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-            ScanCallback &callback, str_arena *arena) override;
+                     ScanCallback &callback, str_arena *arena) override;
   PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                   const varstr *end_key, ScanCallback &callback,
-                   str_arena *arena) override;
+                            const varstr *end_key, ScanCallback &callback,
+                            str_arena *arena) override;
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;
-  inline void SetArrays() override { masstree_.set_arrays(descriptor_); }
+  inline void SetArrays(bool primary) override { masstree_.set_arrays(table_descriptor, primary); }
 
   inline PROMISE(void)
   GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
@@ -287,75 +193,9 @@ private:
   PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 
   PROMISE(void) ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-               rc_t &rc, OID *dia_callback) override;
+                        rc_t &rc, OID *dia_callback) override;
   PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
-                      const varstr *end_key, rc_t &rc,
-                      OID *dia_callback) override;
-};
-
-// User-facing masstree with decoupled index access
-class DecoupledMasstreeIndex : public ConcurrentMasstreeIndex {
-  friend class sm_log_recover_impl;
-  friend class sm_chkpt_mgr;
-  friend class dia::IndexThread;
-
-public:
-  DecoupledMasstreeIndex(std::string name, const char *primary);
-
-  inline void SendGet(transaction *t, rc_t &rc, const varstr &key, OID *out_oid,
-                      uint32_t idx_no) {
-    ASSERT(out_oid);
-    ermia::dia::SendGetRequest(t, this, &key, out_oid, &rc, idx_no);
-  }
-  void RecvGet(transaction *t, rc_t &rc, OID &oid, varstr &value);
-
-  inline void SendInsert(transaction *t, rc_t &rc, const varstr &key,
-                         varstr &value, OID *out_oid, dbtuple **out_tuple,
-                         uint32_t idx_no) {
-    ASSERT(out_oid);
-    *out_tuple = nullptr;
-    *out_oid = t->PrepareInsert(this, &value, out_tuple);
-    ermia::dia::SendInsertRequest(t, this, &key, out_oid, &rc, idx_no);
-  }
-  void RecvInsert(transaction *t, rc_t &rc, OID oid, varstr &key, varstr &value,
-                  dbtuple *tuple);
-  // overload SendInsert for secondary index.
-  inline void SendInsert(transaction *t, rc_t &rc, const varstr &key,
-                         OID *value_oid, uint32_t idx_no) {
-    // For secondary index, PrepareInsert just copy value_oid to oid
-    // So ignore this step and send value_oid directly
-    ermia::dia::SendInsertRequest(t, this, &key, value_oid, &rc, idx_no);
-  }
-  // overload RecvInsert for secondary index.
-  void RecvInsert(transaction *t, rc_t &rc, varstr &key, OID value_oid);
-
-  inline void SendPut(transaction *t, rc_t &rc, const varstr &key, OID *out_oid,
-                      uint32_t idx_no) {
-    SendGet(t, rc, key, out_oid, idx_no);
-  }
-  void RecvPut(transaction *t, rc_t &rc, OID &oid, const varstr &key,
-               varstr &value);
-
-  inline void SendRemove(transaction *t, rc_t &rc, const varstr &key,
-                         OID *out_oid, uint32_t idx_no) {
-    SendGet(t, rc, key, out_oid, idx_no);
-  }
-  void RecvRemove(transaction *t, rc_t &rc, OID &oid, const varstr &key);
-
-  inline void SendScan(transaction *t, rc_t &rc, varstr &start_key,
-                       varstr *end_key, DiaScanCallback &dia_callback,
-                       uint32_t idx_no) {
-    ermia::dia::SendScanRequest(t, this, &start_key, end_key,
-                                (OID *)&dia_callback, &rc, idx_no);
-  }
-  void RecvScan(transaction *t, rc_t &rc, DiaScanCallback &dia_callback);
-
-  inline void SendReverseScan(transaction *t, rc_t &rc, varstr &start_key,
-                              varstr *end_key, DiaScanCallback &dia_callback,
-                              uint32_t idx_no) {
-    ermia::dia::SendReverseScanRequest(t, this, &start_key, end_key,
-                                       (OID *)&dia_callback, &rc, idx_no);
-  }
-  void RecvReverseScan(transaction *t, rc_t &rc, DiaScanCallback &dia_callback);
+                               const varstr *end_key, rc_t &rc,
+                               OID *dia_callback) override;
 };
 } // namespace ermia

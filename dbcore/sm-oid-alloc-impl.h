@@ -334,7 +334,7 @@ struct sm_allocator {
     return OFFSETOF(sm_allocator, l3_words[end_word]);
   }
 
-  static size_t max_alloc_size() { return l3_alloc_size(); };
+  static size_t max_alloc_size() { return l3_alloc_size(); }
 
   /* Used by template functions below */
   struct _nop_filter {

@@ -106,7 +106,7 @@ public:
     }
 
     bool empty() const {
-       return top_ == -1; 
+       return top_ == -1;
     }
 
     uint32_t size() const {
@@ -115,7 +115,7 @@ public:
 
 private:
     int top_;
-    T data_[cap]; 
+    T data_[cap];
 };
 
 /*
@@ -569,7 +569,7 @@ inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
   #define PROMISE(t) t
   #define RETURN return
   #define AWAIT
-  #define SUSPEND 
+  #define SUSPEND
 
 template<typename T>
 inline T sync_wait_coro(const T &t) { return t; }
@@ -577,4 +577,3 @@ inline T sync_wait_coro(const T &t) { return t; }
 #endif // USE_STATIC_COROUTINE
 
 #endif
-

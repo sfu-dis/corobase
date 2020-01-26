@@ -9,6 +9,9 @@
 namespace ermia {
 namespace config {
 
+uint32_t arena_size_mb = 4;
+bool threadpool = true;
+bool tls_alloc = true;
 bool verbose = true;
 bool coro_tx = false;
 uint32_t coro_batch_size = 1;
@@ -83,35 +86,26 @@ bool numa_spread = false;
 
 void init() {
   ALWAYS_ASSERT(threads);
-  const uint32_t numa_node_count = numa_max_node() + 1;
-  const uint32_t max_cores = std::thread::hardware_concurrency();
-  const uint32_t max_threads_per_node =  max_cores / numa_node_count;
-  config::threads = std::min(config::threads, max_cores);
-
-  if (config::physical_workers_only) {
-    config::numa_nodes = numa_node_count;
-    config::threads = max_cores;
+  // Here [threads] refers to worker threads, so use the number of physical cores
+  // to calculate # of numa nodes
+  if (numa_spread) {
+    numa_nodes = threads > numa_max_node() + 1 ? numa_max_node() + 1 : threads;
   } else {
-    // Here [threads] refers to threads (physical or logical), so use the number of physical cores
-    // to calculate # of numa nodes
-    if (config::numa_spread) {
-      config::numa_nodes = config::threads > numa_node_count ? numa_node_count : config::threads;
-    } else {
-      config::numa_nodes = std::ceil(config::threads / static_cast<float>(max_threads_per_node));
-    }
+    uint32_t max = thread::cpu_cores.size() / (numa_max_node() + 1);
+    numa_nodes = (threads + max - 1) / max;
+    ALWAYS_ASSERT(numa_nodes);
   }
-  ALWAYS_ASSERT(config::numa_nodes > 0);
-
-  thread::Initialize();
 
   if (num_backups) {
     enable_chkpt = true;
   }
+  LOG(INFO) << "Workloads may run on " << numa_nodes << " nodes";
 }
 
 void sanity_check() {
+  LOG_IF(FATAL, tls_alloc && !threadpool) << "Cannot use TLS allocator without threadpool";
   ALWAYS_ASSERT(recover_functor || is_backup_srv());
-  ALWAYS_ASSERT(numa_nodes);
+  ALWAYS_ASSERT(numa_nodes || !threadpool);
   ALWAYS_ASSERT(not group_commit or group_commit_queue_length);
   if (is_backup_srv()) {
     // Must have replay threads if replay is wanted
