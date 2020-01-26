@@ -12,10 +12,8 @@
 
 extern void ycsb_do_test(ermia::Engine *db, int argc, char **argv);
 extern void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv);
-extern void ycsb_dia_do_test(ermia::Engine *db, int argc, char **argv);
+extern void ycsb_cs_simple_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpcc_do_test(ermia::Engine *db, int argc, char **argv);
-extern void tpcc_dia_do_test(ermia::Engine *db, int argc, char **argv);
-extern void tpcc_dora_do_test(ermia::Engine *db, int argc, char **argv);
 extern void tpce_do_test(ermia::Engine *db, int argc, char **argv);
 
 enum { RUNMODE_TIME = 0, RUNMODE_OPS = 1 };
@@ -122,8 +120,8 @@ class bench_worker : public ermia::thread::Runner {
 
   /* For 'normal' workload (r/w on primary, r/o on backups) */
   typedef rc_t (*txn_fn_t)(bench_worker *);
-  typedef std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type> CoroHandle;
-  typedef CoroHandle (*coro_txn_fn_t)(bench_worker *, uint32_t);
+  typedef std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type> SimpleCoroHandle;
+  typedef SimpleCoroHandle (*coro_txn_fn_t)(bench_worker *, uint32_t);
   typedef ermia::dia::task<rc_t> (*task_fn_t)(bench_worker *, uint32_t, ermia::epoch_num);
   struct workload_desc {
     workload_desc() {}

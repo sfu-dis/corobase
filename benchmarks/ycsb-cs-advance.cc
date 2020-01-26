@@ -355,72 +355,10 @@ private:
   ermia::transaction *transactions;
 };
 
-class ycsb_cs_adv_usertable_loader : public bench_loader {
- public:
-  ycsb_cs_adv_usertable_loader(unsigned long seed, ermia::Engine *db,
-                               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                               uint32_t loader_id)
-      : bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
- private:
-  uint32_t loader_id;
-
- protected:
-  void load() {
-    ermia::dia::coro_task_private::memory_pool memory_pool;
-
-    ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
-    int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
-    uint64_t start_key = loader_id * to_insert;
-
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-
-      ermia::varstr &v = str(sizeof(YcsbRecord));
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      *(char*)v.p = 'a';
-
-      TryVerifyStrict(sync_wait_coro(tbl->InsertRecord(txn, k, v)));
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    // Verify inserted values
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-      rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = 0;
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-      ermia::varstr &v = str(0);
-      sync_wait_coro(tbl->GetRecord(txn, rc, k, v, &oid));
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
-      TryVerifyStrict(rc);
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] loader " << loader_id <<  " loaded "
-                << to_insert << " keys in USERTABLE" << std::endl;
-    }
-  }
-};
-
 class ycsb_cs_adv_bench_runner : public bench_runner {
 public:
   ycsb_cs_adv_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
-    ALWAYS_ASSERT(thread);
-
-    auto create_table = [=](char *) {
-      db->CreateTable("USERTABLE");
-      db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
-    };
-
-    thread->StartTask(create_table);
-    thread->Join();
-    ermia::thread::PutThread(thread);
+    ycsb_create_db(db);
   }
 
   virtual void prepare(char *) {
@@ -441,7 +379,7 @@ public:
 
     std::vector<bench_loader *> ret;
     for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
-      ret.push_back(new ycsb_cs_adv_usertable_loader(0, db, open_tables, i));
+      ret.push_back(new ycsb_usertable_loader(0, db, open_tables, i));
     }
     return ret;
   }

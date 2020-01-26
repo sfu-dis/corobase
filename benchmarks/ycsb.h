@@ -7,16 +7,17 @@
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
 
+extern uint g_initial_table_size;
+
 // FIXME(tzwang): since we don't have the read/write_all_fields knobs, here we
 // assume 10 fields, 100-byte each. In FOEDUS, we have 10 and with the knobs it
 // can choose from any one field randomly.
 const uint32_t kFields = 10;
 const uint32_t kFieldLength = 10;
-const uint64_t kRecordSize = kFieldLength * kFields;
 const uint32_t kMaxWorkers = 1024;
 
 struct YcsbRecord {
-  char data_[kRecordSize];
+  char data_[kFieldLength * kFields];
 
   YcsbRecord() {}
   YcsbRecord(char value) { memset(data_, value, kFields * kFieldLength * sizeof(char)); }
@@ -72,3 +73,18 @@ struct YcsbWorkload {
 inline void BuildKey(uint64_t key, ermia::varstr &k) {
   *(uint64_t*)k.p = key;
 }
+
+class ycsb_usertable_loader : public bench_loader {
+ public:
+  ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
+                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+                        uint32_t loader_id)
+      : bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
+ private:
+  uint32_t loader_id;
+
+ protected:
+  void load();
+};
+
+void ycsb_create_db(ermia::Engine *db);
