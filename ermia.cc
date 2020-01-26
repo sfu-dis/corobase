@@ -524,12 +524,6 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr
 
   if (rc._val == RC_TRUE) {
     rc_t rc = t->Update(table_descriptor, oid, &key, &value);
-#if defined(WAITDIE)
-    if (rc._val == RC_WAIT) {
-      while (!t->xc->lock_ready) {}
-      rc = t->Update(table_descriptor, oid, &key, &value);
-    }
-#endif
     RETURN rc;
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
@@ -546,14 +540,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr
   GetOID(key, rc, t->xc, oid);
 
   if (rc._val == RC_TRUE) {
-		rc_t rc = t->Update(table_descriptor, oid, &key, nullptr);
-#if defined(WAITDIE)
-		if (rc._val == RC_WAIT) {
-			while (!t->xc->lock_ready) {}
-			rc = t->Update(table_descriptor, oid, &key, nullptr);
-		}
-#endif
-		RETURN rc ;
+		RETURN t->Update(table_descriptor, oid, &key, nullptr);
   } else {
     RETURN rc_t{RC_ABORT_INTERNAL};
   }

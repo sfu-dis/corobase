@@ -204,8 +204,8 @@ class ycsb_worker : public bench_worker {
       ermia::OID oid = ermia::INVALID_OID;
       tbl->GetRecord(txn, rc, k, v, &oid);  // Read
 
-#if defined(SSI) || defined(SSN) || defined(MVOCC) || defined(NOWAIT) || defined(WAITDIE)
-      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC/NOWAIT/WAITDIE
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
       LOG_IF(FATAL, rc._val != RC_TRUE);
@@ -234,8 +234,8 @@ class ycsb_worker : public bench_worker {
       rc_t rc = rc_t{RC_INVALID};
       tbl->GetRecord(txn, rc, k, v);  // Read
 
-#if defined(SSI) || defined(SSN) || defined(MVOCC) || defined(NOWAIT) || defined(WAITDIE)
-      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC/WAITDIE
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
