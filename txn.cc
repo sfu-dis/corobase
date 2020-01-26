@@ -113,21 +113,15 @@ void transaction::Abort() {
   // move on more quickly.
   volatile_write(xc->state, TXN::TXN_ABRTD);
 
-#if defined(SSN) || defined(SSI) || defined(NOWAIT) || defined(WAITDIE)
+#if defined(SSN) || defined(SSI)
   // Go over the read set first, to deregister from the tuple
   // asap so the updater won't wait for too long.
   for (uint32_t i = 0; i < read_set.size(); ++i) {
     auto &r = read_set[i];
     ASSERT(r->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
-#if defined(SSN) || defined(SSI)
     // remove myself from reader list
     serial_deregister_reader_tx(&r->readers_bitmap);
-#endif
   }
-#endif
-
-#if defined(NOWAIT) || defined(WAITDIE)
-  SortWriteSet();
 #endif
 
   for (uint32_t i = 0; i < write_set.size(); ++i) {
@@ -1334,10 +1328,6 @@ OID transaction::Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple)
   auto *tuple = (dbtuple *)((Object *)new_head.offset())->GetPayload();
   ASSERT(decode_size_aligned(new_head.size_code()) >= tuple->size);
   tuple->GetObject()->SetClsn(xid.to_ptr());
-#if defined(NOWAIT) || defined(WAITDIE)
-  bool locked = tuple->GetObject()->WriteLock(xc);
-  ALWAYS_ASSERT(locked);
-#endif
   OID oid = oidmgr->alloc_oid(tuple_fid);
   ALWAYS_ASSERT(oid != INVALID_OID);
   oidmgr->oid_put_new(tuple_array, oid, new_head);

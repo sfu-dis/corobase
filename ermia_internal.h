@@ -44,11 +44,6 @@ public:
   virtual PROMISE(void) GetOID(const varstr &key, rc_t &rc, TXN::xid_context *xc, OID &out_oid,
                                ConcurrentMasstree::versioned_node_t *out_sinfo = nullptr) = 0;
 
-#if defined(NOWAIT) || defined(WAITDIE)
-  virtual void GetRecordForUpdate(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                   OID *out_oid = nullptr) = 0;
-#endif
-
   // Update a database record with a key of length keylen, with mapping of length
   // valuelen.  The underlying DB does not manage the memory pointed to by key or
   // value (a copy is made).

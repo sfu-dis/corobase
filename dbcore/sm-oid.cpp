@@ -1022,43 +1022,6 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
   }
 }
 
-#if defined(NOWAIT) || defined(WAITDIE)
-dbtuple *sm_oid_mgr::oid_get_s2pl(oid_array *oa, OID o,
-                                         TXN::xid_context *visitor_xc,
-                                         bool for_write,
-                                         rc_t &out_rc) {
-  fat_ptr *entry = oa->get(o);
-  fat_ptr ptr = volatile_read(*entry);
-  ASSERT(ptr.asi_type() == 0);
-  Object *obj = (Object *)ptr.offset();
-
-  if (!obj) {
-    // Record doesn't exist
-    out_rc = {RC_FALSE};
-    return nullptr;
-  } else {
-#ifdef NOWAIT
-    // ReadLock of NOWAIT doesn't use visitor_xc
-    visitor_xc = nullptr;
-#endif
-		// See if we can take the lock
-		if (for_write) {
-			if (obj->WriteLock(visitor_xc)) {
-				out_rc = {RC_TRUE};
-        return (dbtuple *)obj->GetPayload();
-   		}
-		} else {
-			if (obj->ReadLock(visitor_xc)) {
-    		out_rc = {RC_TRUE};
-      	return (dbtuple *)obj->GetPayload();
-    	}
-		}
- 		out_rc = {RC_ABORT_SERIAL};
-  	return nullptr;
-	}
-}
-#endif
-
 // For tuple arrays only, i.e., entries are guaranteed to point to Objects.
 PROMISE(dbtuple *) sm_oid_mgr::oid_get_version(oid_array *oa, OID o,
                                      TXN::xid_context *visitor_xc) {
