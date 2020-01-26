@@ -31,9 +31,9 @@ void transaction::initialize_read_write() {
     masstree_absent_set.set_empty_key(NULL);  // google dense map
     masstree_absent_set.clear();
   }
-  GetWriteSet().clear();
+  write_set.clear();
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
-  GetReadSet().clear();
+ read_set.clear();
 #endif
   xid = TXN::xid_alloc();
   xc = TXN::xid_get_context(xid);
@@ -116,7 +116,6 @@ void transaction::Abort() {
 #if defined(SSN) || defined(SSI) || defined(NOWAIT) || defined(WAITDIE)
   // Go over the read set first, to deregister from the tuple
   // asap so the updater won't wait for too long.
-  auto &read_set = GetReadSet();
   for (uint32_t i = 0; i < read_set.size(); ++i) {
     auto &r = read_set[i];
     ASSERT(r->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
@@ -127,7 +126,6 @@ void transaction::Abort() {
   }
 #endif
 
-  auto &write_set = GetWriteSet();
 #if defined(NOWAIT) || defined(WAITDIE)
   SortWriteSet();
 #endif
@@ -167,7 +165,6 @@ rc_t transaction::commit() {
   // Safe snapshot optimization for read-only transactions:
   // Use the begin ts as cstamp if it's a read-only transaction
   // This is the same for both SSN and SSI.
-  auto &write_set = GetWriteSet();
   if (config::enable_safesnap and (flags & TXN_FLAG_READ_ONLY)) {
     ASSERT(not log);
     ASSERT(write_set.size() == 0);
@@ -1511,7 +1508,7 @@ rc_t transaction::ssi_read(dbtuple *tuple) {
 
 #ifdef MVOCC
 rc_t transaction::mvocc_read(dbtuple *tuple) {
-  GetReadSet().emplace_back(tuple);
+  read_set.emplace_back(tuple);
   return rc_t{RC_TRUE};
 }
 #endif
