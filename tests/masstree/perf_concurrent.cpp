@@ -34,13 +34,12 @@ class Context {
                   << " threads" << std::endl;
         setUpMasstree();
 
-        std::cout << "Randomly generating " << k_record_num << " records..."
-                  << std::endl;
-        std::vector<Record> records = genSequentialRecords(k_record_num, k_key_len);
-
         static_assert(sizeof(key_buffer_t) <= k_key_len, "Key buffer does not have enough space");
 
+        std::vector<Record> records = genRecords();
+
         loadRecords(records);
+
         verifyInserted(records);
 
         spin_barrier setup_barrier(running_threads_.size());
@@ -81,7 +80,7 @@ class Context {
                 std::vector<uint32_t*> &counters) = 0;
 
    protected:
-    static constexpr int k_record_num = 30000000;
+    static constexpr int k_record_num = 300000000;
     static constexpr int k_key_len = 8;
     static constexpr int k_threads = 10;
     static constexpr int k_batch_size = 10;
@@ -105,6 +104,20 @@ class Context {
         };
         th->StartTask(masstree_alloc_task, nullptr);
         th->Join();
+    }
+
+    std::vector<Record> genRecords() {
+        std::cout << "Generating " << k_record_num << " records..." << std::endl;
+
+        std::vector<Record> ret;
+        ret.reserve(k_record_num);
+        for(uint64_t i = 0; i < k_record_num; i++) {
+            char buf[9] = {0};
+            memcpy(buf, &i, sizeof(uint64_t));
+            // Hack, make value=key+1 to be easy to check
+            ret.emplace_back(std::string(buf, k_key_len), ermia::OID(i+1));
+        }
+        return ret;
     }
 
     void loadRecords(const std::vector<Record> &records) {
@@ -151,6 +164,8 @@ class Context {
     }
 
     void verifyInserted(const std::vector<Record> &records) {
+        std::cout << "Verify inserted key and value pairs..." << std::endl;
+
         ermia::dia::coro_task_private::memory_pool memory_pool;
         for (auto &record : records) {
             ermia::OID value;
@@ -206,7 +221,7 @@ class ContextNestedCoro : public Context {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
                 std::default_random_engine generator(seed);
-                std::uniform_int_distribution<uint64_t> distribution;
+                std::uniform_int_distribution<uint64_t> distribution(0, k_record_num-1);
                 std::array<task<bool>, k_batch_size> task_queue;
                 std::array<ermia::OID, k_batch_size> task_rets;
                 std::array<key_buffer_t, k_batch_size> task_key_bufs;
@@ -229,6 +244,8 @@ class ContextNestedCoro : public Context {
                         if (t.valid()) {
                             if (t.done()) {
                                 bool res = t.get_return_value();
+                                ASSERT(res);
+                                ASSERT(task_rets[j] == task_key_bufs[j] + 1);
                                 t = task<bool>(nullptr);
                                 (*counter)++;
                             } else {
@@ -265,7 +282,7 @@ class ContextSequential : public Context {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
                 std::default_random_engine generator(seed);
-                std::uniform_int_distribution<uint64_t> distribution;
+                std::uniform_int_distribution<uint64_t> distribution(0, k_record_num-1);
                 key_buffer_t key_buf;
 
                 uint32_t *counter = (uint32_t*)(ermia::MM::allocate(sizeof(uint32_t)));
@@ -281,6 +298,8 @@ class ContextSequential : public Context {
                     bool res = sync_wait_coro(
                         masstree_->search(ermia::varstr((const char*)(&key_buf), k_key_len),
                                           value_out, 0, nullptr));
+                    ASSERT(res);
+                    ASSERT(value_out == key_buf + 1);
                     (*counter)++;
                 }
             };
@@ -298,7 +317,7 @@ class ContextAmac : public Context {
                 auto seed =
                     std::chrono::system_clock::now().time_since_epoch().count();
                 std::default_random_engine generator(seed);
-                std::uniform_int_distribution<uint64_t> distribution;
+                std::uniform_int_distribution<uint64_t> distribution(0, k_record_num-1);
                 std::vector<ermia::ConcurrentMasstree::AMACState> amac_states;
                 amac_states.reserve(k_batch_size);
                 std::array<key_buffer_t, k_batch_size> key_bufs;
