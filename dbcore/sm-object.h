@@ -1,13 +1,16 @@
 #pragma once
 
+#include <list>
+
 #include "epoch.h"
 #include "sm-common.h"
 #include "../varstr.h"
+#include "xid.h"
 
 namespace ermia {
 
 struct dbtuple;
-class sm_log_recover_mgr;
+struct sm_log_recover_mgr;
 
 class Object {
  private:
@@ -40,7 +43,17 @@ class Object {
   // commit. size_code refers to the whole object including header
   fat_ptr clsn_;
 
+#if defined(NOWAIT) || defined(WAITDIE)
+  std::atomic<uint64_t> lock_;
+  static const uint64_t kLockX = 1UL << 63;
+#endif
+
  public:
+
+#if defined(WAITDIE)
+	std::list<TXN::xid_context*> waiters, owners;
+  mcs_lock olock_;
+#endif
   static fat_ptr Create(const varstr* tuple_value, bool do_write,
                         epoch_num epoch);
 
@@ -59,6 +72,13 @@ class Object {
         next_pdest_(next),
         next_volatile_(NULL_PTR),
         clsn_(NULL_PTR) {}
+
+#if defined(NOWAIT) || defined(WAITDIE)
+  bool ReadLock(TXN::xid_context *xc = nullptr);
+  bool WriteLock(TXN::xid_context *xc);
+  void ReleaseLock(TXN::xid_context *xc);
+  inline bool IsWriteLocked() { return lock_.load(std::memory_order_acquire) & kLockX; }
+#endif
 
   inline bool IsDeleted() { return status_ == kStatusDeleted; }
   inline bool IsInMemory() { return status_ == kStatusMemory; }

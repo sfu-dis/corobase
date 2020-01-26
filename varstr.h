@@ -9,13 +9,15 @@
 
 namespace ermia {
 struct varstr {
+  friend std::ostream &operator<<(std::ostream &o, const varstr &k);
+
  public:
   inline varstr() : l(0), p(NULL) {}
 
   inline varstr(const uint8_t *p, uint32_t l) : l(l), p(p) {}
   inline varstr(const char *p, uint32_t l) : l(l), p((const uint8_t *)p) {}
   inline void copy_from(const uint8_t *s, uint32_t l) {
-    copy_from((char *)s, l);
+    copy_from((const char *)s, l);
   }
   inline void copy_from(const varstr *v) { copy_from(v->p, v->l); }
 
@@ -29,12 +31,6 @@ struct varstr {
   inline bool operator==(const varstr &that) const {
     if (size() != that.size()) return false;
     return memcmp(data(), that.data(), size()) == 0;
-  }
-
-  inline varstr &operator=(const varstr &other) {
-    p = other.p;
-    l = other.l;
-    return *this;
   }
 
   inline bool operator!=(const varstr &that) const { return !operator==(that); }
@@ -83,17 +79,8 @@ struct varstr {
 
   inline uint32_t size() const { return l; }
   inline const uint8_t *data() const { return p; }
-  inline uint8_t *data() { return (uint8_t *)p; }
+  inline uint8_t *data() { return (uint8_t *)(void*)p; }
   inline bool empty() const { return not size(); }
-
-  friend std::ostream &operator<<(std::ostream &o, const varstr &k) {
-      for(uint32_t i = 0; i < k.size(); i++) {
-          std::cout << "/" << (uint16_t)(k.data()[i]);
-      }
-      std::cout << std::endl;
-      return o;
-  }
-
 
 #ifdef MASSTREE
   inline operator lcdf::Str() const { return lcdf::Str(p, l); }

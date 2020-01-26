@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#ifdef USE_STATIC_COROUTINE
+
 #include "../str_arena.h"
 #include "../dbcore/rcu.h"
 #include "../dbcore/sm-log.h"
@@ -29,6 +31,7 @@ extern uint g_initial_table_size;
 extern int g_zipfian_rng;
 extern double g_zipfian_theta; // zipfian constant, [0, 1), more skewed as it
                                // approaches 1.
+extern int g_adv_coro_txn_read;
 
 // { insert, read, update, scan, rmw }
 extern YcsbWorkload YcsbWorkloadA;
@@ -85,9 +88,7 @@ public:
 
     while (running) {
       ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-      ermia::RCU::rcu_enter();
-
-      arena.reset();
+      arena->reset();
 
       for(uint32_t i = 0; i < batch_size; i++) {
         task<rc_t> & coro_task = task_queue[i];
@@ -121,7 +122,6 @@ public:
         }
       }
 
-      ermia::RCU::rcu_exit();
       ermia::MM::epoch_exit(0, begin_epoch);
     }
   }
@@ -136,9 +136,15 @@ public:
     if (ycsb_workload.insert_percent())
       w.push_back(workload_desc(
           "Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr, nullptr, nullptr));
-    if (ycsb_workload.read_percent())
-      w.push_back(workload_desc(
-          "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
+    if (ycsb_workload.read_percent()) {
+      if (g_adv_coro_txn_read) {
+        w.push_back(workload_desc(
+            "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
+      } else {
+        w.push_back(workload_desc(
+            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAdvCoroMultiGet));
+      }
+    }
     if (ycsb_workload.update_percent())
       w.push_back(workload_desc(
           "Update", double(ycsb_workload.update_percent()) / 100.0, nullptr, nullptr, nullptr));
@@ -156,6 +162,10 @@ public:
     return static_cast<ycsb_cs_adv_worker *>(w)->txn_read_coro_2_layer(idx, begin_epoch);
   }
 
+  static rc_t TxnReadAdvCoroMultiGet(bench_worker *w) {
+    return static_cast<ycsb_cs_adv_worker *>(w)->txn_read_adv_coro_multi_get();
+  }
+
 private:
   task<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
     ermia::transaction *txn = nullptr;
@@ -163,7 +173,7 @@ private:
     if (!ermia::config::index_probe_only) {
         txn = &transactions[idx];
         new (txn) ermia::transaction(
-          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, arena);
+          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, *arena);
           ermia::TXN::xid_context * xc = txn->GetXIDContext();
           xc->begin_epoch = begin_epoch;
     }
@@ -175,11 +185,11 @@ private:
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       if (!ermia::config::index_probe_only) {
-        co_await tbl->Get(txn, rc, k, v);  // Read
+        AWAIT tbl->GetRecord(txn, rc, k, v);  // Read
       } else {
         ermia::OID oid = 0;
         ermia::ConcurrentMasstree::versioned_node_t sinfo;
-        rc = (co_await tbl->GetMasstree().search(k, oid, begin_epoch, &sinfo)) ? RC_TRUE : RC_FALSE;
+        rc = (AWAIT tbl->GetMasstree().search(k, oid, begin_epoch, &sinfo)) ? RC_TRUE : RC_FALSE;
       }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -216,7 +226,7 @@ private:
     if (!ermia::config::index_probe_only) {
         txn = &transactions[idx];
         new (txn) ermia::transaction(
-          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, arena);
+          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, *arena);
           ermia::TXN::xid_context * xc = txn->GetXIDContext();
           xc->begin_epoch = begin_epoch;
     }
@@ -231,11 +241,11 @@ private:
       rc_t rc = rc_t{RC_INVALID};
 
       if (!ermia::config::index_probe_only) txn->ensure_active();
-      bool found = co_await tbl->GetMasstree().search_coro_1_layer(k, oid, begin_epoch, &sinfo);
+      bool found = AWAIT tbl->GetMasstree().search_coro_1_layer(k, oid, begin_epoch, &sinfo);
       if (!ermia::config::index_probe_only) {
         ermia::dbtuple *tuple = nullptr;
         if (found) {
-          tuple = co_await ermia::oidmgr->oid_get_version(tbl->GetMasstree().get_descriptor()->GetTupleArray(),
+          tuple = AWAIT ermia::oidmgr->oid_get_version(tbl->GetMasstree().get_table_descriptor()->GetTupleArray(),
                                                           oid, txn->GetXIDContext());
           if (!tuple) found = false;
         }
@@ -276,8 +286,54 @@ private:
     co_return {RC_TRUE};
   }
 
+  rc_t txn_read_adv_coro_multi_get() {
+    arena->reset();
+    ermia::transaction *txn = nullptr;
+
+    thread_local std::vector<ermia::varstr *> keys;
+    thread_local std::vector<ermia::varstr *> values;
+    thread_local std::vector<ermia::dia::task<bool>> index_probe_tasks(g_reps_per_tx);
+    thread_local std::vector<ermia::dia::task<ermia::dbtuple*>> value_fetch_tasks(g_reps_per_tx);
+    thread_local std::vector<ermia::dia::coro_task_private::coro_stack> coro_stacks(g_reps_per_tx);
+    keys.clear();
+
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      auto &k = GenerateKey();
+      keys.emplace_back(&k);
+    }
+
+    if (!ermia::config::index_probe_only) {
+      values.clear();
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        if (ermia::config::index_probe_only) {
+          values.push_back(&str(0));
+        } else {
+          values.push_back(&str(sizeof(YcsbRecord)));
+        }
+      }
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+    }
+
+    tbl->adv_coro_MultiGet(txn, keys, values,
+        index_probe_tasks, value_fetch_tasks, coro_stacks);
+
+    if (!ermia::config::index_probe_only) {
+      ermia::varstr &v = str(sizeof(YcsbRecord));
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
+      }
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
+    }
+
+    if (!ermia::config::index_probe_only) {
+      TryCatch(db->Commit(txn));
+    }
+
+    return {RC_TRUE};
+  }
+
 protected:
-  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
   ermia::varstr &GenerateKey() {
     uint64_t r = 0;
     if (g_zipfian_rng) {
@@ -300,18 +356,15 @@ private:
 };
 
 class ycsb_cs_adv_usertable_loader : public bench_loader {
-public:
-  ycsb_cs_adv_usertable_loader(
-      unsigned long seed, ermia::Engine *db,
-      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-      uint32_t loader_id)
-      : bench_loader(seed, db, open_tables), loader_id(loader_id) {}
-
-private:
+ public:
+  ycsb_cs_adv_usertable_loader(unsigned long seed, ermia::Engine *db,
+                               const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+                               uint32_t loader_id)
+      : bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
+ private:
   uint32_t loader_id;
 
-protected:
-  // XXX(lujc): for now this is serial
+ protected:
   void load() {
     ermia::dia::coro_task_private::memory_pool memory_pool;
 
@@ -320,39 +373,36 @@ protected:
     uint64_t start_key = loader_id * to_insert;
 
     for (uint64_t i = 0; i < to_insert; ++i) {
-      arena.reset();
+      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+
       ermia::varstr &k = str(sizeof(uint64_t));
       BuildKey(start_key + i, k);
 
       ermia::varstr &v = str(sizeof(YcsbRecord));
-      new (&v)
-          ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      *(char *)v.p = 'a';
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+      *(char*)v.p = 'a';
 
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-      TryVerifyStrict(sync_wait_coro(tbl->Insert(txn, k, v)));
+      TryVerifyStrict(sync_wait_coro(tbl->InsertRecord(txn, k, v)));
       TryVerifyStrict(db->Commit(txn));
     }
 
     // Verify inserted values
     for (uint64_t i = 0; i < to_insert; ++i) {
-      arena.reset();
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
+      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = 0;
       ermia::varstr &k = str(sizeof(uint64_t));
       BuildKey(start_key + i, k);
       ermia::varstr &v = str(0);
-
-      sync_wait_coro(tbl->Get(txn, rc, k, v, &oid));
-      ALWAYS_ASSERT(*(char *)v.data() == 'a');
+      sync_wait_coro(tbl->GetRecord(txn, rc, k, v, &oid));
+      ALWAYS_ASSERT(*(char*)v.data() == 'a');
       TryVerifyStrict(rc);
       TryVerifyStrict(db->Commit(txn));
     }
 
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] loader " << loader_id << " loaded " << to_insert
-                << " keys in USERTABLE" << std::endl;
+      std::cerr << "[INFO] loader " << loader_id <<  " loaded "
+                << to_insert << " keys in USERTABLE" << std::endl;
     }
   }
 };
@@ -360,25 +410,33 @@ protected:
 class ycsb_cs_adv_bench_runner : public bench_runner {
 public:
   ycsb_cs_adv_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    db->CreateMasstreeTable("USERTABLE", false);
+    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
+    ALWAYS_ASSERT(thread);
+
+    auto create_table = [=](char *) {
+      db->CreateTable("USERTABLE");
+      db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
+    };
+
+    thread->StartTask(create_table);
+    thread->Join();
+    ermia::thread::PutThread(thread);
   }
 
   virtual void prepare(char *) {
-    open_tables["USERTABLE"] = ermia::IndexDescriptor::GetIndex("USERTABLE");
+    open_tables["USERTABLE"] = ermia::TableDescriptor::GetPrimaryIndex("USERTABLE");
   }
 
-protected:
+ protected:
   virtual std::vector<bench_loader *> make_loaders() {
     uint64_t requested = g_initial_table_size;
-    uint64_t records_per_thread = std::max<uint64_t>(
-        1, g_initial_table_size / ermia::config::worker_threads);
+    uint64_t records_per_thread = std::max<uint64_t>(1, g_initial_table_size / ermia::config::worker_threads);
     g_initial_table_size = records_per_thread * ermia::config::worker_threads;
 
     if (ermia::config::verbose) {
       std::cerr << "[INFO] requested for " << requested
-                << " records, will load "
-                << records_per_thread * ermia::config::worker_threads
-                << std::endl;
+           << " records, will load "
+           << records_per_thread *ermia::config::worker_threads << std::endl;
     }
 
     std::vector<bench_loader *> ret;
@@ -418,6 +476,7 @@ void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv) {
         {"initial-table-size", required_argument, 0, 's'},
         {"zipfian", no_argument, &g_zipfian_rng, 1},
         {"zipfian-theta", required_argument, 0, 'z'},
+        {"adv-coro-txn-read", no_argument, &g_adv_coro_txn_read, 1},
         {0, 0, 0, 0}};
 
     int option_index = 0;
@@ -486,14 +545,15 @@ void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv) {
               << std::endl
               << "  distribution:               "
               << (g_zipfian_rng ? "zipfian" : "uniform")
+              << "  adv_coro_txn_read:          " << g_adv_coro_txn_read << std::endl
               << std::endl;
 
     if (g_zipfian_rng) {
-      std::cerr << "  zipfian theta:              " << g_zipfian_theta
-                << std::endl;
+      std::cerr << "  zipfian theta:              " << g_zipfian_theta << std::endl;
     }
   }
 
   ycsb_cs_adv_bench_runner r(db);
   r.run();
 }
+#endif  // USE_STATIC_COROUTINE

@@ -2,27 +2,7 @@
 #include "sm-log-impl.h"
 
 namespace {
-/* No point allocating these individually or repeatedly---they're
-   thread-private with a reasonably small maximum size (~10kB).
-
-   WARNING: this assumes that transactions are pinned to their
-   worker thread at least until pre-commit. If we ever implement
-   DORA we'll have to be more clever, because transactions would
-   change threads frequently, but for now it works great.
- */
-static thread_local ermia::log_request
-    tls_log_requests[ermia::sm_log_recover_mgr::MAX_BLOCK_RECORDS];
-
-/* Same goes for the sm_tx_log_impl object we give the caller, for that matter
- */
-static thread_local char LOG_ALIGN tls_log_space[sizeof(ermia::sm_tx_log_impl)];
-static thread_local bool tls_log_space_used = false;
-
 static ermia::sm_tx_log_impl *get_log_impl(ermia::sm_tx_log *x) {
-  DIE_IF(
-      x != (void *)tls_log_space,
-      "sm_tx_log object can only be safely used by the thread that created it");
-  DIE_IF(not tls_log_space_used, "Attempt to access unallocated memory");
   return get_impl(x);
 }
 }
@@ -50,7 +30,7 @@ void sm_tx_log::log_update_key(FID f, OID o, fat_ptr ptr, int abits) {
       ->add_payload_request(LOG_UPDATE_KEY, f, o, ptr, abits, nullptr);
 }
 
-void sm_tx_log::log_index(FID tuple_fid, FID key_fid, const std::string &name) {
+void sm_tx_log::log_table(FID tuple_fid, FID key_fid, const std::string &name) {
   auto size = align_up(sizeof(FID) + name.length() + 1);
   auto size_code = encode_size_aligned(size);
   char *buf = (char *)malloc(size);
@@ -60,6 +40,21 @@ void sm_tx_log::log_index(FID tuple_fid, FID key_fid, const std::string &name) {
   ASSERT(buf[sizeof(FID) + name.length()] == '\0');
   // only use the logrec's fid field, payload is name
   get_log_impl(this)->add_payload_request(LOG_FID, tuple_fid, 0,
+                                          fat_ptr::make(buf, size_code),
+                                          DEFAULT_ALIGNMENT_BITS, NULL);
+}
+
+void sm_tx_log::log_index(FID table_fid, FID index_fid, const std::string &index_name, bool primary) {
+  auto size = align_up(sizeof(FID) + index_name.length() + 1);
+  auto size_code = encode_size_aligned(size);
+  char *buf = (char *)malloc(size);
+  memset(buf, '\0', size);
+  memcpy(buf, (char *)&index_fid, sizeof(FID));
+  memcpy(buf + sizeof(FID), (char *)index_name.c_str(), index_name.length());
+  ASSERT(buf[sizeof(FID) + index_name.length()] == '\0');
+  // only use the logrec's fid field, payload is name
+  get_log_impl(this)->add_payload_request(primary ? LOG_PRIMARY_INDEX : LOG_SECONDARY_INDEX, 
+                                          table_fid, 0,
                                           fat_ptr::make(buf, size_code),
                                           DEFAULT_ALIGNMENT_BITS, NULL);
 }
@@ -137,21 +132,14 @@ LSN sm_tx_log::commit(LSN *pdest) {
   if (pdest) *pdest = impl->_commit_block->block->lsn;
 
   impl->_log->_lm.release(impl->_commit_block);
-  tls_log_space_used = false;
   return clsn;
 }
 
 void sm_tx_log::discard() {
   auto *impl = get_log_impl(this);
-  if (impl->_commit_block) impl->_log->_lm.discard(impl->_commit_block);
-  tls_log_space_used = false;
-}
-
-void *sm_tx_log_impl::alloc_storage() {
-  DIE_IF(tls_log_space_used,
-         "Only one transaction per worker thread is allowed");
-  tls_log_space_used = true;
-  return tls_log_space;
+  if (impl->_commit_block) {
+    impl->_log->_lm.discard(impl->_commit_block);
+  }
 }
 
 void sm_tx_log_impl::add_payload_request(log_record_type type, FID f, OID o,
@@ -218,7 +206,7 @@ void sm_tx_log_impl::add_request(log_request const &req) {
     return add_request(req);
   }
 
-  tls_log_requests[_nreq] = req;
+  log_requests[_nreq] = req;
   _nreq = new_nreq;
   _payload_bytes = new_payload_bytes;
 }
@@ -240,7 +228,7 @@ void sm_tx_log_impl::_populate_block(log_block *b) {
 
   // process normal log records
   while (i < _nreq) {
-    log_request *it = &tls_log_requests[i];
+    log_request *it = &log_requests[i];
     DEFER(++i);
 
     log_record *r = &b->records[i];

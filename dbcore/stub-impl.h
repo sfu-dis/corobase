@@ -108,7 +108,7 @@ typename _impl_of<T>::type *get_impl(T *ptr) {
 }
 template <typename T>
 typename _impl_of<T>::type const *get_impl(T const *ptr) {
-  return (typename _impl_of<T>::type *)ptr;
+  return (typename _impl_of<T>::type const *)ptr;
 }
 
 }  // namespace ermia

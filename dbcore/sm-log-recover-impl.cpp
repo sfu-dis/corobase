@@ -1,6 +1,6 @@
 #include "../ermia.h"
 #include "../util.h"
-#include "sm-index.h"
+#include "sm-table.h"
 #include "sm-log-recover-impl.h"
 #include "sm-oid.h"
 #include "sm-oid-impl.h"
@@ -37,6 +37,7 @@ fat_ptr sm_log_recover_impl::PrepareObject(
 
 void sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan* logrec,
                                          bool latest) {
+#if 0
   FID f = logrec->fid();
   OID o = logrec->oid();
   if (config::is_backup_srv()) {
@@ -84,10 +85,12 @@ void sm_log_recover_impl::recover_insert(sm_log_scan_mgr::record_scan* logrec,
       ASSERT(oidmgr->oid_get(oa, o) == ptr);
     }
   }
+#endif
 }
 
 void sm_log_recover_impl::recover_index_insert(
     sm_log_scan_mgr::record_scan* logrec) {
+#if 0
   // No need if the chkpt recovery already picked up this tuple
   FID fid = logrec->fid();
   IndexDescriptor* id = IndexDescriptor::Get(fid);
@@ -95,10 +98,12 @@ void sm_log_recover_impl::recover_index_insert(
       oidmgr->oid_get(id->GetKeyArray(), logrec->oid()).offset() == 0) {
     recover_index_insert(logrec, id->GetIndex());
   }
+#endif
 }
 
 void sm_log_recover_impl::recover_index_insert(
     sm_log_scan_mgr::record_scan* logrec, OrderedIndex* index) {
+#if 0
   static const uint32_t kBufferSize = 8 * config::MB;
   ASSERT(index);
   auto sz = align_up(logrec->payload_size());
@@ -134,9 +139,8 @@ void sm_log_recover_impl::recover_index_insert(
 
   varstr payload_key((char*)payload_buf + sizeof(varstr), len);
   // FIXME(tzwang): support other index types
-  if (sync_wait_coro(
-        ((ConcurrentMasstreeIndex*)index)->masstree_.insert_if_absent(payload_key, logrec->oid(), NULL)
-      )) {
+  if (((ConcurrentMasstreeIndex*)index)->masstree_.insert_if_absent(payload_key, logrec->oid(),
+                                                     NULL)) {
     // Don't add the key on backup - on backup chkpt will traverse OID arrays
     if (!config::is_backup_srv()) {
       // Construct the varkey to be inserted in the oid array
@@ -148,10 +152,12 @@ void sm_log_recover_impl::recover_index_insert(
                      fat_ptr::make((void*)key, INVALID_SIZE_CODE));
     }
   }
+#endif
 }
 
 void sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan* logrec,
                                          bool is_delete, bool latest) {
+#if 0
   FID f = logrec->fid();
   OID o = logrec->oid();
   ASSERT(oidmgr->file_exists(f));
@@ -232,6 +238,7 @@ void sm_log_recover_impl::recover_update(sm_log_scan_mgr::record_scan* logrec,
       oidmgr->oid_put(oa, o, ptr);
     }
   }
+#endif
 }
 
 void sm_log_recover_impl::recover_update_key(
@@ -276,6 +283,7 @@ void sm_log_recover_impl::recover_update_key(
 
 OrderedIndex* sm_log_recover_impl::recover_fid(
     sm_log_scan_mgr::record_scan* logrec) {
+#if 0
   // XXX(tzwang): no support for dynamically created tables for now
   char buf[256];
   auto sz = logrec->payload_size();
@@ -291,5 +299,7 @@ OrderedIndex* sm_log_recover_impl::recover_fid(
   LOG(INFO) << "[Recovery] " << name << "(" << tuple_fid << ", " << key_fid
             << ")";
   return IndexDescriptor::GetIndex(name);
+#endif
+  return nullptr;
 }
 }  // namespace ermia

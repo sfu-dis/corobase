@@ -61,7 +61,7 @@ struct sm_log_recover_mgr : sm_log_offset_mgr {
 
     static log_block invalid_block() {
       return log_block{
-          0, 0, INVALID_LSN, {LOG_NOP, INVALID_SIZE_CODE, 0, 0, {INVALID_LSN}}};
+          0, 0, INVALID_LSN, {{LOG_NOP, INVALID_SIZE_CODE, 0, 0, {INVALID_LSN}}}};
     }
 
     block_scanner(sm_log_recover_mgr *lm, LSN start, bool follow_overflow,

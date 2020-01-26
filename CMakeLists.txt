@@ -6,9 +6,6 @@ endif("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
 project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
-option(BUILD_TESTS "build tests along with the benchmarks" ON)
-option(BUILD_STATIC_COROUTINE "build with coroutine at transaction level" OFF)
-
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Wno-address-of-packed-member")
 set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
 link_libraries(${LINK_FLAGS})
@@ -19,10 +16,6 @@ link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/gflags/lib)
 
 # Use masstree for index
 add_definitions(-DMASSTREE)
-
-if(BUILD_STATIC_COROUTINE)
-  add_definitions(-DUSE_STATIC_COROUTINE)
-endif()
 
 set(MASSTREE_CONFIG "--enable-max-key-len=1024 --with-malloc=malloc")
 
@@ -36,6 +29,8 @@ endif()
 
 # Assume 64-byte cache line
 add_definitions(-DCACHELINE_SIZE=64)
+
+enable_testing()
 
 include_directories(dbcore)
 include_directories(masstree)
@@ -57,10 +52,25 @@ set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
 
 get_property(LIB_ERMIA_SRC GLOBAL PROPERTY ALL_ERMIA_SRC)
 
+# Thread pool library
+set_property(GLOBAL APPEND PROPERTY THREAD_POOL_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/dbcore/sm-thread.cpp
+)
+get_property(THREAD_POOL_SRC GLOBAL PROPERTY THREAD_POOL_SRC)
+add_library(thread_pool SHARED ${THREAD_POOL_SRC})
+
 # SI
 add_library(ermia_si SHARED ${LIB_ERMIA_SRC})
 add_executable(ermia_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-target_link_libraries(ermia_SI ermia_si)
+target_link_libraries(ermia_SI ermia_si thread_pool)
+
+# SI with coroutine
+add_library(ermia_coro_si SHARED ${LIB_ERMIA_SRC})
+set_target_properties(ermia_coro_si PROPERTIES COMPILE_FLAGS "-DUSE_STATIC_COROUTINE")
+
+add_executable(ermia_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(ermia_coro_SI PROPERTIES COMPILE_FLAGS "-DUSE_STATIC_COROUTINE")
+target_link_libraries(ermia_coro_SI ermia_coro_si thread_pool)
 
 # SI+SSN
 add_library(ermia_si_ssn SHARED ${LIB_ERMIA_SRC})
@@ -68,7 +78,7 @@ set_target_properties(ermia_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_C
 
 add_executable(ermia_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(ermia_SI_SSN ermia_si_ssn)
+target_link_libraries(ermia_SI_SSN ermia_si_ssn thread_pool)
 
 # SSI
 add_library(ermia_ssi SHARED ${LIB_ERMIA_SRC})
@@ -76,7 +86,7 @@ set_target_properties(ermia_ssi PROPERTIES COMPILE_FLAGS "-DSSI")
 
 add_executable(ermia_SSI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
-target_link_libraries(ermia_SSI ermia_ssi)
+target_link_libraries(ermia_SSI ermia_ssi thread_pool)
 
 # MVOCC
 add_library(ermia_mvocc SHARED ${LIB_ERMIA_SRC})
@@ -84,7 +94,7 @@ set_target_properties(ermia_mvocc PROPERTIES COMPILE_FLAGS "-DMVOCC")
 
 add_executable(ermia_MVOCC ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_MVOCC PROPERTIES COMPILE_FLAGS "-DMVOCC")
-target_link_libraries(ermia_MVOCC ermia_mvocc)
+target_link_libraries(ermia_MVOCC ermia_mvocc thread_pool)
 
 if(BUILD_TESTS)
     set(BUILD_GMOCK OFF CACHE BOOL "Gmock Not Used")

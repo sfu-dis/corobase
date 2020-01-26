@@ -115,10 +115,10 @@ sm_log_scan_mgr *sm_log::get_scan_mgr() {
   return get_impl(this)->_lm._lm.scanner;
 }
 
-sm_tx_log *sm_log::new_tx_log() {
+sm_tx_log *sm_log::new_tx_log(char *log_space) {
   auto *self = get_impl(this);
   typedef _impl_of<sm_tx_log>::type Impl;
-  return new (Impl::alloc_storage()) Impl(self);
+  return new (log_space) Impl(self);
 }
 
 fat_ptr sm_log_impl::lsn2ptr(LSN lsn, bool is_ext) {

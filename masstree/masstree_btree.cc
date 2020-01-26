@@ -3,7 +3,7 @@
 
 namespace ermia {
 
-// Multi-key search using Coroutines
+// Multi-key search using simple coroutines
 template <typename P>
 ermia::dia::generator<bool>
 mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *> &keys,
@@ -89,7 +89,7 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
       auto o = lp.value();
       if (!config::index_probe_only && !config::amac_version_chain) {
         version_requests.emplace_back(o);
-        auto tuple = sync_wait_coro(oidmgr->oid_get_version(descriptor_->GetTupleArray(), o, txn->GetXIDContext()));
+        auto tuple = sync_wait_coro(oidmgr->oid_get_version(table_descriptor_->GetTupleArray(), o, txn->GetXIDContext()));
         if (tuple) {
           varstr value;
           auto rc = txn->DoTupleRead(tuple, &value);
@@ -102,7 +102,7 @@ mbtree<P>::ycsb_read_coro(ermia::transaction *txn, const std::vector<key_type *>
   }
 
   if (!config::index_probe_only && config::amac_version_chain) {
-    oidmgr->oid_get_version_amac(descriptor_->GetTupleArray(), version_requests, txn->GetXIDContext());
+    oidmgr->oid_get_version_amac(table_descriptor_->GetTupleArray(), version_requests, txn->GetXIDContext());
     uint32_t i = 0;
     for (auto &vr : version_requests) {
       if (vr.tuple) {

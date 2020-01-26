@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dbcore/sm-config.h"
 #include "dbcore/sm-common.h"
 #include "varstr.h"
 #include <atomic>
@@ -8,13 +9,16 @@
 namespace ermia {
 class str_arena {
 public:
-  static const uint64_t ReserveBytes = 32 * 1024 * 1024;
   static const size_t MinStrReserveLength = 2 * CACHELINE_SIZE;
-  str_arena() : n(0) {
+  str_arena(uint32_t size_mb) : n(0) {
+    // Make sure arena is only initialized after config is initialized so we have
+    // a valid size
+    ALWAYS_ASSERT(size_mb == config::arena_size_mb);
+
     // adler32 (log checksum) needs it aligned
     ALWAYS_ASSERT(
-        not posix_memalign((void **)&str, DEFAULT_ALIGNMENT, ReserveBytes));
-    memset(str, '\0', ReserveBytes);
+        not posix_memalign((void **)&str, DEFAULT_ALIGNMENT, size_mb * config::MB));
+    memset(str, '\0', config::arena_size_mb * config::MB);
     reset();
   }
 
@@ -24,14 +28,14 @@ public:
   str_arena &operator=(const str_arena &) = delete;
 
   inline void reset() {
-    ASSERT(n < ReserveBytes);
+    ASSERT(n < config::arena_size_mb * config::MB);
     n = 0;
   }
 
   varstr *next(uint64_t size) {
     uint64_t off = n;
     n += align_up(size + sizeof(varstr));
-    ASSERT(n < ReserveBytes);
+    ASSERT(n < config::arena_size_mb * config::MB);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
   }
@@ -40,7 +44,7 @@ public:
     uint64_t off = n.fetch_add(
         align_up(size + sizeof(varstr)),
         std::memory_order_acq_rel); // for adler32's 16-byte alignment
-    ASSERT(n < ReserveBytes);
+    ASSERT(n < config::arena_size_mb * config::MB);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
   }
@@ -48,7 +52,7 @@ public:
   inline varstr *operator()(uint64_t size) { return next(size); }
 
   bool manages(const varstr *px) const {
-    return (char *)px >= str and
+    return (const char *)px >= str and
            (uint64_t) px->data() + px->size() <= (uint64_t)str + n;
   }
 

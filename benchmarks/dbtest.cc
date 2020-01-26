@@ -17,6 +17,9 @@
 #endif
 
 // Options that are shared by the primary and backup servers
+DEFINE_bool(threadpool, true, "Whether to use ERMIA thread pool (no oversubscription)");
+DEFINE_uint64(arena_size_mb, 4, "Size of transaction arena (private workspace) in MB");
+DEFINE_bool(tls_alloc, true, "Whether to use the TLS allocator defined in sm-alloc.h");
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
 DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
@@ -92,7 +95,7 @@ DEFINE_bool(log_key_for_update, false,
 // buffer
 // when the following happens, whichever is earlier:
 // 1. queue is full; 2. the log buffer is half full; 3. after [timeout] seconds.
-DEFINE_bool(group_commit, false, "Whether to enable group commit.");
+DEFINE_bool(group_commit, false, "Whether to enable pipelined group commit.");
 DEFINE_uint64(group_commit_queue_length, 25000, "Group commit queue length");
 DEFINE_uint64(group_commit_timeout, 5,
               "Group commit flush interval (in seconds).");
@@ -170,7 +173,9 @@ int main(int argc, char **argv) {
 
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
-  
+
+  ermia::config::threadpool = FLAGS_threadpool;
+  ermia::config::tls_alloc = FLAGS_tls_alloc;
   ermia::config::benchmark = FLAGS_benchmark;
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
@@ -190,7 +195,10 @@ int main(int argc, char **argv) {
     ermia::config::threads = FLAGS_threads + FLAGS_dia_physical_index_threads;
   } else {
     ermia::config::physical_workers_only = FLAGS_physical_workers_only;
-    ermia::config::threads = FLAGS_threads;
+    if (ermia::config::physical_workers_only)
+      ermia::config::threads = FLAGS_threads;
+    else
+      ermia::config::threads = (FLAGS_threads + 1) / 2;
   }
   ermia::config::index_probe_only = FLAGS_index_probe_only;
   ermia::config::verbose = FLAGS_verbose;
@@ -226,6 +234,8 @@ int main(int argc, char **argv) {
 
   ermia::config::command_log = FLAGS_command_log;
   ermia::config::command_log_buffer_mb = FLAGS_command_log_buffer_mb;
+
+  ermia::config::arena_size_mb = FLAGS_arena_size_mb;
 
   ermia::config::coro_tx = FLAGS_coro_tx;
   ermia::config::coro_batch_size = FLAGS_coro_batch_size;
@@ -278,11 +288,9 @@ int main(int argc, char **argv) {
     LOG_IF(FATAL, ermia::config::threads < ermia::config::replay_threads);
     ermia::config::worker_threads = FLAGS_threads - FLAGS_replay_threads;
 
-    ermia::RCU::rcu_register();
     ALWAYS_ASSERT(ermia::config::log_dir.size());
     ALWAYS_ASSERT(not ermia::logmgr);
     ALWAYS_ASSERT(not ermia::oidmgr);
-    ermia::RCU::rcu_enter();
     ermia::sm_log::allocate_log_buffer();
     if (ermia::config::log_ship_by_rdma) {
       ermia::rep::start_as_backup_rdma();
@@ -339,6 +347,7 @@ int main(int argc, char **argv) {
     }
   }
 
+  ermia::thread::Initialize();
   ermia::config::init();
 
   std::cerr << "CC: ";
@@ -368,6 +377,11 @@ int main(int argc, char **argv) {
   std::cerr << "  phantom-protection: " << ermia::config::phantom_prot << std::endl;
 
   std::cerr << "Settings and properties" << std::endl;
+  std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain << std::endl;
+  std::cerr << "  arena-size-mb     : " << FLAGS_arena_size_mb << std::endl;
+  std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
+  std::cerr << "  command-log       : " << ermia::config::command_log << std::endl;
+  std::cerr << "  command-logbuf    : " << ermia::config::command_log_buffer_mb << "MB" << std::endl;
   std::cerr << "  coro-tx           : " << FLAGS_coro_tx << std::endl;
   std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
   std::cerr << "  dia               : " << FLAGS_dia << std::endl;
@@ -376,81 +390,65 @@ int main(int argc, char **argv) {
   std::cerr << "  dia-batch-size    : " << FLAGS_dia_batch_size << std::endl;
   std::cerr << "  dia-logical-index-threads  : " << FLAGS_dia_logical_index_threads << std::endl;
   std::cerr << "  dia-physical-index-threads : " << FLAGS_dia_physical_index_threads << std::endl;
-  std::cerr << "  amac-version-chain: " << FLAGS_amac_version_chain << std::endl;
+  std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
   std::cerr << "  index-probe-only  : " << FLAGS_index_probe_only << std::endl;
+  std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
+  std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
+  std::cerr << "  log-ship-by-rdma  : " << ermia::config::log_ship_by_rdma << std::endl;
+  std::cerr << "  log_ship_offset_replay  : " << ermia::config::log_ship_offset_replay << std::endl;
+  std::cerr << "  logbuf-partitions : " << ermia::config::log_redo_partitions << std::endl;
+  std::cerr << "  masstree_internal_node_size: " << ermia::ConcurrentMasstree::InternalNodeSize() << std::endl;
+  std::cerr << "  masstree_leaf_node_size    : " << ermia::ConcurrentMasstree::LeafNodeSize() << std::endl;
   std::cerr << "  node-memory       : " << ermia::config::node_memory_gb << "GB" << std::endl;
   std::cerr << "  num-threads       : " << ermia::config::threads << std::endl;
   std::cerr << "  numa-nodes        : " << ermia::config::numa_nodes << std::endl;
   std::cerr << "  numa-mode         : " << (ermia::config::numa_spread ? "spread" : "compact") << std::endl;
+  std::cerr << "  perf-record-event : " << ermia::config::perf_record_event << std::endl;
+  std::cerr << "  persist-policy    : " << FLAGS_persist_policy << std::endl;
   std::cerr << "  physical-workers-only: " << ermia::config::physical_workers_only << std::endl;
-  std::cerr << "  benchmark         : " << FLAGS_benchmark << std::endl;
+  std::cerr << "  print-cpu-util    : " << ermia::config::print_cpu_util << std::endl;
+  std::cerr << "  read_view_stat_interval : " << ermia::config::read_view_stat_interval_ms << "ms" << std::endl;
+  std::cerr << "  read_view_stat_file     : " << ermia::config::read_view_stat_file << std::endl;
+  std::cerr << "  threadpool        : " << ermia::config::threadpool << std::endl;
+  std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir << std::endl;
+  std::cerr << "  tls-alloc         : " << FLAGS_tls_alloc << std::endl;
+  std::cerr << "  total-threads     : " << ermia::config::threads << std::endl;
 #ifdef USE_VARINT_ENCODING
   std::cerr << "  var-encode        : yes" << std::endl;
 #else
   std::cerr << "  var-encode        : no" << std::endl;
 #endif
-  std::cerr << "  print-cpu-util    : " << ermia::config::print_cpu_util << std::endl;
-  std::cerr << "  enable-perf       : " << ermia::config::enable_perf << std::endl;
-  std::cerr << "  perf-record-event : " << ermia::config::perf_record_event << std::endl;
-  std::cerr << "  log-dir           : " << ermia::config::log_dir << std::endl;
-  std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir << std::endl;
-  std::cerr << "  log-buffer-mb     : " << ermia::config::log_buffer_mb << std::endl;
-  std::cerr << "  log-ship-by-rdma  : " << ermia::config::log_ship_by_rdma << std::endl;
-  std::cerr << "  logbuf-partitions : " << ermia::config::log_redo_partitions << std::endl;
   std::cerr << "  worker-threads    : " << ermia::config::worker_threads << std::endl;
-  std::cerr << "  total-threads     : " << ermia::config::threads << std::endl;
-  std::cerr << "  persist-policy    : " << FLAGS_persist_policy << std::endl;
-  std::cerr << "  command-log       : " << ermia::config::command_log << std::endl;
-  std::cerr << "  command-logbuf    : " << ermia::config::command_log_buffer_mb << "MB" << std::endl;
-
-  std::cerr << "  masstree_internal_node_size: " << ermia::ConcurrentMasstree::InternalNodeSize()
-       << std::endl;
-  std::cerr << "  masstree_leaf_node_size    : " << ermia::ConcurrentMasstree::LeafNodeSize()
-       << std::endl;
-  std::cerr << "  read_view_stat_interval : " << ermia::config::read_view_stat_interval_ms
-       << "ms" << std::endl;
-  std::cerr << "  read_view_stat_file     : " << ermia::config::read_view_stat_file << std::endl;
-  std::cerr << "  log_ship_offset_replay  : " << ermia::config::log_ship_offset_replay << std::endl;
 
   if (ermia::config::is_backup_srv()) {
-    std::cerr << "  nvram-log-buffer  : " << ermia::config::nvram_log_buffer << std::endl;
-    std::cerr << "  nvram-delay-type  : " << FLAGS_nvram_delay_type << std::endl;
     std::cerr << "  cycles-per-byte   : " << ermia::config::cycles_per_byte << std::endl;
-    std::cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << std::endl;
-    std::cerr << "  replay-policy     : " << FLAGS_replay_policy << std::endl;
     std::cerr << "  full-replay       : " << ermia::config::full_replay << std::endl;
+    std::cerr << "  log-ship-warm-up  : " << FLAGS_log_ship_warm_up << std::endl;
+    std::cerr << "  persist-nvram-on-replay : " << ermia::config::persist_nvram_on_replay << std::endl;
     std::cerr << "  quick-bench-start : " << ermia::config::quick_bench_start << std::endl;
-    std::cerr << "  wait-for-primary  : " << ermia::config::wait_for_primary << std::endl;
+    std::cerr << "  replay-policy     : " << FLAGS_replay_policy << std::endl;
     std::cerr << "  replay-threads    : " << ermia::config::replay_threads << std::endl;
-    std::cerr << "  persist-nvram-on-replay : " << ermia::config::persist_nvram_on_replay
-         << std::endl;
+    std::cerr << "  wait-for-primary  : " << ermia::config::wait_for_primary << std::endl;
   } else {
-    std::cerr << "  parallel-loading: " << FLAGS_parallel_loading << std::endl;
-    std::cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions
-         << std::endl;
-    std::cerr << "  backoff-txns      : " << FLAGS_backoff_aborted_transactions
-         << std::endl;
-    std::cerr << "  scale-factor      : " << FLAGS_scale_factor << std::endl;
-    std::cerr << "  group-commit      : " << ermia::config::group_commit << std::endl;
-    std::cerr << "  commit-queue      : " << ermia::config::group_commit_queue_length
-         << std::endl;
-    std::cerr << "  group-commit-size : " << ermia::config::group_commit_size_kb << "KB"
-         << std::endl;
-    std::cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << std::endl;
-    std::cerr << "  log-key-for-update: " << ermia::config::log_key_for_update << std::endl;
+    std::cerr << "  backoff-txns      : " << FLAGS_backoff_aborted_transactions << std::endl;
+    std::cerr << "  chkpt-interval    : " << ermia::config::chkpt_interval << std::endl;
+    std::cerr << "  commit-queue      : " << ermia::config::group_commit_queue_length << std::endl;
     std::cerr << "  enable-chkpt      : " << ermia::config::enable_chkpt << std::endl;
-    if (ermia::config::enable_chkpt) {
-      std::cerr << "  chkpt-interval    : " << ermia::config::chkpt_interval << std::endl;
-    }
     std::cerr << "  enable-gc         : " << ermia::config::enable_gc << std::endl;
+    std::cerr << "  group-commit      : " << ermia::config::group_commit << std::endl;
+    std::cerr << "  group-commit-size : " << ermia::config::group_commit_size_kb << "KB" << std::endl;
+    std::cerr << "  log-key-for-update: " << ermia::config::log_key_for_update << std::endl;
     std::cerr << "  null-log-device   : " << ermia::config::null_log_device << std::endl;
-    std::cerr << "  truncate-at-bench-start : " << ermia::config::truncate_at_bench_start << std::endl;
     std::cerr << "  num-backups       : " << ermia::config::num_backups << std::endl;
+    std::cerr << "  parallel-loading: " << FLAGS_parallel_loading << std::endl;
+    std::cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << std::endl;
+    std::cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions << std::endl;
+    std::cerr << "  scale-factor      : " << FLAGS_scale_factor << std::endl;
+    std::cerr << "  truncate-at-bench-start : " << ermia::config::truncate_at_bench_start << std::endl;
     std::cerr << "  wait-for-backups  : " << ermia::config::wait_for_backups << std::endl;
   }
 
-  system("rm /dev/shm/$(whoami)/ermia-log/*");
-
+  system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
   ermia::MM::prepare_node_memory();
   std::vector<std::string> bench_toks = split_ws(FLAGS_benchmark_options);
   argc = 1 + bench_toks.size();
@@ -461,29 +459,20 @@ int main(int argc, char **argv) {
 
   // Must have everything in config ready by this point
   ermia::config::sanity_check();
-  ermia::Engine *db = NULL;
-  db = new ermia::Engine();
+  ermia::Engine *db = new ermia::Engine();
   if (FLAGS_dia) {
-    ermia::dia::Initialize();
+    //ermia::dia::Initialize();
   }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
-
   if (FLAGS_benchmark == "ycsb") {
-#ifndef USE_STATIC_COROUTINE
-    if (FLAGS_coro_tx) {
-      test_fn = ycsb_cs_simple_do_test;
-    } else {
-      test_fn = FLAGS_dia ? ycsb_dia_do_test : ycsb_do_test;
-    }
+#ifdef USE_STATIC_COROUTINE
+    ALWAYS_ASSERT(ermia::config::coro_tx);
+    test_fn = ycsb_cs_advance_do_test;
 #else
-    if (FLAGS_coro_tx) {
-      test_fn = ycsb_cs_advance_do_test;
-    } else {
-      test_fn = ycsb_do_test;
-    }
+    test_fn = ycsb_do_test;
 #endif
   } else if (FLAGS_benchmark == "tpcc") {
-  //  test_fn = FLAGS_dia ? tpcc_dia_do_test : tpcc_do_test;
+    //test_fn = tpcc_do_test;
   //} else if (FLAGS_benchmark == "tpce") {
   //  test_fn = tpce_do_test;
   } else {

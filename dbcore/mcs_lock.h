@@ -132,8 +132,7 @@ struct mcs_lock {
     qnode* next;
     if (!(next = me->_next)) {
       if (me == _tail &&
-          me == (qnode*)__sync_val_compare_and_swap((char** volatile) & _tail,
-                                                    (char*)me, 0))
+          me == (qnode*)__sync_val_compare_and_swap(&_tail, me, 0))
         return;
       next = spin_on_next(me);
     }

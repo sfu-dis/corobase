@@ -50,7 +50,7 @@ struct write_set_t {
 
 class transaction {
   friend class ConcurrentMasstreeIndex;
-  friend class sm_oid_mgr;
+  friend struct sm_oid_mgr;
 
 public:
   typedef TXN::txn_state txn_state;
@@ -115,12 +115,17 @@ protected:
   bool MasstreeCheckPhantom();
   void Abort();
 
-  OID PrepareInsert(OrderedIndex *index, varstr *value, dbtuple **out_tuple);
-  void FinishInsert(OrderedIndex *index, OID oid, const varstr *key, varstr *value, dbtuple *tuple);
-  PROMISE(bool) TryInsertNewTuple(OrderedIndex *index, const varstr *key,
-                         varstr *value, OID *inserted_oid);
+  // Insert a record to the underlying table
+  OID Insert(TableDescriptor *td, varstr *value, dbtuple **out_tuple = nullptr);
 
-  rc_t Update(IndexDescriptor *index_desc, OID oid, const varstr *k, varstr *v);
+  rc_t Update(TableDescriptor *td, OID oid, const varstr *k, varstr *v);
+
+  // Same as Update but without support for logging key
+  inline rc_t Update(TableDescriptor *td, OID oid, varstr *v) {
+    return Update(td, oid, nullptr, v);
+  }
+
+  void LogIndexInsert(OrderedIndex *index, OID oid, const varstr *key);
 
  public:
   // Reads the contents of tuple into v within this transaction context
@@ -128,7 +133,7 @@ protected:
 
   // expected public overrides
 
-  inline str_arena &string_allocator() { return sa; }
+  inline str_arena &string_allocator() { return *sa; }
 
   inline void add_to_write_set(fat_ptr *entry) {
 #ifndef NDEBUG
@@ -142,14 +147,13 @@ protected:
   }
 
   inline TXN::xid_context *GetXIDContext() { return xc; }
-  inline void SetTxnLog(sm_tx_log *log) { this->log = log; }
 
  protected:
   const uint64_t flags;
   XID xid;
   TXN::xid_context *xc;
   sm_tx_log *log;
-  str_arena &sa;
+  str_arena *sa;
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;
