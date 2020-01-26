@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "../dbcore/rcu.h"
 #include "../dbcore/sm-log.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
@@ -53,14 +52,14 @@ public:
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
                      barrier_b),
-        tbl((ermia::DecoupledMasstreeIndex *)open_tables.at("USERTABLE")),
+        tbl((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")),
         uniform_rng(1237 + worker_id) {
     if (g_zipfian_rng) {
       zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
     }
     tx_arena = (ermia::str_arena *)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
     for (uint32_t i = 0; i < ermia::config::coro_batch_size; ++i) {
-      new (&tx_arena[i]) ermia::str_arena;
+      new (&tx_arena[i]) ermia::str_arena(ermia::config::arena_size_mb);;
     }
   }
 
@@ -132,15 +131,15 @@ public:
     return w;
   }
 
-  static CoroHandle TxnRead(bench_worker *w, uint32_t idx) {
+  static SimpleCoroHandle TxnRead(bench_worker *w, uint32_t idx) {
     return static_cast<ycsb_cs_worker *>(w)->txn_read(idx);
   }
 
-  static CoroHandle TxnRMW(bench_worker *w, uint32_t) {
+  static SimpleCoroHandle TxnRMW(bench_worker *w, uint32_t) {
     return static_cast<ycsb_cs_worker *>(w)->txn_rmw();
   }
 
-  CoroHandle txn_read(uint32_t idx) {
+  SimpleCoroHandle txn_read(uint32_t idx) {
     thread_local ermia::transaction *tx_buffers = nullptr;
     if (!tx_buffers) {
       tx_buffers = (ermia::transaction *)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
@@ -152,10 +151,8 @@ public:
     }
 
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-    ermia::RCU::rcu_enter();
 
     ermia::transaction *txn = &tx_buffers[idx];
-    tx_arena[idx].reset();
     new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
                                  ermia::transaction::TXN_FLAG_READ_ONLY, tx_arena[idx]);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
@@ -166,19 +163,18 @@ public:
       auto &k = GenerateKey(txn);
       keys[idx].push_back(&k);
     }
-    ermia::RCU::rcu_exit();
     ermia::MM::epoch_exit(0, begin_epoch);
 
     ermia::ConcurrentMasstree::threadinfo ti(xc->begin_epoch);
     return tbl->GetMasstree().ycsb_read_coro(txn, keys[idx], ti, nullptr).get_handle();
   }
 
-  CoroHandle txn_rmw() {
+  SimpleCoroHandle txn_rmw() {
     return nullptr;
   }
 
 protected:
-  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
 
   ermia::varstr &GenerateKey(ermia::transaction *t) {
     uint64_t r = 0;
@@ -204,69 +200,14 @@ private:
   ermia::str_arena *tx_arena;
 };
 
-class ycsb_cs_usertable_loader : public bench_loader {
-public:
-  ycsb_cs_usertable_loader(
-      unsigned long seed, ermia::Engine *db,
-      const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-      uint32_t loader_id)
-      : bench_loader(seed, db, open_tables), loader_id(loader_id) {}
-
-private:
-  uint32_t loader_id;
-
-protected:
-  // XXX(tzwang): for now this is serial
-  void load() {
-    ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
-    int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
-    uint64_t start_key = loader_id * to_insert;
-    ;
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      arena.reset();
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-
-      ermia::varstr &v = str(sizeof(YcsbRecord));
-      new (&v)
-          ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      *(char *)v.p = 'a';
-
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-      TryVerifyStrict(tbl->Insert(txn, k, v));
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    // Verify inserted values
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-      arena.reset();
-      rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = 0;
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-      ermia::varstr &v = str(0);
-      tbl->Get(txn, rc, k, v, &oid);
-      ALWAYS_ASSERT(*(char *)v.data() == 'a');
-      TryVerifyStrict(rc);
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] loader " << loader_id << " loaded " << to_insert
-                << " keys in USERTABLE" << std::endl;
-    }
-  }
-};
-
 class ycsb_cs_bench_runner : public bench_runner {
 public:
   ycsb_cs_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    db->CreateMasstreeTable("USERTABLE", false);
+    ycsb_create_db(db);
   }
 
   virtual void prepare(char *) {
-    open_tables["USERTABLE"] = ermia::IndexDescriptor::GetIndex("USERTABLE");
+    open_tables["USERTABLE"] = ermia::TableDescriptor::GetIndex("USERTABLE");
   }
 
 protected:
@@ -285,7 +226,7 @@ protected:
 
     std::vector<bench_loader *> ret;
     for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
-      ret.push_back(new ycsb_cs_usertable_loader(0, db, open_tables, i));
+      ret.push_back(new ycsb_usertable_loader(0, db, open_tables, i));
     }
     return ret;
   }

@@ -62,57 +62,48 @@ class ycsb_worker : public bench_worker {
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
     LOG(FATAL) << "Not applicable";
   }
+
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
-    if (ycsb_workload.insert_percent())
-      w.push_back(workload_desc(
-          "Insert", double(ycsb_workload.insert_percent()) / 100.0, TxnInsert));
-    if (ycsb_workload.read_percent()) {
-      if (g_amac_txn_read)
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAMAC));
-      else if (g_coro_txn_read)
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadCORO));
-      else
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+    if (ycsb_workload.insert_percent()) {
+      w.push_back(workload_desc("Insert", double(ycsb_workload.insert_percent()) / 100.0, TxnInsert));
     }
-    if (ycsb_workload.update_percent())
-      w.push_back(workload_desc(
-          "Update", double(ycsb_workload.update_percent()) / 100.0, TxnUpdate));
-    if (ycsb_workload.scan_percent())
-      w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0,
-                                TxnScan));
-    if (ycsb_workload.rmw_percent())
-      w.push_back(
-          workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+
+    if (ycsb_workload.read_percent()) {
+      if (g_amac_txn_read) {
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAMAC));
+      } else if (g_coro_txn_read) {
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadCORO));
+      } else {
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+      }
+    }
+
+    if (ycsb_workload.update_percent()) {
+      w.push_back(workload_desc("Update", double(ycsb_workload.update_percent()) / 100.0, TxnUpdate));
+    }
+
+    if (ycsb_workload.scan_percent()) {
+      w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, TxnScan));
+    }
+
+    if (ycsb_workload.rmw_percent()) {
+      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+    }
+
     return w;
   }
 
   static rc_t TxnInsert(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
-
-  static rc_t TxnRead(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read();
-  }
-
-  static rc_t TxnReadAMAC(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read_amac();
-  }
-
-  static rc_t TxnReadCORO(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read_coro();
-  }
-
   static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
-
   static rc_t TxnScan(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
 
-  static rc_t TxnRMW(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_rmw();
-  }
+  static rc_t TxnRead(bench_worker *w) { return static_cast<ycsb_worker *>(w)->txn_read(); }
+  static rc_t TxnReadAMAC(bench_worker *w) { return static_cast<ycsb_worker *>(w)->txn_read_amac(); }
+  static rc_t TxnReadCORO(bench_worker *w) { return static_cast<ycsb_worker *>(w)->txn_read_coro(); }
+  static rc_t TxnRMW(bench_worker *w) { return static_cast<ycsb_worker *>(w)->txn_rmw(); }
 
-  struct KeyCompare : public std::unary_function<ermia::varstr, bool>{
+  struct KeyCompare : public std::unary_function<ermia::varstr, bool> {
     explicit KeyCompare(ermia::varstr &baseline) : baseline(baseline) {}
     bool operator() (const ermia::varstr &arg) {
       return *(uint64_t*)arg.p == *(uint64_t*)baseline.p;
@@ -133,8 +124,8 @@ class ycsb_worker : public bench_worker {
       rc_t rc = rc_t{RC_INVALID};
       tbl->GetRecord(txn, rc, k, v);  // Read
 
-#if defined(SSI) || defined(SSN) || defined(MVOCC) || defined(NOWAIT) || defined(WAITDIE)
-      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC/NOWAIT/WAITDIE
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
@@ -189,11 +180,7 @@ class ycsb_worker : public bench_worker {
   }
 
   rc_t txn_read_coro() {
-    ermia::transaction *txn = nullptr;
-
-    thread_local std::vector<std::experimental::coroutine_handle<
-        ermia::dia::generator<bool>::promise_type>>
-        handles(g_reps_per_tx);
+    thread_local std::vector<SimpleCoroHandle> handles(g_reps_per_tx);
     keys.clear();
     values.clear();
   
@@ -202,7 +189,7 @@ class ycsb_worker : public bench_worker {
       keys.emplace_back(&k);
     }
 
-    tbl->simple_coro_MultiGet(txn, keys, values, handles);
+    tbl->simple_coro_MultiGet(nullptr, keys, values, handles);
 
     return {RC_TRUE};
   }
@@ -214,12 +201,8 @@ class ycsb_worker : public bench_worker {
       ermia::varstr &v = str(sizeof(YcsbRecord));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = 0;
-#if defined(NOWAIT) || defined(WAITDIE)
-      tbl->GetRecordForUpdate(txn, rc, k, v, &oid);  // Read
-#else
+      ermia::OID oid = ermia::INVALID_OID;
       tbl->GetRecord(txn, rc, k, v, &oid);  // Read
-#endif
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC) || defined(NOWAIT) || defined(WAITDIE)
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC/NOWAIT/WAITDIE
@@ -229,24 +212,28 @@ class ycsb_worker : public bench_worker {
       ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
+
       if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        ALWAYS_ASSERT(v.size() == sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
       }
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
       // copy (in the read op we just did).
       new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      memset(v.data(), 'a', sizeof(YcsbRecord));
+      new (v.data()) YcsbRecord('a');
       TryCatch(tbl->UpdateRecord(txn, k, v));  // Modify-write
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       ermia::varstr &k = GenerateKey();
-      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(YcsbRecord));
+
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       tbl->GetRecord(txn, rc, k, v);  // Read
+
 #if defined(SSI) || defined(SSN) || defined(MVOCC) || defined(NOWAIT) || defined(WAITDIE)
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC/WAITDIE
 #else
@@ -255,7 +242,8 @@ class ycsb_worker : public bench_worker {
       ASSERT(*(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        ALWAYS_ASSERT(v.size() == sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
       }
 
     }
@@ -288,68 +276,10 @@ class ycsb_worker : public bench_worker {
   std::vector<ermia::varstr *> values;
 };
 
-class ycsb_usertable_loader : public bench_loader {
- public:
-  ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
-                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                        uint32_t loader_id)
-      : bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
- private:
-  uint32_t loader_id;
-
- protected:
-  void load() {
-    ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
-    int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
-    uint64_t start_key = loader_id * to_insert;
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-
-      ermia::varstr &v = str(sizeof(YcsbRecord));
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      *(char*)v.p = 'a';
-
-      TryVerifyStrict(tbl->InsertRecord(txn, k, v));
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    // Verify inserted values
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-      rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = 0;
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-      ermia::varstr &v = str(0);
-      tbl->GetRecord(txn, rc, k, v, &oid);
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
-      TryVerifyStrict(rc);
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] loader " << loader_id <<  " loaded "
-                << to_insert << " keys in USERTABLE" << std::endl;
-    }
-  }
-};
-
 class ycsb_bench_runner : public bench_runner {
  public:
   ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
-    ALWAYS_ASSERT(thread);
-
-    auto create_table = [=](char *) {
-      db->CreateTable("USERTABLE");
-      db->CreateMasstreePrimaryIndex("USERTABLE", std::string("USERTABLE"));
-    };
-
-    thread->StartTask(create_table);
-    thread->Join();
-    ermia::thread::PutThread(thread);
+    ycsb_create_db(db);
   }
 
   virtual void prepare(char *) {
@@ -363,8 +293,7 @@ class ycsb_bench_runner : public bench_runner {
     g_initial_table_size = records_per_thread * ermia::config::worker_threads;
 
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << requested
-           << " records, will load "
+      std::cerr << "[INFO] requested for " << requested << " records, will load "
            << records_per_thread *ermia::config::worker_threads << std::endl;
     }
 
@@ -386,8 +315,7 @@ class ycsb_bench_runner : public bench_runner {
     util::fast_random r(8544290);
     std::vector<bench_worker *> ret;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-      ret.push_back(new ycsb_worker(i, r.next(), db, open_tables, &barrier_a,
-                                    &barrier_b));
+      ret.push_back(new ycsb_worker(i, r.next(), db, open_tables, &barrier_a, &barrier_b));
     }
     return ret;
   }
