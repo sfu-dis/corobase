@@ -131,7 +131,7 @@ private:
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
       ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
 
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -155,7 +155,7 @@ private:
 #endif
 
       if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
         ALWAYS_ASSERT(*(char*)v.data() == 'a');
       }
     }
@@ -184,7 +184,7 @@ private:
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
       ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
 
       // TODO(tzwang): add read/write_all_fields knobs
       ermia::OID oid = 0;
@@ -221,7 +221,7 @@ private:
 #endif
 
       if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
         ALWAYS_ASSERT(*(char*)v.data() == 'a');
       }
     }
@@ -254,7 +254,7 @@ private:
         if (ermia::config::index_probe_only) {
           values.push_back(&str(0));
         } else {
-          values.push_back(&str(sizeof(YcsbRecord)));
+          values.push_back(&str(sizeof(ycsb_kv::value)));
         }
       }
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
@@ -269,9 +269,9 @@ private:
         index_probe_tasks, value_fetch_tasks, coro_stacks);
 
     if (!ermia::config::index_probe_only) {
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
       for (uint i = 0; i < g_reps_per_tx; ++i) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(ycsb_kv::value));
       }
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
     }

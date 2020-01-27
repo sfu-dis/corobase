@@ -58,7 +58,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = GenerateKey(txn);
-      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
+      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(ycsb_kv::value));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       table_index->GetRecord(txn, rc, k, v);  // Read
@@ -71,7 +71,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       ASSERT(ermia::config::index_probe_only || *(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
       }
     }
     if (!ermia::config::index_probe_only) {
@@ -90,7 +90,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
         if (ermia::config::index_probe_only) {
           values.push_back(&str(0));
         } else {
-          values.push_back(&str(sizeof(YcsbRecord)));
+          values.push_back(&str(sizeof(ycsb_kv::value)));
         }
       }
     }
@@ -107,9 +107,9 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     table_index->amac_MultiGet(txn, as, values);
 
     if (!ermia::config::index_probe_only) {
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
       for (uint i = 0; i < g_reps_per_tx; ++i) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
       }
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
     }
@@ -141,7 +141,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = ermia::INVALID_OID;
@@ -157,21 +157,21 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 #endif
 
       if (!ermia::config::index_probe_only) {
-        ALWAYS_ASSERT(v.size() == sizeof(YcsbRecord));
+        ALWAYS_ASSERT(v.size() == sizeof(ycsb_kv::value));
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
       }
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
       // copy (in the read op we just did).
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      new (v.data()) YcsbRecord('a');
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+      new (v.data()) ycsb_kv::value("a");
       TryCatch(table_index->UpdateRecord(txn, k, v));  // Modify-write
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
       ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
 
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
@@ -185,7 +185,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       ASSERT(*(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only) {
-        ALWAYS_ASSERT(v.size() == sizeof(YcsbRecord));
+        ALWAYS_ASSERT(v.size() == sizeof(ycsb_kv::value));
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
       }
 
