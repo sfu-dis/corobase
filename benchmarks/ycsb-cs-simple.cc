@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include <getopt.h>
 #include <numa.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -25,8 +24,6 @@ extern uint g_initial_table_size;
 extern int g_zipfian_rng;
 extern double g_zipfian_theta; // zipfian constant, [0, 1), more skewed as it
                                // approaches 1.
-int g_max_inflight_tx = 10;
-
 // { insert, read, update, scan, rmw }
 extern YcsbWorkload YcsbWorkloadA;
 extern YcsbWorkload YcsbWorkloadB;
@@ -248,98 +245,7 @@ protected:
 };
 
 void ycsb_cs_simple_do_test(ermia::Engine *db, int argc, char **argv) {
-  // parse options
-  optind = 1;
-  while (1) {
-    static struct option long_options[] = {
-        {"reps-per-tx", required_argument, 0, 'r'},
-        {"max-inflight-tx", required_argument, 0, 'i'},
-        {"rmw-additional-reads", required_argument, 0, 'a'},
-        {"workload", required_argument, 0, 'w'},
-        {"initial-table-size", required_argument, 0, 's'},
-        {"zipfian", no_argument, &g_zipfian_rng, 1},
-        {"zipfian-theta", required_argument, 0, 'z'},
-        {0, 0, 0, 0}};
-
-    int option_index = 0;
-    int c = getopt_long(argc, argv, "r:a:w:s:", long_options, &option_index);
-    if (c == -1)
-      break;
-    switch (c) {
-    case 0:
-      if (long_options[option_index].flag != 0)
-        break;
-
-    case 'r':
-      g_reps_per_tx = strtoul(optarg, NULL, 10);
-      break;
-
-    case 'a':
-      g_rmw_additional_reads = strtoul(optarg, NULL, 10);
-      break;
-
-    case 'i':
-      g_max_inflight_tx = strtoul(optarg, NULL, 10);
-      break;
-
-    case 's':
-      g_initial_table_size = strtoul(optarg, NULL, 10);
-      break;
-
-    case 'w':
-      g_workload = optarg[0];
-      if (g_workload == 'A')
-        ycsb_workload = YcsbWorkloadA;
-      else if (g_workload == 'B')
-        ycsb_workload = YcsbWorkloadB;
-      else if (g_workload == 'C')
-        ycsb_workload = YcsbWorkloadC;
-      else if (g_workload == 'D')
-        ycsb_workload = YcsbWorkloadD;
-      else if (g_workload == 'E')
-        ycsb_workload = YcsbWorkloadE;
-      else if (g_workload == 'F')
-        ycsb_workload = YcsbWorkloadF;
-      else if (g_workload == 'G')
-        ycsb_workload = YcsbWorkloadG;
-      else if (g_workload == 'H')
-        ycsb_workload = YcsbWorkloadH;
-      else {
-        std::cerr << "Wrong workload type: " << g_workload << std::endl;
-        abort();
-      }
-      break;
-
-    case '?':
-      /* getopt_long already printed an error message. */
-      exit(1);
-
-    default:
-      abort();
-    }
-  }
-
-  ALWAYS_ASSERT(g_initial_table_size);
-
-  if (ermia::config::verbose) {
-    std::cerr << "ycsb settings:" << std::endl
-              << "  workload:                   " << g_workload << std::endl
-              << "  initial user table size:    " << g_initial_table_size
-              << std::endl
-              << "  operations per transaction: " << g_reps_per_tx << std::endl
-              << "  additional reads after RMW: " << g_rmw_additional_reads
-              << std::endl
-              << "  distribution:               "
-              << (g_zipfian_rng ? "zipfian" : "uniform")
-              << std::endl
-              << "  max in-flight transactoins: " << g_max_inflight_tx << std::endl;
-
-    if (g_zipfian_rng) {
-      std::cerr << "  zipfian theta:              " << g_zipfian_theta
-                << std::endl;
-    }
-  }
-
+  ycsb_parse_options(argc, argv);
   ycsb_cs_bench_runner r(db);
   r.run();
 }
