@@ -175,10 +175,8 @@ class bench_worker : public ermia::thread::Runner {
   uint32_t fetch_workload();
   bool finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t);
 
- private:
-  virtual void MyWork(char *);
-
  protected:
+  virtual void MyWork(char *);
   inline ermia::transaction *txn_buf() { return txn_obj_buf; }
 
   unsigned int worker_id;

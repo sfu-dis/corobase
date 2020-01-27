@@ -307,9 +307,11 @@ struct promise_base {
   // a lot in task<T>.resume();
 
   void *operator new(std::size_t sz) noexcept {
+    //return MM::allocate(sz);
     return memory_pool::instance()->allocate_bytes(sz);
   }
-  void operator delete( void* ptr ) noexcept {
+  void operator delete(void* ptr) noexcept {
+    //MM::deallocate(fat_ptr{(uint64_t)ptr});
     memory_pool::instance()->deallocate_bytes(ptr);
   }
 

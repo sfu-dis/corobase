@@ -48,6 +48,7 @@ void ycsb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
   int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
   uint64_t start_key = loader_id * to_insert;
+  ermia::dia::coro_task_private::memory_pool memory_pool;
   for (uint64_t i = 0; i < to_insert; ++i) {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     ermia::varstr &k = str(sizeof(uint64_t));

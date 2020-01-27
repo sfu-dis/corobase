@@ -31,6 +31,10 @@ public:
   }
 
   virtual void MyWork(char *) override {
+    if (g_read_txn_type != ReadTransactionType::AdvCoro) {
+      ycsb_base_worker::MyWork(nullptr);
+      return;
+    }
     ALWAYS_ASSERT(is_worker);
     workload = get_workload();
     txn_counts.resize(workload.size());
@@ -248,7 +252,9 @@ private:
     thread_local std::vector<ermia::dia::coro_task_private::coro_stack> coro_stacks(g_reps_per_tx);
     keys.clear();
 
-    if (!ermia::config::index_probe_only) {
+    if (ermia::config::index_probe_only) {
+      arena->reset();
+    } else {
       values.clear();
       for (uint i = 0; i < g_reps_per_tx; ++i) {
         if (ermia::config::index_probe_only) {
@@ -265,8 +271,7 @@ private:
       keys.emplace_back(&k);
     }
 
-    table_index->adv_coro_MultiGet(txn, keys, values,
-        index_probe_tasks, value_fetch_tasks, coro_stacks);
+    table_index->adv_coro_MultiGet(txn, keys, values, index_probe_tasks, value_fetch_tasks, coro_stacks);
 
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));
