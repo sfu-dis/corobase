@@ -14,6 +14,10 @@ link_libraries(${LINK_FLAGS})
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/glog/lib)
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/gflags/lib)
 
+# Store shared libraries under /lib
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
 # Use masstree for index
 add_definitions(-DMASSTREE)
 
