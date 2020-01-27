@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include "../ermia.h"
 #include "bench.h"
 #include "ycsb.h"
@@ -87,5 +88,104 @@ void ycsb_usertable_loader::load() {
   if (ermia::config::verbose) {
     std::cerr << "[INFO] loader " << loader_id <<  " loaded "
               << to_insert << " keys in USERTABLE" << std::endl;
+  }
+}
+
+void ycsb_parse_options(int argc, char **argv) {
+  // parse options
+  optind = 1;
+  while (1) {
+    static struct option long_options[] = {
+        {"reps-per-tx", required_argument, 0, 'r'},
+        {"rmw-additional-reads", required_argument, 0, 'a'},
+        {"workload", required_argument, 0, 'w'},
+        {"initial-table-size", required_argument, 0, 's'},
+        {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
+        {"coro-txn-read", no_argument, &g_coro_txn_read, 1},
+        {"zipfian", no_argument, &g_zipfian_rng, 1},
+        {"zipfian-theta", required_argument, 0, 'z'},
+        {"distinct-keys", no_argument, &g_distinct_keys, 1},
+#ifdef ADV_COROUTINE
+        {"adv-coro-txn-read", no_argument, &g_adv_coro_txn_read, 1},
+#endif
+        {0, 0, 0, 0}};
+
+    int option_index = 0;
+    int c = getopt_long(argc, argv, "r:a:w:s:", long_options, &option_index);
+    if (c == -1) break;
+    switch (c) {
+      case 0:
+        if (long_options[option_index].flag != 0) break;
+        abort();
+        break;
+
+      case 'z':
+        g_zipfian_theta = strtod(optarg, NULL);
+        break;
+
+      case 'r':
+        g_reps_per_tx = strtoul(optarg, NULL, 10);
+        break;
+
+      case 'a':
+        g_rmw_additional_reads = strtoul(optarg, NULL, 10);
+        break;
+
+      case 's':
+        g_initial_table_size = strtoul(optarg, NULL, 10);
+        break;
+
+      case 'w':
+        g_workload = optarg[0];
+        if (g_workload == 'A')
+          ycsb_workload = YcsbWorkloadA;
+        else if (g_workload == 'B')
+          ycsb_workload = YcsbWorkloadB;
+        else if (g_workload == 'C')
+          ycsb_workload = YcsbWorkloadC;
+        else if (g_workload == 'D')
+          ycsb_workload = YcsbWorkloadD;
+        else if (g_workload == 'E')
+          ycsb_workload = YcsbWorkloadE;
+        else if (g_workload == 'F')
+          ycsb_workload = YcsbWorkloadF;
+        else if (g_workload == 'G')
+          ycsb_workload = YcsbWorkloadG;
+        else if (g_workload == 'H')
+          ycsb_workload = YcsbWorkloadH;
+        else {
+          std::cerr << "Wrong workload type: " << g_workload << std::endl;
+          abort();
+        }
+        break;
+
+      case '?':
+        /* getopt_long already printed an error message. */
+        exit(1);
+
+      default:
+        abort();
+    }
+  }
+
+  ALWAYS_ASSERT(g_initial_table_size);
+
+  if (ermia::config::verbose) {
+    std::cerr << "ycsb settings:" << std::endl
+         << "  workload:                   " << g_workload << std::endl
+         << "  initial user table size:    " << g_initial_table_size << std::endl
+         << "  operations per transaction: " << g_reps_per_tx << std::endl
+         << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
+         << "  amac txn_read:              " << g_amac_txn_read << std::endl
+         << "  coro_txn_read:              " << g_coro_txn_read << std::endl
+#ifdef ADV_COROUTINE
+         << "adv-coro-txn-read             " << g_adv_coro_txn_read << std::endl
+#endif
+         << "  distinct keys:              " << g_distinct_keys << std::endl
+         << "  distribution:               " << (g_zipfian_rng ? "zipfian" : "uniform") << std::endl;
+
+    if (g_zipfian_rng) {
+      std::cerr << "  zipfian theta:              " << g_zipfian_theta << std::endl;
+    }
   }
 }

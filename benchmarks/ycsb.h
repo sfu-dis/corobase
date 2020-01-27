@@ -88,3 +88,4 @@ class ycsb_usertable_loader : public bench_loader {
 };
 
 void ycsb_create_db(ermia::Engine *db);
+void ycsb_parse_options(int argc, char **argv);
