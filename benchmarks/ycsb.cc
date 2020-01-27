@@ -8,9 +8,8 @@
 
 extern uint g_reps_per_tx;
 extern uint g_rmw_additional_reads;
-extern int g_amac_txn_read;
-extern int g_coro_txn_read;
 extern YcsbWorkload ycsb_workload;
+extern ReadTransactionType g_read_txn_type;
 
 class ycsb_sequential_worker : public ycsb_base_worker {
  public:
@@ -27,12 +26,14 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     }
 
     if (ycsb_workload.read_percent()) {
-      if (g_amac_txn_read) {
+      if (g_read_txn_type == ReadTransactionType::AMACMultiGet) {
         w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAMACMultiGet));
-      } else if (g_coro_txn_read) {
+      } else if (g_read_txn_type == ReadTransactionType::SimpleCoroMultiGet) {
         w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadSimpleCoroMultiGet));
-      } else {
+      } else if (g_read_txn_type == ReadTransactionType::Sequential) {
         w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+      } else {
+        LOG(FATAL) << "Wrong read txn type. Supported: sequential, multiget-simple-coro, multiget-adv-coro";
       }
     }
 
@@ -48,6 +49,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   static rc_t TxnReadSimpleCoroMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_simple_coro_multiget(); }
   static rc_t TxnRMW(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_rmw(); }
 
+  // Read transaction using traditional sequential execution
   rc_t txn_read() {
     ermia::transaction *txn = nullptr;
     if (!ermia::config::index_probe_only) {
@@ -78,6 +80,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     return {RC_TRUE};
   }
 
+  // Multi-get using AMAC
   rc_t txn_read_amac_multiget() {
     ermia::transaction *txn = nullptr;
     if (!ermia::config::index_probe_only) {
@@ -117,6 +120,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     return {RC_TRUE};
   }
 
+  // Multi-get using simple coroutine
   rc_t txn_read_simple_coro_multiget() {
     thread_local std::vector<SimpleCoroHandle> handles(g_reps_per_tx);
     keys.clear();
@@ -132,6 +136,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     return {RC_TRUE};
   }
 
+  // Read-modify-write transaction. Sequential execution only
   rc_t txn_rmw() {
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     for (uint i = 0; i < g_reps_per_tx; ++i) {

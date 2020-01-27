@@ -11,6 +11,15 @@ extern uint g_initial_table_size;
 extern int g_zipfian_rng;
 extern double g_zipfian_theta;
 
+enum class ReadTransactionType {
+  Sequential,
+  AMACMultiGet,
+  SimpleCoroMultiGet,
+  AdvCoroMultiGet,
+  SimpleCoro,
+  AdvCoro
+};
+
 // FIXME(tzwang): since we don't have the read/write_all_fields knobs, here we
 // assume 10 fields, 100-byte each. In FOEDUS, we have 10 and with the knobs it
 // can choose from any one field randomly.

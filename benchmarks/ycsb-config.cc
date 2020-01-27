@@ -8,12 +8,10 @@ uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
 char g_workload = 'C';
 uint g_initial_table_size = 30000000;
-int g_amac_txn_read = 0;
-int g_coro_txn_read = 0;
-int g_adv_coro_txn_read = 0;
 int g_zipfian_rng = 0;
 double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it approaches 1.
-int g_distinct_keys = 0;
+
+ReadTransactionType g_read_txn_type = ReadTransactionType::Sequential;
 
 // { insert, read, update, scan, rmw }
 YcsbWorkload YcsbWorkloadA('A', 0, 50U, 100U, 0, 0);  // Workload A - 50% read, 50% update
@@ -100,24 +98,36 @@ void ycsb_parse_options(int argc, char **argv) {
         {"rmw-additional-reads", required_argument, 0, 'a'},
         {"workload", required_argument, 0, 'w'},
         {"initial-table-size", required_argument, 0, 's'},
-        {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
-        {"coro-txn-read", no_argument, &g_coro_txn_read, 1},
         {"zipfian", no_argument, &g_zipfian_rng, 1},
         {"zipfian-theta", required_argument, 0, 'z'},
-        {"distinct-keys", no_argument, &g_distinct_keys, 1},
-#ifdef ADV_COROUTINE
-        {"adv-coro-txn-read", no_argument, &g_adv_coro_txn_read, 1},
-#endif
+        {"read-tx-type", required_argument, 0, 't'},
         {0, 0, 0, 0}};
 
     int option_index = 0;
-    int c = getopt_long(argc, argv, "r:a:w:s:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:a:w:s:z:t:", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 0:
         if (long_options[option_index].flag != 0) break;
         abort();
         break;
+
+      case 't':
+        if (std::string(optarg) == "sequential") {
+          g_read_txn_type = ReadTransactionType::Sequential;
+        } else if (std::string(optarg) == "adv-coro") {
+          g_read_txn_type = ReadTransactionType::AdvCoro;
+        } else if (std::string(optarg) == "simple-coro") {
+          g_read_txn_type = ReadTransactionType::SimpleCoro;
+        } else if (std::string(optarg) == "multiget-simple-coro") {
+          g_read_txn_type = ReadTransactionType::SimpleCoroMultiGet;
+        } else if (std::string(optarg) == "multiget-adv-coro") {
+          g_read_txn_type = ReadTransactionType::AdvCoroMultiGet;
+        } else if (std::string(optarg) == "multiget-amac") {
+          g_read_txn_type = ReadTransactionType::AMACMultiGet;
+        } else {
+          LOG(FATAL) << "Wrong read transaction type " << std:;string(optarg);
+        }
 
       case 'z':
         g_zipfian_theta = strtod(optarg, NULL);
@@ -176,13 +186,23 @@ void ycsb_parse_options(int argc, char **argv) {
          << "  initial user table size:    " << g_initial_table_size << std::endl
          << "  operations per transaction: " << g_reps_per_tx << std::endl
          << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
-         << "  amac txn_read:              " << g_amac_txn_read << std::endl
-         << "  coro_txn_read:              " << g_coro_txn_read << std::endl
-#ifdef ADV_COROUTINE
-         << "adv-coro-txn-read             " << g_adv_coro_txn_read << std::endl
-#endif
-         << "  distinct keys:              " << g_distinct_keys << std::endl
          << "  distribution:               " << (g_zipfian_rng ? "zipfian" : "uniform") << std::endl;
+
+    if (g_read_txn_type == ReadTransactionType::Sequential) {
+      std::cerr << "  read transaction type:      sequential" << std::endl;
+    } else if (g_read_txn_type == ReadTransactionType::AMACMultiGet) {
+      std::cerr << "  read transaction type:      amac multi-get" << std::endl;
+    } else if (g_read_txn_type == ReadTransactionType::SimpleCoroMultiGet) {
+      std::cerr << "  read transaction type:      simple coroutine multi-get" << std::endl;
+    } else if (g_read_txn_type == ReadTransactionType::AdvCoroMultiGet) {
+      std::cerr << "  read transaction type:      advanced coroutine multi-get" << std::endl;
+    } else if (g_read_txn_type == ReadTransactionType::AdvCoro) {
+      std::cerr << "  read transaction type:      advanced coroutine" << std::endl;
+    } else if (g_read_txn_type == ReadTransactionType::SimpleCoro) {
+      std::cerr << "  read transaction type:      simple coroutine" << std::endl;
+    } else {
+      abort();
+    }
 
     if (g_zipfian_rng) {
       std::cerr << "  zipfian theta:              " << g_zipfian_theta << std::endl;
