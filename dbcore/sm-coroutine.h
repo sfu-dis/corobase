@@ -1,11 +1,13 @@
-#ifndef SM_COROUTINE_H
-#define SM_COROUTINE_H
+#pragma once
+
 #include <mmintrin.h>
 #include <xmmintrin.h>
 #include <experimental/coroutine>
 #include <array>
 
 #include "sm-defs.h"
+#include "sm-alloc.h"
+
 namespace ermia {
 namespace dia {
 
@@ -575,5 +577,3 @@ template<typename T>
 inline T sync_wait_coro(const T &t) { return t; }
 
 #endif // ADV_COROUTINE
-
-#endif
