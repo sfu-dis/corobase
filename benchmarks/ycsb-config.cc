@@ -58,7 +58,7 @@ void ycsb_usertable_loader::load() {
     new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
     *(char*)v.p = 'a';
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
     TryVerifyStrict(sync_wait_coro(tbl->InsertRecord(txn, k, v)));
 #else
     TryVerifyStrict(tbl->InsertRecord(txn, k, v));

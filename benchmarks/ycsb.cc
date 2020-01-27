@@ -16,7 +16,7 @@
 #include "bench.h"
 #include "ycsb.h"
 
-#ifndef USE_STATIC_COROUTINE
+#ifndef ADV_COROUTINE
 
 extern uint64_t global_key_counter;
 extern uint g_reps_per_tx;
@@ -417,4 +417,4 @@ void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
   r.run();
 }
 
-#endif  // USE_STATIC_COROUTINE
+#endif  // ADV_COROUTINE

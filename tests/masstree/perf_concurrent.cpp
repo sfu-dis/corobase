@@ -195,7 +195,7 @@ class Context {
     }
 };
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
 
 class ContextNestedCoro : public Context {
    public:
@@ -336,7 +336,7 @@ class ContextAmac : public Context {
 #endif
 
 int main() {
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
     ContextNestedCoro context;
 #else
     ContextAmac context;

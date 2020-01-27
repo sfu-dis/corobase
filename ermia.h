@@ -155,7 +155,7 @@ public:
                             std::vector<std::experimental::coroutine_handle<
                             ermia::dia::generator<bool>::promise_type>> &handles);
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
   void adv_coro_MultiGet(transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
                          std::vector<ermia::dia::task<bool>> &index_probe_tasks,
                          std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks,

@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
 
 #include "../str_arena.h"
 #include "../dbcore/rcu.h"
@@ -494,4 +494,4 @@ void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv) {
   ycsb_cs_adv_bench_runner r(db);
   r.run();
 }
-#endif  // USE_STATIC_COROUTINE
+#endif  // ADV_COROUTINE

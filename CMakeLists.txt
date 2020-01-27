@@ -70,10 +70,10 @@ target_link_libraries(ermia_SI ermia_si thread_pool)
 
 # SI with coroutine
 add_library(ermia_coro_si SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_coro_si PROPERTIES COMPILE_FLAGS "-DUSE_STATIC_COROUTINE")
+set_target_properties(ermia_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 
 add_executable(ermia_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_coro_SI PROPERTIES COMPILE_FLAGS "-DUSE_STATIC_COROUTINE")
+set_target_properties(ermia_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 target_link_libraries(ermia_coro_SI ermia_coro_si thread_pool)
 
 # SI+SSN
