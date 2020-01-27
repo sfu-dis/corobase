@@ -1,59 +1,19 @@
 /*
  * A YCSB implementation based off of Silo's and equivalent to FOEDUS's.
  */
-#include <iostream>
-#include <set>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include <numa.h>
-#include <stdlib.h>
-#include <unistd.h>
-
-#include "../dbcore/sm-log.h"
-#include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
 #include "ycsb.h"
 
 extern uint g_reps_per_tx;
-extern uint g_rmw_additional_reads;
-extern char g_workload;
-extern uint g_initial_table_size;
-extern int g_zipfian_rng;
-extern double g_zipfian_theta; // zipfian constant, [0, 1), more skewed as it
-                               // approaches 1.
-// { insert, read, update, scan, rmw }
-extern YcsbWorkload YcsbWorkloadA;
-extern YcsbWorkload YcsbWorkloadB;
-extern YcsbWorkload YcsbWorkloadC;
-extern YcsbWorkload YcsbWorkloadD;
-extern YcsbWorkload YcsbWorkloadE;
-
-// Combine reps_per_tx and rmw_additional_reads to have "10R+10RMW" style
-// transactions.
-extern YcsbWorkload YcsbWorkloadF;
-
-// Extra workloads (not in spec)
-extern YcsbWorkload YcsbWorkloadG;
-extern YcsbWorkload YcsbWorkloadH;
-
 extern YcsbWorkload ycsb_workload;
 
-class ycsb_cs_worker : public bench_worker {
+class ycsb_cs_worker : public ycsb_base_worker {
 public:
   ycsb_cs_worker(
       unsigned int worker_id, unsigned long seed, ermia::Engine *db,
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a,
-                     barrier_b),
-        tbl((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")),
-        uniform_rng(1237 + worker_id) {
-    if (g_zipfian_rng) {
-      zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
-    }
+      : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
     tx_arena = (ermia::str_arena *)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
     for (uint32_t i = 0; i < ermia::config::coro_batch_size; ++i) {
       new (&tx_arena[i]) ermia::str_arena(ermia::config::arena_size_mb);;
@@ -103,27 +63,20 @@ public:
     }
   }
 
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
-    LOG(FATAL) << "Not applicable";
-  }
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
 
-    if (ycsb_workload.insert_percent())
-      w.push_back(workload_desc(
-          "Insert", double(ycsb_workload.insert_percent()) / 100.0, nullptr));
-    if (ycsb_workload.read_percent())
-      w.push_back(workload_desc(
-          "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, TxnRead));
-    if (ycsb_workload.update_percent())
-      w.push_back(workload_desc(
-          "Update", double(ycsb_workload.update_percent()) / 100.0, nullptr));
-    if (ycsb_workload.scan_percent())
-      w.push_back(workload_desc(
-          "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr));
-    if (ycsb_workload.rmw_percent())
-      w.push_back(workload_desc(
-          "RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() || ycsb_workload.scan_percent()) {
+      LOG(FATAL) << "Not implemented";
+    }
+
+    if (ycsb_workload.read_percent()) {
+      w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, TxnRead));
+    }
+
+    if (ycsb_workload.rmw_percent()) {
+      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
+    }
 
     return w;
   }
@@ -163,89 +116,21 @@ public:
     ermia::MM::epoch_exit(0, begin_epoch);
 
     ermia::ConcurrentMasstree::threadinfo ti(xc->begin_epoch);
-    return tbl->GetMasstree().ycsb_read_coro(txn, keys[idx], ti, nullptr).get_handle();
+    return table_index->GetMasstree().ycsb_read_coro(txn, keys[idx], ti, nullptr).get_handle();
   }
 
   SimpleCoroHandle txn_rmw() {
     return nullptr;
   }
 
-protected:
-  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
-
-  ermia::varstr &GenerateKey(ermia::transaction *t) {
-    uint64_t r = 0;
-    if (g_zipfian_rng) {
-      r = zipfian_rng.next();
-    } else {
-      r = uniform_rng.uniform_within(0, g_initial_table_size - 1);
-    }
-
-    ermia::varstr &k = *t->string_allocator().next(sizeof(uint64_t)); // 8-byte key
-    new (&k)
-        ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
-    ::BuildKey(r, k);
-    return k;
-  }
-
 private:
-  ermia::ConcurrentMasstreeIndex *tbl;
-  foedus::assorted::UniformRandom uniform_rng;
-  foedus::assorted::ZipfianRandom zipfian_rng;
   std::vector<ermia::varstr *> *keys;
   std::vector<ermia::varstr *> values;
   ermia::str_arena *tx_arena;
 };
 
-class ycsb_cs_bench_runner : public bench_runner {
-public:
-  ycsb_cs_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    ycsb_create_db(db);
-  }
-
-  virtual void prepare(char *) {
-    open_tables["USERTABLE"] = ermia::TableDescriptor::GetIndex("USERTABLE");
-  }
-
-protected:
-  virtual std::vector<bench_loader *> make_loaders() {
-    uint64_t requested = g_initial_table_size;
-    uint64_t records_per_thread = std::max<uint64_t>(
-        1, g_initial_table_size / ermia::config::worker_threads);
-    g_initial_table_size = records_per_thread * ermia::config::worker_threads;
-
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << requested
-                << " records, will load "
-                << records_per_thread * ermia::config::worker_threads
-                << std::endl;
-    }
-
-    std::vector<bench_loader *> ret;
-    for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
-      ret.push_back(new ycsb_usertable_loader(0, db, open_tables, i));
-    }
-    return ret;
-  }
-
-  virtual std::vector<bench_worker *> make_cmdlog_redoers() {
-    // Not implemented
-    std::vector<bench_worker *> ret;
-    return ret;
-  }
-  virtual std::vector<bench_worker *> make_workers() {
-    util::fast_random r(8544290);
-    std::vector<bench_worker *> ret;
-    for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-      ret.push_back(new ycsb_cs_worker(i, r.next(), db, open_tables, &barrier_a,
-                                       &barrier_b));
-    }
-    return ret;
-  }
-};
-
 void ycsb_cs_simple_do_test(ermia::Engine *db, int argc, char **argv) {
   ycsb_parse_options(argc, argv);
-  ycsb_cs_bench_runner r(db);
+  ycsb_bench_runner<ycsb_cs_worker> r(db);
   r.run();
 }
