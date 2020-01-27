@@ -52,7 +52,10 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   // Read transaction using traditional sequential execution
   rc_t txn_read() {
     ermia::transaction *txn = nullptr;
-    if (!ermia::config::index_probe_only) {
+    if (ermia::config::index_probe_only) {
+      // Reset the arena as txn will be nullptr and GenerateKey will get space from it
+      arena->reset();
+    } else {
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
     }
 
@@ -83,7 +86,9 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   // Multi-get using AMAC
   rc_t txn_read_amac_multiget() {
     ermia::transaction *txn = nullptr;
-    if (!ermia::config::index_probe_only) {
+    if (ermia::config::index_probe_only) {
+      arena->reset();
+    } else {
       values.clear();
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
       for (uint i = 0; i < g_reps_per_tx; ++i) {
@@ -122,6 +127,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 
   // Multi-get using simple coroutine
   rc_t txn_read_simple_coro_multiget() {
+    arena->reset();
     thread_local std::vector<SimpleCoroHandle> handles(g_reps_per_tx);
     keys.clear();
     values.clear();
