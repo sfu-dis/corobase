@@ -26,6 +26,8 @@ using task = ermia::dia::task<T>;
 using generator_handle = std::experimental::coroutine_handle<
     ermia::dia::generator<bool>::promise_type>;
 
+using key_buffer_t = uint64_t;
+
 class PerfSingleThreadSearch : public benchmark::Fixture {
   public:
     void SetUp(const ::benchmark::State &state) {
@@ -34,7 +36,9 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 
         // generate records
         const uint32_t key_length = state.range(1);
-        records = genSequentialRecords(state.range(0), key_length);
+        std::vector<Record> records = genRecords(state.range(0), key_length);
+
+        assert(sizeof(key_buffer_t) <= key_length && "Key buffer does not have enough space");
 
         // insert records
         ermia::TXN::xid_context context_mock;
@@ -61,7 +65,6 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
         }
 
         delete tree_;
-        records.clear();
     }
 
     static void BatchArguments(benchmark::internal::Benchmark *bench) {
@@ -78,6 +81,20 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
                 }
             }
         }
+    }
+
+    std::vector<Record> genRecords(uint32_t record_num, uint8_t key_len) {
+        std::vector<Record> ret;
+        ret.reserve(record_num);
+
+        char buf[16] = {0};
+        assert(key_len < 16 && "Not enough buffer to hold key");
+        for(uint64_t i = 0; i < record_num; i++) {
+            memcpy(buf, &i, key_len);
+            // Hack, make value=key+1 to be easy to check
+            ret.emplace_back(std::string(buf, key_len), ermia::OID(i+1));
+        }
+        return ret;
     }
 
     void startPerf() {
@@ -115,7 +132,6 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
     }
 
     pid_t perf_pid_;
-    std::vector<Record> records;
     ermia::ConcurrentMasstree *tree_;
     ermia::dia::coro_task_private::memory_pool *pool_;
 };
@@ -125,6 +141,8 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) {
     for (auto _ : st) {
+        const uint32_t key_nums = st.range(0);
+        const uint32_t key_len = st.range(1);
         const uint32_t queue_size = st.range(2);
         const uint32_t batch_to_run = st.range(3);
         const uint32_t task_to_run = batch_to_run * queue_size;
@@ -134,6 +152,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
         std::vector<task<bool>> task_queue(queue_size);
         std::vector<ermia::OID> out_values(queue_size);
         std::vector<ermia::varstr> task_params(queue_size);
+        std::vector<key_buffer_t> task_key_bufs(queue_size);
         std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(
                 queue_size);
 
@@ -149,13 +168,14 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
                         completed_task_cnt++;
                         bool res = coro_task.get_return_value();
                         ASSERT(res);
+                        ASSERT(out_values[i] == task_key_bufs[i] + 1);
                         coro_task = task<bool>(nullptr);
                     }
                 }
 
                 if(!coro_task.valid()) {
-                    const Record & record = records[std::rand() % records.size()];
-                    task_params[i] = ermia::varstr(record.key.data(), record.key.size());
+                    task_key_bufs[i] = std::rand() % key_nums;
+                    task_params[i] = ermia::varstr((const char*)(&task_key_bufs[i]), key_len);
                     coro_task = tree_->search(task_params[i], out_values[i], cur_epoch, nullptr);
                     coro_task.set_call_stack(&call_stacks[i]);
                 }
@@ -169,6 +189,8 @@ BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoro)
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::State &st) {
     for (auto _ : st) {
+        const uint32_t key_nums = st.range(0);
+        const uint32_t key_len = st.range(1);
         const uint32_t queue_size = st.range(2);
         const uint32_t batch_to_run = st.range(3);
 
@@ -176,6 +198,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::Stat
 
         std::vector<task<bool>> task_queue(queue_size);
         std::vector<ermia::varstr> task_params(queue_size);
+        std::vector<key_buffer_t> task_key_bufs(queue_size);
         std::vector<ermia::OID> out_values(queue_size);
         std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(queue_size);
 
@@ -184,8 +207,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::Stat
                 task<bool> & coro_task = task_queue[i];
                 ASSERT(!coro_task.valid());
 
-                const Record & record = records[std::rand() % records.size()];
-                task_params[i] = ermia::varstr(record.key.data(), record.key.size());
+                task_key_bufs[i] = std::rand() % key_nums;
+                task_params[i] = ermia::varstr((const char*)(&task_key_bufs[i]), key_len);
                 coro_task = tree_->search(
                     task_params[i], out_values[i], cur_epoch, nullptr);
                 coro_task.set_call_stack(&call_stacks[i]);
@@ -205,6 +228,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::Stat
                         finished++;
                         bool res = coro_task.get_return_value();
                         ASSERT(res);
+                        ASSERT(out_values[i] == task_key_bufs[i] + 1);
                         coro_task = task<bool>(nullptr);
                     }
                 }
@@ -220,6 +244,8 @@ BENCHMARK_REGISTER_F(PerfSingleThreadSearch, AdvancedCoroBatched)
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Sequential) (benchmark::State &st) {
     for (auto _ : st) {
+        const uint32_t key_nums = st.range(0);
+        const uint32_t key_len = st.range(1);
         const uint32_t queue_size = st.range(2);
         const uint32_t batch_to_run = st.range(3);
 
@@ -228,10 +254,10 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Sequential) (benchmark::State &st) {
         for(uint32_t b = 0; b < batch_to_run; b++) {
             [&] () -> void {
                 for(uint32_t i = 0; i < queue_size; i++) {
-                    const Record & record = records[std::rand() % records.size()];
-                    bool res = tree_->search(ermia::varstr(record.key.data(), record.key.size()),
+                    key_buffer_t key_buf = std::rand() % key_nums;
+                    bool res = tree_->search(ermia::varstr((const char*)&key_buf, key_len),
                                              out_value, cur_epoch, nullptr);
-                    ASSERT(res && out_value == record.value);
+                    ASSERT(res && out_value == key_buf + 1);
                 }
             }();
         }
@@ -243,6 +269,8 @@ BENCHMARK_REGISTER_F(PerfSingleThreadSearch, Sequential)
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, SimpleCoro) (benchmark::State &st) {
     for (auto _ : st) {
+        const uint32_t key_nums = st.range(0);
+        const uint32_t key_len = st.range(1);
         const uint32_t queue_size = st.range(2);
         const uint32_t batch_to_run = st.range(3);
 
@@ -251,11 +279,12 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, SimpleCoro) (benchmark::State &st) {
 
         std::vector<generator_handle> generator_queue(queue_size, nullptr);
         std::vector<ermia::varstr> keys(queue_size);
+        std::vector<key_buffer_t> key_bufs(queue_size);
         std::vector<ermia::OID> out_values(queue_size, 0);
         for(uint32_t b = 0; b < batch_to_run; b++) {
             for(uint32_t i = 0; i < queue_size; i++) {
-                const Record & record = records[std::rand() % records.size()];
-                keys[i] = ermia::varstr(record.key.data(), record.key.size());
+                key_bufs[i] = std::rand() % key_nums;
+                keys[i] = ermia::varstr((const char*)(&key_bufs[i]), key_len);
                 generator_queue[i] = tree_->search_coro(keys[i], out_values[i], ti, nullptr).get_handle();
             }
 
@@ -282,6 +311,8 @@ BENCHMARK_REGISTER_F(PerfSingleThreadSearch, SimpleCoro)
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
     for (auto _ : st) {
+        const uint32_t key_nums = st.range(0);
+        const uint32_t key_len = st.range(1);
         const uint32_t queue_size = st.range(2);
         const uint32_t batch_to_run = st.range(3);
 
@@ -289,13 +320,14 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
 
         std::vector<ermia::ConcurrentMasstree::AMACState> amac_states;
         std::vector<ermia::varstr> amac_params;
+        std::vector<key_buffer_t> key_bufs(queue_size);
         amac_states.reserve(queue_size);
         amac_params.reserve(queue_size);
 
         for(uint32_t b = 0; b < batch_to_run; b++) {
             for(uint32_t i = 0; i < queue_size; i++) {
-                const Record & record = records[std::rand() % records.size()];
-                amac_params.emplace_back(record.key.data(), record.key.size());
+                key_bufs[i] = std::rand() % key_nums;
+                amac_params.emplace_back((const char*)(&key_bufs[i]), key_len);
                 amac_states.emplace_back(&amac_params.back());
             }
 
