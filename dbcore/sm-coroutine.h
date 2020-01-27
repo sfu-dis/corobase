@@ -539,7 +539,7 @@ private:
 } // namespace dia
 } // namespace ermia
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
   #define PROMISE(t) ermia::dia::task<t>
   #define RETURN co_return
   #define AWAIT co_await
@@ -574,6 +574,6 @@ inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
 template<typename T>
 inline T sync_wait_coro(const T &t) { return t; }
 
-#endif // USE_STATIC_COROUTINE
+#endif // ADV_COROUTINE
 
 #endif

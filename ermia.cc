@@ -156,7 +156,7 @@ std::map<std::string, uint64_t> ConcurrentMasstreeIndex::Clear() {
 void ConcurrentMasstreeIndex::amac_MultiGet(
     transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests,
     std::vector<varstr *> &values) {
-#ifndef USE_STATIC_COROUTINE
+#ifndef ADV_COROUTINE
   ConcurrentMasstree::versioned_node_t sinfo;
   if (!t) {
     auto e = MM::epoch_enter();
@@ -291,7 +291,7 @@ void ConcurrentMasstreeIndex::simple_coro_MultiGet(
   MM::epoch_exit(0, e);
 }
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
 void ConcurrentMasstreeIndex::adv_coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
     std::vector<ermia::dia::task<bool>> &index_probe_tasks,
@@ -368,7 +368,7 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
     }
   }
 }
-#endif  // USE_STATIC_COROUTINE
+#endif  // ADV_COROUTINE
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
     const typename ConcurrentMasstree::node_opaque_t *n) {

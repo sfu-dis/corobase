@@ -465,7 +465,7 @@ int main(int argc, char **argv) {
   }
   void (*test_fn)(ermia::Engine*, int argc, char **argv) = NULL;
   if (FLAGS_benchmark == "ycsb") {
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
     ALWAYS_ASSERT(ermia::config::coro_tx);
     test_fn = ycsb_cs_advance_do_test;
 #else
@@ -476,7 +476,7 @@ int main(int argc, char **argv) {
     }
 #endif
   } else if (FLAGS_benchmark == "tpcc") {
-#ifndef USE_STATIC_COROUTINE
+#ifndef ADV_COROUTINE
     test_fn = tpcc_do_test;
 #else
     LOG(FATAL) << "Not supported in this build";

@@ -205,7 +205,7 @@ TEST_F(ConcurrentMasstree, InsertSequentialAndSearchSequential) {
     concurrentSearchSequential(records_to_insert, records_not_found);
 }
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
 
 TEST_F(ConcurrentMasstree, InsertSequentialAndSearchInterleaved) {
     constexpr size_t per_thread_insert_num = 50;

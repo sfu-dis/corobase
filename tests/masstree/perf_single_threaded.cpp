@@ -121,7 +121,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 };
 
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
 
 BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) {
     for (auto _ : st) {
