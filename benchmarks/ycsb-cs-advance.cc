@@ -241,6 +241,10 @@ private:
     co_return {RC_TRUE};
   }
 
+  // Multiget using advanced coroutine
+  // FIXME(tzwang): this really should not be here (it should be in ycsb.cc). The
+  // only reason it's here is it requires ADV_COROUTINE which is mutually
+  // exclusive with other non-adv-coroutine variants.
   rc_t txn_read_adv_coro_multi_get() {
     arena->reset();
     ermia::transaction *txn = nullptr;
