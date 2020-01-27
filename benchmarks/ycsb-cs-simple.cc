@@ -5,6 +5,7 @@
 #include "ycsb.h"
 
 extern uint g_reps_per_tx;
+extern ReadTransactionType g_read_txn_type;
 extern YcsbWorkload ycsb_workload;
 
 class ycsb_cs_worker : public ycsb_base_worker {
@@ -20,6 +21,7 @@ public:
     }
   }
 
+  // Essentially a coroutine scheduler that switches between active transactions
   virtual void MyWork(char *) override {
     // No replication support
     ALWAYS_ASSERT(is_worker);
@@ -46,7 +48,7 @@ public:
           }
         }
 
-        // Note: don't change this to 'else...' - we may change h in the prevous if (h)
+        // Note: don't change this to 'else...' - we may change h in the previous if (h)
         if (!handles[i] && running) {
           double d = r.next_uniform();
           for (size_t j = 0; j < workload.size(); j++) {
@@ -66,16 +68,14 @@ public:
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
 
-    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() || ycsb_workload.scan_percent()) {
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() ||
+        ycsb_workload.scan_percent() || ycsb_workload.rmw_percent()) {
       LOG(FATAL) << "Not implemented";
     }
 
     if (ycsb_workload.read_percent()) {
+      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::SimpleCoro) << "Read txn type must be simple-coro";
       w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, TxnRead));
-    }
-
-    if (ycsb_workload.rmw_percent()) {
-      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
     }
 
     return w;
@@ -85,10 +85,7 @@ public:
     return static_cast<ycsb_cs_worker *>(w)->txn_read(idx);
   }
 
-  static SimpleCoroHandle TxnRMW(bench_worker *w, uint32_t) {
-    return static_cast<ycsb_cs_worker *>(w)->txn_rmw();
-  }
-
+  // Read transaction with context-switch using simple coroutine
   SimpleCoroHandle txn_read(uint32_t idx) {
     thread_local ermia::transaction *tx_buffers = nullptr;
     if (!tx_buffers) {
@@ -117,10 +114,6 @@ public:
 
     ermia::ConcurrentMasstree::threadinfo ti(xc->begin_epoch);
     return table_index->GetMasstree().ycsb_read_coro(txn, keys[idx], ti, nullptr).get_handle();
-  }
-
-  SimpleCoroHandle txn_rmw() {
-    return nullptr;
   }
 
 private:

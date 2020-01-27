@@ -13,7 +13,7 @@
 #include "ycsb.h"
 
 extern uint g_reps_per_tx;
-extern int g_adv_coro_txn_read;
+extern ReadTransactionType g_read_txn_type;
 
 extern YcsbWorkload ycsb_workload;
 
@@ -95,12 +95,14 @@ public:
     }
 
     if (ycsb_workload.read_percent()) {
-      if (g_adv_coro_txn_read) {
+      if (g_read_txn_type == ReadTransactionType::AdvCoro) {
         w.push_back(workload_desc(
             "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
-      } else {
+      } else if (g_read_txn_type == ReadTransactionType::AdvCoroMultiGet) {
         w.push_back(workload_desc(
             "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAdvCoroMultiGet));
+      } else {
+        LOG(FATAL) << "Wrong read transaction type. Supported: adv-coro and multiget-adv-coro";
       }
     }
 
