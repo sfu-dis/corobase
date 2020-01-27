@@ -482,7 +482,7 @@ void ycsb_cs_advance_do_test(ermia::Engine *db, int argc, char **argv) {
               << "  additional reads after RMW: " << g_rmw_additional_reads
               << std::endl
               << "  distribution:               "
-              << (g_zipfian_rng ? "zipfian" : "uniform")
+              << (g_zipfian_rng ? "zipfian" : "uniform") << std::endl
               << "  adv_coro_txn_read:          " << g_adv_coro_txn_read << std::endl
               << std::endl;
 

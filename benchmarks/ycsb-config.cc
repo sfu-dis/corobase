@@ -74,7 +74,11 @@ void ycsb_usertable_loader::load() {
     ermia::varstr &k = str(sizeof(uint64_t));
     BuildKey(start_key + i, k);
     ermia::varstr &v = str(0);
+#ifdef ADV_COROUTINE
+    sync_wait_coro(tbl->GetRecord(txn, rc, k, v, &oid));
+#else
     tbl->GetRecord(txn, rc, k, v, &oid);
+#endif
     ALWAYS_ASSERT(*(char*)v.data() == 'a');
     TryVerifyStrict(rc);
     TryVerifyStrict(db->Commit(txn));
