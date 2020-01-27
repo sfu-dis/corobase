@@ -1,3 +1,5 @@
+#ifndef USE_STATIC_COROUTINE
+
 #include <sys/time.h>
 #include <string>
 #include <ctype.h>
@@ -5319,3 +5321,4 @@ void tpce_do_test(ermia::Engine *db, int argc, char **argv) {
   tpce_bench_runner r(db);
   r.run();
 }
+#endif // USE_STATIC_COROUTINE

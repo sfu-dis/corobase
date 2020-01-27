@@ -3,6 +3,8 @@
  * https://github.com/oltpbenchmark/oltpbench/tree/master/src/com/oltpbenchmark/benchmarks/tpcc
  */
 
+#ifndef USE_STATIC_COROUTINE
+
 #include <sys/time.h>
 #include <string>
 #include <ctype.h>
@@ -3154,3 +3156,4 @@ rc_t tpcc_cmdlog_redoer::txn_delivery(uint warehouse_id) {
   TryCatch(db->Commit(txn));
   return {RC_TRUE};
 }
+#endif // USE_STATIC_COROUTINE

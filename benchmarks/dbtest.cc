@@ -476,9 +476,13 @@ int main(int argc, char **argv) {
     }
 #endif
   } else if (FLAGS_benchmark == "tpcc") {
-    //test_fn = tpcc_do_test;
-  //} else if (FLAGS_benchmark == "tpce") {
-  //  test_fn = tpce_do_test;
+#ifndef USE_STATIC_COROUTINE
+    test_fn = tpcc_do_test;
+#else
+    LOG(FATAL) << "Not supported in this build";
+#endif
+  } else if (FLAGS_benchmark == "tpce") {
+    LOG(FATAL) << "Not supported in this build";
   } else {
     LOG(FATAL) << "Invalid benchmark: " << FLAGS_benchmark;
   }
