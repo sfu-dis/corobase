@@ -6,6 +6,9 @@
 
 #include "../third-party/foedus/zipfian_random.hpp"
 #include "bench.h"
+#include "record/encoder.h"
+#include "record/inline_str.h"
+#include "../macros.h"
 
 extern uint g_initial_table_size;
 extern int g_zipfian_rng;
@@ -20,24 +23,10 @@ enum class ReadTransactionType {
   AdvCoro
 };
 
-// FIXME(tzwang): since we don't have the read/write_all_fields knobs, here we
-// assume 10 fields, 100-byte each. In FOEDUS, we have 10 and with the knobs it
-// can choose from any one field randomly.
-const uint32_t kFields = 10;
-const uint32_t kFieldLength = 10;
-const uint32_t kMaxWorkers = 1024;
-
-struct YcsbRecord {
-  char data_[kFieldLength * kFields];
-
-  YcsbRecord() {}
-  YcsbRecord(char value) { memset(data_, value, kFields * kFieldLength * sizeof(char)); }
-
-  char* get_field(uint32_t f) { return data_ + f * kFieldLength; }
-  static void initialize_field(char* field) {
-    memset(field, 'a', kFieldLength);
-  }
-};
+// TODO(tzwang); support other value length specified by user
+#define YCSB_KEY_FIELDS(x, y) x(uint64_t, y_key)
+#define YCSB_VALUE_FIELDS(x, y) x(inline_str_fixed<8>, y_value)
+DO_STRUCT(ycsb_kv, YCSB_KEY_FIELDS, YCSB_VALUE_FIELDS);
 
 struct YcsbWorkload {
   YcsbWorkload(char desc, int16_t insert_percent, int16_t read_percent,
@@ -82,7 +71,7 @@ struct YcsbWorkload {
 };
 
 inline void BuildKey(uint64_t key, ermia::varstr &k) {
-  *(uint64_t*)k.p = key;
+  Encode(k, ycsb_kv::key(key));
 }
 
 class ycsb_usertable_loader : public bench_loader {

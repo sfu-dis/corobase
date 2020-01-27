@@ -53,8 +53,8 @@ void ycsb_usertable_loader::load() {
     ermia::varstr &k = str(sizeof(uint64_t));
     BuildKey(start_key + i, k);
 
-    ermia::varstr &v = str(sizeof(YcsbRecord));
-    new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
+    ermia::varstr &v = str(sizeof(ycsb_kv::value));
+    new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
     *(char*)v.p = 'a';
 
 #ifdef ADV_COROUTINE
@@ -126,7 +126,7 @@ void ycsb_parse_options(int argc, char **argv) {
         } else if (std::string(optarg) == "multiget-amac") {
           g_read_txn_type = ReadTransactionType::AMACMultiGet;
         } else {
-          LOG(FATAL) << "Wrong read transaction type " << std:;string(optarg);
+          LOG(FATAL) << "Wrong read transaction type " << std::string(optarg);
         }
 
       case 'z':
