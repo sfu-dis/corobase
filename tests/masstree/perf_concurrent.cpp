@@ -4,6 +4,7 @@
 #include <dbcore/sm-thread.h>
 #include <masstree/masstree_btree.h>
 #include <varstr.h>
+#include "../third-party/foedus/zipfian_random.hpp"
 
 #include <array>
 #include <cassert>
@@ -80,7 +81,7 @@ class Context {
                 std::vector<uint32_t*> &counters) = 0;
 
    protected:
-    static constexpr int k_record_num = 300000000;
+    static constexpr int k_record_num = 30000000;
     static constexpr int k_key_len = 8;
     static constexpr int k_threads = 10;
     static constexpr int k_batch_size = 10;
@@ -143,7 +144,7 @@ class Context {
                     const Record &record = records[j];
                     ermia::TXN::xid_context xid_ctx;
                     xid_ctx.begin_epoch = 0;
-                    assert(
+                    ALWAYS_ASSERT(
                         sync_wait_coro(masstree_->insert(
                             ermia::varstr(record.key.data(), record.key.size()),
                             record.value, &xid_ctx, nullptr, nullptr)) &&
@@ -218,10 +219,7 @@ class ContextNestedCoro : public Context {
                 std::vector<uint32_t*> &counters) {
         for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task search_task = [&, i](char *) {
-                auto seed =
-                    std::chrono::system_clock::now().time_since_epoch().count();
-                std::default_random_engine generator(seed);
-                std::uniform_int_distribution<uint64_t> distribution(0, k_record_num-1);
+                foedus::assorted::UniformRandom uniform_rng(1237 + i);
                 std::array<task<bool>, k_batch_size> task_queue;
                 std::array<ermia::OID, k_batch_size> task_rets;
                 std::array<key_buffer_t, k_batch_size> task_key_bufs;
@@ -254,7 +252,8 @@ class ContextNestedCoro : public Context {
                         }
 
                         if (!t.valid()) {
-                            task_key_bufs[j] = distribution(generator);
+                            auto r = uniform_rng.uniform_within(0, k_record_num - 1);
+                            task_key_bufs[j] = r;
                             task_params[j] = ermia::varstr((const char*)(&task_key_bufs[j]), k_key_len);
                             t = masstree_->search(task_params[j], task_rets[j], 0, nullptr);
                             t.set_call_stack(&(coro_stacks[j]));
@@ -279,10 +278,7 @@ class ContextSequential : public Context {
                 std::vector<uint32_t*> &counters) {
         for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task search_task = [&, i](char *) {
-                auto seed =
-                    std::chrono::system_clock::now().time_since_epoch().count();
-                std::default_random_engine generator(seed);
-                std::uniform_int_distribution<uint64_t> distribution(0, k_record_num-1);
+                foedus::assorted::UniformRandom uniform_rng(1237 + i);
                 key_buffer_t key_buf;
 
                 uint32_t *counter = (uint32_t*)(ermia::MM::allocate(sizeof(uint32_t)));
@@ -294,7 +290,8 @@ class ContextSequential : public Context {
                 start_barrier.wait_for();
                 while (ermia::volatile_read(is_running_)) {
                     ermia::OID value_out;
-                    key_buf = distribution(generator);
+                    auto r = uniform_rng.uniform_within(0, k_record_num - 1);
+                    key_buf = r;
                     bool res = sync_wait_coro(
                         masstree_->search(ermia::varstr((const char*)(&key_buf), k_key_len),
                                           value_out, 0, nullptr));
@@ -314,10 +311,7 @@ class ContextAmac : public Context {
                 std::vector<uint32_t*> &counters) {
         for (uint32_t i = 0; i < running_threads_.size(); i++) {
             ermia::thread::Thread::Task search_task = [&, i](char *) {
-                auto seed =
-                    std::chrono::system_clock::now().time_since_epoch().count();
-                std::default_random_engine generator(seed);
-                std::uniform_int_distribution<uint64_t> distribution(0, k_record_num-1);
+                foedus::assorted::UniformRandom uniform_rng(1237 + i);
                 std::vector<ermia::ConcurrentMasstree::AMACState> amac_states;
                 amac_states.reserve(k_batch_size);
                 std::array<key_buffer_t, k_batch_size> key_bufs;
@@ -332,16 +326,14 @@ class ContextAmac : public Context {
                 start_barrier.wait_for();
                 while (ermia::volatile_read(is_running_)) {
                     for(uint32_t j = 0; j < k_batch_size; j++) {
-                        key_bufs[j] = distribution(generator);
+                        auto r = uniform_rng.uniform_within(0, k_record_num - 1);
+                        key_bufs[j] = r;
                         amac_params[j] = ermia::varstr((const char*)(&key_bufs[j]), k_key_len);
                         amac_states.emplace_back(&(amac_params[j]));
                     }
 
-                    if(amac_states.empty()) {
-                        break;
-                    }
-
                     masstree_->search_amac(amac_states, 0);
+
                     amac_states.clear();
 
                     *counter += k_batch_size;
