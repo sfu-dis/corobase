@@ -55,71 +55,6 @@ private:
   handle coro;
 };
 
-
-template<typename T, int cap>
-class FixLenStack {
-public:
-    FixLenStack() : top_(-1) {}
-    ~FixLenStack() {}
-
-    FixLenStack(const FixLenStack &) = delete;
-
-    const T & back() const {
-        ASSERT(top_ >= 0);
-        return data_[top_];
-    }
-
-    T & back() {
-        ASSERT(top_ >= 0);
-        return data_[top_];
-    }
-
-    void pop_back() {
-        ASSERT(top_ >= 0);
-        top_--;
-    }
-
-    void push_back(const T & item) {
-        ASSERT(size() < cap);
-        data_[++top_] = item;
-    }
-
-    void emplace_back(const T & item) {
-        ASSERT(size() < cap);
-        data_[++top_] = item;
-    }
-
-    void push_back(T && item) {
-        ASSERT(size() < cap);
-        data_[++top_] = std::move(item);
-    }
-
-    void emplace_back(T && item) {
-        ASSERT(size() < cap);
-        data_[++top_] = std::move(item);
-    }
-
-    void reserve(uint32_t newSize) {
-        // mock std container, no op
-    }
-
-    void clear() {
-        top_ = -1;
-    }
-
-    bool empty() const {
-       return top_ == -1;
-    }
-
-    uint32_t size() const {
-        return static_cast<uint32_t>(top_ + 1);
-    }
-
-private:
-    int top_;
-    T data_[cap];
-};
-
 /*
  *  task<T> is implementation of coroutine promise. It supports chained
  *  co_await, which enables writing coroutine as easy as writing normal
@@ -144,7 +79,6 @@ private:
 namespace coro_task_private {
 
 using generic_coroutine_handle = std::experimental::coroutine_handle<void>;
-using coro_stack = FixLenStack<generic_coroutine_handle, 12>;
 
 // final_awaiter is the awaiter returned on task<T> coroutine's `final_suspend`.
 // It returns the control flow directly to the caller instead of the top-level
