@@ -40,6 +40,8 @@ TEST(CoroutineSuspendOrder, FixedLogic) {
 
     int counter = 0;
     task<void> future_task = CoroutineCall_LevelOne(&counter);
+    future_task.start();
+
     ASSERT_EQ(counter, 1);
 
     future_task.resume();

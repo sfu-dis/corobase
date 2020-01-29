@@ -21,6 +21,10 @@ class CoroutineTestBase : public ::testing::Test {
     }
 
     void runTasksUntilComplete() {
+        for(auto & t : future_tasks_) {
+            t.start();
+        }
+
         while (1) {
             bool hasUnfinishedTasks = false;
             for (uint32_t i = 0; i < future_tasks_.size(); i++) {
