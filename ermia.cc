@@ -304,6 +304,7 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
   for (int i = 0; i < keys.size(); ++i) {
     oids.emplace_back(INVALID_OID);
     index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
+    index_probe_tasks[i].start();
   }
 
   int finished = 0;

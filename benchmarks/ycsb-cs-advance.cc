@@ -62,6 +62,7 @@ public:
 
         ASSERT(workload[workload_idx].task_fn);
         coro_task = workload[workload_idx].task_fn(this, i, begin_epoch);
+        coro_task.start();
       }
 
       bool batch_completed = false;
