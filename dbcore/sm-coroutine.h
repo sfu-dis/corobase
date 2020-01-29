@@ -202,27 +202,28 @@ private:
 // of the coroutine call stack.
 struct promise_base {
   promise_base()
-      : handle_(nullptr), callee_promise_(nullptr), caller_promise_(nullptr) {}
+      : handle_(nullptr), parent_(nullptr), leaf_(nullptr), root_(nullptr) {}
   ~promise_base() {}
 
   promise_base(const promise_base &) = delete;
   promise_base(promise_base &&) = delete;
 
-  auto initial_suspend() { return std::experimental::suspend_never{}; }
+  auto initial_suspend() { return std::experimental::suspend_always{}; }
   auto final_suspend() {
     // For the first coroutine in the coroutine chain, it is started by
     // normal function through coroutine_handle.resume(). Therefore, it
     // does not be co_awaited on and has no awaiting_promise_.
     // In its final suspend, it returns control flow to its caller by
     // returning std::experimental::noop_coroutine.
-    if (!caller_promise_) {
+    if (!parent_) {
         return coro_task_private::final_awaiter(
             std::experimental::noop_coroutine());
     }
     
-    caller_promise_->set_callee_promise(nullptr);
+    ASSERT(root_);
+    root_->leaf_ = parent_;
     return coro_task_private::final_awaiter(
-        caller_promise_->get_coro_handle());
+            parent_->get_coro_handle());
   }
   void unhandled_exception() { std::terminate(); }
 
@@ -241,20 +242,24 @@ struct promise_base {
     memory_pool::instance()->deallocate_bytes(ptr);
   }
 
-  inline void set_callee_promise(promise_base * callee_promise) {
-    callee_promise_ = callee_promise;
+  inline void set_parent(promise_base * caller_promise) {
+      parent_ = caller_promise;
+
+      ASSERT(parent_);
+      root_ = parent_->root_;
+
+      ASSERT(root_);
+      root_->leaf_ = this;
   }
 
-  inline promise_base* get_callee_promise() const {
-      return callee_promise_;
+  inline promise_base *get_leaf() const {
+      ASSERT(leaf_);
+      return leaf_;
   }
 
-  inline void set_caller_promise(promise_base * caller_promise) {
-      caller_promise_ = caller_promise;
-  }
-
-  inline promise_base* get_caller_promise() const {
-      return callee_promise_;
+  inline void set_as_root() {
+      leaf_ = this;
+      root_ = this;
   }
 
   inline generic_coroutine_handle get_coro_handle() const {
@@ -263,8 +268,9 @@ struct promise_base {
 
 protected:
   generic_coroutine_handle handle_;
-  promise_base * callee_promise_;
-  promise_base * caller_promise_;
+  promise_base * parent_;
+  promise_base * leaf_;
+  promise_base * root_;
 };
 
 } // namespace coro_task_private
@@ -309,24 +315,25 @@ public:
     return coroutine_.done();
   }
 
+  void start() {
+    ASSERT(coroutine_);
+    ASSERT(!coroutine_.done());
+    coroutine_.promise().set_as_root();
+    coroutine_.resume();
+  }
+
   void resume() {
     ASSERT(coroutine_);
     ASSERT(!coroutine_.done());
+    ASSERT(coroutine_.promise().get_leaf());
+    ASSERT(coroutine_.promise().get_leaf()->get_coro_handle());
+    ASSERT(!coroutine_.promise().get_leaf()->get_coro_handle().done());
 
-    using namespace coro_task_private;
-
-    generic_coroutine_handle coroutine_to_resume = nullptr;
-    promise_base * promise_ptr = &(coroutine_.promise());
-    while(promise_ptr != nullptr) {
-        coroutine_to_resume = promise_ptr->get_coro_handle();
-        promise_ptr = promise_ptr->get_callee_promise();
-    }
-
-    ASSERT(coroutine_to_resume);
-    coroutine_to_resume.resume();
+    coroutine_.promise().get_leaf()->get_coro_handle().resume();
   }
 
   void destroy() {
+    ASSERT(done());
     coroutine_.destroy();
     coroutine_ = nullptr;
   }
@@ -446,10 +453,10 @@ template <typename T> struct task<T>::awaiter {
   // awaiting_coroutine points to the coroutine running co_await
   // (i.e. it waiting for suspended_task_coroutine to complete first)
   template <typename awaiting_promise_t>
-  void await_suspend(std::experimental::coroutine_handle<awaiting_promise_t>
+  auto await_suspend(std::experimental::coroutine_handle<awaiting_promise_t>
                          awaiting_coroutine) noexcept {
-    awaiting_coroutine.promise().set_callee_promise(&(suspended_task_coroutine_.promise()));
-    suspended_task_coroutine_.promise().set_caller_promise(&(awaiting_coroutine.promise()));
+    suspended_task_coroutine_.promise().set_parent(&(awaiting_coroutine.promise()));
+    return suspended_task_coroutine_;
   }
   constexpr bool await_ready() const noexcept {
     return suspended_task_coroutine_.done();
@@ -487,6 +494,7 @@ private:
 
 template<typename T>
 inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
+    coro_task.start();
     while(!coro_task.done()) {
         coro_task.resume();
     }
@@ -496,6 +504,7 @@ inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
 
 template<>
 inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
+    coro_task.start();
     while(!coro_task.done()) {
         coro_task.resume();
     }
