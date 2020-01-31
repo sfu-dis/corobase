@@ -205,6 +205,7 @@ struct sm_oid_mgr {
 
   PROMISE(dbtuple *) oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc);
   PROMISE(dbtuple *) oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
+  dbtuple *oid_get_s2pl(oid_array *oa, OID o, TXN::xid_context *visitor_xc, bool for_write, rc_t &out_rc);
 
   void oid_get_version_backup(fat_ptr &ptr,
                               fat_ptr &tentative_next,
@@ -271,6 +272,14 @@ struct sm_oid_mgr {
     visitor_xc->set_sstamp(std::min(visitor_xc->sstamp.load(), vcstamp));
 // TODO(tzwang): do early SSN check here
 #endif  // SSI/SSN
+  }
+
+  inline Object *oid_get_latest_object(oid_array *oa, OID o) {
+    auto head_offset = oa->get(o)->offset();
+    if (head_offset) {
+      return (Object *)head_offset;
+    }
+    return NULL;
   }
 
   inline dbtuple *oid_get_latest_version(oid_array *oa, OID o) {

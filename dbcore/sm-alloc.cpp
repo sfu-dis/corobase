@@ -57,6 +57,10 @@ static uint64_t thread_local tls_allocated_node_memory CACHE_ALIGNED;
 static const uint64_t tls_node_memory_mb = 200;
 
 void prepare_node_memory() {
+  if (!config::tls_alloc) {
+    return;
+  }
+
   ALWAYS_ASSERT(config::numa_nodes);
   allocated_node_memory =
       (uint64_t *)malloc(sizeof(uint64_t) * config::numa_nodes);
@@ -83,21 +87,6 @@ void prepare_node_memory() {
   for (auto &f : futures) {
     f.get();
   }
-}
-
-void free_node_memory() {
-  ALWAYS_ASSERT(node_memory);
-  ALWAYS_ASSERT(config::node_memory_gb);
-
-  for (int i = 0; i < config::numa_nodes; i++) {
-    allocated_node_memory[i] = 0;
-    munmap(node_memory[i], config::node_memory_gb * config::GB);
-  }
-
-  free(allocated_node_memory);
-  allocated_node_memory = nullptr;
-  free(node_memory);
-  node_memory = nullptr;
 }
 
 void gc_version_chain(fat_ptr *oid_entry) {
@@ -181,6 +170,10 @@ void gc_version_chain(fat_ptr *oid_entry) {
 
 void *allocate(size_t size) {
   size = align_up(size);
+  if (!config::tls_alloc) {
+    return malloc(size);
+  }
+
   void *p = NULL;
 
   // Try the tls free object store first

@@ -83,10 +83,13 @@ void *thread_registered(void *) {
 void thread_deregistered(void *, void *thread_cookie) {
   auto *t = (thread_data *)thread_cookie;
   ASSERT(t == &tls);
+  /*
+   * FIXME(tzwang): 20191228: seems unnecessary?
   while (t->bitmap) {
     auto x = take_one(t);
     xid_free(x);
   }
+  */
   t->initialized = false;
 }
 

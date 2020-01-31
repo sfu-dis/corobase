@@ -23,7 +23,7 @@
 
 #include "../dbcore/sm-alloc.h"
 #include "../dbcore/sm-coroutine.h"
-#include "../dbcore/sm-index.h"
+#include "../dbcore/sm-table.h"
 #include "../tuple.h"
 
 namespace ermia {
@@ -34,6 +34,7 @@ public:
   class rcu_callback {
   public:
     virtual void operator()(simple_threadinfo &ti) = 0;
+    virtual ~rcu_callback() {}
   };
 
 public:
@@ -189,10 +190,10 @@ public:
     table_.destroy(ti);
   }
 
-  inline void set_arrays(IndexDescriptor *id) {
+  inline void set_arrays(TableDescriptor *id, bool is_primary) {
     tuple_array_ = id->GetTupleArray();
-    is_primary_idx_ = id->IsPrimary();
-    descriptor_ = id;
+    is_primary_idx_ = is_primary;
+    table_descriptor_ = id;
     ALWAYS_ASSERT(tuple_array_);
     table_.set_tuple_array(tuple_array_);
     if (config::is_backup_srv()) {
@@ -205,7 +206,7 @@ public:
   }
 
   inline Masstree::basic_table<P> *get_table() { return &table_; }
-  inline IndexDescriptor *get_descriptor() { return descriptor_; }
+  inline TableDescriptor *get_table_descriptor() { return table_descriptor_; }
   inline bool is_primary_idx() { return is_primary_idx_; }
 
   /**
@@ -455,7 +456,7 @@ private:
   oid_array *pdest_array_;
   oid_array *tuple_array_;
   bool is_primary_idx_;
-  IndexDescriptor *descriptor_;
+  TableDescriptor *table_descriptor_;
 
   static leaf_type *leftmost_descend_layer(node_base_type *n);
   class size_walk_callback;
@@ -1006,8 +1007,8 @@ mbtree<P>::rsearch_range_oid(const key_type &upper, const key_type *lower,
 template <typename P>
 template <typename F>
 inline PROMISE(void) mbtree<P>::search_range(const key_type &lower,
-                                                   const key_type *upper, F &callback,
-                                                   TXN::xid_context *xc) const {
+                                    const key_type *upper, F &callback,
+                                    TXN::xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<false> scanner(this, upper, wrapper);
   threadinfo ti(xc->begin_epoch);
@@ -1017,8 +1018,8 @@ inline PROMISE(void) mbtree<P>::search_range(const key_type &lower,
 template <typename P>
 template <typename F>
 inline PROMISE(void) mbtree<P>::rsearch_range(const key_type &upper,
-                                                    const key_type *lower, F &callback,
-                                                    TXN::xid_context *xc) const {
+                                     const key_type *lower, F &callback,
+                                     TXN::xid_context *xc) const {
   low_level_search_range_callback_wrapper<F> wrapper(callback);
   low_level_search_range_scanner<true> scanner(this, lower, wrapper);
   threadinfo ti(xc->begin_epoch);

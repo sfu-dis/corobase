@@ -1,147 +1,70 @@
 /*
  * A YCSB implementation based off of Silo's and equivalent to FOEDUS's.
  */
-#include <iostream>
-#include <sstream>
-#include <vector>
-#include <utility>
-#include <string>
-#include <set>
-
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <numa.h>
-
 #include "bench.h"
 #include "ycsb.h"
 
-extern uint64_t global_key_counter;
+#ifndef ADV_COROUTINE
+
 extern uint g_reps_per_tx;
 extern uint g_rmw_additional_reads;
-extern char g_workload;
-extern uint g_initial_table_size;
-extern int g_amac_txn_read;
-extern int g_coro_txn_read;
-extern int g_adv_coro_txn_read;
-extern int g_zipfian_rng;
-extern double g_zipfian_theta;
-extern int g_distinct_keys;
-
-// { insert, read, update, scan, rmw }
-extern YcsbWorkload YcsbWorkloadA;
-extern YcsbWorkload YcsbWorkloadB;
-extern YcsbWorkload YcsbWorkloadC;
-extern YcsbWorkload YcsbWorkloadD;
-extern YcsbWorkload YcsbWorkloadE;
-
-// Combine reps_per_tx and rmw_additional_reads to have "10R+10RMW" style
-// transactions.
-extern YcsbWorkload YcsbWorkloadF;
-
-// Extra workloads (not in spec)
-extern YcsbWorkload YcsbWorkloadG;
-extern YcsbWorkload YcsbWorkloadH;
-
 extern YcsbWorkload ycsb_workload;
+extern ReadTransactionType g_read_txn_type;
 
-class ycsb_worker : public bench_worker {
+class ycsb_sequential_worker : public ycsb_base_worker {
  public:
-  ycsb_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-              const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-              spin_barrier *barrier_a, spin_barrier *barrier_b)
-      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tbl((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")),
-        uniform_rng(1237 + worker_id) {
-    if (g_zipfian_rng) {
-      zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
-    }
+  ycsb_sequential_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+                         const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+                         spin_barrier *barrier_a, spin_barrier *barrier_b)
+    : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
   }
 
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
-    LOG(FATAL) << "Not applicable";
-  }
   virtual workload_desc_vec get_workload() const {
-#ifdef USE_STATIC_COROUTINE
-    assert(!g_amac_txn_read && !g_coro_txn_read && g_adv_coro_txn_read && "In a coroutine only build!!");
-#endif
     workload_desc_vec w;
-    if (ycsb_workload.insert_percent())
-      w.push_back(workload_desc(
-          "Insert", double(ycsb_workload.insert_percent()) / 100.0, TxnInsert));
-    if (ycsb_workload.read_percent()) {
-      if (g_amac_txn_read)
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAMAC));
-      else if (g_coro_txn_read)
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadCORO));
-      else if (g_adv_coro_txn_read)
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadADVCORO));
-      else
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() || ycsb_workload.scan_percent()) {
+      LOG(FATAL) << "Not implemented";
     }
-    if (ycsb_workload.update_percent())
-      w.push_back(workload_desc(
-          "Update", double(ycsb_workload.update_percent()) / 100.0, TxnUpdate));
-    if (ycsb_workload.scan_percent())
-      w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0,
-                                TxnScan));
-    if (ycsb_workload.rmw_percent())
-      w.push_back(
-          workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+
+    if (ycsb_workload.read_percent()) {
+      if (g_read_txn_type == ReadTransactionType::AMACMultiGet) {
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAMACMultiGet));
+      } else if (g_read_txn_type == ReadTransactionType::SimpleCoroMultiGet) {
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadSimpleCoroMultiGet));
+      } else if (g_read_txn_type == ReadTransactionType::Sequential) {
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnRead));
+      } else {
+        LOG(FATAL) << "Wrong read txn type. Supported: sequential, multiget-simple-coro, multiget-adv-coro";
+      }
+    }
+
+    if (ycsb_workload.rmw_percent()) {
+      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+    }
+
     return w;
   }
 
-  static rc_t TxnInsert(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
+  static rc_t TxnRead(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read(); }
+  static rc_t TxnReadAMACMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_amac_multiget(); }
+  static rc_t TxnReadSimpleCoroMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_simple_coro_multiget(); }
+  static rc_t TxnRMW(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_rmw(); }
 
-  static rc_t TxnRead(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read();
-  }
-
-  static rc_t TxnReadAMAC(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read_amac();
-  }
-
-  static rc_t TxnReadCORO(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read_coro();
-  }
-
-  static rc_t TxnReadADVCORO(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_read_adv_coro();
-  }
-
-  static rc_t TxnUpdate(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
-
-  static rc_t TxnScan(bench_worker *w) { MARK_REFERENCED(w); return {RC_TRUE}; }
-
-  static rc_t TxnRMW(bench_worker *w) {
-    return static_cast<ycsb_worker *>(w)->txn_rmw();
-  }
-
-  struct KeyCompare : public std::unary_function<ermia::varstr, bool>{
-    explicit KeyCompare(ermia::varstr &baseline) : baseline(baseline) {}
-    bool operator() (const ermia::varstr &arg) {
-      return *(uint64_t*)arg.p == *(uint64_t*)baseline.p;
-    }
-    ermia::varstr &baseline;
-  };
-
+  // Read transaction using traditional sequential execution
   rc_t txn_read() {
-    arena.reset();
     ermia::transaction *txn = nullptr;
-    if (!ermia::config::index_probe_only) {
-      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
+    if (ermia::config::index_probe_only) {
+      // Reset the arena as txn will be nullptr and GenerateKey will get space from it
+      arena->reset();
+    } else {
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
     }
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = GenerateKey();
-      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(YcsbRecord));
+      auto &k = GenerateKey(txn);
+      ermia::varstr &v = str((ermia::config::index_probe_only) ? 0 : sizeof(ycsb_kv::value));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
-      tbl->Get(txn, rc, k, v);  // Read
+      table_index->GetRecord(txn, rc, k, v);  // Read
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
@@ -151,7 +74,7 @@ class ycsb_worker : public bench_worker {
       ASSERT(ermia::config::index_probe_only || *(char*)v.data() == 'a');
 #endif
       if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
       }
     }
     if (!ermia::config::index_probe_only) {
@@ -160,36 +83,38 @@ class ycsb_worker : public bench_worker {
     return {RC_TRUE};
   }
 
-  rc_t txn_read_amac() {
-    arena.reset();
+  // Multi-get using AMAC
+  rc_t txn_read_amac_multiget() {
+    ermia::transaction *txn = nullptr;
+    if (ermia::config::index_probe_only) {
+      arena->reset();
+    } else {
+      values.clear();
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        if (ermia::config::index_probe_only) {
+          values.push_back(&str(0));
+        } else {
+          values.push_back(&str(sizeof(ycsb_kv::value)));
+        }
+      }
+    }
 
     // Prepare states
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = GenerateKey();
+      auto &k = GenerateKey(txn);
       if (as.size() < g_reps_per_tx)
         as.emplace_back(&k);
       else
         as[i].reset(&k);
     }
 
-    ermia::transaction *txn = nullptr;
-    if (!ermia::config::index_probe_only) {
-      values.clear();
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-        if (ermia::config::index_probe_only) {
-          values.push_back(&str(0));
-        } else {
-          values.push_back(&str(sizeof(YcsbRecord)));
-        }
-      }
-      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
-    }
-    tbl->MultiGet(txn, as, values);
+    table_index->amac_MultiGet(txn, as, values);
 
     if (!ermia::config::index_probe_only) {
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
       for (uint i = 0; i < g_reps_per_tx; ++i) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
       }
       ALWAYS_ASSERT(*(char*)v.data() == 'a');
     }
@@ -200,103 +125,34 @@ class ycsb_worker : public bench_worker {
     return {RC_TRUE};
   }
 
-  rc_t txn_read_coro() {
-    arena.reset();
-    ermia::transaction *txn = nullptr;
-
-    thread_local std::vector<std::experimental::coroutine_handle<
-        ermia::dia::generator<bool>::promise_type>>
-        handles(g_reps_per_tx);
+  // Multi-get using simple coroutine
+  rc_t txn_read_simple_coro_multiget() {
+    arena->reset();
+    thread_local std::vector<SimpleCoroHandle> handles(g_reps_per_tx);
     keys.clear();
+    values.clear();
   
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = GenerateKey();
+      auto &k = GenerateKey(nullptr);
       keys.emplace_back(&k);
     }
 
-    if (!ermia::config::index_probe_only) {
-      values.clear();
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-        if (ermia::config::index_probe_only) {
-          values.push_back(&str(0));
-        } else {
-          values.push_back(&str(sizeof(YcsbRecord)));
-        }
-      }
-      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
-    }
-
-    tbl->coro_MultiGet(txn, keys, values, handles);
-
-    if (!ermia::config::index_probe_only) {
-      ermia::varstr &v = str(sizeof(YcsbRecord));
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
-      }
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
-    }
-
-    if (!ermia::config::index_probe_only) {
-      TryCatch(db->Commit(txn));
-    }
+    table_index->simple_coro_MultiGet(nullptr, keys, values, handles);
 
     return {RC_TRUE};
   }
 
-  rc_t txn_read_adv_coro() {
-    arena.reset();
-    ermia::transaction *txn = nullptr;
-
-    thread_local std::vector<ermia::dia::task<bool>> index_probe_tasks(g_reps_per_tx);
-    thread_local std::vector<ermia::dia::task<ermia::dbtuple*>> value_fetch_tasks(g_reps_per_tx);
-    thread_local std::vector<ermia::dia::coro_task_private::coro_stack> coro_stacks(g_reps_per_tx);
-    keys.clear();
-
-    for (uint i = 0; i < g_reps_per_tx; ++i) {
-      auto &k = GenerateKey();
-      keys.emplace_back(&k);
-    }
-
-    if (!ermia::config::index_probe_only) {
-      values.clear();
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-        if (ermia::config::index_probe_only) {
-          values.push_back(&str(0));
-        } else {
-          values.push_back(&str(sizeof(YcsbRecord)));
-        }
-      }
-      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, arena, txn_buf());
-    }
-
-    tbl->adv_coro_MultiGet(txn, keys, values,
-        index_probe_tasks, value_fetch_tasks, coro_stacks);
-
-    if (!ermia::config::index_probe_only) {
-      ermia::varstr &v = str(sizeof(YcsbRecord));
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(YcsbRecord));
-      }
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
-    }
-
-    if (!ermia::config::index_probe_only) {
-      TryCatch(db->Commit(txn));
-    }
-
-    return {RC_TRUE};
-  }
-
+  // Read-modify-write transaction. Sequential execution only
   rc_t txn_rmw() {
-    ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-    arena.reset();
+    ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     for (uint i = 0; i < g_reps_per_tx; ++i) {
-      ermia::varstr &k = GenerateKey();
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &k = GenerateKey(txn);
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = 0;
-      tbl->Get(txn, rc, k, v, &oid);  // Read
+      ermia::OID oid = ermia::INVALID_OID;
+      table_index->GetRecord(txn, rc, k, v, &oid);  // Read
+
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
@@ -305,22 +161,28 @@ class ycsb_worker : public bench_worker {
       ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+
+      if (!ermia::config::index_probe_only) {
+        ALWAYS_ASSERT(v.size() == sizeof(ycsb_kv::value));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
+      }
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
       // copy (in the read op we just did).
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      memset(v.data(), 'a', sizeof(YcsbRecord));
-      TryCatch(sync_wait_coro(tbl->Put(txn, k, v)));  // Modify-write
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+      new (v.data()) ycsb_kv::value("a");
+      TryCatch(table_index->UpdateRecord(txn, k, v));  // Modify-write
     }
 
     for (uint i = 0; i < g_rmw_additional_reads; ++i) {
-      ermia::varstr &k = GenerateKey();
-      ermia::varstr &v = str(sizeof(YcsbRecord));
+      ermia::varstr &k = GenerateKey(txn);
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
+
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
-      tbl->Get(txn, rc, k, v);  // Read
+      table_index->GetRecord(txn, rc, k, v);  // Read
+
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
@@ -328,230 +190,26 @@ class ycsb_worker : public bench_worker {
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
-      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(YcsbRecord));
+      if (!ermia::config::index_probe_only) {
+        ALWAYS_ASSERT(v.size() == sizeof(ycsb_kv::value));
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
+      }
+
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
   }
 
- protected:
-  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena.next(size); }
-  ermia::varstr &GenerateKey() {
-    uint64_t r = 0;
-    if (g_zipfian_rng) {
-      r = zipfian_rng.next();
-    } else {
-      r = uniform_rng.uniform_within(0, g_initial_table_size - 1);
-    }
-
-    ermia::varstr &k = str(sizeof(uint64_t));  // 8-byte key
-    new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
-    ::BuildKey(r, k);
-    return k;
-  }
-
  private:
-  ermia::ConcurrentMasstreeIndex *tbl;
-  foedus::assorted::UniformRandom uniform_rng;
-  foedus::assorted::ZipfianRandom zipfian_rng;
   std::vector<ermia::ConcurrentMasstree::AMACState> as;
   std::vector<ermia::varstr *> keys;
   std::vector<ermia::varstr *> values;
 };
 
-class ycsb_usertable_loader : public bench_loader {
- public:
-  ycsb_usertable_loader(unsigned long seed, ermia::Engine *db,
-                        const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                        uint32_t loader_id)
-      : bench_loader(seed, db, open_tables, loader_id), loader_id(loader_id) {}
-
- private:
-  uint32_t loader_id;
-
- protected:
-  void load() {
-    ermia::dia::coro_task_private::memory_pool memory_pool;
-
-    ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
-    int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
-    uint64_t start_key = loader_id * to_insert;;
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      arena.reset();
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-
-      ermia::varstr &v = str(sizeof(YcsbRecord));
-      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(YcsbRecord));
-      *(char*)v.p = 'a';
-
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-      TryVerifyStrict(sync_wait_coro(tbl->Insert(txn, k, v)));
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    // Verify inserted values
-    for (uint64_t i = 0; i < to_insert; ++i) {
-      ermia::transaction *txn = db->NewTransaction(0, arena, txn_buf());
-      arena.reset();
-      rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = 0;
-      ermia::varstr &k = str(sizeof(uint64_t));
-      BuildKey(start_key + i, k);
-      ermia::varstr &v = str(0);
-      sync_wait_coro(tbl->Get(txn, rc, k, v, &oid));
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
-      TryVerifyStrict(rc);
-      TryVerifyStrict(db->Commit(txn));
-    }
-
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] loader " << loader_id <<  " loaded "
-                << to_insert << " keys in USERTABLE" << std::endl;
-    }
-  }
-};
-
-class ycsb_bench_runner : public bench_runner {
- public:
-  ycsb_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    db->CreateMasstreeTable("USERTABLE", false);
-  }
-
-  virtual void prepare(char *) {
-    open_tables["USERTABLE"] = ermia::IndexDescriptor::GetIndex("USERTABLE");
-  }
-
- protected:
-  virtual std::vector<bench_loader *> make_loaders() {
-    uint64_t requested = g_initial_table_size;
-    uint64_t records_per_thread = std::max<uint64_t>(1, g_initial_table_size / ermia::config::worker_threads);
-    g_initial_table_size = records_per_thread * ermia::config::worker_threads;
-
-    if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << requested
-           << " records, will load "
-           << records_per_thread *ermia::config::worker_threads << std::endl;
-    }
-
-    std::vector<bench_loader *> ret;
-    for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
-      ret.push_back(new ycsb_usertable_loader(0, db, open_tables, i));
-    }
-    return ret;
-  }
-
-  virtual std::vector<bench_worker *> make_cmdlog_redoers() {
-    // Not implemented
-    std::vector<bench_worker *> ret;
-    return ret;
-  }
-  virtual std::vector<bench_worker *> make_workers() {
-    util::fast_random r(8544290);
-    std::vector<bench_worker *> ret;
-    for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-      ret.push_back(new ycsb_worker(i, r.next(), db, open_tables, &barrier_a,
-                                    &barrier_b));
-    }
-    return ret;
-  }
-};
-
 void ycsb_do_test(ermia::Engine *db, int argc, char **argv) {
-  // parse options
-  optind = 1;
-  while (1) {
-    static struct option long_options[] = {
-        {"reps-per-tx", required_argument, 0, 'r'},
-        {"rmw-additional-reads", required_argument, 0, 'a'},
-        {"workload", required_argument, 0, 'w'},
-        {"initial-table-size", required_argument, 0, 's'},
-        {"amac-txn-read", no_argument, &g_amac_txn_read, 1},
-        {"coro-txn-read", no_argument, &g_coro_txn_read, 1},
-        {"adv-coro-txn-read", no_argument, &g_adv_coro_txn_read, 1},
-        {"zipfian", no_argument, &g_zipfian_rng, 1},
-        {"zipfian-theta", required_argument, 0, 'z'},
-        {"distinct-keys", no_argument, &g_distinct_keys, 1},
-        {0, 0, 0, 0}};
-
-    int option_index = 0;
-    int c = getopt_long(argc, argv, "r:a:w:s:", long_options, &option_index);
-    if (c == -1) break;
-    switch (c) {
-      case 0:
-        if (long_options[option_index].flag != 0) break;
-        abort();
-        break;
-
-      case 'z':
-        g_zipfian_theta = strtod(optarg, NULL);
-        break;
-
-      case 'r':
-        g_reps_per_tx = strtoul(optarg, NULL, 10);
-        break;
-
-      case 'a':
-        g_rmw_additional_reads = strtoul(optarg, NULL, 10);
-        break;
-
-      case 's':
-        g_initial_table_size = strtoul(optarg, NULL, 10);
-        break;
-
-      case 'w':
-        g_workload = optarg[0];
-        if (g_workload == 'A')
-          ycsb_workload = YcsbWorkloadA;
-        else if (g_workload == 'B')
-          ycsb_workload = YcsbWorkloadB;
-        else if (g_workload == 'C')
-          ycsb_workload = YcsbWorkloadC;
-        else if (g_workload == 'D')
-          ycsb_workload = YcsbWorkloadD;
-        else if (g_workload == 'E')
-          ycsb_workload = YcsbWorkloadE;
-        else if (g_workload == 'F')
-          ycsb_workload = YcsbWorkloadF;
-        else if (g_workload == 'G')
-          ycsb_workload = YcsbWorkloadG;
-        else if (g_workload == 'H')
-          ycsb_workload = YcsbWorkloadH;
-        else {
-          std::cerr << "Wrong workload type: " << g_workload << std::endl;
-          abort();
-        }
-        break;
-
-      case '?':
-        /* getopt_long already printed an error message. */
-        exit(1);
-
-      default:
-        abort();
-    }
-  }
-
-  ALWAYS_ASSERT(g_initial_table_size);
-
-  if (ermia::config::verbose) {
-    std::cerr << "ycsb settings:" << std::endl
-         << "  workload:                   " << g_workload << std::endl
-         << "  initial user table size:    " << g_initial_table_size << std::endl
-         << "  operations per transaction: " << g_reps_per_tx << std::endl
-         << "  additional reads after RMW: " << g_rmw_additional_reads << std::endl
-         << "  amac txn_read:              " << g_amac_txn_read << std::endl
-         << "  coro_txn_read:              " << g_coro_txn_read << std::endl
-         << "  adv_coro_txn_read:          " << g_adv_coro_txn_read << std::endl
-         << "  distinct keys:              " << g_distinct_keys << std::endl
-         << "  distribution:               " << (g_zipfian_rng ? "zipfian" : "uniform") << std::endl;
-
-    if (g_zipfian_rng) {
-      std::cerr << "  zipfian theta:              " << g_zipfian_theta << std::endl;
-    }
-  }
-
-  ycsb_bench_runner r(db);
+  ycsb_parse_options(argc, argv);
+  ycsb_bench_runner<ycsb_sequential_worker> r(db);
   r.run();
 }
 
+#endif  // ADV_COROUTINE

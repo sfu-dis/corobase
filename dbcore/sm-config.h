@@ -9,7 +9,7 @@
 
 namespace ermia {
 
-class sm_log_recover_impl;
+struct sm_log_recover_impl;
 
 namespace config {
 
@@ -18,6 +18,8 @@ static const uint64_t MB = 1024 * 1024;
 static const uint64_t GB = MB * 1024;
 
 // Common settings
+extern bool tls_alloc;
+extern bool threadpool;
 extern bool verbose;
 extern std::string benchmark;
 extern uint32_t benchmark_scale_factor;
@@ -39,6 +41,7 @@ extern std::string read_view_stat_file;
 extern bool command_log;
 extern uint32_t command_log_buffer_mb;
 extern bool print_cpu_util;
+extern uint32_t arena_size_mb;
 extern bool enable_perf;
 extern std::string perf_record_event;
 
