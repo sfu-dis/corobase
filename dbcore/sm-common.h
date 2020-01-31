@@ -229,7 +229,7 @@ struct LSN {
     ASSERT(not(segnum & ~fat_ptr::ASI_SEGMENT_MASK));
     uintptr_t flags = segnum << fat_ptr::ASI_START_BIT;
     return (LSN){(val << fat_ptr::VALUE_START_BIT) | flags | size_code};
-  };
+  }
 
   static LSN from_ptr(fat_ptr const &p) {
     THROW_IF(

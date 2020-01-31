@@ -2,7 +2,6 @@
 
 #include "rcu.h"
 #include "sm-cmd-log.h"
-#include "sm-index.h"
 #include "sm-log-file.h"
 #include "sm-rep.h"
 #include "../ermia.h"

@@ -20,7 +20,7 @@
 namespace ermia {
 class object;
 struct sm_log_file_mgr;
-class segment_id;
+struct segment_id;
 struct sm_log_recover_impl;
 
 struct sm_tx_log {
@@ -71,9 +71,13 @@ struct sm_tx_log {
   void log_delete(FID f, OID o);
   void log_enhanced_delete(FID f, OID o, fat_ptr p, int abits);
 
-  /* Record the creation of a index with tuple/key FIDs and name
+  /* Record the creation of a table with tuple/key FIDs and name
    */
-  void log_index(FID tuple_fid, FID key_fid, const std::string &name);
+  void log_table(FID tuple_fid, FID key_fid, const std::string &name);
+
+  /* Record the creation of an index
+   */
+  void log_index(FID table_fid, FID index_fid, const std::string &index_name, bool primary);
 
   /* Return this transaction's commit LSN, or INVALID_LSN if the
      transaction has not entered pre-commit yet.
@@ -145,7 +149,9 @@ struct sm_log_scan_mgr {
     LOG_DELETE,
     LOG_ENHANCED_DELETE,
     LOG_UPDATE_KEY,
-    LOG_FID
+    LOG_FID,
+    LOG_PRIMARY_INDEX,
+    LOG_SECONDARY_INDEX
   };
 
   /* A cursor for iterating over log records, whether those of a single
@@ -351,7 +357,7 @@ struct sm_log {
      WARNING: the caller is responsible to eventually call commit()
      or discard() on the returned object, or risk stalling the log.
    */
-  sm_tx_log *new_tx_log();
+  sm_tx_log *new_tx_log(char *log_space);
 
   /* Return the current LSN. This is the LSN that the next
      successful call to allocate() will acquire.

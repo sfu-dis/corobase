@@ -245,16 +245,16 @@ public:
   }
 
   virtual bool Receive(ermia::transaction *t,
-                       ermia::IndexDescriptor *descriptor_) {
+                       ermia::TableDescriptor *td) {
     for (int i = 0; i < oids.size(); ++i) {
       ermia::dbtuple *tuple = NULL;
       if (ermia::config::is_backup_srv()) {
         tuple = ermia::oidmgr->BackupGetVersion(
-            descriptor_->GetTupleArray(),
-            descriptor_->GetPersistentAddressArray(),
+            td->GetTupleArray(),
+            td->GetPersistentAddressArray(),
             ermia::volatile_read(oids[i]), t->GetXIDContext());
       } else {
-        tuple = ermia::oidmgr->oid_get_version(descriptor_->GetTupleArray(),
+        tuple = ermia::oidmgr->oid_get_version(td->GetTupleArray(),
                                                ermia::volatile_read(oids[i]),
                                                t->GetXIDContext());
       }

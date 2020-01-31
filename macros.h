@@ -17,14 +17,14 @@
 #define ALWAYS_INLINE __attribute__((always_inline)) inline
 #endif
 
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
 #ifndef ALWAYS_ASSERT
 #define ALWAYS_ASSERT(expr) (likely((expr)) ? (void)0 : abort())
 #endif
 
 #define MARK_REFERENCED(x) (void)x
-
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
 
 #define COMPILER_MEMORY_FENCE asm volatile("" ::: "memory")
 

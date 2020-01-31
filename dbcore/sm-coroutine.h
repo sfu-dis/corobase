@@ -1,11 +1,13 @@
-#ifndef SM_COROUTINE_H
-#define SM_COROUTINE_H
+#pragma once
+
 #include <mmintrin.h>
 #include <xmmintrin.h>
 #include <experimental/coroutine>
 #include <array>
 
 #include "sm-defs.h"
+#include "sm-alloc.h"
+
 namespace ermia {
 namespace dia {
 
@@ -106,7 +108,7 @@ public:
     }
 
     bool empty() const {
-       return top_ == -1; 
+       return top_ == -1;
     }
 
     uint32_t size() const {
@@ -115,7 +117,7 @@ public:
 
 private:
     int top_;
-    T data_[cap]; 
+    T data_[cap];
 };
 
 /*
@@ -305,9 +307,11 @@ struct promise_base {
   // a lot in task<T>.resume();
 
   void *operator new(std::size_t sz) noexcept {
+    //return MM::allocate(sz);
     return memory_pool::instance()->allocate_bytes(sz);
   }
-  void operator delete( void* ptr ) noexcept {
+  void operator delete(void* ptr) noexcept {
+    //MM::deallocate(fat_ptr{(uint64_t)ptr});
     memory_pool::instance()->deallocate_bytes(ptr);
   }
 
@@ -539,7 +543,7 @@ private:
 } // namespace dia
 } // namespace ermia
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
   #define PROMISE(t) ermia::dia::task<t>
   #define RETURN co_return
   #define AWAIT co_await
@@ -569,12 +573,9 @@ inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
   #define PROMISE(t) t
   #define RETURN return
   #define AWAIT
-  #define SUSPEND 
+  #define SUSPEND
 
 template<typename T>
 inline T sync_wait_coro(const T &t) { return t; }
 
-#endif // USE_STATIC_COROUTINE
-
-#endif
-
+#endif // ADV_COROUTINE

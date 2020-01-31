@@ -10,7 +10,8 @@ namespace thread {
 std::atomic<uint32_t> next_thread_id(0);
 PerNodeThreadPool *thread_pools = nullptr;
 thread_local bool thread_initialized CACHE_ALIGNED;
-uint32_t PerNodeThreadPool::threads_count = 0;
+uint32_t PerNodeThreadPool::max_threads_per_node = 0;
+uint32_t num_thread_pools = 0;
 
 std::vector<CPUCore> cpu_cores;
 bool DetectCPUCores() {
@@ -73,6 +74,23 @@ bool DetectCPUCores() {
   return true;
 }
 
+Thread::Thread()
+    : node(0),
+      core(0),
+      sys_cpu(0),
+      shutdown(false),
+      state(kStateNoWork),
+      task(nullptr),
+      sleep_when_idle(true),
+      is_physical(false) {
+  // Only allowed when not using thread pool
+  ALWAYS_ASSERT(!config::threadpool);
+
+  int rc = pthread_attr_init (&thd_attr);
+  pthread_create(&thd, &thd_attr, &Thread::StaticIdleTask, (void *)this);
+  ALWAYS_ASSERT(rc == 0);
+}
+
 Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
     : node(n),
       core(c),
@@ -92,78 +110,45 @@ Thread::Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical)
   ALWAYS_ASSERT(rc == 0);
 }
 
-Thread::~Thread() {
-  ASSERT(IsDestroyed());
-  int res = pthread_join(thd, nullptr);
-  ASSERT(res == 0);
-}
-
 PerNodeThreadPool::PerNodeThreadPool(uint16_t n) : node(n), bitmap(0UL) {
   ALWAYS_ASSERT(!numa_run_on_node(node));
-  threads = (Thread *)numa_alloc_onnode(sizeof(Thread) * threads_count, node);
+  threads = (Thread *)numa_alloc_onnode(
+      sizeof(Thread) * max_threads_per_node, node);
 
   if (cpu_cores.size()) {
-    const uint32_t total_numa_nodes = numa_max_node() + 1;
-    const uint32_t node_core_count = cpu_cores.size() / total_numa_nodes;
-    LOG(INFO) << "Node " << n << " has " <<  node_core_count
-              << " physical cores, " << threads_count << " threads";
-
-    // Allocate physical threads first
-    uint32_t core = 0;
+    uint32_t total_numa_nodes = numa_max_node() + 1;
+    ALWAYS_ASSERT(cpu_cores.size() / total_numa_nodes <= max_threads_per_node);
+    LOG(INFO) << "Node " << n << " has " << cpu_cores.size() / total_numa_nodes
+              << " physical cores, " << max_threads_per_node
+              << " threads"; uint32_t core = 0;
     for (uint32_t i = 0; i < cpu_cores.size(); ++i) {
       auto &c = cpu_cores[i];
-      if (c.node == n && core < threads_count) {
+      if (c.node == n) {
         uint32_t sys_cpu = c.physical_thread;
         new (threads + core) Thread(node, core, sys_cpu, true);
+        for (auto &sib : c.logical_threads) {
+          ++core;
+          new (threads + core) Thread(node, core, sib, false);
+        }
         ++core;
       }
     }
-
-    for (uint32_t i = 0; i < cpu_cores.size(); ++i) {
-      auto &c = cpu_cores[i];
-      if (c.node == n && core < threads_count) {
-        for (auto &sib : c.logical_threads) {
-          if (core >= threads_count) {
-              break;
-          }
-          new (threads + core) Thread(node, core, sib, false);
-          ++core;
-        }
-      }
-    }
   }
-}
-
-PerNodeThreadPool::~PerNodeThreadPool() {
-  for(uint32_t i = 0; i < threads_count; i++) {
-    threads[i].Destroy();
-    threads[i].~Thread();
-  }
-  numa_free(threads, sizeof(Thread) * threads_count);
 }
 
 void Initialize() {
   bool detected = thread::DetectCPUCores();
   LOG_IF(FATAL, !detected);
 
-  // For simplicity, it allocates same number of threads for each node. So the actually number of
-  // threads in thread_pool may be more than config::threads
-  PerNodeThreadPool::threads_count = std::ceil(config::threads / static_cast<float>(config::numa_nodes));
-
-  thread_pools = (PerNodeThreadPool *)malloc(sizeof(PerNodeThreadPool) * config::numa_nodes);
-  for (uint16_t i = 0; i < config::numa_nodes; i++) {
-    new (thread_pools + i) PerNodeThreadPool(i);
-  }
-}
-
-void Finalize() {
-    for(uint32_t i = 0; i < config::numa_nodes; i++) {
-        thread_pools[i].~PerNodeThreadPool();
+  if (config::threadpool) {
+    num_thread_pools = numa_max_node() + 1;
+    PerNodeThreadPool::max_threads_per_node = std::thread::hardware_concurrency() / num_thread_pools;
+    thread_pools =
+        (PerNodeThreadPool *)malloc(sizeof(PerNodeThreadPool) * num_thread_pools);
+    for (uint16_t i = 0; i < num_thread_pools; i++) {
+      new (thread_pools + i) PerNodeThreadPool(i);
     }
-    free(thread_pools);
-    thread_pools = nullptr;
-
-    cpu_cores.clear();
+  }
 }
 
 void Thread::IdleTask() {
@@ -207,9 +192,9 @@ void Thread::IdleTask() {
       // continue if there is more work to do
       trigger.wait(lock);
       volatile_write(state, kStateNoWork);
-      // Somebody woke me up, wait for work to do
-      while (!volatile_read(shutdown) &&
-             volatile_read(state) != kStateHasWork) { /** spin **/
+      // Somebody woke me up, wait for work to do or shutdown
+      while (volatile_read(state) != kStateHasWork && !volatile_read(shutdown)) {
+        /** spin **/
       }
     }  // else can't sleep, go check another round
   }
@@ -230,12 +215,11 @@ retry:
   Thread *t = nullptr;
   // Find the thread that matches the preferred type
   while (true) {
-    if (pos >= threads_count) {
+    if (pos >= max_threads_per_node) {
       return nullptr;
     }
     t = &threads[pos];
-    // If request physical threads, must return a physical one
-    if ((!((1UL << pos) & b)) && ((t->is_physical && physical) || !physical)) {
+    if ((!((1UL << pos) & b)) && (t->is_physical == physical)) {
       break;
     }
     ++pos;
@@ -244,56 +228,8 @@ retry:
   if (not __sync_bool_compare_and_swap(&bitmap, b, b | (1UL << pos))) {
     goto retry;
   }
-  ALWAYS_ASSERT(pos < threads_count);
+  ALWAYS_ASSERT(pos < max_threads_per_node);
   return t;
 }
-
-bool PerNodeThreadPool::GetThreadGroup(std::vector<Thread*> &thread_group) {
-retry:
-  thread_group.clear();
-  uint64_t b = volatile_read(bitmap);
-  uint64_t xor_pos = b ^ (~uint64_t{0});
-  uint64_t pos = __builtin_ctzll(xor_pos);
-
-  Thread *t = nullptr;
-  // Find the thread that matches the preferred type
-  while (true) {
-    if (pos >= threads_count) {
-      return false;
-    }
-    t = &threads[pos];
-    if ((!((1UL << pos) & b)) && t->is_physical) {
-      break;
-    }
-    ++pos;
-  }
-
-  thread_group.push_back(t);
-
-  // Got the physical thread, now try to claim the logical ones as well
-  uint64_t count = 1;  // Number of 1-bits, including the physical thread
-  ++pos;
-  while (true) {
-    t = threads + pos;
-    if (t->is_physical) {
-      break;
-    } else {
-      thread_group.push_back(t);
-      ++count;
-    }
-  }
-
-  // Fill [count] bits starting from [pos]
-  uint64_t bits = 0;
-  for (uint32_t i = pos; i < pos + count; ++i) {
-    bits |= (1UL << pos);
-  }
-  if (not __sync_bool_compare_and_swap(&bitmap, b, b | bits)) {
-    goto retry;
-  }
-  ALWAYS_ASSERT(pos < threads_count);
-  return true;
-}
-
 }  // namespace thread
 }  // namespace ermia

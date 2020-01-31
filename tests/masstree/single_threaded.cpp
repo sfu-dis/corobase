@@ -127,7 +127,7 @@ TEST_F(SingleThreadMasstree, InsertSequentialAndSearchSequential_ManyRecords) {
 }
 
 
-#ifdef USE_STATIC_COROUTINE
+#ifdef ADV_COROUTINE
 
 TEST_F(SingleThreadMasstree, InsertSequentialAndSearchInterleaved) {
     std::vector<Record> records_to_insert = genRandRecords(50, 10);
@@ -257,5 +257,5 @@ TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved) {
 
 }
 
-#endif  // USE_STATIC_COROUTINE
+#endif  // ADV_COROUTINE
 

@@ -29,7 +29,6 @@ extern std::vector<CPUCore> cpu_cores;
 
 bool DetectCPUCores();
 void Initialize();
-void Finalize();
 
 // == total number of threads had so far - never decreases
 extern std::atomic<uint32_t> next_thread_id;
@@ -66,8 +65,9 @@ struct Thread {
   std::condition_variable trigger;
   std::mutex trigger_lock;
 
+  Thread();
   Thread(uint16_t n, uint16_t c, uint32_t sys_cpu, bool is_physical);
-  ~Thread();
+  ~Thread() {}
 
   void IdleTask();
   static void *StaticIdleTask(void *context) {
@@ -94,31 +94,20 @@ struct Thread {
   inline bool TryJoin() { return volatile_read(state) != kStateHasWork; }
   inline void Destroy() {
     volatile_write(shutdown, true);
-    auto s = __sync_val_compare_and_swap(&state, kStateHasWork, kStateNoWork);
-    if (s == kStateSleep) {
-        trigger.notify_all();
-    }
+    trigger.notify_all();
   }
-  inline bool IsDestroyed() { return volatile_read(shutdown); }
 };
 
 struct PerNodeThreadPool {
-  static uint32_t threads_count;
+  static uint32_t max_threads_per_node;
   uint16_t node CACHE_ALIGNED;
   Thread *threads CACHE_ALIGNED;
   uint64_t bitmap CACHE_ALIGNED;  // max 64 threads per node, 1 - busy, 0 - free
 
   PerNodeThreadPool(uint16_t n);
-  ~PerNodeThreadPool();
 
   // Get a single new thread which can be physical or logical
   Thread *GetThread(bool physical);
-
-  // Get a thread group - which includes all the threads (phyiscal + logical) on
-  // the same phyiscal core. Similar to GetThread, but continue to also allocate
-  // the logical threads that follow immediately the physical thread in the
-  // bitmap.
-  bool GetThreadGroup(std::vector<Thread*> &thread_group);
 
   // Release a thread back to the pool
   inline void PutThread(Thread *t) {
@@ -128,36 +117,37 @@ struct PerNodeThreadPool {
 };
 
 extern PerNodeThreadPool *thread_pools;
+extern uint32_t num_thread_pools;
 
 inline Thread *GetThread(uint16_t from, bool physical) {
-  return thread_pools[from].GetThread(physical);
+  if (config::threadpool) {
+    return thread_pools[from].GetThread(physical);
+  } else {
+    return new Thread;
+  }
 }
 
 inline Thread *GetThread(bool physical /* don't care where */) {
-  for (uint16_t i = 0; i < config::numa_nodes; i++) {
-    auto *t = thread_pools[i].GetThread(physical);
-    if (t) {
-      return t;
+  if (config::threadpool) {
+    for (uint16_t i = 0; i < num_thread_pools; i++) {
+      auto *t = thread_pools[i].GetThread(physical);
+      if (t) {
+        return t;
+      }
     }
+  } else {
+    return new Thread;
   }
   return nullptr;
 }
 
-// Return all the threads (physical + logical) on the same physical core
-inline bool GetThreadGroup(uint16_t from, std::vector<Thread*> &threads) {
-  return thread_pools[from].GetThreadGroup(threads);
-}
-
-inline bool GetThreadGroup(std::vector<Thread*> &threads /* don't care where */) {
-  for (uint16_t i = 0; i < config::numa_nodes; i++) {
-    if (thread_pools[i].GetThreadGroup(threads)) {
-      break;
-    }
+inline void PutThread(Thread *t) {
+  if (config::threadpool) {
+    thread_pools[t->node].PutThread(t);
+  } else {
+    t->Destroy();
   }
-  return threads.size() > 0;
 }
-
-inline void PutThread(Thread *t) { thread_pools[t->node].PutThread(t); }
 
 // A wrapper that includes Thread for user code to use.
 // Benchmark and log replay threads deal with this only,
@@ -183,8 +173,11 @@ struct Runner {
     ALWAYS_ASSERT(not me);
     me = thread::GetThread(physical);
     if (me) {
-      LOG_IF(FATAL, physical && !me->is_physical) << "Request physical thread but get non-physical";
+      LOG_IF(FATAL, config::threadpool && me->is_physical != physical) << "Not the requested thread type";
       me->sleep_when_idle = sleep_when_idle;
+      if (config::threadpool) {
+        LOG(INFO) << "Impersonated on thread " << me->node << ", " << me->core;
+      }
     }
     return me != nullptr;
   }

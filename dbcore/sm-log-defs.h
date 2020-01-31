@@ -154,6 +154,10 @@ enum log_record_type : uint8_t {
   /* Records the creation of an FID with a given table name
    */
   LOG_FID = LOG_FLAG_HAS_PAYLOAD | 0x9,
+
+  LOG_PRIMARY_INDEX = LOG_FLAG_HAS_PAYLOAD | 0x10,
+
+  LOG_SECONDARY_INDEX = LOG_FLAG_HAS_PAYLOAD | 0x11,
 };
 
 // log records are 16B sans payload

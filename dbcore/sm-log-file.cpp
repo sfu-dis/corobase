@@ -99,7 +99,7 @@ void sm_log_file_mgr::_pop_oldest() {
   auto *sid = _oldest_segment();
   os_close(sid->fd);
   sid->fd = -1;
-  RCU::rcu_free(sid);
+  free(sid);
   segments[oldest_segnum] = NULL;
   oldest_segnum++;
 }
@@ -111,7 +111,7 @@ void sm_log_file_mgr::_pop_newest() {
   active_segment = segments[sid->segnum - 1];
   os_close(sid->fd);
   sid->fd = -1;
-  RCU::rcu_free(sid);
+  free(sid);
 }
 
 sm_log_file_mgr::segment_array::segment_array() {
@@ -299,8 +299,10 @@ sm_log_file_mgr::sm_log_file_mgr() {
       case 'l': {
         // allowed: log segment
         char canary;
-        segment_id *sid = RCU::rcu_alloc();
-        DEFER_UNLESS(success, RCU::rcu_free(sid));
+        segment_id *sid = nullptr;
+        int err = posix_memalign((void **)&sid, DEFAULT_ALIGNMENT, sizeof(segment_id));
+        LOG_IF(FATAL, err != 0);
+        DEFER_UNLESS(success, free(sid));
 
         int n = sscanf(fname, SEGMENT_FILE_NAME_FMT "%c", &sid->segnum,
                        &sid->start_offset, &sid->end_offset, &canary);
@@ -563,11 +565,16 @@ segment_id *sm_log_file_mgr::_prepare_new_segment(uint32_t segnum,
   ASSERT(uint32_t(fd_info) == segnum);
   int fd = fd_info >> 32;
   auto end = start + volatile_read(segment_size);
-  return RCU::rcu_new(fd, segnum, start, end, byte_offset);
+
+  segment_id *new_seg = nullptr;
+  int err = posix_memalign((void**)&new_seg, DEFAULT_ALIGNMENT, sizeof(segment_id));
+  LOG_IF(FATAL, err != 0);
+  new (new_seg) segment_id(fd, segnum, start, end, byte_offset);
+  return new_seg;
 }
 
 bool sm_log_file_mgr::create_segment(segment_id *sid) {
-  DEFER_UNLESS(success, RCU::rcu_free(sid));
+  DEFER_UNLESS(success, free(sid));
   auto *psid = _newest_segment();
   if (sid->segnum == psid->segnum + 1) {
     ASSERT(psid->end_offset <= sid->start_offset + MIN_LOG_BLOCK_SIZE);

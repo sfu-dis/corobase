@@ -21,9 +21,9 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-common.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-config.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-coroutine.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-dia.cpp
+  #${CMAKE_CURRENT_SOURCE_DIR}/sm-dia.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-exceptions.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-index.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-table.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-alloc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-log-file.cpp
@@ -39,7 +39,6 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-rep.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-rep-tcp.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-rep-rdma.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/sm-thread.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-tx-log.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/tcp.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/window-buffer.cpp

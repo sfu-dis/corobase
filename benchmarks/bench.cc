@@ -21,7 +21,7 @@
 #include "../dbcore/sm-chkpt.h"
 #include "../dbcore/sm-cmd-log.h"
 #include "../dbcore/sm-config.h"
-#include "../dbcore/sm-index.h"
+#include "../dbcore/sm-table.h"
 #include "../dbcore/sm-log.h"
 #include "../dbcore/sm-log-recover-impl.h"
 #include "../dbcore/sm-rep.h"
@@ -152,38 +152,6 @@ void bench_worker::MyWork(char *) {
   }
 }
 
-void bench_runner::create_files_task(char *) {
-  ALWAYS_ASSERT(!ermia::sm_log::need_recovery && !ermia::config::is_backup_srv());
-  // Allocate an FID for each index, set 2nd indexes to use
-  // the primary index's record FID/array
-  ASSERT(ermia::logmgr);
-  ermia::RCU::rcu_enter();
-  ermia::sm_tx_log *log = ermia::logmgr->new_tx_log();
-
-  for (auto &nm : ermia::IndexDescriptor::name_map) {
-    if (!nm.second->IsPrimary()) {
-      continue;
-    }
-    nm.second->Initialize();
-    log->log_index(nm.second->GetTupleFid(), nm.second->GetKeyFid(),
-                   nm.second->GetName());
-  }
-
-  // Now all primary indexes have valid FIDs, handle secondary indexes
-  for (auto &nm : ermia::IndexDescriptor::name_map) {
-    if (nm.second->IsPrimary()) {
-      continue;
-    }
-    nm.second->Initialize();
-    // Note: using the same primary's FID here; recovery must know detect this
-    log->log_index(nm.second->GetTupleFid(), nm.second->GetKeyFid(),
-                   nm.second->GetName());
-  }
-
-  log->commit(nullptr);
-  ermia::RCU::rcu_exit();
-}
-
 void bench_runner::run() {
   if (ermia::config::worker_threads ||
       (ermia::config::is_backup_srv() && ermia::config::replay_threads && ermia::config::command_log)) {
@@ -197,10 +165,6 @@ void bench_runner::run() {
     ermia::thread::PutThread(runner_thread);
   }
 
-  if (!ermia::RCU::rcu_is_registered()) {
-    ermia::RCU::rcu_register();
-  }
-
   // load data, unless we recover from logs or is a backup server (recover from
   // shipped logs)
   if (not ermia::sm_log::need_recovery && not ermia::config::is_backup_srv()) {
@@ -208,12 +172,24 @@ void bench_runner::run() {
     {
       util::scoped_timer t("dataloading", ermia::config::verbose);
       uint32_t done = 0;
+      uint32_t n_running = 0;
     process:
       for (uint i = 0; i < loaders.size(); i++) {
         auto *loader = loaders[i];
-        if (loader and not loader->IsImpersonated() and
+        // Note: the thread pool creates threads for each hyperthread regardless
+        // of how many worker threads will be running the benchmark. We don't
+        // want to use threads on sockets that we won't be running benchmark on
+        // for loading (that would cause some records' memory to become remote).
+        // E.g., on a 40-core, 4 socket machine the thread pool will create 80
+        // threads waiting to be dispatched. But if our workload only wants to
+        // run 10 threads on the first socket, we won't want the loader to be run
+        // on a thread from socket 2. So limit the number of concurrently running
+        // loaders to the number of workers.
+        if (loader && !loader->IsImpersonated() &&
+            n_running < ermia::config::worker_threads &&
             loader->TryImpersonate()) {
           loader->Start();
+          ++n_running;
         }
       }
 
@@ -225,12 +201,12 @@ void bench_runner::run() {
             delete loader;
             loaders[i] = nullptr;
             done++;
+            --n_running;
             goto process;
           }
         }
       }
     }
-    ermia::RCU::rcu_enter();
     ermia::volatile_write(ermia::MM::safesnap_lsn, ermia::logmgr->cur_lsn().offset());
     ALWAYS_ASSERT(ermia::MM::safesnap_lsn);
 
@@ -239,9 +215,7 @@ void bench_runner::run() {
     if (ermia::config::enable_chkpt) {
       ermia::chkptmgr->do_chkpt();  // this is synchronous
     }
-    ermia::RCU::rcu_exit();
   }
-  ermia::RCU::rcu_deregister();
 
   // Start checkpointer after database is ready
   if (ermia::config::is_backup_srv()) {
@@ -335,16 +309,12 @@ void bench_runner::run() {
 }
 
 void bench_runner::measure_read_view_lsn() {
-  ermia::RCU::rcu_register();
-  DEFER(ermia::RCU::rcu_deregister());
   std::ofstream out_file(ermia::config::read_view_stat_file, std::ios::out | std::ios::trunc);
   LOG_IF(FATAL, !out_file.is_open()) << "Read view stat file not open";
   DEFER(out_file.close());
   out_file << "Time,LSN,DLSN" << std::endl;
   while (!ermia::config::IsShutdown()) {
     while (ermia::config::IsForwardProcessing()) {
-      ermia::RCU::rcu_enter();
-      DEFER(ermia::RCU::rcu_exit());
       uint64_t lsn = 0;
       uint64_t dlsn = ermia::logmgr->durable_flushed_lsn().offset();
       if (ermia::config::is_backup_srv()) {

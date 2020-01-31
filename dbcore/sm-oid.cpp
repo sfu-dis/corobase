@@ -12,7 +12,7 @@
 #include "sm-alloc.h"
 #include "sm-chkpt.h"
 #include "sm-config.h"
-#include "sm-index.h"
+#include "sm-table.h"
 #include "sm-log-recover-impl.h"
 #include "sm-object.h"
 #include "sm-oid-impl.h"
@@ -406,6 +406,7 @@ void sm_oid_mgr::create() {
 }
 
 void sm_oid_mgr::PrimaryTakeChkpt() {
+#if 0
   ASSERT(!config::is_backup_srv());
   // Now the real work. The format of a chkpt file is:
   // [number of indexes]
@@ -561,6 +562,7 @@ iterate_index:
               << " bytes, " << nrecords << " records";
   }
   chkptmgr->sync_buffer();
+#endif
 }
 
 sm_allocator *sm_oid_mgr::get_allocator(FID f) {

@@ -1,13 +1,16 @@
 #pragma once
 
+#include <list>
+
 #include "epoch.h"
 #include "sm-common.h"
 #include "../varstr.h"
+#include "xid.h"
 
 namespace ermia {
 
 struct dbtuple;
-class sm_log_recover_mgr;
+struct sm_log_recover_mgr;
 
 class Object {
  private:

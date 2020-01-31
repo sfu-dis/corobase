@@ -26,7 +26,7 @@ struct nxt_seg_file_name {
   char buf[NXT_SEG_FILE_NAME_BUFSZ];
   nxt_seg_file_name(uint32_t segnum) {
     size_t n = os_snprintf(buf, sizeof(buf), NXT_SEG_FILE_NAME_FMT, segnum);
-    ASSERT(n < sizeof(buf));
+    ALWAYS_ASSERT(n < sizeof(buf));
   }
   operator char const *() { return buf; }
   char const *operator*() { return buf; }
@@ -37,7 +37,7 @@ struct cmark_file_name {
   cmark_file_name(LSN start, LSN end) {
     size_t n = os_snprintf(buf, sizeof(buf), CHKPT_FILE_NAME_FMT, start._val,
                            end._val);
-    ASSERT(n < sizeof(buf));
+    ALWAYS_ASSERT(n < sizeof(buf));
   }
   operator char const *() { return buf; }
   char const *operator*() { return buf; }
@@ -57,6 +57,9 @@ struct segment_id {
   uint64_t start_offset;
   uint64_t end_offset;
   uint64_t byte_offset;
+
+  segment_id(int fd, uint32_t segnum, uint64_t start, uint64_t end, uint64_t off)
+    : fd(fd), segnum(segnum), start_offset(start), end_offset(end), byte_offset(off) {}
 
   bool contains(uint64_t lsn_offset) {
     return start_offset <= lsn_offset and
@@ -102,7 +105,7 @@ struct segment_file_name {
   segment_file_name(uint32_t segnum, uint64_t start, uint64_t end) {
     size_t n = os_snprintf(buf, sizeof(buf), SEGMENT_FILE_NAME_FMT, segnum,
                            start, end);
-    ASSERT(n < sizeof(buf));
+    ALWAYS_ASSERT(n < sizeof(buf));
   }
   operator char const *() { return buf; }
   char const *operator*() { return buf; }
