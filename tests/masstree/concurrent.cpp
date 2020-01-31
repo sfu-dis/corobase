@@ -3,8 +3,6 @@
 
 #include <gtest/gtest.h>
 
-#include <dbcore/sm-alloc.h>
-#include <dbcore/sm-config.h>
 #include <dbcore/sm-thread.h>
 #include <dbcore/sm-coroutine.h>
 #include <masstree/masstree_btree.h>
@@ -12,9 +10,6 @@
 #include <varstr.h>
 
 #include "utils/record.h"
-
-using ermia::MM::allocated_node_memory;
-using ermia::MM::node_memory;
 
 template <typename T>
 using task = ermia::dia::task<T>;
@@ -34,23 +29,11 @@ void mock_destroy_xid_context(ermia::TXN::xid_context *xid_context) {
 class ConcurrentMasstree: public ::testing::Test {
    protected:
     virtual void SetUp() override {
-        ermia::config::node_memory_gb = 2;
-        ermia::config::num_backups = 0;
-        ermia::config::numa_spread = false;
-        ermia::config::physical_workers_only = false;
-        ermia::config::threads = 5;
-
-        ermia::config::init();
-        ermia::MM::prepare_node_memory();
-
         tree_ = new ermia::ConcurrentMasstree();
     }
 
     virtual void TearDown() override {
         delete tree_;
-
-        ermia::MM::free_node_memory();
-        ermia::thread::Finalize();
     }
 
     ermia::TXN::xid_context thread_begin() {

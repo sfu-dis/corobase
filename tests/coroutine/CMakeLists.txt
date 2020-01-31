@@ -3,7 +3,7 @@ set(DB_CORE_INCLUDES
 ) 
 
 set(TEST_SRCS
-    ${TEST_MAIN}
+    test_main.cpp
     coroutine_test_base.h
     return_primary_type.cpp
     return_complex_type.cpp
@@ -13,6 +13,5 @@ set(TEST_SRCS
 )
 
 add_executable(test_coroutine ${TEST_SRCS})
-target_include_directories(test_coroutine PRIVATE ${GTEST_INCLUDES})
 target_include_directories(test_coroutine PRIVATE ${DB_CORE_INCLUDES})
 target_link_libraries(test_coroutine gtest_main)

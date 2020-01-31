@@ -5,16 +5,11 @@
 #include <array>
 #include <vector>
 
-#include <dbcore/sm-alloc.h>
-#include <dbcore/sm-config.h>
 #include <dbcore/sm-coroutine.h>
 #include <masstree/masstree_btree.h>
 #include <varstr.h>
 
 #include "utils/record.h"
-
-using ermia::MM::allocated_node_memory;
-using ermia::MM::node_memory;
 
 template <typename T>
 using task = ermia::dia::task<T>;
@@ -36,45 +31,13 @@ ermia::epoch_num mock_get_cur_epoch() {
 
 
 class SingleThreadMasstree : public ::testing::Test {
-   private:
-    void allocMemoryOnNumaNode() {
-        // allocate memory for node of current thread
-        int node = numa_node_of_cpu(sched_getcpu());
-
-        // hack, only allocate enough space to fit the current
-        // thread node value (which is the index).
-        ermia::config::numa_nodes = node + 1;
-        allocated_node_memory = new uint64_t[ermia::config::numa_nodes];
-        node_memory = new char *[ermia::config::numa_nodes];
-
-        // pre-allocate memory for current thread node
-        ermia::config::node_memory_gb = 1;
-        allocated_node_memory[node] = 0;
-        node_memory[node] =
-            new char[ermia::config::node_memory_gb * ermia::config::GB];
-        ALWAYS_ASSERT(node_memory[node]);
-        LOG(INFO) << "Memory allocated for node " << node;
-    }
-
-    void freeMemoryOnNumaNode() {
-        int node = numa_node_of_cpu(sched_getcpu());
-
-        delete[] node_memory[node];
-        delete[] allocated_node_memory;
-        delete[] node_memory;
-    }
-
    protected:
     virtual void SetUp() override {
-        allocMemoryOnNumaNode();
-
         tree_ = new ermia::ConcurrentMasstree();
     }
 
     virtual void TearDown() override {
         delete tree_;
-
-        freeMemoryOnNumaNode();
     }
 
     PROMISE(bool) insertRecord(const Record &record) {
