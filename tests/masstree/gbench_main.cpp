@@ -2,6 +2,7 @@
 
 #include <dbcore/sm-alloc.h>
 #include <dbcore/sm-config.h>
+#include <dbcore/sm-thread.h>
 #include <dbcore/sm-coroutine.h>
 
 void ermia_init() {
@@ -10,9 +11,10 @@ void ermia_init() {
 
     // FIXME: hack to cover all the numa nodes
     ermia::config::numa_spread = true;
-    ermia::config::physical_workers_only = false;
+    ermia::config::physical_workers_only = true;
     ermia::config::threads = 4;
 
+    ermia::thread::Initialize();
     ermia::config::init();
     ermia::MM::prepare_node_memory();
 }
@@ -56,8 +58,6 @@ int main(int argc, char** argv) {
     }
 
     ermia_init();
-    // FIXME:
-    ermia::dia::coro_task_private::memory_pool memory_pool;
     ::benchmark::RunSpecifiedBenchmarks();
 }
 
