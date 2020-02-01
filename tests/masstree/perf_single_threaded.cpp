@@ -16,6 +16,7 @@
 #include <masstree/masstree_btree.h>
 
 #include "utils/record.h"
+#include "../third-party/foedus/zipfian_random.hpp"
 
 template <typename T>
 using task = ermia::dia::task<T>;
@@ -130,7 +131,7 @@ class PerfSingleThreadSearch : public benchmark::Fixture {
 
     pid_t perf_pid_;
     ermia::ConcurrentMasstree *tree_;
-    ermia::dia::coro_task_private::memory_pool *pool_;
+    ermia::dia::coro_task_private::memory_pool memory_pool;
 };
 
 
@@ -145,6 +146,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
         const uint32_t task_to_run = batch_to_run * queue_size;
 
         constexpr ermia::epoch_num cur_epoch = 0;
+
+        foedus::assorted::UniformRandom uniform_rng(1237);
 
         std::vector<task<bool>> task_queue(queue_size);
         std::vector<ermia::OID> out_values(queue_size);
@@ -171,7 +174,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoro) (benchmark::State &st) 
                 }
 
                 if(!coro_task.valid()) {
-                    task_key_bufs[i] = std::rand() % key_nums;
+                    task_key_bufs[i] = uniform_rng.uniform_within(0, key_nums - 1);
                     task_params[i] = ermia::varstr((const char*)(&task_key_bufs[i]), key_len);
                     coro_task = tree_->search(task_params[i], out_values[i], cur_epoch, nullptr);
                     coro_task.set_call_stack(&call_stacks[i]);
@@ -193,6 +196,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::Stat
 
         constexpr ermia::epoch_num cur_epoch = 0;
 
+        foedus::assorted::UniformRandom uniform_rng(1237);
+
         std::vector<task<bool>> task_queue(queue_size);
         std::vector<ermia::varstr> task_params(queue_size);
         std::vector<key_buffer_t> task_key_bufs(queue_size);
@@ -204,7 +209,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, AdvancedCoroBatched) (benchmark::Stat
                 task<bool> & coro_task = task_queue[i];
                 ASSERT(!coro_task.valid());
 
-                task_key_bufs[i] = std::rand() % key_nums;
+                task_key_bufs[i] = uniform_rng.uniform_within(0, key_nums - 1);
                 task_params[i] = ermia::varstr((const char*)(&task_key_bufs[i]), key_len);
                 coro_task = tree_->search(
                     task_params[i], out_values[i], cur_epoch, nullptr);
@@ -247,11 +252,14 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Sequential) (benchmark::State &st) {
         const uint32_t batch_to_run = st.range(3);
 
         constexpr ermia::epoch_num cur_epoch = 0;
+
+        foedus::assorted::UniformRandom uniform_rng(1237);
+
         ermia::OID out_value;
         for(uint32_t b = 0; b < batch_to_run; b++) {
             [&] () -> void {
                 for(uint32_t i = 0; i < queue_size; i++) {
-                    key_buffer_t key_buf = std::rand() % key_nums;
+                    key_buffer_t key_buf = uniform_rng.uniform_within(0, key_nums - 1);
                     bool res = tree_->search(ermia::varstr((const char*)&key_buf, key_len),
                                              out_value, cur_epoch, nullptr);
                     ASSERT(res && out_value == key_buf + 1);
@@ -274,13 +282,15 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, SimpleCoro) (benchmark::State &st) {
         constexpr ermia::epoch_num cur_epoch = 0;
         ermia::SingleThreadedMasstree::threadinfo ti(cur_epoch);
 
+        foedus::assorted::UniformRandom uniform_rng(1237);
+
         std::vector<generator_handle> generator_queue(queue_size, nullptr);
         std::vector<ermia::varstr> keys(queue_size);
         std::vector<key_buffer_t> key_bufs(queue_size);
         std::vector<ermia::OID> out_values(queue_size, 0);
         for(uint32_t b = 0; b < batch_to_run; b++) {
             for(uint32_t i = 0; i < queue_size; i++) {
-                key_bufs[i] = std::rand() % key_nums;
+                key_bufs[i] = uniform_rng.uniform_within(0, key_nums - 1);
                 keys[i] = ermia::varstr((const char*)(&key_bufs[i]), key_len);
                 generator_queue[i] = tree_->search_coro(keys[i], out_values[i], ti, nullptr).get_handle();
             }
@@ -315,6 +325,8 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
 
         constexpr ermia::epoch_num cur_epoch = 0;
 
+        foedus::assorted::UniformRandom uniform_rng(1237);
+
         std::vector<ermia::ConcurrentMasstree::AMACState> amac_states;
         std::vector<ermia::varstr> amac_params;
         std::vector<key_buffer_t> key_bufs(queue_size);
@@ -323,7 +335,7 @@ BENCHMARK_DEFINE_F(PerfSingleThreadSearch, Amac) (benchmark::State &st) {
 
         for(uint32_t b = 0; b < batch_to_run; b++) {
             for(uint32_t i = 0; i < queue_size; i++) {
-                key_bufs[i] = std::rand() % key_nums;
+                key_bufs[i] = uniform_rng.uniform_within(0, key_nums - 1);
                 amac_params.emplace_back((const char*)(&key_bufs[i]), key_len);
                 amac_states.emplace_back(&amac_params.back());
             }
