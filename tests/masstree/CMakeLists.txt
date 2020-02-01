@@ -1,7 +1,5 @@
-add_subdirectory(utils)
-
 set(ERMIA_INCLUDES
-    ${CMAKE_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}
 )
 
 set(MASSTREE_SRCS
@@ -55,9 +53,10 @@ set(DBCORE_SRCS
 set(MASSTREE_TEST_SRCS
     ${DBCORE_SRCS}
     ${MASSTREE_SRCS}
-    ${TEST_UTILS_SRCS}
     single_threaded.cpp
     concurrent.cpp
+    record.h
+    record.cpp
     test_main.cpp
 )
 
@@ -74,7 +73,8 @@ target_link_libraries(test_masstree_coro gtest_main thread_pool)
 set(SS_PERF_SRCS
     ${DBCORE_SRCS}
     ${MASSTREE_SRCS}
-    ${TEST_UTILS_SRCS}
+    record.h
+    record.cpp
     gbench_main.cpp
     perf_single_threaded.cpp
 )
@@ -91,7 +91,8 @@ target_link_libraries(perf_single_thread_masstree_coro thread_pool benchmark_mai
 set(CONCURRENT_PERF_SRCS
     ${DBCORE_SRCS}
     ${MASSTREE_SRCS}
-    ${TEST_UTILS_SRCS}
+    record.h
+    record.cpp
     perf_concurrent.cpp
 )
 

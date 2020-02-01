@@ -14,7 +14,7 @@
 #include <random>
 #include <vector>
 
-#include "utils/record.h"
+#include "record.h"
 
 template <typename T>
 using task = ermia::dia::task<T>;

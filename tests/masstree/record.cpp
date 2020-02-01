@@ -42,22 +42,9 @@ void setRandomSeed(uint32_t seed) {
     std::srand(seed);
 }
 
-std::vector<Record> genRecordsIntSequence(uint32_t beg, uint32_t end) {
-    std::vector<Record> records;
-    records.reserve(end - beg);
-
-    for(uint32_t i = beg; i < end; i++) {
-        std::stringstream st;
-        st << i;
-        records.emplace_back(st.str(), i);
-    }
-
-    return records;
-}
-
 std::vector<Record> genSequentialRecords(uint32_t record_num, uint32_t key_len) {
-    ASSERT(key_len < 127);
-    ASSERT((double)record_num < pow(127 - key_len, key_len));
+    ASSERT(key_len <= 8);
+    ASSERT((double)record_num < pow(2, 8));
 
     std::vector<Record> records;
     records.reserve(record_num);
