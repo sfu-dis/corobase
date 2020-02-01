@@ -23,11 +23,14 @@ using key_buffer_t = uint64_t;
 class Context {
    public:
     Context() : masstree_(nullptr) {
-        init();
+        ermia::config::physical_workers_only = true;
+        ermia::config::threads = 40;
+
+        ermia::thread::Initialize();
+        ermia::config::init();
+        ermia::MM::prepare_node_memory();
     }
-    ~Context() {
-        fini();
-    }
+    ~Context() {}
 
     void run() {
         running_threads_ = getThreads(k_threads);
@@ -40,8 +43,6 @@ class Context {
         std::vector<Record> records = genRecords();
 
         loadRecords(records);
-
-        verifyInserted(records);
 
         spin_barrier setup_barrier(running_threads_.size());
         spin_barrier start_barrier(running_threads_.size() > 0 ? 1 : 0);
@@ -153,6 +154,18 @@ class Context {
 
                 printf("thread ID(%d): finish loading %d records\n", i,
                        records_to_load);
+
+
+                printf("thread ID(%d): verify inserted key and value pairs...\n", i); 
+                for (uint32_t j = loading_begin_idx;
+                     j < loading_begin_idx + records_to_load; j++) {
+                    const Record &record = records[j];
+                    ermia::OID value;
+                    sync_wait_coro(masstree_->search(
+                        ermia::varstr(record.key.data(), record.key.size()), value, 0,
+                        nullptr));
+                    ALWAYS_ASSERT(value == record.value);
+                }
             };
             running_threads_[i]->StartTask(load_task, nullptr);
             loading_begin_idx += records_per_threads;
@@ -162,34 +175,6 @@ class Context {
         }
         std::cout << "Finish loading " << records.size() << " records"
                   << std::endl;
-    }
-
-    void verifyInserted(const std::vector<Record> &records) {
-        std::cout << "Verify inserted key and value pairs..." << std::endl;
-
-        ermia::dia::coro_task_private::memory_pool memory_pool;
-        for (auto &record : records) {
-            ermia::OID value;
-            sync_wait_coro(masstree_->search(
-                ermia::varstr(record.key.data(), record.key.size()), value, 0,
-                nullptr));
-            assert(value == record.value);
-        }
-    }
-
-    static void init() {
-        ermia::config::node_memory_gb = 2;
-        ermia::config::num_backups = 0;
-        ermia::config::physical_workers_only = true;
-        ermia::config::threads = 20;
-
-        ermia::config::init();
-        ermia::MM::prepare_node_memory();
-    }
-
-    static void fini() {
-        ermia::MM::free_node_memory();
-        ermia::thread::Finalize();
     }
 
     static std::vector<ermia::thread::Thread *> getThreads(unsigned int num) {

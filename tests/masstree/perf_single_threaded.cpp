@@ -17,9 +17,6 @@
 
 #include "utils/record.h"
 
-using ermia::MM::allocated_node_memory;
-using ermia::MM::node_memory;
-
 template <typename T>
 using task = ermia::dia::task<T>;
 
