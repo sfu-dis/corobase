@@ -21,9 +21,6 @@ std::vector<Record> genSequentialRecords(uint32_t record_num, uint32_t key_len);
 std::vector<Record> genRandRecords(uint32_t record_num,
                                    uint32_t key_len_avg=128);
 
-// Records for easy debugging
-std::vector<Record> genRecordsIntSequence(uint32_t beg, uint32_t end);
-
 std::vector<Record> genDisjointRecords(const std::vector<Record>& ref_records,
                                        uint32_t record_num,
                                        uint32_t key_len=128);

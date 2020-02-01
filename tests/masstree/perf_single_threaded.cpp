@@ -15,7 +15,7 @@
 
 #include <masstree/masstree_btree.h>
 
-#include "utils/record.h"
+#include "record.h"
 #include "../third-party/foedus/zipfian_random.hpp"
 
 template <typename T>

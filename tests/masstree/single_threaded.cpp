@@ -9,7 +9,7 @@
 #include <masstree/masstree_btree.h>
 #include <varstr.h>
 
-#include "utils/record.h"
+#include "record.h"
 
 template <typename T>
 using task = ermia::dia::task<T>;
