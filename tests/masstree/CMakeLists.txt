@@ -83,6 +83,11 @@ add_executable(perf_single_thread_masstree ${SS_PERF_SRCS})
 target_include_directories(perf_single_thread_masstree PRIVATE ${ERMIA_INCLUDES})
 target_link_libraries(perf_single_thread_masstree thread_pool benchmark_main)
 
+add_executable(perf_single_thread_masstree_coro ${SS_PERF_SRCS})
+set_target_properties(perf_single_thread_masstree_coro PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+target_include_directories(perf_single_thread_masstree_coro PRIVATE ${ERMIA_INCLUDES})
+target_link_libraries(perf_single_thread_masstree_coro thread_pool benchmark_main)
+
 set(CONCURRENT_PERF_SRCS
     ${DBCORE_SRCS}
     ${MASSTREE_SRCS}
@@ -93,3 +98,8 @@ set(CONCURRENT_PERF_SRCS
 add_executable(perf_concurrent_masstree ${CONCURRENT_PERF_SRCS})
 target_include_directories(perf_concurrent_masstree PRIVATE ${ERMIA_INCLUDES})
 target_link_libraries(perf_concurrent_masstree thread_pool)
+
+add_executable(perf_concurrent_masstree_coro ${CONCURRENT_PERF_SRCS})
+set_target_properties(perf_concurrent_masstree_coro PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+target_include_directories(perf_concurrent_masstree_coro PRIVATE ${ERMIA_INCLUDES})
+target_link_libraries(perf_concurrent_masstree_coro thread_pool)
