@@ -21,15 +21,14 @@ class CoroutineTestBase : public ::testing::Test {
     }
 
     void runTasksUntilComplete() {
-        std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(future_tasks_.size());
-
-        for(uint32_t i = 0; i < future_tasks_.size(); i++) {
-            future_tasks_[i].set_call_stack(&(call_stacks[i]));
+        for(auto & t : future_tasks_) {
+            t.start();
         }
 
         while (1) {
             bool hasUnfinishedTasks = false;
-            for (task<T> &task : future_tasks_) {
+            for (uint32_t i = 0; i < future_tasks_.size(); i++) {
+                task<T> &task = future_tasks_[i];
                 if (!task.done()) {
                     hasUnfinishedTasks = true;
                     task.resume();

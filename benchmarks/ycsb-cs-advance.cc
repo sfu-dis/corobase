@@ -43,7 +43,6 @@ public:
 
     const size_t batch_size = ermia::config::coro_batch_size;
     std::vector<task<rc_t>> task_queue(batch_size);
-    std::vector<ermia::dia::coro_task_private::coro_stack> call_stacks(batch_size);
     std::vector<uint32_t> task_workload_idxs(batch_size);
 
     barrier_a->count_down();
@@ -60,11 +59,10 @@ public:
         uint32_t workload_idx = fetch_workload();
 
         task_workload_idxs[i] = workload_idx;
-        call_stacks[i].reserve(20);
 
         ASSERT(workload[workload_idx].task_fn);
         coro_task = workload[workload_idx].task_fn(this, i, begin_epoch);
-        coro_task.set_call_stack(&call_stacks[i]);
+        coro_task.start();
       }
 
       bool batch_completed = false;
@@ -253,7 +251,6 @@ private:
     thread_local std::vector<ermia::varstr *> values;
     thread_local std::vector<ermia::dia::task<bool>> index_probe_tasks(g_reps_per_tx);
     thread_local std::vector<ermia::dia::task<ermia::dbtuple*>> value_fetch_tasks(g_reps_per_tx);
-    thread_local std::vector<ermia::dia::coro_task_private::coro_stack> coro_stacks(g_reps_per_tx);
     keys.clear();
 
     if (ermia::config::index_probe_only) {
@@ -275,7 +272,7 @@ private:
       keys.emplace_back(&k);
     }
 
-    table_index->adv_coro_MultiGet(txn, keys, values, index_probe_tasks, value_fetch_tasks, coro_stacks);
+    table_index->adv_coro_MultiGet(txn, keys, values, index_probe_tasks, value_fetch_tasks);
 
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));

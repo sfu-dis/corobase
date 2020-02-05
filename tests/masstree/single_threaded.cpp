@@ -115,7 +115,6 @@ TEST_F(SingleThreadMasstree, InsertSequentialAndSearchInterleaved) {
         ermia::OID & result = coro_return_values[next_task_index];
         next_task_index++;
         coro_task = searchByKey(record.key, &result);
-        coro_task.set_call_stack(&coro_stacks[i]);
     }
 
     uint32_t completed_task_cnt = 0;
@@ -137,7 +136,6 @@ TEST_F(SingleThreadMasstree, InsertSequentialAndSearchInterleaved) {
                     ermia::OID & result = coro_return_values[next_task_index];
                     next_task_index++;
                     coro_task = searchByKey(record.key, &result);
-                    coro_task.set_call_stack(&coro_stacks[i]);
                 } else {
                     coro_task = task<bool>(nullptr);
                 }
@@ -172,9 +170,6 @@ TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved) {
     constexpr uint32_t task_queue_size = 2 * record_num_per_iter;
     std::array<task<bool>, task_queue_size> task_queue;
     std::array<ermia::OID, task_queue_size> return_values;
-    std::array<
-        ermia::dia::coro_task_private::coro_stack,
-        task_queue_size> coro_stacks;
 
     std::vector<Record> last_iter_records;
     for(uint32_t i = 0; i < iterations; i++) {
@@ -187,18 +182,17 @@ TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved) {
         for(const Record & search_record : last_iter_records) {
             task_queue[task_index] =
                 searchByKey(search_record.key, &return_values[task_index]);
-            task_queue[task_index].set_call_stack(&coro_stacks[task_index]);
             task_index++;
         }
         for(const Record & insert_record : cur_iter_records) {
             task_queue[task_index] = insertRecord(insert_record);
-            task_queue[task_index].set_call_stack(&coro_stacks[task_index]);
             task_index++;
         }
         EXPECT_EQ(task_index, task_queue.size());
 
         while (completed_task_cnt < task_queue.size()) {
-            for(task<bool> & coro_task : task_queue) {
+            for(uint32_t j = 0; j < task_queue.size(); j++) {
+                task<bool> & coro_task = task_queue[j];
                 if(!coro_task.valid()) {
                     continue;
                 }
@@ -213,8 +207,8 @@ TEST_F(SingleThreadMasstree, InsertAndSearchAllInterleaved) {
             }
         }
 
-        for(uint32_t i = 0; i < last_iter_records.size(); i++) {
-            EXPECT_EQ(last_iter_records[i].value, return_values[i]);
+        for(uint32_t k = 0; k < last_iter_records.size(); k++) {
+            EXPECT_EQ(last_iter_records[k].value, return_values[k]);
         }
     }
 
