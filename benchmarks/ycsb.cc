@@ -114,9 +114,9 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));
       for (uint i = 0; i < g_reps_per_tx; ++i) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
+        ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(ycsb_kv::value));
       }
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
     }
 
     if (!ermia::config::index_probe_only) {
