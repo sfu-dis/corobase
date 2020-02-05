@@ -66,7 +66,7 @@ public:
       }
 
       bool batch_completed = false;
-      while (!batch_completed && running) {
+      while (!batch_completed) {
         batch_completed = true;
         for(uint32_t i = 0; i < batch_size; i++) {
           task<rc_t> & coro_task = task_queue[i];
@@ -112,7 +112,7 @@ public:
   }
 
   static task<rc_t> TxnRead(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<ycsb_cs_adv_worker *>(w)->txn_read_coro_2_layer(idx, begin_epoch);
+    return static_cast<ycsb_cs_adv_worker *>(w)->txn_read(idx, begin_epoch);
   }
 
   static rc_t TxnReadAdvCoroMultiGet(bench_worker *w) {
@@ -143,72 +143,6 @@ private:
         ermia::OID oid = 0;
         ermia::ConcurrentMasstree::versioned_node_t sinfo;
         rc = (AWAIT table_index->GetMasstree().search(k, oid, begin_epoch, &sinfo)) ? RC_TRUE : RC_FALSE;
-      }
-
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        co_return rc;
-      }
-#else
-      // Under SI this must succeed
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-      ASSERT(ermia::config::index_probe_only || *(char*)v.data() == 'a');
-#endif
-
-      if (!ermia::config::index_probe_only) {
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
-        ALWAYS_ASSERT(*(char*)v.data() == 'a');
-      }
-    }
-
-    if (!ermia::config::index_probe_only) {
-        rc_t rc = db->Commit(txn);
-        if (rc.IsAbort()) {
-            db->Abort(txn);
-            co_return rc;
-        }
-    }
-
-    co_return {RC_TRUE};
-  }
-
-  task<rc_t> txn_read_coro_2_layer(uint32_t idx, ermia::epoch_num begin_epoch) {
-    ermia::transaction *txn = nullptr;
-
-    if (!ermia::config::index_probe_only) {
-        txn = &transactions[idx];
-        new (txn) ermia::transaction(
-          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, *arena);
-          ermia::TXN::xid_context * xc = txn->GetXIDContext();
-          xc->begin_epoch = begin_epoch;
-    }
-
-    for (int j = 0; j < g_reps_per_tx; ++j) {
-      ermia::varstr &k = GenerateKey(txn);
-      ermia::varstr &v = str(sizeof(ycsb_kv::value));
-
-      // TODO(tzwang): add read/write_all_fields knobs
-      ermia::OID oid = 0;
-      ermia::ConcurrentMasstree::versioned_node_t sinfo;
-      rc_t rc = rc_t{RC_INVALID};
-
-      if (!ermia::config::index_probe_only) txn->ensure_active();
-      bool found = AWAIT table_index->GetMasstree().search_coro_1_layer(k, oid, begin_epoch, &sinfo);
-      if (!ermia::config::index_probe_only) {
-        ermia::dbtuple *tuple = nullptr;
-        if (found) {
-          tuple = AWAIT ermia::oidmgr->oid_get_version(table_index->GetMasstree().get_table_descriptor()->GetTupleArray(),
-                                                          oid, txn->GetXIDContext());
-          if (!tuple) found = false;
-        }
-
-        if (found)
-          ermia::volatile_write(rc._val, txn->DoTupleRead(tuple, &v)._val);
-        else
-          ermia::volatile_write(rc._val, RC_FALSE);
-      } else {
-        rc = found ? RC_TRUE : RC_FALSE;
       }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)

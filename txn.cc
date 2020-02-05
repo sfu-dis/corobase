@@ -37,8 +37,14 @@ void transaction::initialize_read_write() {
 #endif
   xid = TXN::xid_alloc();
   xc = TXN::xid_get_context(xid);
-  xc->begin_epoch = config::tls_alloc ? MM::epoch_enter() : 0;
   xc->xct = this;
+  if (flags & TXN_FLAG_CSWITCH) {
+    xc->begin = logmgr->cur_lsn().offset() + 1;
+    return;
+  }
+
+  // "Normal" transactions
+  xc->begin_epoch = config::tls_alloc ? MM::epoch_enter() : 0;
 #if defined(SSN) || defined(SSI)
   // If there's a safesnap, then SSN treats the snapshot as a transaction
   // that has read all the versions, which means every update transaction
@@ -86,6 +92,12 @@ void transaction::initialize_read_write() {
 }
 
 transaction::~transaction() {
+  if (flags & TXN_FLAG_CSWITCH) {
+    TXN::xid_free(xid); // must do this after epoch_exit, which uses xc.end
+    return;
+  }
+
+  // "Normal" transactions
   if (config::is_backup_srv() && !(flags & TXN_FLAG_CMD_REDO)) {
     return;
   }
