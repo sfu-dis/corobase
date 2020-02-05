@@ -313,7 +313,7 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
       if (t.valid()) {
         if (t.done()) {
           ++finished;
-          t = ermia::dia::task<bool>(nullptr);
+          t.destroy();
         } else {
           t.resume();
         }
@@ -334,33 +334,30 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
       for (uint32_t i = 0; i < keys.size(); ++i) {
         if (oids[i] != INVALID_OID) {
           value_fetch_tasks[i] = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oids[i], t->xc);
+          value_fetch_tasks[i].start();
         } else {
           ++finished;
         }
       }
 
       while (finished < keys.size()) {
-        for (auto &t : value_fetch_tasks) {
-          if (t.valid()) {
-            if (t.done()) {
+        for (uint32_t i = 0; i < keys.size(); ++i) {
+          if (value_fetch_tasks[i].valid()) {
+            if (value_fetch_tasks[i].done()) {
+              if (oids[i] != INVALID_OID) {
+                auto *tuple = value_fetch_tasks[i].get_return_value();
+                if (tuple) {
+                  t->DoTupleRead(tuple, values[i]);
+                } else if (config::phantom_prot) {
+                  DoNodeRead(t, sinfo.first, sinfo.second);
+                }
+              }
               ++finished;
+              value_fetch_tasks[i].destroy();
             } else {
-              t.resume();
+              value_fetch_tasks[i].resume();
             }
           }
-        }
-      }
-
-      for (uint32_t i = 0; i < keys.size(); ++i) {
-        if (oids[i] != INVALID_OID) {
-          auto *tuple = value_fetch_tasks[i].get_return_value();
-          if (tuple) {
-            t->DoTupleRead(tuple, values[i]);
-          } else if (config::phantom_prot) {
-            DoNodeRead(t, sinfo.first, sinfo.second);
-          }
-
-          value_fetch_tasks[i].destroy();
         }
       }
     }
