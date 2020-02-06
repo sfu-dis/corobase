@@ -128,7 +128,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   // Multi-get using simple coroutine
   rc_t txn_read_simple_coro_multiget() {
     arena->reset();
-    thread_local std::vector<SimpleCoroHandle> handles(g_reps_per_tx);
+    thread_local std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> handles(g_reps_per_tx);
     keys.clear();
     values.clear();
   

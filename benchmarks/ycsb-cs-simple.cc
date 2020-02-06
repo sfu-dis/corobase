@@ -15,10 +15,7 @@ public:
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
-    tx_arena = (ermia::str_arena *)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
-    for (uint32_t i = 0; i < ermia::config::coro_batch_size; ++i) {
-      new (&tx_arena[i]) ermia::str_arena(ermia::config::arena_size_mb);;
-    }
+    transactions = (ermia::transaction*)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
   }
 
   // Essentially a coroutine scheduler that switches between active transactions
@@ -28,40 +25,43 @@ public:
     workload = get_workload();
     txn_counts.resize(workload.size());
 
-    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> handles(ermia::config::coro_batch_size);
+    const size_t batch_size = ermia::config::coro_batch_size;
+    std::vector<CoroTxnHandle> handles(batch_size);
+    std::vector<uint32_t> workload_idxs(batch_size);
 
     barrier_a->count_down();
     barrier_b->wait_for();
     util::timer t;
     while (running) {
-      // Keep looking at the in-flight transactions (handles) and add more when we
-      // finish a transaction
-      for (uint32_t i = 0; i < handles.size(); ++i) {
-        if (handles[i]) {
-          if (handles[i].done()) {
-            handles[i].destroy();
-            handles[i] = nullptr;
-            // FIXME(tzwang): get proper stats
-            finish_workload(rc_t{RC_TRUE}, 0, t);
-          } else {
-            handles[i].resume();
-          }
-        }
+      ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+      arena->reset();
 
-        // Note: don't change this to 'else...' - we may change h in the previous if (h)
-        if (!handles[i] && running) {
-          double d = r.next_uniform();
-          for (size_t j = 0; j < workload.size(); j++) {
-            if ((j + 1) == workload.size() || d < workload[j].frequency) {
-              const unsigned long old_seed = r.get_seed();
-              handles[i] = workload[j].coro_fn(this, i);
+      for(uint32_t i = 0; i < batch_size; i++) {
+        uint32_t workload_idx = fetch_workload();
+        workload_idxs[i] = workload_idx;
+        handles[i] = workload[workload_idx].coro_fn(this, i, begin_epoch);
+      }
+
+      bool batch_completed = false;
+      while (!batch_completed) {
+        batch_completed = true;
+        for(uint32_t i = 0; i < batch_size; i++) {
+          if (handles[i]) {
+            if (handles[i].done()) {
+              finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+              handles[i].destroy();
+              handles[i] = nullptr;
+            } else {
               handles[i].resume();
-              break;
+              batch_completed = false;
             }
-            d -= workload[j].frequency;
           }
         }
       }
+
+      const unsigned long old_seed = r.get_seed();
+      r.set_seed(old_seed);
+      ermia::MM::epoch_exit(0, begin_epoch);
     }
   }
 
@@ -81,45 +81,18 @@ public:
     return w;
   }
 
-  static SimpleCoroHandle TxnRead(bench_worker *w, uint32_t idx) {
-    return static_cast<ycsb_cs_worker *>(w)->txn_read(idx);
+  static CoroTxnHandle TxnRead(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<ycsb_cs_worker *>(w)->txn_read(idx, begin_epoch).get_handle();
   }
 
   // Read transaction with context-switch using simple coroutine
-  SimpleCoroHandle txn_read(uint32_t idx) {
-    thread_local ermia::transaction *tx_buffers = nullptr;
-    if (!tx_buffers) {
-      tx_buffers = (ermia::transaction *)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
-      keys = (std::vector<ermia::varstr *> *)malloc(
-        sizeof(std::vector<ermia::varstr *>) * ermia::config::coro_batch_size);
-      for (uint32_t i = 0; i < ermia::config::coro_batch_size; ++i) {
-        new (&keys[i]) std::vector<ermia::varstr *>;
-      }
-    }
-
-    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-
-    ermia::transaction *txn = &tx_buffers[idx];
-    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
-                                 ermia::transaction::TXN_FLAG_READ_ONLY, tx_arena[idx]);
-    ermia::TXN::xid_context *xc = txn->GetXIDContext();
-    xc->begin_epoch = begin_epoch;
-
-    keys[idx].clear();
-    for (int j = 0; j < g_reps_per_tx; ++j) {
-      auto &k = GenerateKey(txn);
-      keys[idx].push_back(&k);
-    }
-    ermia::MM::epoch_exit(0, begin_epoch);
-
-    ermia::ConcurrentMasstree::threadinfo ti(xc->begin_epoch);
-    return table_index->GetMasstree().ycsb_read_coro(txn, keys[idx], ti, nullptr).get_handle();
+  ermia::dia::generator<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
+    co_await std::experimental::suspend_always{};
+    co_return {RC_TRUE};
   }
 
 private:
-  std::vector<ermia::varstr *> *keys;
-  std::vector<ermia::varstr *> values;
-  ermia::str_arena *tx_arena;
+  ermia::transaction *transactions;
 };
 
 void ycsb_cs_simple_do_test(ermia::Engine *db, int argc, char **argv) {
