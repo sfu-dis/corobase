@@ -39,8 +39,6 @@ public:
     workload = get_workload();
     txn_counts.resize(workload.size());
 
-    ermia::dia::coro_task_private::memory_pool memory_pool;
-
     const size_t batch_size = ermia::config::coro_batch_size;
     std::vector<task<rc_t>> task_queue(batch_size);
     std::vector<uint32_t> task_workload_idxs(batch_size);

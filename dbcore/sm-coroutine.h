@@ -1,15 +1,59 @@
 #pragma once
 
-#include <mmintrin.h>
-#include <xmmintrin.h>
 #include <experimental/coroutine>
 #include <array>
 
 #include "sm-defs.h"
-#include "sm-alloc.h"
 
 namespace ermia {
 namespace dia {
+
+// Simple thread caching allocator.
+struct tcalloc {
+  struct header {
+    header *next;
+    size_t size;
+  };
+  header *root = nullptr;
+  size_t last_size_allocated = 0;
+  size_t total = 0;
+  size_t alloc_count = 0;
+
+  ~tcalloc() {
+    auto current = root;
+    while (current) {
+      auto next = current->next;
+      ::free(current);
+      current = next;
+    }
+  }
+
+  void *alloc(size_t sz) {
+    if (root && root->size >= sz) {
+      void *mem = root;
+      root = root->next;
+      return mem;
+    }
+    ++alloc_count;
+    total += sz;
+    last_size_allocated = sz;
+
+    return malloc(sz);
+  }
+
+  void stats() {
+    printf("allocs %zu total %zu sz %zu\n", alloc_count, total, last_size_allocated);
+  }
+
+  void free(void *p, size_t sz) {
+    auto new_entry = static_cast<header *>(p);
+    new_entry->size = sz;
+    new_entry->next = root;
+    root = new_entry;
+  }
+};
+
+extern thread_local tcalloc allocator;
 
 template <typename T> struct generator {
   struct promise_type;
@@ -21,10 +65,9 @@ template <typename T> struct generator {
     auto initial_suspend() { return std::experimental::suspend_never{}; }
     auto final_suspend() { return std::experimental::suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
-    auto return_value(T value) {
-      current_value = value;
-      return std::experimental::suspend_always{};
-    }
+    void return_value(T value) { current_value = value; }
+    void *operator new(size_t sz) { return allocator.alloc(sz); }
+    void operator delete(void *p, size_t sz) { allocator.free(p, sz); }
   };
 
   auto get_handle() {
@@ -103,100 +146,6 @@ private:
   generic_coroutine_handle caller_coroutine_;
 };
 
-class memory_pool {
-private:
-  struct mem_node {
-    size_t size;
-    mem_node *next;
-  };
-
-public:
-  memory_pool() noexcept {
-    ASSERT(!instance_);
-    headers_size_ = 0;
-    instance_ = this;
-  }
-  ~memory_pool() {
-    for(uint32_t i = 0; i < headers_size_; i++) {
-        mem_node *p = headers_[i].next;
-        while(p != nullptr) {
-          mem_node *q = p->next;
-          free(p);
-          p = q;
-        }
-    }
-
-    instance_ = nullptr;
-  }
-
-  static memory_pool *instance() {
-      ASSERT(instance_);
-      return instance_;
-  }
-
-  void *allocate_bytes(size_t bytes) {
-    // FIXME: reclaim free memory
-
-    mem_node * cur_bytes_header = nullptr;
-    for(uint32_t i = 0; i < headers_size_; i++) {
-      if (headers_[i].size == bytes) {
-        cur_bytes_header = &headers_[i];
-        break;
-      }
-    }
-
-    if (!cur_bytes_header) {
-      ASSERT(headers_size_ < kHeadersCapacity);
-      headers_[headers_size_].next = nullptr;
-      headers_[headers_size_].size = bytes;
-      cur_bytes_header = &headers_[headers_size_];
-      headers_size_++;
-    }
-
-    if (!cur_bytes_header->next) {
-      // FIXME: pay attention to alignment,
-      // the default alignment in emia is 16, which is fine here.
-      // However, it would be better to explicitly say the alignment
-      // TODO: use allocate_onnode()
-      mem_node *new_node = static_cast<mem_node*>(
-        malloc(sizeof(mem_node) + bytes)
-      );
-
-      new_node->size = bytes;
-      return static_cast<void*>(new_node + 1);
-    }
-
-    mem_node * ret_node = cur_bytes_header->next;
-    ASSERT(ret_node->size == bytes);
-    cur_bytes_header->next = ret_node->next;
-    return static_cast<void*>(ret_node + 1);
-  }
-
-  void deallocate_bytes(void *p) {
-    mem_node * cur_node = static_cast<mem_node*>(p) - 1;
-    const size_t bytes = cur_node->size;
-
-    mem_node * cur_bytes_header = nullptr;
-    for(uint32_t i = 0; i < headers_size_; i++) {
-      if (headers_[i].size == bytes) {
-        cur_bytes_header = &headers_[i];
-        break;
-      }
-    }
-    ASSERT(cur_bytes_header);
-
-    cur_node->next = cur_bytes_header->next;
-    cur_bytes_header->next = cur_node;
-  }
-
-private:
-  static thread_local memory_pool * instance_;
-
-  // FIXME: dynamic increase
-  static constexpr size_t kHeadersCapacity = 20;
-  std::array<mem_node, kHeadersCapacity> headers_;
-  size_t headers_size_;
-};
 
 // task<T>::promise_type inherits promise_base. promise_base keeps track
 // of the coroutine call stack.
@@ -232,15 +181,8 @@ struct promise_base {
   // It is very important to use arena to reduce the
   // cache miss in access promise_base * which happens
   // a lot in task<T>.resume();
-
-  void *operator new(std::size_t sz) noexcept {
-    //return MM::allocate(sz);
-    return memory_pool::instance()->allocate_bytes(sz);
-  }
-  void operator delete(void* ptr) noexcept {
-    //MM::deallocate(fat_ptr{(uint64_t)ptr});
-    memory_pool::instance()->deallocate_bytes(ptr);
-  }
+  void *operator new(size_t sz) { return allocator.alloc(sz); }
+  void operator delete(void *p, size_t sz) { allocator.free(p, sz); }
 
   inline void set_parent(promise_base * caller_promise) {
       parent_ = caller_promise;
