@@ -42,21 +42,16 @@ public:
         handles[i] = workload[workload_idx].coro_fn(this, i, begin_epoch);
       }
 
-      bool batch_completed = false;
-      while (!batch_completed) {
-        batch_completed = true;
-        for(uint32_t i = 0; i < batch_size; i++) {
-          if (handles[i]) {
-            if (handles[i].done()) {
-              finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
-              handles[i].destroy();
-              handles[i] = nullptr;
-            } else {
-              handles[i].resume();
-              batch_completed = false;
-            }
-          }
-        }
+      for(uint32_t i = 0; i < g_reps_per_tx; i++) {
+        ermia::dia::query_scheduler.run();
+        for(auto &h : handles)
+          h.resume();
+      }
+
+      for(uint32_t i = 0; i < batch_size; i++) {
+        ALWAYS_ASSERT(handles[i].done());
+        finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+        handles[i].destroy();
       }
 
       const unsigned long old_seed = r.get_seed();
@@ -87,7 +82,48 @@ public:
 
   // Read transaction with context-switch using simple coroutine
   ermia::dia::generator<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
-    co_await std::experimental::suspend_always{};
+    ermia::transaction *txn = nullptr;
+    ermia::ConcurrentMasstree::threadinfo ti(begin_epoch);
+    ermia::ConcurrentMasstree::versioned_node_t sinfo;
+
+    if (!ermia::config::index_probe_only) {
+        txn = &transactions[idx];
+        new (txn) ermia::transaction(
+          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, *arena);
+        ermia::TXN::xid_context *xc = txn->GetXIDContext();
+        xc->begin_epoch = begin_epoch;
+    }
+
+    for (int i = 0; i < g_reps_per_tx; ++i) {
+      ermia::varstr &k = GenerateKey(txn);
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
+      rc_t rc = rc_t{RC_INVALID};
+      ermia::OID oid = ermia::INVALID_OID;
+
+      co_await table_index->GetMasstree().search_coro(k, oid, ti, &sinfo);
+      rc._val = (oid != ermia::INVALID_OID) ? RC_TRUE : RC_FALSE;
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        co_return rc;
+      }
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ASSERT(ermia::config::index_probe_only || *(char*)v.data() == 'a');
+#endif
+      if (!ermia::config::index_probe_only)
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
+    }
+
+    if (!ermia::config::index_probe_only) {
+      rc_t rc = db->Commit(txn);
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        co_return rc;
+      }
+    }
     co_return {RC_TRUE};
   }
 
