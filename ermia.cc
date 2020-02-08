@@ -262,10 +262,10 @@ PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const
   }
 }
 
-ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, rc_t &rc, const varstr &key,
+ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, const varstr &key,
                                                                     varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;
-  rc = rc_t{RC_INVALID};
+  rc_t rc = rc_t{RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
   t->ensure_active();
 

@@ -82,9 +82,6 @@ public:
   // Read transaction with context-switch using simple coroutine
   ermia::dia::generator<rc_t> txn_read(uint32_t idx, ermia::epoch_num begin_epoch) {
     ermia::transaction *txn = nullptr;
-    ermia::ConcurrentMasstree::threadinfo ti(begin_epoch);
-    ermia::ConcurrentMasstree::versioned_node_t sinfo;
-
     if (!ermia::config::index_probe_only) {
         txn = &transactions[idx];
         new (txn) ermia::transaction(
@@ -97,13 +94,14 @@ public:
       ermia::varstr &k = GenerateKey(txn);
       ermia::varstr &v = str(sizeof(ycsb_kv::value));
       rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = ermia::INVALID_OID;
 
       if (ermia::config::index_probe_only) {
-        co_await table_index->GetMasstree().search_coro(k, oid, ti, &sinfo);
-        rc._val = (oid != ermia::INVALID_OID) ? RC_TRUE : RC_FALSE;
+        ermia::ConcurrentMasstree::threadinfo ti(begin_epoch);
+        ermia::ConcurrentMasstree::versioned_node_t sinfo;
+        ermia::OID oid = ermia::INVALID_OID;
+        rc._val = (co_await table_index->GetMasstree().search_coro(k, oid, ti, &sinfo)) ? RC_TRUE : RC_FALSE;
       } else {
-        co_await table_index->coro_GetRecord(txn, rc, k, v);
+        rc = co_await table_index->coro_GetRecord(txn, k, v);
       }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       if (rc.IsAbort()) {

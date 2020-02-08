@@ -124,8 +124,18 @@ template <typename T> struct generator {
   }
 
   auto operator co_await () {
+    struct awaiter {
+      awaiter(handle h) : awaiter_coro(h) {}
+      constexpr bool await_ready() const noexcept { return false; }
+      constexpr void await_suspend(std::experimental::coroutine_handle<>) noexcept { }
+      constexpr auto await_resume() noexcept {
+        return awaiter_coro.promise().current_value;
+      }
+    private:
+      handle awaiter_coro;
+    };
     query_scheduler.push_back(coro);
-    return std::experimental::suspend_always{};
+    return awaiter(coro);
   }
 
 private:
