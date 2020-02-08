@@ -144,6 +144,9 @@ public:
   virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
                          OID *out_oid = nullptr) override;
 
+  ermia::dia::generator<rc_t> coro_GetRecord(transaction *t, rc_t &rc, const varstr &key,
+                                             varstr &value, OID *out_oid = nullptr);
+
   // A multi-get operation using AMAC
   void amac_MultiGet(transaction *t,
                      std::vector<ConcurrentMasstree::AMACState> &requests,
