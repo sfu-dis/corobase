@@ -44,14 +44,13 @@ public:
 
       for(uint32_t i = 0; i < g_reps_per_tx; i++) {
         ermia::dia::query_scheduler.run();
-        for(auto &h : handles)
-          h.resume();
-      }
-
-      for(uint32_t i = 0; i < batch_size; i++) {
-        ALWAYS_ASSERT(handles[i].done());
-        finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
-        handles[i].destroy();
+        for(uint32_t j = 0; j < batch_size; j++) {
+          handles[j].resume();
+          if (handles[j].done()) {
+            finish_workload(handles[j].promise().current_value, workload_idxs[j], t);
+            handles[j].destroy();
+          }
+        }
       }
 
       const unsigned long old_seed = r.get_seed();
@@ -100,9 +99,12 @@ public:
       rc_t rc = rc_t{RC_INVALID};
       ermia::OID oid = ermia::INVALID_OID;
 
-      co_await table_index->GetMasstree().search_coro(k, oid, ti, &sinfo);
-      rc._val = (oid != ermia::INVALID_OID) ? RC_TRUE : RC_FALSE;
-
+      if (ermia::config::index_probe_only) {
+        co_await table_index->GetMasstree().search_coro(k, oid, ti, &sinfo);
+        rc._val = (oid != ermia::INVALID_OID) ? RC_TRUE : RC_FALSE;
+      } else {
+        co_await table_index->coro_GetRecord(txn, rc, k, v);
+      }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       if (rc.IsAbort()) {
         db->Abort(txn);
