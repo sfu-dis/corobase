@@ -127,15 +127,15 @@ class bench_worker : public ermia::thread::Runner {
     workload_desc() {}
     workload_desc(const std::string &name, double frequency, txn_fn_t fn,
                   coro_txn_fn_t cf=nullptr, task_fn_t tf=nullptr)
-        : name(name), frequency(frequency), fn(fn), task_fn(tf), coro_fn(cf) {
+        : name(name), frequency(frequency), fn(fn), coro_fn(cf) , task_fn(tf) {
       ALWAYS_ASSERT(frequency > 0.0);
       ALWAYS_ASSERT(frequency <= 1.0);
     }
     std::string name;
     double frequency;
     txn_fn_t fn;
-    task_fn_t task_fn;
     coro_txn_fn_t coro_fn;
+    task_fn_t task_fn;
   };
   typedef std::vector<workload_desc> workload_desc_vec;
   virtual workload_desc_vec get_workload() const = 0;

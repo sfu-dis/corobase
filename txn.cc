@@ -38,13 +38,10 @@ void transaction::initialize_read_write() {
   xid = TXN::xid_alloc();
   xc = TXN::xid_get_context(xid);
   xc->xct = this;
-  if (flags & TXN_FLAG_CSWITCH) {
-    xc->begin = logmgr->cur_lsn().offset() + 1;
-    return;
-  }
-
-  // "Normal" transactions
-  xc->begin_epoch = config::tls_alloc ? MM::epoch_enter() : 0;
+  
+  if (!(flags & TXN_FLAG_CSWITCH))
+    // "Normal" transactions
+    xc->begin_epoch = config::tls_alloc ? MM::epoch_enter() : 0;
 #if defined(SSN) || defined(SSI)
   // If there's a safesnap, then SSN treats the snapshot as a transaction
   // that has read all the versions, which means every update transaction
