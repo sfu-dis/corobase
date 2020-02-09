@@ -55,6 +55,7 @@ public:
 
       const unsigned long old_seed = r.get_seed();
       r.set_seed(old_seed);
+      // TODO: epoch exit correctly
       ermia::MM::epoch_exit(0, begin_epoch);
     }
   }
@@ -62,21 +63,28 @@ public:
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
 
-    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() ||
-        ycsb_workload.scan_percent() || ycsb_workload.rmw_percent()) {
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() || ycsb_workload.scan_percent()) {
       LOG(FATAL) << "Not implemented";
     }
 
+    LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::SimpleCoro) << "Read txn type must be simple-coro";
+
     if (ycsb_workload.read_percent()) {
-      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::SimpleCoro) << "Read txn type must be simple-coro";
       w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, TxnRead));
     }
 
+    if (ycsb_workload.rmw_percent()) {
+      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
+    }
     return w;
   }
 
   static CoroTxnHandle TxnRead(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<ycsb_cs_worker *>(w)->txn_read(idx, begin_epoch).get_handle();
+  }
+
+  static CoroTxnHandle TxnRMW(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<ycsb_cs_worker *>(w)->txn_rmw(idx, begin_epoch).get_handle();
   }
 
   // Read transaction with context-switch using simple coroutine
@@ -123,6 +131,25 @@ public:
         db->Abort(txn);
         co_return rc;
       }
+    }
+    co_return {RC_TRUE};
+  }
+
+  // Read-modify-write transaction with context-switch using simple coroutine
+  ermia::dia::generator<rc_t> txn_rmw(uint32_t idx, ermia::epoch_num begin_epoch) {
+    ermia::transaction *txn = &transactions[idx];
+    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, *arena);
+    ermia::TXN::xid_context *xc = txn->GetXIDContext();
+    xc->begin_epoch = begin_epoch;
+
+    for (int i = 0; i < g_reps_per_tx; ++i) {
+      co_await std::experimental::suspend_always{};
+    }
+
+    rc_t rc = db->Commit(txn);
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      co_return rc;
     }
     co_return {RC_TRUE};
   }
