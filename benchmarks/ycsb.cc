@@ -158,14 +158,12 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 #else
       // Under SI this must succeed
       LOG_IF(FATAL, rc._val != RC_TRUE);
-      ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
 
-      if (!ermia::config::index_probe_only) {
-        ALWAYS_ASSERT(v.size() == sizeof(ycsb_kv::value));
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-      }
+      ASSERT(v.size() == sizeof(ycsb_kv::value));
+      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
 
       // Re-initialize the value structure to use my own allocated memory -
       // DoTupleRead will change v.p to the object's data area to avoid memory
@@ -190,11 +188,9 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       ALWAYS_ASSERT(rc._val == RC_TRUE);
       ASSERT(*(char*)v.data() == 'a');
 #endif
-      if (!ermia::config::index_probe_only) {
-        ALWAYS_ASSERT(v.size() == sizeof(ycsb_kv::value));
-        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
-      }
 
+      ASSERT(v.size() == sizeof(ycsb_kv::value));
+      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
