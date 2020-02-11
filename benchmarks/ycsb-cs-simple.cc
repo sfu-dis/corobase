@@ -45,10 +45,13 @@ public:
       for(uint32_t i = 0; i < g_reps_per_tx; i++) {
         ermia::dia::query_scheduler.run();
         for(uint32_t j = 0; j < batch_size; j++) {
-          handles[j].resume();
-          if (handles[j].done()) {
-            finish_workload(handles[j].promise().current_value, workload_idxs[j], t);
-            handles[j].destroy();
+          if (handles[j]) {
+            handles[j].resume();
+            if (handles[j].done()) {
+              finish_workload(handles[j].promise().current_value, workload_idxs[j], t);
+              handles[j].destroy();
+              handles[j] = nullptr;
+            }
           }
         }
       }
@@ -143,7 +146,38 @@ public:
     xc->begin_epoch = begin_epoch;
 
     for (int i = 0; i < g_reps_per_tx; ++i) {
-      co_await std::experimental::suspend_always{};
+      ermia::varstr &k = GenerateKey(txn);
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
+      rc_t rc = rc_t{RC_INVALID};
+
+      rc = co_await table_index->coro_GetRecord(txn, k, v);
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        co_return rc;
+      }
+#else
+      // Under SI this must succeed
+      LOG_IF(FATAL, rc._val != RC_TRUE);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ASSERT(*(char*)v.data() == 'a');
+#endif
+
+      ASSERT(v.size() == sizeof(ycsb_kv::value));
+      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
+
+      // Re-initialize the value structure to use my own allocated memory -
+      // DoTupleRead will change v.p to the object's data area to avoid memory
+      // copy (in the read op we just did).
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+      new (v.data()) ycsb_kv::value("a");
+      rc = table_index->UpdateRecord(txn, k, v);  // Modify-write
+
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        co_return rc;
+      }
     }
 
     rc_t rc = db->Commit(txn);
