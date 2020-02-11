@@ -141,12 +141,6 @@ public:
 
   inline void *GetTable() override { return masstree_.get_table(); }
 
-  virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
-                         OID *out_oid = nullptr) override;
-
-  ermia::dia::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key,
-                                             varstr &value, OID *out_oid = nullptr);
-
   // A multi-get operation using AMAC
   void amac_MultiGet(transaction *t,
                      std::vector<ConcurrentMasstree::AMACState> &requests,
@@ -159,11 +153,16 @@ public:
                             ermia::dia::generator<bool>::promise_type>> &handles);
 
 #ifdef ADV_COROUTINE
+  // A multi-get operation using nested coroutines
   void adv_coro_MultiGet(transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
                          std::vector<ermia::dia::task<bool>> &index_probe_tasks,
                          std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks);
 #endif
 
+  ermia::dia::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
+  ermia::dia::generator<rc_t> coro_UpdateRecord(transaction *t, const varstr &key, varstr &value);
+
+  PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;
   PROMISE(rc_t) InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) RemoveRecord(transaction *t, const varstr &key) override;

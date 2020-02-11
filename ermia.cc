@@ -217,50 +217,108 @@ void ConcurrentMasstreeIndex::amac_MultiGet(
 #endif
 }
 
-PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
-                                        varstr &value, OID *out_oid) {
-  OID oid = INVALID_OID;
-  rc = {RC_INVALID};
+void ConcurrentMasstreeIndex::simple_coro_MultiGet(
+    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
+    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> &handles) {
+  auto e = MM::epoch_enter();
+  ConcurrentMasstree::threadinfo ti(e);
   ConcurrentMasstree::versioned_node_t sinfo;
 
+  OID oid = INVALID_OID;
+  for (int i = 0; i < keys.size(); ++i) {
+    handles[i] = masstree_.search_coro(*keys[i], oid, ti, &sinfo).get_handle();
+  }
+
+  int finished = 0;
+  while (finished < handles.size()) {
+    for (auto &h : handles) {
+      if (h) {
+        if (h.done()) {
+          ++finished;
+          h.destroy();
+          h = nullptr;
+        } else {
+          h.resume();
+        }
+      }
+    }
+  }
+  MM::epoch_exit(0, e);
+}
+
+#ifdef ADV_COROUTINE
+void ConcurrentMasstreeIndex::adv_coro_MultiGet(
+    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
+    std::vector<ermia::dia::task<bool>> &index_probe_tasks,
+    std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks) {
+  ermia::epoch_num e = t ? t->xc->begin_epoch : MM::epoch_enter();
+  ConcurrentMasstree::versioned_node_t sinfo;
+  thread_local std::vector<OID> oids;
+  oids.clear();
+
+  for (int i = 0; i < keys.size(); ++i) {
+    oids.emplace_back(INVALID_OID);
+    index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
+    index_probe_tasks[i].start();
+  }
+
+  int finished = 0;
+  while (finished < keys.size()) {
+    for (auto &t : index_probe_tasks) {
+      if (t.valid()) {
+        if (t.done()) {
+          ++finished;
+          t.destroy();
+        } else {
+          t.resume();
+        }
+      }
+    }
+  }
+
   if (!t) {
-    auto e = MM::epoch_enter();
-    rc._val = AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
     MM::epoch_exit(0, e);
   } else {
     t->ensure_active();
-    bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
-
-    dbtuple *tuple = nullptr;
-    if (found) {
-      // Key-OID mapping exists, now try to get the actual tuple to be sure
-      if (config::is_backup_srv()) {
-        tuple = oidmgr->BackupGetVersion(
-            table_descriptor->GetTupleArray(),
-            table_descriptor->GetPersistentAddressArray(), oid, t->xc);
-      } else {
-        tuple =
-            AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
-      }
-      if (!tuple) {
-        found = false;
-      }
-    }
-
-    if (found) {
-      volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-    } else if (config::phantom_prot) {
-      volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
+    if (config::is_backup_srv()) {
+      // TODO
+      assert(false && "Backup not supported in coroutine execution");
     } else {
-      volatile_write(rc._val, RC_FALSE);
-    }
-    ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
-  }
+      int finished = 0;
 
-  if (out_oid) {
-    *out_oid = oid;
+      for (uint32_t i = 0; i < keys.size(); ++i) {
+        if (oids[i] != INVALID_OID) {
+          value_fetch_tasks[i] = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oids[i], t->xc);
+          value_fetch_tasks[i].start();
+        } else {
+          ++finished;
+        }
+      }
+
+      while (finished < keys.size()) {
+        for (uint32_t i = 0; i < keys.size(); ++i) {
+          if (value_fetch_tasks[i].valid()) {
+            if (value_fetch_tasks[i].done()) {
+              if (oids[i] != INVALID_OID) {
+                auto *tuple = value_fetch_tasks[i].get_return_value();
+                if (tuple) {
+                  t->DoTupleRead(tuple, values[i]);
+                } else if (config::phantom_prot) {
+                  DoNodeRead(t, sinfo.first, sinfo.second);
+                }
+              }
+              ++finished;
+              value_fetch_tasks[i].destroy();
+            } else {
+              value_fetch_tasks[i].resume();
+            }
+          }
+        }
+      }
+    }
   }
 }
+#endif  // ADV_COROUTINE
 
 ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, const varstr &key,
                                                                     varstr &value, OID *out_oid) {
@@ -422,108 +480,68 @@ start_over:
   co_return rc;
 }
 
-void ConcurrentMasstreeIndex::simple_coro_MultiGet(
-    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> &handles) {
-  auto e = MM::epoch_enter();
-  ConcurrentMasstree::threadinfo ti(e);
-  ConcurrentMasstree::versioned_node_t sinfo;
+ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_UpdateRecord(transaction *t, const varstr &key,
+                                                                       varstr &value) {
+  // For primary index only
+  ALWAYS_ASSERT(IsPrimary());
 
-  OID oid = INVALID_OID;
-  for (int i = 0; i < keys.size(); ++i) {
-    handles[i] = masstree_.search_coro(*keys[i], oid, ti, &sinfo).get_handle();
-  }
+  // Search for OID
+  OID oid = 0;
+  rc_t rc = {RC_INVALID};
+  GetOID(key, rc, t->xc, oid);
 
-  int finished = 0;
-  while (finished < handles.size()) {
-    for (auto &h : handles) {
-      if (h) {
-        if (h.done()) {
-          ++finished;
-          h.destroy();
-          h = nullptr;
-        } else {
-          h.resume();
-        }
-      }
-    }
+  if (rc._val == RC_TRUE) {
+    rc = t->Update(table_descriptor, oid, &key, &value);
+    co_return rc;
+  } else {
+    co_return rc_t{RC_ABORT_INTERNAL};
   }
-  MM::epoch_exit(0, e);
 }
 
-#ifdef ADV_COROUTINE
-void ConcurrentMasstreeIndex::adv_coro_MultiGet(
-    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<ermia::dia::task<bool>> &index_probe_tasks,
-    std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks) {
-  ermia::epoch_num e = t ? t->xc->begin_epoch : MM::epoch_enter();
+PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
+                                        varstr &value, OID *out_oid) {
+  OID oid = INVALID_OID;
+  rc = {RC_INVALID};
   ConcurrentMasstree::versioned_node_t sinfo;
-  thread_local std::vector<OID> oids;
-  oids.clear();
-
-  for (int i = 0; i < keys.size(); ++i) {
-    oids.emplace_back(INVALID_OID);
-    index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
-    index_probe_tasks[i].start();
-  }
-
-  int finished = 0;
-  while (finished < keys.size()) {
-    for (auto &t : index_probe_tasks) {
-      if (t.valid()) {
-        if (t.done()) {
-          ++finished;
-          t.destroy();
-        } else {
-          t.resume();
-        }
-      }
-    }
-  }
 
   if (!t) {
+    auto e = MM::epoch_enter();
+    rc._val = AWAIT masstree_.search(key, oid, e, &sinfo) ? RC_TRUE : RC_FALSE;
     MM::epoch_exit(0, e);
   } else {
     t->ensure_active();
-    if (config::is_backup_srv()) {
-      // TODO
-      assert(false && "Backup not supported in coroutine execution");
-    } else {
-      int finished = 0;
+    bool found = AWAIT masstree_.search(key, oid, t->xc->begin_epoch, &sinfo);
 
-      for (uint32_t i = 0; i < keys.size(); ++i) {
-        if (oids[i] != INVALID_OID) {
-          value_fetch_tasks[i] = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oids[i], t->xc);
-          value_fetch_tasks[i].start();
-        } else {
-          ++finished;
-        }
+    dbtuple *tuple = nullptr;
+    if (found) {
+      // Key-OID mapping exists, now try to get the actual tuple to be sure
+      if (config::is_backup_srv()) {
+        tuple = oidmgr->BackupGetVersion(
+            table_descriptor->GetTupleArray(),
+            table_descriptor->GetPersistentAddressArray(), oid, t->xc);
+      } else {
+        tuple =
+            AWAIT oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oid, t->xc);
       }
-
-      while (finished < keys.size()) {
-        for (uint32_t i = 0; i < keys.size(); ++i) {
-          if (value_fetch_tasks[i].valid()) {
-            if (value_fetch_tasks[i].done()) {
-              if (oids[i] != INVALID_OID) {
-                auto *tuple = value_fetch_tasks[i].get_return_value();
-                if (tuple) {
-                  t->DoTupleRead(tuple, values[i]);
-                } else if (config::phantom_prot) {
-                  DoNodeRead(t, sinfo.first, sinfo.second);
-                }
-              }
-              ++finished;
-              value_fetch_tasks[i].destroy();
-            } else {
-              value_fetch_tasks[i].resume();
-            }
-          }
-        }
+      if (!tuple) {
+        found = false;
       }
     }
+
+    if (found) {
+      volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+    } else if (config::phantom_prot) {
+      volatile_write(rc._val, DoNodeRead(t, sinfo.first, sinfo.second)._val);
+    } else {
+      volatile_write(rc._val, RC_FALSE);
+    }
+    ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
+  }
+
+  if (out_oid) {
+    *out_oid = oid;
   }
 }
-#endif  // ADV_COROUTINE
 
 void ConcurrentMasstreeIndex::PurgeTreeWalker::on_node_begin(
     const typename ConcurrentMasstree::node_opaque_t *n) {

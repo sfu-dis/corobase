@@ -42,7 +42,8 @@ public:
         handles[i] = workload[workload_idx].coro_fn(this, i, begin_epoch);
       }
 
-      for(uint32_t i = 0; i < g_reps_per_tx; i++) {
+      uint32_t todo_size = batch_size;
+      while (todo_size) {
         ermia::dia::query_scheduler.run();
         for(uint32_t j = 0; j < batch_size; j++) {
           if (handles[j]) {
@@ -51,6 +52,7 @@ public:
               finish_workload(handles[j].promise().current_value, workload_idxs[j], t);
               handles[j].destroy();
               handles[j] = nullptr;
+              todo_size--;
             }
           }
         }
@@ -172,7 +174,7 @@ public:
       // copy (in the read op we just did).
       new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
       new (v.data()) ycsb_kv::value("a");
-      rc = table_index->UpdateRecord(txn, k, v);  // Modify-write
+      rc = co_await table_index->coro_UpdateRecord(txn, k, v);  // Modify-write
 
       if (rc.IsAbort()) {
         db->Abort(txn);
