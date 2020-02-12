@@ -2,6 +2,7 @@
 
 #include <experimental/coroutine>
 #include <array>
+#include <map>
 
 #include "sm-defs.h"
 
@@ -11,29 +12,32 @@ namespace dia {
 // Simple thread caching allocator.
 struct tcalloc {
   struct header {
-    header *next;
-    size_t size;
+    header *next = nullptr;
   };
-  header *root = nullptr;
+  std::map<size_t, header *> roots;
   size_t last_size_allocated = 0;
   size_t total = 0;
   size_t alloc_count = 0;
 
   ~tcalloc() {
-    auto current = root;
-    while (current) {
-      auto next = current->next;
-      ::free(current);
-      current = next;
+    for(auto iter = roots.begin() ; iter != roots.end(); iter++) {
+      auto current = iter->second;
+      while (current) {
+        auto next = current->next;
+        ::free(current);
+        current = next;
+      }
     }
   }
 
   void *alloc(size_t sz) {
-    if (root && root->size >= sz) {
-      void *mem = root;
-      root = root->next;
+    auto iter = roots.find(sz);
+    if (iter != roots.end() && iter->first) {
+      void *mem = iter->second;
+      iter->second = iter->second->next;
       return mem;
     }
+
     ++alloc_count;
     total += sz;
     last_size_allocated = sz;
@@ -47,9 +51,13 @@ struct tcalloc {
 
   void free(void *p, size_t sz) {
     auto new_entry = static_cast<header *>(p);
-    new_entry->size = sz;
-    new_entry->next = root;
-    root = new_entry;
+    auto iter = roots.find(sz);
+    if (iter == roots.end()) {
+      roots[sz] = new_entry;
+    } else {
+      new_entry->next = iter->second;
+      iter->second = new_entry;
+    }
   }
 };
 
