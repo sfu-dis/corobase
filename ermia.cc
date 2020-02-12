@@ -486,16 +486,194 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_UpdateRecord(transacti
   ALWAYS_ASSERT(IsPrimary());
 
   // Search for OID
-  OID oid = 0;
-  rc_t rc = {RC_INVALID};
-  GetOID(key, rc, t->xc, oid);
+  OID oid = INVALID_OID;
+  rc_t rc = rc_t{RC_INVALID};
+  ConcurrentMasstree::versioned_node_t sinfo;
+  t->ensure_active();
 
-  if (rc._val == RC_TRUE) {
-    rc = t->Update(table_descriptor, oid, &key, &value);
-    co_return rc;
-  } else {
-    co_return rc_t{RC_ABORT_INTERNAL};
+// start: masstree search
+  ConcurrentMasstree::threadinfo ti(t->xc->begin_epoch);
+  ConcurrentMasstree::unlocked_tcursor_type lp(*masstree_.get_table(), key.data(), key.size());
+
+  // variables in find_unlocked
+  int match;
+  key_indexed_position kx;
+  ConcurrentMasstree::node_base_type* root = const_cast<ConcurrentMasstree::node_base_type*>(lp.root_);
+
+retry:
+  // variables in reach_leaf
+  const ConcurrentMasstree::node_base_type* n[2];
+  typename ConcurrentMasstree::node_base_type::nodeversion_type v[2];
+  bool sense;
+
+retry2:
+  sense = false;
+  n[sense] = lp.root_;
+  while (1) {
+    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+    if (!v[sense].has_split()) break;
+    n[sense] = n[sense]->unsplit_ancestor();
   }
+
+  // Loop over internal nodes.
+  while (!v[sense].isleaf()) {
+    const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
+    in->prefetch();
+    co_await std::experimental::suspend_always{};
+    int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
+    n[!sense] = in->child_[kp];
+    if (!n[!sense]) goto retry2;
+    v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+    if (likely(!in->has_changed(v[sense]))) {
+      sense = !sense;
+      continue;
+    }
+
+    typename ConcurrentMasstree::node_base_type::nodeversion_type oldv = v[sense];
+    v[sense] = in->stable_annotated(ti.stable_fence());
+    if (oldv.has_split(v[sense]) &&
+        in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
+      goto retry2;
+    }
+  }
+
+  lp.v_ = v[sense];
+  lp.n_ = const_cast<ConcurrentMasstree::leaf_type*>(static_cast<const ConcurrentMasstree::leaf_type*>(n[sense]));
+
+forward:
+  if (lp.v_.deleted()) goto retry;
+
+  lp.n_->prefetch();
+  co_await std::experimental::suspend_always{};
+  lp.perm_ = lp.n_->permutation();
+  kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
+  if (kx.p >= 0) {
+    lp.lv_ = lp.n_->lv_[kx.p];
+    lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
+    co_await std::experimental::suspend_always{};
+    match = lp.n_->ksuf_matches(kx.p, lp.ka_);
+  } else
+    match = 0;
+  if (lp.n_->has_changed(lp.v_)) {
+    lp.n_ = lp.n_->advance_to_key(lp.ka_, lp.v_, ti);
+    goto forward;
+  }
+
+  if (match < 0) {
+    lp.ka_.shift_by(-match);
+    root = lp.lv_.layer();
+    goto retry;
+  }
+
+  if (match) {
+    oid = lp.value();
+  }
+  sinfo = ConcurrentMasstree::versioned_node_t(lp.node(), lp.full_version_value());
+// end: masstree search
+
+  bool found = match;
+  if (found) {
+// start: transaction update
+    TableDescriptor *td = table_descriptor;
+    const varstr *k = &key;
+    varstr *v = &value;
+    TXN::xid_context *xc = t->xc;
+    sm_tx_log *log = t->log;
+    XID xid = t->xid;
+
+    oid_array *tuple_array = td->GetTupleArray();
+    FID tuple_fid = td->GetTupleFid();
+
+    // first *updater* wins
+    fat_ptr new_obj_ptr = NULL_PTR;
+    fat_ptr prev_obj_ptr =
+        oidmgr->PrimaryTupleUpdate(tuple_array, oid, &value, xc, &new_obj_ptr);
+    Object *prev_obj = (Object *)prev_obj_ptr.offset();
+
+    if (prev_obj) {  // succeeded
+      dbtuple *tuple = ((Object *)new_obj_ptr.offset())->GetPinnedTuple();
+      ASSERT(tuple);
+      dbtuple *prev = prev_obj->GetPinnedTuple();
+      ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
+      ASSERT(xc);
+
+      // read prev's clsn first, in case it's a committing XID, the clsn's state
+      // might change to ASI_LOG anytime
+      ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
+      fat_ptr prev_clsn = prev->GetObject()->GetClsn();
+      fat_ptr prev_persistent_ptr = NULL_PTR;
+      if (prev_clsn.asi_type() == fat_ptr::ASI_XID and
+          XID::from_ptr(prev_clsn) == xid) {
+        // updating my own updates!
+        // prev's prev: previous *committed* version
+        ASSERT(((Object *)prev_obj_ptr.offset())->GetAllocateEpoch() ==
+               xc->begin_epoch);
+        prev_persistent_ptr = prev_obj->GetNextPersistent();
+        // FIXME(tzwang): 20190210: seems the deallocation here is too early,
+        // causing readers to not find any visible version. Fix this together with
+        // GC later.
+        //MM::deallocate(prev_obj_ptr);
+      } else {  // prev is committed (or precommitted but in post-commit now) head
+        t->add_to_write_set(tuple_array->get(oid));
+        prev_persistent_ptr = prev_obj->GetPersistentAddress();
+      }
+
+      ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
+      ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
+      ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
+      ASSERT(log);
+
+      // FIXME(tzwang): mark deleted in all 2nd indexes as well?
+
+      // The varstr also encodes the pdest of the overwritten version.
+      // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
+      // varstr. Embedding it in varstr makes it part of the payload and is
+      // helpful for digging out versions on backups. Not used by the primary.
+      bool is_delete = !v;
+      if (!v) {
+        // Get an empty varstr just to store the overwritten tuple's
+        // persistent address
+        v = t->string_allocator().next(0);
+        v->p = nullptr;
+        v->l = 0;
+      }
+      ASSERT(v);
+      v->ptr = prev_persistent_ptr;
+      ASSERT(is_delete || (v->ptr.offset() && v->ptr.asi_type() == fat_ptr::ASI_LOG));
+
+      // log the whole varstr so that recovery can figure out the real size
+      // of the tuple, instead of using the decoded (larger-than-real) size.
+      size_t data_size = v->size() + sizeof(varstr);
+      auto size_code = encode_size_aligned(data_size);
+      if (is_delete) {
+        log->log_enhanced_delete(tuple_fid, oid,
+                                 fat_ptr::make((void *)v, size_code),
+                                 DEFAULT_ALIGNMENT_BITS);
+      } else {
+        log->log_update(tuple_fid, oid, fat_ptr::make((void *)v, size_code),
+                        DEFAULT_ALIGNMENT_BITS,
+                        tuple->GetObject()->GetPersistentAddressPtr());
+
+        if (config::log_key_for_update) {
+          ALWAYS_ASSERT(k);
+          auto key_size = align_up(k->size() + sizeof(varstr));
+          auto key_size_code = encode_size_aligned(key_size);
+          log->log_update_key(tuple_fid, oid,
+                              fat_ptr::make((void *)k, key_size_code),
+                              DEFAULT_ALIGNMENT_BITS);
+        }
+      }
+      rc = rc_t{RC_TRUE};
+    } else {  // somebody else acted faster than we did
+      rc = rc_t{RC_ABORT_SI_CONFLICT};
+    }
+// end: transaction end
+  } else {
+    rc = rc_t{RC_ABORT_INTERNAL};
+  }
+
+  co_return rc;
 }
 
 PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
