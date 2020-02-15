@@ -470,14 +470,18 @@ int main(int argc, char **argv) {
     test_fn = ycsb_cs_advance_do_test;
 #else
     if (ermia::config::coro_tx) {
-      test_fn = ycsb_cs_simple_do_test;
+      test_fn = ycsb_cs_do_test;
     } else {
       test_fn = ycsb_do_test;
     }
 #endif
   } else if (FLAGS_benchmark == "tpcc") {
 #ifndef ADV_COROUTINE
-    test_fn = tpcc_do_test;
+    if (ermia::config::coro_tx) {
+      test_fn = tpcc_cs_do_test;
+    } else {
+      test_fn = tpcc_do_test;
+    }
 #else
     LOG(FATAL) << "Not supported in this build";
 #endif
