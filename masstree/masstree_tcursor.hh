@@ -137,7 +137,7 @@ class tcursor {
   inline nodeversion_value_type previous_full_version_value() const;
   inline nodeversion_value_type next_full_version_value(int state) const;
 
- private:
+ public:
   leaf_type* n_;
   key_type ka_;
   key_indexed_position kx_;

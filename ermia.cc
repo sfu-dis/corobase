@@ -585,6 +585,199 @@ forward:
   co_return rc;
 }
 
+rc_t ConcurrentMasstreeIndex::coro_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid) {
+  // For primary index only
+  ALWAYS_ASSERT(IsPrimary());
+
+  ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
+  t->ensure_active();
+
+  // Insert to the table first
+  dbtuple *tuple = nullptr;
+  OID oid = t->Insert(table_descriptor, &value, &tuple);
+
+  // Done with table record, now set up index
+  ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
+
+// start: InsertOID
+// start: InsertIfAbsent
+  ConcurrentMasstree::insert_info_t ins_info;
+// strat: insert_if_absent
+  ermia::ConcurrentMasstree::insert_info_t *insert_info = &ins_info;
+  // Recovery will give a null xc, use epoch 0 for the memory allocated
+  epoch_num e = 0;
+  if (t->xc)
+    e = t->xc->begin_epoch;
+  ConcurrentMasstree::threadinfo ti(e);
+  ConcurrentMasstree::tcursor_type lp(*masstree_.get_table(), key.data(), key.size());
+
+  bool found = true;
+// start: find_insert
+// start: find_locked
+  ConcurrentMasstree::node_base_type* root = const_cast<ConcurrentMasstree::node_base_type*>(lp.root_);
+  ConcurrentMasstree::nodeversion_type version;
+  ConcurrentMasstree::permuter_type perm;
+
+retry:
+// start: reach_leaf
+  const ConcurrentMasstree::node_base_type* n[2];
+  ConcurrentMasstree::nodeversion_type v[2];
+  bool sense;
+
+// Get a non-stale root.
+// Detect staleness by checking whether n has ever split.
+// The true root has never split.
+retry2:
+  sense = false;
+  n[sense] = root;
+  while (1) {
+    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+    if (!v[sense].has_split()) break;
+    n[sense] = n[sense]->unsplit_ancestor();
+  }
+
+  // Loop over internal nodes.
+  while (!v[sense].isleaf()) {
+    const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
+    in->prefetch();
+    int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
+    n[!sense] = in->child_[kp];
+    if (!n[!sense]) goto retry2;
+    v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+    if (likely(!in->has_changed(v[sense]))) {
+      sense = !sense;
+      continue;
+    }
+
+    ConcurrentMasstree::nodeversion_type oldv = v[sense];
+    v[sense] = in->stable_annotated(ti.stable_fence());
+    if (oldv.has_split(v[sense]) &&
+        in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
+      goto retry2;
+    }
+  }
+
+  version = v[sense];
+  lp.n_ = const_cast<ConcurrentMasstree::leaf_type*>(static_cast<const ConcurrentMasstree::leaf_type*>(n[sense]));
+// end: reach_leaf
+
+forward:
+  if (version.deleted()) goto retry;
+
+  lp.n_->prefetch();
+  perm = lp.n_->permutation();
+  fence();
+  lp.kx_ = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, *lp.n_);
+  if (lp.kx_.p >= 0) {
+    ConcurrentMasstree::leafvalue_type lv = lp.n_->lv_[lp.kx_.p];
+    lv.prefetch(lp.n_->keylenx_[lp.kx_.p]);
+    lp.state_ = lp.n_->ksuf_matches(lp.kx_.p, lp.ka_);
+    if (lp.state_ < 0 && !lp.n_->has_changed(version) && !lv.layer()->has_split()) {
+      lp.ka_.shift_by(-lp.state_);
+      root = lv.layer();
+      goto retry;
+    }
+  } else
+    lp.state_ = 0;
+
+  lp.n_->lock(version, ti.lock_fence(tc_leaf_lock));
+  if (lp.n_->has_changed(version) || lp.n_->permutation() != perm) {
+    lp.n_->unlock();
+    lp.n_ = lp.n_->advance_to_key(lp.ka_, version, ti);
+    goto forward;
+  } else if (unlikely(lp.state_ < 0)) {
+    lp.ka_.shift_by(-lp.state_);
+    lp.n_->lv_[lp.kx_.p] = root = lp.n_->lv_[lp.kx_.p].layer()->unsplit_ancestor();
+    lp.n_->unlock();
+    goto retry;
+  } else if (unlikely(lp.n_->deleted_layer())) {
+    lp.ka_.unshift_all();
+    root = const_cast<ConcurrentMasstree::node_base_type*>(lp.root_);
+    goto retry;
+  }
+// end: find_locked
+
+  lp.original_n_ = lp.n_;
+  lp.original_v_ = lp.n_->full_unlocked_version_value();
+
+  // maybe we found it
+  if (lp.state_) {
+    found = true;
+  } else {
+    // otherwise mark as inserted but not present
+    lp.state_ = 2;
+
+    // maybe we need a new layer
+    if (lp.kx_.p >= 0) {
+      found = lp.make_new_layer(ti);
+    } else {
+      // mark insertion if we are changing modification state
+      if (unlikely(lp.n_->modstate_ != ConcurrentMasstree::leaf_type::modstate_insert)) {
+        masstree_invariant(n_->modstate_ == ConcurrentMasstree::leaf_type::modstate_remove);
+        lp.n_->mark_insert();
+        lp.n_->modstate_ = ConcurrentMasstree::leaf_type::modstate_insert;
+      }
+
+      // try inserting into this node
+      if (lp.n_->size() < lp.n_->width) {
+        lp.kx_.p = ConcurrentMasstree::leaf_type::permuter_type(lp.n_->permutation_).back();
+        // don't inappropriately reuse position 0, which holds the ikey_bound
+        if (likely(lp.kx_.p != 0) || !lp.n_->prev_ || lp.n_->ikey_bound() == lp.ka_.ikey()) {
+          lp.n_->assign(lp.kx_.p, lp.ka_, ti);
+          found = false;
+        }
+      }
+
+      // otherwise must split
+      if (found)
+        found = lp.make_split(ti);
+    }
+  }
+// end: find_insert
+
+  if (!found) {
+  insert_new:
+    found = false;
+    ti.advance_timestamp(lp.node_timestamp());
+    lp.value() = oid;
+    if (insert_info) {
+      insert_info->node = lp.node();
+      insert_info->old_version = lp.previous_full_version_value();
+      insert_info->new_version = lp.next_full_version_value(1);
+    }
+  } else if (IsPrimary()) {
+    // we have two cases: 1) predecessor's inserts are still remaining in tree,
+    // even though version chain is empty or 2) somebody else are making dirty
+    // data in this chain. If it's the first case, version chain is considered
+    // empty, then we retry insert.
+    OID o = lp.value();
+    if (oidmgr->oid_get_latest_version(table_descriptor->GetTupleArray(), o))
+      found = true;
+    else
+      goto insert_new;
+  }
+  lp.finish(!found, ti);
+// end: insert_if_absent
+
+  bool inserted = !found;
+// end: InsertIfAbsent
+
+  if (inserted) {
+    t->LogIndexInsert(this, oid, &key);
+  }
+// end: InsertOID
+
+  if (!inserted)
+    return rc_t{RC_ABORT_INTERNAL};
+
+  if (out_oid) {
+    *out_oid = oid;
+  }
+
+  return rc_t{RC_TRUE};
+}
+
 PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const varstr &key,
                                         varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;

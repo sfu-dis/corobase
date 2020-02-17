@@ -152,10 +152,13 @@ public:
 
   typedef Masstree::node_base<P> node_base_type;
   typedef Masstree::internode<P> internode_type;
-  typedef Masstree::leaf<P> leaf_type;
   typedef Masstree::leaf<P> node_type;
+  typedef Masstree::leaf<P> leaf_type;
+  typedef Masstree::leafvalue<P> leafvalue_type;
   typedef Masstree::basic_table<P> basic_table_type;
+  typedef Masstree::tcursor<P> tcursor_type;
   typedef Masstree::unlocked_tcursor<P> unlocked_tcursor_type;
+  typedef typename leaf_type::permuter_type permuter_type;
   typedef typename node_base_type::nodeversion_type nodeversion_type;
 
   typedef varstr key_type;

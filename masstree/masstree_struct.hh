@@ -441,9 +441,6 @@ class leaf : public node_base<P> {
     ti.deallocate_rcu(this, allocated_size(), memtag_masstree_leaf);
   }
 
- private:
-  inline void mark_deleted_layer() { modstate_ = modstate_deleted_layer; }
-
   inline void assign(int p, const key_type& ka, threadinfo& ti) {
     lv_[p] = leafvalue_type::make_empty();
     ikey0_[p] = ka.ikey();
@@ -454,6 +451,10 @@ class leaf : public node_base<P> {
       assign_ksuf(p, ka.suffix(), false, ti);
     }
   }
+
+ private:
+  inline void mark_deleted_layer() { modstate_ = modstate_deleted_layer; }
+
   inline void assign_initialize(int p, const key_type& ka, threadinfo& ti) {
     lv_[p] = leafvalue_type::make_empty();
     ikey0_[p] = ka.ikey();

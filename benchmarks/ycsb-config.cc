@@ -48,21 +48,38 @@ void ycsb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
   int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
   uint64_t start_key = loader_id * to_insert;
-  for (uint64_t i = 0; i < to_insert; ++i) {
-    ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-    ermia::varstr &k = str(sizeof(uint64_t));
-    BuildKey(start_key + i, k);
 
-    ermia::varstr &v = str(sizeof(ycsb_kv::value));
-    new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
-    *(char*)v.p = 'a';
+  if (ermia::config::coro_tx) {
+    thread_local std::vector<std::experimental::coroutine_handle<>> handles(ermia::config::coro_batch_size);
+    for (uint64_t i = 0; i < to_insert; i+=ermia::config::coro_batch_size) {
+      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+      for (uint64_t j = 0; j < ermia::config::coro_batch_size && i + j < to_insert; j++) {
+        ermia::varstr &k = str(sizeof(uint64_t));
+        BuildKey(start_key + i + j, k);
 
-#ifdef ADV_COROUTINE
-    TryVerifyStrict(sync_wait_coro(tbl->InsertRecord(txn, k, v)));
-#else
-    TryVerifyStrict(tbl->InsertRecord(txn, k, v));
+        ermia::varstr &v = str(sizeof(ycsb_kv::value));
+        new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+        *(char*)v.p = 'a';
+
+        TryVerifyStrict(((ermia::ConcurrentMasstreeIndex *)tbl)->coro_InsertRecord(txn, k, v));
+      }
+      TryVerifyStrict(db->Commit(txn));
+    }
+  } else {
+    for (uint64_t i = 0; i < to_insert; ++i) {
+      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+      ermia::varstr &k = str(sizeof(uint64_t));
+      BuildKey(start_key + i, k);
+
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
+      new (&v) ermia::varstr((char *)&v + sizeof(ermia::varstr), sizeof(ycsb_kv::value));
+      *(char*)v.p = 'a';
+
+#ifndef ADV_COROUTINE
+      TryVerifyStrict(tbl->InsertRecord(txn, k, v));
 #endif
-    TryVerifyStrict(db->Commit(txn));
+      TryVerifyStrict(db->Commit(txn));
+    }
   }
 
   // Verify inserted values
