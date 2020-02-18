@@ -32,7 +32,7 @@ struct tcalloc {
 
   void *alloc(size_t sz) {
     auto iter = roots.find(sz);
-    if (iter != roots.end() && iter->first) {
+    if (iter != roots.end() && iter->second) {
       void *mem = iter->second;
       iter->second = iter->second->next;
       return mem;
