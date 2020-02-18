@@ -194,7 +194,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction 
 retry:
 // start: reach_leaf
   const ConcurrentMasstree::node_base_type* n[2];
-  typename ConcurrentMasstree::node_base_type::nodeversion_type v[2];
+  ConcurrentMasstree::nodeversion_type v[2];
   bool sense;
 
 retry2:
@@ -221,7 +221,7 @@ retry2:
       continue;
     }
 
-    typename ConcurrentMasstree::node_base_type::nodeversion_type oldv = v[sense];
+    ConcurrentMasstree::nodeversion_type oldv = v[sense];
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
@@ -360,7 +360,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_UpdateRecord(transacti
 retry:
 // start: reach_leaf
   const ConcurrentMasstree::node_base_type* n[2];
-  typename ConcurrentMasstree::node_base_type::nodeversion_type v[2];
+  ConcurrentMasstree::nodeversion_type v[2];
   bool sense;
 
 retry2:
@@ -387,7 +387,7 @@ retry2:
       continue;
     }
 
-    typename ConcurrentMasstree::node_base_type::nodeversion_type oldv = v[sense];
+    ConcurrentMasstree::nodeversion_type oldv = v[sense];
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
