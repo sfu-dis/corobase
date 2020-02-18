@@ -387,11 +387,11 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
     return static_cast<tpcc_cs_worker *>(w)->txn_query2();
   }
 
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
     LOG(FATAL) << "Not applicable";
   }
 
-  virtual workload_desc_vec get_workload() const {
+  virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
     // numbers from sigmod.csail.mit.edu:
     // w.push_back(workload_desc("NewOrder", 1.0, TxnNewOrder)); // ~10k ops/sec
@@ -434,6 +434,21 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
                                 double(g_txn_workload_mix[7]) / 100.0,
                                 TxnMicroBenchRandom));
     return w;
+  }
+
+  // Essentially a coroutine scheduler that switches between active transactions
+  virtual void MyWork(char *) override {
+    // No replication support
+    ALWAYS_ASSERT(is_worker);
+    workload = get_workload();
+    txn_counts.resize(workload.size());
+    barrier_a->count_down();
+    barrier_b->wait_for();
+
+    while (running) {
+      uint32_t workload_idx = fetch_workload();
+      do_workload_function(workload_idx);
+    }
   }
 
  protected:
@@ -2289,7 +2304,7 @@ rc_t tpcc_cs_worker::txn_microbench_random() {
   return {RC_TRUE};
 }
 
-class tpcc_bench_runner : public bench_runner {
+class tpcc_cs_bench_runner : public bench_runner {
  private:
   static bool IsTableReadOnly(const char *name) {
     return strcmp("item", name) == 0;
@@ -2392,7 +2407,7 @@ class tpcc_bench_runner : public bench_runner {
   }
 
  public:
-  tpcc_bench_runner(ermia::Engine *db) : bench_runner(db) {
+  tpcc_cs_bench_runner(ermia::Engine *db) : bench_runner(db) {
     // Register all tables and indexes with the engine
     RegisterIndex(db, "customer",   "customer",         true);
     RegisterIndex(db, "customer",   "customer_name_idx",         false);
@@ -2643,7 +2658,7 @@ void tpcc_cs_do_test(ermia::Engine *db, int argc, char **argv) {
          << std::endl;
   }
 
-  tpcc_bench_runner r(db);
+  tpcc_cs_bench_runner r(db);
   r.run();
 }
 #endif // ADV_COROUTINE
