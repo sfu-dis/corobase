@@ -354,11 +354,11 @@ class tpcc_cmdlog_redoer: public bench_worker, public tpcc_worker_mixin {
     return static_cast<tpcc_cmdlog_redoer *>(w)->txn_payment((uint)wh);
   }
 
-  virtual workload_desc_vec get_workload() const {
+  virtual workload_desc_vec get_workload() const override {
     LOG(FATAL) << "Not applicable";
   }
 
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
     cmdlog_redo_workload_desc_vec w;
     w.push_back(cmdlog_redo_workload_desc("NewOrder", TxnNewOrder));
     w.push_back(cmdlog_redo_workload_desc("Payment", TxnPayment));

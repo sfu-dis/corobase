@@ -230,59 +230,6 @@ class tpcc_table_scanner : public ermia::OrderedIndex::ScanCallback {
   ermia::str_arena *_arena;
 };
 
-class dia_tpcc_table_scanner : public ermia::OrderedIndex::DiaScanCallback {
-public:
-  dia_tpcc_table_scanner(ermia::str_arena *arena) : _arena(arena) {}
-
-  virtual bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) {
-    ermia::varstr *const k = _arena->atomic_next(keylen);
-    ermia::varstr *v = _arena->atomic_next(0); // header only
-    ASSERT(k);
-    k->copy_from(keyp, keylen);
-    output.emplace_back(k, v);
-    oids.emplace_back(oid);
-    return true;
-  }
-
-  virtual bool Receive(ermia::transaction *t,
-                       ermia::TableDescriptor *td) {
-    for (int i = 0; i < oids.size(); ++i) {
-      ermia::dbtuple *tuple = NULL;
-      if (ermia::config::is_backup_srv()) {
-        tuple = ermia::oidmgr->BackupGetVersion(
-            td->GetTupleArray(),
-            td->GetPersistentAddressArray(),
-            ermia::volatile_read(oids[i]), t->GetXIDContext());
-      } else {
-        tuple = ermia::oidmgr->oid_get_version(td->GetTupleArray(),
-                                               ermia::volatile_read(oids[i]),
-                                               t->GetXIDContext());
-      }
-      if (tuple) {
-        ermia::varstr value;
-        if (t->DoTupleRead(tuple, &value)._val == RC_TRUE) {
-          (output[i].second)->p = value.p;
-          (output[i].second)->l = value.l;
-          continue;
-        }
-      }
-      return false;
-    }
-    return true;
-  }
-
-  void clear() {
-    output.clear();
-    oids.clear();
-  }
-
-  std::vector<std::pair<const ermia::varstr *, ermia::varstr *>> output;
-  std::vector<ermia::OID> oids;
-
-  private:
-    ermia::str_arena *_arena;
-};
-
 struct _dummy {};  // exists so we can inherit from it, so we can use a macro in
                    // an init list...
 
