@@ -440,7 +440,7 @@ int main(int argc, char **argv) {
     std::cerr << "  log-key-for-update: " << ermia::config::log_key_for_update << std::endl;
     std::cerr << "  null-log-device   : " << ermia::config::null_log_device << std::endl;
     std::cerr << "  num-backups       : " << ermia::config::num_backups << std::endl;
-    std::cerr << "  parallel-loading: " << FLAGS_parallel_loading << std::endl;
+    std::cerr << "  parallel-loading: : " << ermia::config::parallel_loading << std::endl;
     std::cerr << "  recovery-warm-up  : " << FLAGS_recovery_warm_up << std::endl;
     std::cerr << "  retry-txns        : " << FLAGS_retry_aborted_transactions << std::endl;
     std::cerr << "  scale-factor      : " << FLAGS_scale_factor << std::endl;
