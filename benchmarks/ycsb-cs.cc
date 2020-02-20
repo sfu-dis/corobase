@@ -45,14 +45,15 @@ public:
       uint32_t todo_size = batch_size;
       while (todo_size) {
         ermia::dia::query_scheduler.run();
-        for(uint32_t j = 0; j < batch_size; j++) {
-          if (handles[j]) {
-            handles[j].resume();
-            if (handles[j].done()) {
-              finish_workload(handles[j].promise().current_value, workload_idxs[j], t);
-              handles[j].destroy();
-              handles[j] = nullptr;
+        for(uint32_t i = 0; i < batch_size; i++) {
+          if (handles[i]) {
+            if (handles[i].done()) {
+              finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+              handles[i].destroy();
+              handles[i] = nullptr;
               todo_size--;
+            } else {
+              handles[i].resume();
             }
           }
         }
