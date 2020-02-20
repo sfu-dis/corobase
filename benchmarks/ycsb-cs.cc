@@ -119,7 +119,10 @@ public:
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       if (rc.IsAbort()) {
         db->Abort(txn);
-        co_return rc;
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
       }
 #else
       // Under SI this must succeed
@@ -134,7 +137,10 @@ public:
       rc_t rc = db->Commit(txn);
       if (rc.IsAbort()) {
         db->Abort(txn);
-        co_return rc;
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
       }
     }
     co_return {RC_TRUE};
@@ -157,7 +163,10 @@ public:
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       if (rc.IsAbort()) {
         db->Abort(txn);
-        co_return rc;
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
       }
 #else
       // Under SI this must succeed
@@ -178,14 +187,20 @@ public:
 
       if (rc.IsAbort()) {
         db->Abort(txn);
-        co_return rc;
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
       }
     }
 
     rc_t rc = db->Commit(txn);
     if (rc.IsAbort()) {
       db->Abort(txn);
-      co_return rc;
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
     }
     co_return {RC_TRUE};
   }
