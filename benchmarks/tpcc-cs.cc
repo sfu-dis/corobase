@@ -439,12 +439,44 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
     ALWAYS_ASSERT(is_worker);
     workload = get_workload();
     txn_counts.resize(workload.size());
+
+    const size_t batch_size = ermia::config::coro_batch_size;
+    std::vector<CoroTxnHandle> handles(batch_size);
+    std::vector<uint32_t> workload_idxs(batch_size);
+
     barrier_a->count_down();
     barrier_b->wait_for();
-
+    util::timer t;
     while (running) {
-      uint32_t workload_idx = fetch_workload();
-      //do_workload_function(workload_idx);
+      //ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+      //arena->reset();
+
+      for(uint32_t i = 0; i < batch_size; i++) {
+        uint32_t workload_idx = fetch_workload();
+        workload_idxs[i] = workload_idx;
+        handles[i] = workload[workload_idx].coro_fn(this, i, 0);
+      }
+
+      uint32_t todo_size = batch_size;
+      while (todo_size) {
+        for(uint32_t i = 0; i < batch_size; i++) {
+          if (handles[i]) {
+            if (handles[i].done()) {
+              finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+              handles[i].destroy();
+              handles[i] = nullptr;
+              todo_size--;
+            } else {
+              handles[i].resume();
+            }
+          }
+        }
+      }
+
+      const unsigned long old_seed = r.get_seed();
+      r.set_seed(old_seed);
+      // TODO: epoch exit correctly
+      //ermia::MM::epoch_exit(0, begin_epoch);
     }
   }
 
