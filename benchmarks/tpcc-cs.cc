@@ -340,51 +340,51 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
   // XXX(stephentu): tune this
   static const size_t NMaxCustomerIdxScanElems = 512;
 
-  rc_t txn_new_order();
+  ermia::dia::generator<rc_t> txn_new_order();
 
-  static rc_t TxnNewOrder(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_new_order();
+  static CoroTxnHandle TxnNewOrder(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_new_order().get_handle();
   }
 
-  rc_t txn_delivery();
+  ermia::dia::generator<rc_t> txn_delivery();
 
-  static rc_t TxnDelivery(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_delivery();
+  static CoroTxnHandle TxnDelivery(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_delivery().get_handle();
   }
 
-  rc_t txn_credit_check();
-  static rc_t TxnCreditCheck(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check();
+  ermia::dia::generator<rc_t> txn_credit_check();
+  static CoroTxnHandle TxnCreditCheck(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check().get_handle();
   }
 
-  rc_t txn_payment();
+  ermia::dia::generator<rc_t> txn_payment();
 
-  static rc_t TxnPayment(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_payment();
+  static CoroTxnHandle TxnPayment(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_payment().get_handle();
   }
 
-  rc_t txn_order_status();
+  ermia::dia::generator<rc_t> txn_order_status();
 
-  static rc_t TxnOrderStatus(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_order_status();
+  static CoroTxnHandle TxnOrderStatus(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_order_status().get_handle();
   }
 
-  rc_t txn_stock_level();
+  ermia::dia::generator<rc_t> txn_stock_level();
 
-  static rc_t TxnStockLevel(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level();
+  static CoroTxnHandle TxnStockLevel(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level().get_handle();
   }
 
-  rc_t txn_microbench_random();
+  ermia::dia::generator<rc_t> txn_query2();
 
-  static rc_t TxnMicroBenchRandom(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random();
+  static CoroTxnHandle TxnQuery2(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_query2().get_handle();
   }
 
-  rc_t txn_query2();
+  ermia::dia::generator<rc_t> txn_microbench_random();
 
-  static rc_t TxnQuery2(bench_worker *w) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_query2();
+  static CoroTxnHandle TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random().get_handle();
   }
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
@@ -408,31 +408,28 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
     ALWAYS_ASSERT(m == 100);
     if (g_txn_workload_mix[0])
       w.push_back(workload_desc(
-          "NewOrder", double(g_txn_workload_mix[0]) / 100.0, TxnNewOrder));
+          "NewOrder", double(g_txn_workload_mix[0]) / 100.0, nullptr, TxnNewOrder));
     if (g_txn_workload_mix[1])
       w.push_back(workload_desc(
-          "Payment", double(g_txn_workload_mix[1]) / 100.0, TxnPayment));
+          "Payment", double(g_txn_workload_mix[1]) / 100.0, nullptr, TxnPayment));
     if (g_txn_workload_mix[2])
-      w.push_back(workload_desc("CreditCheck",
-                                double(g_txn_workload_mix[2]) / 100.0,
-                                TxnCreditCheck));
+      w.push_back(workload_desc(
+          "CreditCheck",double(g_txn_workload_mix[2]) / 100.0, nullptr, TxnCreditCheck));
     if (g_txn_workload_mix[3])
       w.push_back(workload_desc(
-          "Delivery", double(g_txn_workload_mix[3]) / 100.0, TxnDelivery));
+          "Delivery", double(g_txn_workload_mix[3]) / 100.0, nullptr, TxnDelivery));
     if (g_txn_workload_mix[4])
-      w.push_back(workload_desc("OrderStatus",
-                                double(g_txn_workload_mix[4]) / 100.0,
-                                TxnOrderStatus));
+      w.push_back(workload_desc(
+          "OrderStatus", double(g_txn_workload_mix[4]) / 100.0, nullptr, TxnOrderStatus));
     if (g_txn_workload_mix[5])
       w.push_back(workload_desc(
-          "StockLevel", double(g_txn_workload_mix[5]) / 100.0, TxnStockLevel));
+          "StockLevel", double(g_txn_workload_mix[5]) / 100.0, nullptr, TxnStockLevel));
     if (g_txn_workload_mix[6])
-      w.push_back(workload_desc("Query2", double(g_txn_workload_mix[6]) / 100.0,
-                                TxnQuery2));
+      w.push_back(workload_desc(
+          "Query2", double(g_txn_workload_mix[6]) / 100.0, nullptr, TxnQuery2));
     if (g_txn_workload_mix[7])
-      w.push_back(workload_desc("MicroBenchRandom",
-                                double(g_txn_workload_mix[7]) / 100.0,
-                                TxnMicroBenchRandom));
+      w.push_back(workload_desc(
+          "MicroBenchRandom", double(g_txn_workload_mix[7]) / 100.0, nullptr, TxnMicroBenchRandom));
     return w;
   }
 
@@ -447,7 +444,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
 
     while (running) {
       uint32_t workload_idx = fetch_workload();
-      do_workload_function(workload_idx);
+      //do_workload_function(workload_idx);
     }
   }
 
@@ -1148,7 +1145,7 @@ class tpcc_order_loader : public bench_loader, public tpcc_cs_worker_mixin {
   ssize_t warehouse_id;
 };
 
-rc_t tpcc_cs_worker::txn_new_order() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order() {
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
@@ -1201,7 +1198,16 @@ rc_t tpcc_cs_worker::txn_new_order() {
 
   rc_t rc = rc_t{RC_INVALID};
   tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
-  TryVerifyRelaxed(rc);
+  // TryVerifyRelaxed
+  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+    << "Wrong return value " << rc._val;
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
@@ -1213,7 +1219,16 @@ rc_t tpcc_cs_worker::txn_new_order() {
 
   rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
-  TryVerifyRelaxed(rc);
+  // TryVerifyRelaxed
+  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+    << "Wrong return value " << rc._val; 
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
@@ -1225,7 +1240,16 @@ rc_t tpcc_cs_worker::txn_new_order() {
 
   rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
-  TryVerifyRelaxed(rc);
+  // TryVerifyRelaxed
+  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+    << "Wrong return value " << rc._val;
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -1239,16 +1263,32 @@ rc_t tpcc_cs_worker::txn_new_order() {
   const new_order::key k_no(warehouse_id, districtID, my_next_o_id);
   const new_order::value v_no;
   const size_t new_order_sz = Size(v_no);
-  TryCatch(tbl_new_order(warehouse_id)
-                ->InsertRecord(txn, Encode(str(Size(k_no)), k_no),
-                         Encode(str(new_order_sz), v_no)));
+  rc = tbl_new_order(warehouse_id)
+           ->InsertRecord(txn, Encode(str(Size(k_no)), k_no),
+                          Encode(str(new_order_sz), v_no));
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   if (!g_new_order_fast_id_gen) {
     district::value v_d_new(*v_d);
     v_d_new.d_next_o_id++;
-    TryCatch(tbl_district(warehouse_id)
-                  ->UpdateRecord(txn, Encode(str(Size(k_d)), k_d),
-                        Encode(str(Size(v_d_new)), v_d_new)));
+    rc = tbl_district(warehouse_id)
+             ->UpdateRecord(txn, Encode(str(Size(k_d)), k_d),
+                            Encode(str(Size(v_d_new)), v_d_new));
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
   }
 
   const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
@@ -1261,14 +1301,30 @@ rc_t tpcc_cs_worker::txn_new_order() {
 
   const size_t oorder_sz = Size(v_oo);
   ermia::OID v_oo_oid = 0;  // Get the OID and put it in oorder_c_id_idx later
-  TryCatch(tbl_oorder(warehouse_id)
-                ->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                         Encode(str(oorder_sz), v_oo), &v_oo_oid));
+  rc = tbl_oorder(warehouse_id)
+           ->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
+                          Encode(str(oorder_sz), v_oo), &v_oo_oid);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
                                       k_no.no_o_id);
-  TryCatch(tbl_oorder_c_id_idx(warehouse_id)
-                ->InsertOID(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
+  rc = tbl_oorder_c_id_idx(warehouse_id)
+           ->InsertOID(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
@@ -1280,7 +1336,16 @@ rc_t tpcc_cs_worker::txn_new_order() {
 
     rc = rc_t{RC_INVALID};
     tbl_item(1)->GetRecord(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
-    TryVerifyRelaxed(rc);
+    // TryVerifyRelaxed
+    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+      << "Wrong return value " << rc._val;
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
 
     const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
@@ -1292,7 +1357,16 @@ rc_t tpcc_cs_worker::txn_new_order() {
 
     rc = rc_t{RC_INVALID};
     tbl_stock(ol_supply_w_id)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
-    TryVerifyRelaxed(rc);
+    // TryVerifyRelaxed
+    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+      << "Wrong return value " << rc._val;
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
 
     const stock::value *v_s = Decode(valptr, v_s_temp);
 #ifndef NDEBUG
@@ -1307,9 +1381,18 @@ rc_t tpcc_cs_worker::txn_new_order() {
     v_s_new.s_ytd += ol_quantity;
     v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
 
-    TryCatch(tbl_stock(ol_supply_w_id)
-                  ->UpdateRecord(txn, Encode(str(Size(k_s)), k_s),
-                        Encode(str(Size(v_s_new)), v_s_new)));
+    rc = tbl_stock(ol_supply_w_id)
+             ->UpdateRecord(txn, Encode(str(Size(k_s)), k_s),
+                            Encode(str(Size(v_s_new)), v_s_new));
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
+
 
     const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
                                ol_number);
@@ -1321,13 +1404,29 @@ rc_t tpcc_cs_worker::txn_new_order() {
     v_ol.ol_quantity = int8_t(ol_quantity);
 
     const size_t order_line_sz = Size(v_ol);
-    TryCatch(tbl_order_line(warehouse_id)
-                  ->InsertRecord(txn, Encode(str(Size(k_ol)), k_ol),
-                           Encode(str(order_line_sz), v_ol)));
+    rc = tbl_order_line(warehouse_id)
+             ->InsertRecord(txn, Encode(str(Size(k_ol)), k_ol),
+                            Encode(str(order_line_sz), v_ol));
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
   }
 
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
 class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1399,7 +1498,7 @@ class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
   bool ignore_key;
 };
 
-rc_t tpcc_cs_worker::txn_delivery() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery() {
   const uint warehouse_id = pick_wh(r);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
@@ -1424,16 +1523,25 @@ rc_t tpcc_cs_worker::txn_delivery() {
   //   num_txn_contexts : 4
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
+  rc_t rc = rc_t{RC_INVALID};
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
                                 std::numeric_limits<int32_t>::max());
     new_order_scan_callback new_order_c;
     {
-      TryCatch(tbl_new_order(warehouse_id)
-                    ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                           &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
-                           s_arena.get()));
+      rc = tbl_new_order(warehouse_id)
+               ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
+                      &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
+                      s_arena.get());
+      // TryCatch
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
+      }
     }
 
     const new_order::key *k_no = new_order_c.get_key();
@@ -1447,9 +1555,15 @@ rc_t tpcc_cs_worker::txn_delivery() {
     oorder::value v_oo_temp;
     ermia::varstr valptr;
 
-    rc_t rc = rc_t{RC_INVALID};
     tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
-    TryCatchCondAbort(rc);
+    // TryCatchCondAbort
+    if (rc.IsAbort() or rc._val == RC_FALSE) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
 
     const oorder::value *v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
@@ -1463,9 +1577,18 @@ rc_t tpcc_cs_worker::txn_delivery() {
                                  std::numeric_limits<int32_t>::max());
 
     // XXX(stephentu): mutable scans would help here
-    TryCatch(tbl_order_line(warehouse_id)
-                  ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
-                         &Encode(str(Size(k_oo_1)), k_oo_1), c, s_arena.get()));
+    rc = tbl_order_line(warehouse_id)
+             ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
+                    &Encode(str(Size(k_oo_1)), k_oo_1), c, s_arena.get());
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
+
     float sum = 0.0;
     for (size_t i = 0; i < c.size(); i++) {
       order_line::value v_ol_temp;
@@ -1481,21 +1604,45 @@ rc_t tpcc_cs_worker::txn_delivery() {
       order_line::value v_ol_new(*v_ol);
       v_ol_new.ol_delivery_d = ts;
       ASSERT(s_arena.get()->manages(c.values[i].first));
-      TryCatch(tbl_order_line(warehouse_id)
-                    ->UpdateRecord(txn, *c.values[i].first,
-                          Encode(str(Size(v_ol_new)), v_ol_new)));
+      rc = tbl_order_line(warehouse_id)
+               ->UpdateRecord(txn, *c.values[i].first,
+                              Encode(str(Size(v_ol_new)), v_ol_new));
+      // TryCatch
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
+      }
     }
 
     // delete new order
-    TryCatch(tbl_new_order(warehouse_id)
-                  ->RemoveRecord(txn, Encode(str(Size(*k_no)), *k_no)));
+    rc = tbl_new_order(warehouse_id)
+             ->RemoveRecord(txn, Encode(str(Size(*k_no)), *k_no));
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
 
     // update oorder
     oorder::value v_oo_new(*v_oo);
     v_oo_new.o_carrier_id = o_carrier_id;
-    TryCatch(tbl_oorder(warehouse_id)
-                  ->UpdateRecord(txn, Encode(str(Size(k_oo)), k_oo),
-                        Encode(str(Size(v_oo_new)), v_oo_new)));
+    rc =tbl_oorder(warehouse_id)
+            ->UpdateRecord(txn, Encode(str(Size(k_oo)), k_oo),
+                           Encode(str(Size(v_oo_new)), v_oo_new));
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
 
     const uint c_id = v_oo->o_c_id;
     const float ol_total = sum;
@@ -1506,17 +1653,42 @@ rc_t tpcc_cs_worker::txn_delivery() {
 
     rc = rc_t{RC_INVALID};
     tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
-    TryVerifyRelaxed(rc);
+    // TryVerifyRelaxed
+    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+      << "Wrong return value " << rc._val;
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
 
     const customer::value *v_c = Decode(valptr, v_c_temp);
     customer::value v_c_new(*v_c);
     v_c_new.c_balance += ol_total;
-    TryCatch(tbl_customer(warehouse_id)
-                  ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                        Encode(str(Size(v_c_new)), v_c_new)));
+    rc = tbl_customer(warehouse_id)
+             ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
+                            Encode(str(Size(v_c_new)), v_c_new));
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
   }
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
 class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1547,7 +1719,7 @@ class credit_check_order_line_scan_callback
   std::vector<const ermia::varstr *> _v_ol;
 };
 
-rc_t tpcc_cs_worker::txn_credit_check() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
   /*
           Note: Cahill's credit check transaction to introduce SI's anomaly.
 
@@ -1602,7 +1774,16 @@ rc_t tpcc_cs_worker::txn_credit_check() {
 
   rc_t rc = rc_t{RC_INVALID};
   tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
-  TryVerifyRelaxed(rc);
+  // TryVerifyRelaxed
+  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+    << "Wrong return value " << rc._val; 
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
@@ -1617,10 +1798,18 @@ rc_t tpcc_cs_worker::txn_credit_check() {
   const new_order::key k_no_0(warehouse_id, districtID, 0);
   const new_order::key k_no_1(warehouse_id, districtID,
                               std::numeric_limits<int32_t>::max());
-  TryCatch(tbl_new_order(warehouse_id)
-                ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                       &Encode(str(Size(k_no_1)), k_no_1), c_no,
-                       s_arena.get()));
+  rc = tbl_new_order(warehouse_id)
+           ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
+                  &Encode(str(Size(k_no_1)), k_no_1), c_no,
+                  s_arena.get());
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
   ALWAYS_ASSERT(c_no.output.size());
 
   double sum = 0;
@@ -1632,7 +1821,16 @@ rc_t tpcc_cs_worker::txn_credit_check() {
     oorder::value v;
     rc = rc_t{RC_INVALID};
     tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
-    TryCatchCond(rc, continue);
+    // TryCatchCond
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
+    if (rc._val == RC_FALSE)
+      continue;
     // Order line scan
     //		ol_d_id = :d_id
     //		ol_w_id = :w_id
@@ -1642,10 +1840,18 @@ rc_t tpcc_cs_worker::txn_credit_check() {
     c_ol._v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
-    TryCatch(tbl_order_line(warehouse_id)
-                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                         &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
-                         s_arena.get()));
+    rc = tbl_order_line(warehouse_id)
+             ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
+                    &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
+                    s_arena.get());
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
     ALWAYS_ASSERT(c_ol._v_ol.size());
 
     for (auto &v_ol : c_ol._v_ol) {
@@ -1663,15 +1869,31 @@ rc_t tpcc_cs_worker::txn_credit_check() {
     v_c_new.c_credit.assign("BC");
   else
     v_c_new.c_credit.assign("GC");
-  TryCatch(tbl_customer(customerWarehouseID)
-                ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                      Encode(str(Size(v_c_new)), v_c_new)));
+  rc = tbl_customer(customerWarehouseID)
+           ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
+                          Encode(str(Size(v_c_new)), v_c_new));
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
-rc_t tpcc_cs_worker::txn_payment() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment() {
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
@@ -1705,7 +1927,16 @@ rc_t tpcc_cs_worker::txn_payment() {
 
   rc_t rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
-  TryVerifyRelaxed(rc);
+  // TryVerifyRelaxed
+  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+    << "Wrong return value " << rc._val; 
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
@@ -1714,16 +1945,33 @@ rc_t tpcc_cs_worker::txn_payment() {
 
   warehouse::value v_w_new(*v_w);
   v_w_new.w_ytd += paymentAmount;
-  TryCatch(tbl_warehouse(warehouse_id)
-                ->UpdateRecord(txn, Encode(str(Size(k_w)), k_w),
-                      Encode(str(Size(v_w_new)), v_w_new)));
+  rc = tbl_warehouse(warehouse_id)
+           ->UpdateRecord(txn, Encode(str(Size(k_w)), k_w),
+                          Encode(str(Size(v_w_new)), v_w_new));
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
 
   rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
-  TryVerifyRelaxed(rc);
+  // TryVerifyRelaxed
+  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+    << "Wrong return value " << rc._val; 
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -1732,9 +1980,17 @@ rc_t tpcc_cs_worker::txn_payment() {
 
   district::value v_d_new(*v_d);
   v_d_new.d_ytd += paymentAmount;
-  TryCatch(tbl_district(warehouse_id)
-                ->UpdateRecord(txn, Encode(str(Size(k_d)), k_d),
-                      Encode(str(Size(v_d_new)), v_d_new)));
+  rc = tbl_district(warehouse_id)
+           ->UpdateRecord(txn, Encode(str(Size(k_d)), k_d),
+                          Encode(str(Size(v_d_new)), v_d_new));
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   customer::key k_c;
   customer::value v_c;
@@ -1762,10 +2018,19 @@ rc_t tpcc_cs_worker::txn_payment() {
 
     static_limit_callback<NMaxCustomerIdxScanElems> c(
         s_arena.get(), true);  // probably a safe bet for now
-    TryCatch(tbl_customer_name_idx(customerWarehouseID)
-                  ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                         s_arena.get()));
+    rc = tbl_customer_name_idx(customerWarehouseID)
+             ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                    &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
+                    s_arena.get());
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
+
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -1783,7 +2048,16 @@ rc_t tpcc_cs_worker::txn_payment() {
     k_c.c_id = customerID;
     rc = rc_t{RC_INVALID};
     tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
-    TryVerifyRelaxed(rc);
+    // TryVerifyRelaxed
+    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+      << "Wrong return value " << rc._val; 
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
     Decode(valptr, v_c);
   }
 #ifndef NDEBUG
@@ -1804,9 +2078,17 @@ rc_t tpcc_cs_worker::txn_payment() {
     memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
   }
 
-  TryCatch(tbl_customer(customerWarehouseID)
-                ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                      Encode(str(Size(v_c_new)), v_c_new)));
+  rc = tbl_customer(customerWarehouseID)
+           ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
+                          Encode(str(Size(v_c_new)), v_c_new));
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
                          warehouse_id, ts);
@@ -1818,12 +2100,28 @@ rc_t tpcc_cs_worker::txn_payment() {
   v_h.h_data.resize_junk(
       std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
 
-  TryCatch(tbl_history(warehouse_id)
-                ->InsertRecord(txn, Encode(str(Size(k_h)), k_h),
-                         Encode(str(Size(v_h)), v_h)));
+  rc = tbl_history(warehouse_id)
+           ->InsertRecord(txn, Encode(str(Size(k_h)), k_h),
+                          Encode(str(Size(v_h)), v_h));
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
 class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
@@ -1870,7 +2168,7 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
   ermia::varstr *k;
 };
 
-rc_t tpcc_cs_worker::txn_order_status() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
@@ -1891,6 +2189,7 @@ rc_t tpcc_cs_worker::txn_order_status() {
   customer::key k_c;
   customer::value v_c;
   ermia::varstr valptr;
+  rc_t rc = rc_t{RC_INVALID};
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -1915,10 +2214,18 @@ rc_t tpcc_cs_worker::txn_order_status() {
 
     static_limit_callback<NMaxCustomerIdxScanElems> c(
         s_arena.get(), true);  // probably a safe bet for now
-    TryCatch(tbl_customer_name_idx(warehouse_id)
-                  ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                         s_arena.get()));
+    rc = tbl_customer_name_idx(warehouse_id)
+             ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                    &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
+                    s_arena.get());
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -1937,8 +2244,16 @@ rc_t tpcc_cs_worker::txn_order_status() {
 
     rc_t rc = rc_t{RC_INVALID};
     tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
-    TryVerifyRelaxed(rc);
-
+    // TryVerifyRelaxed
+    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+      << "Wrong return value " << rc._val; 
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
     Decode(valptr, v_c);
   }
 #ifndef NDEBUG
@@ -1963,19 +2278,35 @@ rc_t tpcc_cs_worker::txn_order_status() {
     const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id,
                                           std::numeric_limits<int32_t>::max());
     {
-      TryCatch(tbl_oorder_c_id_idx(warehouse_id)
-                    ->Scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
-                           &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
-                           s_arena.get()));
+      rc = tbl_oorder_c_id_idx(warehouse_id)
+               ->Scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
+                      &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
+                      s_arena.get());
+      // TryCatch
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
+      }
     }
     ALWAYS_ASSERT(c_oorder.size());
   } else {
     latest_key_callback c_oorder(*newest_o_c_id, 1);
     const oorder_c_id_idx::key k_oo_idx_hi(warehouse_id, districtID, k_c.c_id,
                                            std::numeric_limits<int32_t>::max());
-    TryCatch(tbl_oorder_c_id_idx(warehouse_id)
-                  ->ReverseScan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
-                                nullptr, c_oorder, s_arena.get()));
+    rc = tbl_oorder_c_id_idx(warehouse_id)
+             ->ReverseScan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
+                           nullptr, c_oorder, s_arena.get());
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
     ALWAYS_ASSERT(c_oorder.size() == 1);
   }
 
@@ -1987,14 +2318,30 @@ rc_t tpcc_cs_worker::txn_order_status() {
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
-  TryCatch(tbl_order_line(warehouse_id)
-                ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                       &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line,
-                       s_arena.get()));
+  rc = tbl_order_line(warehouse_id)
+           ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
+                  &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line,
+                  s_arena.get());
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
   ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
 class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
@@ -2021,7 +2368,7 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
   std::unordered_map<uint, bool> s_i_ids;
 };
 
-rc_t tpcc_cs_worker::txn_stock_level() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level() {
   const uint warehouse_id = pick_wh(r);
   const uint threshold = RandomNumber(r, 10, 20);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -2047,7 +2394,16 @@ rc_t tpcc_cs_worker::txn_stock_level() {
 
   rc_t rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
-  TryVerifyRelaxed(rc);
+  // TryVerifyRelaxed
+  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+    << "Wrong return value " << rc._val; 
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -2066,9 +2422,17 @@ rc_t tpcc_cs_worker::txn_stock_level() {
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
   {
-    TryCatch(tbl_order_line(warehouse_id)
-                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                         &Encode(str(Size(k_ol_1)), k_ol_1), c, s_arena.get()));
+    rc = tbl_order_line(warehouse_id)
+             ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
+                    &Encode(str(Size(k_ol_1)), k_ol_1), c, s_arena.get());
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
   }
   {
     std::unordered_map<uint, bool> s_i_ids_distinct;
@@ -2079,8 +2443,16 @@ rc_t tpcc_cs_worker::txn_stock_level() {
 
       rc = rc_t{RC_INVALID};
       tbl_stock(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
-      TryVerifyRelaxed(rc);
-
+      // TryVerifyRelaxed
+      LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+        << "Wrong return value " << rc._val; 
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
+      }
       const uint8_t *ptr = (const uint8_t *)valptr.data();
       int16_t i16tmp;
       ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
@@ -2088,11 +2460,19 @@ rc_t tpcc_cs_worker::txn_stock_level() {
     }
     // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
   }
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
-rc_t tpcc_cs_worker::txn_query2() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2() {
   ermia::transaction *txn =
       db->NewTransaction(ermia::transaction::TXN_FLAG_READ_MOSTLY, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
@@ -2101,18 +2481,36 @@ rc_t tpcc_cs_worker::txn_query2() {
   r_scanner.clear();
   const region::key k_r_0(0);
   const region::key k_r_1(5);
-  TryCatch(tbl_region(1)->Scan(txn, Encode(str(sizeof(k_r_0)), k_r_0),
-                                &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner,
-                                s_arena.get()));
+  rc_t rc = rc_t{RC_INVALID};
+  rc = tbl_region(1)->Scan(txn, Encode(str(sizeof(k_r_0)), k_r_0),
+                           &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner,
+                           s_arena.get());
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
   ALWAYS_ASSERT(r_scanner.output.size() == 5);
 
   static thread_local tpcc_table_scanner n_scanner(arena);
   n_scanner.clear();
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
-  TryCatch(tbl_nation(1)->Scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
-                                &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
-                                s_arena.get()));
+  rc = tbl_nation(1)->Scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
+                           &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
+                           s_arena.get());
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+
   ALWAYS_ASSERT(n_scanner.output.size() == 62);
 
   // Pick a target region
@@ -2148,8 +2546,16 @@ rc_t tpcc_cs_worker::txn_query2() {
 
         rc_t rc = rc_t{RC_INVALID};
         tbl_supplier(1)->GetRecord(txn, rc, Encode(str(Size(k_su)), k_su), valptr);
-        TryVerifyRelaxed(rc);
-
+        // TryVerifyRelaxed
+        LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+          << "Wrong return value " << rc._val; 
+        if (rc.IsAbort()) {
+          db->Abort(txn);
+          if (rc.IsAbort())
+            co_return rc;
+          else
+            co_return {RC_ABORT_USER};
+        }
         const supplier::value *v_su = Decode(valptr, v_su_tmp);
 
         // Filtering suppliers
@@ -2169,7 +2575,16 @@ rc_t tpcc_cs_worker::txn_query2() {
           stock::value v_s_tmp(0, 0, 0, 0);
           rc = rc_t{RC_INVALID};
           tbl_stock(it.first)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
-          TryVerifyRelaxed(rc);
+          // TryVerifyRelaxed
+          LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+            << "Wrong return value " << rc._val; 
+          if (rc.IsAbort()) {
+            db->Abort(txn);
+            if (rc.IsAbort())
+              co_return rc;
+            else
+              co_return {RC_ABORT_USER};
+          }
           const stock::value *v_s = Decode(valptr, v_s_tmp);
 
           ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
@@ -2188,7 +2603,16 @@ rc_t tpcc_cs_worker::txn_query2() {
         item::value v_i_temp;
         rc = rc_t{RC_INVALID};
         tbl_item(1)->GetRecord(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
-        TryVerifyRelaxed(rc);
+        // TryVerifyRelaxed
+        LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+          << "Wrong return value " << rc._val; 
+        if (rc.IsAbort()) {
+          db->Abort(txn);
+          if (rc.IsAbort())
+            co_return rc;
+          else
+            co_return {RC_ABORT_USER};
+        }
         const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
         checker::SanityCheckItem(&k_i, v_i);
@@ -2209,9 +2633,17 @@ rc_t tpcc_cs_worker::txn_query2() {
 #ifndef NDEBUG
           checker::SanityCheckStock(&min_k_s);
 #endif
-          TryCatch(tbl_stock(min_k_s.s_w_id)
-                        ->UpdateRecord(txn, Encode(str(Size(min_k_s)), min_k_s),
-                              Encode(str(Size(new_v_s)), new_v_s)));
+          rc = tbl_stock(min_k_s.s_w_id)
+                   ->UpdateRecord(txn, Encode(str(Size(min_k_s)), min_k_s),
+                                  Encode(str(Size(new_v_s)), new_v_s));
+          // TryCatch
+          if (rc.IsAbort()) {
+            db->Abort(txn);
+            if (rc.IsAbort())
+              co_return rc;
+            else
+              co_return {RC_ABORT_USER};
+          }
         }
 
         // TODO. sorting by n_name, su_name, i_id
@@ -2227,11 +2659,19 @@ rc_t tpcc_cs_worker::txn_query2() {
     }
   }
 
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
-rc_t tpcc_cs_worker::txn_microbench_random() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random() {
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
   uint start_w = 0, start_s = 0;
@@ -2240,15 +2680,23 @@ rc_t tpcc_cs_worker::txn_microbench_random() {
   // pick start row, if it's not enough, later wrap to the first row
   uint w = start_w = RandomNumber(r, 1, NumWarehouses());
   uint s = start_s = RandomNumber(r, 1, NumItems());
-
+  
   // read rows
   ermia::varstr sv;
+  rc_t rc = rc_t{RC_INVALID};
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
     DLOG(INFO) << "rd " << w << " " << s;
     rc_t rc = rc_t{RC_INVALID};
     tbl_stock(w)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), sv);
-    TryCatch(rc);
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
 
     if (++s > NumItems()) {
       s = 1;
@@ -2291,8 +2739,16 @@ rc_t tpcc_cs_worker::txn_microbench_random() {
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
-    TryCatch(tbl_stock(ww)->UpdateRecord(txn, Encode(str(Size(k_s)), k_s),
-                                 Encode(str(Size(v)), v)));
+    rc = tbl_stock(ww)->UpdateRecord(txn, Encode(str(Size(k_s)), k_s),
+                                     Encode(str(Size(v)), v));
+    // TryCatch
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
   }
 
   DLOG(INFO) << "micro-random finished";
@@ -2300,8 +2756,16 @@ rc_t tpcc_cs_worker::txn_microbench_random() {
   abort();
 #endif
 
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
+  rc = db->Commit(txn);
+  // TryCatch
+  if (rc.IsAbort()) {
+    db->Abort(txn);
+    if (rc.IsAbort())
+      co_return rc;
+    else
+      co_return {RC_ABORT_USER};
+  }
+  co_return {RC_TRUE};
 }
 
 class tpcc_cs_bench_runner : public bench_runner {
