@@ -335,56 +335,57 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
         home_warehouse_id(home_warehouse_id) {
     ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
     memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+    transactions = (ermia::transaction*)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
   }
 
   // XXX(stephentu): tune this
   static const size_t NMaxCustomerIdxScanElems = 512;
 
-  ermia::dia::generator<rc_t> txn_new_order();
+  ermia::dia::generator<rc_t> txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch);
 
   static CoroTxnHandle TxnNewOrder(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_new_order().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_new_order(idx, begin_epoch).get_handle();
   }
 
-  ermia::dia::generator<rc_t> txn_delivery();
+  ermia::dia::generator<rc_t> txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch);
 
   static CoroTxnHandle TxnDelivery(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_delivery().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_delivery(idx, begin_epoch).get_handle();
   }
 
-  ermia::dia::generator<rc_t> txn_credit_check();
+  ermia::dia::generator<rc_t> txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch);
   static CoroTxnHandle TxnCreditCheck(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check(idx, begin_epoch).get_handle();
   }
 
-  ermia::dia::generator<rc_t> txn_payment();
+  ermia::dia::generator<rc_t> txn_payment(uint32_t idx, ermia::epoch_num begin_epoch);
 
   static CoroTxnHandle TxnPayment(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_payment().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_payment(idx, begin_epoch).get_handle();
   }
 
-  ermia::dia::generator<rc_t> txn_order_status();
+  ermia::dia::generator<rc_t> txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch);
 
   static CoroTxnHandle TxnOrderStatus(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_order_status().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_order_status(idx, begin_epoch).get_handle();
   }
 
-  ermia::dia::generator<rc_t> txn_stock_level();
+  ermia::dia::generator<rc_t> txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch);
 
   static CoroTxnHandle TxnStockLevel(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level(idx, begin_epoch).get_handle();
   }
 
-  ermia::dia::generator<rc_t> txn_query2();
+  ermia::dia::generator<rc_t> txn_query2(uint32_t idx, ermia::epoch_num begin_epoch);
 
   static CoroTxnHandle TxnQuery2(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_query2().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_query2(idx, begin_epoch).get_handle();
   }
 
-  ermia::dia::generator<rc_t> txn_microbench_random();
+  ermia::dia::generator<rc_t> txn_microbench_random(uint32_t idx, ermia::epoch_num begin_epoch);
 
   static CoroTxnHandle TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random().get_handle();
+    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx, begin_epoch).get_handle();
   }
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
@@ -448,8 +449,8 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
     barrier_b->wait_for();
     util::timer t;
     while (running) {
-      //ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-      //arena->reset();
+      ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+      arena->reset();
 
       for(uint32_t i = 0; i < batch_size; i++) {
         uint32_t workload_idx = fetch_workload();
@@ -459,6 +460,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
 
       uint32_t todo_size = batch_size;
       while (todo_size) {
+        ermia::dia::query_scheduler.run();
         for(uint32_t i = 0; i < batch_size; i++) {
           if (handles[i]) {
             if (handles[i].done()) {
@@ -476,7 +478,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
       const unsigned long old_seed = r.get_seed();
       r.set_seed(old_seed);
       // TODO: epoch exit correctly
-      //ermia::MM::epoch_exit(0, begin_epoch);
+      ermia::MM::epoch_exit(0, begin_epoch);
     }
   }
 
@@ -513,6 +515,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_cs_worker_mixin {
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
+  ermia::transaction *transactions;
 };
 
 std::vector<uint> tpcc_cs_worker::hot_whs;
@@ -766,7 +769,7 @@ class tpcc_stock_loader : public bench_loader, public tpcc_cs_worker_mixin {
       const size_t batchsize = 10;
       for (size_t i = 0; i < NumItems();) {
         size_t iend = std::min(i + batchsize, NumItems());
-        ermia::scoped_str_arena s_arena(*arena);
+        ermia::scoped_str_arena s_arena(arena);
         for (uint j = i + 1; j <= iend; j++) {
           arena->reset();
           ermia::transaction *const txn = db->NewTransaction(0, *arena, txn_buf());
@@ -1177,7 +1180,13 @@ class tpcc_order_loader : public bench_loader, public tpcc_cs_worker_mixin {
   ssize_t warehouse_id;
 };
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch) {
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
+
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
@@ -1222,13 +1231,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order() {
   //   max_read_set_size : 15
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(*arena);
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
   ermia::varstr valptr;
 
-  rc_t rc = rc_t{RC_INVALID};
   tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
   // TryVerifyRelaxed
   LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
@@ -1530,7 +1536,13 @@ class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
   bool ignore_key;
 };
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch) {
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
+
   const uint warehouse_id = pick_wh(r);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
@@ -1553,9 +1565,6 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery() {
   //   max_read_set_size : 133
   //   max_write_set_size : 133
   //   num_txn_contexts : 4
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
-  rc_t rc = rc_t{RC_INVALID};
   for (uint d = 1; d <= NumDistrictsPerWarehouse(); d++) {
     const new_order::key k_no_0(warehouse_id, d, last_no_o_ids[d - 1]);
     const new_order::key k_no_1(warehouse_id, d,
@@ -1565,7 +1574,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery() {
       rc = tbl_new_order(warehouse_id)
                ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
                       &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
-                      s_arena.get());
+                      arena);
       // TryCatch
       if (rc.IsAbort()) {
         db->Abort(txn);
@@ -1602,8 +1611,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery() {
     checker::SanityCheckOOrder(&k_oo, v_oo);
 #endif
 
-    static_limit_callback<15> c(
-        s_arena.get(), false);  // never more than 15 order_lines per order
+    static_limit_callback<15> c(arena, false);  // never more than 15 order_lines per order
     const order_line::key k_oo_0(warehouse_id, d, k_no->no_o_id, 0);
     const order_line::key k_oo_1(warehouse_id, d, k_no->no_o_id,
                                  std::numeric_limits<int32_t>::max());
@@ -1611,7 +1619,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery() {
     // XXX(stephentu): mutable scans would help here
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
-                    &Encode(str(Size(k_oo_1)), k_oo_1), c, s_arena.get());
+                    &Encode(str(Size(k_oo_1)), k_oo_1), c, arena);
     // TryCatch
     if (rc.IsAbort()) {
       db->Abort(txn);
@@ -1635,7 +1643,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery() {
       sum += v_ol->ol_amount;
       order_line::value v_ol_new(*v_ol);
       v_ol_new.ol_delivery_d = ts;
-      ASSERT(s_arena.get()->manages(c.values[i].first));
+      ASSERT(arena->manages(c.values[i].first));
       rc = tbl_order_line(warehouse_id)
                ->UpdateRecord(txn, *c.values[i].first,
                               Encode(str(Size(v_ol_new)), v_ol_new));
@@ -1751,7 +1759,7 @@ class credit_check_order_line_scan_callback
   std::vector<const ermia::varstr *> _v_ol;
 };
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch) {
   /*
           Note: Cahill's credit check transaction to introduce SI's anomaly.
 
@@ -1776,6 +1784,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
           SQL UPDATE Customer SET c_credit = :c_credit
           WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
   */
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
 
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -1792,9 +1805,6 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
   }
   ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
 
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
-
   // select * from customer with random C_ID
   customer::key k_c;
   customer::value v_c_temp;
@@ -1804,7 +1814,6 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
   k_c.c_d_id = customerDistrictID;
   k_c.c_id = customerID;
 
-  rc_t rc = rc_t{RC_INVALID};
   tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
   // TryVerifyRelaxed
   LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
@@ -1826,14 +1835,13 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
   //		c_w_id = :w_id;
   //		c_d_id = :d_id;
   //		c_id = :c_id;
-  credit_check_order_scan_callback c_no(s_arena.get());
+  credit_check_order_scan_callback c_no(arena);
   const new_order::key k_no_0(warehouse_id, districtID, 0);
   const new_order::key k_no_1(warehouse_id, districtID,
                               std::numeric_limits<int32_t>::max());
   rc = tbl_new_order(warehouse_id)
            ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                  &Encode(str(Size(k_no_1)), k_no_1), c_no,
-                  s_arena.get());
+                  &Encode(str(Size(k_no_1)), k_no_1), c_no, arena);
   // TryCatch
   if (rc.IsAbort()) {
     db->Abort(txn);
@@ -1874,8 +1882,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                    &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
-                    s_arena.get());
+                    &Encode(str(Size(k_ol_1)), k_ol_1), c_ol, arena);
     // TryCatch
     if (rc.IsAbort()) {
       db->Abort(txn);
@@ -1925,7 +1932,13 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check() {
   co_return {RC_TRUE};
 }
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epoch_num begin_epoch) {
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
+
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
@@ -1950,14 +1963,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment() {
   //   max_read_set_size : 71
   //   max_write_set_size : 1
   //   num_txn_contexts : 5
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
-
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
   ermia::varstr valptr;
 
-  rc_t rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
   // TryVerifyRelaxed
   LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
@@ -2048,12 +2057,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment() {
     k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
     k_c_idx_1.c_first.assign(ones);
 
-    static_limit_callback<NMaxCustomerIdxScanElems> c(
-        s_arena.get(), true);  // probably a safe bet for now
+    static_limit_callback<NMaxCustomerIdxScanElems> c(arena, true);  // probably a safe bet for now
     rc = tbl_customer_name_idx(customerWarehouseID)
              ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                    &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                    s_arena.get());
+                    &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, arena);
     // TryCatch
     if (rc.IsAbort()) {
       db->Abort(txn);
@@ -2200,7 +2207,17 @@ class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
   ermia::varstr *k;
 };
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch) {
+  const uint64_t read_only_mask =
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
+  // NB: since txn_order_status() is a RO txn, we assume that
+  // locking is un-necessary (since we can just read from some old snapshot)
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH | read_only_mask, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
+
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
@@ -2211,17 +2228,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
   //   max_read_set_size : 81
   //   max_write_set_size : 0
   //   num_txn_contexts : 4
-  const uint64_t read_only_mask =
-      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
-  ermia::transaction *txn = db->NewTransaction(read_only_mask, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
-  // NB: since txn_order_status() is a RO txn, we assume that
-  // locking is un-necessary (since we can just read from some old snapshot)
-
   customer::key k_c;
   customer::value v_c;
   ermia::varstr valptr;
-  rc_t rc = rc_t{RC_INVALID};
   if (RandomNumber(r, 1, 100) <= 60) {
     // cust by name
     uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
@@ -2244,12 +2253,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
     k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
     k_c_idx_1.c_first.assign(ones);
 
-    static_limit_callback<NMaxCustomerIdxScanElems> c(
-        s_arena.get(), true);  // probably a safe bet for now
+    static_limit_callback<NMaxCustomerIdxScanElems> c(arena, true);  // probably a safe bet for now
     rc = tbl_customer_name_idx(warehouse_id)
              ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                    &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                    s_arena.get());
+                    &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c, arena);
     // TryCatch
     if (rc.IsAbort()) {
       db->Abort(txn);
@@ -2293,7 +2300,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
 #endif
 
   oorder_c_id_idx::value sv;
-  ermia::varstr *newest_o_c_id = s_arena.get()->next(Size(sv));
+  ermia::varstr *newest_o_c_id = arena->next(Size(sv));
   if (g_order_status_scan_hack) {
     // XXX(stephentu): HACK- we bound the # of elems returned by this scan to
     // 15- this is because we don't have reverse scans. In an ideal system, a
@@ -2312,8 +2319,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
     {
       rc = tbl_oorder_c_id_idx(warehouse_id)
                ->Scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
-                      &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
-                      s_arena.get());
+                      &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder, arena);
       // TryCatch
       if (rc.IsAbort()) {
         db->Abort(txn);
@@ -2330,7 +2336,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
                                            std::numeric_limits<int32_t>::max());
     rc = tbl_oorder_c_id_idx(warehouse_id)
              ->ReverseScan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
-                           nullptr, c_oorder, s_arena.get());
+                           nullptr, c_oorder, arena);
     // TryCatch
     if (rc.IsAbort()) {
       db->Abort(txn);
@@ -2352,8 +2358,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status() {
                                std::numeric_limits<int32_t>::max());
   rc = tbl_order_line(warehouse_id)
            ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                  &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line,
-                  s_arena.get());
+                  &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line, arena);
   // TryCatch
   if (rc.IsAbort()) {
     db->Abort(txn);
@@ -2400,7 +2405,17 @@ class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
   std::unordered_map<uint, bool> s_i_ids;
 };
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level() {
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch) {
+  const uint64_t read_only_mask =
+      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
+  // NB: since txn_stock_level() is a RO txn, we assume that
+  // locking is un-necessary (since we can just read from some old snapshot)
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH | read_only_mask, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
+
   const uint warehouse_id = pick_wh(r);
   const uint threshold = RandomNumber(r, 10, 20);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -2414,17 +2429,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level() {
   //   n_node_scan_large_instances : 1
   //   n_read_set_large_instances : 2
   //   num_txn_contexts : 3
-  const uint64_t read_only_mask =
-      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
-  ermia::transaction *txn = db->NewTransaction(read_only_mask, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
-  // NB: since txn_stock_level() is a RO txn, we assume that
-  // locking is un-necessary (since we can just read from some old snapshot)
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
   ermia::varstr valptr;
 
-  rc_t rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
   // TryVerifyRelaxed
   LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
@@ -2456,7 +2464,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level() {
   {
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                    &Encode(str(Size(k_ol_1)), k_ol_1), c, s_arena.get());
+                    &Encode(str(Size(k_ol_1)), k_ol_1), c, arena);
     // TryCatch
     if (rc.IsAbort()) {
       db->Abort(txn);
@@ -2504,19 +2512,19 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level() {
   co_return {RC_TRUE};
 }
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2() {
-  ermia::transaction *txn =
-      db->NewTransaction(ermia::transaction::TXN_FLAG_READ_MOSTLY, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoch_num begin_epoch) {
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_MOSTLY, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
 
   static thread_local tpcc_table_scanner r_scanner(arena);
   r_scanner.clear();
   const region::key k_r_0(0);
   const region::key k_r_1(5);
-  rc_t rc = rc_t{RC_INVALID};
   rc = tbl_region(1)->Scan(txn, Encode(str(sizeof(k_r_0)), k_r_0),
-                           &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner,
-                           s_arena.get());
+                           &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner, arena);
   // TryCatch
   if (rc.IsAbort()) {
     db->Abort(txn);
@@ -2532,8 +2540,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2() {
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
   rc = tbl_nation(1)->Scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
-                           &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
-                           s_arena.get());
+                           &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner, arena);
   // TryCatch
   if (rc.IsAbort()) {
     db->Abort(txn);
@@ -2703,9 +2710,13 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2() {
   co_return {RC_TRUE};
 }
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random() {
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, ermia::epoch_num begin_epoch) {
+  ermia::transaction *txn = &transactions[idx];
+  new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, *arena);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
+
   uint start_w = 0, start_s = 0;
   ASSERT(NumWarehouses() * NumItems() >= g_microbench_rows);
 
@@ -2715,11 +2726,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random() {
   
   // read rows
   ermia::varstr sv;
-  rc_t rc = rc_t{RC_INVALID};
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
     DLOG(INFO) << "rd " << w << " " << s;
-    rc_t rc = rc_t{RC_INVALID};
     tbl_stock(w)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), sv);
     // TryCatch
     if (rc.IsAbort()) {
