@@ -177,15 +177,15 @@ class tpcc_cs_worker_mixin : private _dummy {
 #undef DEFN_TBL_INIT_X
 
  protected:
-#define DEFN_TBL_ACCESSOR_X(name)                                   \
- private:                                                           \
-  std::vector<ermia::OrderedIndex *> tbl_##name##_vec;                     \
-                                                                    \
- protected:                                                         \
-  ALWAYS_INLINE ermia::OrderedIndex *tbl_##name(unsigned int wid) { \
-    ASSERT(wid >= 1 && wid <= NumWarehouses());                     \
-    ASSERT(tbl_##name##_vec.size() == NumWarehouses());             \
-    return tbl_##name##_vec[wid - 1];                               \
+#define DEFN_TBL_ACCESSOR_X(name)                                              \
+ private:                                                                      \
+  std::vector<ermia::OrderedIndex *> tbl_##name##_vec;                         \
+                                                                               \
+ protected:                                                                    \
+  ALWAYS_INLINE ermia::ConcurrentMasstreeIndex *tbl_##name(unsigned int wid) { \
+    ASSERT(wid >= 1 && wid <= NumWarehouses());                                \
+    ASSERT(tbl_##name##_vec.size() == NumWarehouses());                        \
+    return (ermia::ConcurrentMasstreeIndex *)tbl_##name##_vec[wid - 1];        \
   }
 
   TPCC_TABLE_LIST(DEFN_TBL_ACCESSOR_X)
@@ -1235,6 +1235,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   customer::value v_c_temp;
   ermia::varstr valptr;
 
+  rc = rc_t{RC_INVALID};
   tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
   // TryVerifyRelaxed
   LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
@@ -1372,8 +1373,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
 
-    rc = rc_t{RC_INVALID};
-    tbl_item(1)->GetRecord(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
+    rc = co_await tbl_item(1)->coro_GetRecord(txn, Encode(str(Size(k_i)), k_i), valptr);
     // TryVerifyRelaxed
     LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
       << "Wrong return value " << rc._val;
