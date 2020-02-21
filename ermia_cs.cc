@@ -189,7 +189,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction 
 // start: find_unlocked
   int match;
   key_indexed_position kx;
-  ConcurrentMasstree::node_base_type* root = const_cast<ConcurrentMasstree::node_base_type*>(lp.root_);
+  ConcurrentMasstree::node_base_type *root = const_cast<ConcurrentMasstree::node_base_type *>(lp.root_);
 
 retry:
 // start: reach_leaf
@@ -197,9 +197,12 @@ retry:
   ConcurrentMasstree::nodeversion_type v[2];
   bool sense;
 
+// Get a non-stale root.
+// Detect staleness by checking whether n has ever split.
+// The true root has never split.
 retry2:
   sense = false;
-  n[sense] = lp.root_;
+  n[sense] = root;
   while (1) {
     v[sense] = n[sense]->stable_annotated(ti.stable_fence());
     if (!v[sense].has_split()) break;
@@ -230,7 +233,7 @@ retry2:
   }
 
   lp.v_ = v[sense];
-  lp.n_ = const_cast<ConcurrentMasstree::leaf_type*>(static_cast<const ConcurrentMasstree::leaf_type*>(n[sense]));
+  lp.n_ = const_cast<ConcurrentMasstree::leaf_type *>(static_cast<const ConcurrentMasstree::leaf_type *>(n[sense]));
 // end: reach_leaf
 
 forward:
@@ -259,13 +262,12 @@ forward:
   }
 // end: find_unlocked
 
-  if (match) {
+  bool found = match;
+  if (found)
     oid = lp.value();
-  }
   sinfo = ConcurrentMasstree::versioned_node_t(lp.node(), lp.full_version_value());
 // end: masstree search
 
-  bool found = match;
   dbtuple *tuple = nullptr;
   if (found) {
 // start: oid_get_version
@@ -365,7 +367,7 @@ retry:
 
 retry2:
   sense = false;
-  n[sense] = lp.root_;
+  n[sense] = root;
   while (1) {
     v[sense] = n[sense]->stable_annotated(ti.stable_fence());
     if (!v[sense].has_split()) break;
