@@ -38,7 +38,11 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     }
 
     if (ycsb_workload.rmw_percent()) {
-      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+      if (g_read_txn_type == ReadTransactionType::Sequential) {
+        w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
+      } else {
+        LOG(FATAL) << "RMW txn type must be sequential";
+      }
     }
 
     return w;

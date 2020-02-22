@@ -316,6 +316,9 @@ start_over:
       }
       if (visible) {
         tuple = cur_obj->GetPinnedTuple();
+        break;
+      } else {
+        tuple = nullptr;
       }
       ptr = tentative_next;
       prev_obj = cur_obj;
