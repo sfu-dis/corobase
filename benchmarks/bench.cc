@@ -184,7 +184,7 @@ void bench_runner::run() {
         // loaders to the number of workers.
         if (loader && !loader->IsImpersonated() &&
             n_running < ermia::config::worker_threads &&
-            loader->TryImpersonate(n_running / ermia::thread::PerNodeThreadPool::max_threads_per_node)) {
+            loader->TryImpersonate()) {
           loader->Start();
           ++n_running;
         }

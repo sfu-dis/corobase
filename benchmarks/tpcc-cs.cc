@@ -1373,7 +1373,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
 
-    rc = co_await tbl_item(1)->coro_GetRecord(txn, Encode(str(Size(k_i)), k_i), valptr);
+    rc = rc_t{RC_INVALID};
+    tbl_item(1)->GetRecord(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
     // TryVerifyRelaxed
     LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
       << "Wrong return value " << rc._val;
@@ -2729,7 +2730,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, 
   for (uint i = 0; i < g_microbench_rows; i++) {
     const stock::key k_s(w, s);
     DLOG(INFO) << "rd " << w << " " << s;
-    tbl_stock(w)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), sv);
+    rc = co_await tbl_stock(w)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), sv);
     // TryCatch
     if (rc.IsAbort()) {
       db->Abort(txn);
@@ -2780,7 +2781,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, 
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
-    rc = tbl_stock(ww)->UpdateRecord(txn, Encode(str(Size(k_s)), k_s),
+    rc = co_await tbl_stock(ww)->coro_UpdateRecord(txn, Encode(str(Size(k_s)), k_s),
                                      Encode(str(Size(v)), v));
     // TryCatch
     if (rc.IsAbort()) {
