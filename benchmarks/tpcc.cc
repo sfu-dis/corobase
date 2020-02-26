@@ -2137,8 +2137,8 @@ rc_t tpcc_worker::txn_stock_level() {
 }
 
 rc_t tpcc_worker::txn_query2() {
-  ermia::transaction *txn =
-      db->NewTransaction(ermia::transaction::TXN_FLAG_READ_MOSTLY, *arena, txn_buf());
+  // FIXME(yongjunh): use TXN_FLAG_READ_MOSTLY for SSN
+  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
   static thread_local tpcc_table_scanner r_scanner(arena);
