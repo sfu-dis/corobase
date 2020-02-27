@@ -1749,14 +1749,18 @@ class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallbac
 class credit_check_order_line_scan_callback
     : public ermia::OrderedIndex::ScanCallback {
  public:
-  credit_check_order_line_scan_callback() {}
+  credit_check_order_line_scan_callback(ermia::str_arena *arena) : _arena(arena) {}
   virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
     MARK_REFERENCED(keyp);
     MARK_REFERENCED(keylen);
-    _v_ol.emplace_back(&value);
+    ermia::varstr *pv = _arena->next(0);  // header only
+    pv->p = value.p;
+    pv->l = value.l;
+    _v_ol.emplace_back(pv);
     return true;
   }
   std::vector<const ermia::varstr *> _v_ol;
+  ermia::str_arena *_arena;
 };
 
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch) {
@@ -1876,7 +1880,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    static thread_local credit_check_order_line_scan_callback c_ol;
+    static thread_local credit_check_order_line_scan_callback c_ol(arena);
     c_ol._v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
