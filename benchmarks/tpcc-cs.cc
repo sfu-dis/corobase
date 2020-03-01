@@ -635,7 +635,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     // but we're simply bailing out early
     oorder::value v_oo_temp;
     ermia::varstr valptr;
-
+    rc = rc_t{RC_INVALID};
     tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
     // TryCatchCondAbort
     if (rc.IsAbort() or rc._val == RC_FALSE) {
@@ -684,8 +684,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
       order_line::value v_ol_new(*v_ol);
       v_ol_new.ol_delivery_d = ts;
       ASSERT(arena->manages(c.values[i].first));
-      rc = tbl_order_line(warehouse_id)
-               ->UpdateRecord(txn, *c.values[i].first,
+      rc = co_await tbl_order_line(warehouse_id)
+               ->coro_UpdateRecord(txn, *c.values[i].first,
                               Encode(str(Size(v_ol_new)), v_ol_new));
       // TryCatch
       if (rc.IsAbort()) {
@@ -1525,8 +1525,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
       stock::value v_s;
       ASSERT(p.first >= 1 && p.first <= NumItems());
 
-      rc = rc_t{RC_INVALID};
-      tbl_stock(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
+      rc = co_await tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
       // TryVerifyRelaxed
       LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
         << "Wrong return value " << rc._val; 
@@ -1657,8 +1656,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
         {
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
-          rc = rc_t{RC_INVALID};
-          tbl_stock(it.first)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
+          rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
           // TryVerifyRelaxed
           LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
             << "Wrong return value " << rc._val; 
