@@ -96,11 +96,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       values.clear();
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
       for (uint i = 0; i < g_reps_per_tx; ++i) {
-        if (ermia::config::index_probe_only) {
-          values.push_back(&str(0));
-        } else {
-          values.push_back(&str(sizeof(ycsb_kv::value)));
-        }
+        values.push_back(&str(sizeof(ycsb_kv::value)));
       }
     }
 
@@ -121,9 +117,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
         ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(ycsb_kv::value));
       }
-    }
 
-    if (!ermia::config::index_probe_only) {
       TryCatch(db->Commit(txn));
     }
     return {RC_TRUE};
@@ -131,18 +125,35 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 
   // Multi-get using simple coroutine
   rc_t txn_read_simple_coro_multiget() {
-    arena->reset();
-    thread_local std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> handles(g_reps_per_tx);
+    ermia::transaction *txn = nullptr;
+    if (ermia::config::index_probe_only) {
+      arena->reset();
+    } else {
+      values.clear();
+      txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        values.push_back(&str(sizeof(ycsb_kv::value)));
+      }
+    }
+
     keys.clear();
-    values.clear();
-  
     for (uint i = 0; i < g_reps_per_tx; ++i) {
       auto &k = GenerateKey(nullptr);
       keys.emplace_back(&k);
     }
 
-    table_index->simple_coro_MultiGet(nullptr, keys, values, handles);
+    thread_local std::vector<std::experimental::coroutine_handle<>> handles(g_reps_per_tx);
+    table_index->simple_coro_MultiGet(txn, keys, values, handles);
 
+    if (!ermia::config::index_probe_only) {
+      ermia::varstr &v = str(sizeof(ycsb_kv::value));
+      for (uint i = 0; i< g_reps_per_tx; ++i) {
+        ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
+        memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(ycsb_kv::value));
+      }
+
+      TryCatch(db->Commit(txn));
+    }
     return {RC_TRUE};
   }
 
