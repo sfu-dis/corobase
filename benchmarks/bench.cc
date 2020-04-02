@@ -182,8 +182,12 @@ void bench_runner::run() {
         // run 10 threads on the first socket, we won't want the loader to be run
         // on a thread from socket 2. So limit the number of concurrently running
         // loaders to the number of workers.
+
+        // TODO(yongjunh): assgin loaders in tpcc workloads to hyperthreads in a
+        // correct manner. For now, limit the number of concurrently running
+        // loaders to the number of physical threads
         if (loader && !loader->IsImpersonated() &&
-            n_running < ermia::config::worker_threads &&
+            n_running < ermia::config::threads &&
             loader->TryImpersonate()) {
           loader->Start();
           ++n_running;
