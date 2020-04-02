@@ -74,14 +74,21 @@ void ConcurrentMasstreeIndex::amac_MultiGet(
 
 void ConcurrentMasstreeIndex::simple_coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<std::experimental::coroutine_handle<ermia::dia::generator<bool>::promise_type>> &handles) {
-  auto e = MM::epoch_enter();
-  ConcurrentMasstree::threadinfo ti(e);
-  ConcurrentMasstree::versioned_node_t sinfo;
+    std::vector<std::experimental::coroutine_handle<>> &handles) {
+  ermia::epoch_num e;
+  if (!t) {
+    e = MM::epoch_enter();
+    ConcurrentMasstree::threadinfo ti(e);
+    ConcurrentMasstree::versioned_node_t sinfo;
 
-  OID oid = INVALID_OID;
-  for (int i = 0; i < keys.size(); ++i) {
-    handles[i] = masstree_.search_coro(*keys[i], oid, ti, &sinfo).get_handle();
+    OID oid = INVALID_OID;
+    for (int i = 0; i < keys.size(); ++i) {
+      handles[i] = masstree_.search_coro(*keys[i], oid, ti, &sinfo).get_handle();
+    }
+  } else {
+    for (int i = 0; i < keys.size(); ++i) {
+      handles[i] = coro_GetRecord(t, *keys[i], *values[i]).get_handle();
+    }
   }
 
   int finished = 0;
@@ -98,7 +105,9 @@ void ConcurrentMasstreeIndex::simple_coro_MultiGet(
       }
     }
   }
-  MM::epoch_exit(0, e);
+
+  if (!t)
+    MM::epoch_exit(0, e);
 }
 
 #ifdef ADV_COROUTINE

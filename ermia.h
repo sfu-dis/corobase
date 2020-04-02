@@ -149,8 +149,7 @@ public:
   // A multi-get operation using coroutines
   void simple_coro_MultiGet(transaction *t, std::vector<varstr *> &keys,
                             std::vector<varstr *> &values,
-                            std::vector<std::experimental::coroutine_handle<
-                            ermia::dia::generator<bool>::promise_type>> &handles);
+                            std::vector<std::experimental::coroutine_handle<>> &handles);
 
 #ifdef ADV_COROUTINE
   // A multi-get operation using nested coroutines
