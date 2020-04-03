@@ -407,6 +407,23 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
       co_return {RC_ABORT_USER};
   }
 
+  values.clear();
+  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+    const uint ol_i_id = itemIDs[ol_number - 1];
+    const uint ol_quantity = orderQuantities[ol_number - 1];
+
+    const stock::key k_s(ol_supply_w_id, ol_i_id);
+    ermia::varstr &v = str(0);
+    values.emplace_back(&v);
+
+    ermia::dia::intra_query_scheduler.push_back(
+        tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), v).get_handle());
+  }
+
+  ermia::dia::intra_query_scheduler.run();
+  // TODO(yongjunh): append TryVerifyRelaxed for each operation
+
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
     const uint ol_i_id = itemIDs[ol_number - 1];
@@ -436,19 +453,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
 
-    tbl_stock(ol_supply_w_id)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
-    // TryVerifyRelaxed
-    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-      << "Wrong return value " << rc._val;
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
-
-    const stock::value *v_s = Decode(valptr, v_s_temp);
+    const stock::value *v_s = Decode(*values[ol_number - 1], v_s_temp);
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
@@ -1536,6 +1541,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
     }
 
     ermia::dia::intra_query_scheduler.run();
+    // TODO(yongjunh): append TryVerifyRelaxed for each operation
 
     int count = 0;
     std::unordered_map<uint, bool> s_i_ids_distinct;
