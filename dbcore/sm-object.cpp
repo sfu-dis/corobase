@@ -106,8 +106,8 @@ void Object::Pin(bool load_from_logbuf) {
 
 fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
                        epoch_num epoch) {
-  if (tuple_value) {
-    do_write = true;
+  if (!tuple_value) {
+    do_write = false;
   }
 
   // Calculate tuple size
