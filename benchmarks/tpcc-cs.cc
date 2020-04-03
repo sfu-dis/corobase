@@ -215,10 +215,8 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
   ermia::transaction *transactions;
-  // NOTE: leverage multiget for intra-transaction interleaving
-  std::vector<ermia::varstr *> keys;
+  // NOTE: intra-transaction interleaving
   std::vector<ermia::varstr *> values;
-  std::vector<std::experimental::coroutine_handle<>> handles;
 };
 
 std::vector<uint> tpcc_cs_worker::hot_whs;
@@ -1523,19 +1521,21 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
     }
   }
   {
-    keys.clear();
     values.clear();
     for (auto &p : c.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
       stock::value v_s;
       ASSERT(p.first >= 1 && p.first <= NumItems());
 
-      keys.emplace_back(&Encode(str(Size(k_s)), k_s));
-      values.emplace_back(&Encode(str(Size(v_s)), v_s));
+      ermia::varstr &v = str(0);
+      values.emplace_back(&v);
+      ermia::dia::intra_query_scheduler.push_back(
+          tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), v).get_handle());
+      if (ermia::dia::intra_query_scheduler.todo_size == 32)
+        ermia::dia::intra_query_scheduler.run();
     }
 
-    handles.resize(c.s_i_ids.size());
-    tbl_stock(warehouse_id)->simple_coro_MultiGet(txn, keys, values, handles);
+    ermia::dia::intra_query_scheduler.run();
 
     int count = 0;
     std::unordered_map<uint, bool> s_i_ids_distinct;

@@ -92,6 +92,27 @@ struct scheduler_queue {
 
 extern thread_local scheduler_queue query_scheduler;
 
+struct intra_scheduler_queue : scheduler_queue{
+  void run() {
+    auto loop_bound = handles.begin() + todo_size;
+    while (todo_size) {
+      for (auto it = handles.begin(); it != loop_bound; ++it) {
+        if (*it) {
+          if (it->done()) {
+            todo_size--;
+            it->destroy();
+            *it = nullptr;
+          } else {
+            it->resume();
+          }
+        }
+      }
+    }
+  }
+};
+
+extern thread_local intra_scheduler_queue intra_query_scheduler;
+
 template <typename T> struct generator {
   struct promise_type;
   using handle = std::experimental::coroutine_handle<promise_type>;
