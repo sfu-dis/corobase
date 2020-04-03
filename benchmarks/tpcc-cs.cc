@@ -215,6 +215,10 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
   ermia::transaction *transactions;
+  // NOTE: leverage multiget for intra-transaction interleaving
+  std::vector<ermia::varstr *> keys;
+  std::vector<ermia::varstr *> values;
+  std::vector<std::experimental::coroutine_handle<>> handles;
 };
 
 std::vector<uint> tpcc_cs_worker::hot_whs;
@@ -434,7 +438,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
 
-    rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+    tbl_stock(ol_supply_w_id)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
     // TryVerifyRelaxed
     LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
       << "Wrong return value " << rc._val;
@@ -684,9 +688,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
       order_line::value v_ol_new(*v_ol);
       v_ol_new.ol_delivery_d = ts;
       ASSERT(arena->manages(c.values[i].first));
-      rc = co_await tbl_order_line(warehouse_id)
-               ->coro_UpdateRecord(txn, *c.values[i].first,
-                              Encode(str(Size(v_ol_new)), v_ol_new));
+      rc = tbl_order_line(warehouse_id)
+                ->UpdateRecord(txn, *c.values[i].first,
+                      Encode(str(Size(v_ol_new)), v_ol_new));
       // TryCatch
       if (rc.IsAbort()) {
         db->Abort(txn);
@@ -1519,24 +1523,24 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
     }
   }
   {
-    std::unordered_map<uint, bool> s_i_ids_distinct;
+    keys.clear();
+    values.clear();
     for (auto &p : c.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
       stock::value v_s;
       ASSERT(p.first >= 1 && p.first <= NumItems());
 
-      rc = co_await tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
-      // TryVerifyRelaxed
-      LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-        << "Wrong return value " << rc._val; 
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
-      const uint8_t *ptr = (const uint8_t *)valptr.data();
+      keys.emplace_back(&Encode(str(Size(k_s)), k_s));
+      values.emplace_back(&Encode(str(Size(v_s)), v_s));
+    }
+
+    handles.resize(c.s_i_ids.size());
+    tbl_stock(warehouse_id)->simple_coro_MultiGet(txn, keys, values, handles);
+
+    int count = 0;
+    std::unordered_map<uint, bool> s_i_ids_distinct;
+    for (auto &p : c.s_i_ids) {
+      const uint8_t *ptr = (const uint8_t *)(values[count++]->data());
       int16_t i16tmp;
       ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
       if (i16tmp < int(threshold)) s_i_ids_distinct[p.first] = 1;
@@ -1656,7 +1660,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
         {
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
-          rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+          tbl_stock(it.first)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
           // TryVerifyRelaxed
           LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
             << "Wrong return value " << rc._val; 
