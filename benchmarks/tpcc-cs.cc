@@ -421,8 +421,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
         tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), v).get_handle());
   }
 
-  ermia::dia::intra_query_scheduler.run();
   // TODO(yongjunh): append TryVerifyRelaxed for each operation
+  ermia::dia::intra_query_scheduler.run();
 
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
@@ -1540,8 +1540,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
         ermia::dia::intra_query_scheduler.run();
     }
 
-    ermia::dia::intra_query_scheduler.run();
     // TODO(yongjunh): append TryVerifyRelaxed for each operation
+    ermia::dia::intra_query_scheduler.run();
 
     int count = 0;
     std::unordered_map<uint, bool> s_i_ids_distinct;
@@ -1658,26 +1658,27 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
         stock::key min_k_s(0, 0);
         stock::value min_v_s(0, 0, 0, 0);
 
+        values.clear();
         int16_t min_qty = std::numeric_limits<int16_t>::max();
-        for (auto &it : supp_stock_map
-                 [k_su.su_suppkey])  // already know
-                                     // "mod((s_w_id*s_i_id),10000)=su_suppkey"
-                                     // items
-        {
+        for (auto &it : supp_stock_map[k_su.su_suppkey]) {
+          // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
+          const stock::key k_s(it.first, it.second);
+          ermia::varstr &v = str(0);
+          values.emplace_back(&v);
+          ermia::dia::intra_query_scheduler.push_back(
+              tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), v).get_handle());
+          if (ermia::dia::intra_query_scheduler.todo_size == 32)
+            ermia::dia::intra_query_scheduler.run();
+        }
+        // TODO(yongjunh): append TryVerifyRelaxed for each operation
+        ermia::dia::intra_query_scheduler.run();
+
+        int count = 0;
+        for (auto &it : supp_stock_map[k_su.su_suppkey]) {
+          // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
-          tbl_stock(it.first)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
-          // TryVerifyRelaxed
-          LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-            << "Wrong return value " << rc._val; 
-          if (rc.IsAbort()) {
-            db->Abort(txn);
-            if (rc.IsAbort())
-              co_return rc;
-            else
-              co_return {RC_ABORT_USER};
-          }
-          const stock::value *v_s = Decode(valptr, v_s_tmp);
+          const stock::value *v_s = Decode(*values[count++], v_s_tmp);
 
           ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
           if (min_qty > v_s->s_quantity) {
