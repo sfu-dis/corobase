@@ -1,3 +1,5 @@
+#ifndef ADV_COROUTINE
+
 #include "bench.h"
 #include "tpcc.h"
 
@@ -984,3 +986,4 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
  private:
   ssize_t warehouse_id;
 };
+#endif // ADV_COROUTINE

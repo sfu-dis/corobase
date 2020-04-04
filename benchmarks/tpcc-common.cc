@@ -1,3 +1,5 @@
+#ifndef ADV_COROUTINE
+
 #include "bench.h"
 #include "tpcc-common.h"
 
@@ -94,3 +96,4 @@ std::string tpcc_worker_mixin::NameTokens[] = {
     std::string("PRES"),  std::string("ESE"),   std::string("ANTI"), std::string("CALLY"),
     std::string("ATION"), std::string("EING"),
 };
+#endif // ADV_COROUTINE
