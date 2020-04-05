@@ -1,4 +1,5 @@
-/* * A YCSB implementation based off of Silo's and equivalent to FOEDUS's.
+/* 
+ * A YCSB implementation based off of Silo's and equivalent to FOEDUS's.
  */
 #include "bench.h"
 #include "ycsb.h"
