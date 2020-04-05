@@ -48,9 +48,10 @@ void ycsb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
   int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
   uint64_t start_key = loader_id * to_insert;
+  uint64_t kBatchSize = 50;
 
+  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   for (uint64_t i = 0; i < to_insert; ++i) {
-    ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     ermia::varstr &k = str(sizeof(uint64_t));
     BuildKey(start_key + i, k);
 
@@ -63,12 +64,18 @@ void ycsb_usertable_loader::load() {
 #else
     TryVerifyStrict(tbl->InsertRecord(txn, k, v));
 #endif
-    TryVerifyStrict(db->Commit(txn));
+
+    if ((i + 1) % kBatchSize == 0 || i == to_insert - 1) {
+      TryVerifyStrict(db->Commit(txn));
+      if (i != to_insert - 1) {
+        txn = db->NewTransaction(0, *arena, txn_buf());
+      }
+    }
   }
 
   // Verify inserted values
+  txn = db->NewTransaction(0, *arena, txn_buf());
   for (uint64_t i = 0; i < to_insert; ++i) {
-    ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     rc_t rc = rc_t{RC_INVALID};
     ermia::OID oid = 0;
     ermia::varstr &k = str(sizeof(uint64_t));
@@ -81,7 +88,13 @@ void ycsb_usertable_loader::load() {
 #endif
     ALWAYS_ASSERT(*(char*)v.data() == 'a');
     TryVerifyStrict(rc);
-    TryVerifyStrict(db->Commit(txn));
+
+    if ((i + 1) % kBatchSize == 0 || i == to_insert - 1) {
+      TryVerifyStrict(db->Commit(txn));
+      if (i != to_insert - 1) {
+        txn = db->NewTransaction(0, *arena, txn_buf());
+      }
+    }
   }
 
   if (ermia::config::verbose) {
