@@ -1,5 +1,4 @@
-/*
- * A YCSB implementation based off of Silo's and equivalent to FOEDUS's.
+/* * A YCSB implementation based off of Silo's and equivalent to FOEDUS's.
  */
 #include "bench.h"
 #include "ycsb.h"
@@ -16,6 +15,10 @@ public:
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
     transactions = (ermia::transaction*)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
+    arenas = (ermia::str_arena*)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
+    for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
+      new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
+    }
   }
 
   // Essentially a coroutine scheduler that switches between active transactions
@@ -34,7 +37,6 @@ public:
     util::timer t;
     while (running) {
       ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-      arena->reset();
 
       for(uint32_t i = 0; i < batch_size; i++) {
         uint32_t workload_idx = fetch_workload();
@@ -99,7 +101,7 @@ public:
     if (!ermia::config::index_probe_only) {
         txn = &transactions[idx];
         new (txn) ermia::transaction(
-          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, *arena);
+          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, arenas[idx]);
         ermia::TXN::xid_context *xc = txn->GetXIDContext();
         xc->begin_epoch = begin_epoch;
     }
@@ -150,7 +152,7 @@ public:
   // Read-modify-write transaction with context-switch using simple coroutine
   ermia::dia::generator<rc_t> txn_rmw(uint32_t idx, ermia::epoch_num begin_epoch) {
     ermia::transaction *txn = &transactions[idx];
-    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, *arena);
+    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx]);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
@@ -208,6 +210,7 @@ public:
 
 private:
   ermia::transaction *transactions;
+  ermia::str_arena *arenas;
 };
 
 void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv) {
