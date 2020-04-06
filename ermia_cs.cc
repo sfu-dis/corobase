@@ -284,6 +284,9 @@ forward:
     TXN::xid_context *visitor_xc = t->xc;
     fat_ptr *entry = oa->get(oid);
 start_over:
+    ::prefetch((const char*)entry);
+    co_await std::experimental::suspend_always{};
+
     fat_ptr ptr = volatile_read(*entry);
     ASSERT(ptr.asi_type() == 0);
     Object *prev_obj = nullptr;
