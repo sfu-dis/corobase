@@ -447,7 +447,219 @@ forward:
 // end: masstree search
 
   if (match) {
+    // By default we don't do coroutine prefetch-yield here for updates, assuming
+    // it's part of an RMW (most cases) which means the data is probably in cache
+    // anyway. This may not be true however for blind updates.
+#ifndef CORO_UPDATE_VERSION_CHAIN
     rc = t->Update(table_descriptor, oid, &key, &value);
+#else
+    oid_array *tuple_array = table_descriptor->GetTupleArray();
+    FID tuple_fid = table_descriptor->GetTupleFid();
+    fat_ptr new_obj_ptr = NULL_PTR;
+    fat_ptr prev_obj_ptr = NULL_PTR;
+    Object *new_object = nullptr;
+
+  start_over:
+    auto *ptr = tuple_array->get(oid);
+    ::prefetch((const char*)ptr);
+    co_await std::experimental::suspend_always{};
+
+    fat_ptr head = volatile_read(*ptr);
+    ASSERT(head.asi_type() == 0);
+    Object *old_desc = (Object *)head.offset();
+    ASSERT(old_desc);
+    ASSERT(head.size_code() != INVALID_SIZE_CODE);
+
+    ::prefetch((const char*)old_desc);
+    co_await std::experimental::suspend_always{};
+    dbtuple *version = (dbtuple *)old_desc->GetPayload();
+    bool overwrite = false;
+
+    auto clsn = old_desc->GetClsn();
+    if (clsn == NULL_PTR) {
+      // stepping on an unlinked version?
+      goto start_over;
+    } else if (clsn.asi_type() == fat_ptr::ASI_XID) {
+      /* Grab the context for this XID. If we're too slow,
+         the context might be recycled for a different XID,
+         perhaps even *while* we are reading the
+         context. Copy everything we care about and then
+         (last) check the context's XID for a mismatch that
+         would indicate an inconsistent read. If this
+         occurs, just start over---the version we cared
+         about is guaranteed to have a LSN now.
+       */
+      auto holder_xid = XID::from_ptr(clsn);
+      XID updater_xid = volatile_read(t->xc->owner);
+
+      // in-place update case (multiple updates on the same record  by same
+      // transaction)
+      if (holder_xid == updater_xid) {
+        overwrite = true;
+        goto install;
+      }
+
+      TXN::xid_context *holder = TXN::xid_get_context(holder_xid);
+      if (not holder) {
+#ifndef NDEBUG
+        auto t = old_desc->GetClsn().asi_type();
+        ASSERT(t == fat_ptr::ASI_LOG or oid_get(oa, o) != head);
+#endif
+        goto start_over;
+      }
+      ASSERT(holder);
+      auto state = volatile_read(holder->state);
+      auto owner = volatile_read(holder->owner);
+      holder = NULL;  // use cached values instead!
+
+      // context still valid for this XID?
+      if (unlikely(owner != holder_xid)) {
+        goto start_over;
+      }
+      ASSERT(holder_xid != updater_xid);
+      if (state == TXN::TXN_CMMTD) {
+        // Allow installing a new version if the tx committed (might
+        // still hasn't finished post-commit). Note that the caller
+        // (ie do_tree_put) should look at the clsn field of the
+        // returned version (prev) to see if this is an overwrite
+        // (ie xids match) or not (xids don't match).
+        ASSERT(holder_xid != updater_xid);
+        goto install;
+      }
+      prev_obj_ptr = NULL_PTR;
+      goto check_prev;
+    }
+    // check dirty writes
+    else {
+      ASSERT(clsn.asi_type() == fat_ptr::ASI_LOG);
+#ifndef RC
+      // First updater wins: if some concurrent tx committed first,
+      // I have to abort. Same as in Oracle. Otherwise it's an isolation
+      // failure: I can modify concurrent transaction's writes.
+      if (LSN::from_ptr(clsn).offset() >= t->xc->begin) {
+        prev_obj_ptr = NULL_PTR;
+        goto check_prev;
+      }
+#endif
+      goto install;
+    }
+
+  install:
+    // remove uncommitted overwritten version
+    // (tx's repetitive updates, keep the latest one only)
+    // Note for this to be correct we shouldn't allow multiple txs
+    // working on the same tuple at the same time.
+
+    new_obj_ptr = Object::Create(&value, false, t->xc->begin_epoch);
+    ASSERT(new_obj_ptr.asi_type() == 0);
+    new_object = (Object *)new_obj_ptr.offset();
+    new_object->SetClsn(t->xc->owner.to_ptr());
+    if (overwrite) {
+      new_object->SetNextPersistent(old_desc->GetNextPersistent());
+      new_object->SetNextVolatile(old_desc->GetNextVolatile());
+      // I already claimed it, no need to use cas then
+      volatile_write(ptr->_ptr, new_obj_ptr._ptr);
+      __sync_synchronize();
+      prev_obj_ptr = head;
+      goto check_prev;
+    } else {
+      fat_ptr pa = old_desc->GetPersistentAddress();
+      while (pa == NULL_PTR) {
+        pa = old_desc->GetPersistentAddress();
+      }
+      new_object->SetNextPersistent(pa);
+      new_object->SetNextVolatile(head);
+      if (__sync_bool_compare_and_swap(&ptr->_ptr, head._ptr,
+                                       new_obj_ptr._ptr)) {
+        // Succeeded installing a new version, now only I can modify the
+        // chain, try recycle some objects
+        if (config::enable_gc) {
+          MM::gc_version_chain(ptr);
+        }
+        prev_obj_ptr = head;
+        goto check_prev;
+      } else {
+        MM::deallocate(new_obj_ptr);
+      }
+    }
+    prev_obj_ptr = NULL_PTR;
+
+  check_prev:
+    Object *prev_obj = (Object *)prev_obj_ptr.offset();
+    if (prev_obj) {  // succeeded
+      //::prefetch((const char*)prev_obj);
+      co_await std::experimental::suspend_always{};
+      dbtuple *tuple = ((Object *)new_obj_ptr.offset())->GetPinnedTuple();
+      ASSERT(tuple);
+      dbtuple *prev = prev_obj->GetPinnedTuple();
+      ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
+      ASSERT(xc);
+
+#ifdef SSI
+      // TODO
+#endif
+#ifdef SSN
+      // TODO
+#endif
+
+      // read prev's clsn first, in case it's a committing XID, the clsn's state
+      // might change to ASI_LOG anytime
+      ASSERT((uint64_t)prev->GetObject() == prev_obj_ptr.offset());
+      fat_ptr prev_clsn = prev->GetObject()->GetClsn();
+      fat_ptr prev_persistent_ptr = NULL_PTR;
+      if (prev_clsn.asi_type() == fat_ptr::ASI_XID and
+          XID::from_ptr(prev_clsn) == t->xid) {
+        // updating my own updates!
+        // prev's prev: previous *committed* version
+        ASSERT(((Object *)prev_obj_ptr.offset())->GetAllocateEpoch() ==
+               xc->begin_epoch);
+        prev_persistent_ptr = prev_obj->GetNextPersistent();
+        // FIXME(tzwang): 20190210: seems the deallocation here is too early,
+        // causing readers to not find any visible version. Fix this together with
+        // GC later.
+        //MM::deallocate(prev_obj_ptr);
+      } else {  // prev is committed (or precommitted but in post-commit now) head
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+        // TODO
+#endif
+        t->add_to_write_set(tuple_array->get(oid));
+        prev_persistent_ptr = prev_obj->GetPersistentAddress();
+      }
+
+      ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
+      ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
+      ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
+      ASSERT(log);
+
+      // FIXME(tzwang): mark deleted in all 2nd indexes as well?
+
+      // The varstr also encodes the pdest of the overwritten version.
+      // FIXME(tzwang): the pdest of the overwritten version doesn't belong to
+      // varstr. Embedding it in varstr makes it part of the payload and is
+      // helpful for digging out versions on backups. Not used by the primary.
+      value.ptr = prev_persistent_ptr;
+      ASSERT(is_delete || (value.ptr.offset() && value.ptr.asi_type() == fat_ptr::ASI_LOG));
+
+      // log the whole varstr so that recovery can figure out the real size
+      // of the tuple, instead of using the decoded (larger-than-real) size.
+      size_t data_size = value.size() + sizeof(varstr);
+      auto size_code = encode_size_aligned(data_size);
+      t->log->log_update(tuple_fid, oid, fat_ptr::make((void *)&value, size_code),
+                      DEFAULT_ALIGNMENT_BITS,
+                      tuple->GetObject()->GetPersistentAddressPtr());
+
+      if (config::log_key_for_update) {
+        auto key_size = align_up(key.size() + sizeof(varstr));
+        auto key_size_code = encode_size_aligned(key_size);
+        t->log->log_update_key(tuple_fid, oid,
+                              fat_ptr::make((void *)&key, key_size_code),
+                              DEFAULT_ALIGNMENT_BITS);
+      }
+      rc = rc_t{RC_TRUE};
+    } else {  // somebody else acted faster than we did
+      rc = rc_t{RC_ABORT_SI_CONFLICT};
+    }
+#endif // CORO_UPDATE_VERSION_CHAIN
   } else {
     rc = rc_t{RC_ABORT_INTERNAL};
   }
