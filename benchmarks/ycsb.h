@@ -163,6 +163,7 @@ class ycsb_base_worker : public bench_worker {
   };
 
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
+  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
 
   ermia::varstr &GenerateKey(ermia::transaction *t) {
     uint64_t r = 0;
