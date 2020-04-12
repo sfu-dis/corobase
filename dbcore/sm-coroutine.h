@@ -71,28 +71,10 @@ struct scheduler_queue {
   void push_back(handle h) {
     handles[todo_size] = h;
     todo_size++;
+    if (todo_size == 32)
+      run();
   }
 
-  void run() {
-    auto loop_bound = handles.begin() + todo_size;
-    while (todo_size) {
-      for (auto it = handles.begin(); it != loop_bound; ++it) {
-        if (*it) {
-          if (it->done()) {
-            todo_size--;
-            *it = nullptr;
-          } else {
-            it->resume();
-          }
-        }
-      }
-    }
-  }
-};
-
-extern thread_local scheduler_queue query_scheduler;
-
-struct intra_scheduler_queue : scheduler_queue{
   void run() {
     auto loop_bound = handles.begin() + todo_size;
     while (todo_size) {
@@ -111,7 +93,7 @@ struct intra_scheduler_queue : scheduler_queue{
   }
 };
 
-extern thread_local intra_scheduler_queue intra_query_scheduler;
+extern thread_local scheduler_queue query_scheduler;
 
 template <typename T> struct generator {
   struct promise_type;
@@ -119,6 +101,7 @@ template <typename T> struct generator {
 
   struct promise_type {
     T current_value;
+    std::experimental::coroutine_handle<> callee_coro = nullptr;
     auto get_return_object() { return generator{handle::from_promise(*this)}; }
     auto initial_suspend() { return std::experimental::suspend_never{}; }
     auto final_suspend() { return std::experimental::suspend_always{}; }
@@ -152,20 +135,21 @@ template <typename T> struct generator {
     return *this;
   }
 
-  auto operator co_await () {
-    struct awaiter {
-      awaiter(handle h) : awaiter_coro(h) {}
-      constexpr bool await_ready() const noexcept { return false; }
-      constexpr void await_suspend(std::experimental::coroutine_handle<>) noexcept { }
-      constexpr auto await_resume() noexcept {
-        return awaiter_coro.promise().current_value;
-      }
-    private:
-      handle awaiter_coro;
-    };
-    query_scheduler.push_back(coro);
-    return awaiter(coro);
-  }
+  struct awaiter {
+    awaiter(handle h) : awaiter_coro(h) {}
+    constexpr bool await_ready() const noexcept { return false; }
+    template <typename awaiting_handle>
+    constexpr void await_suspend(awaiting_handle awaiting_coro) noexcept {
+      awaiting_coro.promise().callee_coro = awaiter_coro;
+    }
+    constexpr auto await_resume() noexcept {
+      return awaiter_coro.promise().current_value;
+    }
+  private:
+    handle awaiter_coro;
+  };
+
+  auto operator co_await () { return awaiter(coro); }
 
 private:
   handle coro;

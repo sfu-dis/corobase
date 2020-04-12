@@ -47,7 +47,6 @@ public:
 
       uint32_t todo_size = batch_size;
       while (todo_size) {
-        ermia::dia::query_scheduler.run();
         for(uint32_t i = 0; i < batch_size; i++) {
           if (handles[i]) {
             if (handles[i].done()) {
@@ -55,8 +54,10 @@ public:
               handles[i].destroy();
               handles[i] = nullptr;
               todo_size--;
-            } else {
+            } else if (handles[i].promise().callee_coro.done()) {
               handles[i].resume();
+            } else {
+              handles[i].promise().callee_coro.resume();
             }
           }
         }
@@ -66,6 +67,9 @@ public:
       r.set_seed(old_seed);
       // TODO: epoch exit correctly
       ermia::MM::epoch_exit(0, begin_epoch);
+
+      if (ermia::config::index_probe_only)
+        arena->reset(); // GenerateKey(nullptr) uses global arena
     }
   }
 
@@ -102,12 +106,12 @@ public:
     if (ermia::config::index_probe_only) {
       arenas[idx].reset();
     } else {
-        txn = db->NewTransaction(
+      txn = db->NewTransaction(
           ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
           arenas[idx],
           &transactions[idx]);
-        ermia::TXN::xid_context *xc = txn->GetXIDContext();
-        xc->begin_epoch = begin_epoch;
+      ermia::TXN::xid_context *xc = txn->GetXIDContext();
+      xc->begin_epoch = begin_epoch;
     }
 
     for (int i = 0; i < g_reps_per_tx; ++i) {
