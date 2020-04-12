@@ -122,7 +122,7 @@ class bench_worker : public ermia::thread::Runner {
   /* For 'normal' workload (r/w on primary, r/o on backups) */
   typedef rc_t (*txn_fn_t)(bench_worker *);
   typedef std::experimental::coroutine_handle<ermia::dia::generator<rc_t>::promise_type> CoroTxnHandle;
-  typedef CoroTxnHandle (*coro_txn_fn_t)(bench_worker *, uint32_t, ermia::epoch_num);
+  typedef ermia::dia::generator<rc_t> (*coro_txn_fn_t)(bench_worker *, uint32_t, ermia::epoch_num);
   typedef ermia::dia::task<rc_t> (*task_fn_t)(bench_worker *, uint32_t, ermia::epoch_num);
   struct workload_desc {
     workload_desc() {}
