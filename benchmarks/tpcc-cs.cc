@@ -46,49 +46,50 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
 
   ermia::dia::generator<rc_t> txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static CoroTxnHandle TxnNewOrder(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_new_order(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnNewOrder(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_new_order(idx, begin_epoch);
   }
 
   ermia::dia::generator<rc_t> txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static CoroTxnHandle TxnDelivery(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_delivery(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnDelivery(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_delivery(idx, begin_epoch);
   }
 
   ermia::dia::generator<rc_t> txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch);
-  static CoroTxnHandle TxnCreditCheck(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check(idx, begin_epoch).get_handle();
+
+  static ermia::dia::generator<rc_t> TxnCreditCheck(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check(idx, begin_epoch);
   }
 
   ermia::dia::generator<rc_t> txn_payment(uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static CoroTxnHandle TxnPayment(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_payment(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnPayment(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_payment(idx, begin_epoch);
   }
 
   ermia::dia::generator<rc_t> txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static CoroTxnHandle TxnOrderStatus(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_order_status(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnOrderStatus(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_order_status(idx, begin_epoch);
   }
 
   ermia::dia::generator<rc_t> txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static CoroTxnHandle TxnStockLevel(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnStockLevel(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level(idx, begin_epoch);
   }
 
   ermia::dia::generator<rc_t> txn_query2(uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static CoroTxnHandle TxnQuery2(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_query2(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnQuery2(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_query2(idx, begin_epoch);
   }
 
   ermia::dia::generator<rc_t> txn_microbench_random(uint32_t idx, ermia::epoch_num begin_epoch);
 
-  static CoroTxnHandle TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx, begin_epoch);
   }
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
@@ -157,7 +158,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
       for(uint32_t i = 0; i < batch_size; i++) {
         uint32_t workload_idx = fetch_workload();
         workload_idxs[i] = workload_idx;
-        handles[i] = workload[workload_idx].coro_fn(this, i, 0);
+        handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
       }
 
       uint32_t todo_size = batch_size;

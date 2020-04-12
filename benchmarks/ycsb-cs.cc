@@ -42,7 +42,7 @@ public:
       for(uint32_t i = 0; i < batch_size; i++) {
         uint32_t workload_idx = fetch_workload();
         workload_idxs[i] = workload_idx;
-        handles[i] = workload[workload_idx].coro_fn(this, i, begin_epoch);
+        handles[i] = workload[workload_idx].coro_fn(this, i, begin_epoch).get_handle();
       }
 
       uint32_t todo_size = batch_size;
@@ -88,12 +88,12 @@ public:
     return w;
   }
 
-  static CoroTxnHandle TxnRead(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<ycsb_cs_worker *>(w)->txn_read(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnRead(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<ycsb_cs_worker *>(w)->txn_read(idx, begin_epoch);
   }
 
-  static CoroTxnHandle TxnRMW(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<ycsb_cs_worker *>(w)->txn_rmw(idx, begin_epoch).get_handle();
+  static ermia::dia::generator<rc_t> TxnRMW(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<ycsb_cs_worker *>(w)->txn_rmw(idx, begin_epoch);
   }
 
   // Read transaction with context-switch using simple coroutine
