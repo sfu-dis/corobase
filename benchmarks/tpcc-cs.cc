@@ -163,7 +163,6 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
 
       uint32_t todo_size = batch_size;
       while (todo_size) {
-        ermia::dia::query_scheduler.run();
         for(uint32_t i = 0; i < batch_size; i++) {
           if (handles[i]) {
             if (handles[i].done()) {
@@ -171,8 +170,10 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
               handles[i].destroy();
               handles[i] = nullptr;
               todo_size--;
-            } else {
+            } else if (handles[i].promise().callee_coro.done()) {
               handles[i].resume();
+            } else {
+              handles[i].promise().callee_coro.resume();
             }
           }
         }
@@ -425,12 +426,12 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     ermia::varstr &v = str(arenas[idx], 0);
     values.emplace_back(&v);
 
-    ermia::dia::intra_query_scheduler.push_back(
+    ermia::dia::query_scheduler.push_back(
         tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), v).get_handle());
   }
 
   // TODO(yongjunh): append TryVerifyRelaxed for each operation
-  ermia::dia::intra_query_scheduler.run();
+  ermia::dia::query_scheduler.run();
 
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
@@ -1549,14 +1550,12 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
 
       ermia::varstr &v = str(arenas[idx], 0);
       values.emplace_back(&v);
-      ermia::dia::intra_query_scheduler.push_back(
+      ermia::dia::query_scheduler.push_back(
           tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), v).get_handle());
-      if (ermia::dia::intra_query_scheduler.todo_size == 32)
-        ermia::dia::intra_query_scheduler.run();
     }
 
     // TODO(yongjunh): append TryVerifyRelaxed for each operation
-    ermia::dia::intra_query_scheduler.run();
+    ermia::dia::query_scheduler.run();
 
     int count = 0;
     std::unordered_map<uint, bool> s_i_ids_distinct;
@@ -1681,13 +1680,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
           const stock::key k_s(it.first, it.second);
           ermia::varstr &v = str(arenas[idx], 0);
           values.emplace_back(&v);
-          ermia::dia::intra_query_scheduler.push_back(
+          ermia::dia::query_scheduler.push_back(
               tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), v).get_handle());
-          if (ermia::dia::intra_query_scheduler.todo_size == 32)
-            ermia::dia::intra_query_scheduler.run();
         }
         // TODO(yongjunh): append TryVerifyRelaxed for each operation
-        ermia::dia::intra_query_scheduler.run();
+        ermia::dia::query_scheduler.run();
 
         int count = 0;
         for (auto &it : supp_stock_map[k_su.su_suppkey]) {
