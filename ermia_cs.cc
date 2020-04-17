@@ -6,6 +6,8 @@
 #include "ermia.h"
 #include "txn.h"
 
+#include "masstree/masstree_scan.hh"
+
 namespace ermia {
 
 void ConcurrentMasstreeIndex::amac_MultiGet(
@@ -861,6 +863,334 @@ insert_new:
   }
 
   co_return rc_t{RC_TRUE};
+}
+
+ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
+                            const varstr &start_key, const varstr *end_key,
+                            ScanCallback &callback, str_arena *arena) {
+  MARK_REFERENCED(arena);
+  SearchRangeCallback c(callback);
+  ASSERT(c.return_code._val == RC_FALSE);
+
+  t->ensure_active();
+  if (end_key) {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key)
+                      << ", " << util::hexify(*end_key) << ")" << std::endl);
+  } else {
+    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
+                      << ")::search_range_call [" << util::hexify(start_key)
+                      << ", +inf)" << std::endl);
+  }
+
+  if (!unlikely(end_key && *end_key <= start_key)) {
+    XctSearchRangeCallback cb(t, &c);
+
+    varstr uppervk;
+    if (end_key) {
+      uppervk = *end_key;
+    }
+    ///////////AWAIT masstree_.search_range_call(start_key, end_key ? &uppervk : nullptr, cb,
+    ///////////////////                            t->xc);
+  
+    ConcurrentMasstree::low_level_search_range_scanner<false> scanner(&masstree_, end_key, cb);
+    ConcurrentMasstree::threadinfo ti(t->xc->begin_epoch);
+    ///////masstree_.get_table()->scan(lcdf::Str(start_key.data(), start_key.size()), true, scanner, t->xc, ti);
+
+    /////masstree_.get_table()->scan(Masstree::forward_scan_helper(),
+    /////                         lcdf::Str(start_key.data(), start_key.size()), 
+    /////                         true, scanner, t->xc, ti);
+
+    typedef typename masstree_params::ikey_type ikey_type;
+    typedef typename ConcurrentMasstree::node_type::key_type key_type;
+    typedef typename ConcurrentMasstree::node_type::leaf_type::leafvalue_type leafvalue_type;
+    union {
+      ikey_type
+          x[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+      char s[MASSTREE_MAXKEYLEN];
+    } keybuf;
+
+    auto firstkey = lcdf::Str(start_key.data(), start_key.size());
+    masstree_precondition(firstkey.len <= (int)sizeof(keybuf));
+    memcpy(keybuf.s, firstkey.s, firstkey.len);
+    key_type ka(keybuf.s, firstkey.len);
+
+    typedef Masstree::scanstackelt<masstree_params> mystack_type;
+    mystack_type
+        stack[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+    int stackpos = 0;
+    stack[0].root_ = masstree_.get_table()->root_;
+    leafvalue_type entry = leafvalue_type::make_empty();
+
+    int scancount = 0;
+    int state;
+
+    auto helper = Masstree::forward_scan_helper();
+
+    while (1) {
+      //state = sync_wait_coro(stack[stackpos].find_initial(helper, ka, true, entry, ti));
+      // find_initial begins
+
+      int kp, keylenx = 0;
+      char suffixbuf[MASSTREE_MAXKEYLEN];
+      Masstree::Str suffix;
+      auto &s = stack[stackpos];
+
+      find_initial_retry_root:
+      // s.n_ = sync_wait_coro(s.root_->reach_leaf(ka, s.v_, ti));
+      // reach_leaf starts
+     
+      const ConcurrentMasstree::node_base_type* n[2];
+      ConcurrentMasstree::nodeversion_type v[2];
+      bool sense;
+
+      // Get a non-stale root.
+      // Detect staleness by checking whether n has ever split.
+      // The true root has never split.
+      reach_leaf_retry:
+      sense = false;
+      n[sense] = s.root_;
+      while (1) {
+        v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+        if (!v[sense].has_split()) break;
+        n[sense] = n[sense]->unsplit_ancestor();
+      }
+
+      // Loop over internal nodes.
+      while (!v[sense].isleaf()) {
+        const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
+        in->prefetch();
+        co_await std::experimental::suspend_always{};
+        int kp = ConcurrentMasstree::internode_type::bound_type::upper(ka, *in);
+        n[!sense] = in->child_[kp];
+        if (!n[!sense]) goto reach_leaf_retry;
+        v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+        if (likely(!in->has_changed(v[sense]))) {
+          sense = !sense;
+          continue;
+        }
+
+        ConcurrentMasstree::nodeversion_type oldv = v[sense];
+        v[sense] = in->stable_annotated(ti.stable_fence());
+        if (oldv.has_split(v[sense]) &&
+            in->stable_last_key_compare(ka, v[sense], ti) > 0) {
+          goto reach_leaf_retry;
+        }
+      }
+
+      s.v_ = v[sense];
+      s.n_ = const_cast<ConcurrentMasstree::leaf_type *>(static_cast<const ConcurrentMasstree::leaf_type *>(n[sense]));
+      // reach_leaf ends
+
+      find_initial_retry_node:
+      if (s.v_.deleted())
+        goto find_initial_retry_root;
+      s.n_->prefetch();
+      co_await std::experimental::suspend_always{};
+      s.perm_ = s.n_->permutation();
+
+      s.ki_ = helper.lower_with_position(ka, &s, kp);
+      if (kp >= 0) {
+        keylenx = s.n_->keylenx_[kp];
+        fence();
+        entry = s.n_->lv_[kp];
+        entry.prefetch(keylenx);
+        co_await std::experimental::suspend_always{};
+        if (s.n_->keylenx_has_ksuf(keylenx)) {
+          suffix = s.n_->ksuf(kp);
+          memcpy(suffixbuf, suffix.s, suffix.len);
+          suffix.s = suffixbuf;
+        }
+      }
+      if (s.n_->has_changed(s.v_)) {
+        s.n_ = s.n_->advance_to_key(ka, s.v_, ti);
+        goto find_initial_retry_node;
+      }
+
+      if (kp >= 0) {
+        if (s.n_->keylenx_is_layer(keylenx)) {
+          (&s)[1].root_ = entry.layer();
+          state = s.scan_down;
+          goto find_initial_end;
+        } else if (s.n_->keylenx_has_ksuf(keylenx)) {
+          int ksuf_compare = suffix.compare(ka.suffix());
+          if (helper.initial_ksuf_match(ksuf_compare, true)) {
+            int keylen = ka.assign_store_suffix(suffix);
+            ka.assign_store_length(keylen);
+            state = s.scan_emit;
+            goto find_initial_end;
+          }
+        } else if (true) { //emit_equal) {
+          state = s.scan_emit;
+          goto find_initial_end;
+        }
+        // otherwise, this entry must be skipped
+        s.ki_ = helper.next(s.ki_);
+      }
+
+      state = s.scan_find_next;
+    find_initial_end:
+      // find_initial ends
+
+      scanner.visit_leaf(stack[stackpos], ka, ti);
+      if (state != mystack_type::scan_down)
+        break;
+      ka.shift();
+      ++stackpos;
+    }
+
+    oid_array *tuple_array = table_descriptor->GetTupleArray();
+    while (1) {
+      switch (state) {
+      case mystack_type::scan_emit: { // surpress cross init warning about v
+        ++scancount;
+        ermia::dbtuple *v = nullptr;
+        ermia::OID o = entry.value();
+        if (ermia::config::is_backup_srv()) {
+          LOG(FATAL) << "Not supported";
+          //v = ermia::oidmgr->BackupGetVersion(tuple_array, pdest_array_, o, xc);
+        } else {
+          //v = sync_wait_coro(ermia::oidmgr->oid_get_version(tuple_array, o, t->xc));
+          // start oid_get_version
+          oid_array *oa = table_descriptor->GetTupleArray();
+          TXN::xid_context *visitor_xc = t->xc;
+          fat_ptr *entry = oa->get(o);
+
+        oid_get_version_start_over:
+          //::prefetch((const char*)entry);
+          //co_await std::experimental::suspend_always{};
+
+          fat_ptr ptr = volatile_read(*entry);
+          ASSERT(ptr.asi_type() == 0);
+          Object *prev_obj = nullptr;
+          while (ptr.offset()) {
+            Object *cur_obj = nullptr;
+            fat_ptr tentative_next = NULL_PTR;
+            // If this is a backup server, then must see persistent_next to find out
+            // the **real** overwritten version.
+            if (config::is_backup_srv() && !config::command_log) {
+              LOG(FATAL) << "Not supported";
+              //oidmgr->oid_get_version_backup(ptr, tentative_next, prev_obj, cur_obj, visitor_xc);
+            } else {
+              ASSERT(ptr.asi_type() == 0);
+              cur_obj = (Object *)ptr.offset();
+              //::prefetch((const char*)cur_obj);
+              //co_await std::experimental::suspend_always{};
+              tentative_next = cur_obj->GetNextVolatile();
+              ASSERT(tentative_next.asi_type() == 0);
+            }
+
+            bool retry = false;
+            bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
+            if (retry) {
+              goto oid_get_version_start_over;
+            }
+            if (visible) {
+              v = cur_obj->GetPinnedTuple();
+              break;
+            }
+            ptr = tentative_next;
+            prev_obj = cur_obj;
+          }
+          // end oid_get_version
+        }
+        if (v) {
+          if (!scanner.visit_value(ka, v))
+            goto done;
+        }
+        stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
+        state = stack[stackpos].find_next(helper, ka, entry);
+      } break;
+
+      case mystack_type::scan_find_next:
+      find_next:
+        state = stack[stackpos].find_next(helper, ka, entry);
+        if (state != mystack_type::scan_up)
+          scanner.visit_leaf(stack[stackpos], ka, ti);
+        break;
+
+      case mystack_type::scan_up:
+        do {
+          if (--stackpos < 0)
+            goto done;
+          ka.unshift();
+          stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
+        } while (unlikely(ka.empty()));
+        goto find_next;
+
+      case mystack_type::scan_down:
+        helper.shift_clear(ka);
+        ++stackpos;
+        goto retry;
+
+      case mystack_type::scan_retry:
+      retry:
+        //state = sync_wait_coro(stack[stackpos].find_retry(helper, ka, ti));
+        // find_retry starts
+        auto &s = stack[stackpos];
+      find_retry_retry:
+        //s.n_ = sync_wait_coro(s.root_->reach_leaf(ka, s.v_, ti));
+        // reach_leaf starts
+        const ConcurrentMasstree::node_base_type* n[2];
+        ConcurrentMasstree::nodeversion_type v[2];
+        bool sense;
+
+        // Get a non-stale root.
+        // Detect staleness by checking whether n has ever split.
+        // The true root has never split.
+        reach_leaf_retry2:
+        sense = false;
+        n[sense] = s.root_;
+        while (1) {
+          v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+          if (!v[sense].has_split()) break;
+          n[sense] = n[sense]->unsplit_ancestor();
+        }
+
+        // Loop over internal nodes.
+        while (!v[sense].isleaf()) {
+          const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
+          in->prefetch();
+          co_await std::experimental::suspend_always{};
+          int kp = ConcurrentMasstree::internode_type::bound_type::upper(ka, *in);
+          n[!sense] = in->child_[kp];
+          if (!n[!sense]) goto reach_leaf_retry2;
+          v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+          if (likely(!in->has_changed(v[sense]))) {
+            sense = !sense;
+            continue;
+          }
+
+          ConcurrentMasstree::nodeversion_type oldv = v[sense];
+          v[sense] = in->stable_annotated(ti.stable_fence());
+          if (oldv.has_split(v[sense]) &&
+              in->stable_last_key_compare(ka, v[sense], ti) > 0) {
+            goto reach_leaf_retry2;
+          }
+        }
+
+        s.v_ = v[sense];
+        s.n_ = const_cast<ConcurrentMasstree::leaf_type *>(static_cast<const ConcurrentMasstree::leaf_type *>(n[sense]));
+        // reach_leaf ends
+        if (s.v_.deleted())
+          goto find_retry_retry;
+
+        s.n_->prefetch();
+        co_await std::experimental::suspend_always{};
+        s.perm_ = s.n_->permutation();
+        s.ki_ = helper.lower(ka, &s);
+        state = s.scan_find_next;
+        // find_retry ends
+
+        break;
+      }
+    }
+  done:
+    ;
+  }
+  co_return c.return_code;
 }
 
 } // namespace ermia

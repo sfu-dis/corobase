@@ -41,7 +41,8 @@ public:
     return n.n_->compare_key(k, p);
   }
 
-private:
+  scanstackelt() {}
+
   node_base<P> *root_;
   leaf<P> *n_;
   nodeversion_type v_;
@@ -49,8 +50,6 @@ private:
   int ki_;
 
   enum { scan_emit, scan_find_next, scan_down, scan_up, scan_retry };
-
-  scanstackelt() {}
 
   template <typename H>
   PROMISE(int) find_initial(H &helper, key_type &ka, bool emit_equal,
