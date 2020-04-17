@@ -408,16 +408,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     stock::value v_s_temp;
 
     rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
-    // TryVerifyRelaxed
-    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-      << "Wrong return value " << rc._val;
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryVerifyRelaxedCoro(rc);
 
     const stock::value *v_s = Decode(valptr, v_s_temp);
 #ifndef NDEBUG
@@ -1443,16 +1434,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
       ASSERT(p.first >= 1 && p.first <= NumItems());
 
       rc = co_await tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
-      // TryVerifyRelaxed
-      LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-        << "Wrong return value " << rc._val;
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryVerifyRelaxedCoro(rc);
       const uint8_t *ptr = (const uint8_t *)valptr.data();
       int16_t i16tmp;
       ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
@@ -1563,16 +1545,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
           rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
-          // TryVerifyRelaxed
-          LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-            << "Wrong return value " << rc._val;
-          if (rc.IsAbort()) {
-            db->Abort(txn);
-            if (rc.IsAbort())
-              co_return rc;
-            else
-              co_return {RC_ABORT_USER};
-          }
+          TryVerifyRelaxedCoro(rc);
           const stock::value *v_s = Decode(valptr, v_s_tmp);
 
           ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
