@@ -379,7 +379,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
 
-    rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+    rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
     TryVerifyRelaxedCoro(rc);
 
     const stock::value *v_s = Decode(valptr, v_s_temp);
@@ -749,7 +749,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    static thread_local credit_check_order_line_scan_callback c_ol(&arenas[idx]);
+    credit_check_order_line_scan_callback c_ol(&arenas[idx]);
     c_ol._v_ol.clear();
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
@@ -1205,7 +1205,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
       stock::value v_s;
       ASSERT(p.first >= 1 && p.first <= NumItems());
 
-      rc = co_await tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+      rc = co_await tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
       TryVerifyRelaxedCoro(rc);
       const uint8_t *ptr = (const uint8_t *)valptr.data();
       int16_t i16tmp;
@@ -1228,7 +1228,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
 
-  static thread_local tpcc_table_scanner r_scanner(&arenas[idx]);
+  tpcc_table_scanner r_scanner(&arenas[idx]);
   r_scanner.clear();
   const region::key k_r_0(0);
   const region::key k_r_1(5);
@@ -1237,7 +1237,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   TryCatchCoro(rc);
   ALWAYS_ASSERT(r_scanner.output.size() == 5);
 
-  static thread_local tpcc_table_scanner n_scanner(&arenas[idx]);
+  tpcc_table_scanner n_scanner(&arenas[idx]);
   n_scanner.clear();
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
@@ -1295,7 +1295,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
           // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
           const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
-          rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+          rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
           TryVerifyRelaxedCoro(rc);
           const stock::value *v_s = Decode(valptr, v_s_tmp);
 
