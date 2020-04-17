@@ -280,6 +280,13 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   return r;                                       \
 }
 
+#define __abort_txn_coro(r)                       \
+{                                                 \
+  db->Abort(txn);                                 \
+  if (!r.IsAbort()) co_return {RC_ABORT_USER};    \
+  co_return r;                                    \
+}
+
 // NOTE: only use these in transaction benchmark (e.g., TPCC) code, not in
 // engine code
 
@@ -291,13 +298,10 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort()) __abort_txn(r); \
 }
 
-#define TryCatchCoro(rc)           \
-{                                  \
-  rc_t r = rc;                     \
-  if (r.IsAbort())                 \
-    co_return r;                   \
-  else                             \
-    co_return {RC_ABORT_USER};     \
+#define TryCatchCoro(rc)                \
+{                                       \
+  rc_t r = rc;                          \
+  if (r.IsAbort()) __abort_txn_coro(r); \
 }
 
 // same as TryCatch but don't do abort, only return rc
@@ -338,14 +342,8 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
 {                                                  \
   rc_t r = oper;                                   \
   LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
-    << "Wrong return value " << rc._val;           \
-  if (rc.IsAbort()) {                              \
-    db->Abort(txn);                                \
-    if (rc.IsAbort())                              \
-      co_return rc;                                \
-    else                                           \
-      co_return {RC_ABORT_USER};                   \
-  }                                                \
+    << "Wrong return value " << r._val;            \
+  if (r.IsAbort()) __abort_txn_coro(r);            \
 }
 
 // No abort is allowed, usually for loading
