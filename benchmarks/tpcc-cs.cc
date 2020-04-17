@@ -223,8 +223,6 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   // NOTE: inter-transaction interleaving
   ermia::transaction *transactions;
   ermia::str_arena *arenas;
-  // NOTE: intra-transaction interleaving
-  std::vector<ermia::varstr *> values;
 };
 
 std::vector<uint> tpcc_cs_worker::hot_whs;
@@ -416,23 +414,6 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
       co_return {RC_ABORT_USER};
   }
 
-  values.clear();
-  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
-    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
-    const uint ol_i_id = itemIDs[ol_number - 1];
-    const uint ol_quantity = orderQuantities[ol_number - 1];
-
-    const stock::key k_s(ol_supply_w_id, ol_i_id);
-    ermia::varstr &v = str(arenas[idx], 0);
-    values.emplace_back(&v);
-
-    ermia::dia::query_scheduler.push_back(
-        tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), v).get_handle());
-  }
-
-  // TODO(yongjunh): append TryVerifyRelaxed for each operation
-  ermia::dia::query_scheduler.run();
-
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
     const uint ol_i_id = itemIDs[ol_number - 1];
@@ -462,7 +443,19 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
 
-    const stock::value *v_s = Decode(*values[ol_number - 1], v_s_temp);
+    rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+    // TryVerifyRelaxed
+    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+      << "Wrong return value " << rc._val;
+    if (rc.IsAbort()) {
+      db->Abort(txn);
+      if (rc.IsAbort())
+        co_return rc;
+      else
+        co_return {RC_ABORT_USER};
+    }
+
+    const stock::value *v_s = Decode(valptr, v_s_temp);
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
@@ -1542,25 +1535,24 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
     }
   }
   {
-    values.clear();
+    std::unordered_map<uint, bool> s_i_ids_distinct;
     for (auto &p : c.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
       stock::value v_s;
       ASSERT(p.first >= 1 && p.first <= NumItems());
 
-      ermia::varstr &v = str(arenas[idx], 0);
-      values.emplace_back(&v);
-      ermia::dia::query_scheduler.push_back(
-          tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), v).get_handle());
-    }
-
-    // TODO(yongjunh): append TryVerifyRelaxed for each operation
-    ermia::dia::query_scheduler.run();
-
-    int count = 0;
-    std::unordered_map<uint, bool> s_i_ids_distinct;
-    for (auto &p : c.s_i_ids) {
-      const uint8_t *ptr = (const uint8_t *)(values[count++]->data());
+      rc = co_await tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+      // TryVerifyRelaxed
+      LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+        << "Wrong return value " << rc._val;
+      if (rc.IsAbort()) {
+        db->Abort(txn);
+        if (rc.IsAbort())
+          co_return rc;
+        else
+          co_return {RC_ABORT_USER};
+      }
+      const uint8_t *ptr = (const uint8_t *)valptr.data();
       int16_t i16tmp;
       ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
       if (i16tmp < int(threshold)) s_i_ids_distinct[p.first] = 1;
@@ -1673,25 +1665,23 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
         stock::key min_k_s(0, 0);
         stock::value min_v_s(0, 0, 0, 0);
 
-        values.clear();
         int16_t min_qty = std::numeric_limits<int16_t>::max();
         for (auto &it : supp_stock_map[k_su.su_suppkey]) {
           // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
           const stock::key k_s(it.first, it.second);
-          ermia::varstr &v = str(arenas[idx], 0);
-          values.emplace_back(&v);
-          ermia::dia::query_scheduler.push_back(
-              tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), v).get_handle());
-        }
-        // TODO(yongjunh): append TryVerifyRelaxed for each operation
-        ermia::dia::query_scheduler.run();
-
-        int count = 0;
-        for (auto &it : supp_stock_map[k_su.su_suppkey]) {
-          // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
-          const stock::key k_s(it.first, it.second);
           stock::value v_s_tmp(0, 0, 0, 0);
-          const stock::value *v_s = Decode(*values[count++], v_s_tmp);
+          rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(Size(k_s)), k_s), valptr);
+          // TryVerifyRelaxed
+          LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
+            << "Wrong return value " << rc._val;
+          if (rc.IsAbort()) {
+            db->Abort(txn);
+            if (rc.IsAbort())
+              co_return rc;
+            else
+              co_return {RC_ABORT_USER};
+          }
+          const stock::value *v_s = Decode(valptr, v_s_tmp);
 
           ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
           if (min_qty > v_s->s_quantity) {

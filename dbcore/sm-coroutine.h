@@ -63,38 +63,6 @@ struct tcalloc {
 
 extern thread_local tcalloc allocator;
 
-struct scheduler_queue {
-  using handle = std::experimental::coroutine_handle<>;
-  uint32_t todo_size = 0;
-  std::array<handle, 32> handles;
-
-  void push_back(handle h) {
-    handles[todo_size] = h;
-    todo_size++;
-    if (todo_size == 32)
-      run();
-  }
-
-  void run() {
-    auto loop_bound = handles.begin() + todo_size;
-    while (todo_size) {
-      for (auto it = handles.begin(); it != loop_bound; ++it) {
-        if (*it) {
-          if (it->done()) {
-            todo_size--;
-            it->destroy();
-            *it = nullptr;
-          } else {
-            it->resume();
-          }
-        }
-      }
-    }
-  }
-};
-
-extern thread_local scheduler_queue query_scheduler;
-
 template <typename T> struct generator {
   struct promise_type;
   using handle = std::experimental::coroutine_handle<promise_type>;
