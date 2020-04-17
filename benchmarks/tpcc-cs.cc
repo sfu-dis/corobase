@@ -327,14 +327,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   rc = tbl_new_order(warehouse_id)
            ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_no)), k_no),
                           Encode(str(arenas[idx], new_order_sz), v_no));
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   if (!g_new_order_fast_id_gen) {
     district::value v_d_new(*v_d);
@@ -342,14 +335,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     rc = tbl_district(warehouse_id)
              ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
                             Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
   }
 
   const oorder::key k_oo(warehouse_id, districtID, k_no.no_o_id);
@@ -365,27 +351,13 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   rc = tbl_oorder(warehouse_id)
            ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_oo)), k_oo),
                           Encode(str(arenas[idx], oorder_sz), v_oo), &v_oo_oid);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
                                       k_no.no_o_id);
   rc = tbl_oorder_c_id_idx(warehouse_id)
            ->InsertOID(txn, Encode(str(arenas[idx], Size(k_oo_idx)), k_oo_idx), v_oo_oid);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
     const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
@@ -426,15 +398,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     rc = tbl_stock(ol_supply_w_id)
              ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
                             Encode(str(arenas[idx], Size(v_s_new)), v_s_new));
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
-
+    TryCatchCoro(rc);
 
     const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
                                ol_number);
@@ -449,25 +413,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     rc = tbl_order_line(warehouse_id)
              ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_ol)), k_ol),
                             Encode(str(arenas[idx], order_line_sz), v_ol));
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
   }
 
-  rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(db->Commit(txn));
   co_return {RC_TRUE};
 }
 
@@ -580,14 +529,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
                ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
                       &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), new_order_c,
                       &arenas[idx]);
-      // TryCatch
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
     }
 
     const new_order::key *k_no = new_order_c.get_key();
@@ -602,14 +544,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     ermia::varstr valptr;
     rc = rc_t{RC_INVALID};
     tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
-    // TryCatchCondAbort
-    if (rc.IsAbort() or rc._val == RC_FALSE) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
 
     const oorder::value *v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
@@ -625,14 +560,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_oo_0)), k_oo_0),
                     &Encode(str(arenas[idx], Size(k_oo_1)), k_oo_1), c, &arenas[idx]);
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
 
     float sum = 0.0;
     for (size_t i = 0; i < c.size(); i++) {
@@ -652,27 +580,13 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
       rc = tbl_order_line(warehouse_id)
                 ->UpdateRecord(txn, *c.values[i].first,
                       Encode(str(arenas[idx], Size(v_ol_new)), v_ol_new));
-      // TryCatch
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
     }
 
     // delete new order
     rc = tbl_new_order(warehouse_id)
              ->RemoveRecord(txn, Encode(str(arenas[idx], Size(*k_no)), *k_no));
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
 
     // update oorder
     oorder::value v_oo_new(*v_oo);
@@ -681,14 +595,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
             ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_oo)), k_oo),
                            Encode(str(arenas[idx], Size(v_oo_new)), v_oo_new));
 
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
 
     const uint c_id = v_oo->o_c_id;
     const float ol_total = sum;
@@ -707,24 +614,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     rc = tbl_customer(warehouse_id)
              ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
                             Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
   }
   rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   co_return {RC_TRUE};
 }
 
@@ -835,14 +728,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
   rc = tbl_new_order(warehouse_id)
            ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
                   &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), c_no, &arenas[idx]);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   ALWAYS_ASSERT(c_no.output.size());
 
   double sum = 0;
@@ -855,14 +741,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     rc = rc_t{RC_INVALID};
     tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
 
-    // TryCatchCond
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
     if (rc._val == RC_FALSE)
       continue;
     // Order line scan
@@ -877,14 +756,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                     &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol, &arenas[idx]);
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
     ALWAYS_ASSERT(c_ol._v_ol.size());
 
     for (auto &v_ol : c_ol._v_ol) {
@@ -905,24 +777,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
   rc = tbl_customer(customerWarehouseID)
            ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
                           Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
-
-  rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
+  TryCatchCoro(db->Commit(txn));
   co_return {RC_TRUE};
 }
 
@@ -975,14 +831,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   rc = tbl_warehouse(warehouse_id)
            ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
                           Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
@@ -1001,14 +850,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   rc = tbl_district(warehouse_id)
            ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
                           Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   customer::key k_c;
   customer::value v_c;
@@ -1038,14 +880,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
     rc = tbl_customer_name_idx(customerWarehouseID)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
                     &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx]);
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
 
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
@@ -1088,14 +923,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   rc = tbl_customer(customerWarehouseID)
            ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
                           Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
                          warehouse_id, ts);
@@ -1110,24 +938,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   rc = tbl_history(warehouse_id)
            ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_h)), k_h),
                           Encode(str(arenas[idx], Size(v_h)), v_h));
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   co_return {RC_TRUE};
 }
 
@@ -1226,14 +1040,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     rc = tbl_customer_name_idx(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
                     &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx]);
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -1280,14 +1087,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
       rc = tbl_oorder_c_id_idx(warehouse_id)
                ->Scan(txn, Encode(str(arenas[idx], Size(k_oo_idx_0)), k_oo_idx_0),
                       &Encode(str(arenas[idx], Size(k_oo_idx_1)), k_oo_idx_1), c_oorder, &arenas[idx]);
-      // TryCatch
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
     }
     ALWAYS_ASSERT(c_oorder.size());
   } else {
@@ -1297,14 +1097,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     rc = tbl_oorder_c_id_idx(warehouse_id)
              ->ReverseScan(txn, Encode(str(arenas[idx], Size(k_oo_idx_hi)), k_oo_idx_hi),
                            nullptr, c_oorder, &arenas[idx]);
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
     ALWAYS_ASSERT(c_oorder.size() == 1);
   }
 
@@ -1319,25 +1112,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
   rc = tbl_order_line(warehouse_id)
            ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                   &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_order_line, &arenas[idx]);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
   rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   co_return {RC_TRUE};
 }
 
@@ -1417,14 +1196,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                     &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c, &arenas[idx]);
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
   }
   {
     std::unordered_map<uint, bool> s_i_ids_distinct;
@@ -1443,14 +1215,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
     // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
   }
   rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   co_return {RC_TRUE};
 }
 
@@ -1469,14 +1234,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   const region::key k_r_1(5);
   rc = tbl_region(1)->Scan(txn, Encode(str(arenas[idx], sizeof(k_r_0)), k_r_0),
                            &Encode(str(arenas[idx], sizeof(k_r_1)), k_r_1), r_scanner, &arenas[idx]);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   ALWAYS_ASSERT(r_scanner.output.size() == 5);
 
   static thread_local tpcc_table_scanner n_scanner(&arenas[idx]);
@@ -1485,14 +1243,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
   rc = tbl_nation(1)->Scan(txn, Encode(str(arenas[idx], sizeof(k_n_0)), k_n_0),
                            &Encode(str(arenas[idx], sizeof(k_n_1)), k_n_1), n_scanner, &arenas[idx]);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
 
   ALWAYS_ASSERT(n_scanner.output.size() == 62);
 
@@ -1588,14 +1339,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
           rc = tbl_stock(min_k_s.s_w_id)
                    ->UpdateRecord(txn, Encode(str(arenas[idx], Size(min_k_s)), min_k_s),
                                   Encode(str(arenas[idx], Size(new_v_s)), new_v_s));
-          // TryCatch
-          if (rc.IsAbort()) {
-            db->Abort(txn);
-            if (rc.IsAbort())
-              co_return rc;
-            else
-              co_return {RC_ABORT_USER};
-          }
+          TryCatchCoro(rc);
         }
 
         // TODO. sorting by n_name, su_name, i_id
@@ -1612,14 +1356,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   }
 
   rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   co_return {RC_TRUE};
 }
 
@@ -1645,14 +1382,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, 
     DLOG(INFO) << "rd " << w << " " << s;
     rc = rc_t{RC_INVALID};
     tbl_stock(w)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_s)), k_s), sv);
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
 
     if (++s > NumItems()) {
       s = 1;
@@ -1697,14 +1427,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, 
 #endif
     rc = tbl_stock(ww)->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
                                      Encode(str(arenas[idx], Size(v)), v));
-    // TryCatch
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(rc);
   }
 
   DLOG(INFO) << "micro-random finished";
@@ -1713,14 +1436,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, 
 #endif
 
   rc = db->Commit(txn);
-  // TryCatch
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryCatchCoro(rc);
   co_return {RC_TRUE};
 }
 
