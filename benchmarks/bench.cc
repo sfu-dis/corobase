@@ -171,6 +171,11 @@ void bench_runner::run() {
       uint32_t done = 0;
       uint32_t n_running = 0;
     process:
+      // Use all the physical threads in the same socket to load (assuming 2HT
+      // per core)
+      uint32_t n_loader_threads =
+        std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+
       for (uint i = 0; i < loaders.size(); i++) {
         auto *loader = loaders[i];
         // Note: the thread pool creates threads for each hyperthread regardless
@@ -187,7 +192,7 @@ void bench_runner::run() {
         // correct manner. For now, limit the number of concurrently running
         // loaders to the number of physical threads
         if (loader && !loader->IsImpersonated() &&
-            n_running < ermia::config::threads &&
+            n_running < n_loader_threads &&
             loader->TryImpersonate()) {
           loader->Start();
           ++n_running;
