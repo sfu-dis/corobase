@@ -161,6 +161,8 @@ public:
   ermia::dia::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
   ermia::dia::generator<rc_t> coro_UpdateRecord(transaction *t, const varstr &key, varstr &value);
   ermia::dia::generator<rc_t> coro_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
+  ermia::dia::generator<rc_t> coro_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+                              ScanCallback &callback, str_arena *arena);
 
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;

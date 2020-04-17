@@ -457,6 +457,7 @@ private:
 
   static leaf_type *leftmost_descend_layer(node_base_type *n);
   class size_walk_callback;
+public:
   template <bool Reverse> class search_range_scanner_base;
   template <bool Reverse> class no_callback_search_range_scanner;
   template <bool Reverse> class low_level_search_range_scanner;

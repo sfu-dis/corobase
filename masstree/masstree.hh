@@ -94,11 +94,11 @@ public:
   inline void set_tuple_array(ermia::oid_array *oa) { tuple_array_ = oa; }
   inline void set_pdest_array(ermia::oid_array *oa) { pdest_array_ = oa; }
 
-private:
   node_type *root_;
   ermia::oid_array *tuple_array_;
   ermia::oid_array *pdest_array_;
 
+public:
   template <typename H, typename F>
   PROMISE(int) scan(H helper, Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
