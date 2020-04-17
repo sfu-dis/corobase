@@ -291,6 +291,15 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort()) __abort_txn(r); \
 }
 
+#define TryCatchCoro(rc)           \
+{                                  \
+  rc_t r = rc;                     \
+  if (r.IsAbort())                 \
+    co_return r;                   \
+  else                             \
+    co_return {RC_ABORT_USER};     \
+}
+
 // same as TryCatch but don't do abort, only return rc
 // So far the only user is TPC-E's TxnHarness***.h.
 #define TryReturn(rc)        \
