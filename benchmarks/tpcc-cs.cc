@@ -288,16 +288,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
 
   rc = rc_t{RC_INVALID};
   tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-  // TryVerifyRelaxed
-  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-    << "Wrong return value " << rc._val;
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryVerifyRelaxedCoro(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
@@ -309,16 +300,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
 
   rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
-  // TryVerifyRelaxed
-  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-    << "Wrong return value " << rc._val; 
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryVerifyRelaxedCoro(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
@@ -330,16 +312,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
 
   rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
-  // TryVerifyRelaxed
-  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-    << "Wrong return value " << rc._val;
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryVerifyRelaxedCoro(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -443,16 +416,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
 
     rc = rc_t{RC_INVALID};
     tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
-    // TryVerifyRelaxed
-    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-      << "Wrong return value " << rc._val;
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryVerifyRelaxedCoro(rc);
 
     const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
@@ -751,16 +715,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
 
     rc = rc_t{RC_INVALID};
     tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-    // TryVerifyRelaxed
-    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-      << "Wrong return value " << rc._val;
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryVerifyRelaxedCoro(rc);
 
     const customer::value *v_c = Decode(valptr, v_c_temp);
     customer::value v_c_new(*v_c);
@@ -878,16 +833,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
   k_c.c_id = customerID;
 
   tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-  // TryVerifyRelaxed
-  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-    << "Wrong return value " << rc._val; 
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryVerifyRelaxedCoro(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
 #ifndef NDEBUG
@@ -1033,16 +979,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   ermia::varstr valptr;
 
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
-  // TryVerifyRelaxed
-  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-    << "Wrong return value " << rc._val; 
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryVerifyRelaxedCoro(rc);
 
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
@@ -1068,16 +1005,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
 
   rc = rc_t{RC_INVALID};
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
-  // TryVerifyRelaxed
-  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-    << "Wrong return value " << rc._val; 
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryVerifyRelaxedCoro(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -1152,16 +1080,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
     k_c.c_id = customerID;
     rc = rc_t{RC_INVALID};
     tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-    // TryVerifyRelaxed
-    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-      << "Wrong return value " << rc._val; 
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryVerifyRelaxedCoro(rc);
     Decode(valptr, v_c);
   }
 #ifndef NDEBUG
@@ -1349,16 +1268,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
 
     rc_t rc = rc_t{RC_INVALID};
     tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-    // TryVerifyRelaxed
-    LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-      << "Wrong return value " << rc._val; 
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryVerifyRelaxedCoro(rc);
     Decode(valptr, v_c);
   }
 #ifndef NDEBUG
@@ -1501,16 +1411,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
   ermia::varstr valptr;
 
   tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
-  // TryVerifyRelaxed
-  LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-    << "Wrong return value " << rc._val; 
-  if (rc.IsAbort()) {
-    db->Abort(txn);
-    if (rc.IsAbort())
-      co_return rc;
-    else
-      co_return {RC_ABORT_USER};
-  }
+  TryVerifyRelaxedCoro(rc);
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -1654,16 +1555,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
 
         rc_t rc = rc_t{RC_INVALID};
         tbl_supplier(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_su)), k_su), valptr);
-        // TryVerifyRelaxed
-        LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-          << "Wrong return value " << rc._val; 
-        if (rc.IsAbort()) {
-          db->Abort(txn);
-          if (rc.IsAbort())
-            co_return rc;
-          else
-            co_return {RC_ABORT_USER};
-        }
+        TryVerifyRelaxedCoro(rc);
         const supplier::value *v_su = Decode(valptr, v_su_tmp);
 
         // Filtering suppliers
@@ -1709,16 +1601,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
         item::value v_i_temp;
         rc = rc_t{RC_INVALID};
         tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
-        // TryVerifyRelaxed
-        LOG_IF(FATAL, rc._val != RC_TRUE && !rc.IsAbort()) \
-          << "Wrong return value " << rc._val; 
-        if (rc.IsAbort()) {
-          db->Abort(txn);
-          if (rc.IsAbort())
-            co_return rc;
-          else
-            co_return {RC_ABORT_USER};
-        }
+        TryVerifyRelaxedCoro(rc);
         const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
         checker::SanityCheckItem(&k_i, v_i);
