@@ -325,6 +325,20 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r.IsAbort()) __abort_txn(r);                 \
 }
 
+#define TryVerifyRelaxedCoro(oper)                 \
+{                                                  \
+  rc_t r = oper;                                   \
+  LOG_IF(FATAL, r._val != RC_TRUE && !r.IsAbort()) \
+    << "Wrong return value " << rc._val;           \
+  if (rc.IsAbort()) {                              \
+    db->Abort(txn);                                \
+    if (rc.IsAbort())                              \
+      co_return rc;                                \
+    else                                           \
+      co_return {RC_ABORT_USER};                   \
+  }                                                \
+}
+
 // No abort is allowed, usually for loading
 inline void TryVerifyStrict(rc_t rc) {
   LOG_IF(FATAL, rc._val != RC_TRUE) << "Wrong return value " << rc._val;
