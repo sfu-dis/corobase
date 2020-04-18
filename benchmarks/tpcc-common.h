@@ -986,4 +986,54 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
  private:
   ssize_t warehouse_id;
 };
+
+// explicitly copies keys, because btree::search_range_call() interally
+// re-uses a single string to pass keys (so using standard string assignment
+// will force a re-allocation b/c of shared ref-counting)
+//
+// this isn't done for values, because all values are read-only in a
+// multi-version
+// system. ermia::varstrs for values only point to the real data in the database, but
+// still we need to allocate a ermia::varstr header for each value. Internally it's
+// just a ermia::varstr in the stack.
+template <size_t N>
+class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
+ public:
+  // XXX: push ignore_key into lower layer
+  static_limit_callback(ermia::str_arena *arena, bool ignore_key)
+      : n(0), arena(arena), ignore_key(ignore_key) {
+    static_assert(N > 0, "xx");
+    values.reserve(N);
+  }
+
+  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    ASSERT(n < N);
+    ermia::varstr *pv = arena->next(0);  // header only
+    pv->p = value.p;
+    pv->l = value.l;
+    if (ignore_key) {
+      values.emplace_back(nullptr, pv);
+    } else {
+      ermia::varstr *const s_px = arena->next(keylen);
+      ASSERT(s_px);
+      s_px->copy_from(keyp, keylen);
+      values.emplace_back(s_px, pv);
+    }
+    return ++n < N;
+  }
+
+  inline size_t size() const { return values.size(); }
+
+  typedef std::pair<const ermia::varstr *, const ermia::varstr *> kv_pair;
+  typename std::vector<kv_pair> values;
+
+ private:
+  size_t n;
+  ermia::str_arena *arena;
+  bool ignore_key;
+};
+
+
+
+
 #endif // ADV_COROUTINE
