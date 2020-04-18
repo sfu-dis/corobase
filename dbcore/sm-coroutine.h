@@ -3,14 +3,17 @@
 #include <experimental/coroutine>
 #include <array>
 #include <map>
+#include <numa.h>
 
 #include "sm-defs.h"
+#include "../macros.h"
 
 namespace ermia {
 namespace dia {
 
 // Simple thread caching allocator.
 struct tcalloc {
+  /*
   struct header {
     header *next = nullptr;
   };
@@ -18,8 +21,23 @@ struct tcalloc {
   size_t last_size_allocated = 0;
   size_t total = 0;
   size_t alloc_count = 0;
+  */
+  static const uint32_t kSize = 8 * 1024 * 1024;  // 8MB
+  static const uint32_t kChunkSize = kSize / 64;
+  struct Chunk {
+    char data[kChunkSize];
+  };
+  uint64_t bitmap;
+  Chunk *chunks;//[64];
+
+  tcalloc() {
+    chunks = (Chunk *)numa_alloc_onnode(kSize, numa_node_of_cpu(sched_getcpu()));
+    memset(chunks, 0, kSize);
+    bitmap = 0;
+  }
 
   ~tcalloc() {
+    /*
     for(auto iter = roots.begin() ; iter != roots.end(); iter++) {
       auto current = iter->second;
       while (current) {
@@ -28,9 +46,27 @@ struct tcalloc {
         current = next;
       }
     }
+    */
   }
 
-  void *alloc(size_t sz) {
+  inline void *alloc(size_t sz) {
+    ALWAYS_ASSERT(sz <= kChunkSize);
+    uint32_t pos = 0;
+    if (bitmap == 0) {
+      // Set MSB to indicate allocation
+      pos = 63;
+    } else {
+      pos = __builtin_ctzll(bitmap);
+      if (pos == 0) {
+        return nullptr;
+      } else {
+        --pos;
+      }
+    }
+    bitmap |= (1UL << pos);
+    return &(chunks[pos].data[0]);
+
+    /*
     auto iter = roots.find(sz);
     if (iter != roots.end() && iter->second) {
       void *mem = iter->second;
@@ -43,13 +79,17 @@ struct tcalloc {
     last_size_allocated = sz;
 
     return malloc(sz);
+    */
   }
 
   void stats() {
-    printf("allocs %zu total %zu sz %zu\n", alloc_count, total, last_size_allocated);
+    //printf("allocs %zu total %zu sz %zu\n", alloc_count, total, last_size_allocated);
   }
 
-  void free(void *p, size_t sz) {
+  inline void free(void *p, size_t sz) {
+    uint32_t pos = (Chunk *)p - chunks;
+    bitmap &= ~(1UL << pos);
+    /*
     auto new_entry = static_cast<header *>(p);
     auto iter = roots.find(sz);
     if (iter == roots.end()) {
@@ -58,6 +98,7 @@ struct tcalloc {
       new_entry->next = iter->second;
       iter->second = new_entry;
     }
+    */
   }
 };
 
