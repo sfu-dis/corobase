@@ -78,28 +78,28 @@ set_target_properties(ermia_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 target_link_libraries(ermia_coro_SI ermia_coro_si thread_pool)
 
 # SI+SSN
-add_library(ermia_si_ssn SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+#add_library(ermia_si_ssn SHARED ${LIB_ERMIA_SRC})
+#set_target_properties(ermia_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 
-add_executable(ermia_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
-target_link_libraries(ermia_SI_SSN ermia_si_ssn thread_pool)
+#add_executable(ermia_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+#set_target_properties(ermia_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+#target_link_libraries(ermia_SI_SSN ermia_si_ssn thread_pool)
 
 # SSI
-add_library(ermia_ssi SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_ssi PROPERTIES COMPILE_FLAGS "-DSSI")
+#add_library(ermia_ssi SHARED ${LIB_ERMIA_SRC})
+#set_target_properties(ermia_ssi PROPERTIES COMPILE_FLAGS "-DSSI")
 
-add_executable(ermia_SSI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
-target_link_libraries(ermia_SSI ermia_ssi thread_pool)
+#add_executable(ermia_SSI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+#set_target_properties(ermia_SSI PROPERTIES COMPILE_FLAGS "-DSSI")
+#target_link_libraries(ermia_SSI ermia_ssi thread_pool)
 
 # MVOCC
-add_library(ermia_mvocc SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_mvocc PROPERTIES COMPILE_FLAGS "-DMVOCC")
+#add_library(ermia_mvocc SHARED ${LIB_ERMIA_SRC})
+#set_target_properties(ermia_mvocc PROPERTIES COMPILE_FLAGS "-DMVOCC")
 
-add_executable(ermia_MVOCC ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_MVOCC PROPERTIES COMPILE_FLAGS "-DMVOCC")
-target_link_libraries(ermia_MVOCC ermia_mvocc thread_pool)
+#add_executable(ermia_MVOCC ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+#set_target_properties(ermia_MVOCC PROPERTIES COMPILE_FLAGS "-DMVOCC")
+#target_link_libraries(ermia_MVOCC ermia_mvocc thread_pool)
 
 if(BUILD_TESTS)
     set(BUILD_GMOCK OFF CACHE BOOL "Gmock Not Used")
