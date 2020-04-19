@@ -502,10 +502,9 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
       for (uint i = 1; i <= NumItems(); i++)
         supp_stock_map[w * i % 10000].push_back(std::make_pair(w, i));
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] finished loading warehouse" << std::endl;
-      std::cerr << "[INFO]   * average warehouse record length: "
-           << (double(warehouse_total_sz) / double(n_warehouses)) << " bytes"
-           << std::endl;
+      LOG(INFO) << "Finished loading warehouse";
+      LOG(INFO) << "  * average warehouse record length: "
+           << (double(warehouse_total_sz) / double(n_warehouses)) << " bytes";
     }
   }
 };
@@ -554,9 +553,9 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
       TryVerifyStrict(db->Commit(txn));
     }
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] finished loading item" << std::endl;
-      std::cerr << "[INFO]   * average item record length: "
-           << (double(total_sz) / double(NumItems())) << " bytes" << std::endl;
+      LOG(INFO) << "Finished loading item";
+      LOG(INFO) << "  * average item record length: "
+           << (double(total_sz) / double(NumItems())) << " bytes";
     }
   }
 };
@@ -644,12 +643,11 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (ermia::config::verbose) {
       if (warehouse_id == -1) {
-        std::cerr << "[INFO] finished loading stock" << std::endl;
-        std::cerr << "[INFO]   * average stock record length: "
-             << (double(stock_total_sz) / double(n_stocks)) << " bytes" << std::endl;
+        LOG(INFO) << "Finished loading stock";
+        LOG(INFO) << "  * average stock record length: "
+             << (double(stock_total_sz) / double(n_stocks)) << " bytes";
       } else {
-        std::cerr << "[INFO] finished loading stock (w=" << warehouse_id << ")"
-             << std::endl;
+        LOG(INFO) <<  "Finished loading stock (w=" << warehouse_id << ")";
       }
     }
   }
@@ -702,10 +700,9 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
       }
     }
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] finished loading district" << std::endl;
-      std::cerr << "[INFO]   * average district record length: "
-           << (double(district_total_sz) / double(n_districts)) << " bytes"
-           << std::endl;
+      LOG(INFO) << "Finished loading district";
+      LOG(INFO) << "   * average district record length: "
+           << (double(district_total_sz) / double(n_districts)) << " bytes";
     }
   }
 };
@@ -833,14 +830,13 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (ermia::config::verbose) {
       if (warehouse_id == -1) {
-        std::cerr << "[INFO] finished loading customer" << std::endl;
-        std::cerr << "[INFO]   * average customer record length: "
+        LOG(INFO) << "Finished loading customer";
+        LOG(INFO) << "   * average customer record length: "
              << (double(total_sz) /
                  double(NumWarehouses() * NumDistrictsPerWarehouse() *
-                        NumCustomersPerDistrict())) << " bytes " << std::endl;
+                        NumCustomersPerDistrict())) << " bytes ";
       } else {
-        std::cerr << "[INFO] finished loading customer (w=" << warehouse_id << ")"
-             << std::endl;
+        LOG(INFO) << "Finished loading customer (w=" << warehouse_id << ")";
       }
     }
   }
@@ -979,19 +975,16 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
 
     if (ermia::config::verbose) {
       if (warehouse_id == -1) {
-        std::cerr << "[INFO] finished loading order" << std::endl;
-        std::cerr << "[INFO]   * average order_line record length: "
+        LOG(INFO) << "finished loading order";
+        LOG(INFO) << "  * average order_line record length: "
              << (double(order_line_total_sz) / double(n_order_lines))
-             << " bytes" << std::endl;
-        std::cerr << "[INFO]   * average oorder record length: "
-             << (double(oorder_total_sz) / double(n_oorders)) << " bytes"
-             << std::endl;
-        std::cerr << "[INFO]   * average new_order record length: "
-             << (double(new_order_total_sz) / double(n_new_orders)) << " bytes"
-             << std::endl;
+             << " bytes";
+        LOG(INFO) << "  * average oorder record length: "
+             << (double(oorder_total_sz) / double(n_oorders)) << " bytes";
+        LOG(INFO) << "   * average new_order record length: "
+             << (double(new_order_total_sz) / double(n_new_orders)) << " bytes";
       } else {
-        std::cerr << "[INFO] finished loading order (w=" << warehouse_id << ")"
-             << std::endl;
+        LOG(INFO) << " Finished loading order (w=" << warehouse_id << ")";
       }
     }
   }
