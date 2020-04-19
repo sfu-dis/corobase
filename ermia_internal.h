@@ -89,6 +89,12 @@ public:
   virtual PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
                                        const varstr *end_key, rc_t &rc,
                                        OID *dia_callback) = 0;
+  virtual PROMISE(void) ScanOID(transaction *t, const varstr &start_key,
+                                const varstr *end_key, rc_t &rc,
+                                DiaScanCallback &dia_callback) = 0;
+  virtual PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
+                                       const varstr *end_key, rc_t &rc,
+                                       DiaScanCallback &dia_callback) = 0;
 };
 
 }  // namespace ermia
