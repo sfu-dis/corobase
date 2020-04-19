@@ -312,16 +312,12 @@ start_over:
       fat_ptr tentative_next = NULL_PTR;
       // If this is a backup server, then must see persistent_next to find out
       // the **real** overwritten version.
-      if (config::is_backup_srv() && !config::command_log) {
-        oidmgr->oid_get_version_backup(ptr, tentative_next, prev_obj, cur_obj, visitor_xc);
-      } else {
-        ASSERT(ptr.asi_type() == 0);
-        cur_obj = (Object *)ptr.offset();
-        ::prefetch((const char*)cur_obj);
-        co_await std::experimental::suspend_always{};
-        tentative_next = cur_obj->GetNextVolatile();
-        ASSERT(tentative_next.asi_type() == 0);
-      }
+      ASSERT(ptr.asi_type() == 0);
+      cur_obj = (Object *)ptr.offset();
+      Object::PrefetchHeader(cur_obj);
+      co_await std::experimental::suspend_always{};
+      tentative_next = cur_obj->GetNextVolatile();
+      ASSERT(tentative_next.asi_type() == 0);
 
       bool retry = false;
       bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
@@ -472,7 +468,8 @@ forward:
     ASSERT(old_desc);
     ASSERT(head.size_code() != INVALID_SIZE_CODE);
 
-    ::prefetch((const char*)old_desc);
+    Object::PrefetchHeader(old_desc);
+    //::prefetch((const char*)old_desc);
     co_await std::experimental::suspend_always{};
     dbtuple *version = (dbtuple *)old_desc->GetPayload();
     bool overwrite = false;
@@ -492,7 +489,7 @@ forward:
          about is guaranteed to have a LSN now.
        */
       auto holder_xid = XID::from_ptr(clsn);
-      XID updater_xid = volatile_read(t->xc->owner);
+      XID updater_xid = volatile_read(t->xid);
 
       // in-place update case (multiple updates on the same record  by same
       // transaction)
@@ -589,7 +586,7 @@ forward:
   check_prev:
     Object *prev_obj = (Object *)prev_obj_ptr.offset();
     if (prev_obj) {  // succeeded
-      //::prefetch((const char*)prev_obj);
+      Object::PrefetchHeader(prev_obj);
       co_await std::experimental::suspend_always{};
       dbtuple *tuple = ((Object *)new_obj_ptr.offset())->GetPinnedTuple();
       ASSERT(tuple);
