@@ -1034,6 +1034,127 @@ class static_limit_callback : public ermia::OrderedIndex::ScanCallback {
 };
 
 
+class credit_check_order_line_scan_callback
+    : public ermia::OrderedIndex::ScanCallback {
+ public:
+  credit_check_order_line_scan_callback() : sum(0) {}
+  inline virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keyp);
+    MARK_REFERENCED(keylen);
+    order_line::value v_ol_temp;
+    const order_line::value *val = Decode(value, v_ol_temp);
+    sum += val->ol_amount;
+    return true;
+  }
+  double sum;
+};
+
+class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
+ public:
+  credit_check_order_scan_callback(ermia::str_arena *arena) : _arena(arena) {}
+  inline virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(value);
+    ermia::varstr *const k = _arena->next(keylen);
+    ASSERT(k);
+    k->copy_from(keyp, keylen);
+    output.emplace_back(k);
+    return true;
+  }
+  std::vector<ermia::varstr *> output;
+  ermia::str_arena *_arena;
+};
+
+class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
+ public:
+  order_line_nop_callback() : n(0) {}
+  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keylen);
+    MARK_REFERENCED(keyp);
+    ASSERT(keylen == sizeof(order_line::key));
+    order_line::value v_ol_temp;
+    const order_line::value *v_ol = Decode(value, v_ol_temp);
+#ifndef NDEBUG
+    order_line::key k_ol_temp;
+    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+    checker::SanityCheckOrderLine(k_ol, v_ol);
+#endif
+    ++n;
+    return true;
+  }
+  size_t n;
+};
+
+class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
+ public:
+  latest_key_callback(ermia::varstr &k, int32_t limit = -1)
+      : limit(limit), n(0), k(&k) {
+    ALWAYS_ASSERT(limit == -1 || limit > 0);
+  }
+
+  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(value);
+    ASSERT(limit == -1 || n < limit);
+    k->copy_from(keyp, keylen);
+    ++n;
+    return (limit == -1) || (n < limit);
+  }
+
+  inline size_t size() const { return n; }
+  inline ermia::varstr &kstr() { return *k; }
+
+ private:
+  int32_t limit;
+  int32_t n;
+  ermia::varstr *k;
+};
+
+
+class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
+ public:
+  order_line_scan_callback() : n(0) {}
+  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keyp);
+    MARK_REFERENCED(keylen);
+    ASSERT(keylen == sizeof(order_line::key));
+    order_line::value v_ol_temp;
+    const order_line::value *v_ol = Decode(value, v_ol_temp);
+
+#ifndef NDEBUG
+    order_line::key k_ol_temp;
+    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
+    checker::SanityCheckOrderLine(k_ol, v_ol);
+#endif
+
+    s_i_ids[v_ol->ol_i_id] = 1;
+    n++;
+    return true;
+  }
+  size_t n;
+  std::unordered_map<uint, bool> s_i_ids;
+};
+
+class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
+ public:
+  new_order_scan_callback() : k_no(0) {}
+  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
+    MARK_REFERENCED(keylen);
+    MARK_REFERENCED(value);
+    ASSERT(keylen == sizeof(new_order::key));
+    ASSERT(value.size() == sizeof(new_order::value));
+    k_no = Decode(keyp, k_no_temp);
+#ifndef NDEBUG
+    new_order::value v_no_temp;
+    const new_order::value *v_no = Decode(value, v_no_temp);
+    checker::SanityCheckNewOrder(k_no);
+#endif
+    return false;
+  }
+  inline const new_order::key *get_key() const { return k_no; }
+
+ private:
+  new_order::key k_no_temp;
+  const new_order::key *k_no;
+};
 
 
 #endif // ADV_COROUTINE
