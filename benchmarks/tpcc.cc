@@ -5,66 +5,7 @@
 
 #ifndef ADV_COROUTINE
 
-#include <sys/time.h>
-#include <string>
-#include <ctype.h>
-#include <stdlib.h>
-#include <malloc.h>
-
-#include <stdlib.h>
-#include <unistd.h>
-
-#include <set>
-#include <vector>
-
-#include "../dbcore/sm-cmd-log.h"
-
 #include "tpcc-common.h"
-
-bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
-  workload_desc_vec w;
-  // numbers from sigmod.csail.mit.edu:
-  // w.push_back(workload_desc("NewOrder", 1.0, TxnNewOrder)); // ~10k ops/sec
-  // w.push_back(workload_desc("Payment", 1.0, TxnPayment)); // ~32k ops/sec
-  // w.push_back(workload_desc("Delivery", 1.0, TxnDelivery)); // ~104k
-  // ops/sec
-  // w.push_back(workload_desc("OrderStatus", 1.0, TxnOrderStatus)); // ~33k
-  // ops/sec
-  // w.push_back(workload_desc("StockLevel", 1.0, TxnStockLevel)); // ~2k
-  // ops/sec
-  unsigned m = 0;
-  for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
-    m += g_txn_workload_mix[i];
-  ALWAYS_ASSERT(m == 100);
-  if (g_txn_workload_mix[0])
-    w.push_back(workload_desc(
-        "NewOrder", double(g_txn_workload_mix[0]) / 100.0, TxnNewOrder));
-  if (g_txn_workload_mix[1])
-    w.push_back(workload_desc(
-        "Payment", double(g_txn_workload_mix[1]) / 100.0, TxnPayment));
-  if (g_txn_workload_mix[2])
-    w.push_back(workload_desc("CreditCheck",
-                              double(g_txn_workload_mix[2]) / 100.0,
-                              TxnCreditCheck));
-  if (g_txn_workload_mix[3])
-    w.push_back(workload_desc(
-        "Delivery", double(g_txn_workload_mix[3]) / 100.0, TxnDelivery));
-  if (g_txn_workload_mix[4])
-    w.push_back(workload_desc("OrderStatus",
-                              double(g_txn_workload_mix[4]) / 100.0,
-                              TxnOrderStatus));
-  if (g_txn_workload_mix[5])
-    w.push_back(workload_desc(
-        "StockLevel", double(g_txn_workload_mix[5]) / 100.0, TxnStockLevel));
-  if (g_txn_workload_mix[6])
-    w.push_back(workload_desc("Query2", double(g_txn_workload_mix[6]) / 100.0,
-                              TxnQuery2));
-  if (g_txn_workload_mix[7])
-    w.push_back(workload_desc("MicroBenchRandom",
-                              double(g_txn_workload_mix[7]) / 100.0,
-                              TxnMicroBenchRandom));
-  return w;
-}
 
 rc_t tpcc_worker::txn_new_order() {
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
@@ -112,7 +53,6 @@ rc_t tpcc_worker::txn_new_order() {
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(*arena);
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
   ermia::varstr valptr;
@@ -183,8 +123,7 @@ rc_t tpcc_worker::txn_new_order() {
                 ->InsertRecord(txn, Encode(str(Size(k_oo)), k_oo),
                          Encode(str(oorder_sz), v_oo), &v_oo_oid));
 
-  const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
-                                      k_no.no_o_id);
+  const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
   TryCatch(tbl_oorder_c_id_idx(warehouse_id)
                 ->InsertOID(txn, Encode(str(Size(k_oo_idx)), k_oo_idx), v_oo_oid));
 
@@ -1067,4 +1006,50 @@ rc_t tpcc_worker::txn_microbench_random() {
   TryCatch(db->Commit(txn));
   return {RC_TRUE};
 }
+
+bench_worker::workload_desc_vec tpcc_worker::get_workload() const {
+  workload_desc_vec w;
+  // numbers from sigmod.csail.mit.edu:
+  // w.push_back(workload_desc("NewOrder", 1.0, TxnNewOrder)); // ~10k ops/sec
+  // w.push_back(workload_desc("Payment", 1.0, TxnPayment)); // ~32k ops/sec
+  // w.push_back(workload_desc("Delivery", 1.0, TxnDelivery)); // ~104k
+  // ops/sec
+  // w.push_back(workload_desc("OrderStatus", 1.0, TxnOrderStatus)); // ~33k
+  // ops/sec
+  // w.push_back(workload_desc("StockLevel", 1.0, TxnStockLevel)); // ~2k
+  // ops/sec
+  unsigned m = 0;
+  for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
+    m += g_txn_workload_mix[i];
+  ALWAYS_ASSERT(m == 100);
+  if (g_txn_workload_mix[0])
+    w.push_back(workload_desc(
+        "NewOrder", double(g_txn_workload_mix[0]) / 100.0, TxnNewOrder));
+  if (g_txn_workload_mix[1])
+    w.push_back(workload_desc(
+        "Payment", double(g_txn_workload_mix[1]) / 100.0, TxnPayment));
+  if (g_txn_workload_mix[2])
+    w.push_back(workload_desc("CreditCheck",
+                              double(g_txn_workload_mix[2]) / 100.0,
+                              TxnCreditCheck));
+  if (g_txn_workload_mix[3])
+    w.push_back(workload_desc(
+        "Delivery", double(g_txn_workload_mix[3]) / 100.0, TxnDelivery));
+  if (g_txn_workload_mix[4])
+    w.push_back(workload_desc("OrderStatus",
+                              double(g_txn_workload_mix[4]) / 100.0,
+                              TxnOrderStatus));
+  if (g_txn_workload_mix[5])
+    w.push_back(workload_desc(
+        "StockLevel", double(g_txn_workload_mix[5]) / 100.0, TxnStockLevel));
+  if (g_txn_workload_mix[6])
+    w.push_back(workload_desc("Query2", double(g_txn_workload_mix[6]) / 100.0,
+                              TxnQuery2));
+  if (g_txn_workload_mix[7])
+    w.push_back(workload_desc("MicroBenchRandom",
+                              double(g_txn_workload_mix[7]) / 100.0,
+                              TxnMicroBenchRandom));
+  return w;
+}
+
 #endif // ADV_COROUTINE

@@ -1,7 +1,13 @@
 #ifndef ADV_COROUTINE
 
+#include <sys/time.h>
+#include <string>
+#include <ctype.h>
+#include <unistd.h>
+
 #include "bench.h"
 #include "tpcc.h"
+#include "../dbcore/sm-cmd-log.h"
 
 // configuration flags
 extern int g_disable_xpartition_txn;
