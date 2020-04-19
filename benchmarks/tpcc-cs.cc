@@ -22,9 +22,7 @@
 
 #include "tpcc-common.h"
 
-class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
- public:
-  tpcc_cs_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+tpcc_cs_worker::tpcc_cs_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
                  const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                  const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
                  spin_barrier *barrier_a, spin_barrier *barrier_b,
@@ -32,171 +30,121 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
         tpcc_worker_mixin(partitions),
         home_warehouse_id(home_warehouse_id) {
-    ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
-    memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-    transactions = (ermia::transaction*)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
-    arenas = (ermia::str_arena*)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
-    for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
-      new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
+  ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
+  memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+  transactions = (ermia::transaction*)numa_alloc_onnode(
+    sizeof(ermia::transaction) * ermia::config::coro_batch_size,
+    numa_node_of_cpu(sched_getcpu()));
+  arenas = (ermia::str_arena*)numa_alloc_onnode(
+    sizeof(ermia::str_arena) * ermia::config::coro_batch_size,
+    numa_node_of_cpu(sched_getcpu()));
+  for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
+    new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
+  }
+}
+
+bench_worker::workload_desc_vec tpcc_cs_worker::get_workload() const {
+  workload_desc_vec w;
+  // numbers from sigmod.csail.mit.edu:
+  // w.push_back(workload_desc("NewOrder", 1.0, TxnNewOrder)); // ~10k ops/sec
+  // w.push_back(workload_desc("Payment", 1.0, TxnPayment)); // ~32k ops/sec
+  // w.push_back(workload_desc("Delivery", 1.0, TxnDelivery)); // ~104k
+  // ops/sec
+  // w.push_back(workload_desc("OrderStatus", 1.0, TxnOrderStatus)); // ~33k
+  // ops/sec
+  // w.push_back(workload_desc("StockLevel", 1.0, TxnStockLevel)); // ~2k
+  // ops/sec
+  unsigned m = 0;
+  for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
+    m += g_txn_workload_mix[i];
+  ALWAYS_ASSERT(m == 100);
+  if (g_txn_workload_mix[0])
+    w.push_back(workload_desc(
+        "NewOrder", double(g_txn_workload_mix[0]) / 100.0, nullptr, TxnNewOrder));
+  if (g_txn_workload_mix[1])
+    w.push_back(workload_desc(
+        "Payment", double(g_txn_workload_mix[1]) / 100.0, nullptr, TxnPayment));
+  if (g_txn_workload_mix[2])
+    w.push_back(workload_desc(
+        "CreditCheck",double(g_txn_workload_mix[2]) / 100.0, nullptr, TxnCreditCheck));
+  if (g_txn_workload_mix[3])
+    w.push_back(workload_desc(
+        "Delivery", double(g_txn_workload_mix[3]) / 100.0, nullptr, TxnDelivery));
+  if (g_txn_workload_mix[4])
+    w.push_back(workload_desc(
+        "OrderStatus", double(g_txn_workload_mix[4]) / 100.0, nullptr, TxnOrderStatus));
+  if (g_txn_workload_mix[5])
+    w.push_back(workload_desc(
+        "StockLevel", double(g_txn_workload_mix[5]) / 100.0, nullptr, TxnStockLevel));
+  if (g_txn_workload_mix[6])
+    w.push_back(workload_desc(
+        "Query2", double(g_txn_workload_mix[6]) / 100.0, nullptr, TxnQuery2));
+  if (g_txn_workload_mix[7])
+    w.push_back(workload_desc(
+        "MicroBenchRandom", double(g_txn_workload_mix[7]) / 100.0, nullptr, TxnMicroBenchRandom));
+  return w;
+}
+
+
+// Essentially a coroutine scheduler that switches between active transactions
+ALWAYS_INLINE void tpcc_cs_worker::MyWork(char *) {
+  // No replication support
+  ALWAYS_ASSERT(is_worker);
+  workload = get_workload();
+  txn_counts.resize(workload.size());
+
+  const size_t batch_size = ermia::config::coro_batch_size;
+  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(sizeof(uint32_t) * batch_size, numa_node_of_cpu(sched_getcpu()));
+  CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(sizeof(CoroTxnHandle) * batch_size, numa_node_of_cpu(sched_getcpu()));
+  memset(handles, 0, sizeof(CoroTxnHandle) * batch_size);
+
+  ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+
+  barrier_a->count_down();
+  barrier_b->wait_for();
+  util::timer t;
+
+  while (running) {
+    uint32_t todo = batch_size;
+    for (uint32_t i = 0; i < batch_size; i++) {
+      uint32_t workload_idx = fetch_workload();
+      workload_idxs[i] = workload_idx;
+      handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
     }
-  }
 
-  // XXX(stephentu): tune this
-  static const size_t NMaxCustomerIdxScanElems = 512;
+    while (todo) {
+      for (uint32_t i = 0; i < batch_size; i++) {
+        /*
+        ::prefetch((const char*)&handles[(i + 1) % batch_size]);
+        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 64);
+        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 128);
+        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 192);
+        */
+        if (!handles[i]) {
+          continue;
+        }
+        if (handles[i].done()) {
+          finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+          handles[i].destroy();
+          handles[i] = nullptr;
+          --todo;
 
-  ermia::dia::generator<rc_t> txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnNewOrder(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_new_order(idx, begin_epoch);
-  }
-
-  ermia::dia::generator<rc_t> txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnDelivery(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_delivery(idx, begin_epoch);
-  }
-
-  ermia::dia::generator<rc_t> txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnCreditCheck(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check(idx, begin_epoch);
-  }
-
-  ermia::dia::generator<rc_t> txn_payment(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnPayment(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_payment(idx, begin_epoch);
-  }
-
-  ermia::dia::generator<rc_t> txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnOrderStatus(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_order_status(idx, begin_epoch);
-  }
-
-  ermia::dia::generator<rc_t> txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnStockLevel(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level(idx, begin_epoch);
-  }
-
-  ermia::dia::generator<rc_t> txn_query2(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnQuery2(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_query2(idx, begin_epoch);
-  }
-
-  ermia::dia::generator<rc_t> txn_microbench_random(uint32_t idx, ermia::epoch_num begin_epoch);
-
-  static ermia::dia::generator<rc_t> TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx, begin_epoch);
-  }
-
-  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
-    LOG(FATAL) << "Not applicable";
-  }
-
-  virtual workload_desc_vec get_workload() const override {
-    workload_desc_vec w;
-    // numbers from sigmod.csail.mit.edu:
-    // w.push_back(workload_desc("NewOrder", 1.0, TxnNewOrder)); // ~10k ops/sec
-    // w.push_back(workload_desc("Payment", 1.0, TxnPayment)); // ~32k ops/sec
-    // w.push_back(workload_desc("Delivery", 1.0, TxnDelivery)); // ~104k
-    // ops/sec
-    // w.push_back(workload_desc("OrderStatus", 1.0, TxnOrderStatus)); // ~33k
-    // ops/sec
-    // w.push_back(workload_desc("StockLevel", 1.0, TxnStockLevel)); // ~2k
-    // ops/sec
-    unsigned m = 0;
-    for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
-      m += g_txn_workload_mix[i];
-    ALWAYS_ASSERT(m == 100);
-    if (g_txn_workload_mix[0])
-      w.push_back(workload_desc(
-          "NewOrder", double(g_txn_workload_mix[0]) / 100.0, nullptr, TxnNewOrder));
-    if (g_txn_workload_mix[1])
-      w.push_back(workload_desc(
-          "Payment", double(g_txn_workload_mix[1]) / 100.0, nullptr, TxnPayment));
-    if (g_txn_workload_mix[2])
-      w.push_back(workload_desc(
-          "CreditCheck",double(g_txn_workload_mix[2]) / 100.0, nullptr, TxnCreditCheck));
-    if (g_txn_workload_mix[3])
-      w.push_back(workload_desc(
-          "Delivery", double(g_txn_workload_mix[3]) / 100.0, nullptr, TxnDelivery));
-    if (g_txn_workload_mix[4])
-      w.push_back(workload_desc(
-          "OrderStatus", double(g_txn_workload_mix[4]) / 100.0, nullptr, TxnOrderStatus));
-    if (g_txn_workload_mix[5])
-      w.push_back(workload_desc(
-          "StockLevel", double(g_txn_workload_mix[5]) / 100.0, nullptr, TxnStockLevel));
-    if (g_txn_workload_mix[6])
-      w.push_back(workload_desc(
-          "Query2", double(g_txn_workload_mix[6]) / 100.0, nullptr, TxnQuery2));
-    if (g_txn_workload_mix[7])
-      w.push_back(workload_desc(
-          "MicroBenchRandom", double(g_txn_workload_mix[7]) / 100.0, nullptr, TxnMicroBenchRandom));
-    return w;
-  }
-
-  // Essentially a coroutine scheduler that switches between active transactions
-  virtual void MyWork(char *) override {
-    // No replication support
-    ALWAYS_ASSERT(is_worker);
-    workload = get_workload();
-    txn_counts.resize(workload.size());
-
-    const size_t batch_size = ermia::config::coro_batch_size;
-    std::vector<CoroTxnHandle> handles(batch_size);
-    std::vector<uint32_t> workload_idxs(batch_size);
-
-    barrier_a->count_down();
-    barrier_b->wait_for();
-    util::timer t;
-    while (running) {
-      ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-
-      for(uint32_t i = 0; i < batch_size; i++) {
-        uint32_t workload_idx = fetch_workload();
-        workload_idxs[i] = workload_idx;
-        handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
-      }
-
-      uint32_t todo_size = batch_size;
-      while (todo_size) {
-        for(uint32_t i = 0; i < batch_size; i++) {
-          if (handles[i]) {
-            if (handles[i].done()) {
-              finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
-              handles[i].destroy();
-              handles[i] = nullptr;
-              todo_size--;
-            } else if (handles[i].promise().callee_coro.done()) {
-              handles[i].resume();
-            } else {
-              handles[i].promise().callee_coro.resume();
-            }
-          }
+/*
+          uint32_t workload_idx = fetch_workload();
+          workload_idxs[i] = workload_idx;
+          handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+          */
+        } else if (handles[i].promise().callee_coro.done()) {
+          handles[i].resume();
+        } else {
+          handles[i].promise().callee_coro.resume();
         }
       }
-
-      const unsigned long old_seed = r.get_seed();
-      r.set_seed(old_seed);
-      // TODO: epoch exit correctly
-      ermia::MM::epoch_exit(0, begin_epoch);
     }
   }
-
- protected:
-  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
-  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
-
- private:
-  const uint home_warehouse_id;
-  int32_t last_no_o_ids[10];  // XXX(stephentu): hack
-  // NOTE: inter-transaction interleaving
-  ermia::transaction *transactions;
-  ermia::str_arena *arenas;
-};
+      // TODO: epoch exit correctly
+    ermia::MM::epoch_exit(0, begin_epoch);
+}
 
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch) {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
@@ -394,7 +342,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
 
-  const uint warehouse_id = pick_wh(r);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   const uint32_t ts = GetCurrentTimeMillis();
 
@@ -1232,362 +1180,5 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, 
   co_return {RC_TRUE};
 }
 
-class tpcc_cs_bench_runner : public bench_runner {
- private:
-  static bool IsTableReadOnly(const char *name) {
-    return strcmp("item", name) == 0;
-  }
-
-  static bool IsTableAppendOnly(const char *name) {
-    return strcmp("history", name) == 0 || strcmp("oorder_c_id_idx", name) == 0;
-  }
-
-  static std::vector<ermia::OrderedIndex *> OpenIndexes(const char *name) {
-    const bool is_read_only = IsTableReadOnly(name);
-    const bool is_append_only = IsTableAppendOnly(name);
-    const std::string s_name(name);
-    std::vector<ermia::OrderedIndex *> ret(NumWarehouses());
-    if (g_enable_separate_tree_per_partition && !is_read_only) {
-      if (NumWarehouses() <= ermia::config::worker_threads) {
-        for (size_t i = 0; i < NumWarehouses(); i++) {
-          ret[i] = ermia::TableDescriptor::GetIndex(s_name + "_" + std::to_string(i));
-          ALWAYS_ASSERT(ret[i]);
-        }
-      } else {
-        const unsigned nwhse_per_partition =
-            NumWarehouses() / ermia::config::worker_threads;
-        for (size_t partid = 0; partid < ermia::config::worker_threads; partid++) {
-          const unsigned wstart = partid * nwhse_per_partition;
-          const unsigned wend = (partid + 1 == ermia::config::worker_threads)
-                                    ? NumWarehouses()
-                                    : (partid + 1) * nwhse_per_partition;
-          ermia::OrderedIndex *idx =
-              ermia::TableDescriptor::GetIndex(s_name + "_" + std::to_string(partid));
-          ALWAYS_ASSERT(idx);
-          for (size_t i = wstart; i < wend; i++) {
-            ret[i] = idx;
-          }
-        }
-      }
-    } else {
-      ermia::OrderedIndex *idx = ermia::TableDescriptor::GetIndex(s_name);
-      ALWAYS_ASSERT(idx);
-      for (size_t i = 0; i < NumWarehouses(); i++) {
-        ret[i] = idx;
-      }
-    }
-    return ret;
-  }
-
-  // Create table and primary index (same name) or a secondary index if
-  // primary_idx_name isn't nullptr
-  static void RegisterIndex(ermia::Engine *db, const char *table_name,
-                            const char *index_name, bool is_primary) {
-    const bool is_read_only = IsTableReadOnly(index_name);
-
-    // A labmda function to be executed by an sm-thread
-    auto register_index = [=](char *) {
-      if (g_enable_separate_tree_per_partition && !is_read_only) {
-        if (ermia::config::is_backup_srv() ||
-            NumWarehouses() <= ermia::config::worker_threads) {
-          for (size_t i = 0; i < NumWarehouses(); i++) {
-            if (!is_primary) {
-              // Secondary index
-              db->CreateMasstreeSecondaryIndex(table_name, std::string(index_name));
-            } else {
-              db->CreateTable(table_name);
-              db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
-            }
-          }
-        } else {
-          const unsigned nwhse_per_partition =
-              NumWarehouses() / ermia::config::worker_threads;
-          for (size_t partid = 0; partid < ermia::config::worker_threads; partid++) {
-            const unsigned wstart = partid * nwhse_per_partition;
-            const unsigned wend = (partid + 1 == ermia::config::worker_threads)
-                                      ? NumWarehouses()
-                                      : (partid + 1) * nwhse_per_partition;
-            if (!is_primary) {
-              auto s_primary_name = std::string(table_name) + "_" + std::to_string(partid);
-              db->CreateMasstreeSecondaryIndex(table_name, s_primary_name);
-            } else {
-              db->CreateTable(table_name);
-              auto ss_name = std::string(table_name) + std::string("_") + std::to_string(partid);
-              db->CreateMasstreePrimaryIndex(table_name, ss_name);
-            }
-          }
-        }
-      } else {
-        if (!is_primary) {
-          db->CreateMasstreeSecondaryIndex(table_name, index_name);
-        } else {
-          db->CreateTable(table_name);
-          db->CreateMasstreePrimaryIndex(table_name, std::string(index_name));
-        }
-      }
-    };
-
-    ermia::thread::Thread *thread = ermia::thread::GetThread(true);
-    ALWAYS_ASSERT(thread);
-    thread->StartTask(register_index);
-    thread->Join();
-    ermia::thread::PutThread(thread);
-  }
-
- public:
-  tpcc_cs_bench_runner(ermia::Engine *db) : bench_runner(db) {
-    // Register all tables and indexes with the engine
-    RegisterIndex(db, "customer",   "customer",         true);
-    RegisterIndex(db, "customer",   "customer_name_idx",         false);
-    RegisterIndex(db, "district",   "district",         true);
-    RegisterIndex(db, "history",    "history",          true);
-    RegisterIndex(db, "item",       "item",             true);
-    RegisterIndex(db, "new_order",  "new_order",        true);
-    RegisterIndex(db, "oorder",     "oorder",           true);
-    RegisterIndex(db, "oorder",     "oorder_c_id_idx",  false);
-    RegisterIndex(db, "order_line", "order_line",       true);
-    RegisterIndex(db, "stock",      "stock",            true);
-    RegisterIndex(db, "stock_data", "stock_data",       true);
-    RegisterIndex(db, "nation",     "nation",           true);
-    RegisterIndex(db, "region",     "region",           true);
-    RegisterIndex(db, "supplier",   "supplier",         true);
-    RegisterIndex(db, "warehouse",  "warehouse",        true);
-  }
-
-  virtual void prepare(char *) {
-#define OPEN_TABLESPACE_X(x) partitions[#x] = OpenIndexes(#x);
-
-    TPCC_TABLE_LIST(OPEN_TABLESPACE_X);
-
-#undef OPEN_TABLESPACE_X
-
-    for (auto &t : partitions) {
-      auto v = unique_filter(t.second);
-      for (size_t i = 0; i < v.size(); i++)
-        open_tables[t.first + "_" + std::to_string(i)] = v[i];
-    }
-
-    if (g_new_order_fast_id_gen) {
-      void *const px = memalign(
-          CACHELINE_SIZE, sizeof(util::aligned_padded_elem<std::atomic<uint64_t>>) *
-                              NumWarehouses() * NumDistrictsPerWarehouse());
-      g_district_ids =
-          reinterpret_cast<util::aligned_padded_elem<std::atomic<uint64_t>> *>(px);
-      for (size_t i = 0; i < NumWarehouses() * NumDistrictsPerWarehouse(); i++)
-        new (&g_district_ids[i]) std::atomic<uint64_t>(3001);
-    }
-  }
-
- protected:
-  virtual std::vector<bench_loader *> make_loaders() {
-    std::vector<bench_loader *> ret;
-    ret.push_back(new tpcc_warehouse_loader(9324, db, open_tables, partitions));
-    ret.push_back(new tpcc_nation_loader(1512, db, open_tables, partitions));
-    ret.push_back(new tpcc_region_loader(789121, db, open_tables, partitions));
-    ret.push_back(
-        new tpcc_supplier_loader(51271928, db, open_tables, partitions));
-    ret.push_back(new tpcc_item_loader(235443, db, open_tables, partitions));
-    if (ermia::config::parallel_loading) {
-      util::fast_random r(89785943);
-      for (uint i = 1; i <= NumWarehouses(); i++)
-        ret.push_back(
-            new tpcc_stock_loader(r.next(), db, open_tables, partitions, i));
-    } else {
-      ret.push_back(
-          new tpcc_stock_loader(89785943, db, open_tables, partitions, -1));
-    }
-    ret.push_back(
-        new tpcc_district_loader(129856349, db, open_tables, partitions));
-    if (ermia::config::parallel_loading) {
-      util::fast_random r(923587856425);
-      for (uint i = 1; i <= NumWarehouses(); i++)
-        ret.push_back(
-            new tpcc_customer_loader(r.next(), db, open_tables, partitions, i));
-    } else {
-      ret.push_back(new tpcc_customer_loader(923587856425, db, open_tables,
-                                             partitions, -1));
-    }
-    if (ermia::config::parallel_loading) {
-      util::fast_random r(2343352);
-      for (uint i = 1; i <= NumWarehouses(); i++)
-        ret.push_back(
-            new tpcc_order_loader(r.next(), db, open_tables, partitions, i));
-    } else {
-      ret.push_back(
-          new tpcc_order_loader(2343352, db, open_tables, partitions, -1));
-    }
-    return ret;
-  }
-
-  virtual std::vector<bench_worker *> make_workers() {
-    util::fast_random r(23984543);
-    std::vector<bench_worker *> ret;
-    if (NumWarehouses() <= ermia::config::worker_threads) {
-      for (size_t i = 0; i < ermia::config::worker_threads; i++)
-        ret.push_back(new tpcc_cs_worker(i, r.next(), db, open_tables, partitions,
-                                         &barrier_a, &barrier_b,
-                                         (i % NumWarehouses()) + 1));
-    } else {
-      for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-        ret.push_back(new tpcc_cs_worker(i, r.next(), db, open_tables, partitions,
-                                         &barrier_a, &barrier_b, i + 1));
-      }
-    }
-    return ret;
-  }
-
-  virtual std::vector<bench_worker *> make_cmdlog_redoers() {
-    ALWAYS_ASSERT(ermia::config::is_backup_srv() && ermia::config::command_log);
-    std::vector<bench_worker *> ret;
-    return ret;
-  }
-
- private:
-  std::map<std::string, std::vector<ermia::OrderedIndex *>> partitions;
-};
-
-void tpcc_cs_do_test(ermia::Engine *db, int argc, char **argv) {
-  // parse options
-  optind = 1;
-  bool did_spec_remote_pct = false;
-  while (1) {
-    static struct option long_options[] = {
-        {"disable-cross-partition-transactions", no_argument,
-         &g_disable_xpartition_txn, 1},
-        {"enable-separate-tree-per-partition", no_argument,
-         &g_enable_separate_tree_per_partition, 1},
-        {"new-order-remote-item-pct", required_argument, 0, 'r'},
-        {"new-order-fast-id-gen", no_argument, &g_new_order_fast_id_gen, 1},
-        {"uniform-item-dist", no_argument, &g_uniform_item_dist, 1},
-        {"order-status-scan-hack", no_argument, &g_order_status_scan_hack, 1},
-        {"workload-mix", required_argument, 0, 'w'},
-        {"warehouse-spread", required_argument, 0, 's'},
-        {"80-20-dist", no_argument, &g_wh_temperature, 't'},
-        {"microbench-rows", required_argument, 0, 'n'},
-        {"microbench-wr-ratio", required_argument, 0, 'p'},
-        {"microbench-wr-rows", required_argument, 0, 'q'},
-        {"suppliers", required_argument, 0, 'z'},
-        {0, 0, 0, 0}};
-    int option_index = 0;
-    int c =
-        getopt_long(argc, argv, "r:w:s:t:n:p:q:z", long_options, &option_index);
-    if (c == -1) break;
-    switch (c) {
-      case 0:
-        if (long_options[option_index].flag != 0) break;
-        abort();
-        break;
-
-      case 's':
-        g_wh_spread = strtoul(optarg, NULL, 10) / 100.00;
-        break;
-
-      case 'n':
-        g_microbench_rows = strtoul(optarg, NULL, 10);
-        ALWAYS_ASSERT(g_microbench_rows > 0);
-        break;
-
-      case 'q':
-        g_microbench_wr_rows = strtoul(optarg, NULL, 10);
-        break;
-
-      case 'r':
-        g_new_order_remote_item_pct = strtoul(optarg, NULL, 10);
-        ALWAYS_ASSERT(g_new_order_remote_item_pct >= 0 &&
-                      g_new_order_remote_item_pct <= 100);
-        did_spec_remote_pct = true;
-        break;
-
-      case 'w': {
-        const std::vector<std::string> toks = util::split(optarg, ',');
-        ALWAYS_ASSERT(toks.size() == ARRAY_NELEMS(g_txn_workload_mix));
-        unsigned s = 0;
-        for (size_t i = 0; i < toks.size(); i++) {
-          unsigned p = strtoul(toks[i].c_str(), nullptr, 10);
-          ALWAYS_ASSERT(p >= 0 && p <= 100);
-          s += p;
-          g_txn_workload_mix[i] = p;
-        }
-        ALWAYS_ASSERT(s == 100);
-      } break;
-      case 'z':
-        g_nr_suppliers = strtoul(optarg, NULL, 10);
-        ALWAYS_ASSERT(g_nr_suppliers > 0);
-        break;
-
-      case '?':
-        /* getopt_long already printed an error message. */
-        exit(1);
-
-      default:
-        abort();
-    }
-  }
-
-  if (did_spec_remote_pct && g_disable_xpartition_txn) {
-    std::cerr << "WARNING: --new-order-remote-item-pct given with "
-            "--disable-cross-partition-transactions" << std::endl;
-    std::cerr << "  --new-order-remote-item-pct will have no effect" << std::endl;
-  }
-
-  if (g_wh_temperature) {
-    // set up hot and cold WHs
-    ALWAYS_ASSERT(NumWarehouses() * 0.2 >= 1);
-    uint num_hot_whs = NumWarehouses() * 0.2;
-    util::fast_random r(23984543);
-    for (uint i = 1; i <= num_hot_whs; i++) {
-    try_push:
-      uint w = r.next() % NumWarehouses() + 1;
-      if (find(tpcc_cs_worker::hot_whs.begin(), tpcc_cs_worker::hot_whs.end(), w) ==
-          tpcc_cs_worker::hot_whs.end())
-        tpcc_cs_worker::hot_whs.push_back(w);
-      else
-        goto try_push;
-    }
-
-    for (uint i = 1; i <= NumWarehouses(); i++) {
-      if (find(tpcc_cs_worker::hot_whs.begin(), tpcc_cs_worker::hot_whs.end(), i) ==
-          tpcc_cs_worker::hot_whs.end())
-        tpcc_cs_worker::cold_whs.push_back(i);
-    }
-    ALWAYS_ASSERT(tpcc_cs_worker::cold_whs.size() + tpcc_cs_worker::hot_whs.size() ==
-                  NumWarehouses());
-  }
-
-  if (ermia::config::verbose) {
-    std::cerr << "tpcc settings:" << std::endl;
-    if (g_wh_temperature) {
-      std::cerr << "  hot whs for 80% accesses     :";
-      for (uint i = 0; i < tpcc_cs_worker::hot_whs.size(); i++)
-        std::cerr << " " << tpcc_cs_worker::hot_whs[i];
-      std::cerr << std::endl;
-    } else {
-      std::cerr << "  random home warehouse (%)    : " << g_wh_spread * 100 << std::endl;
-    }
-    std::cerr << "  cross_partition_transactions : " << !g_disable_xpartition_txn
-         << std::endl;
-    std::cerr << "  separate_tree_per_partition  : "
-         << g_enable_separate_tree_per_partition << std::endl;
-    std::cerr << "  new_order_remote_item_pct    : " << g_new_order_remote_item_pct
-         << std::endl;
-    std::cerr << "  new_order_fast_id_gen        : " << g_new_order_fast_id_gen
-         << std::endl;
-    std::cerr << "  uniform_item_dist            : " << g_uniform_item_dist << std::endl;
-    std::cerr << "  order_status_scan_hack       : " << g_order_status_scan_hack
-         << std::endl;
-    std::cerr << "  microbench rows            : " << g_microbench_rows << std::endl;
-    std::cerr << "  microbench wr ratio (%)    : "
-         << g_microbench_wr_rows / g_microbench_rows << std::endl;
-    std::cerr << "  microbench wr rows         : " << g_microbench_wr_rows << std::endl;
-    std::cerr << "  number of suppliers : " << g_nr_suppliers << std::endl;
-    std::cerr << "  workload_mix                 : "
-         << util::format_list(g_txn_workload_mix,
-                        g_txn_workload_mix + ARRAY_NELEMS(g_txn_workload_mix))
-         << std::endl;
-  }
-
-  tpcc_cs_bench_runner r(db);
-  r.run();
-}
 #endif // ADV_COROUTINE
 
