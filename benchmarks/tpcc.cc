@@ -408,29 +408,6 @@ rc_t tpcc_worker::txn_new_order() {
   return {RC_TRUE};
 }
 
-class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
- public:
-  new_order_scan_callback() : k_no(0) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(keylen);
-    MARK_REFERENCED(value);
-    ASSERT(keylen == sizeof(new_order::key));
-    ASSERT(value.size() == sizeof(new_order::value));
-    k_no = Decode(keyp, k_no_temp);
-#ifndef NDEBUG
-    new_order::value v_no_temp;
-    const new_order::value *v_no = Decode(value, v_no_temp);
-    checker::SanityCheckNewOrder(k_no);
-#endif
-    return false;
-  }
-  inline const new_order::key *get_key() const { return k_no; }
-
- private:
-  new_order::key k_no_temp;
-  const new_order::key *k_no;
-};
-
 rc_t tpcc_worker::txn_delivery() {
   const uint warehouse_id = pick_wh(r);
   const uint o_carrier_id = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -554,38 +531,6 @@ rc_t tpcc_worker::txn_delivery() {
   return {RC_TRUE};
 }
 
-class credit_check_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
- public:
-  credit_check_order_scan_callback(ermia::str_arena *arena) : _arena(arena) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(value);
-    ermia::varstr *const k = _arena->next(keylen);
-    ASSERT(k);
-    k->copy_from(keyp, keylen);
-    output.emplace_back(k);
-    return true;
-  }
-  std::vector<ermia::varstr *> output;
-  ermia::str_arena *_arena;
-};
-
-class credit_check_order_line_scan_callback
-    : public ermia::OrderedIndex::ScanCallback {
- public:
-  credit_check_order_line_scan_callback(ermia::str_arena *arena) : _arena(arena) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(keyp);
-    MARK_REFERENCED(keylen);
-    ermia::varstr *pv = _arena->next(0);  // header only
-    pv->p = value.p;
-    pv->l = value.l;
-    _v_ol.emplace_back(pv);
-    return true;
-  }
-  std::vector<const ermia::varstr *> _v_ol;
-  ermia::str_arena *_arena;
-};
-
 rc_t tpcc_worker::txn_credit_check() {
   /*
           Note: Cahill's credit check transaction to introduce SI's anomaly.
@@ -677,16 +622,16 @@ rc_t tpcc_worker::txn_credit_check() {
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    static thread_local credit_check_order_line_scan_callback c_ol(s_arena.get());
-    c_ol._v_ol.clear();
+    credit_check_order_line_scan_callback c_ol;
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
     TryCatch(tbl_order_line(warehouse_id)
                   ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
                          &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
                          s_arena.get()));
-    ALWAYS_ASSERT(c_ol._v_ol.size());
 
+    /* XXX(tzwang): moved to the callback to avoid storing keys
+    ALWAYS_ASSERT(c_ol._v_ol.size());
     for (auto &v_ol : c_ol._v_ol) {
       order_line::value v_ol_temp;
       const order_line::value *val = Decode(*v_ol, v_ol_temp);
@@ -694,6 +639,8 @@ rc_t tpcc_worker::txn_credit_check() {
       // Aggregation
       sum += val->ol_amount;
     }
+    */
+    sum += c_ol.sum;
   }
 
   // c_credit update
@@ -868,50 +815,6 @@ rc_t tpcc_worker::txn_payment() {
   return {RC_TRUE};
 }
 
-class order_line_nop_callback : public ermia::OrderedIndex::ScanCallback {
- public:
-  order_line_nop_callback() : n(0) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(keylen);
-    MARK_REFERENCED(keyp);
-    ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
-#ifndef NDEBUG
-    order_line::key k_ol_temp;
-    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
-#endif
-    ++n;
-    return true;
-  }
-  size_t n;
-};
-
-class latest_key_callback : public ermia::OrderedIndex::ScanCallback {
- public:
-  latest_key_callback(ermia::varstr &k, int32_t limit = -1)
-      : limit(limit), n(0), k(&k) {
-    ALWAYS_ASSERT(limit == -1 || limit > 0);
-  }
-
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(value);
-    ASSERT(limit == -1 || n < limit);
-    k->copy_from(keyp, keylen);
-    ++n;
-    return (limit == -1) || (n < limit);
-  }
-
-  inline size_t size() const { return n; }
-  inline ermia::varstr &kstr() { return *k; }
-
- private:
-  int32_t limit;
-  int32_t n;
-  ermia::varstr *k;
-};
-
 rc_t tpcc_worker::txn_order_status() {
   const uint warehouse_id = pick_wh(r);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -1038,30 +941,6 @@ rc_t tpcc_worker::txn_order_status() {
   TryCatch(db->Commit(txn));
   return {RC_TRUE};
 }
-
-class order_line_scan_callback : public ermia::OrderedIndex::ScanCallback {
- public:
-  order_line_scan_callback() : n(0) {}
-  virtual bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) {
-    MARK_REFERENCED(keyp);
-    MARK_REFERENCED(keylen);
-    ASSERT(keylen == sizeof(order_line::key));
-    order_line::value v_ol_temp;
-    const order_line::value *v_ol = Decode(value, v_ol_temp);
-
-#ifndef NDEBUG
-    order_line::key k_ol_temp;
-    const order_line::key *k_ol = Decode(keyp, k_ol_temp);
-    checker::SanityCheckOrderLine(k_ol, v_ol);
-#endif
-
-    s_i_ids[v_ol->ol_i_id] = 1;
-    n++;
-    return true;
-  }
-  size_t n;
-  std::unordered_map<uint, bool> s_i_ids;
-};
 
 rc_t tpcc_worker::txn_stock_level() {
   const uint warehouse_id = pick_wh(r);
