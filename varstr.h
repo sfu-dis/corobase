@@ -86,6 +86,14 @@ struct varstr {
   inline operator lcdf::Str() const { return lcdf::Str(p, l); }
 #endif
 
+  inline void prefetch() {
+    uint32_t i = 0;
+    do {
+      ::prefetch((const char *)(p + i));
+      i += CACHE_LINE_SIZE;
+    } while (i < l);
+  }
+
   uint64_t l;
   fat_ptr ptr;
   const uint8_t *p;  // must be the last field
