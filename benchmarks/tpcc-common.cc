@@ -96,4 +96,8 @@ std::string tpcc_worker_mixin::NameTokens[] = {
     std::string("PRES"),  std::string("ESE"),   std::string("ANTI"), std::string("CALLY"),
     std::string("ATION"), std::string("EING"),
 };
+
+std::vector<uint> tpcc_worker_mixin::hot_whs;
+std::vector<uint> tpcc_worker_mixin::cold_whs;
+
 #endif // ADV_COROUTINE
