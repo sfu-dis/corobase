@@ -112,13 +112,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_
 
   if (!unlikely(end_key && *end_key <= start_key)) {
     XctSearchRangeCallback cb(t, &c);
-
-    varstr uppervk;
-    if (end_key) {
-      uppervk = *end_key;
-    }
-    AWAIT masstree_.search_range_call(start_key, end_key ? &uppervk : nullptr, cb,
-                                t->xc);
+    AWAIT masstree_.search_range_call(start_key, end_key ? end_key : nullptr, cb, t->xc);
   }
   RETURN c.return_code;
 }
@@ -256,12 +250,8 @@ PROMISE(void) ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &sta
   int scancount = 0;
   if (!unlikely(end_key && *end_key <= start_key)) {
     XctSearchRangeCallback cb(t, &c);
-    varstr uppervk;
-    if (end_key) {
-      uppervk = *end_key;
-    }
     scancount = AWAIT masstree_.search_range_oid(
-        start_key, end_key ? &uppervk : nullptr, cb, t->xc);
+        start_key, end_key ? end_key : nullptr, cb, t->xc);
   }
   volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
 }
