@@ -902,7 +902,7 @@ public:
                                  low_level_search_range_callback &callback)
       : search_range_scanner_base<Reverse>(boundary), callback_(callback),
         btr_ptr_(btr_ptr) {}
-  void visit_leaf(const Masstree::scanstackelt<P> &iter,
+  inline void visit_leaf(const Masstree::scanstackelt<P> &iter,
                   const Masstree::key<uint64_t> &key, threadinfo &) {
     this->n_ = iter.node();
     this->v_ = iter.full_version_value();
@@ -910,7 +910,18 @@ public:
     if (this->boundary_)
       this->check(iter, key);
   }
-  bool visit_value(const Masstree::key<uint64_t> &key, dbtuple *value) {
+
+  // Same as visit_value, but without invoking the callback
+  inline bool visit_value_no_callback(const Masstree::key<uint64_t> &key) {
+    if (this->boundary_compar_) {
+      lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
+      if ((!Reverse && bs <= key.full_string()) ||
+          (Reverse && bs >= key.full_string()))
+        return false;
+    }
+    return true;
+  }
+  inline bool visit_value(const Masstree::key<uint64_t> &key, dbtuple *value) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
@@ -920,7 +931,7 @@ public:
     return callback_.invoke(this->btr_ptr_, key.full_string(), value, this->n_,
                             this->v_);
   }
-  bool visit_oid(const Masstree::key<uint64_t> &key, OID oid) {
+  inline bool visit_oid(const Masstree::key<uint64_t> &key, OID oid) {
     if (this->boundary_compar_) {
       lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
       if ((!Reverse && bs <= key.full_string()) ||
