@@ -16,25 +16,9 @@ extern uint g_microbench_rows;  // this many rows
 extern int g_microbench_wr_rows;  // this number of rows to write
 extern int g_nr_suppliers;
 
-// how much % of time a worker should use a random home wh
-// 0 - always use home wh
-// 50 - 50% of time use random wh
-// 100 - always use a random wh
 extern double g_wh_spread;
 
-// TPC-C workload mix
-// 0: NewOrder
-// 1: Payment
-// 2: CreditCheck
-// 3: Delivery
-// 4: OrderStatus
-// 5: StockLevel
-// 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table
-// update
-// 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set
-// range
-static unsigned g_txn_workload_mix[] = {
-    45, 43, 0, 4, 4, 4, 0, 0};  // default TPC-C workload mix
+extern unsigned g_txn_workload_mix[8];
 
 extern util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids ;
 
@@ -1183,6 +1167,160 @@ class new_order_scan_callback : public ermia::OrderedIndex::ScanCallback {
  private:
   new_order::key k_no_temp;
   const new_order::key *k_no;
+};
+
+class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
+ public:
+  tpcc_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+              const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+              const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
+              spin_barrier *barrier_a, spin_barrier *barrier_b,
+              uint home_warehouse_id)
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
+        tpcc_worker_mixin(partitions),
+        home_warehouse_id(home_warehouse_id) {
+    ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
+    memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+  }
+
+  // XXX(stephentu): tune this
+  static const size_t NMaxCustomerIdxScanElems = 512;
+
+  rc_t txn_new_order();
+
+  static rc_t TxnNewOrder(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_new_order();
+  }
+
+  rc_t txn_delivery();
+
+  static rc_t TxnDelivery(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_delivery();
+  }
+
+  rc_t txn_credit_check();
+  static rc_t TxnCreditCheck(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_credit_check();
+  }
+
+  rc_t txn_payment();
+
+  static rc_t TxnPayment(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_payment();
+  }
+
+  rc_t txn_order_status();
+
+  static rc_t TxnOrderStatus(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_order_status();
+  }
+
+  rc_t txn_stock_level();
+
+  static rc_t TxnStockLevel(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_stock_level();
+  }
+
+  rc_t txn_microbench_random();
+
+  static rc_t TxnMicroBenchRandom(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_microbench_random();
+  }
+
+  rc_t txn_query2();
+
+  static rc_t TxnQuery2(bench_worker *w) {
+    return static_cast<tpcc_worker *>(w)->txn_query2();
+  }
+
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
+    LOG(FATAL) << "Not applicable";
+  }
+
+  virtual workload_desc_vec get_workload() const override;
+
+ protected:
+  ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
+
+ private:
+  const uint home_warehouse_id;
+  int32_t last_no_o_ids[10];  // XXX(stephentu): hack
+};
+
+class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
+ public:
+  tpcc_cs_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+                 const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+                 const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
+                 spin_barrier *barrier_a, spin_barrier *barrier_b,
+                 uint home_warehouse_id);
+  // XXX(stephentu): tune this
+  static const size_t NMaxCustomerIdxScanElems = 512;
+
+  ermia::dia::generator<rc_t> txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnNewOrder(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_new_order(idx, begin_epoch);
+  }
+
+  ermia::dia::generator<rc_t> txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnDelivery(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_delivery(idx, begin_epoch);
+  }
+
+  ermia::dia::generator<rc_t> txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnCreditCheck(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_credit_check(idx, begin_epoch);
+  }
+
+  ermia::dia::generator<rc_t> txn_payment(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnPayment(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_payment(idx, begin_epoch);
+  }
+
+  ermia::dia::generator<rc_t> txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnOrderStatus(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_order_status(idx, begin_epoch);
+  }
+
+  ermia::dia::generator<rc_t> txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnStockLevel(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_stock_level(idx, begin_epoch);
+  }
+
+  ermia::dia::generator<rc_t> txn_query2(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnQuery2(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_query2(idx, begin_epoch);
+  }
+
+  ermia::dia::generator<rc_t> txn_microbench_random(uint32_t idx, ermia::epoch_num begin_epoch);
+
+  static ermia::dia::generator<rc_t> TxnMicroBenchRandom(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<tpcc_cs_worker *>(w)->txn_microbench_random(idx, begin_epoch);
+  }
+
+  virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const override {
+    LOG(FATAL) << "Not applicable";
+  }
+
+  virtual workload_desc_vec get_workload() const override;
+  virtual void MyWork(char *) override;
+
+ protected:
+  ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
+
+ private:
+  const uint home_warehouse_id;
+  int32_t last_no_o_ids[10];  // XXX(stephentu): hack
+  // NOTE: inter-transaction interleaving
+  ermia::transaction *transactions;
+  ermia::str_arena *arenas;
 };
 
 
