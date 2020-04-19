@@ -5,104 +5,94 @@
 #include <map>
 #include <numa.h>
 
-#include "sm-defs.h"
 #include "../macros.h"
+#include "sm-defs.h"
 
 namespace ermia {
 namespace dia {
 
 // Simple thread caching allocator.
-struct tcalloc {
-  /*
-  struct header {
-    header *next = nullptr;
-  };
-  std::map<size_t, header *> roots;
-  size_t last_size_allocated = 0;
-  size_t total = 0;
-  size_t alloc_count = 0;
-  */
-  static const uint32_t kSize = 8 * 1024 * 1024;  // 8MB
-  static const uint32_t kChunkSize = kSize / 64;
-  struct Chunk {
-    char data[kChunkSize];
-  };
-  uint64_t bitmap;
-  Chunk *chunks;//[64];
+class tcalloc {
+    struct alignas(CACHELINE_SIZE) FrameNode {
+        FrameNode *next;
+        uint8_t entry_index;
+        uint8_t padding[CACHELINE_SIZE - sizeof(intptr_t) - sizeof(uint8_t)];
+    };
 
-  tcalloc() {
-    chunks = (Chunk *)numa_alloc_onnode(kSize, numa_node_of_cpu(sched_getcpu()));
-    memset(chunks, 0, kSize);
-    bitmap = 0;
-  }
+    static_assert(sizeof(FrameNode) == CACHELINE_SIZE, "");
 
-  ~tcalloc() {
-    /*
-    for(auto iter = roots.begin() ; iter != roots.end(); iter++) {
-      auto current = iter->second;
-      while (current) {
-        auto next = current->next;
-        ::free(current);
-        current = next;
-      }
+   public:
+    tcalloc() { 
+        memset(entries, 0, sizeof(entries));
+
+        constexpr size_t kArenaSize = 8 * 1024 * 1024;
+        arena = static_cast<uint8_t *>(
+            numa_alloc_onnode(kArenaSize, numa_node_of_cpu(sched_getcpu())));
+        arena_top = arena;
     }
-    */
-  }
+    ~tcalloc() {}
 
-  inline void *alloc(size_t sz) {
-    ALWAYS_ASSERT(sz <= kChunkSize);
-    uint32_t pos = 0;
-    if (bitmap == 0) {
-      // Set MSB to indicate allocation
-      pos = 63;
-    } else {
-      pos = __builtin_ctzll(bitmap);
-      if (pos == 0) {
-        return nullptr;
-      } else {
-        --pos;
-      }
-    }
-    bitmap |= (1UL << pos);
-    return &(chunks[pos].data[0]);
-
-    /*
-    auto iter = roots.find(sz);
-    if (iter != roots.end() && iter->second) {
-      void *mem = iter->second;
-      iter->second = iter->second->next;
-      return mem;
+    static inline uint32_t lg_down(uint64_t x) {
+        static_assert(sizeof(unsigned long long) * CHAR_BIT == 64, "");
+        return 63U - __builtin_clzll(x);
     }
 
-    ++alloc_count;
-    total += sz;
-    last_size_allocated = sz;
-
-    return malloc(sz);
-    */
-  }
-
-  void stats() {
-    //printf("allocs %zu total %zu sz %zu\n", alloc_count, total, last_size_allocated);
-  }
-
-  inline void free(void *p, size_t sz) {
-    uint32_t pos = (Chunk *)p - chunks;
-    bitmap &= ~(1UL << pos);
-    /*
-    auto new_entry = static_cast<header *>(p);
-    auto iter = roots.find(sz);
-    if (iter == roots.end()) {
-      roots[sz] = new_entry;
-    } else {
-      new_entry->next = iter->second;
-      iter->second = new_entry;
+    static inline uint32_t lg_down(uint32_t x) {
+        static_assert(sizeof(unsigned) * CHAR_BIT == 32, "");
+        return 31U - __builtin_clz(x);
     }
-    */
-  }
+
+    template <typename T>
+    static inline uint32_t lg_up(T x) {
+        return lg_down(x - 1) + 1;
+    }
+
+    void *alloc_from_arena(size_t byte_size, uint8_t alignment) {
+        ASSERT(arena_top);
+        const int8_t mask = alignment - 1;
+        uint8_t *p = reinterpret_cast<uint8_t *>(
+            reinterpret_cast<intptr_t>(arena_top + mask) & ~mask);
+        arena_top = p + byte_size;
+        return reinterpret_cast<void *>(p);
+    }
+
+    void *alloc(size_t byte_size) {
+        const int ceil_log_2 = lg_up(byte_size);
+        ASSERT(ceil_log_2 < kEndSizeExp);
+
+        const int entry_index =
+            ceil_log_2 > kBeginSizeExp ? ceil_log_2 - kBeginSizeExp : 0;
+
+        FrameNode *frame_to_alloc = entries[entry_index];
+        if (frame_to_alloc == nullptr) {
+            const size_t frame_size = 1 << (entry_index + kBeginSizeExp);
+            frame_to_alloc = reinterpret_cast<FrameNode *>(alloc_from_arena(
+                sizeof(FrameNode) + frame_size, CACHELINE_SIZE));
+            frame_to_alloc->entry_index = entry_index;
+        } else {
+            entries[entry_index] = frame_to_alloc->next;
+        }
+
+        return static_cast<void *>(frame_to_alloc + 1);
+    }
+
+    void free(void *p, size_t byte_size) {
+        FrameNode *frame_to_free = reinterpret_cast<FrameNode *>(p) - 1;
+        const int entry_index = frame_to_free->entry_index;
+        frame_to_free->next = entries[entry_index];
+        entries[entry_index] = frame_to_free;
+    }
+
+   private:
+    static constexpr short kBeginSizeExp = 8;
+    static constexpr short kEndSizeExp = 15;  // exclusive
+    FrameNode *entries[kEndSizeExp - kBeginSizeExp];
+
+    uint8_t *arena;
+    uint8_t *arena_top;
 };
 
-extern thread_local tcalloc allocator;
+extern thread_local tcalloc coroutine_allocator;
 
 template <typename T> struct generator {
   struct promise_type;
@@ -116,8 +106,8 @@ template <typename T> struct generator {
     auto final_suspend() { return std::experimental::suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
     void return_value(T value) { current_value = value; }
-    void *operator new(size_t sz) { return allocator.alloc(sz); }
-    void operator delete(void *p, size_t sz) { allocator.free(p, sz); }
+    void *operator new(size_t sz) { return coroutine_allocator.alloc(sz); }
+    void operator delete(void *p, size_t sz) { coroutine_allocator.free(p, sz); }
   };
 
   auto get_handle() {
@@ -247,8 +237,8 @@ struct promise_base {
   // It is very important to use arena to reduce the
   // cache miss in access promise_base * which happens
   // a lot in task<T>.resume();
-  void *operator new(size_t sz) { return allocator.alloc(sz); }
-  void operator delete(void *p, size_t sz) { allocator.free(p, sz); }
+  void *operator new(size_t sz) { return coroutine_allocator.alloc(sz); }
+  void operator delete(void *p, size_t sz) { coroutine_allocator.free(p, sz); }
 
   inline void set_parent(promise_base * caller_promise) {
       parent_ = caller_promise;
