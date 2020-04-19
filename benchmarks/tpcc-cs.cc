@@ -5,155 +5,9 @@
 
 #ifndef ADV_COROUTINE
 
-#include <sys/time.h>
-#include <string>
-#include <ctype.h>
-#include <stdlib.h>
-#include <malloc.h>
-
-#include <stdlib.h>
-#include <unistd.h>
-#include <getopt.h>
-
-#include <set>
-#include <vector>
-
-#include "../dbcore/sm-cmd-log.h"
-
 #include "tpcc-common.h"
 
-tpcc_cs_worker::tpcc_cs_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
-                 const std::map<std::string, ermia::OrderedIndex *> &open_tables,
-                 const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
-                 spin_barrier *barrier_a, spin_barrier *barrier_b,
-                 uint home_warehouse_id)
-      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        tpcc_worker_mixin(partitions),
-        home_warehouse_id(home_warehouse_id) {
-  ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
-  memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
-  transactions = (ermia::transaction*)numa_alloc_onnode(
-    sizeof(ermia::transaction) * ermia::config::coro_batch_size,
-    numa_node_of_cpu(sched_getcpu()));
-  arenas = (ermia::str_arena*)numa_alloc_onnode(
-    sizeof(ermia::str_arena) * ermia::config::coro_batch_size,
-    numa_node_of_cpu(sched_getcpu()));
-  for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
-    new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
-  }
-}
-
-bench_worker::workload_desc_vec tpcc_cs_worker::get_workload() const {
-  workload_desc_vec w;
-  // numbers from sigmod.csail.mit.edu:
-  // w.push_back(workload_desc("NewOrder", 1.0, TxnNewOrder)); // ~10k ops/sec
-  // w.push_back(workload_desc("Payment", 1.0, TxnPayment)); // ~32k ops/sec
-  // w.push_back(workload_desc("Delivery", 1.0, TxnDelivery)); // ~104k
-  // ops/sec
-  // w.push_back(workload_desc("OrderStatus", 1.0, TxnOrderStatus)); // ~33k
-  // ops/sec
-  // w.push_back(workload_desc("StockLevel", 1.0, TxnStockLevel)); // ~2k
-  // ops/sec
-  unsigned m = 0;
-  for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
-    m += g_txn_workload_mix[i];
-  ALWAYS_ASSERT(m == 100);
-  if (g_txn_workload_mix[0])
-    w.push_back(workload_desc(
-        "NewOrder", double(g_txn_workload_mix[0]) / 100.0, nullptr, TxnNewOrder));
-  if (g_txn_workload_mix[1])
-    w.push_back(workload_desc(
-        "Payment", double(g_txn_workload_mix[1]) / 100.0, nullptr, TxnPayment));
-  if (g_txn_workload_mix[2])
-    w.push_back(workload_desc(
-        "CreditCheck",double(g_txn_workload_mix[2]) / 100.0, nullptr, TxnCreditCheck));
-  if (g_txn_workload_mix[3])
-    w.push_back(workload_desc(
-        "Delivery", double(g_txn_workload_mix[3]) / 100.0, nullptr, TxnDelivery));
-  if (g_txn_workload_mix[4])
-    w.push_back(workload_desc(
-        "OrderStatus", double(g_txn_workload_mix[4]) / 100.0, nullptr, TxnOrderStatus));
-  if (g_txn_workload_mix[5])
-    w.push_back(workload_desc(
-        "StockLevel", double(g_txn_workload_mix[5]) / 100.0, nullptr, TxnStockLevel));
-  if (g_txn_workload_mix[6])
-    w.push_back(workload_desc(
-        "Query2", double(g_txn_workload_mix[6]) / 100.0, nullptr, TxnQuery2));
-  if (g_txn_workload_mix[7])
-    w.push_back(workload_desc(
-        "MicroBenchRandom", double(g_txn_workload_mix[7]) / 100.0, nullptr, TxnMicroBenchRandom));
-  return w;
-}
-
-
-// Essentially a coroutine scheduler that switches between active transactions
-ALWAYS_INLINE void tpcc_cs_worker::MyWork(char *) {
-  // No replication support
-  ALWAYS_ASSERT(is_worker);
-  workload = get_workload();
-  txn_counts.resize(workload.size());
-
-  const size_t batch_size = ermia::config::coro_batch_size;
-  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(sizeof(uint32_t) * batch_size, numa_node_of_cpu(sched_getcpu()));
-  CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(sizeof(CoroTxnHandle) * batch_size, numa_node_of_cpu(sched_getcpu()));
-  memset(handles, 0, sizeof(CoroTxnHandle) * batch_size);
-
-  ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-
-  barrier_a->count_down();
-  barrier_b->wait_for();
-  util::timer t;
-
-  while (running) {
-    uint32_t todo = batch_size;
-    for (uint32_t i = 0; i < batch_size; i++) {
-      uint32_t workload_idx = fetch_workload();
-      workload_idxs[i] = workload_idx;
-      handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
-    }
-
-    while (todo) {
-      for (uint32_t i = 0; i < batch_size; i++) {
-        /*
-        ::prefetch((const char*)&handles[(i + 1) % batch_size]);
-        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 64);
-        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 128);
-        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 192);
-        */
-        if (!handles[i]) {
-          continue;
-        }
-        if (handles[i].done()) {
-          finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
-          handles[i].destroy();
-          handles[i] = nullptr;
-          --todo;
-
-/*
-          uint32_t workload_idx = fetch_workload();
-          workload_idxs[i] = workload_idx;
-          handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
-          */
-        } else if (handles[i].promise().callee_coro.done()) {
-          handles[i].resume();
-        } else {
-          handles[i].promise().callee_coro.resume();
-        }
-      }
-    }
-  }
-      // TODO: epoch exit correctly
-    ermia::MM::epoch_exit(0, begin_epoch);
-}
-
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch) {
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
-                                               arenas[idx],
-                                               &transactions[idx]);
-  ermia::TXN::xid_context *xc = txn->GetXIDContext();
-  xc->begin_epoch = begin_epoch;
-  rc_t rc = rc_t{RC_INVALID};
-
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
@@ -198,14 +52,23 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   //   max_read_set_size : 15
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
+  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
+                                               arenas[idx],
+                                               &transactions[idx]);
+  txn->GetXIDContext()->begin_epoch = begin_epoch;
+
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
   ermia::varstr valptr;
 
+  rc_t rc = rc_t{RC_INVALID};
   rc = co_await tbl_customer(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
   TryVerifyRelaxedCoro(rc);
 
+  // valptr.prefetch();
+  // co_await std::experimental::suspend_always{};
   const customer::value *v_c = Decode(valptr, v_c_temp);
+
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, v_c);
 #endif
@@ -216,6 +79,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   rc = co_await tbl_warehouse(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
   TryVerifyRelaxedCoro(rc);
 
+  // valptr.prefetch();
+  // co_await std::experimental::suspend_always{};
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
@@ -227,6 +92,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   rc = co_await tbl_district(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
   TryVerifyRelaxedCoro(rc);
 
+  // valptr.prefetch();
+  // co_await std::experimental::suspend_always{};
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
@@ -268,8 +135,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
                           Encode(str(arenas[idx], oorder_sz), v_oo), &v_oo_oid);
   TryCatchCoro(rc);
 
-  const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID,
-                                      k_no.no_o_id);
+  const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
   rc = tbl_oorder_c_id_idx(warehouse_id)
            ->InsertOID(txn, Encode(str(arenas[idx], Size(k_oo_idx)), k_oo_idx), v_oo_oid);
   TryCatchCoro(rc);
@@ -285,6 +151,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     rc = co_await tbl_item(1)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
     TryVerifyRelaxedCoro(rc);
 
+    // valptr.prefetch();
+    // co_await std::experimental::suspend_always{};
     const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
     checker::SanityCheckItem(&k_i, v_i);
@@ -296,6 +164,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
     TryVerifyRelaxedCoro(rc);
 
+    // valptr.prefetch();
+    // co_await std::experimental::suspend_always{};
     const stock::value *v_s = Decode(valptr, v_s_temp);
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
@@ -1180,5 +1050,128 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, 
   co_return {RC_TRUE};
 }
 
-#endif // ADV_COROUTINE
+tpcc_cs_worker::tpcc_cs_worker(unsigned int worker_id, unsigned long seed, ermia::Engine *db,
+                 const std::map<std::string, ermia::OrderedIndex *> &open_tables,
+                 const std::map<std::string, std::vector<ermia::OrderedIndex *>> &partitions,
+                 spin_barrier *barrier_a, spin_barrier *barrier_b,
+                 uint home_warehouse_id)
+      : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
+        tpcc_worker_mixin(partitions),
+        home_warehouse_id(home_warehouse_id) {
+  ASSERT(home_warehouse_id >= 1 and home_warehouse_id <= NumWarehouses() + 1);
+  memset(&last_no_o_ids[0], 0, sizeof(last_no_o_ids));
+  transactions = (ermia::transaction*)numa_alloc_onnode(
+    sizeof(ermia::transaction) * ermia::config::coro_batch_size,
+    numa_node_of_cpu(sched_getcpu()));
+  arenas = (ermia::str_arena*)numa_alloc_onnode(
+    sizeof(ermia::str_arena) * ermia::config::coro_batch_size,
+    numa_node_of_cpu(sched_getcpu()));
+  for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
+    new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
+  }
+}
 
+bench_worker::workload_desc_vec tpcc_cs_worker::get_workload() const {
+  workload_desc_vec w;
+  // numbers from sigmod.csail.mit.edu:
+  // w.push_back(workload_desc("NewOrder", 1.0, TxnNewOrder)); // ~10k ops/sec
+  // w.push_back(workload_desc("Payment", 1.0, TxnPayment)); // ~32k ops/sec
+  // w.push_back(workload_desc("Delivery", 1.0, TxnDelivery)); // ~104k
+  // ops/sec
+  // w.push_back(workload_desc("OrderStatus", 1.0, TxnOrderStatus)); // ~33k
+  // ops/sec
+  // w.push_back(workload_desc("StockLevel", 1.0, TxnStockLevel)); // ~2k
+  // ops/sec
+  unsigned m = 0;
+  for (size_t i = 0; i < ARRAY_NELEMS(g_txn_workload_mix); i++)
+    m += g_txn_workload_mix[i];
+  ALWAYS_ASSERT(m == 100);
+  if (g_txn_workload_mix[0])
+    w.push_back(workload_desc(
+        "NewOrder", double(g_txn_workload_mix[0]) / 100.0, nullptr, TxnNewOrder));
+  if (g_txn_workload_mix[1])
+    w.push_back(workload_desc(
+        "Payment", double(g_txn_workload_mix[1]) / 100.0, nullptr, TxnPayment));
+  if (g_txn_workload_mix[2])
+    w.push_back(workload_desc(
+        "CreditCheck",double(g_txn_workload_mix[2]) / 100.0, nullptr, TxnCreditCheck));
+  if (g_txn_workload_mix[3])
+    w.push_back(workload_desc(
+        "Delivery", double(g_txn_workload_mix[3]) / 100.0, nullptr, TxnDelivery));
+  if (g_txn_workload_mix[4])
+    w.push_back(workload_desc(
+        "OrderStatus", double(g_txn_workload_mix[4]) / 100.0, nullptr, TxnOrderStatus));
+  if (g_txn_workload_mix[5])
+    w.push_back(workload_desc(
+        "StockLevel", double(g_txn_workload_mix[5]) / 100.0, nullptr, TxnStockLevel));
+  if (g_txn_workload_mix[6])
+    w.push_back(workload_desc(
+        "Query2", double(g_txn_workload_mix[6]) / 100.0, nullptr, TxnQuery2));
+  if (g_txn_workload_mix[7])
+    w.push_back(workload_desc(
+        "MicroBenchRandom", double(g_txn_workload_mix[7]) / 100.0, nullptr, TxnMicroBenchRandom));
+  return w;
+}
+
+
+// Essentially a coroutine scheduler that switches between active transactions
+ALWAYS_INLINE void tpcc_cs_worker::MyWork(char *) {
+  // No replication support
+  ALWAYS_ASSERT(is_worker);
+  workload = get_workload();
+  txn_counts.resize(workload.size());
+
+  const size_t batch_size = ermia::config::coro_batch_size;
+  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(sizeof(uint32_t) * batch_size, numa_node_of_cpu(sched_getcpu()));
+  CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(sizeof(CoroTxnHandle) * batch_size, numa_node_of_cpu(sched_getcpu()));
+  memset(handles, 0, sizeof(CoroTxnHandle) * batch_size);
+
+  ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+
+  barrier_a->count_down();
+  barrier_b->wait_for();
+  util::timer t;
+
+  while (running) {
+    uint32_t todo = batch_size;
+    for (uint32_t i = 0; i < batch_size; i++) {
+      uint32_t workload_idx = fetch_workload();
+      workload_idxs[i] = workload_idx;
+      handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+    }
+
+    while (todo) {
+      for (uint32_t i = 0; i < batch_size; i++) {
+        /*
+        ::prefetch((const char*)&handles[(i + 1) % batch_size]);
+        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 64);
+        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 128);
+        ::prefetch((const char*)&handles[(i + 1) % batch_size] + 192);
+        */
+        if (!handles[i]) {
+          continue;
+        }
+        if (handles[i].done()) {
+          finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+          handles[i].destroy();
+          handles[i] = nullptr;
+          --todo;
+
+/*
+          uint32_t workload_idx = fetch_workload();
+          workload_idxs[i] = workload_idx;
+          handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+          */
+        } else if (handles[i].promise().callee_coro.done()) {
+          handles[i].resume();
+        } else {
+          handles[i].promise().callee_coro.resume();
+        }
+      }
+    }
+  }
+      // TODO: epoch exit correctly
+    ermia::MM::epoch_exit(0, begin_epoch);
+}
+
+#endif // ADV_COROUTINE
