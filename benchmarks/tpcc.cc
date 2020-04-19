@@ -189,42 +189,15 @@ class tpcc_worker : public bench_worker, public tpcc_worker_mixin {
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
 
  private:
-  ALWAYS_INLINE unsigned pick_wh(util::fast_random &r) {
-    if (g_wh_temperature) {  // do it 80/20 way
-      uint w = 0;
-      if (r.next_uniform() >= 0.2)  // 80% access
-        w = hot_whs[r.next() % hot_whs.size()];
-      else
-        w = cold_whs[r.next() % cold_whs.size()];
-      LOG_IF(FATAL, w < 1 || w > NumWarehouses());
-      return w;
-    } else {
-      ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
-      // wh_spread = 0: always use home wh
-      // wh_spread = 1: always use random wh
-      if (ermia::config::command_log || g_wh_spread == 0 || r.next_uniform() >= g_wh_spread)
-        return home_warehouse_id;
-      return r.next() % NumWarehouses() + 1;
-    }
-  }
-
+  
  public:
-  // 80/20 access: 80% of all accesses touch 20% of WHs (randmonly
-  // choose one from hot_whs), while the 20% of accesses touch the
-  // remaining 80% of WHs.
-  static std::vector<uint> hot_whs;
-  static std::vector<uint> cold_whs;
-
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
 };
 
-std::vector<uint> tpcc_worker::hot_whs;
-std::vector<uint> tpcc_worker::cold_whs;
-
 rc_t tpcc_worker::txn_new_order() {
-  const uint warehouse_id = pick_wh(r);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
   const uint numItems = RandomNumber(r, 5, 15);

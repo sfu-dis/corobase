@@ -191,42 +191,12 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
 
  private:
-  ALWAYS_INLINE unsigned pick_wh(util::fast_random &r) {
-    if (g_wh_temperature) {  // do it 80/20 way
-      uint w = 0;
-      if (r.next_uniform() >= 0.2)  // 80% access
-        w = hot_whs[r.next() % hot_whs.size()];
-      else
-        w = cold_whs[r.next() % cold_whs.size()];
-      LOG_IF(FATAL, w < 1 || w > NumWarehouses());
-      return w;
-    } else {
-      ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
-      // wh_spread = 0: always use home wh
-      // wh_spread = 1: always use random wh
-      if (ermia::config::command_log || g_wh_spread == 0 || r.next_uniform() >= g_wh_spread)
-        return home_warehouse_id;
-      return r.next() % NumWarehouses() + 1;
-    }
-  }
-
- public:
-  // 80/20 access: 80% of all accesses touch 20% of WHs (randmonly
-  // choose one from hot_whs), while the 20% of accesses touch the
-  // remaining 80% of WHs.
-  static std::vector<uint> hot_whs;
-  static std::vector<uint> cold_whs;
-
- private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
   // NOTE: inter-transaction interleaving
   ermia::transaction *transactions;
   ermia::str_arena *arenas;
 };
-
-std::vector<uint> tpcc_cs_worker::hot_whs;
-std::vector<uint> tpcc_cs_worker::cold_whs;
 
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::epoch_num begin_epoch) {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
@@ -236,7 +206,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
 
-  const uint warehouse_id = pick_wh(r);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r);
   const uint numItems = RandomNumber(r, 5, 15);
@@ -578,7 +548,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
 
-  const uint warehouse_id = pick_wh(r);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
   if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
@@ -683,7 +653,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
 
-  const uint warehouse_id = pick_wh(r);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
   uint customerDistrictID, customerWarehouseID;
   if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
@@ -848,7 +818,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
 
-  const uint warehouse_id = pick_wh(r);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 
   // output from txn counters:
@@ -978,7 +948,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
 
-  const uint warehouse_id = pick_wh(r);
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint threshold = RandomNumber(r, 10, 20);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
 

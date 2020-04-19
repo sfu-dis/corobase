@@ -327,6 +327,35 @@ class tpcc_worker_mixin : private _dummy {
     for (uint i = 0; i < len; i++) buf[i] = (char)(base + (r.next() % 10));
     return buf;
   }
+
+  // 80/20 access: 80% of all accesses touch 20% of WHs (randmonly
+  // choose one from hot_whs), while the 20% of accesses touch the
+  // remaining 80% of WHs.
+  static std::vector<uint> hot_whs;
+  static std::vector<uint> cold_whs;
+
+  ALWAYS_INLINE unsigned pick_wh(util::fast_random &r, uint home_wh) {
+    if (g_wh_temperature) {  // do it 80/20 way
+      uint w = 0;
+      if (r.next_uniform() >= 0.2)  // 80% access
+        w = hot_whs[r.next() % hot_whs.size()];
+      else
+        w = cold_whs[r.next() % cold_whs.size()];
+      LOG_IF(FATAL, w < 1 || w > NumWarehouses());
+      return w;
+    } else {
+      thread_local uint32_t nxt = 0;
+      return (home_wh - 1) * 20 + (nxt++) % 20 + 1;
+      //return (home_wh - 1) * 10 + r.next() % 10 + 1;
+      ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
+      // wh_spread = 0: always use home wh
+      // wh_spread = 1: always use random wh
+      if (ermia::config::command_log || g_wh_spread == 0 || r.next_uniform() >= g_wh_spread)
+        return home_wh;
+      return r.next() % NumWarehouses() + 1;
+    }
+  }
+
 };
 
 class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
