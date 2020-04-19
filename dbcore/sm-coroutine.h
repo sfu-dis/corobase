@@ -508,13 +508,33 @@ inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
     }
 }
 
+inline void sync_wait_void_coro(ermia::dia::task<void> &&coro_task) {
+    coro_task.start();
+    while(!coro_task.done()) {
+        coro_task.resume();
+    }
+}
+
 #else
   #define PROMISE(t) t
   #define RETURN return
   #define AWAIT
   #define SUSPEND
+  #define sync_wait_void_coro (void)
 
-template<typename T>
-inline T sync_wait_coro(const T &t) { return t; }
+template <typename T>
+inline const T &sync_wait_coro(const T &t) {
+    return t;
+}
+
+template <typename T>
+inline T &&sync_wait_coro(T &&t) {
+    return std::move(t);
+}
+
+template <typename T>
+inline T &sync_wait_coro(T &t) {
+    return std::move(t);
+}
 
 #endif // ADV_COROUTINE
