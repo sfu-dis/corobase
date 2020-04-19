@@ -22,7 +22,14 @@ class tcalloc {
     static_assert(sizeof(FrameNode) == CACHELINE_SIZE, "");
 
    public:
-    tcalloc() { memset(entries, 0, sizeof(entries)); }
+    tcalloc() { 
+        memset(entries, 0, sizeof(entries));
+
+        constexpr size_t kArenaSize = 8 * 1024 * 1024;
+        arena = static_cast<uint8_t *>(
+            numa_alloc_onnode(kArenaSize, numa_node_of_cpu(sched_getcpu())));
+        arena_top = arena;
+    }
     ~tcalloc() {}
 
     static inline uint32_t lg_down(uint64_t x) {
@@ -40,6 +47,15 @@ class tcalloc {
         return lg_down(x - 1) + 1;
     }
 
+    void *alloc_from_arena(size_t byte_size, uint8_t alignment) {
+        ASSERT(arena_top);
+        const int8_t mask = alignment - 1;
+        uint8_t *p = reinterpret_cast<uint8_t *>(
+            reinterpret_cast<intptr_t>(arena_top + mask) & ~mask);
+        arena_top = p + byte_size;
+        return reinterpret_cast<void *>(p);
+    }
+
     void *alloc(size_t byte_size) {
         const int ceil_log_2 = lg_up(byte_size);
         ASSERT(ceil_log_2 < kEndSizeExp);
@@ -50,8 +66,8 @@ class tcalloc {
         FrameNode *frame_to_alloc = entries[entry_index];
         if (frame_to_alloc == nullptr) {
             const size_t frame_size = 1 << (entry_index + kBeginSizeExp);
-            frame_to_alloc = reinterpret_cast<FrameNode *>(
-                malloc(sizeof(FrameNode) + frame_size));
+            frame_to_alloc = reinterpret_cast<FrameNode *>(alloc_from_arena(
+                sizeof(FrameNode) + frame_size, CACHELINE_SIZE));
             frame_to_alloc->entry_index = entry_index;
         } else {
             entries[entry_index] = frame_to_alloc->next;
@@ -71,6 +87,9 @@ class tcalloc {
     static constexpr short kBeginSizeExp = 8;
     static constexpr short kEndSizeExp = 15;  // exclusive
     FrameNode *entries[kEndSizeExp - kBeginSizeExp];
+
+    uint8_t *arena;
+    uint8_t *arena_top;
 };
 
 extern thread_local tcalloc coroutine_allocator;
