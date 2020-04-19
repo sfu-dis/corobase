@@ -320,6 +320,14 @@ class limit_callback : public ermia::OrderedIndex::ScanCallback {
   if (r._val == RC_FALSE) op;      \
 }
 
+// if rc == RC_FALSE then do op
+#define TryCatchCondCoro(rc, op)        \
+{                                       \
+  rc_t r = rc;                          \
+  if (r.IsAbort()) __abort_txn_coro(r); \
+  if (r._val == RC_FALSE) op;           \
+}
+
 #define TryCatchCondAbort(rc)                            \
 {                                                        \
   rc_t r = rc;                                           \
