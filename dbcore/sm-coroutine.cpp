@@ -3,7 +3,7 @@
 namespace ermia {
 namespace dia {
 
-thread_local tcalloc allocator;
+thread_local tcalloc coroutine_allocator;
 
 } // namespace dia
 } // namespace ermia
