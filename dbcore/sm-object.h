@@ -95,5 +95,14 @@ class Object {
   fat_ptr GenerateClsnPtr(uint64_t clsn);
   void Pin(
       bool load_from_logbuf = false);  // Make sure the payload is in memory
+
+  static inline void PrefetchHeader(Object *p) {
+    uint32_t i = 0;
+    do {
+      ::prefetch((const char *)(p + i));
+      i += CACHE_LINE_SIZE;
+    } while (i < sizeof(Object));
+  }
+
 };
 }  // namespace ermia
