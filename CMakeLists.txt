@@ -66,16 +66,19 @@ add_library(thread_pool SHARED ${THREAD_POOL_SRC})
 
 # SI
 add_library(ermia_si SHARED ${LIB_ERMIA_SRC})
+set_target_properties(ermia_si PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT")
+
 add_executable(ermia_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(ermia_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT")
 target_link_libraries(ermia_SI ermia_si thread_pool)
 
 # SI with coroutine
-add_library(ermia_coro_si SHARED ${LIB_ERMIA_SRC})
-set_target_properties(ermia_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+add_library(ermia_adv_coro_si SHARED ${LIB_ERMIA_SRC})
+set_target_properties(ermia_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 
-add_executable(ermia_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
-set_target_properties(ermia_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
-target_link_libraries(ermia_coro_SI ermia_coro_si thread_pool)
+add_executable(ermia_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
+set_target_properties(ermia_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
+target_link_libraries(ermia_adv_coro_SI ermia_adv_coro_si thread_pool)
 
 # SI+SSN
 #add_library(ermia_si_ssn SHARED ${LIB_ERMIA_SRC})

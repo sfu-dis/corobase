@@ -200,9 +200,181 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     TryCatchCoro(rc);
   }
 
+#ifndef CORO_BATCH_COMMIT
   TryCatchCoro(db->Commit(txn));
+#endif
   co_return {RC_TRUE};
 }  // new-order
+
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epoch_num begin_epoch) {
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
+  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  uint customerDistrictID, customerWarehouseID;
+  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
+             RandomNumber(r, 1, 100) <= 85)) {
+    customerDistrictID = districtID;
+    customerWarehouseID = warehouse_id;
+  } else {
+    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+    do {
+      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
+    } while (customerWarehouseID == warehouse_id);
+  }
+  const float paymentAmount = (float)(RandomNumber(r, 100, 500000) / 100.0);
+  const uint32_t ts = GetCurrentTimeMillis();
+  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+  // output from txn counters:
+  //   max_absent_range_set_size : 0
+  //   max_absent_set_size : 0
+  //   max_node_scan_size : 10
+  //   max_read_set_size : 71
+  //   max_write_set_size : 1
+  //   num_txn_contexts : 5
+  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
+                                               arenas[idx],
+                                               &transactions[idx]);
+  txn->GetXIDContext()->begin_epoch = begin_epoch;
+ 
+  const warehouse::key k_w(warehouse_id);
+  warehouse::value v_w_temp;
+  ermia::varstr valptr;
+
+  auto rc = co_await tbl_warehouse(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
+  TryVerifyRelaxedCoro(rc);
+
+  //valptr.prefetch();
+  //co_await std::experimental::suspend_always{};
+
+  const warehouse::value *v_w = Decode(valptr, v_w_temp);
+#ifndef NDEBUG
+  checker::SanityCheckWarehouse(&k_w, v_w);
+#endif
+
+  warehouse::value v_w_new(*v_w);
+  v_w_new.w_ytd += paymentAmount;
+  rc = co_await tbl_warehouse(warehouse_id)
+           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
+                          Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
+  TryCatchCoro(rc);
+
+  const district::key k_d(warehouse_id, districtID);
+  district::value v_d_temp;
+
+  rc = co_await tbl_district(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
+  TryVerifyRelaxedCoro(rc);
+
+  //valptr.prefetch();
+  //co_await std::experimental::suspend_always{};
+
+  const district::value *v_d = Decode(valptr, v_d_temp);
+#ifndef NDEBUG
+  checker::SanityCheckDistrict(&k_d, v_d);
+#endif
+
+  district::value v_d_new(*v_d);
+  v_d_new.d_ytd += paymentAmount;
+  rc = co_await tbl_district(warehouse_id)
+           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
+                          Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
+  TryCatchCoro(rc);
+
+  customer::key k_c;
+  customer::value v_c;
+  if (RandomNumber(r, 1, 100) <= 60) {
+    // cust by name
+    uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
+    static_assert(sizeof(lastname_buf) == 16, "xx");
+    memset(lastname_buf, 0, sizeof(lastname_buf));
+    GetNonUniformCustomerLastNameRun(lastname_buf, r);
+
+    static const std::string zeros(16, 0);
+    static const std::string ones(16, (char)255);
+
+    customer_name_idx::key k_c_idx_0;
+    k_c_idx_0.c_w_id = customerWarehouseID;
+    k_c_idx_0.c_d_id = customerDistrictID;
+    k_c_idx_0.c_last.assign((const char *)lastname_buf, 16);
+    k_c_idx_0.c_first.assign(zeros);
+
+    customer_name_idx::key k_c_idx_1;
+    k_c_idx_1.c_w_id = customerWarehouseID;
+    k_c_idx_1.c_d_id = customerDistrictID;
+    k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
+    k_c_idx_1.c_first.assign(ones);
+
+    static_limit_callback<NMaxCustomerIdxScanElems> c(&arenas[idx], true);  // probably a safe bet for now
+    rc = co_await tbl_customer_name_idx(customerWarehouseID)
+             ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
+                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx], NMaxCustomerIdxScanElems);
+    TryCatchCoro(rc);
+
+    ALWAYS_ASSERT(c.size() > 0);
+    ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
+    int index = c.size() / 2;
+    if (c.size() % 2 == 0) index--;
+
+    Decode(*c.values[index].second, v_c);
+    k_c.c_w_id = customerWarehouseID;
+    k_c.c_d_id = customerDistrictID;
+    k_c.c_id = v_c.c_id;
+  } else {
+    // cust by ID
+    const uint customerID = GetCustomerId(r);
+    k_c.c_w_id = customerWarehouseID;
+    k_c.c_d_id = customerDistrictID;
+    k_c.c_id = customerID;
+    rc = co_await tbl_customer(customerWarehouseID)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
+    TryVerifyRelaxedCoro(rc);
+
+    //valptr.prefetch();
+    //co_await std::experimental::suspend_always{};
+
+    Decode(valptr, v_c);
+  }
+#ifndef NDEBUG
+  checker::SanityCheckCustomer(&k_c, &v_c);
+#endif
+  customer::value v_c_new(v_c);
+
+  v_c_new.c_balance -= paymentAmount;
+  v_c_new.c_ytd_payment += paymentAmount;
+  v_c_new.c_payment_cnt++;
+  if (strncmp(v_c.c_credit.data(), "BC", 2) == 0) {
+    char buf[501];
+    int n = snprintf(buf, sizeof(buf), "%d %d %d %d %d %f | %s", k_c.c_id,
+                     k_c.c_d_id, k_c.c_w_id, districtID, warehouse_id,
+                     paymentAmount, v_c.c_data.c_str());
+    v_c_new.c_data.resize_junk(
+        std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
+    memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
+  }
+
+  rc = co_await tbl_customer(customerWarehouseID)
+           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
+                          Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
+  TryCatchCoro(rc);
+
+  const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
+                         warehouse_id, ts);
+  history::value v_h;
+  v_h.h_amount = paymentAmount;
+  v_h.h_data.resize_junk(v_h.h_data.max_size());
+  int n = snprintf((char *)v_h.h_data.data(), v_h.h_data.max_size() + 1,
+                   "%.10s    %.10s", v_w->w_name.c_str(), v_d->d_name.c_str());
+  v_h.h_data.resize_junk(
+      std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
+
+  rc = co_await tbl_history(warehouse_id)
+           ->coro_InsertRecord(txn, Encode(str(arenas[idx], Size(k_h)), k_h),
+                          Encode(str(arenas[idx], Size(v_h)), v_h));
+  TryCatchCoro(rc);
+
+#ifndef CORO_BATCH_COMMIT
+  TryCatchCoro(db->Commit(txn));
+#endif
+  co_return {RC_TRUE};
+}  // payment
 
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch) {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
@@ -455,172 +627,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     v_c_new.c_credit.assign("BC");
   else
     v_c_new.c_credit.assign("GC");
-  rc = tbl_customer(customerWarehouseID)
-           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
-                          Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-  TryCatchCoro(rc);
-  TryCatchCoro(db->Commit(txn));
-  co_return {RC_TRUE};
-}
-
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epoch_num begin_epoch) {
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
-                                               arenas[idx],
-                                               &transactions[idx]);
-  ermia::TXN::xid_context *xc = txn->GetXIDContext();
-  xc->begin_epoch = begin_epoch;
-  rc_t rc = rc_t{RC_INVALID};
-
-  const uint warehouse_id = pick_wh(r, home_warehouse_id);
-  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-  uint customerDistrictID, customerWarehouseID;
-  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
-             RandomNumber(r, 1, 100) <= 85)) {
-    customerDistrictID = districtID;
-    customerWarehouseID = warehouse_id;
-  } else {
-    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-    do {
-      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
-    } while (customerWarehouseID == warehouse_id);
-  }
-  const float paymentAmount = (float)(RandomNumber(r, 100, 500000) / 100.0);
-  const uint32_t ts = GetCurrentTimeMillis();
-  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
-
-  // output from txn counters:
-  //   max_absent_range_set_size : 0
-  //   max_absent_set_size : 0
-  //   max_node_scan_size : 10
-  //   max_read_set_size : 71
-  //   max_write_set_size : 1
-  //   num_txn_contexts : 5
-  const warehouse::key k_w(warehouse_id);
-  warehouse::value v_w_temp;
-  ermia::varstr valptr;
-
-  rc = co_await tbl_warehouse(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
-  TryVerifyRelaxedCoro(rc);
-
-  const warehouse::value *v_w = Decode(valptr, v_w_temp);
-#ifndef NDEBUG
-  checker::SanityCheckWarehouse(&k_w, v_w);
-#endif
-
-  warehouse::value v_w_new(*v_w);
-  v_w_new.w_ytd += paymentAmount;
-  rc = co_await tbl_warehouse(warehouse_id)
-           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
-                          Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
-  TryCatchCoro(rc);
-
-  const district::key k_d(warehouse_id, districtID);
-  district::value v_d_temp;
-
-  rc = co_await tbl_district(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
-  TryVerifyRelaxedCoro(rc);
-
-  const district::value *v_d = Decode(valptr, v_d_temp);
-#ifndef NDEBUG
-  checker::SanityCheckDistrict(&k_d, v_d);
-#endif
-
-  district::value v_d_new(*v_d);
-  v_d_new.d_ytd += paymentAmount;
-  rc = co_await tbl_district(warehouse_id)
-           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
-                          Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
-  TryCatchCoro(rc);
-
-  customer::key k_c;
-  customer::value v_c;
-  if (RandomNumber(r, 1, 100) <= 60) {
-    // cust by name
-    uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
-    static_assert(sizeof(lastname_buf) == 16, "xx");
-    memset(lastname_buf, 0, sizeof(lastname_buf));
-    GetNonUniformCustomerLastNameRun(lastname_buf, r);
-
-    static const std::string zeros(16, 0);
-    static const std::string ones(16, (char)255);
-
-    customer_name_idx::key k_c_idx_0;
-    k_c_idx_0.c_w_id = customerWarehouseID;
-    k_c_idx_0.c_d_id = customerDistrictID;
-    k_c_idx_0.c_last.assign((const char *)lastname_buf, 16);
-    k_c_idx_0.c_first.assign(zeros);
-
-    customer_name_idx::key k_c_idx_1;
-    k_c_idx_1.c_w_id = customerWarehouseID;
-    k_c_idx_1.c_d_id = customerDistrictID;
-    k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
-    k_c_idx_1.c_first.assign(ones);
-
-    static_limit_callback<NMaxCustomerIdxScanElems> c(&arenas[idx], true);  // probably a safe bet for now
-    rc = co_await tbl_customer_name_idx(customerWarehouseID)
-             ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
-                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx]);
-    TryCatchCoro(rc);
-
-    ALWAYS_ASSERT(c.size() > 0);
-    ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
-    int index = c.size() / 2;
-    if (c.size() % 2 == 0) index--;
-
-    Decode(*c.values[index].second, v_c);
-    k_c.c_w_id = customerWarehouseID;
-    k_c.c_d_id = customerDistrictID;
-    k_c.c_id = v_c.c_id;
-  } else {
-    // cust by ID
-    const uint customerID = GetCustomerId(r);
-    k_c.c_w_id = customerWarehouseID;
-    k_c.c_d_id = customerDistrictID;
-    k_c.c_id = customerID;
-    rc = co_await tbl_customer(customerWarehouseID)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-    TryVerifyRelaxedCoro(rc);
-    Decode(valptr, v_c);
-  }
-#ifndef NDEBUG
-  checker::SanityCheckCustomer(&k_c, &v_c);
-#endif
-  customer::value v_c_new(v_c);
-
-  v_c_new.c_balance -= paymentAmount;
-  v_c_new.c_ytd_payment += paymentAmount;
-  v_c_new.c_payment_cnt++;
-  if (strncmp(v_c.c_credit.data(), "BC", 2) == 0) {
-    char buf[501];
-    int n = snprintf(buf, sizeof(buf), "%d %d %d %d %d %f | %s", k_c.c_id,
-                     k_c.c_d_id, k_c.c_w_id, districtID, warehouse_id,
-                     paymentAmount, v_c.c_data.c_str());
-    v_c_new.c_data.resize_junk(
-        std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
-    memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
-  }
-
   rc = co_await tbl_customer(customerWarehouseID)
            ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
                           Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
   TryCatchCoro(rc);
-
-  const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
-                         warehouse_id, ts);
-  history::value v_h;
-  v_h.h_amount = paymentAmount;
-  v_h.h_data.resize_junk(v_h.h_data.max_size());
-  int n = snprintf((char *)v_h.h_data.data(), v_h.h_data.max_size() + 1,
-                   "%.10s    %.10s", v_w->w_name.c_str(), v_d->d_name.c_str());
-  v_h.h_data.resize_junk(
-      std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
-
-  rc = co_await tbl_history(warehouse_id)
-           ->coro_InsertRecord(txn, Encode(str(arenas[idx], Size(k_h)), k_h),
-                          Encode(str(arenas[idx], Size(v_h)), v_h));
-  TryCatchCoro(rc);
-
-  rc = db->Commit(txn);
-  TryCatchCoro(rc);
+  TryCatchCoro(db->Commit(txn));
   co_return {RC_TRUE};
 }
 
@@ -1202,7 +1213,9 @@ void tpcc_cs_worker::BatchScheduler() {
         }
         if (handles[i].done()) {
           rcs[i] = handles[i].promise().current_value;
+#ifndef CORO_BATCH_COMMIT
           finish_workload(rcs[i], workload_idx, t);
+#endif
           handles[i].destroy();
           handles[i] = nullptr;
           --todo;
@@ -1214,18 +1227,17 @@ void tpcc_cs_worker::BatchScheduler() {
       }
     }
 
+#ifdef CORO_BATCH_COMMIT
     for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
-      /*
       if (!rcs[i].IsAbort()) {
         rcs[i] = db->Commit(&transactions[i]);
       }
       if (rcs[i].IsAbort()) {
         db->Abort(&transactions[i]);
       }
-      //finish_workload(rcs[i], workload_idxs[i], t);
       finish_workload(rcs[i], workload_idx, t);
-      */
     }
+#endif
 
     // TODO: epoch exit correctly
     ermia::MM::epoch_exit(0, begin_epoch);
