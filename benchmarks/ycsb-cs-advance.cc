@@ -198,11 +198,11 @@ private:
         ScanRange range = GenerateScanRange(txn);
 
         if (ermia::config::index_probe_only) {
-            static thread_local ycsb_scan_oid_callback callback;
+            ycsb_scan_oid_callback callback;
             co_await table_index->ScanOID(txn, range.start_key, &range.end_key,
                                           rc, callback);
         } else {
-            static thread_local ycsb_scan_callback callback;
+            ycsb_scan_callback callback;
             rc = co_await table_index->Scan(txn, range.start_key,
                                             &range.end_key, callback,
                                             &(txn->string_allocator()));
