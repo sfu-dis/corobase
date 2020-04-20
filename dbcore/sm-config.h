@@ -85,6 +85,7 @@ extern uint32_t dia_physical_index_threads;
 
 extern bool coro_tx;
 extern uint32_t coro_batch_size;
+extern bool coro_batch_schedule;
 
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the

@@ -26,6 +26,7 @@ DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per phy
 DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
 DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
 DEFINE_uint64(coro_batch_size, 5, "Number of in-flight coroutines");
+DEFINE_bool(coro_batch_schedule, true, "Whether to run the same type of transactions per batch");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
@@ -239,6 +240,7 @@ int main(int argc, char **argv) {
 
   ermia::config::coro_tx = FLAGS_coro_tx;
   ermia::config::coro_batch_size = FLAGS_coro_batch_size;
+  ermia::config::coro_batch_schedule = FLAGS_coro_batch_schedule;
 
   // Backup specific arguments
   if (ermia::config::is_backup_srv()) {
@@ -383,6 +385,7 @@ int main(int argc, char **argv) {
   std::cerr << "  command-log       : " << ermia::config::command_log << std::endl;
   std::cerr << "  command-logbuf    : " << ermia::config::command_log_buffer_mb << "MB" << std::endl;
   std::cerr << "  coro-tx           : " << FLAGS_coro_tx << std::endl;
+  std::cerr << "  coro-batch-schedule: " << FLAGS_coro_batch_schedule << std::endl;
   std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
   std::cerr << "  dia               : " << FLAGS_dia << std::endl;
   std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;

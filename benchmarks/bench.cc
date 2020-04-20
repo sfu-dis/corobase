@@ -59,7 +59,6 @@ uint32_t bench_worker::fetch_workload() {
   for (size_t i = 0; i < workload.size(); i++) {
     if ((i + 1) == workload.size() || d < workload[i].frequency) {
         return i;
-        break;
     }
     d -= workload[i].frequency;
   }
