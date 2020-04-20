@@ -53,6 +53,7 @@ rc_t tpcc_worker::txn_new_order() {
   //   max_write_set_size : 15
   //   num_txn_contexts : 9
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+  ermia::scoped_str_arena s_arena(arena);
   const customer::key k_c(warehouse_id, districtID, customerID);
   customer::value v_c_temp;
   ermia::varstr valptr;
@@ -467,11 +468,11 @@ rc_t tpcc_worker::txn_payment() {
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   ermia::scoped_str_arena s_arena(arena);
 
+  rc_t rc = rc_t{RC_INVALID};
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
   ermia::varstr valptr;
 
-  rc_t rc = rc_t{RC_INVALID};
   tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
   TryVerifyRelaxed(rc);
 
