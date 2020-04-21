@@ -989,7 +989,7 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
             s.prev_obj = s.cur_obj;
             if (s.ptr.offset()) {
               s.cur_obj = (Object *)s.ptr.offset();
-              ::prefetch((const char*)s.cur_obj);
+              Object::PrefetchHeader(s.cur_obj);
             } else {
               s.done = true;
               s.tuple = nullptr;
@@ -1009,7 +1009,7 @@ void sm_oid_mgr::oid_get_version_amac(oid_array *oa,
           ASSERT(s.ptr.asi_type() == 0);
           if (s.ptr.offset()) {
             s.cur_obj = (Object *)s.ptr.offset();
-            ::prefetch((const char*)s.cur_obj);
+            Object::PrefetchHeader(s.cur_obj);
             s.stage = 1;  
           } else {
             s.done = true;
