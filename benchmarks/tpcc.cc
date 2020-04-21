@@ -189,6 +189,164 @@ rc_t tpcc_worker::txn_new_order() {
     ermia::CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_NEW_ORDER);
   }
   return {RC_TRUE};
+}  // new-order
+
+rc_t tpcc_worker::txn_payment() {
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
+  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  uint customerDistrictID, customerWarehouseID;
+  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
+             RandomNumber(r, 1, 100) <= 85)) {
+    customerDistrictID = districtID;
+    customerWarehouseID = warehouse_id;
+  } else {
+    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+    do {
+      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
+    } while (customerWarehouseID == warehouse_id);
+  }
+  const float paymentAmount = (float)(RandomNumber(r, 100, 500000) / 100.0);
+  const uint32_t ts = GetCurrentTimeMillis();
+  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+  // output from txn counters:
+  //   max_absent_range_set_size : 0
+  //   max_absent_set_size : 0
+  //   max_node_scan_size : 10
+  //   max_read_set_size : 71
+  //   max_write_set_size : 1
+  //   num_txn_contexts : 5
+  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+  ermia::scoped_str_arena s_arena(arena);
+
+  rc_t rc = rc_t{RC_INVALID};
+  ermia::varstr valptr;
+  const warehouse::key k_w(warehouse_id);
+  warehouse::value v_w_temp;
+
+  tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
+  TryVerifyRelaxed(rc);
+
+  const warehouse::value *v_w = Decode(valptr, v_w_temp);
+#ifndef NDEBUG
+  checker::SanityCheckWarehouse(&k_w, v_w);
+#endif
+
+  warehouse::value v_w_new(*v_w);
+  v_w_new.w_ytd += paymentAmount;
+  TryCatch(tbl_warehouse(warehouse_id)
+                ->UpdateRecord(txn, Encode(str(Size(k_w)), k_w),
+                      Encode(str(Size(v_w_new)), v_w_new)));
+
+  const district::key k_d(warehouse_id, districtID);
+  district::value v_d_temp;
+
+  rc = rc_t{RC_INVALID};
+  tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
+  TryVerifyRelaxed(rc);
+
+  const district::value *v_d = Decode(valptr, v_d_temp);
+#ifndef NDEBUG
+  checker::SanityCheckDistrict(&k_d, v_d);
+#endif
+
+  district::value v_d_new(*v_d);
+  v_d_new.d_ytd += paymentAmount;
+  TryCatch(tbl_district(warehouse_id)
+                ->UpdateRecord(txn, Encode(str(Size(k_d)), k_d),
+                      Encode(str(Size(v_d_new)), v_d_new)));
+
+  customer::key k_c;
+  customer::value v_c;
+  if (RandomNumber(r, 1, 100) <= 60) {
+    // cust by name
+    uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
+    static_assert(sizeof(lastname_buf) == 16, "xx");
+    memset(lastname_buf, 0, sizeof(lastname_buf));
+    GetNonUniformCustomerLastNameRun(lastname_buf, r);
+
+    static const std::string zeros(16, 0);
+    static const std::string ones(16, (char)255);
+
+    customer_name_idx::key k_c_idx_0;
+    k_c_idx_0.c_w_id = customerWarehouseID;
+    k_c_idx_0.c_d_id = customerDistrictID;
+    k_c_idx_0.c_last.assign((const char *)lastname_buf, 16);
+    k_c_idx_0.c_first.assign(zeros);
+
+    customer_name_idx::key k_c_idx_1;
+    k_c_idx_1.c_w_id = customerWarehouseID;
+    k_c_idx_1.c_d_id = customerDistrictID;
+    k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
+    k_c_idx_1.c_first.assign(ones);
+
+    static_limit_callback<NMaxCustomerIdxScanElems> c(
+        s_arena.get(), true);  // probably a safe bet for now
+    TryCatch(tbl_customer_name_idx(customerWarehouseID)
+                  ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
+                         s_arena.get()));
+    ALWAYS_ASSERT(c.size() > 0);
+    ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
+    int index = c.size() / 2;
+    if (c.size() % 2 == 0) index--;
+
+    Decode(*c.values[index].second, v_c);
+    k_c.c_w_id = customerWarehouseID;
+    k_c.c_d_id = customerDistrictID;
+    k_c.c_id = v_c.c_id;
+  } else {
+    // cust by ID
+    const uint customerID = GetCustomerId(r);
+    k_c.c_w_id = customerWarehouseID;
+    k_c.c_d_id = customerDistrictID;
+    k_c.c_id = customerID;
+    rc = rc_t{RC_INVALID};
+    tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+    TryVerifyRelaxed(rc);
+    Decode(valptr, v_c);
+  }
+#ifndef NDEBUG
+  checker::SanityCheckCustomer(&k_c, &v_c);
+#endif
+  customer::value v_c_new(v_c);
+
+  v_c_new.c_balance -= paymentAmount;
+  v_c_new.c_ytd_payment += paymentAmount;
+  v_c_new.c_payment_cnt++;
+  if (strncmp(v_c.c_credit.data(), "BC", 2) == 0) {
+    char buf[501];
+    int n = snprintf(buf, sizeof(buf), "%d %d %d %d %d %f | %s", k_c.c_id,
+                     k_c.c_d_id, k_c.c_w_id, districtID, warehouse_id,
+                     paymentAmount, v_c.c_data.c_str());
+    v_c_new.c_data.resize_junk(
+        std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
+    memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
+  }
+
+  TryCatch(tbl_customer(customerWarehouseID)
+                ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
+                      Encode(str(Size(v_c_new)), v_c_new)));
+
+  const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
+                         warehouse_id, ts);
+  history::value v_h;
+  v_h.h_amount = paymentAmount;
+  v_h.h_data.resize_junk(v_h.h_data.max_size());
+  int n = snprintf((char *)v_h.h_data.data(), v_h.h_data.max_size() + 1,
+                   "%.10s    %.10s", v_w->w_name.c_str(), v_d->d_name.c_str());
+  v_h.h_data.resize_junk(
+      std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
+
+  TryCatch(tbl_history(warehouse_id)
+                ->InsertRecord(txn, Encode(str(Size(k_h)), k_h),
+                         Encode(str(Size(v_h)), v_h)));
+
+  TryCatch(db->Commit(txn));
+  if (ermia::config::command_log && !ermia::config::is_backup_srv()) {
+    ermia::CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT);
+  }
+  return {RC_TRUE};
 }
 
 rc_t tpcc_worker::txn_delivery() {
@@ -437,164 +595,6 @@ rc_t tpcc_worker::txn_credit_check() {
                       Encode(str(Size(v_c_new)), v_c_new)));
 
   TryCatch(db->Commit(txn));
-  return {RC_TRUE};
-}
-
-rc_t tpcc_worker::txn_payment() {
-  const uint warehouse_id = pick_wh(r, home_warehouse_id);
-  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-  uint customerDistrictID, customerWarehouseID;
-  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
-             RandomNumber(r, 1, 100) <= 85)) {
-    customerDistrictID = districtID;
-    customerWarehouseID = warehouse_id;
-  } else {
-    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-    do {
-      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
-    } while (customerWarehouseID == warehouse_id);
-  }
-  const float paymentAmount = (float)(RandomNumber(r, 100, 500000) / 100.0);
-  const uint32_t ts = GetCurrentTimeMillis();
-  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
-
-  // output from txn counters:
-  //   max_absent_range_set_size : 0
-  //   max_absent_set_size : 0
-  //   max_node_scan_size : 10
-  //   max_read_set_size : 71
-  //   max_write_set_size : 1
-  //   num_txn_contexts : 5
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
-
-  rc_t rc = rc_t{RC_INVALID};
-  const warehouse::key k_w(warehouse_id);
-  warehouse::value v_w_temp;
-  ermia::varstr valptr;
-
-  tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_w)), k_w), valptr);
-  TryVerifyRelaxed(rc);
-
-  const warehouse::value *v_w = Decode(valptr, v_w_temp);
-#ifndef NDEBUG
-  checker::SanityCheckWarehouse(&k_w, v_w);
-#endif
-
-  warehouse::value v_w_new(*v_w);
-  v_w_new.w_ytd += paymentAmount;
-  TryCatch(tbl_warehouse(warehouse_id)
-                ->UpdateRecord(txn, Encode(str(Size(k_w)), k_w),
-                      Encode(str(Size(v_w_new)), v_w_new)));
-
-  const district::key k_d(warehouse_id, districtID);
-  district::value v_d_temp;
-
-  rc = rc_t{RC_INVALID};
-  tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_d)), k_d), valptr);
-  TryVerifyRelaxed(rc);
-
-  const district::value *v_d = Decode(valptr, v_d_temp);
-#ifndef NDEBUG
-  checker::SanityCheckDistrict(&k_d, v_d);
-#endif
-
-  district::value v_d_new(*v_d);
-  v_d_new.d_ytd += paymentAmount;
-  TryCatch(tbl_district(warehouse_id)
-                ->UpdateRecord(txn, Encode(str(Size(k_d)), k_d),
-                      Encode(str(Size(v_d_new)), v_d_new)));
-
-  customer::key k_c;
-  customer::value v_c;
-  if (RandomNumber(r, 1, 100) <= 60) {
-    // cust by name
-    uint8_t lastname_buf[CustomerLastNameMaxSize + 1];
-    static_assert(sizeof(lastname_buf) == 16, "xx");
-    memset(lastname_buf, 0, sizeof(lastname_buf));
-    GetNonUniformCustomerLastNameRun(lastname_buf, r);
-
-    static const std::string zeros(16, 0);
-    static const std::string ones(16, (char)255);
-
-    customer_name_idx::key k_c_idx_0;
-    k_c_idx_0.c_w_id = customerWarehouseID;
-    k_c_idx_0.c_d_id = customerDistrictID;
-    k_c_idx_0.c_last.assign((const char *)lastname_buf, 16);
-    k_c_idx_0.c_first.assign(zeros);
-
-    customer_name_idx::key k_c_idx_1;
-    k_c_idx_1.c_w_id = customerWarehouseID;
-    k_c_idx_1.c_d_id = customerDistrictID;
-    k_c_idx_1.c_last.assign((const char *)lastname_buf, 16);
-    k_c_idx_1.c_first.assign(ones);
-
-    static_limit_callback<NMaxCustomerIdxScanElems> c(
-        s_arena.get(), true);  // probably a safe bet for now
-    TryCatch(tbl_customer_name_idx(customerWarehouseID)
-                  ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                         s_arena.get()));
-    ALWAYS_ASSERT(c.size() > 0);
-    ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
-    int index = c.size() / 2;
-    if (c.size() % 2 == 0) index--;
-
-    Decode(*c.values[index].second, v_c);
-    k_c.c_w_id = customerWarehouseID;
-    k_c.c_d_id = customerDistrictID;
-    k_c.c_id = v_c.c_id;
-  } else {
-    // cust by ID
-    const uint customerID = GetCustomerId(r);
-    k_c.c_w_id = customerWarehouseID;
-    k_c.c_d_id = customerDistrictID;
-    k_c.c_id = customerID;
-    rc = rc_t{RC_INVALID};
-    tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
-    TryVerifyRelaxed(rc);
-    Decode(valptr, v_c);
-  }
-#ifndef NDEBUG
-  checker::SanityCheckCustomer(&k_c, &v_c);
-#endif
-  customer::value v_c_new(v_c);
-
-  v_c_new.c_balance -= paymentAmount;
-  v_c_new.c_ytd_payment += paymentAmount;
-  v_c_new.c_payment_cnt++;
-  if (strncmp(v_c.c_credit.data(), "BC", 2) == 0) {
-    char buf[501];
-    int n = snprintf(buf, sizeof(buf), "%d %d %d %d %d %f | %s", k_c.c_id,
-                     k_c.c_d_id, k_c.c_w_id, districtID, warehouse_id,
-                     paymentAmount, v_c.c_data.c_str());
-    v_c_new.c_data.resize_junk(
-        std::min(static_cast<size_t>(n), v_c_new.c_data.max_size()));
-    memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
-  }
-
-  TryCatch(tbl_customer(customerWarehouseID)
-                ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                      Encode(str(Size(v_c_new)), v_c_new)));
-
-  const history::key k_h(k_c.c_d_id, k_c.c_w_id, k_c.c_id, districtID,
-                         warehouse_id, ts);
-  history::value v_h;
-  v_h.h_amount = paymentAmount;
-  v_h.h_data.resize_junk(v_h.h_data.max_size());
-  int n = snprintf((char *)v_h.h_data.data(), v_h.h_data.max_size() + 1,
-                   "%.10s    %.10s", v_w->w_name.c_str(), v_d->d_name.c_str());
-  v_h.h_data.resize_junk(
-      std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
-
-  TryCatch(tbl_history(warehouse_id)
-                ->InsertRecord(txn, Encode(str(Size(k_h)), k_h),
-                         Encode(str(Size(v_h)), v_h)));
-
-  TryCatch(db->Commit(txn));
-  if (ermia::config::command_log && !ermia::config::is_backup_srv()) {
-    ermia::CommandLog::cmd_log->Insert(warehouse_id, TPCC_CLID_PAYMENT);
-  }
   return {RC_TRUE};
 }
 
