@@ -33,8 +33,7 @@ public:
   }
 
   varstr *next(uint64_t size) {
-    uint64_t off = n;
-    n += align_up(size + sizeof(varstr));
+    uint64_t off = n.fetch_add(align_up(size + sizeof(varstr)), std::memory_order_relaxed);
     ASSERT(n < config::arena_size_mb * config::MB);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
