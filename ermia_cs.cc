@@ -190,7 +190,6 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction 
                                                                     varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;
   rc_t rc = rc_t{RC_INVALID};
-  ConcurrentMasstree::versioned_node_t sinfo;
   t->ensure_active();
 
 // start: masstree search
@@ -274,13 +273,11 @@ forward:
 // end: find_unlocked
 
   bool found = match;
-  if (found)
-    oid = lp.value();
-  sinfo = ConcurrentMasstree::versioned_node_t(lp.node(), lp.full_version_value());
-// end: masstree search
-
   dbtuple *tuple = nullptr;
   if (found) {
+    oid = lp.value();
+// end: masstree search
+
 // start: oid_get_version
     oid_array *oa = table_descriptor->GetTupleArray();
     TXN::xid_context *visitor_xc = t->xc;
@@ -326,28 +323,18 @@ start_over:
       }
       if (visible) {
         tuple = cur_obj->GetPinnedTuple();
-        break;
+        volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+        if (out_oid) {
+          *out_oid = oid;
+        }
+        co_return rc;
       }
       ptr = tentative_next;
       prev_obj = cur_obj;
     }
-// end: oid_get_version
-    if (!tuple) {
-      found = false;
-    }
   }
-
-  if (found)
-    volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-  else
-    volatile_write(rc._val, RC_FALSE);
-
-  ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
-
-  if (out_oid) {
-    *out_oid = oid;
-  }
-  co_return rc;
+  co_return {RC_FALSE};
+  ALWAYS_ASSERT(false);
 }
 
 ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_UpdateRecord(transaction *t, const varstr &key,
