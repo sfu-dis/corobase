@@ -602,23 +602,16 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     //		ol_w_id = :w_id
     //		ol_o_id = o_id
     //		ol_number = 1-15
-    credit_check_order_line_scan_callback c_ol(&arenas[idx]);
-    c_ol._v_ol.clear();
+    credit_check_order_line_scan_callback c_ol;
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                     &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol, &arenas[idx]);
     TryCatchCoro(rc);
-    ALWAYS_ASSERT(c_ol._v_ol.size());
 
-    for (auto &v_ol : c_ol._v_ol) {
-      order_line::value v_ol_temp;
-      const order_line::value *val = Decode(*v_ol, v_ol_temp);
-
-      // Aggregation
-      sum += val->ol_amount;
-    }
+    // Aggregation
+    sum += c_ol.sum;
   }
 
   // c_credit update
