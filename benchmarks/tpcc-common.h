@@ -360,9 +360,11 @@ class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
     std::string obj_buf;
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     uint i;
+    uint64_t total_sz = 0;
     for (i = 0; i < 62; i++) {
       const nation::key k(nations[i].id);
       nation::value v;
+      total_sz += Size(v);
 
       const std::string n_comment = RandomStr(r, RandomNumber(r, 10, 20));
       v.n_name = std::string(nations[i].name);
@@ -372,6 +374,9 @@ class tpcc_nation_loader : public bench_loader, public tpcc_worker_mixin {
                                               Encode(str(Size(v)), v)));
     }
     TryVerifyStrict(db->Commit(txn));
+    LOG(INFO) << "Finished loading nation";
+    LOG(INFO) << "  * total/average nation record length: "
+         << total_sz << "/" << (double(total_sz) / double(62)) << " bytes";
   }
 };
 
@@ -384,6 +389,7 @@ class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
 
  protected:
   virtual void load() {
+    uint64_t total_sz = 0;
     std::string obj_buf;
     ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
     for (uint i = 0; i < 5; i++) {
@@ -395,8 +401,12 @@ class tpcc_region_loader : public bench_loader, public tpcc_worker_mixin {
       v.r_comment.assign(r_comment);
       TryVerifyStrict(tbl_region(1)->InsertRecord(txn, Encode(str(Size(k)), k),
                                               Encode(str(Size(v)), v)));
+      total_sz += Size(v);
     }
     TryVerifyStrict(db->Commit(txn));
+    LOG(INFO) << "Finished loading region";
+    LOG(INFO) << "  * total/average region record length: "
+         << total_sz << "/" << (double(total_sz) / double(5)) << " bytes";
   }
 };
 
@@ -409,6 +419,7 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
 
  protected:
   virtual void load() {
+    uint64_t total_sz = 0;
     std::string obj_buf;
     for (uint i = 0; i < 10000; i++) {
       ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
@@ -433,7 +444,11 @@ class tpcc_supplier_loader : public bench_loader, public tpcc_worker_mixin {
                                                 Encode(str(Size(v)), v)));
 
       TryVerifyStrict(db->Commit(txn));
+      total_sz += Size(v);
     }
+    LOG(INFO) << "Finished loading supplier";
+    LOG(INFO) << "  * total/average supplier record length: "
+         << total_sz << "/" << (double(total_sz) / double(10000)) << " bytes";
   }
 };
 
@@ -504,14 +519,14 @@ class tpcc_warehouse_loader : public bench_loader, public tpcc_worker_mixin {
     }
 
     // pre-build supp-stock mapping table to boost tpc-ch queries
-    for (uint w = 1; w <= NumWarehouses(); w++)
-      for (uint i = 1; i <= NumItems(); i++)
+    for (uint w = 1; w <= NumWarehouses(); w++) {
+      for (uint i = 1; i <= NumItems(); i++) {
         supp_stock_map[w * i % 10000].push_back(std::make_pair(w, i));
-    if (ermia::config::verbose) {
-      LOG(INFO) << "Finished loading warehouse";
-      LOG(INFO) << "  * average warehouse record length: "
-           << (double(warehouse_total_sz) / double(n_warehouses)) << " bytes";
+      }
     }
+    LOG(INFO) << "Finished loading warehouse";
+    LOG(INFO) << "  * total/average warehouse record length: "
+         << warehouse_total_sz << "/" << (double(warehouse_total_sz) / double(n_warehouses)) << " bytes";
   }
 };
 
@@ -560,8 +575,8 @@ class tpcc_item_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (ermia::config::verbose) {
       LOG(INFO) << "Finished loading item";
-      LOG(INFO) << "  * average item record length: "
-           << (double(total_sz) / double(NumItems())) << " bytes";
+      LOG(INFO) << "  * total/average item record length: "
+           << total_sz << "/" << (double(total_sz) / double(NumItems())) << " bytes";
     }
   }
 };
@@ -647,14 +662,14 @@ class tpcc_stock_loader : public bench_loader, public tpcc_worker_mixin {
         i = iend;
       }
     }
-    if (ermia::config::verbose) {
-      if (warehouse_id == -1) {
-        LOG(INFO) << "Finished loading stock";
-        LOG(INFO) << "  * average stock record length: "
-             << (double(stock_total_sz) / double(n_stocks)) << " bytes";
-      } else {
-        LOG(INFO) <<  "Finished loading stock (w=" << warehouse_id << ")";
-      }
+    if (warehouse_id == -1) {
+      LOG(INFO) << "Finished loading stock";
+      LOG(INFO) << "  * total/average stock record length: "
+           << stock_total_sz << "/" << (double(stock_total_sz) / double(n_stocks)) << " bytes";
+    } else {
+      LOG(INFO) <<  "Finished loading stock (w=" << warehouse_id << ")";
+      LOG(INFO) << "  * total/average stock (w=" << warehouse_id << ") record length: "
+           << stock_total_sz << "/" << (double(stock_total_sz) / double(n_stocks)) << " bytes";
     }
   }
 
@@ -707,8 +722,8 @@ class tpcc_district_loader : public bench_loader, public tpcc_worker_mixin {
     }
     if (ermia::config::verbose) {
       LOG(INFO) << "Finished loading district";
-      LOG(INFO) << "   * average district record length: "
-           << (double(district_total_sz) / double(n_districts)) << " bytes";
+      LOG(INFO) << "   * total/average district record length: "
+           << district_total_sz << "/" << (double(district_total_sz) / double(n_districts)) << " bytes";
     }
   }
 };
@@ -834,16 +849,18 @@ class tpcc_customer_loader : public bench_loader, public tpcc_worker_mixin {
         }
       }
     }
-    if (ermia::config::verbose) {
-      if (warehouse_id == -1) {
-        LOG(INFO) << "Finished loading customer";
-        LOG(INFO) << "   * average customer record length: "
-             << (double(total_sz) /
-                 double(NumWarehouses() * NumDistrictsPerWarehouse() *
-                        NumCustomersPerDistrict())) << " bytes ";
-      } else {
-        LOG(INFO) << "Finished loading customer (w=" << warehouse_id << ")";
-      }
+    if (warehouse_id == -1) {
+      LOG(INFO) << "Finished loading customer";
+      LOG(INFO) << "   * total/average customer record length: "
+           << total_sz << "/" << (double(total_sz) /
+               double(NumWarehouses() * NumDistrictsPerWarehouse() *
+                      NumCustomersPerDistrict())) << " bytes ";
+    } else {
+      LOG(INFO) << "Finished loading customer (w=" << warehouse_id << ")";
+      LOG(INFO) << "   * total/average customer (w=" << warehouse_id << ") record length: "
+           << total_sz << "/" << (double(total_sz) /
+               double(NumWarehouses() * NumDistrictsPerWarehouse() *
+                      NumCustomersPerDistrict())) << " bytes ";
     }
   }
 
@@ -991,6 +1008,12 @@ class tpcc_order_loader : public bench_loader, public tpcc_worker_mixin {
              << (double(new_order_total_sz) / double(n_new_orders)) << " bytes";
       } else {
         LOG(INFO) << " Finished loading order (w=" << warehouse_id << ")";
+        LOG(INFO) << "  * total/average order_line (w=" << warehouse_id << ") record length: "
+             << order_line_total_sz << "/" << (double(order_line_total_sz) / double(n_order_lines)) << " bytes";
+        LOG(INFO) << "  * total/average oorder record length: "
+             << oorder_total_sz << "/" << (double(oorder_total_sz) / double(n_oorders)) << " bytes";
+        LOG(INFO) << "   * total/average new_order record length: "
+             << new_order_total_sz << "/" << (double(new_order_total_sz) / double(n_new_orders)) << " bytes";
       }
     }
   }
