@@ -10,6 +10,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fcoroutines-ts -stdlib=libc+
 set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
 link_libraries(${LINK_FLAGS})
 
+include_directories(/opt/dis/llvm-libc++/include/c++/v1)
+link_directories(/opt/dis/llvm-libc++/lib)
+
 # Pre-build glog and gflags with libc++
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/glog/lib)
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/third-party/gflags/lib)
