@@ -1212,7 +1212,7 @@ void tpcc_cs_worker::BatchScheduler() {
           handles[i].destroy();
           handles[i] = nullptr;
           --todo;
-        } else if (handles[i].promise().callee_coro.done()) {
+        } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
           handles[i].resume();
         } else {
           handles[i].promise().callee_coro.resume();
