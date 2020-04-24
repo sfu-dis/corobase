@@ -490,7 +490,7 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     // 'correct' setting is to ensure persistence at *all* nodes, including the
     // primary.  Note(tzwang): 20170428: the only reason I added this is due to
     // lack of DRAM space for storing log files in tmpfs.
-    if (config::null_log_device && !config::IsLoading()) {
+    if (config::null_log_device && (config::num_active_backups == 0 || !config::IsLoading())) {
       n = nbytes;
     } else {
       n = os_pwrite(active_fd, buf, nbytes, file_offset);
