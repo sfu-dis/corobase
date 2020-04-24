@@ -553,8 +553,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     k_c_idx_1.c_first.assign(ones);
 
     static_limit_callback<NMaxCustomerIdxScanElems> c(&arenas[idx], true);  // probably a safe bet for now
-    rc = co_await tbl_customer_name_idx(warehouse_id)
-             ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
+    rc = tbl_customer_name_idx(warehouse_id)
+             ->Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
                     &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx]);
     TryCatchCoro(rc);
     ALWAYS_ASSERT(c.size() > 0);
@@ -562,6 +562,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     int index = c.size() / 2;
     if (c.size() % 2 == 0) index--;
 
+    ((ermia::varstr *)c.values[index].second)->prefetch();
+    co_await std::experimental::suspend_always{};
     Decode(*c.values[index].second, v_c);
     k_c.c_w_id = warehouse_id;
     k_c.c_d_id = districtID;
@@ -573,8 +575,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     k_c.c_d_id = districtID;
     k_c.c_id = customerID;
 
-    rc_t rc = co_await tbl_customer(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
+    tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
     TryVerifyRelaxedCoro(rc);
+    valptr.prefetch();
+    co_await std::experimental::suspend_always{};
     Decode(valptr, v_c);
   }
 #ifndef NDEBUG
@@ -599,8 +603,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     const oorder_c_id_idx::key k_oo_idx_1(warehouse_id, districtID, k_c.c_id,
                                           std::numeric_limits<int32_t>::max());
     {
-      rc = co_await tbl_oorder_c_id_idx(warehouse_id)
-               ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_oo_idx_0)), k_oo_idx_0),
+      rc = tbl_oorder_c_id_idx(warehouse_id)
+               ->Scan(txn, Encode(str(arenas[idx], Size(k_oo_idx_0)), k_oo_idx_0),
                       &Encode(str(arenas[idx], Size(k_oo_idx_1)), k_oo_idx_1), c_oorder, &arenas[idx]);
       TryCatchCoro(rc);
     }
@@ -617,6 +621,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
   }
 
   oorder_c_id_idx::key k_oo_idx_temp;
+  newest_o_c_id->prefetch();
+  co_await std::experimental::suspend_always{};
   const oorder_c_id_idx::key *k_oo_idx = Decode(*newest_o_c_id, k_oo_idx_temp);
   const uint o_id = k_oo_idx->o_o_id;
 
@@ -624,14 +630,16 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
   const order_line::key k_ol_0(warehouse_id, districtID, o_id, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, o_id,
                                std::numeric_limits<int32_t>::max());
-  rc = co_await tbl_order_line(warehouse_id)
-           ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
+  rc = tbl_order_line(warehouse_id)
+           ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                   &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_order_line, &arenas[idx]);
   TryCatchCoro(rc);
   ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
-  rc = db->Commit(txn);
-  TryCatchCoro(rc);
+#ifndef CORO_BATCH_COMMIT
+  TryCatchCoro(db->Commit(txn));
+#endif
+
   co_return {RC_TRUE};
 }  // order-status
 
@@ -684,8 +692,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
   const order_line::key k_ol_0(warehouse_id, districtID, lower, 0);
   const order_line::key k_ol_1(warehouse_id, districtID, cur_next_o_id, 0);
   {
-    rc = co_await tbl_order_line(warehouse_id)
-             ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
+    rc = tbl_order_line(warehouse_id)
+             ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                     &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c, &arenas[idx]);
     TryCatchCoro(rc);
   }
@@ -698,6 +706,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
 
       rc = co_await tbl_stock(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
       TryVerifyRelaxedCoro(rc);
+
+      valptr.prefetch();
+      co_await std::experimental::suspend_always{};
       const uint8_t *ptr = (const uint8_t *)valptr.data();
       int16_t i16tmp;
       ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
@@ -705,8 +716,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
     }
     // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
   }
-  rc = db->Commit(txn);
-  TryCatchCoro(rc);
+
+#ifndef CORO_BATCH_COMMIT
+  TryCatchCoro(db->Commit(txn));
+#endif
+
   co_return {RC_TRUE};
 }  // stock-level
 
