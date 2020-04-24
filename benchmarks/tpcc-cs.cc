@@ -403,8 +403,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
                                 std::numeric_limits<int32_t>::max());
     new_order_scan_callback new_order_c;
     {
-      rc = co_await tbl_new_order(warehouse_id)
-               ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
+      rc = tbl_new_order(warehouse_id)
+               ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
                       &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), new_order_c,
                       &arenas[idx]);
       TryCatchCoro(rc);
@@ -423,6 +423,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     rc = co_await tbl_oorder(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
     TryCatchCoro(rc);
 
+    valptr.prefetch();
+    co_await std::experimental::suspend_always{};
     const oorder::value *v_oo = Decode(valptr, v_oo_temp);
 #ifndef NDEBUG
     checker::SanityCheckOOrder(&k_oo, v_oo);
@@ -434,14 +436,16 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
                                  std::numeric_limits<int32_t>::max());
 
     // XXX(stephentu): mutable scans would help here
-    rc = co_await tbl_order_line(warehouse_id)
-             ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_oo_0)), k_oo_0),
+    rc = tbl_order_line(warehouse_id)
+             ->Scan(txn, Encode(str(arenas[idx], Size(k_oo_0)), k_oo_0),
                     &Encode(str(arenas[idx], Size(k_oo_1)), k_oo_1), c, &arenas[idx]);
     TryCatchCoro(rc);
 
     float sum = 0.0;
     for (size_t i = 0; i < c.size(); i++) {
       order_line::value v_ol_temp;
+      ((ermia::varstr *)c.values[i].second)->prefetch();
+      co_await std::experimental::suspend_always{};
       const order_line::value *v_ol = Decode(*c.values[i].second, v_ol_temp);
 
 #ifndef NDEBUG
@@ -481,9 +485,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     const customer::key k_c(warehouse_id, d, c_id);
     customer::value v_c_temp;
 
-    rc = co_await tbl_customer(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
+    tbl_customer(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
     TryVerifyRelaxedCoro(rc);
 
+    // XXX(tzwang): prefetch valptr here doesn't help (100% delivery)
     const customer::value *v_c = Decode(valptr, v_c_temp);
     customer::value v_c_new(*v_c);
     v_c_new.c_balance += ol_total;
@@ -492,10 +497,13 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
                             Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
     TryCatchCoro(rc);
   }
-  rc = db->Commit(txn);
-  TryCatchCoro(rc);
+
+#ifndef CORO_BATCH_COMMIT
+  TryCatchCoro(db->Commit(txn));
+#endif
+
   co_return {RC_TRUE};
-}
+}  // delivery
 
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch) {
   /*
