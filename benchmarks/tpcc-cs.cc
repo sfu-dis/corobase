@@ -505,128 +505,6 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
   co_return {RC_TRUE};
 }  // delivery
 
-ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch) {
-  /*
-          Note: Cahill's credit check transaction to introduce SI's anomaly.
-
-          SELECT c_balance, c_credit_lim
-          INTO :c_balance, :c_credit_lim
-          FROM Customer
-          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
-
-          SELECT SUM(ol_amount) INTO :neworder_balance
-          FROM OrderLine, Orders, NewOrder
-          WHERE ol_o_id = o_id AND ol_d_id = :d_id
-          AND ol_w_id = :w_id AND o_d_id = :d_id
-          AND o_w_id = :w_id AND o_c_id = :c_id
-          AND no_o_id = o_id AND no_d_id = :d_id
-          AND no_w_id = :w_id
-
-          if (c_balance + neworder_balance > c_credit_lim)
-          c_credit = "BC";
-          else
-          c_credit = "GC";
-
-          SQL UPDATE Customer SET c_credit = :c_credit
-          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
-  */
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
-                                               arenas[idx],
-                                               &transactions[idx]);
-  ermia::TXN::xid_context *xc = txn->GetXIDContext();
-  xc->begin_epoch = begin_epoch;
-  rc_t rc = rc_t{RC_INVALID};
-
-  const uint warehouse_id = pick_wh(r, home_warehouse_id);
-  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-  uint customerDistrictID, customerWarehouseID;
-  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
-             RandomNumber(r, 1, 100) <= 85)) {
-    customerDistrictID = districtID;
-    customerWarehouseID = warehouse_id;
-  } else {
-    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-    do {
-      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
-    } while (customerWarehouseID == warehouse_id);
-  }
-  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
-
-  // select * from customer with random C_ID
-  customer::key k_c;
-  customer::value v_c_temp;
-  ermia::varstr valptr;
-  const uint customerID = GetCustomerId(r);
-  k_c.c_w_id = customerWarehouseID;
-  k_c.c_d_id = customerDistrictID;
-  k_c.c_id = customerID;
-
-  tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
-  TryVerifyRelaxedCoro(rc);
-
-  const customer::value *v_c = Decode(valptr, v_c_temp);
-#ifndef NDEBUG
-  checker::SanityCheckCustomer(&k_c, v_c);
-#endif
-
-  // scan order
-  //		c_w_id = :w_id;
-  //		c_d_id = :d_id;
-  //		c_id = :c_id;
-  credit_check_order_scan_callback c_no(&arenas[idx]);
-  const new_order::key k_no_0(warehouse_id, districtID, 0);
-  const new_order::key k_no_1(warehouse_id, districtID,
-                              std::numeric_limits<int32_t>::max());
-  rc = tbl_new_order(warehouse_id)
-           ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
-                  &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), c_no, &arenas[idx]);
-  TryCatchCoro(rc);
-  ALWAYS_ASSERT(c_no.output.size());
-
-  double sum = 0;
-  for (auto &k : c_no.output) {
-    new_order::key k_no_temp;
-    const new_order::key *k_no = Decode(*k, k_no_temp);
-
-    const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
-    oorder::value v;
-    rc = rc_t{RC_INVALID};
-    tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
-
-    TryCatchCoro(rc);
-    if (rc._val == RC_FALSE)
-      continue;
-    // Order line scan
-    //		ol_d_id = :d_id
-    //		ol_w_id = :w_id
-    //		ol_o_id = o_id
-    //		ol_number = 1-15
-    credit_check_order_line_scan_callback c_ol;
-    const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
-    const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
-    rc = tbl_order_line(warehouse_id)
-             ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
-                    &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol, &arenas[idx]);
-    TryCatchCoro(rc);
-
-    // Aggregation
-    sum += c_ol.sum;
-  }
-
-  // c_credit update
-  customer::value v_c_new(*v_c);
-  if (v_c_new.c_balance + sum >= 5000)  // Threshold = 5K
-    v_c_new.c_credit.assign("BC");
-  else
-    v_c_new.c_credit.assign("GC");
-  rc = co_await tbl_customer(customerWarehouseID)
-           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
-                          Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
-  TryCatchCoro(rc);
-  TryCatchCoro(db->Commit(txn));
-  co_return {RC_TRUE};
-}
-
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch) {
   const uint64_t read_only_mask =
       ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
@@ -755,7 +633,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
   rc = db->Commit(txn);
   TryCatchCoro(rc);
   co_return {RC_TRUE};
-}
+}  // order-status
 
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch) {
   const uint64_t read_only_mask =
@@ -830,7 +708,129 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
   rc = db->Commit(txn);
   TryCatchCoro(rc);
   co_return {RC_TRUE};
-}
+}  // stock-level
+
+ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia::epoch_num begin_epoch) {
+  /*
+          Note: Cahill's credit check transaction to introduce SI's anomaly.
+
+          SELECT c_balance, c_credit_lim
+          INTO :c_balance, :c_credit_lim
+          FROM Customer
+          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
+
+          SELECT SUM(ol_amount) INTO :neworder_balance
+          FROM OrderLine, Orders, NewOrder
+          WHERE ol_o_id = o_id AND ol_d_id = :d_id
+          AND ol_w_id = :w_id AND o_d_id = :d_id
+          AND o_w_id = :w_id AND o_c_id = :c_id
+          AND no_o_id = o_id AND no_d_id = :d_id
+          AND no_w_id = :w_id
+
+          if (c_balance + neworder_balance > c_credit_lim)
+          c_credit = "BC";
+          else
+          c_credit = "GC";
+
+          SQL UPDATE Customer SET c_credit = :c_credit
+          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
+  */
+  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
+                                               arenas[idx],
+                                               &transactions[idx]);
+  ermia::TXN::xid_context *xc = txn->GetXIDContext();
+  xc->begin_epoch = begin_epoch;
+  rc_t rc = rc_t{RC_INVALID};
+
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
+  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  uint customerDistrictID, customerWarehouseID;
+  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
+             RandomNumber(r, 1, 100) <= 85)) {
+    customerDistrictID = districtID;
+    customerWarehouseID = warehouse_id;
+  } else {
+    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+    do {
+      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
+    } while (customerWarehouseID == warehouse_id);
+  }
+  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+  // select * from customer with random C_ID
+  customer::key k_c;
+  customer::value v_c_temp;
+  ermia::varstr valptr;
+  const uint customerID = GetCustomerId(r);
+  k_c.c_w_id = customerWarehouseID;
+  k_c.c_d_id = customerDistrictID;
+  k_c.c_id = customerID;
+
+  tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
+  TryVerifyRelaxedCoro(rc);
+
+  const customer::value *v_c = Decode(valptr, v_c_temp);
+#ifndef NDEBUG
+  checker::SanityCheckCustomer(&k_c, v_c);
+#endif
+
+  // scan order
+  //		c_w_id = :w_id;
+  //		c_d_id = :d_id;
+  //		c_id = :c_id;
+  credit_check_order_scan_callback c_no(&arenas[idx]);
+  const new_order::key k_no_0(warehouse_id, districtID, 0);
+  const new_order::key k_no_1(warehouse_id, districtID,
+                              std::numeric_limits<int32_t>::max());
+  rc = tbl_new_order(warehouse_id)
+           ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
+                  &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), c_no, &arenas[idx]);
+  TryCatchCoro(rc);
+  ALWAYS_ASSERT(c_no.output.size());
+
+  double sum = 0;
+  for (auto &k : c_no.output) {
+    new_order::key k_no_temp;
+    const new_order::key *k_no = Decode(*k, k_no_temp);
+
+    const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
+    oorder::value v;
+    rc = rc_t{RC_INVALID};
+    tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
+
+    TryCatchCoro(rc);
+    if (rc._val == RC_FALSE)
+      continue;
+    // Order line scan
+    //		ol_d_id = :d_id
+    //		ol_w_id = :w_id
+    //		ol_o_id = o_id
+    //		ol_number = 1-15
+    credit_check_order_line_scan_callback c_ol;
+    const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
+    const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
+    rc = tbl_order_line(warehouse_id)
+             ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
+                    &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol, &arenas[idx]);
+    TryCatchCoro(rc);
+
+    // Aggregation
+    sum += c_ol.sum;
+  }
+
+  // c_credit update
+  customer::value v_c_new(*v_c);
+  if (v_c_new.c_balance + sum >= 5000)  // Threshold = 5K
+    v_c_new.c_credit.assign("BC");
+  else
+    v_c_new.c_credit.assign("GC");
+  rc = co_await tbl_customer(customerWarehouseID)
+           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
+                          Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
+  TryCatchCoro(rc);
+  TryCatchCoro(db->Commit(txn));
+  co_return {RC_TRUE};
+}  // credit-check
 
 ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoch_num begin_epoch) {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
