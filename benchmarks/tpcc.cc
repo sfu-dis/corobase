@@ -472,132 +472,6 @@ rc_t tpcc_worker::txn_delivery() {
   return {RC_TRUE};
 }
 
-rc_t tpcc_worker::txn_credit_check() {
-  /*
-          Note: Cahill's credit check transaction to introduce SI's anomaly.
-
-          SELECT c_balance, c_credit_lim
-          INTO :c_balance, :c_credit_lim
-          FROM Customer
-          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
-
-          SELECT SUM(ol_amount) INTO :neworder_balance
-          FROM OrderLine, Orders, NewOrder
-          WHERE ol_o_id = o_id AND ol_d_id = :d_id
-          AND ol_w_id = :w_id AND o_d_id = :d_id
-          AND o_w_id = :w_id AND o_c_id = :c_id
-          AND no_o_id = o_id AND no_d_id = :d_id
-          AND no_w_id = :w_id
-
-          if (c_balance + neworder_balance > c_credit_lim)
-          c_credit = "BC";
-          else
-          c_credit = "GC";
-
-          SQL UPDATE Customer SET c_credit = :c_credit
-          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
-  */
-
-  const uint warehouse_id = pick_wh(r, home_warehouse_id);
-  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-  uint customerDistrictID, customerWarehouseID;
-  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
-             RandomNumber(r, 1, 100) <= 85)) {
-    customerDistrictID = districtID;
-    customerWarehouseID = warehouse_id;
-  } else {
-    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
-    do {
-      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
-    } while (customerWarehouseID == warehouse_id);
-  }
-  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
-
-  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-  ermia::scoped_str_arena s_arena(arena);
-
-  // select * from customer with random C_ID
-  customer::key k_c;
-  customer::value v_c_temp;
-  ermia::varstr valptr;
-  const uint customerID = GetCustomerId(r);
-  k_c.c_w_id = customerWarehouseID;
-  k_c.c_d_id = customerDistrictID;
-  k_c.c_id = customerID;
-
-  rc_t rc = rc_t{RC_INVALID};
-  tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
-  TryVerifyRelaxed(rc);
-
-  const customer::value *v_c = Decode(valptr, v_c_temp);
-#ifndef NDEBUG
-  checker::SanityCheckCustomer(&k_c, v_c);
-#endif
-
-  // scan order
-  //		c_w_id = :w_id;
-  //		c_d_id = :d_id;
-  //		c_id = :c_id;
-  credit_check_order_scan_callback c_no(s_arena.get());
-  const new_order::key k_no_0(warehouse_id, districtID, 0);
-  const new_order::key k_no_1(warehouse_id, districtID,
-                              std::numeric_limits<int32_t>::max());
-  TryCatch(tbl_new_order(warehouse_id)
-                ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                       &Encode(str(Size(k_no_1)), k_no_1), c_no,
-                       s_arena.get()));
-  ALWAYS_ASSERT(c_no.output.size());
-
-  double sum = 0;
-  for (auto &k : c_no.output) {
-    new_order::key k_no_temp;
-    const new_order::key *k_no = Decode(*k, k_no_temp);
-
-    const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
-    oorder::value v;
-    rc = rc_t{RC_INVALID};
-    tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
-    TryCatchCond(rc, continue);
-    // Order line scan
-    //		ol_d_id = :d_id
-    //		ol_w_id = :w_id
-    //		ol_o_id = o_id
-    //		ol_number = 1-15
-    credit_check_order_line_scan_callback c_ol;
-    const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
-    const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
-    TryCatch(tbl_order_line(warehouse_id)
-                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                         &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
-                         s_arena.get()));
-
-    /* XXX(tzwang): moved to the callback to avoid storing keys
-    ALWAYS_ASSERT(c_ol._v_ol.size());
-    for (auto &v_ol : c_ol._v_ol) {
-      order_line::value v_ol_temp;
-      const order_line::value *val = Decode(*v_ol, v_ol_temp);
-
-      // Aggregation
-      sum += val->ol_amount;
-    }
-    */
-    sum += c_ol.sum;
-  }
-
-  // c_credit update
-  customer::value v_c_new(*v_c);
-  if (v_c_new.c_balance + sum >= 5000)  // Threshold = 5K
-    v_c_new.c_credit.assign("BC");
-  else
-    v_c_new.c_credit.assign("GC");
-  TryCatch(tbl_customer(customerWarehouseID)
-                ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
-                      Encode(str(Size(v_c_new)), v_c_new)));
-
-  TryCatch(db->Commit(txn));
-  return {RC_TRUE};
-}
-
 rc_t tpcc_worker::txn_order_status() {
   const uint warehouse_id = pick_wh(r, home_warehouse_id);
   const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
@@ -792,6 +666,132 @@ rc_t tpcc_worker::txn_stock_level() {
     }
     // NB(stephentu): s_i_ids_distinct.size() is the computed result of this txn
   }
+  TryCatch(db->Commit(txn));
+  return {RC_TRUE};
+}
+
+rc_t tpcc_worker::txn_credit_check() {
+  /*
+          Note: Cahill's credit check transaction to introduce SI's anomaly.
+
+          SELECT c_balance, c_credit_lim
+          INTO :c_balance, :c_credit_lim
+          FROM Customer
+          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
+
+          SELECT SUM(ol_amount) INTO :neworder_balance
+          FROM OrderLine, Orders, NewOrder
+          WHERE ol_o_id = o_id AND ol_d_id = :d_id
+          AND ol_w_id = :w_id AND o_d_id = :d_id
+          AND o_w_id = :w_id AND o_c_id = :c_id
+          AND no_o_id = o_id AND no_d_id = :d_id
+          AND no_w_id = :w_id
+
+          if (c_balance + neworder_balance > c_credit_lim)
+          c_credit = "BC";
+          else
+          c_credit = "GC";
+
+          SQL UPDATE Customer SET c_credit = :c_credit
+          WHERE c_id = :c_id AND c_d_id = :d_id AND c_w_id = :w_id
+  */
+
+  const uint warehouse_id = pick_wh(r, home_warehouse_id);
+  const uint districtID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+  uint customerDistrictID, customerWarehouseID;
+  if (likely(g_disable_xpartition_txn || NumWarehouses() == 1 ||
+             RandomNumber(r, 1, 100) <= 85)) {
+    customerDistrictID = districtID;
+    customerWarehouseID = warehouse_id;
+  } else {
+    customerDistrictID = RandomNumber(r, 1, NumDistrictsPerWarehouse());
+    do {
+      customerWarehouseID = RandomNumber(r, 1, NumWarehouses());
+    } while (customerWarehouseID == warehouse_id);
+  }
+  ASSERT(!g_disable_xpartition_txn || customerWarehouseID == warehouse_id);
+
+  ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+  ermia::scoped_str_arena s_arena(arena);
+
+  // select * from customer with random C_ID
+  customer::key k_c;
+  customer::value v_c_temp;
+  ermia::varstr valptr;
+  const uint customerID = GetCustomerId(r);
+  k_c.c_w_id = customerWarehouseID;
+  k_c.c_d_id = customerDistrictID;
+  k_c.c_id = customerID;
+
+  rc_t rc = rc_t{RC_INVALID};
+  tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(Size(k_c)), k_c), valptr);
+  TryVerifyRelaxed(rc);
+
+  const customer::value *v_c = Decode(valptr, v_c_temp);
+#ifndef NDEBUG
+  checker::SanityCheckCustomer(&k_c, v_c);
+#endif
+
+  // scan order
+  //		c_w_id = :w_id;
+  //		c_d_id = :d_id;
+  //		c_id = :c_id;
+  credit_check_order_scan_callback c_no(s_arena.get());
+  const new_order::key k_no_0(warehouse_id, districtID, 0);
+  const new_order::key k_no_1(warehouse_id, districtID,
+                              std::numeric_limits<int32_t>::max());
+  TryCatch(tbl_new_order(warehouse_id)
+                ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
+                       &Encode(str(Size(k_no_1)), k_no_1), c_no,
+                       s_arena.get()));
+  ALWAYS_ASSERT(c_no.output.size());
+
+  double sum = 0;
+  for (auto &k : c_no.output) {
+    new_order::key k_no_temp;
+    const new_order::key *k_no = Decode(*k, k_no_temp);
+
+    const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
+    oorder::value v;
+    rc = rc_t{RC_INVALID};
+    tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
+    TryCatchCond(rc, continue);
+    // Order line scan
+    //		ol_d_id = :d_id
+    //		ol_w_id = :w_id
+    //		ol_o_id = o_id
+    //		ol_number = 1-15
+    credit_check_order_line_scan_callback c_ol;
+    const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
+    const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
+    TryCatch(tbl_order_line(warehouse_id)
+                  ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
+                         &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
+                         s_arena.get()));
+
+    /* XXX(tzwang): moved to the callback to avoid storing keys
+    ALWAYS_ASSERT(c_ol._v_ol.size());
+    for (auto &v_ol : c_ol._v_ol) {
+      order_line::value v_ol_temp;
+      const order_line::value *val = Decode(*v_ol, v_ol_temp);
+
+      // Aggregation
+      sum += val->ol_amount;
+    }
+    */
+    sum += c_ol.sum;
+  }
+
+  // c_credit update
+  customer::value v_c_new(*v_c);
+  if (v_c_new.c_balance + sum >= 5000)  // Threshold = 5K
+    v_c_new.c_credit.assign("BC");
+  else
+    v_c_new.c_credit.assign("GC");
+  TryCatch(tbl_customer(customerWarehouseID)
+                ->UpdateRecord(txn, Encode(str(Size(k_c)), k_c),
+                      Encode(str(Size(v_c_new)), v_c_new)));
+
   TryCatch(db->Commit(txn));
   return {RC_TRUE};
 }
