@@ -838,11 +838,16 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     v_c_new.c_credit.assign("BC");
   else
     v_c_new.c_credit.assign("GC");
-  rc = co_await tbl_customer(customerWarehouseID)
-           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
+
+  rc = tbl_customer(customerWarehouseID)
+           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
                           Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
   TryCatchCoro(rc);
+
+#ifndef CORO_BATCH_COMMIT
   TryCatchCoro(db->Commit(txn));
+#endif
+
   co_return {RC_TRUE};
 }  // credit-check
 
