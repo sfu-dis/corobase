@@ -89,9 +89,8 @@ public:
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
 
-    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() ||
-        ycsb_workload.scan_percent() || ycsb_workload.rmw_percent()) {
-      LOG(FATAL) << "Not implemented";
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() 
+       || ycsb_workload.rmw_percent()) {
     }
 
     if (ycsb_workload.read_percent()) {
@@ -106,6 +105,15 @@ public:
       }
     }
 
+    if (ycsb_workload.scan_percent()) {
+      if (g_read_txn_type == ReadTransactionType::AdvCoro) {
+        w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0,
+                    nullptr, nullptr,TxnScan));
+      } else {
+        LOG(FATAL) << "Scan txn type must be adv-coro";
+      }
+    }
+
     return w;
   }
 
@@ -115,6 +123,10 @@ public:
 
   static rc_t TxnReadAdvCoroMultiGet(bench_worker *w) {
     return static_cast<ycsb_cs_adv_worker *>(w)->txn_read_adv_coro_multi_get();
+  }
+
+  static task<rc_t> TxnScan(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+      return static_cast<ycsb_cs_adv_worker *>(w)->txn_scan(idx, begin_epoch);
   }
 
 private:
@@ -168,6 +180,49 @@ private:
         }
     }
 
+    co_return {RC_TRUE};
+  }
+
+  task<rc_t> txn_scan(uint32_t idx, ermia::epoch_num begin_epoch) {
+    ermia::transaction *txn = nullptr;
+
+    txn = &transactions[idx];
+    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
+                                     ermia::transaction::TXN_FLAG_READ_ONLY,
+                                 *arena);
+    ermia::TXN::xid_context *xc = txn->GetXIDContext();
+    xc->begin_epoch = begin_epoch;
+
+    for (int j = 0; j < g_reps_per_tx; ++j) {
+        rc_t rc = rc_t{RC_INVALID};
+        ScanRange range = GenerateScanRange(txn);
+
+        if (ermia::config::index_probe_only) {
+            ycsb_scan_oid_callback callback;
+            co_await table_index->ScanOID(txn, range.start_key, &range.end_key,
+                                          rc, callback);
+        } else {
+            ycsb_scan_callback callback;
+            rc = co_await table_index->Scan(txn, range.start_key,
+                                            &range.end_key, callback,
+                                            &(txn->string_allocator()));
+        }
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+        if (rc.IsAbort()) {
+            db->Abort(txn);
+            co_return rc;
+        }
+#else
+        // ALWAYS_ASSERT(rc._val == RC_TRUE);
+#endif
+    }
+
+    rc_t rc = db->Commit(txn);
+    if (rc.IsAbort()) {
+        db->Abort(txn);
+        co_return rc;
+    }
     co_return {RC_TRUE};
   }
 

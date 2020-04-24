@@ -11,6 +11,13 @@ uint g_initial_table_size = 30000000;
 int g_zipfian_rng = 0;
 double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it approaches 1.
 
+
+// TODO: support scan_min length, current zipfain rng does not support min bound.
+const int g_scan_min_length = 1;
+int g_scan_max_length = 1000;
+int g_scan_length_zipfain_rng = 1;
+double g_scan_length_zipfain_theta = 0.99;
+
 ReadTransactionType g_read_txn_type = ReadTransactionType::Sequential;
 
 // { insert, read, update, scan, rmw }
@@ -115,10 +122,11 @@ void ycsb_parse_options(int argc, char **argv) {
         {"zipfian", no_argument, &g_zipfian_rng, 1},
         {"zipfian-theta", required_argument, 0, 'z'},
         {"read-tx-type", required_argument, 0, 't'},
+        {"scan-max-range", required_argument, 0, 'g'},
         {0, 0, 0, 0}};
 
     int option_index = 0;
-    int c = getopt_long(argc, argv, "r:a:w:s:z:t:", long_options, &option_index);
+    int c = getopt_long(argc, argv, "r:a:w:s:z:t:g:", long_options, &option_index);
     if (c == -1) break;
     switch (c) {
       case 0:
@@ -183,6 +191,10 @@ void ycsb_parse_options(int argc, char **argv) {
         }
         break;
 
+      case 'g':
+        g_scan_max_length = strtoul(optarg, NULL, 10);
+        break;
+
       case '?':
         /* getopt_long already printed an error message. */
         exit(1);
@@ -220,6 +232,14 @@ void ycsb_parse_options(int argc, char **argv) {
 
     if (g_zipfian_rng) {
       std::cerr << "  zipfian theta:              " << g_zipfian_theta << std::endl;
+    }
+    if (ycsb_workload.scan_percent() > 0) {
+      if (g_scan_max_length <= g_scan_min_length || g_scan_min_length < 1) {
+         std::cerr << "  invalid scan range:      " << std::endl;
+         std::cerr << "  min :                    " << g_scan_min_length << std::endl;
+         std::cerr << "  max :                    " << g_scan_max_length << std::endl;
+      }
+      std::cerr << "  scan maximal range:         " << g_scan_max_length << std::endl;
     }
   }
 }
