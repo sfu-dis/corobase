@@ -17,6 +17,15 @@ uint g_microbench_rows = 10;  // this many rows
 int g_microbench_wr_rows = 0;  // this number of rows to write
 int g_nr_suppliers = 10000;
 
+// TPC-C workload mix
+// 0: NewOrder
+// 1: Payment
+// 2: CreditCheck
+// 3: Delivery
+// 4: OrderStatus
+// 5: StockLevel
+// 6: TPC-CH query 2 variant - original query 2, but /w marginal stock table update
+// 7: Microbenchmark-random - same as Microbenchmark, but uses random read-set range
 unsigned g_txn_workload_mix[8] = {
     45, 43, 0, 4, 4, 4, 0, 0};  // default TPC-C workload mix
 
