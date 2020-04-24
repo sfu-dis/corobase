@@ -13,6 +13,10 @@
 extern uint g_initial_table_size;
 extern int g_zipfian_rng;
 extern double g_zipfian_theta;
+extern const int g_scan_min_length;
+extern int g_scan_max_length;
+extern int g_scan_length_zipfain_rng;
+extern double g_scan_length_zipfain_theta;
 
 enum class ReadTransactionType {
   Sequential,
@@ -142,11 +146,21 @@ class ycsb_base_worker : public bench_worker {
                    const std::map<std::string, ermia::OrderedIndex *> &open_tables,
                    spin_barrier *barrier_a, spin_barrier *barrier_b)
       : bench_worker(worker_id, true, seed, db, open_tables, barrier_a, barrier_b),
-        table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")),
-        uniform_rng(1237 + worker_id) {
-    if (g_zipfian_rng) {
-      zipfian_rng.init(g_initial_table_size, g_zipfian_theta, 1237 + worker_id);
-    }
+        table_index((ermia::ConcurrentMasstreeIndex*)open_tables.at("USERTABLE")) {
+      const unsigned int key_rng_seed = 1237 + worker_id;
+      uniform_rng = foedus::assorted::UniformRandom(key_rng_seed);
+      if (g_zipfian_rng) {
+          zipfian_rng.init(g_initial_table_size, g_zipfian_theta, key_rng_seed);
+      }
+
+      const unsigned int scan_length_rng_seed = 2358 + worker_id;
+      scan_length_uniform_rng =
+          foedus::assorted::UniformRandom(scan_length_rng_seed);
+      if (g_scan_length_zipfain_rng) {
+          scan_length_zipfian_rng.init(g_scan_max_length,
+                                       g_scan_length_zipfain_theta,
+                                       scan_length_rng_seed);
+      }
   }
 
   virtual cmdlog_redo_workload_desc_vec get_cmdlog_redo_workload() const {
@@ -165,21 +179,90 @@ class ycsb_base_worker : public bench_worker {
   ALWAYS_INLINE ermia::varstr &str(uint64_t size) { return *arena->next(size); }
   ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
 
-  ermia::varstr &GenerateKey(ermia::transaction *t) {
+  uint64_t rng_gen_key() {
     uint64_t r = 0;
     if (g_zipfian_rng) {
       r = zipfian_rng.next();
     } else {
       r = uniform_rng.uniform_within(0, g_initial_table_size - 1);
     }
+    return r;
+  }
 
+  uint64_t rng_gen_scan_length() {
+    uint64_t r = 0;
+    if(g_scan_length_zipfain_rng) {
+        r = scan_length_zipfian_rng.next();
+    } else {
+        r = scan_length_uniform_rng.uniform_within(g_scan_min_length, g_scan_max_length);
+    }
+    return r;
+  }
+
+  ermia::varstr &GenerateKey(ermia::transaction *t) {
     ermia::varstr &k = t ? *t->string_allocator().next(sizeof(uint64_t)) : str(sizeof(uint64_t));
     new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
-    ::BuildKey(r, k);
+    ::BuildKey(rng_gen_key(), k);
     return k;
   }
+
+  struct ScanRange {
+    ermia::varstr &start_key;
+    ermia::varstr &end_key;
+  };
+
+  ScanRange GenerateScanRange(ermia::transaction *t) {
+    ermia::varstr &start_key = t ? *t->string_allocator().next(sizeof(uint64_t)) : str(sizeof(uint64_t));
+    ermia::varstr &end_key = t ? *t->string_allocator().next(sizeof(uint64_t)) : str(sizeof(uint64_t));
+
+    new (&start_key) ermia::varstr((char *)&start_key + sizeof(ermia::varstr), sizeof(uint64_t));
+    new (&end_key) ermia::varstr((char *)&end_key + sizeof(ermia::varstr), sizeof(uint64_t));
+    uint64_t r_start_key = rng_gen_key();
+    uint64_t r_end_key = r_start_key + rng_gen_scan_length();
+    ::BuildKey(r_start_key, start_key);
+    ::BuildKey(r_end_key, end_key);
+    return {start_key, end_key};
+  }
+  
 
   ermia::ConcurrentMasstreeIndex *table_index;
   foedus::assorted::UniformRandom uniform_rng;
   foedus::assorted::ZipfianRandom zipfian_rng;
+  foedus::assorted::UniformRandom scan_length_uniform_rng;
+  foedus::assorted::ZipfianRandom scan_length_zipfian_rng;
+};
+
+class ycsb_scan_callback : public ermia::OrderedIndex::ScanCallback {
+   public:
+    virtual ~ycsb_scan_callback() {}
+    bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) override {
+        MARK_REFERENCED(keyp);
+        MARK_REFERENCED(keylen);
+#if defined(SI)
+        ASSERT(*(char *)value.data() == 'a');
+#endif
+        memcpy(value_buf, value.data(), sizeof(ycsb_kv::value));
+        memcpy(key_buf, keyp, keylen);
+        return true;
+    }
+
+   private:
+    unsigned char key_buf[sizeof(ycsb_kv::key)];
+    unsigned char value_buf[sizeof(ycsb_kv::value)];
+};
+
+class ycsb_scan_oid_callback : public ermia::OrderedIndex::DiaScanCallback {
+   public:
+    virtual ~ycsb_scan_oid_callback() {}
+    bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) override {
+        MARK_REFERENCED(keyp);
+        MARK_REFERENCED(keylen);
+        oid_buf = oid;
+        return true;
+    }
+    bool Receive(ermia::transaction *t, ermia::TableDescriptor *td) override {
+        return true;
+    }
+   private:
+    ermia::OID oid_buf;
 };

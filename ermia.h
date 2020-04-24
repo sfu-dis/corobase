@@ -189,6 +189,21 @@ public:
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
 
+  inline PROMISE(void)
+      ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
+              rc_t &rc, DiaScanCallback &dia_callback) override {
+      sync_wait_void_coro(ScanOID(t, start_key, end_key, rc,
+                                  reinterpret_cast<OID *>(&dia_callback)));
+      RETURN;
+  }
+  inline PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
+                                      const varstr *end_key, rc_t &rc,
+                                      DiaScanCallback &dia_callback) override {
+      sync_wait_void_coro(ReverseScanOID(
+          t, start_key, end_key, rc, reinterpret_cast<OID *>(&dia_callback)));
+      RETURN;
+  }
+
 private:
   PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
 

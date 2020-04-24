@@ -21,7 +21,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 
   virtual workload_desc_vec get_workload() const {
     workload_desc_vec w;
-    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() || ycsb_workload.scan_percent()) {
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent()) {
       LOG(FATAL) << "Not implemented";
     }
 
@@ -45,6 +45,14 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       }
     }
 
+    if (ycsb_workload.scan_percent()) {
+      if (g_read_txn_type == ReadTransactionType::Sequential) {
+        w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, TxnScan));
+      } else {
+        LOG(FATAL) << "Scan txn type must be sequential";
+      }
+    }
+
     return w;
   }
 
@@ -52,6 +60,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   static rc_t TxnReadAMACMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_amac_multiget(); }
   static rc_t TxnReadSimpleCoroMultiGet(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_read_simple_coro_multiget(); }
   static rc_t TxnRMW(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_rmw(); }
+  static rc_t TxnScan(bench_worker *w) { return static_cast<ycsb_sequential_worker *>(w)->txn_scan(); }
 
   // Read transaction using traditional sequential execution
   rc_t txn_read() {
@@ -209,6 +218,31 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
+  }
+
+  rc_t txn_scan() {
+      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+      rc_t rc = rc_t{RC_INVALID};
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+          ScanRange range  = GenerateScanRange(txn);
+          if (ermia::config::index_probe_only) {
+              ycsb_scan_oid_callback callback;
+              table_index->ScanOID(txn, range.start_key, &range.end_key, rc,
+                                   callback);
+          } else {
+              ycsb_scan_callback callback;
+              rc = table_index->Scan(txn, range.start_key, &range.end_key,
+                                     callback, &(txn->string_allocator()));
+          }
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+          TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+          // ALWAYS_ASSERT(rc._val == RC_TRUE);
+#endif
+      }
+      TryCatch(db->Commit(txn));
+      return {RC_TRUE};
   }
 
  private:
