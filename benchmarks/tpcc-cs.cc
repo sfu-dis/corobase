@@ -57,16 +57,17 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
                                                &transactions[idx]);
   txn->GetXIDContext()->begin_epoch = begin_epoch;
 
-  const customer::key k_c(warehouse_id, districtID, customerID);
-  customer::value v_c_temp;
+  rc_t rc = rc_t{RC_INVALID};
   ermia::varstr valptr;
 
-  rc_t rc = rc_t{RC_INVALID};
+  const customer::key k_c(warehouse_id, districtID, customerID);
+  customer::value v_c_temp;
+
   rc = co_await tbl_customer(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
   TryVerifyRelaxedCoro(rc);
 
-  // valptr.prefetch();
-  // co_await std::experimental::suspend_always{};
+  valptr.prefetch();
+  co_await std::experimental::suspend_always{};
   const customer::value *v_c = Decode(valptr, v_c_temp);
 
 #ifndef NDEBUG
@@ -76,11 +77,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   const warehouse::key k_w(warehouse_id);
   warehouse::value v_w_temp;
 
-  rc = co_await tbl_warehouse(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
+  tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
   TryVerifyRelaxedCoro(rc);
 
-  // valptr.prefetch();
-  // co_await std::experimental::suspend_always{};
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
 #ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
@@ -89,11 +88,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
 
-  rc = co_await tbl_district(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
+  tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
   TryVerifyRelaxedCoro(rc);
 
-  // valptr.prefetch();
-  // co_await std::experimental::suspend_always{};
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
   checker::SanityCheckDistrict(&k_d, v_d);
@@ -114,8 +111,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   if (!g_new_order_fast_id_gen) {
     district::value v_d_new(*v_d);
     v_d_new.d_next_o_id++;
-    rc = co_await tbl_district(warehouse_id)
-             ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
+    rc = tbl_district(warehouse_id)
+             ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
                             Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
     TryCatchCoro(rc);
   }
@@ -136,8 +133,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   TryCatchCoro(rc);
 
   const oorder_c_id_idx::key k_oo_idx(warehouse_id, districtID, customerID, k_no.no_o_id);
-  rc = tbl_oorder_c_id_idx(warehouse_id)
-           ->InsertOID(txn, Encode(str(arenas[idx], Size(k_oo_idx)), k_oo_idx), v_oo_oid);
+  rc = co_await tbl_oorder_c_id_idx(warehouse_id)
+           ->coro_InsertOID(txn, Encode(str(arenas[idx], Size(k_oo_idx)), k_oo_idx), v_oo_oid);
   TryCatchCoro(rc);
 
   for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
@@ -148,11 +145,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const item::key k_i(ol_i_id);
     item::value v_i_temp;
 
-    rc = co_await tbl_item(1)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
+    tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
     TryVerifyRelaxedCoro(rc);
 
-    // valptr.prefetch();
-    // co_await std::experimental::suspend_always{};
     const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
     checker::SanityCheckItem(&k_i, v_i);
@@ -161,12 +156,10 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     const stock::key k_s(ol_supply_w_id, ol_i_id);
     stock::value v_s_temp;
 
-    rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
+    co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
     TryVerifyRelaxedCoro(rc);
-
-    // valptr.prefetch();
-    // co_await std::experimental::suspend_always{};
     const stock::value *v_s = Decode(valptr, v_s_temp);
+
 #ifndef NDEBUG
     checker::SanityCheckStock(&k_s);
 #endif
@@ -179,8 +172,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     v_s_new.s_ytd += ol_quantity;
     v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
 
-    rc = co_await tbl_stock(ol_supply_w_id)
-             ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
+    rc = tbl_stock(ol_supply_w_id)
+             ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
                             Encode(str(arenas[idx], Size(v_s_new)), v_s_new));
     TryCatchCoro(rc);
 
@@ -194,8 +187,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
     v_ol.ol_quantity = int8_t(ol_quantity);
 
     const size_t order_line_sz = Size(v_ol);
-    rc = co_await tbl_order_line(warehouse_id)
-             ->coro_InsertRecord(txn, Encode(str(arenas[idx], Size(k_ol)), k_ol),
+    rc = tbl_order_line(warehouse_id)
+             ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_ol)), k_ol),
                             Encode(str(arenas[idx], order_line_sz), v_ol));
     TryCatchCoro(rc);
   }
@@ -240,32 +233,32 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   warehouse::value v_w_temp;
   ermia::varstr valptr;
 
-  auto rc = co_await tbl_warehouse(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
+  rc_t rc = rc_t{RC_INVALID};
+
+  tbl_warehouse(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_w)), k_w), valptr);
   TryVerifyRelaxedCoro(rc);
-
-  //valptr.prefetch();
-  //co_await std::experimental::suspend_always{};
-
   const warehouse::value *v_w = Decode(valptr, v_w_temp);
+
 #ifndef NDEBUG
   checker::SanityCheckWarehouse(&k_w, v_w);
 #endif
 
   warehouse::value v_w_new(*v_w);
   v_w_new.w_ytd += paymentAmount;
-  rc = co_await tbl_warehouse(warehouse_id)
-           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
+  rc = tbl_warehouse(warehouse_id)
+           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_w)), k_w),
                           Encode(str(arenas[idx], Size(v_w_new)), v_w_new));
   TryCatchCoro(rc);
 
   const district::key k_d(warehouse_id, districtID);
   district::value v_d_temp;
 
-  rc = co_await tbl_district(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
+  tbl_district(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_d)), k_d), valptr);
   TryVerifyRelaxedCoro(rc);
 
-  //valptr.prefetch();
-  //co_await std::experimental::suspend_always{};
+  // XXX(tzwang): 1.83->1.85mtps
+  valptr.prefetch();
+  co_await std::experimental::suspend_always{};
 
   const district::value *v_d = Decode(valptr, v_d_temp);
 #ifndef NDEBUG
@@ -274,8 +267,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
 
   district::value v_d_new(*v_d);
   v_d_new.d_ytd += paymentAmount;
-  rc = co_await tbl_district(warehouse_id)
-           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
+  rc = tbl_district(warehouse_id)
+           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_d)), k_d),
                           Encode(str(arenas[idx], Size(v_d_new)), v_d_new));
   TryCatchCoro(rc);
 
@@ -304,9 +297,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
     k_c_idx_1.c_first.assign(ones);
 
     static_limit_callback<NMaxCustomerIdxScanElems> c(&arenas[idx], true);  // probably a safe bet for now
-    rc = co_await tbl_customer_name_idx(customerWarehouseID)
-             ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
-                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx], NMaxCustomerIdxScanElems);
+    rc = tbl_customer_name_idx(customerWarehouseID)
+             ->Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
+                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx]);//, NMaxCustomerIdxScanElems);
     TryCatchCoro(rc);
 
     ALWAYS_ASSERT(c.size() > 0);
@@ -324,14 +317,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
     k_c.c_w_id = customerWarehouseID;
     k_c.c_d_id = customerDistrictID;
     k_c.c_id = customerID;
-    rc = co_await tbl_customer(customerWarehouseID)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
+    tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
     TryVerifyRelaxedCoro(rc);
-
-    //valptr.prefetch();
-    //co_await std::experimental::suspend_always{};
-
     Decode(valptr, v_c);
   }
+
 #ifndef NDEBUG
   checker::SanityCheckCustomer(&k_c, &v_c);
 #endif
@@ -350,8 +340,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
     memcpy((void *)v_c_new.c_data.data(), &buf[0], v_c_new.c_data.size());
   }
 
-  rc = co_await tbl_customer(customerWarehouseID)
-           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
+  rc = tbl_customer(customerWarehouseID)
+           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
                           Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
   TryCatchCoro(rc);
 
@@ -365,6 +355,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
   v_h.h_data.resize_junk(
       std::min(static_cast<size_t>(n), v_h.h_data.max_size()));
 
+  // XXX(tzwang): 1.85->1.86mtps (no log memcpy)
   rc = co_await tbl_history(warehouse_id)
            ->coro_InsertRecord(txn, Encode(str(arenas[idx], Size(k_h)), k_h),
                           Encode(str(arenas[idx], Size(v_h)), v_h));
