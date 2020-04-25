@@ -136,13 +136,7 @@ public:
         rc = co_await table_index->coro_GetRecord(txn, k, v);
       }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
@@ -153,14 +147,7 @@ public:
     }
 
     if (!ermia::config::index_probe_only) {
-      rc_t rc = db->Commit(txn);
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+        TryCatchCoro(db->Commit(txn));
     }
     co_return {RC_TRUE};
   }
@@ -179,13 +166,7 @@ public:
       rc = co_await table_index->coro_GetRecord(txn, k, v);
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
 #else
       // Under SI this must succeed
       LOG_IF(FATAL, rc._val != RC_TRUE);
@@ -203,23 +184,10 @@ public:
       new (v.data()) ycsb_kv::value("a");
       rc = co_await table_index->coro_UpdateRecord(txn, k, v);  // Modify-write
 
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
     }
 
-    rc_t rc = db->Commit(txn);
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
-    }
+    TryCatchCoro(db->Commit(txn));
     co_return {RC_TRUE};
   }
 
@@ -239,20 +207,13 @@ public:
                                              &range.end_key, callback);
       }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      if (rc.IsAbort()) {
-          db->Abort(txn);
-          co_return rc;
-      }
+      TryCatchCoro(rc);
 #else
       // TODO(lujc): sometimes return RC_FALSE, no value?
       // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
-    rc = db->Commit(txn);
-    if (rc.IsAbort()) {
-        db->Abort(txn);
-        co_return rc;
-    }
+    TryCatchCoro(db->Commit(txn));
     co_return {RC_TRUE};
   }
 
