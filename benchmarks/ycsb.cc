@@ -236,6 +236,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
           TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
+          // TODO(lujc): sometimes return RC_FALSE, no value?
           // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
       }
