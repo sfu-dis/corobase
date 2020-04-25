@@ -213,6 +213,7 @@ private:
             co_return rc;
         }
 #else
+        // TODO(lujc): sometimes return RC_FALSE, no value?
         // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
