@@ -1252,9 +1252,7 @@ void tpcc_cs_worker::BatchScheduler() {
       if (!rcs[i].IsAbort()) {
         rcs[i] = db->Commit(&transactions[i]);
       }
-      if (rcs[i].IsAbort()) {
-        db->Abort(&transactions[i]);
-      }
+      // No need to abort - TryCatchCond family of macros should have already
       finish_workload(rcs[i], workload_idx, t);
     }
 #endif
