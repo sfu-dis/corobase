@@ -89,9 +89,11 @@ struct scan_info {
   int stackpos = 0;
   leafvalue_type entry;
 
+  /* todo **/
   ermia::dbtuple *tuple;
   ermia::OID oid;
   bool should_advance;
+  /* todo **/
 
   scan_info() {}
   scan_info(const basic_table<P> *bt, Str firstkey) :

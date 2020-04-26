@@ -480,6 +480,265 @@ public:
       return btr->get_table()->scan_next_value(scanner, xc, ti, &sinfo);
     }
   };
+
+  template <bool IsReverse>
+  class coro_ScanIterator {
+    public:
+      Masstree::scan_info<masstree_params> sinfo_;
+      low_level_iterator_scanner<IsReverse> scanner_;
+      TXN::xid_context *xc_;
+
+      using scan_helper_t =
+          typename std::conditional<IsReverse, Masstree::reverse_scan_helper,
+                                    Masstree::forward_scan_helper>::type;
+      scan_helper_t helper_;
+
+    private:
+      mbtree<P> *btr_;
+
+      int scancount_;
+      
+      OID value_;
+
+    public:
+     coro_ScanIterator(TXN::xid_context *xc, mbtree<P> *btr,
+                       const key_type &lower, const key_type *upper)
+         : sinfo_(btr->get_table(), lower),
+           scanner_(btr, upper),
+           xc_(xc),
+           btr_(btr),
+           scancount_(0),
+           value_(ermia::INVALID_OID) {}
+//     coro_ScanIterator(const coro_ScanIterator &) = delete;
+//     coro_ScanIterator& operator=(const coro_ScanIterator &) = delete;
+ 
+     int count() const {
+       return scancount_;
+     }
+
+     OID value() const {
+       return value_;
+     }
+
+     // TODO(lujc): key() {}
+
+     oid_array *tuple_array() const {
+       return btr_->tuple_array_;
+     }
+
+     oid_array *pdest_array() const {
+       return btr_->pdest_array_;
+     }
+
+     scan_helper_t & helper() {
+       return helper_;
+     }
+
+     // Return false if there is no more entries and in thie case value is invalid.
+     template<bool IsInit >
+     ermia::dia::generator<bool> InitOrNext() {
+       typedef typename P::ikey_type ikey_type;
+       typedef typename node_type::key_type key_type;
+       typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
+
+       typedef Masstree::scan_info<masstree_params>::mystack_type mystack_type;
+       int &state = sinfo_.state;
+
+       key_type &ka = sinfo_.ka;
+       leafvalue_type &entry = sinfo_.entry;
+
+       mystack_type *const stack = sinfo_.stack;
+       int &stackpos = sinfo_.stackpos;
+
+       threadinfo ti(xc_->begin_epoch);
+
+       if (!IsInit) {
+         stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
+         //  state = stack[stackpos].find_next(helper_, ka, entry);
+         state = mystack_type::scan_find_next;
+       }
+
+       while(1) {
+         switch (state) {
+           case mystack_type::scan_emit: { // surpress cross init warning about v
+             if (!scanner_.visit_value_no_callback(ka)) {
+               value_ = ermia::INVALID_OID;
+               co_return false;
+             }
+             value_ = entry.value();
+             ++scancount_;
+             co_return true;
+           } break;
+
+           case mystack_type::scan_find_next:
+           call_find_next:
+             /* flattened function: state = stack[stackpos].find_next(helper, ka, entry); */
+             {
+               /* args */
+               mystack_type *find_next_this = &stack[stackpos];
+               mystack_type *find_next_next = &stack[stackpos + 1];
+               /* args */
+
+               int kp;
+             
+               if (find_next_this->v_.deleted()) {
+                 state = mystack_type::scan_retry;
+                 goto find_next_return;
+               }
+             
+             find_next_retry_entry:
+               kp = find_next_this->kp();
+               if (kp >= 0) {
+                 ikey_type ikey = find_next_this->n_->ikey0_[kp];
+                 int keylenx = find_next_this->n_->keylenx_[kp];
+                 int keylen = keylenx;
+                 fence();
+                 entry = find_next_this->n_->lv_[kp];
+                 entry.prefetch(keylenx);
+                 if (find_next_this->n_->keylenx_has_ksuf(keylenx))
+                   keylen = ka.assign_store_suffix(find_next_this->n_->ksuf(kp));
+             
+                 if (find_next_this->n_->has_changed(find_next_this->v_))
+                   goto find_next_changed;
+                 else if (helper_.is_duplicate(ka, ikey, keylenx)) {
+                   find_next_this->ki_ = helper_.next(find_next_this->ki_);
+                   goto find_next_retry_entry;
+                 }
+             
+                 // We know we can emit the data collected above.
+                 ka.assign_store_ikey(ikey);
+                 helper_.found();
+                 if (find_next_this->n_->keylenx_is_layer(keylenx)) {
+                   find_next_next->root_ = entry.layer();
+                   state = mystack_type::scan_down;
+                   goto find_next_return;
+                 } else {
+                   ka.assign_store_length(keylen);
+                   state = mystack_type::scan_emit;
+                   goto find_next_return;
+                 }
+               }
+             
+               if (!find_next_this->n_->has_changed(find_next_this->v_)) {
+                 find_next_this->n_ = helper_.advance(find_next_this->n_, ka);
+                 if (!find_next_this->n_) {
+                   state = mystack_type::scan_up;
+                   goto find_next_return;
+                 }
+                 find_next_this->n_->prefetch();
+               }
+             
+             find_next_changed:
+               find_next_this->v_ = helper_.stable(find_next_this->n_, ka);
+               find_next_this->perm_ = find_next_this->n_->permutation();
+               find_next_this->ki_ = helper_.lower(ka, this);
+               state = mystack_type::scan_find_next;
+               goto find_next_return;
+             find_next_return:
+               ;
+             }
+             /* flattened function end: find_next */
+             if (state != mystack_type::scan_up) {
+               scanner_.visit_leaf(stack[stackpos], ka, ti);
+             }
+             break;
+
+           case mystack_type::scan_up:
+             do {
+               if (--stackpos < 0) {
+                 co_return false;
+               }
+               ka.unshift();
+               stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
+             } while (unlikely(ka.empty()));
+             goto call_find_next;
+
+           case mystack_type::scan_down:
+             helper_.shift_clear(ka);
+             ++stackpos;
+             goto call_find_retry;
+
+           case mystack_type::scan_retry:
+           call_find_retry:
+             /* flattened function: state = AWAIT stack[stackpos].find_retry(helper, ka, ti); */
+             {
+               /* args */
+               mystack_type *find_retry_this = &stack[stackpos];
+               /* args */
+             find_retry_retry:
+               /* flattened function: n_ = AWAIT root_->reach_leaf(ka, v_, ti); */
+               {
+                 /* args */
+                 Masstree::node_base<P>* reach_leaf_this = find_retry_this->root_;
+                 nodeversion_type& version = find_retry_this->v_;
+                 /* args */
+
+                 const Masstree::node_base<P>* n[2];
+                 typename Masstree::node_base<P>::nodeversion_type v[2];
+                 bool sense;
+               
+               // Get a non-stale root.
+               // Detect staleness by checking whether n has ever split.
+               // The true root has never split.
+               reach_leaf_retry:
+                 sense = false;
+                 n[sense] = this;
+                 while (1) {
+                   v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+                   if (!v[sense].has_split()) break;
+                   n[sense] = n[sense]->unsplit_ancestor();
+                 }
+               
+                 // Loop over internal nodes.
+                 while (!v[sense].isleaf()) {
+                   const Masstree::internode<P>* in = static_cast<const Masstree::internode<P>*>(n[sense]);
+                   in->prefetch();
+                   co_await std::experimental::suspend_always{};
+                   int kp = Masstree::internode<P>::bound_type::upper(ka, *in);
+                   n[!sense] = in->child_[kp];
+                   if (!n[!sense]) {
+                     goto reach_leaf_retry;
+                   } 
+                   v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+               
+                   if (likely(!in->has_changed(v[sense]))) {
+                     sense = !sense;
+                     continue;
+                   }
+               
+                   typename Masstree::node_base<P>::nodeversion_type oldv = v[sense];
+                   v[sense] = in->stable_annotated(ti.stable_fence());
+                   if (oldv.has_split(v[sense]) &&
+                       in->stable_last_key_compare(ka, v[sense], ti) > 0) {
+                     goto reach_leaf_retry;
+                   }
+                 }
+               
+                 version = v[sense];
+                 find_retry_this->n_ = const_cast<Masstree::leaf<P>*>(static_cast<const Masstree::leaf<P>*>(n[sense]));
+              }
+              /* flattened function end: reach_leaf */
+
+              if (find_retry_this->v_.deleted()) {
+                 goto find_retry_retry;
+              }
+             
+               find_retry_this->n_->prefetch();
+               find_retry_this->perm_ = find_retry_this->n_->permutation();
+               find_retry_this->ki_ = helper_.lower(ka, this);
+               state = mystack_type::scan_find_next;
+             }
+             /* flattened function end: find_retry */
+             break;
+         }
+       }
+
+       co_return true;
+     }
+  };
+public:
+  using coro_ScanIteratorForward = coro_ScanIterator<false>;
+  using coro_ScanIteratorBackward = coro_ScanIterator<true>;
 };
 
 template <typename P>
