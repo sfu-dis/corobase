@@ -69,6 +69,41 @@ public:
   template <typename PX> friend class basic_table;
 };
 
+template <typename P>
+struct scan_info {
+  typedef scanstackelt<P> mystack_type;
+  typedef typename P::ikey_type ikey_type;
+  typedef node_base<P> node_type;
+  typedef leaf<P> leaf_type;
+  typedef typename node_type::key_type key_type;
+  typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
+  union {
+    ikey_type
+        x[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+    char s[MASSTREE_MAXKEYLEN];
+  } keybuf;
+  key_type ka;
+  int state;
+
+  mystack_type stack[(MASSTREE_MAXKEYLEN + sizeof(ikey_type) - 1) / sizeof(ikey_type)];
+  int stackpos = 0;
+  leafvalue_type entry;
+
+  ermia::dbtuple *tuple;
+  ermia::OID oid;
+  bool should_advance;
+
+  scan_info() {}
+  scan_info(const basic_table<P> *bt, Str firstkey) :
+    tuple(nullptr), oid(ermia::INVALID_OID), should_advance(false) {
+    masstree_precondition(firstkey.len <= (int)sizeof(keybuf));
+    memcpy(keybuf.s, firstkey.s, firstkey.len);
+    ka = key_type(keybuf.s, firstkey.len);
+    stack[0].root_ = bt->get_root();
+    entry = leafvalue_type::make_empty();
+  }
+};
+
 struct forward_scan_helper {
   bool initial_ksuf_match(int ksuf_compare, bool emit_equal) const {
     return ksuf_compare > 0 || (ksuf_compare == 0 && emit_equal);
@@ -278,6 +313,133 @@ changed:
 
 template <typename P>
 template <typename H, typename F>
+PROMISE(bool) basic_table<P>::scan_next_value(H helper, F &scanner,
+                                              ermia::TXN::xid_context *xc, threadinfo &ti,
+                                              scan_info<P> *si) const {
+  bool found = false;
+  si->tuple = nullptr;
+  si->oid = ermia::INVALID_OID;
+
+  if (si->should_advance) {
+    // This needs to happen after the caller has invoked its "callback" that
+    // uses the key string, but shouldn't be done if this is the first time
+    // calling 'scan_next_value'
+    si->stack[si->stackpos].ki_ = helper.next(si->stack[si->stackpos].ki_);
+    si->state = si->stack[si->stackpos].find_next(helper, si->ka, si->entry);
+  }
+  si->should_advance = true;
+
+  while (1) {
+    switch (si->state) {
+    case scan_info<P>::mystack_type::scan_emit: { 
+      if (!scanner.visit_value_no_callback(si->ka)) {
+        goto done;
+      }
+
+      // See if the value is visible
+      ermia::OID oid = si->entry.value();
+      if (ermia::config::is_backup_srv()) {
+        si->tuple = ermia::oidmgr->BackupGetVersion(tuple_array_, pdest_array_, oid, xc);
+      } else {
+        si->tuple = AWAIT ermia::oidmgr->oid_get_version(tuple_array_, oid, xc);
+      }
+
+      if (si->tuple) {
+        si->oid = oid;
+        found = true;
+        goto done;
+      }
+    } break;
+
+    case scan_info<P>::mystack_type::scan_find_next:
+    find_next:
+      si->state = si->stack[si->stackpos].find_next(helper, si->ka, si->entry);
+      if (si->state != scan_info<P>::mystack_type::scan_up)
+        scanner.visit_leaf(si->stack[si->stackpos], si->ka, ti);
+      break;
+
+    case scan_info<P>::mystack_type::scan_up:
+      do {
+        if (--si->stackpos < 0)
+          goto done;
+        si->ka.unshift();
+        si->stack[si->stackpos].ki_ = helper.next(si->stack[si->stackpos].ki_);
+      } while (unlikely(si->ka.empty()));
+      goto find_next;
+
+    case scan_info<P>::mystack_type::scan_down:
+      helper.shift_clear(si->ka);
+      ++si->stackpos;
+      goto retry;
+
+    case scan_info<P>::mystack_type::scan_retry:
+    retry:
+      si->state = AWAIT si->stack[si->stackpos].find_retry(helper, si->ka, ti);
+      break;
+    }
+  }
+
+done:
+  RETURN found;
+}
+
+template <typename P>
+template <typename H, typename F>
+PROMISE(bool) basic_table<P>::scan_to_initial(H helper, Str firstkey, bool emit_firstkey, F &scanner,
+                                             ermia::TXN::xid_context *xc, threadinfo &ti,
+                                             scan_info<P> *si) const {
+  while (1) {
+    si->state = AWAIT si->stack[si->stackpos].find_initial(helper, si->ka, emit_firstkey, si->entry, ti);
+    scanner.visit_leaf(si->stack[si->stackpos], si->ka, ti);
+    if (si->state != scan_info<P>::mystack_type::scan_down)
+      break;
+    si->ka.shift();
+    ++si->stackpos;
+  }
+
+  bool found = false;
+
+  while (1) {
+    switch (si->state) {
+    case scan_info<P>::mystack_type::scan_emit:
+      // Found the first key, return, so the caller can start using the iterator
+      found = true;
+      goto done;
+
+    case scan_info<P>::mystack_type::scan_find_next:
+    find_next:
+      si->state = si->stack[si->stackpos].find_next(helper, si->ka, si->entry);
+      if (si->state != scan_info<P>::mystack_type::scan_up)
+        scanner.visit_leaf(si->stack[si->stackpos], si->ka, ti);
+      break;
+
+    case scan_info<P>::mystack_type::scan_up:
+      do {
+        if (--si->stackpos < 0)
+          goto done;
+        si->ka.unshift();
+        si->stack[si->stackpos].ki_ = helper.next(si->stack[si->stackpos].ki_);
+      } while (unlikely(si->ka.empty()));
+      goto find_next;
+
+    case scan_info<P>::mystack_type::scan_down:
+      helper.shift_clear(si->ka);
+      ++si->stackpos;
+      goto retry;
+
+    case scan_info<P>::mystack_type::scan_retry:
+    retry:
+      si->state = AWAIT si->stack[si->stackpos].find_retry(helper, si->ka, ti);
+      break;
+    }
+  }
+
+done:
+  RETURN found;
+}
+
+template <typename P>
+template <typename H, typename F>
 PROMISE(int) basic_table<P>::scan(H helper, Str firstkey, bool emit_firstkey, F &scanner,
                                         ermia::TXN::xid_context *xc, threadinfo &ti) const {
   typedef typename P::ikey_type ikey_type;
@@ -367,6 +529,21 @@ template <typename F>
 PROMISE(int) basic_table<P>::scan(Str firstkey, bool emit_firstkey, F &scanner,
                          ermia::TXN::xid_context *xc, threadinfo &ti) const {
   return scan(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti);
+}
+
+template <typename P>
+template <typename F>
+PROMISE(bool) basic_table<P>::scan_to_initial(Str firstkey, bool emit_firstkey, F &scanner,
+                         ermia::TXN::xid_context *xc, threadinfo &ti,
+                         scan_info<P> *si) const {
+  return scan_to_initial(forward_scan_helper(), firstkey, emit_firstkey, scanner, xc, ti, si);
+}
+
+template <typename P>
+template <typename F>
+PROMISE(bool) basic_table<P>::scan_next_value(F &scanner, ermia::TXN::xid_context *xc,
+                                              threadinfo &ti, scan_info<P> *si) const {
+  return scan_next_value(forward_scan_helper(), scanner, xc, ti, si);
 }
 
 template <typename P>
