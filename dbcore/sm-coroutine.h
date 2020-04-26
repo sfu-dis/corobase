@@ -99,15 +99,31 @@ template <typename T> struct generator {
   using handle = std::experimental::coroutine_handle<promise_type>;
 
   struct promise_type {
-    T current_value;
-    std::experimental::coroutine_handle<> callee_coro = nullptr;
+    promise_type() {}
+    ~promise_type() {
+      reinterpret_cast<T*>(&ret_val_buf_)->~T();
+    }
     auto get_return_object() { return generator{handle::from_promise(*this)}; }
     auto initial_suspend() { return std::experimental::suspend_never{}; }
     auto final_suspend() { return std::experimental::suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
-    void return_value(T value) { current_value = value; }
+    void return_value(const T value) {
+        new (&ret_val_buf_) T(std::move(value));
+    }
+    T && transfer_return_value() {
+        return std::move(*reinterpret_cast<T*>(&ret_val_buf_));
+    }
+    T get_return_value() {
+        return *reinterpret_cast<T*>(&ret_val_buf_);
+    }
     void *operator new(size_t sz) { return coroutine_allocator.alloc(sz); }
     void operator delete(void *p, size_t sz) { coroutine_allocator.free(p, sz); }
+
+    std::experimental::coroutine_handle<> callee_coro = nullptr;
+    struct alignas(alignof(T)) T_Buf {
+      uint8_t buf[sizeof(T)];
+    };
+    T_Buf ret_val_buf_;
   };
 
   auto get_handle() {
@@ -142,7 +158,7 @@ template <typename T> struct generator {
       awaiting_coro.promise().callee_coro = awaiter_coro;
     }
     constexpr auto await_resume() noexcept {
-      return awaiter_coro.promise().current_value;
+      return awaiter_coro.promise().transfer_return_value();
     }
   private:
     handle awaiter_coro;
@@ -387,12 +403,11 @@ struct task<T>::promise_type : coro_task_private::promise_base {
 
   // XXX: explore if there is anyway to get ride of
   // the copy constructing.
-  void return_value(const T &value) {
-    new (&ret_val_buf_) T(value);
+  void return_value(T value) {
+    new (&ret_val_buf_) T(std::move(value));
   }
-
-  T transfer_return_value() {
-      return T(std::move(*reinterpret_cast<T*>(&ret_val_buf_)));
+  T && transfer_return_value() {
+      return std::move(*reinterpret_cast<T*>(&ret_val_buf_));
   }
 
 private:
