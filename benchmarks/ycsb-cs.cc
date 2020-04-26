@@ -50,7 +50,7 @@ public:
         for(uint32_t i = 0; i < batch_size; i++) {
           if (handles[i]) {
             if (handles[i].done()) {
-              finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+              finish_workload(handles[i].promise().get_return_value(), workload_idxs[i], t);
               handles[i].destroy();
               handles[i] = nullptr;
               todo_size--;
