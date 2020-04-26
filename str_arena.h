@@ -39,6 +39,11 @@ public:
     return ret;
   }
 
+  // Assume the caller is the benchmark using str(Size(v))
+  inline void return_space(uint64_t size) {
+    n.fetch_sub(align_up(size + sizeof(varstr)), std::memory_order_relaxed);
+  }
+
   varstr *atomic_next(uint64_t size) {
     uint64_t off = n.fetch_add(
         align_up(size + sizeof(varstr)),

@@ -846,23 +846,24 @@ rc_t tpcc_worker::txn_query2() {
 
   // Scan region
   for (auto &r_r : r_scanner.output) {
-    region::key k_r_temp;
     region::value v_r_temp;
-    const region::key *k_r = Decode(*r_r.first, k_r_temp);
     const region::value *v_r = Decode(*r_r.second, v_r_temp);
 
     // filtering region
     if (v_r->r_name != std::string(regions[target_region])) continue;
 
+    region::key k_r_temp;
+    const region::key *k_r = Decode(*r_r.first, k_r_temp);
     // Scan nation
     for (auto &r_n : n_scanner.output) {
-      nation::key k_n_temp;
       nation::value v_n_temp;
-      const nation::key *k_n = Decode(*r_n.first, k_n_temp);
       const nation::value *v_n = Decode(*r_n.second, v_n_temp);
 
       // filtering nation
       if (k_r->r_regionkey != v_n->n_regionkey) continue;
+
+      nation::key k_n_temp;
+      const nation::key *k_n = Decode(*r_n.first, k_n_temp);
 
       // Scan suppliers
       for (auto i = 0; i < g_nr_suppliers; i++) {
@@ -873,6 +874,8 @@ rc_t tpcc_worker::txn_query2() {
         rc_t rc = rc_t{RC_INVALID};
         tbl_supplier(1)->GetRecord(txn, rc, Encode(str(Size(k_su)), k_su), valptr);
         TryVerifyRelaxed(rc);
+
+        arena->return_space(Size(k_su));
 
         const supplier::value *v_su = Decode(valptr, v_su_tmp);
 
@@ -894,6 +897,8 @@ rc_t tpcc_worker::txn_query2() {
           rc = rc_t{RC_INVALID};
           tbl_stock(it.first)->GetRecord(txn, rc, Encode(str(Size(k_s)), k_s), valptr);
           TryVerifyRelaxed(rc);
+
+          arena->return_space(Size(k_s));
           const stock::value *v_s = Decode(valptr, v_s_tmp);
 
           ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
@@ -913,6 +918,8 @@ rc_t tpcc_worker::txn_query2() {
         rc = rc_t{RC_INVALID};
         tbl_item(1)->GetRecord(txn, rc, Encode(str(Size(k_i)), k_i), valptr);
         TryVerifyRelaxed(rc);
+
+        arena->return_space(Size(k_i));
         const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
         checker::SanityCheckItem(&k_i, v_i);
