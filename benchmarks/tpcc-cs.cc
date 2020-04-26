@@ -897,11 +897,12 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
     for (auto &r_n : n_scanner.output) {
       nation::key k_n_temp;
       nation::value v_n_temp;
-      const nation::key *k_n = Decode(*r_n.first, k_n_temp);
       const nation::value *v_n = Decode(*r_n.second, v_n_temp);
 
       // filtering nation
       if (k_r->r_regionkey != v_n->n_regionkey) continue;
+
+      const nation::key *k_n = Decode(*r_n.first, k_n_temp);
 
       // Scan suppliers
       for (auto i = 0; i < g_nr_suppliers; i++) {
@@ -910,8 +911,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
         ermia::varstr valptr;
 
         rc_t rc = rc_t{RC_INVALID};
+        // XXX(tzwang): not profitable to coroutinize
         tbl_supplier(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_su)), k_su), valptr);
         TryVerifyRelaxedCoro(rc);
+
+        arenas[idx].return_space(Size(k_su));
         const supplier::value *v_su = Decode(valptr, v_su_tmp);
 
         // Filtering suppliers
@@ -928,6 +932,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
           stock::value v_s_tmp(0, 0, 0, 0);
           rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
           TryVerifyRelaxedCoro(rc);
+
+          arenas[idx].return_space(Size(k_s));
           const stock::value *v_s = Decode(valptr, v_s_tmp);
 
           ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
@@ -945,8 +951,11 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
         const item::key k_i(min_k_s.s_i_id);
         item::value v_i_temp;
         rc = rc_t{RC_INVALID};
+        // XXX(tzwang): not profitable to coroutinize
         tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
         TryVerifyRelaxedCoro(rc);
+
+        arenas[idx].return_space(Size(k_i));
         const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
         checker::SanityCheckItem(&k_i, v_i);
@@ -967,8 +976,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
 #ifndef NDEBUG
           checker::SanityCheckStock(&min_k_s);
 #endif
-          rc = tbl_stock(min_k_s.s_w_id)
-                   ->UpdateRecord(txn, Encode(str(arenas[idx], Size(min_k_s)), min_k_s),
+          rc = co_await tbl_stock(min_k_s.s_w_id)
+                   ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(min_k_s)), min_k_s),
                                   Encode(str(arenas[idx], Size(new_v_s)), new_v_s));
           TryCatchCoro(rc);
         }
@@ -986,8 +995,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
     }
   }
 
-  rc = db->Commit(txn);
-  TryCatchCoro(rc);
+#ifndef CORO_BATCH_COMMIT
+  TryCatchCoro(db->Commit(txn));
+#endif
   co_return {RC_TRUE};
 }
 
