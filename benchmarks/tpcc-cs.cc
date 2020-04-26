@@ -797,7 +797,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
                               std::numeric_limits<int32_t>::max());
   rc = tbl_new_order(warehouse_id)
            ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
-                  &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), c_no, &arenas[idx]);
+                  &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), c_no);
   TryCatchCoro(rc);
   ALWAYS_ASSERT(c_no.output.size());
 
@@ -824,7 +824,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
-                    &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol, &arenas[idx]);
+                    &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol);
     TryCatchCoro(rc);
 
     // Aggregation
