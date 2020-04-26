@@ -164,7 +164,7 @@ public:
   ermia::dia::generator<rc_t> coro_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
   ermia::dia::generator<bool> coro_InsertOID(transaction *t, const varstr &key, OID oid);
   ermia::dia::generator<rc_t> coro_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-                              ScanCallback &callback, str_arena *arena, uint32_t max_keys = ~uint32_t{0});
+                              ScanCallback &callback, uint32_t max_keys = ~uint32_t{0});
 
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;
@@ -173,10 +173,9 @@ public:
   PROMISE(bool) InsertOID(transaction *t, const varstr &key, OID oid) override;
 
   PROMISE(rc_t) Scan(transaction *t, const varstr &start_key, const varstr *end_key,
-                     ScanCallback &callback, str_arena *arena) override;
+                     ScanCallback &callback) override;
   PROMISE(rc_t) ReverseScan(transaction *t, const varstr &start_key,
-                            const varstr *end_key, ScanCallback &callback,
-                            str_arena *arena) override;
+                            const varstr *end_key, ScanCallback &callback) override;
 
   inline size_t Size() override { return masstree_.size(); }
   std::map<std::string, uint64_t> Clear() override;

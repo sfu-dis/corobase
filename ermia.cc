@@ -93,9 +93,7 @@ void Engine::CreateIndex(const char *table_name, const std::string &index_name, 
 }
 
 PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_key,
-                                   const varstr *end_key,
-                                   ScanCallback &callback, str_arena *arena) {
-  MARK_REFERENCED(arena);
+                                   const varstr *end_key, ScanCallback &callback) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
@@ -120,9 +118,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::Scan(transaction *t, const varstr &start_
 PROMISE(rc_t) ConcurrentMasstreeIndex::ReverseScan(transaction *t,
                                           const varstr &start_key,
                                           const varstr *end_key,
-                                          ScanCallback &callback,
-                                          str_arena *arena) {
-  MARK_REFERENCED(arena);
+                                          ScanCallback &callback) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 
