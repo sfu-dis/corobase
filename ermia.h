@@ -165,6 +165,9 @@ public:
   ermia::dia::generator<bool> coro_InsertOID(transaction *t, const varstr &key, OID oid);
   ermia::dia::generator<rc_t> coro_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
                               ScanCallback &callback, uint32_t max_keys = ~uint32_t{0});
+  ermia::dia::generator<ConcurrentMasstree::coro_ScanIteratorForward>
+  coro_IteratorScan(transaction *t, const varstr &start_key,
+                    const varstr *end_key, bool emit_firstkey = true);
 
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;
   PROMISE(rc_t) UpdateRecord(transaction *t, const varstr &key, varstr &value) override;

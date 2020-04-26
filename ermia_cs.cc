@@ -1175,6 +1175,166 @@ insert_new:
   co_return rc_t{RC_TRUE};
 }
 
+ermia::dia::generator<ConcurrentMasstree::coro_ScanIteratorForward>
+ConcurrentMasstreeIndex::coro_IteratorScan(transaction *t,
+                                           const varstr &start_key,
+                                           const varstr *end_key,
+                                           bool emit_firstkey) {
+    typedef typename masstree_params::ikey_type ikey_type;
+    typedef typename ConcurrentMasstree::node_type::key_type key_type;
+    typedef typename ConcurrentMasstree::node_type::leaf_type::leafvalue_type leafvalue_type;
+
+    ConcurrentMasstree::coro_ScanIteratorForward scan_iterator(
+        t->xc, &masstree_, start_key, end_key);
+    ConcurrentMasstree::threadinfo ti(t->xc->begin_epoch);
+
+    auto &keybuf = scan_iterator.sinfo_.keybuf;
+    key_type &ka = scan_iterator.sinfo_.ka;
+
+    typedef Masstree::scanstackelt<masstree_params> mystack_type;
+    mystack_type *const stack = scan_iterator.sinfo_.stack;
+    int &stackpos = scan_iterator.sinfo_.stackpos;
+
+    leafvalue_type &entry = scan_iterator.sinfo_.entry;
+
+    int &state = scan_iterator.sinfo_.state;
+
+    auto &helper = scan_iterator.helper_;
+
+    while (1) {
+        /* flattend function: stack[stackpos].find_initial(helper, ka,
+         * emit_firstkey, entry, ti); */
+        {
+            /* args */
+            mystack_type *find_initial_this = &stack[stackpos];
+            mystack_type *find_initial_next = &stack[stackpos + 1];
+            /* args */
+
+            int kp, keylenx = 0;
+            char suffixbuf[MASSTREE_MAXKEYLEN];
+            Masstree::Str suffix;
+
+        find_initial_retry_root:
+            /* flattened function: n_ = root_->reach_leaf(ka, v_, ti); */
+            {
+                /* args */
+                ConcurrentMasstree::node_base_type *reach_leaf_this = find_initial_this->root_;
+                ConcurrentMasstree::nodeversion_type &version = find_initial_this->v_;
+                /* args */
+
+                const ConcurrentMasstree::node_base_type* n[2];
+                ConcurrentMasstree::nodeversion_type v[2];
+                bool sense;
+
+            // Get a non-stale root.
+            // Detect staleness by checking whether n has ever split.
+            // The true root has never split.
+            reach_leaf_retry:
+                sense = false;
+                n[sense] = reach_leaf_this;
+                while (1) {
+                    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+                    if (!v[sense].has_split()) break;
+                    n[sense] = n[sense]->unsplit_ancestor();
+                }
+
+                // Loop over internal nodes.
+                while (!v[sense].isleaf()) {
+                    const ConcurrentMasstree::internode_type *in =
+                        static_cast<const ConcurrentMasstree::internode_type *>(
+                            n[sense]);
+                    in->prefetch();
+                    co_await std::experimental::suspend_always{};
+                    int kp = ConcurrentMasstree::internode_type::bound_type::upper(ka, *in);
+                    n[!sense] = in->child_[kp];
+                    if (!n[!sense]) {
+                        goto reach_leaf_retry;
+                    }
+                    v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+                    if (likely(!in->has_changed(v[sense]))) {
+                        sense = !sense;
+                        continue;
+                    }
+
+                    ConcurrentMasstree::nodeversion_type oldv = v[sense];
+                    v[sense] = in->stable_annotated(ti.stable_fence());
+                    if (oldv.has_split(v[sense]) &&
+                        in->stable_last_key_compare(ka, v[sense], ti) > 0) {
+                        goto reach_leaf_retry;
+                    }
+                }
+
+                version = v[sense];
+                find_initial_this->n_ =
+                    const_cast<ConcurrentMasstree::leaf_type *>(
+                        static_cast<const ConcurrentMasstree::leaf_type *>(
+                            n[sense]));
+            }
+            /* flattened function end: reach_leaf */
+
+        find_initial_retry_node:
+            if (find_initial_this->v_.deleted()) {
+                goto find_initial_retry_root;
+            }
+            find_initial_this->n_->prefetch();
+            find_initial_this->perm_ = find_initial_this->n_->permutation();
+
+            find_initial_this->ki_ = helper.lower_with_position(ka, find_initial_this, kp);
+            if (kp >= 0) {
+                keylenx = find_initial_this->n_->keylenx_[kp];
+                fence();
+                entry = find_initial_this->n_->lv_[kp];
+                entry.prefetch(keylenx);
+                if (find_initial_this->n_->keylenx_has_ksuf(keylenx)) {
+                    suffix = find_initial_this->n_->ksuf(kp);
+                    memcpy(suffixbuf, suffix.s, suffix.len);
+                    suffix.s = suffixbuf;
+                }
+            }
+            if (find_initial_this->n_->has_changed(find_initial_this->v_)) {
+                find_initial_this->n_ =
+                    find_initial_this->n_->advance_to_key(ka, find_initial_this->v_, ti);
+                goto find_initial_retry_node;
+            }
+
+            if (kp >= 0) {
+                if (find_initial_this->n_->keylenx_is_layer(keylenx)) {
+                    find_initial_next->root_ = entry.layer();
+                    state = mystack_type::scan_down;
+                    goto find_initial_return;
+                } else if (find_initial_this->n_->keylenx_has_ksuf(keylenx)) {
+                    int ksuf_compare = suffix.compare(ka.suffix());
+                    if (helper.initial_ksuf_match(ksuf_compare,
+                                                  emit_firstkey)) {
+                        int keylen = ka.assign_store_suffix(suffix);
+                        ka.assign_store_length(keylen);
+                        state = mystack_type::scan_emit;
+                        goto find_initial_return;
+                    }
+                } else if (emit_firstkey) {
+                    state = mystack_type::scan_emit;
+                    goto find_initial_return;
+                }
+                // otherwise, this entry must be skipped
+                find_initial_this->ki_ = helper.next(find_initial_this->ki_);
+            }
+
+            state = mystack_type::scan_find_next;
+            goto find_initial_return;
+    find_initial_return:
+            ;
+        }
+        /* flattend function end: find_initial */
+        scan_iterator.scanner_.visit_leaf(stack[stackpos], ka, ti);
+        if (state != mystack_type::scan_down) break;
+        ka.shift();
+        ++stackpos;
+    }
+
+    co_return scan_iterator;
+}
+
 ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
                             const varstr &start_key, const varstr *end_key,
                             ScanCallback &callback, uint32_t max_keys) {
