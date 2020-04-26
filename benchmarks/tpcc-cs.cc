@@ -299,7 +299,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::epo
     static_limit_callback<NMaxCustomerIdxScanElems> c(&arenas[idx], true);  // probably a safe bet for now
     rc = tbl_customer_name_idx(customerWarehouseID)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
-                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx]);//, NMaxCustomerIdxScanElems);
+                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c);//, NMaxCustomerIdxScanElems);
     TryCatchCoro(rc);
 
     ALWAYS_ASSERT(c.size() > 0);
@@ -405,8 +405,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     {
       rc = tbl_new_order(warehouse_id)
                ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
-                      &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), new_order_c,
-                      &arenas[idx]);
+                      &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), new_order_c);
       TryCatchCoro(rc);
     }
 
@@ -438,7 +437,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::ep
     // XXX(stephentu): mutable scans would help here
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_oo_0)), k_oo_0),
-                    &Encode(str(arenas[idx], Size(k_oo_1)), k_oo_1), c, &arenas[idx]);
+                    &Encode(str(arenas[idx], Size(k_oo_1)), k_oo_1), c);
     TryCatchCoro(rc);
 
     float sum = 0.0;
@@ -555,7 +554,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     static_limit_callback<NMaxCustomerIdxScanElems> c(&arenas[idx], true);  // probably a safe bet for now
     rc = tbl_customer_name_idx(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_c_idx_0)), k_c_idx_0),
-                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c, &arenas[idx]);
+                    &Encode(str(arenas[idx], Size(k_c_idx_1)), k_c_idx_1), c);
     TryCatchCoro(rc);
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
@@ -605,7 +604,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
     {
       rc = tbl_oorder_c_id_idx(warehouse_id)
                ->Scan(txn, Encode(str(arenas[idx], Size(k_oo_idx_0)), k_oo_idx_0),
-                      &Encode(str(arenas[idx], Size(k_oo_idx_1)), k_oo_idx_1), c_oorder, &arenas[idx]);
+                      &Encode(str(arenas[idx], Size(k_oo_idx_1)), k_oo_idx_1), c_oorder);
       TryCatchCoro(rc);
     }
     ALWAYS_ASSERT(c_oorder.size());
@@ -615,7 +614,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
                                            std::numeric_limits<int32_t>::max());
     rc = tbl_oorder_c_id_idx(warehouse_id)
              ->ReverseScan(txn, Encode(str(arenas[idx], Size(k_oo_idx_hi)), k_oo_idx_hi),
-                           nullptr, c_oorder, &arenas[idx]);
+                           nullptr, c_oorder);
     TryCatchCoro(rc);
     ALWAYS_ASSERT(c_oorder.size() == 1);
   }
@@ -632,7 +631,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia
                                std::numeric_limits<int32_t>::max());
   rc = tbl_order_line(warehouse_id)
            ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
-                  &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_order_line, &arenas[idx]);
+                  &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_order_line);
   TryCatchCoro(rc);
   ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
@@ -694,7 +693,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
   {
     rc = tbl_order_line(warehouse_id)
              ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
-                    &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c, &arenas[idx]);
+                    &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c);
     TryCatchCoro(rc);
   }
   {
@@ -865,7 +864,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   const region::key k_r_0(0);
   const region::key k_r_1(5);
   rc = tbl_region(1)->Scan(txn, Encode(str(arenas[idx], sizeof(k_r_0)), k_r_0),
-                           &Encode(str(arenas[idx], sizeof(k_r_1)), k_r_1), r_scanner, &arenas[idx]);
+                           &Encode(str(arenas[idx], sizeof(k_r_1)), k_r_1), r_scanner);
   TryCatchCoro(rc);
   ALWAYS_ASSERT(r_scanner.output.size() == 5);
 
@@ -874,7 +873,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
   rc = tbl_nation(1)->Scan(txn, Encode(str(arenas[idx], sizeof(k_n_0)), k_n_0),
-                           &Encode(str(arenas[idx], sizeof(k_n_1)), k_n_1), n_scanner, &arenas[idx]);
+                           &Encode(str(arenas[idx], sizeof(k_n_1)), k_n_1), n_scanner);
   TryCatchCoro(rc);
 
   ALWAYS_ASSERT(n_scanner.output.size() == 62);

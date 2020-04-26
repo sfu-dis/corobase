@@ -1177,8 +1177,7 @@ insert_new:
 
 ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
                             const varstr &start_key, const varstr *end_key,
-                            ScanCallback &callback, str_arena *arena, uint32_t max_keys) {
-  MARK_REFERENCED(arena);
+                            ScanCallback &callback, uint32_t max_keys) {
   SearchRangeCallback c(callback);
   ASSERT(c.return_code._val == RC_FALSE);
 

@@ -284,8 +284,20 @@ rc_t tpcc_worker::txn_payment() {
         s_arena.get(), true);  // probably a safe bet for now
     TryCatch(tbl_customer_name_idx(customerWarehouseID)
                   ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                         s_arena.get()));
+                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
+
+    ALWAYS_ASSERT(c.size() == d.size());
+
+    for (uint32_t i = 0; i < c.size(); ++i) {
+      const ermia::varstr *centry = c.values[i].second;
+      const ermia::varstr *dentry = d.values[i].second;
+
+      ALWAYS_ASSERT(centry->l == dentry->l);
+      int n = memcmp(centry->p, dentry->p, dentry->l);
+      ALWAYS_ASSERT(n == 0);
+    }
+    */
+
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -382,8 +394,7 @@ rc_t tpcc_worker::txn_delivery() {
     {
       TryCatch(tbl_new_order(warehouse_id)
                     ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                           &Encode(str(Size(k_no_1)), k_no_1), new_order_c,
-                           s_arena.get()));
+                           &Encode(str(Size(k_no_1)), k_no_1), new_order_c));
     }
 
     const new_order::key *k_no = new_order_c.get_key();
@@ -415,7 +426,7 @@ rc_t tpcc_worker::txn_delivery() {
     // XXX(stephentu): mutable scans would help here
     TryCatch(tbl_order_line(warehouse_id)
                   ->Scan(txn, Encode(str(Size(k_oo_0)), k_oo_0),
-                         &Encode(str(Size(k_oo_1)), k_oo_1), c, s_arena.get()));
+                         &Encode(str(Size(k_oo_1)), k_oo_1), c));
     float sum = 0.0;
     for (size_t i = 0; i < c.size(); i++) {
       order_line::value v_ol_temp;
@@ -519,8 +530,7 @@ rc_t tpcc_worker::txn_order_status() {
         s_arena.get(), true);  // probably a safe bet for now
     TryCatch(tbl_customer_name_idx(warehouse_id)
                   ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c,
-                         s_arena.get()));
+                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this
     int index = c.size() / 2;
@@ -567,8 +577,7 @@ rc_t tpcc_worker::txn_order_status() {
     {
       TryCatch(tbl_oorder_c_id_idx(warehouse_id)
                     ->Scan(txn, Encode(str(Size(k_oo_idx_0)), k_oo_idx_0),
-                           &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder,
-                           s_arena.get()));
+                           &Encode(str(Size(k_oo_idx_1)), k_oo_idx_1), c_oorder));
     }
     ALWAYS_ASSERT(c_oorder.size());
   } else {
@@ -577,7 +586,7 @@ rc_t tpcc_worker::txn_order_status() {
                                            std::numeric_limits<int32_t>::max());
     TryCatch(tbl_oorder_c_id_idx(warehouse_id)
                   ->ReverseScan(txn, Encode(str(Size(k_oo_idx_hi)), k_oo_idx_hi),
-                                nullptr, c_oorder, s_arena.get()));
+                                nullptr, c_oorder));
     ALWAYS_ASSERT(c_oorder.size() == 1);
   }
 
@@ -591,8 +600,7 @@ rc_t tpcc_worker::txn_order_status() {
                                std::numeric_limits<int32_t>::max());
   TryCatch(tbl_order_line(warehouse_id)
                 ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                       &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line,
-                       s_arena.get()));
+                       &Encode(str(Size(k_ol_1)), k_ol_1), c_order_line));
   ALWAYS_ASSERT(c_order_line.n >= 5 && c_order_line.n <= 15);
 
   TryCatch(db->Commit(txn));
@@ -646,7 +654,7 @@ rc_t tpcc_worker::txn_stock_level() {
   {
     TryCatch(tbl_order_line(warehouse_id)
                   ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                         &Encode(str(Size(k_ol_1)), k_ol_1), c, s_arena.get()));
+                         &Encode(str(Size(k_ol_1)), k_ol_1), c));
   }
   {
     std::unordered_map<uint, bool> s_i_ids_distinct;
@@ -742,8 +750,7 @@ rc_t tpcc_worker::txn_credit_check() {
                               std::numeric_limits<int32_t>::max());
   TryCatch(tbl_new_order(warehouse_id)
                 ->Scan(txn, Encode(str(Size(k_no_0)), k_no_0),
-                       &Encode(str(Size(k_no_1)), k_no_1), c_no,
-                       s_arena.get()));
+                       &Encode(str(Size(k_no_1)), k_no_1), c_no));
   ALWAYS_ASSERT(c_no.output.size());
 
   double sum = 0;
@@ -766,8 +773,7 @@ rc_t tpcc_worker::txn_credit_check() {
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
     TryCatch(tbl_order_line(warehouse_id)
                   ->Scan(txn, Encode(str(Size(k_ol_0)), k_ol_0),
-                         &Encode(str(Size(k_ol_1)), k_ol_1), c_ol,
-                         s_arena.get()));
+                         &Encode(str(Size(k_ol_1)), k_ol_1), c_ol));
 
     /* XXX(tzwang): moved to the callback to avoid storing keys
     ALWAYS_ASSERT(c_ol._v_ol.size());
@@ -806,8 +812,7 @@ rc_t tpcc_worker::txn_query2() {
   const region::key k_r_0(0);
   const region::key k_r_1(5);
   TryCatch(tbl_region(1)->Scan(txn, Encode(str(sizeof(k_r_0)), k_r_0),
-                                &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner,
-                                s_arena.get()));
+                                &Encode(str(sizeof(k_r_1)), k_r_1), r_scanner));
   ALWAYS_ASSERT(r_scanner.output.size() == 5);
 
   static thread_local tpcc_table_scanner n_scanner(arena);
@@ -815,8 +820,7 @@ rc_t tpcc_worker::txn_query2() {
   const nation::key k_n_0(0);
   const nation::key k_n_1(std::numeric_limits<int32_t>::max());
   TryCatch(tbl_nation(1)->Scan(txn, Encode(str(sizeof(k_n_0)), k_n_0),
-                                &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner,
-                                s_arena.get()));
+                                &Encode(str(sizeof(k_n_1)), k_n_1), n_scanner));
   ALWAYS_ASSERT(n_scanner.output.size() == 62);
 
   // Pick a target region

@@ -227,12 +227,10 @@ class ycsb_sequential_worker : public ycsb_base_worker {
           ScanRange range  = GenerateScanRange(txn);
           if (ermia::config::index_probe_only) {
               ycsb_scan_oid_callback callback;
-              table_index->ScanOID(txn, range.start_key, &range.end_key, rc,
-                                   callback);
+              table_index->ScanOID(txn, range.start_key, &range.end_key, rc, callback);
           } else {
               ycsb_scan_callback callback;
-              rc = table_index->Scan(txn, range.start_key, &range.end_key,
-                                     callback, &(txn->string_allocator()));
+              rc = table_index->Scan(txn, range.start_key, &range.end_key, callback);
           }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)

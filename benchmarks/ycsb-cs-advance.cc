@@ -204,8 +204,7 @@ private:
         } else {
             ycsb_scan_callback callback;
             rc = co_await table_index->Scan(txn, range.start_key,
-                                            &range.end_key, callback,
-                                            &(txn->string_allocator()));
+                                            &range.end_key, callback);
         }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)

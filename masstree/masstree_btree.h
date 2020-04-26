@@ -112,10 +112,6 @@ struct masstree_params : public Masstree::nodeparams<> {
   typedef simple_threadinfo threadinfo_type;
 };
 
-struct masstree_single_threaded_params : public masstree_params {
-  static constexpr bool concurrent = false;
-};
-
 template <typename P> class mbtree {
 public:
   struct AMACState {
@@ -1058,5 +1054,5 @@ mbtree<P>::ExtractValues(const node_opaque_t *n) {
 template <typename P> void mbtree<P>::print() { table_.print(); }
 
 typedef mbtree<masstree_params> ConcurrentMasstree;
-typedef mbtree<masstree_single_threaded_params> SingleThreadedMasstree;
+
 } // namespace ermia
