@@ -457,7 +457,29 @@ public:
   template <bool Reverse> class search_range_scanner_base;
   template <bool Reverse> class no_callback_search_range_scanner;
   template <bool Reverse> class low_level_search_range_scanner;
+  template <bool Reverse> class low_level_iterator_scanner;
   template <typename F> class low_level_search_range_callback_wrapper;
+
+  struct ScanIterator {
+    Masstree::scan_info<masstree_params> sinfo;
+    low_level_iterator_scanner<false> scanner;
+    TXN::xid_context *xc;
+    mbtree<P> *btr;
+
+    ScanIterator(TXN::xid_context *xc, mbtree<P> *btr, const key_type &lower, const key_type *upper)
+    : sinfo(btr->get_table(), lower), scanner(btr, upper), xc(xc), btr(btr) {
+      threadinfo ti(xc->begin_epoch);
+      // After scan_to_initial, scanner will be ready to output tuples
+      btr->get_table()->scan_to_initial(lcdf::Str(lower.data(), lower.size()),
+                                   true, scanner, xc, ti, &sinfo);
+    }
+
+    bool NextValue(varstr &valptr) {
+      threadinfo ti(xc->begin_epoch);
+      // Caller responsible for the final vetting using transaction::DoTupleRead
+      return btr->get_table()->scan_next_value(scanner, xc, ti, &sinfo);
+    }
+  };
 };
 
 template <typename P>
@@ -943,6 +965,42 @@ private:
   low_level_search_range_callback &callback_;
   const mbtree<P> *btr_ptr_;
 };
+
+template <typename P>
+template <bool Reverse>
+class mbtree<P>::low_level_iterator_scanner
+    : public search_range_scanner_base<Reverse> {
+public:
+  low_level_iterator_scanner(const mbtree<P> *btr_ptr,
+                                 const key_type *boundary)
+      : search_range_scanner_base<Reverse>(boundary), btr_ptr_(btr_ptr) {}
+  inline void visit_leaf(const Masstree::scanstackelt<P> &iter,
+                  const Masstree::key<uint64_t> &key, threadinfo &) {
+    this->n_ = iter.node();
+    this->v_ = iter.full_version_value();
+    //callback_.on_resp_node(this->n_, this->v_);
+    if (this->boundary_)
+      this->check(iter, key);
+  }
+
+  // Same as visit_value, but without invoking the callback
+  inline bool visit_value_no_callback(const Masstree::key<uint64_t> &key) {
+    if (this->boundary_compar_) {
+      lcdf::Str bs(this->boundary_->data(), this->boundary_->size());
+      if ((!Reverse && bs <= key.full_string()) ||
+          (Reverse && bs >= key.full_string()))
+        return false;
+    }
+    return true;
+  }
+
+private:
+  Masstree::leaf<P> *n_;
+  uint64_t v_;
+  const mbtree<P> *btr_ptr_;
+};
+
+
 
 template <typename P>
 template <typename F>
