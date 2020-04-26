@@ -887,11 +887,12 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoc
   for (auto &r_r : r_scanner.output) {
     region::key k_r_temp;
     region::value v_r_temp;
-    const region::key *k_r = Decode(*r_r.first, k_r_temp);
     const region::value *v_r = Decode(*r_r.second, v_r_temp);
 
     // filtering region
     if (v_r->r_name != std::string(regions[target_region])) continue;
+
+    const region::key *k_r = Decode(*r_r.first, k_r_temp);
 
     // Scan nation
     for (auto &r_n : n_scanner.output) {
