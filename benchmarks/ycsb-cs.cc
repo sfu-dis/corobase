@@ -91,7 +91,7 @@ public:
     }
 
     if (ycsb_workload.scan_percent()) {
-      w.push_back(workload_desc("RMW", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
+      w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
     }
     return w;
   }
