@@ -85,7 +85,7 @@ class tcalloc {
 
    private:
     static constexpr short kBeginSizeExp = 8;
-    static constexpr short kEndSizeExp = 15;  // exclusive
+    static constexpr short kEndSizeExp = 16;  // exclusive
     FrameNode *entries[kEndSizeExp - kBeginSizeExp];
 
     uint8_t *arena;
