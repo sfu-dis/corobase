@@ -631,7 +631,7 @@ public:
              find_next_changed:
                find_next_this->v_ = helper_.stable(find_next_this->n_, ka);
                find_next_this->perm_ = find_next_this->n_->permutation();
-               find_next_this->ki_ = helper_.lower(ka, this);
+               find_next_this->ki_ = helper_.lower(ka, find_next_this);
                state = mystack_type::scan_find_next;
                goto find_next_return;
              find_next_return:
@@ -682,7 +682,7 @@ public:
                // The true root has never split.
                reach_leaf_retry:
                  sense = false;
-                 n[sense] = this;
+                 n[sense] = reach_leaf_this;
                  while (1) {
                    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
                    if (!v[sense].has_split()) break;
@@ -725,7 +725,7 @@ public:
              
                find_retry_this->n_->prefetch();
                find_retry_this->perm_ = find_retry_this->n_->permutation();
-               find_retry_this->ki_ = helper_.lower(ka, this);
+               find_retry_this->ki_ = helper_.lower(ka, find_retry_this);
                state = mystack_type::scan_find_next;
              }
              /* flattened function end: find_retry */

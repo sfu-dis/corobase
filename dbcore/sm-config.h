@@ -87,6 +87,8 @@ extern bool coro_tx;
 extern uint32_t coro_batch_size;
 extern bool coro_batch_schedule;
 
+extern bool scan_with_it;
+
 // Create an object for each version and install directly on the main
 // indirection arrays only; for experimental purpose only to see the
 // difference between pipelined/sync replay which use the pdest array.

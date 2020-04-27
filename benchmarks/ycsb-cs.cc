@@ -91,7 +91,11 @@ public:
     }
 
     if (ycsb_workload.scan_percent()) {
-      w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
+      if (ermia::config::scan_with_it) {
+        w.push_back(workload_desc("ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
+      } else {
+        w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
+      }
     }
     return w;
   }
@@ -106,6 +110,10 @@ public:
 
   static ermia::dia::generator<rc_t> TxnScan(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<ycsb_cs_worker *>(w)->txn_scan(idx, begin_epoch);
+  }
+
+  static ermia::dia::generator<rc_t> TxnScanWithIterator(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator(idx, begin_epoch);
   }
 
   // Read transaction with context-switch using simple coroutine
@@ -208,6 +216,36 @@ public:
       }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatchCoro(rc);
+#else
+      // TODO(lujc): sometimes return RC_FALSE, no value?
+      // ALWAYS_ASSERT(rc._val == RC_TRUE);
+#endif
+    }
+    TryCatchCoro(db->Commit(txn));
+    co_return {RC_TRUE};
+  }
+
+  ermia::dia::generator<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
+    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
+    ermia::TXN::xid_context *xc = txn->GetXIDContext();
+    xc->begin_epoch = begin_epoch;
+
+    rc_t rc = rc_t{RC_INVALID};
+    for (int i = 0; i < g_reps_per_tx; ++i) {
+      ScanRange range = GenerateScanRange(txn);
+      ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
+          co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
+      bool more = co_await scan_it.InitOrNext</*IsInit=*/true>();
+      while (more) {
+        MARK_REFERENCED(scan_it.value());
+        more = co_await scan_it.InitOrNext</*IsInit=*/false>();
+      }
+      if (ermia::config::index_probe_only) {
+        LOG(FATAL) << "Not implemented";
+      } else {
+      }
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      // TryCatchCoro(rc);
 #else
       // TODO(lujc): sometimes return RC_FALSE, no value?
       // ALWAYS_ASSERT(rc._val == RC_TRUE);
