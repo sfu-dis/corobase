@@ -92,7 +92,9 @@ public:
 
     if (ycsb_workload.scan_percent()) {
       if (ermia::config::scan_with_it) {
-        w.push_back(workload_desc("ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
+          w.push_back(workload_desc(
+              "ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0,
+              nullptr, TxnScanWithIterator));
       } else {
         w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
       }
@@ -233,23 +235,30 @@ public:
     rc_t rc = rc_t{RC_INVALID};
     for (int i = 0; i < g_reps_per_tx; ++i) {
       ScanRange range = GenerateScanRange(txn);
+      ermia::varstr tuple_value;
       ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
           co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
       bool more = co_await scan_it.InitOrNext</*IsInit=*/true>();
-      while (more) {
-        MARK_REFERENCED(scan_it.value());
-        more = co_await scan_it.InitOrNext</*IsInit=*/false>();
-      }
-      if (ermia::config::index_probe_only) {
-        LOG(FATAL) << "Not implemented";
-      } else {
-      }
+      if (!ermia::config::index_probe_only) {
+        while (more) {
+          // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), scan_it.value(), xc);
+          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), scan_it.value(), xc));
+          ASSERT(tuple);
+          rc_t rc = txn->DoTupleRead(tuple, &tuple_value);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      // TryCatchCoro(rc);
+          TryCatchCoro(rc);
 #else
-      // TODO(lujc): sometimes return RC_FALSE, no value?
-      // ALWAYS_ASSERT(rc._val == RC_TRUE);
+          // TODO(lujc): sometimes return RC_FALSE, no value?
+          // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
+          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
+        }
+      } else {
+        while (more) {
+          MARK_REFERENCED(scan_it.value());
+          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
+        }
+      }
     }
     TryCatchCoro(db->Commit(txn));
     co_return {RC_TRUE};
