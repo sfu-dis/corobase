@@ -651,6 +651,10 @@ public:
                ka.unshift();
                stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
              } while (unlikely(ka.empty()));
+             /* */
+             stack[stackpos].n_->prefetch();
+             co_await std::experimental::suspend_always{};
+             /* */
              goto call_find_next;
 
            case mystack_type::scan_down:
@@ -683,6 +687,10 @@ public:
                reach_leaf_retry:
                  sense = false;
                  n[sense] = reach_leaf_this;
+                 /* */
+                 // ::prefetch((const char*)reach_leaf_this + CACHE_LINE_SIZE);
+                 // co_await std::experimental::suspend_always{};
+                 /* */
                  while (1) {
                    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
                    if (!v[sense].has_split()) break;
@@ -724,6 +732,7 @@ public:
               }
              
                find_retry_this->n_->prefetch();
+               co_await std::experimental::suspend_always{};
                find_retry_this->perm_ = find_retry_this->n_->permutation();
                find_retry_this->ki_ = helper_.lower(ka, find_retry_this);
                state = mystack_type::scan_find_next;
