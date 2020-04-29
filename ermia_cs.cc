@@ -1278,6 +1278,7 @@ ConcurrentMasstreeIndex::coro_IteratorScan(transaction *t,
                 goto find_initial_retry_root;
             }
             find_initial_this->n_->prefetch();
+            co_await std::experimental::suspend_always{};
             find_initial_this->perm_ = find_initial_this->n_->permutation();
 
             find_initial_this->ki_ = helper.lower_with_position(ka, find_initial_this, kp);
@@ -1286,6 +1287,7 @@ ConcurrentMasstreeIndex::coro_IteratorScan(transaction *t,
                 fence();
                 entry = find_initial_this->n_->lv_[kp];
                 entry.prefetch(keylenx);
+                co_await std::experimental::suspend_always{};
                 if (find_initial_this->n_->keylenx_has_ksuf(keylenx)) {
                     suffix = find_initial_this->n_->ksuf(kp);
                     memcpy(suffixbuf, suffix.s, suffix.len);
