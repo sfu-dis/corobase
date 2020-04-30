@@ -33,7 +33,8 @@ public:
   }
 
   varstr *next(uint64_t size) {
-    uint64_t off = n.fetch_add(align_up(size + sizeof(varstr)), std::memory_order_relaxed);
+    uint64_t off = n;
+    n += align_up(size + sizeof(varstr));
     ASSERT(n < config::arena_size_mb * config::MB);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
@@ -41,13 +42,11 @@ public:
 
   // Assume the caller is the benchmark using str(Size(v))
   inline void return_space(uint64_t size) {
-    n.fetch_sub(align_up(size + sizeof(varstr)), std::memory_order_relaxed);
+    n -= (align_up(size + sizeof(varstr)));
   }
 
   varstr *atomic_next(uint64_t size) {
-    uint64_t off = n.fetch_add(
-        align_up(size + sizeof(varstr)),
-        std::memory_order_acq_rel); // for adler32's 16-byte alignment
+    uint64_t off = __atomic_fetch_add(&n, align_up(size + sizeof(varstr)), __ATOMIC_ACQ_REL);
     ASSERT(n < config::arena_size_mb * config::MB);
     varstr *ret = new (str + off) varstr(str + off + sizeof(varstr), size);
     return ret;
@@ -62,7 +61,7 @@ public:
 
 private:
   char *str;
-  std::atomic<size_t> n;
+  size_t n;
 };
 
 class scoped_str_arena {
