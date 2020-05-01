@@ -50,7 +50,7 @@ public:
         for(uint32_t i = 0; i < batch_size; i++) {
           if (handles[i]) {
             if (handles[i].done()) {
-              finish_workload(handles[i].promise().current_value, workload_idxs[i], t);
+              finish_workload(handles[i].promise().get_return_value(), workload_idxs[i], t);
               handles[i].destroy();
               handles[i] = nullptr;
               todo_size--;
@@ -76,7 +76,7 @@ public:
   virtual workload_desc_vec get_workload() const override {
     workload_desc_vec w;
 
-    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent() || ycsb_workload.scan_percent()) {
+    if (ycsb_workload.insert_percent() || ycsb_workload.update_percent()) {
       LOG(FATAL) << "Not implemented";
     }
 
@@ -89,6 +89,16 @@ public:
     if (ycsb_workload.rmw_percent()) {
       w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
     }
+
+    if (ycsb_workload.scan_percent()) {
+      if (ermia::config::scan_with_it) {
+          w.push_back(workload_desc(
+              "ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0,
+              nullptr, TxnScanWithIterator));
+      } else {
+        w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
+      }
+    }
     return w;
   }
 
@@ -98,6 +108,17 @@ public:
 
   static ermia::dia::generator<rc_t> TxnRMW(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
     return static_cast<ycsb_cs_worker *>(w)->txn_rmw(idx, begin_epoch);
+  }
+
+  static ermia::dia::generator<rc_t> TxnScan(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    return static_cast<ycsb_cs_worker *>(w)->txn_scan(idx, begin_epoch);
+  }
+
+  static ermia::dia::generator<rc_t> TxnScanWithIterator(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+    if(!ermia::config::index_probe_only) {
+      return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator<false>(idx, begin_epoch);
+    }
+    return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator<true>(idx, begin_epoch);
   }
 
   // Read transaction with context-switch using simple coroutine
@@ -128,13 +149,7 @@ public:
         rc = co_await table_index->coro_GetRecord(txn, k, v);
       }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
@@ -145,14 +160,7 @@ public:
     }
 
     if (!ermia::config::index_probe_only) {
-      rc_t rc = db->Commit(txn);
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+        TryCatchCoro(db->Commit(txn));
     }
     co_return {RC_TRUE};
   }
@@ -171,13 +179,7 @@ public:
       rc = co_await table_index->coro_GetRecord(txn, k, v);
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
 #else
       // Under SI this must succeed
       LOG_IF(FATAL, rc._val != RC_TRUE);
@@ -195,23 +197,74 @@ public:
       new (v.data()) ycsb_kv::value("a");
       rc = co_await table_index->coro_UpdateRecord(txn, k, v);  // Modify-write
 
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        if (rc.IsAbort())
-          co_return rc;
-        else
-          co_return {RC_ABORT_USER};
-      }
+      TryCatchCoro(rc);
     }
 
-    rc_t rc = db->Commit(txn);
-    if (rc.IsAbort()) {
-      db->Abort(txn);
-      if (rc.IsAbort())
-        co_return rc;
-      else
-        co_return {RC_ABORT_USER};
+    TryCatchCoro(db->Commit(txn));
+    co_return {RC_TRUE};
+  }
+
+  ermia::dia::generator<rc_t> txn_scan(uint32_t idx, ermia::epoch_num begin_epoch) {
+    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
+    ermia::TXN::xid_context *xc = txn->GetXIDContext();
+    xc->begin_epoch = begin_epoch;
+
+    rc_t rc = rc_t{RC_INVALID};
+    for (int i = 0; i < g_reps_per_tx; ++i) {
+      ScanRange range = GenerateScanRange(txn);
+      if (ermia::config::index_probe_only) {
+        LOG(FATAL) << "Not implemented";
+      } else {
+        ycsb_scan_callback callback;
+        rc = co_await table_index->coro_Scan(txn, range.start_key,
+                                             &range.end_key, callback);
+      }
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatchCoro(rc);
+#else
+      // TODO(lujc): sometimes return RC_FALSE, no value?
+      // ALWAYS_ASSERT(rc._val == RC_TRUE);
+#endif
     }
+    TryCatchCoro(db->Commit(txn));
+    co_return {RC_TRUE};
+  }
+
+  template<bool IsIndexOnly>
+  ermia::dia::generator<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
+    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
+    ermia::TXN::xid_context *xc = txn->GetXIDContext();
+    xc->begin_epoch = begin_epoch;
+
+    rc_t rc = rc_t{RC_INVALID};
+    for (int i = 0; i < g_reps_per_tx; ++i) {
+      ScanRange range = GenerateScanRange(txn);
+      ermia::varstr tuple_value;
+      ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
+          co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
+      bool more = co_await scan_it.InitOrNext</*IsInit=*/true>();
+      if (!IsIndexOnly) {
+        while (more) {
+          // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), scan_it.value(), xc);
+          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), scan_it.value(), xc));
+          ASSERT(tuple);
+          rc_t rc = txn->DoTupleRead(tuple, &tuple_value);
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+          TryCatchCoro(rc);
+#else
+          // TODO(lujc): sometimes return RC_FALSE, no value?
+          // ALWAYS_ASSERT(rc._val == RC_TRUE);
+#endif
+          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
+        }
+      } else {
+        while (more) {
+          MARK_REFERENCED(scan_it.value());
+          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
+        }
+      }
+    }
+    TryCatchCoro(db->Commit(txn));
     co_return {RC_TRUE};
   }
 

@@ -27,6 +27,7 @@ DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing versi
 DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
 DEFINE_uint64(coro_batch_size, 5, "Number of in-flight coroutines");
 DEFINE_bool(coro_batch_schedule, true, "Whether to run the same type of transactions per batch");
+DEFINE_bool(scan_with_iterator, false, "Whether to run scan with iterator version or callback version");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");
 DEFINE_string(benchmark_options, "", "Benchmark-specific opetions.");
@@ -242,6 +243,8 @@ int main(int argc, char **argv) {
   ermia::config::coro_batch_size = FLAGS_coro_batch_size;
   ermia::config::coro_batch_schedule = FLAGS_coro_batch_schedule;
 
+  ermia::config::scan_with_it = FLAGS_scan_with_iterator;
+
   // Backup specific arguments
   if (ermia::config::is_backup_srv()) {
     ermia::config::nvram_log_buffer = FLAGS_nvram_log_buffer;
@@ -387,6 +390,7 @@ int main(int argc, char **argv) {
   std::cerr << "  coro-tx           : " << FLAGS_coro_tx << std::endl;
   std::cerr << "  coro-batch-schedule: " << FLAGS_coro_batch_schedule << std::endl;
   std::cerr << "  coro-batch-size   : " << FLAGS_coro_batch_size << std::endl;
+  std::cerr << "  scan-use-iterator : " << FLAGS_scan_with_iterator << std::endl;
   std::cerr << "  dia               : " << FLAGS_dia << std::endl;
   std::cerr << "  dia-req-handler   : " << FLAGS_dia_request_handler << std::endl;
   std::cerr << "  dia-req-coalsece  : " << FLAGS_dia_request_coalesce << std::endl;
