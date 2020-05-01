@@ -156,10 +156,7 @@ private:
       }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-      if (rc.IsAbort()) {
-        db->Abort(txn);
-        co_return rc;
-      }
+      TryCatchCoro(rc);
 #else
       // Under SI this must succeed
       ALWAYS_ASSERT(rc._val == RC_TRUE);
@@ -173,11 +170,7 @@ private:
     }
 
     if (!ermia::config::index_probe_only) {
-        rc_t rc = db->Commit(txn);
-        if (rc.IsAbort()) {
-            db->Abort(txn);
-            co_return rc;
-        }
+        TryCatchCoro(db->Commit(txn));
     }
 
     co_return {RC_TRUE};
@@ -208,20 +201,14 @@ private:
         }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-        if (rc.IsAbort()) {
-            db->Abort(txn);
-            co_return rc;
-        }
+        TryCatchCoro(rc);
 #else
+        // TODO(lujc): sometimes return RC_FALSE, no value?
         // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
 
-    rc_t rc = db->Commit(txn);
-    if (rc.IsAbort()) {
-        db->Abort(txn);
-        co_return rc;
-    }
+    TryCatchCoro(db->Commit(txn));
     co_return {RC_TRUE};
   }
 

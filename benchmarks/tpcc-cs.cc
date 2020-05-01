@@ -1189,7 +1189,7 @@ void tpcc_cs_worker::Scheduler() {
           continue;
         }
         if (handles[i].done()) {
-          rcs[i] = handles[i].promise().current_value;
+          rcs[i] = handles[i].promise().get_return_value();
           finish_workload(rcs[i], workload_idxs[i], t);
           handles[i].destroy();
           handles[i] = nullptr;
@@ -1246,7 +1246,7 @@ void tpcc_cs_worker::BatchScheduler() {
           continue;
         }
         if (handles[i].done()) {
-          rcs[i] = handles[i].promise().current_value;
+          rcs[i] = handles[i].promise().get_return_value();
 #ifndef CORO_BATCH_COMMIT
 #ifdef BATCH_SAME_TRX
           finish_workload(rcs[i], workload_idx, t);

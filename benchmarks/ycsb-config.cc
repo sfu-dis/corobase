@@ -122,7 +122,7 @@ void ycsb_parse_options(int argc, char **argv) {
         {"zipfian", no_argument, &g_zipfian_rng, 1},
         {"zipfian-theta", required_argument, 0, 'z'},
         {"read-tx-type", required_argument, 0, 't'},
-        {"scan-max-range", required_argument, 0, 'g'},
+        {"scan-range", required_argument, 0, 'g'},
         {0, 0, 0, 0}};
 
     int option_index = 0;
