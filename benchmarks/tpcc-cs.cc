@@ -1153,11 +1153,57 @@ void tpcc_cs_worker::MyWork(char *) {
   txn_counts.resize(workload.size());
 
   if (ermia::config::coro_batch_schedule) {
+    //PipelineScheduler();
     BatchScheduler();
   } else {
     Scheduler();
   }
 }
+
+void tpcc_cs_worker::PipelineScheduler() {
+  CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
+    sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
+
+  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(
+    sizeof(uint32_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
+  rc_t *rcs = (rc_t *)numa_alloc_onnode(
+    sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
+  barrier_a->count_down();
+  barrier_b->wait_for();
+  util::timer t;
+
+  for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
+    uint32_t workload_idx = fetch_workload();
+    workload_idxs[i] = workload_idx;
+    handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+  }
+
+  uint32_t i = 0;
+  ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+  while (running) {
+    if (handles[i].done()) {
+      rcs[i] = handles[i].promise().get_return_value();
+      finish_workload(rcs[i], workload_idxs[i], t);
+      handles[i].destroy();
+
+      uint32_t workload_idx = fetch_workload();
+      workload_idxs[i] = workload_idx;
+      handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+      handles[i].resume();
+    } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
+      handles[i].resume();
+    } else {
+      handles[i].promise().callee_coro.resume();
+    }
+
+    i = (i + 1) & (ermia::config::coro_batch_size - 1);
+  }
+  ermia::MM::epoch_exit(0, begin_epoch);
+}
+
 
 void tpcc_cs_worker::Scheduler() {
   CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(

@@ -1335,6 +1335,7 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   virtual void MyWork(char *) override;
 
   void Scheduler();
+  void PipelineScheduler();
   void BatchScheduler();
 
  protected:
