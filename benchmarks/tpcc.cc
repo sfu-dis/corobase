@@ -779,6 +779,8 @@ rc_t tpcc_worker::txn_credit_check() {
     rc = rc_t{RC_INVALID};
     tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(Size(k_oo)), k_oo), valptr);
     TryCatchCond(rc, continue);
+    auto *vv = Decode(valptr, v);
+
     // Order line scan
     //		ol_d_id = :d_id
     //		ol_w_id = :w_id

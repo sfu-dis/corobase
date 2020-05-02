@@ -808,12 +808,12 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
 
     const oorder::key k_oo(warehouse_id, districtID, k_no->no_o_id);
     oorder::value v;
-    rc = rc_t{RC_INVALID};
-    tbl_oorder(warehouse_id)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
+    rc = co_await tbl_oorder(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_oo)), k_oo), valptr);
+    TryCatchCondCoro(rc, continue);
+    //valptr.prefetch();
+    //co_await std::experimental::suspend_always{};
+    auto *vv = Decode(valptr, v);
 
-    TryCatchCoro(rc);
-    if (rc._val == RC_FALSE)
-      continue;
     // Order line scan
     //		ol_d_id = :d_id
     //		ol_w_id = :w_id
@@ -1240,7 +1240,7 @@ void tpcc_cs_worker::Scheduler() {
           handles[i].destroy();
           handles[i] = nullptr;
           --todo;
-        } else if (handles[i].promise().callee_coro.done()) {
+        } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
           handles[i].resume();
         } else {
           handles[i].promise().callee_coro.resume();
