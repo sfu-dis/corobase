@@ -209,7 +209,6 @@ retry:
 // Get a non-stale root.
 // Detect staleness by checking whether n has ever split.
 // The true root has never split.
-retry2:
   sense = false;
   n[sense] = root;
   while (1) {
@@ -225,7 +224,7 @@ retry2:
     co_await std::experimental::suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
-    if (!n[!sense]) goto retry2;
+    if (!n[!sense]) goto retry;
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -237,7 +236,7 @@ retry2:
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
-      goto retry2;
+      goto retry;
     }
   }
 
@@ -360,7 +359,6 @@ retry:
 // Get a non-stale root.
 // Detect staleness by checking whether n has ever split.
 // The true root has never split.
-retry2:
   sense = false;
   n[sense] = root;
   while (1) {
@@ -376,7 +374,8 @@ retry2:
     co_await std::experimental::suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
-    if (!n[!sense]) goto retry2;
+    if (!n[!sense]) goto retry;
+
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -388,7 +387,7 @@ retry2:
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
-      goto retry2;
+      goto retry;
     }
   }
 
@@ -513,7 +512,6 @@ retry:
   ConcurrentMasstree::nodeversion_type v[2];
   bool sense;
 
-retry2:
   sense = false;
   n[sense] = root;
   while (1) {
@@ -529,7 +527,7 @@ retry2:
     co_await std::experimental::suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
-    if (!n[!sense]) goto retry2;
+    if (!n[!sense]) goto retry;
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -541,7 +539,7 @@ retry2:
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
-      goto retry2;
+      goto retry;
     }
   }
 
@@ -832,7 +830,6 @@ retry:
 // Get a non-stale root.
 // Detect staleness by checking whether n has ever split.
 // The true root has never split.
-retry2:
   sense = false;
   n[sense] = root;
   while (1) {
@@ -848,7 +845,7 @@ retry2:
     co_await std::experimental::suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
-    if (!n[!sense]) goto retry2;
+    if (!n[!sense]) goto retry;
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -860,7 +857,7 @@ retry2:
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
-      goto retry2;
+      goto retry;
     }
   }
 
@@ -1020,7 +1017,6 @@ retry:
 // Get a non-stale root.
 // Detect staleness by checking whether n has ever split.
 // The true root has never split.
-retry2:
   sense = false;
   n[sense] = root;
   while (1) {
@@ -1036,7 +1032,7 @@ retry2:
     co_await std::experimental::suspend_always{};
     int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
     n[!sense] = in->child_[kp];
-    if (!n[!sense]) goto retry2;
+    if (!n[!sense]) goto retry;
     v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
 
     if (likely(!in->has_changed(v[sense]))) {
@@ -1048,7 +1044,7 @@ retry2:
     v[sense] = in->stable_annotated(ti.stable_fence());
     if (oldv.has_split(v[sense]) &&
         in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
-      goto retry2;
+      goto retry;
     }
   }
 
