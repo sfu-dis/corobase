@@ -66,8 +66,6 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::e
   rc = co_await tbl_customer(warehouse_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
   TryVerifyRelaxedCoro(rc);
 
-  valptr.prefetch();
-  co_await std::experimental::suspend_always{};
   const customer::value *v_c = Decode(valptr, v_c_temp);
 
 #ifndef NDEBUG
