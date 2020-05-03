@@ -283,23 +283,24 @@ rc_t tpcc_worker::txn_payment() {
     static_limit_callback<NMaxCustomerIdxScanElems> c(
         s_arena.get(), true);  // probably a safe bet for now
 
-    /*
-    ermia::ConcurrentMasstree::ScanIterator iter(
-      txn->GetXIDContext(), &tbl_customer_name_idx(customerWarehouseID)->GetMasstree(),
-      Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-      &Encode(str(Size(k_c_idx_1)), k_c_idx_1));
-    while (iter.NextValue(valptr)) {
-      rc = txn->DoTupleRead(iter.sinfo.tuple, &valptr);
-      if (rc._val == RC_TRUE) {
-        c.Invoke(iter.sinfo.ka.full_string().data(), iter.sinfo.ka.full_string().length(), valptr);
+    if (ermia::config::scan_with_it) {
+      ermia::ConcurrentMasstree::ScanIterator iter(
+        txn->GetXIDContext(), &tbl_customer_name_idx(customerWarehouseID)->GetMasstree(),
+        Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+        &Encode(str(Size(k_c_idx_1)), k_c_idx_1));
+      while (iter.NextValue(valptr)) {
+        rc = txn->DoTupleRead(iter.sinfo.tuple, &valptr);
+        if (rc._val == RC_TRUE) {
+          c.Invoke(iter.sinfo.ka.full_string().data(), iter.sinfo.ka.full_string().length(), valptr);
+        }
       }
+    } else {
+      static_limit_callback<NMaxCustomerIdxScanElems> d(s_arena.get(), true);
+      TryCatch(tbl_customer_name_idx(customerWarehouseID)
+                    ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
+                           &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
     }
-    */
 
-    static_limit_callback<NMaxCustomerIdxScanElems> d(s_arena.get(), true);
-    TryCatch(tbl_customer_name_idx(customerWarehouseID)
-                  ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
-                         &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
     /*
 
     ALWAYS_ASSERT(c.size() == d.size());

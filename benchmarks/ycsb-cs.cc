@@ -74,10 +74,7 @@ public:
   }
 
   static ermia::dia::generator<rc_t> TxnScanWithIterator(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    if(!ermia::config::index_probe_only) {
-      return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator<false>(idx, begin_epoch);
-    }
-    return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator<true>(idx, begin_epoch);
+    return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator(idx, begin_epoch);
   }
 
   // Read transaction with context-switch using simple coroutine
@@ -195,7 +192,6 @@ public:
     co_return {RC_TRUE};
   }
 
-  template<bool IsIndexOnly>
   ermia::dia::generator<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
     auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
@@ -207,7 +203,7 @@ public:
       ermia::varstr tuple_value;
       ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
           co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
-      if (!IsIndexOnly) {
+      if (!ermia::config::index_probe_only) {
         while (co_await scan_it.EmitAndAdvance()) {
           ermia::OID oid = scan_it.value();
           ALWAYS_ASSERT(oid != ermia::INVALID_OID);
