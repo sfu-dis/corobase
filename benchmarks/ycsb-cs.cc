@@ -207,11 +207,12 @@ public:
       ermia::varstr tuple_value;
       ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
           co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
-      bool more = co_await scan_it.InitOrNext</*IsInit=*/true>();
       if (!IsIndexOnly) {
-        while (more) {
-          // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), scan_it.value(), xc);
-          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), scan_it.value(), xc));
+        while (co_await scan_it.EmitAndAdvance()) {
+          ermia::OID oid = scan_it.value();
+          ALWAYS_ASSERT(oid != ermia::INVALID_OID);
+          // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), oid, xc);
+          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), oid, xc));
           ASSERT(tuple);
           rc_t rc = txn->DoTupleRead(tuple, &tuple_value);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -220,12 +221,10 @@ public:
           // TODO(lujc): sometimes return RC_FALSE, no value?
           // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
-          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
         }
       } else {
-        while (more) {
+        while (co_await scan_it.EmitAndAdvance()) {
           MARK_REFERENCED(scan_it.value());
-          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
         }
       }
     }

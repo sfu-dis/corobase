@@ -541,8 +541,7 @@ public:
      }
 
      // Return false if there is no more entries and in thie case value is invalid.
-     template<bool IsInit >
-     ermia::dia::generator<bool> InitOrNext() {
+     ermia::dia::generator<bool> EmitAndAdvance() {
        typedef typename P::ikey_type ikey_type;
        typedef typename node_type::key_type key_type;
        typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
@@ -558,21 +557,21 @@ public:
 
        threadinfo ti(xc_->begin_epoch);
 
-       if (!IsInit) {
-         stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
-         //  state = stack[stackpos].find_next(helper_, ka, entry);
-         state = mystack_type::scan_find_next;
-       }
-
        while(1) {
          switch (state) {
            case mystack_type::scan_emit: { // surpress cross init warning about v
              if (!scanner_.visit_value_no_callback(ka)) {
                value_ = ermia::INVALID_OID;
+               // TODO(lujc): assign full key
                co_return false;
              }
              value_ = entry.value();
              ++scancount_;
+
+             stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
+             // state = stack[stackpos].find_next(helper_, ka, entry);
+             state = mystack_type::scan_find_next;
+
              co_return true;
            } break;
 
@@ -632,6 +631,8 @@ public:
                    goto find_next_return;
                  }
                  find_next_this->n_->prefetch();
+                 co_await std::experimental::suspend_always{};
+                 scanner_.visit_leaf(*find_next_this, ka, ti);
                }
              
              find_next_changed:
@@ -639,14 +640,10 @@ public:
                find_next_this->perm_ = find_next_this->n_->permutation();
                find_next_this->ki_ = helper_.lower(ka, find_next_this);
                state = mystack_type::scan_find_next;
-               goto find_next_return;
              find_next_return:
                ;
              }
              /* flattened function end: find_next */
-             if (state != mystack_type::scan_up) {
-               scanner_.visit_leaf(stack[stackpos], ka, ti);
-             }
              break;
 
            case mystack_type::scan_up:
@@ -1251,9 +1248,9 @@ public:
       : search_range_scanner_base<Reverse>(boundary), btr_ptr_(btr_ptr) {}
   inline void visit_leaf(const Masstree::scanstackelt<P> &iter,
                   const Masstree::key<uint64_t> &key, threadinfo &) {
-    this->n_ = iter.node();
-    this->v_ = iter.full_version_value();
-    //callback_.on_resp_node(this->n_, this->v_);
+    // this->n_ = iter.node();
+    // this->v_ = iter.full_version_value();
+    // callback_.on_resp_node(this->n_, this->v_);
     if (this->boundary_)
       this->check(iter, key);
   }
@@ -1270,8 +1267,8 @@ public:
   }
 
 private:
-  Masstree::leaf<P> *n_;
-  uint64_t v_;
+  // Masstree::leaf<P> *n_;
+  // uint64_t v_;
   const mbtree<P> *btr_ptr_;
 };
 
