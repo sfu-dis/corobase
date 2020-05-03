@@ -806,7 +806,7 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
   k_c.c_d_id = customerDistrictID;
   k_c.c_id = customerID;
 
-  tbl_customer(customerWarehouseID)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
+  rc = co_await tbl_customer(customerWarehouseID)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c), valptr);
   TryVerifyRelaxedCoro(rc);
 
   const customer::value *v_c = Decode(valptr, v_c_temp);
@@ -822,8 +822,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
   const new_order::key k_no_0(warehouse_id, districtID, 0);
   const new_order::key k_no_1(warehouse_id, districtID,
                               std::numeric_limits<int32_t>::max());
-  rc = tbl_new_order(warehouse_id)
-           ->Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
+  rc = co_await tbl_new_order(warehouse_id)
+           ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_no_0)), k_no_0),
                   &Encode(str(arenas[idx], Size(k_no_1)), k_no_1), c_no);
   TryCatchCoro(rc);
   ALWAYS_ASSERT(c_no.output.size());
@@ -849,8 +849,9 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
     credit_check_order_line_scan_callback c_ol;
     const order_line::key k_ol_0(warehouse_id, districtID, k_no->no_o_id, 1);
     const order_line::key k_ol_1(warehouse_id, districtID, k_no->no_o_id, 15);
-    rc = tbl_order_line(warehouse_id)
-             ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
+    // XXX(tzwang): coro_scan here make it very slow (~60% slower)
+    rc = co_await tbl_order_line(warehouse_id)
+             ->coro_Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                     &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c_ol);
     TryCatchCoro(rc);
 
@@ -865,8 +866,8 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermia
   else
     v_c_new.c_credit.assign("GC");
 
-  rc = tbl_customer(customerWarehouseID)
-           ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
+  rc = co_await tbl_customer(customerWarehouseID)
+           ->coro_UpdateRecord(txn, Encode(str(arenas[idx], Size(k_c)), k_c),
                           Encode(str(arenas[idx], Size(v_c_new)), v_c_new));
   TryCatchCoro(rc);
 
