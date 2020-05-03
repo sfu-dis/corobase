@@ -247,159 +247,8 @@ retry:
 forward:
   if (lp.v_.deleted()) goto retry;
 
-  lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
-  lp.perm_ = lp.n_->permutation();
-  kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
-  if (kx.p >= 0) {
-    lp.lv_ = lp.n_->lv_[kx.p];
-    lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
-    co_await std::experimental::suspend_always{};
-    match = lp.n_->ksuf_matches(kx.p, lp.ka_);
-  } else
-    match = 0;
-  if (lp.n_->has_changed(lp.v_)) {
-    lp.n_ = lp.n_->advance_to_key(lp.ka_, lp.v_, ti);
-    goto forward;
-  }
-
-  if (match < 0) {
-    lp.ka_.shift_by(-match);
-    root = lp.lv_.layer();
-    goto retry;
-  }
-// end: find_unlocked
-
-  bool found = match;
-  dbtuple *tuple = nullptr;
-  if (found) {
-    oid = lp.value();
-// end: masstree search
-
-// start: oid_get_version
-    oid_array *oa = table_descriptor->GetTupleArray();
-    TXN::xid_context *visitor_xc = t->xc;
-    fat_ptr *entry = oa->get(oid);
-start_over:
-    //::prefetch((const char*)entry);
-    //co_await std::experimental::suspend_always{};
-
-    fat_ptr ptr = volatile_read(*entry);
-    ASSERT(ptr.asi_type() == 0);
-    Object *prev_obj = nullptr;
-    while (ptr.offset()) {
-      Object *cur_obj = nullptr;
-      // Must read next_ before reading cur_obj->_clsn:
-      // the version we're currently reading (ie cur_obj) might be unlinked
-      // and thus recycled by the memory allocator at any time if it's not
-      // a committed version. If so, cur_obj->_next will be pointing to some
-      // other object in the allocator's free object pool - we'll probably
-      // end up at la-la land if we followed this _next pointer value...
-      // Here we employ some flavor of OCC to solve this problem:
-      // the aborting transaction that will unlink cur_obj will update
-      // cur_obj->_clsn to NULL_PTR, then deallocate(). Before reading
-      // cur_obj->_clsn, we (as the visitor), first dereference pp to get
-      // a stable value that "should" contain the right address of the next
-      // version. We then read cur_obj->_clsn to verify: if it's NULL_PTR
-      // that means we might have read a wrong _next value that's actually
-      // pointing to some irrelevant object in the allocator's memory pool,
-      // hence must start over from the beginning of the version chain.
-      fat_ptr tentative_next = NULL_PTR;
-      // If this is a backup server, then must see persistent_next to find out
-      // the **real** overwritten version.
-      ASSERT(ptr.asi_type() == 0);
-      cur_obj = (Object *)ptr.offset();
-      //Object::PrefetchHeader(cur_obj);
-      //co_await std::experimental::suspend_always{};
-      tentative_next = cur_obj->GetNextVolatile();
-      ASSERT(tentative_next.asi_type() == 0);
-
-      bool retry = false;
-      bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
-      if (retry) {
-        goto start_over;
-      }
-      if (visible) {
-        tuple = cur_obj->GetPinnedTuple();
-        volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-        if (out_oid) {
-          *out_oid = oid;
-        }
-        co_return rc;
-      }
-      ptr = tentative_next;
-      prev_obj = cur_obj;
-    }
-  }
-  co_return {RC_FALSE};
-  ALWAYS_ASSERT(false);
-}
-
-ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, const varstr &key,
-                                                                    varstr &value, OID *out_oid) {
-  OID oid = INVALID_OID;
-  rc_t rc = rc_t{RC_INVALID};
-  t->ensure_active();
-
-// start: masstree search
-  ConcurrentMasstree::threadinfo ti(t->xc->begin_epoch);
-  ConcurrentMasstree::unlocked_tcursor_type lp(*masstree_.get_table(), key.data(), key.size());
-
-// start: find_unlocked
-  int match;
-  key_indexed_position kx;
-  ConcurrentMasstree::node_base_type *root = const_cast<ConcurrentMasstree::node_base_type *>(lp.root_);
-
-retry:
-// start: reach_leaf
-  const ConcurrentMasstree::node_base_type* n[2];
-  ConcurrentMasstree::nodeversion_type v[2];
-  bool sense;
-
-// Get a non-stale root.
-// Detect staleness by checking whether n has ever split.
-// The true root has never split.
-  sense = false;
-  n[sense] = root;
-  while (1) {
-    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
-    if (!v[sense].has_split()) break;
-    n[sense] = n[sense]->unsplit_ancestor();
-  }
-
-  // Loop over internal nodes.
-  while (!v[sense].isleaf()) {
-    const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
-    in->prefetch();
-    co_await std::experimental::suspend_always{};
-    int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
-    n[!sense] = in->child_[kp];
-    if (!n[!sense]) goto retry;
-
-    v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
-
-    if (likely(!in->has_changed(v[sense]))) {
-      sense = !sense;
-      continue;
-    }
-
-    ConcurrentMasstree::nodeversion_type oldv = v[sense];
-    v[sense] = in->stable_annotated(ti.stable_fence());
-    if (oldv.has_split(v[sense]) &&
-        in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
-      goto retry;
-    }
-  }
-
-  lp.v_ = v[sense];
-  lp.n_ = const_cast<ConcurrentMasstree::leaf_type *>(static_cast<const ConcurrentMasstree::leaf_type *>(n[sense]));
-// end: reach_leaf
-
-forward:
-  if (lp.v_.deleted()) goto retry;
-
-  lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
+  //lp.n_->prefetch();
+  //co_await std::experimental::suspend_always{};
   lp.perm_ = lp.n_->permutation();
   kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
@@ -483,7 +332,160 @@ start_over:
     }
   }
   co_return {RC_FALSE};
-  ALWAYS_ASSERT(false);
+}
+
+ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, const varstr &key,
+                                                                    varstr &value, OID *out_oid) {
+  OID oid = INVALID_OID;
+  rc_t rc = rc_t{RC_INVALID};
+  t->ensure_active();
+
+// start: masstree search
+  ConcurrentMasstree::threadinfo ti(t->xc->begin_epoch);
+  ConcurrentMasstree::unlocked_tcursor_type lp(*masstree_.get_table(), key.data(), key.size());
+
+// start: find_unlocked
+  int match;
+  key_indexed_position kx;
+  ConcurrentMasstree::node_base_type *root = const_cast<ConcurrentMasstree::node_base_type *>(lp.root_);
+
+retry:
+// start: reach_leaf
+  const ConcurrentMasstree::node_base_type* n[2];
+  ConcurrentMasstree::nodeversion_type v[2];
+  bool sense;
+
+// Get a non-stale root.
+// Detect staleness by checking whether n has ever split.
+// The true root has never split.
+  sense = false;
+  n[sense] = root;
+  while (1) {
+    v[sense] = n[sense]->stable_annotated(ti.stable_fence());
+    if (!v[sense].has_split()) break;
+    n[sense] = n[sense]->unsplit_ancestor();
+  }
+
+  // Loop over internal nodes.
+  while (!v[sense].isleaf()) {
+    const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
+    in->prefetch();
+    co_await std::experimental::suspend_always{};
+    int kp = ConcurrentMasstree::internode_type::bound_type::upper(lp.ka_, *in);
+    n[!sense] = in->child_[kp];
+    if (!n[!sense]) goto retry;
+
+    //const ConcurrentMasstree::internode_type* in2 = static_cast<const ConcurrentMasstree::internode_type*>(n[!sense]);
+    //in2->prefetch();
+    //co_await std::experimental::suspend_always{};
+    v[!sense] = n[!sense]->stable_annotated(ti.stable_fence());
+
+    if (likely(!in->has_changed(v[sense]))) {
+      sense = !sense;
+      continue;
+    }
+
+    ConcurrentMasstree::nodeversion_type oldv = v[sense];
+    v[sense] = in->stable_annotated(ti.stable_fence());
+    if (oldv.has_split(v[sense]) &&
+        in->stable_last_key_compare(lp.ka_, v[sense], ti) > 0) {
+      goto retry;
+    }
+  }
+
+  lp.v_ = v[sense];
+  lp.n_ = const_cast<ConcurrentMasstree::leaf_type *>(static_cast<const ConcurrentMasstree::leaf_type *>(n[sense]));
+// end: reach_leaf
+
+forward:
+  if (lp.v_.deleted()) goto retry;
+
+  // XXX(tzwang): already working on this node, no need to prefetch+yield again?
+  //lp.n_->prefetch();
+  //co_await std::experimental::suspend_always{};
+  lp.perm_ = lp.n_->permutation();
+  kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
+  if (kx.p >= 0) {
+    lp.lv_ = lp.n_->lv_[kx.p];
+    lp.lv_.prefetch(lp.n_->keylenx_[kx.p]);
+    co_await std::experimental::suspend_always{};
+    match = lp.n_->ksuf_matches(kx.p, lp.ka_);
+  } else
+    match = 0;
+  if (lp.n_->has_changed(lp.v_)) {
+    lp.n_ = lp.n_->advance_to_key(lp.ka_, lp.v_, ti);
+    goto forward;
+  }
+
+  if (match < 0) {
+    lp.ka_.shift_by(-match);
+    root = lp.lv_.layer();
+    goto retry;
+  }
+// end: find_unlocked
+
+  bool found = match;
+  dbtuple *tuple = nullptr;
+  if (found) {
+    oid = lp.value();
+// end: masstree search
+
+// start: oid_get_version
+    oid_array *oa = table_descriptor->GetTupleArray();
+    TXN::xid_context *visitor_xc = t->xc;
+    fat_ptr *entry = oa->get(oid);
+start_over:
+    ::prefetch((const char*)entry);
+    co_await std::experimental::suspend_always{};
+
+    fat_ptr ptr = volatile_read(*entry);
+    ASSERT(ptr.asi_type() == 0);
+    Object *prev_obj = nullptr;
+    while (ptr.offset()) {
+      Object *cur_obj = nullptr;
+      // Must read next_ before reading cur_obj->_clsn:
+      // the version we're currently reading (ie cur_obj) might be unlinked
+      // and thus recycled by the memory allocator at any time if it's not
+      // a committed version. If so, cur_obj->_next will be pointing to some
+      // other object in the allocator's free object pool - we'll probably
+      // end up at la-la land if we followed this _next pointer value...
+      // Here we employ some flavor of OCC to solve this problem:
+      // the aborting transaction that will unlink cur_obj will update
+      // cur_obj->_clsn to NULL_PTR, then deallocate(). Before reading
+      // cur_obj->_clsn, we (as the visitor), first dereference pp to get
+      // a stable value that "should" contain the right address of the next
+      // version. We then read cur_obj->_clsn to verify: if it's NULL_PTR
+      // that means we might have read a wrong _next value that's actually
+      // pointing to some irrelevant object in the allocator's memory pool,
+      // hence must start over from the beginning of the version chain.
+      fat_ptr tentative_next = NULL_PTR;
+      // If this is a backup server, then must see persistent_next to find out
+      // the **real** overwritten version.
+      ASSERT(ptr.asi_type() == 0);
+      cur_obj = (Object *)ptr.offset();
+      //Object::PrefetchHeader(cur_obj);
+      //co_await std::experimental::suspend_always{};
+      tentative_next = cur_obj->GetNextVolatile();
+      ASSERT(tentative_next.asi_type() == 0);
+
+      bool retry = false;
+      bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
+      if (retry) {
+        goto start_over;
+      }
+      if (visible) {
+        tuple = cur_obj->GetPinnedTuple();
+        volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
+        if (out_oid) {
+          *out_oid = oid;
+        }
+        co_return rc;
+      }
+      ptr = tentative_next;
+      prev_obj = cur_obj;
+    }
+  }
+  co_return {RC_FALSE};
 }
 
 ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_UpdateRecord(transaction *t, const varstr &key,
@@ -550,8 +552,8 @@ retry:
 forward:
   if (lp.v_.deleted()) goto retry;
 
-  lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
+  //lp.n_->prefetch();
+  //co_await std::experimental::suspend_always{};
   lp.perm_ = lp.n_->permutation();
   kx = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, lp);
   if (kx.p >= 0) {
@@ -868,8 +870,8 @@ retry:
 forward:
   if (version.deleted()) goto retry;
 
-  lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
+  //lp.n_->prefetch();
+  //co_await std::experimental::suspend_always{};
   perm = lp.n_->permutation();
   fence();
   lp.kx_ = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, *lp.n_);
@@ -1055,8 +1057,8 @@ retry:
 forward:
   if (version.deleted()) goto retry;
 
-  lp.n_->prefetch();
-  co_await std::experimental::suspend_always{};
+  //lp.n_->prefetch();
+  //co_await std::experimental::suspend_always{};
   perm = lp.n_->permutation();
   fence();
   lp.kx_ = ConcurrentMasstree::leaf_type::bound_type::lower(lp.ka_, *lp.n_);
