@@ -1486,35 +1486,51 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
     ++stackpos;
   }
 
-  auto *tuple_array = table_descriptor->GetTupleArray();
-  uint32_t cnt = 0;
-  std::vector<OIDAMACState> version_requests;
-  std::vector<key_type> keys;
-
   while (1) {
     switch (state) {
     case mystack_type::scan_emit: { // surpress cross init warning about v
       ++scancount;
-      ermia::dbtuple *v = NULL;
-      ermia::OID o = entry.value();
-      ++cnt;
-      version_requests.emplace_back(o);
-      keys.emplace_back(ka);
-      if (!scanner.visit_value_no_callback(ka)) {
-        goto done;
-      }
+      // oid_get_version:
+      {
+        fat_ptr *oid_entry = table_descriptor->GetTupleArray()->get(entry.value());
+      get_version_start_over:
+        ::prefetch((const char*)oid_entry);
+        co_await std::experimental::suspend_always{};
+        fat_ptr ptr = volatile_read(*oid_entry);
+        ASSERT(ptr.asi_type() == 0);
+        Object *prev_obj = nullptr;
+        while (ptr.offset()) {
+          Object *cur_obj = nullptr;
+          fat_ptr tentative_next = NULL_PTR;
+          // If this is a backup server, then must see persistent_next to find out
+          // the **real** overwritten version.
+          if (config::is_backup_srv() && !config::command_log) {
+            //oid_get_version_backup(ptr, tentative_next, prev_obj, cur_obj, t->xc);
+          } else {
+            ASSERT(ptr.asi_type() == 0);
+            cur_obj = (Object *)ptr.offset();
+            Object::PrefetchHeader(cur_obj);
+            co_await std::experimental::suspend_always{};
+            tentative_next = cur_obj->GetNextVolatile();
+            ASSERT(tentative_next.asi_type() == 0);
+          }
 
-      if (cnt == max_keys) {
-        goto done;
-      }
+          bool retry = false;
+          bool visible = oidmgr->TestVisibility(cur_obj, t->xc, retry);
+          if (retry) {
+            goto get_version_start_over;
+          }
+          if (visible) {
+            if (!scanner.visit_value(ka, cur_obj->GetPinnedTuple())) {
+              goto done;
+            }
+            break;
+          }
+          ptr = tentative_next;
+          prev_obj = cur_obj;
+        }
+      }  // oid_get_version
 
-      /*
-      v = sync_wait_coro(ermia::oidmgr->oid_get_version(tuple_array, o, t->xc));
-      if (v) {
-        if (!scanner.visit_value(ka, v))
-          goto done;
-      }
-      */
       stack[stackpos].ki_ = helper.next(stack[stackpos].ki_);
       {
       //state = stack[stackpos].find_next(helper, ka, entry);
@@ -1663,14 +1679,6 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
     }
   }
 done:
-
-  ALWAYS_ASSERT(cnt == version_requests.size());
-  if (cnt > 0) {
-    oidmgr->oid_get_version_amac(tuple_array, version_requests, t->xc);
-    for (uint32_t i = 0; i < version_requests.size(); ++i) {
-      cb.invoke(&masstree_, keys[i].full_string(), version_requests[i].tuple, nullptr, 0);
-    }
-  }
   co_return c.return_code;
 }
 } // namespace ermia
