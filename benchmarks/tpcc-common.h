@@ -334,9 +334,6 @@ class tpcc_worker_mixin : private _dummy {
       LOG_IF(FATAL, w < 1 || w > NumWarehouses());
       return w;
     } else {
-      thread_local uint32_t nxt = 0;
-      return (home_wh - 1) * 20 + (nxt++) % 20 + 1;
-      //return (home_wh - 1) * 10 + r.next() % 10 + 1;
       ASSERT(g_wh_spread >= 0 and g_wh_spread <= 1);
       // wh_spread = 0: always use home wh
       // wh_spread = 1: always use random wh
