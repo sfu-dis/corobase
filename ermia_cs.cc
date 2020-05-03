@@ -314,19 +314,70 @@ start_over:
       tentative_next = cur_obj->GetNextVolatile();
       ASSERT(tentative_next.asi_type() == 0);
 
-      bool retry = false;
-      bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
-      if (retry) {
-        goto start_over;
-      }
-      if (visible) {
-        tuple = cur_obj->GetPinnedTuple();
-        volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-        if (out_oid) {
-          *out_oid = oid;
+      //bool retry = false;
+      //bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
+      // TestVisibility
+      {
+        fat_ptr clsn = cur_obj->GetClsn();
+        if (clsn == NULL_PTR) {
+          ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
+          // dead tuple that was (or about to be) unlinked, start over
+          goto start_over;
         }
-        co_return rc;
+        uint16_t asi_type = clsn.asi_type();
+        ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
+
+        if (asi_type == fat_ptr::ASI_XID) {  // in-flight
+          XID holder_xid = XID::from_ptr(clsn);
+          // Dirty data made by me is visible!
+          if (holder_xid == t->xc->owner) {
+            ASSERT(!cur_obj->GetNextVolatile().offset() ||
+                   ((Object *)cur_obj->GetNextVolatile().offset())
+                           ->GetClsn()
+                           .asi_type() == fat_ptr::ASI_LOG);
+            ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
+            goto handle_visible;
+          }
+          auto *holder = TXN::xid_get_context(holder_xid);
+          if (!holder) {
+            goto start_over;
+          }
+
+          auto state = volatile_read(holder->state);
+          auto owner = volatile_read(holder->owner);
+
+          // context still valid for this XID?
+          if (owner != holder_xid) {
+            goto start_over;
+          }
+
+          if (state == TXN::TXN_CMMTD) {
+            ASSERT(volatile_read(holder->end));
+            ASSERT(owner == holder_xid);
+            if (holder->end < t->xc->begin) {
+              goto handle_visible;
+            }
+            goto handle_invisible;
+          }
+        } else {
+          // Already committed, now do visibility test
+          ASSERT(cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
+                 cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
+                 cur_obj->GetPersistentAddress() == NULL_PTR);  // Delete
+          uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
+          if (lsn_offset <= t->xc->begin) {
+            goto handle_visible;
+          }
+        }
+        goto handle_invisible;
       }
+    handle_visible:
+      if (out_oid) {
+        *out_oid = oid;
+      }
+      co_return t->DoTupleRead(cur_obj->GetPinnedTuple(), &value);
+
+    handle_invisible:
       ptr = tentative_next;
       prev_obj = cur_obj;
     }
@@ -468,19 +519,69 @@ start_over:
       tentative_next = cur_obj->GetNextVolatile();
       ASSERT(tentative_next.asi_type() == 0);
 
-      bool retry = false;
-      bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
-      if (retry) {
-        goto start_over;
-      }
-      if (visible) {
-        tuple = cur_obj->GetPinnedTuple();
-        volatile_write(rc._val, t->DoTupleRead(tuple, &value)._val);
-        if (out_oid) {
-          *out_oid = oid;
+      //bool retry = false;
+      //bool visible = oidmgr->TestVisibility(cur_obj, visitor_xc, retry);
+      {
+        fat_ptr clsn = cur_obj->GetClsn();
+        if (clsn == NULL_PTR) {
+          ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
+          // dead tuple that was (or about to be) unlinked, start over
+          goto start_over;
         }
-        co_return rc;
+        uint16_t asi_type = clsn.asi_type();
+        ALWAYS_ASSERT(asi_type == fat_ptr::ASI_XID || asi_type == fat_ptr::ASI_LOG);
+
+        if (asi_type == fat_ptr::ASI_XID) {  // in-flight
+          XID holder_xid = XID::from_ptr(clsn);
+          // Dirty data made by me is visible!
+          if (holder_xid == t->xc->owner) {
+            ASSERT(!cur_obj->GetNextVolatile().offset() ||
+                   ((Object *)cur_obj->GetNextVolatile().offset())
+                           ->GetClsn()
+                           .asi_type() == fat_ptr::ASI_LOG);
+            ASSERT(!config::is_backup_srv() || (config::command_log && config::replay_threads));
+            goto handle_visible;
+          }
+          auto *holder = TXN::xid_get_context(holder_xid);
+          if (!holder) {
+            goto start_over;
+          }
+
+          auto state = volatile_read(holder->state);
+          auto owner = volatile_read(holder->owner);
+
+          // context still valid for this XID?
+          if (owner != holder_xid) {
+            goto start_over;
+          }
+
+          if (state == TXN::TXN_CMMTD) {
+            ASSERT(volatile_read(holder->end));
+            ASSERT(owner == holder_xid);
+            if (holder->end < t->xc->begin) {
+              goto handle_visible;
+            }
+            goto handle_invisible;
+          }
+        } else {
+          // Already committed, now do visibility test
+          ASSERT(cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_LOG ||
+                 cur_obj->GetPersistentAddress().asi_type() == fat_ptr::ASI_CHK ||
+                 cur_obj->GetPersistentAddress() == NULL_PTR);  // Delete
+          uint64_t lsn_offset = LSN::from_ptr(clsn).offset();
+          if (lsn_offset <= t->xc->begin) {
+            goto handle_visible;
+          }
+        }
+        goto handle_invisible;
       }
+    handle_visible:
+      if (out_oid) {
+        *out_oid = oid;
+      }
+      co_return t->DoTupleRead(cur_obj->GetPinnedTuple(), &value);
+
+    handle_invisible:
       ptr = tentative_next;
       prev_obj = cur_obj;
     }
