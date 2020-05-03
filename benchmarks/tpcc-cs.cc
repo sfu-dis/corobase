@@ -1189,6 +1189,9 @@ void tpcc_cs_worker::MyWork(char *) {
 }
 
 void tpcc_cs_worker::PipelineScheduler() {
+#ifdef BATCH_SAME_TRX
+  LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactoins";
+#endif
   CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
     sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
   memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
@@ -1214,13 +1217,17 @@ void tpcc_cs_worker::PipelineScheduler() {
   while (running) {
     if (handles[i].done()) {
       rcs[i] = handles[i].promise().get_return_value();
+#ifdef CORO_BATCH_COMMIT
+      if (!rcs[i].IsAbort()) {
+        rcs[i] = db->Commit(&transactions[i]);
+      }
+#endif
       finish_workload(rcs[i], workload_idxs[i], t);
       handles[i].destroy();
 
       uint32_t workload_idx = fetch_workload();
       workload_idxs[i] = workload_idx;
       handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
-      handles[i].resume();
     } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
       handles[i].resume();
     } else {
