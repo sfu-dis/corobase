@@ -721,6 +721,7 @@ start_over:
     ASSERT(holder);
     auto state = volatile_read(holder->state);
     auto owner = volatile_read(holder->owner);
+    auto holder_lsn = volatile_read(holder->end);
     holder = NULL;  // use cached values instead!
 
     // context still valid for this XID?
@@ -729,6 +730,11 @@ start_over:
     }
     ASSERT(holder_xid != updater_xid);
     if (state == TXN::TXN_CMMTD) {
+#ifndef RC
+   if (holder_lsn >= updater_xc->begin) {
+     return NULL_PTR;
+   }
+#endif
       // Allow installing a new version if the tx committed (might
       // still hasn't finished post-commit). Note that the caller
       // (ie do_tree_put) should look at the clsn field of the
