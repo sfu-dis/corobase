@@ -203,8 +203,9 @@ public:
       ermia::varstr tuple_value;
       ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
           co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
+      bool more = co_await scan_it.init_or_next</*IsNext=*/false>();
       if (!ermia::config::index_probe_only) {
-        while (co_await scan_it.EmitAndAdvance()) {
+        while (more) {
           ermia::OID oid = scan_it.value();
           ALWAYS_ASSERT(oid != ermia::INVALID_OID);
           // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), oid, xc);
@@ -217,10 +218,12 @@ public:
           // TODO(lujc): sometimes return RC_FALSE, no value?
           // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
+          more = co_await scan_it.init_or_next</*IsNext=*/true>();
         }
       } else {
-        while (co_await scan_it.EmitAndAdvance()) {
+        while (more) {
           MARK_REFERENCED(scan_it.value());
+          more = co_await scan_it.init_or_next</*IsNext=*/true>();
         }
       }
     }

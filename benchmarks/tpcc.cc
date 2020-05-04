@@ -289,23 +289,25 @@ rc_t tpcc_worker::txn_payment() {
               &tbl_customer_name_idx(customerWarehouseID)->GetMasstree(),
               txn->GetXIDContext(), Encode(str(Size(k_c_idx_0)), k_c_idx_0),
               &Encode(str(Size(k_c_idx_1)), k_c_idx_1));
-      while (iter.EmitAndAdvance()) {
-          ASSERT(iter.tuple_);
-          rc = txn->DoTupleRead(iter.tuple_, &valptr);
+      bool more = iter.init_or_next</*IsNext=*/false>();
+      while (more) {
+        if (iter.tuple()) {
+          rc = txn->DoTupleRead(iter.tuple(), &valptr);
           if (rc._val == RC_TRUE) {
-              c.Invoke(iter.sinfo_.ka.full_string().data(),
-                       iter.sinfo_.ka.full_string().length(), valptr);
+              c.Invoke(iter.key().data(),
+                       iter.key().length(), valptr);
           }
+        }
+        more = iter.init_or_next</*IsNext=*/true>();
       }
     } else {
-      static_limit_callback<NMaxCustomerIdxScanElems> d(s_arena.get(), true);
+      // static_limit_callback<NMaxCustomerIdxScanElems> d(s_arena.get(), true);
       TryCatch(tbl_customer_name_idx(customerWarehouseID)
                     ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
                            &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
     }
 
     /*
-
     ALWAYS_ASSERT(c.size() == d.size());
 
     for (uint32_t i = 0; i < c.size(); ++i) {

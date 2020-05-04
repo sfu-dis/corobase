@@ -478,14 +478,10 @@ public:
                                   Masstree::forward_scan_helper>::type;
     scan_helper_t helper_;
 
-    ermia::dbtuple *tuple_;
-
    private:
+    ermia::dbtuple *tuple_;
     mbtree<P> *btr_;
-
     int scancount_;
-
-    OID value_;
 
   public:
    ScanIterator(TXN::xid_context *xc, mbtree<P> *btr, const key_type &lower,
@@ -495,6 +491,10 @@ public:
          xc_(xc),
          tuple_(nullptr),
          btr_(btr) {}
+   int count() const { return scancount_; }
+
+   ermia::dbtuple *tuple() const { return tuple_; }
+   Masstree::Str key() { return sinfo_.ka.full_string(); }
 
    static PROMISE(ScanIterator<IsReverse>) factory(
           mbtree<P> *mbtree,
@@ -520,12 +520,15 @@ public:
      RETURN scan_iterator;
    }
 
-   PROMISE(bool) EmitAndAdvance() {
+   template <bool IsNext>
+   PROMISE(bool) init_or_next() {
        threadinfo ti(xc_->begin_epoch);
       // See if the value is visible
-      bool has_value = AWAIT btr_->get_table()->scan_next_value(helper_, scanner_, xc_, ti, &sinfo_);
-      if (likely(has_value)) {
+      bool more = AWAIT btr_->get_table()->template scan_init_or_next_value<IsNext>(
+              helper_, scanner_, xc_, ti, &sinfo_);
+      if (more) {
         scancount_++;
+        // scan_next_value advance the ka, but does not advance sinfo_.entry
         ermia::OID oid = sinfo_.entry.value();
         // Caller responsible for the final vetting using
         // transaction::DoTupleRead
@@ -537,7 +540,7 @@ public:
       } else {
         tuple_ = nullptr;
       }
-      RETURN has_value;
+      RETURN more;
     }
   };
 
@@ -555,10 +558,7 @@ public:
 
     private:
       mbtree<P> *btr_;
-
       int scancount_;
-      
-      OID value_;
 
     public:
      coro_ScanIterator(TXN::xid_context *xc, mbtree<P> *btr,
@@ -567,35 +567,21 @@ public:
            scanner_(btr, upper),
            xc_(xc),
            btr_(btr),
-           scancount_(0),
-           value_(ermia::INVALID_OID) {}
+           scancount_(0) {}
 //     coro_ScanIterator(const coro_ScanIterator &) = delete;
 //     coro_ScanIterator& operator=(const coro_ScanIterator &) = delete;
- 
-     int count() const {
-       return scancount_;
-     }
 
-     OID value() const {
-       return value_;
-     }
+     int count() const { return scancount_; }
 
-     // TODO(lujc): key() {}
+     OID value() const { return sinfo_.entry.value(); }
+     Masstree::Str key() { return sinfo_.ka.full_string(); }
 
-     oid_array *tuple_array() const {
-       return btr_->tuple_array_;
-     }
-
-     oid_array *pdest_array() const {
-       return btr_->pdest_array_;
-     }
-
-     scan_helper_t & helper() {
-       return helper_;
-     }
+     oid_array *tuple_array() const { return btr_->tuple_array_; }
+     oid_array *pdest_array() const { return btr_->pdest_array_; }
 
      // Return false if there is no more entries and in thie case value is invalid.
-     ermia::dia::generator<bool> EmitAndAdvance() {
+     template<bool IsNext>
+     ermia::dia::generator<bool> init_or_next() {
        typedef typename P::ikey_type ikey_type;
        typedef typename node_type::key_type key_type;
        typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
@@ -611,21 +597,20 @@ public:
 
        threadinfo ti(xc_->begin_epoch);
 
+       if (IsNext) {
+         stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
+         // state = stack[stackpos].find_next(helper_, ka, entry);
+         state = mystack_type::scan_find_next;
+       }
+
        while(1) {
          switch (state) {
            case mystack_type::scan_emit: { // surpress cross init warning about v
              if (!scanner_.visit_value_no_callback(ka)) {
-               value_ = ermia::INVALID_OID;
                // TODO(lujc): assign full key
                co_return false;
              }
-             value_ = entry.value();
              ++scancount_;
-
-             stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
-             // state = stack[stackpos].find_next(helper_, ka, entry);
-             state = mystack_type::scan_find_next;
-
              co_return true;
            } break;
 
