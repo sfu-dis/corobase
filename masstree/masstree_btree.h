@@ -466,24 +466,78 @@ public:
   template <bool Reverse> class low_level_iterator_scanner;
   template <typename F> class low_level_search_range_callback_wrapper;
 
-  struct ScanIterator {
-    Masstree::scan_info<masstree_params> sinfo;
-    low_level_iterator_scanner<false> scanner;
-    TXN::xid_context *xc;
-    mbtree<P> *btr;
+  template <bool IsReverse>
+  class ScanIterator {
+   public:
+    Masstree::scan_info<masstree_params> sinfo_;
+    low_level_iterator_scanner<IsReverse> scanner_;
+    TXN::xid_context *xc_;
 
-    ScanIterator(TXN::xid_context *xc, mbtree<P> *btr, const key_type &lower, const key_type *upper)
-    : sinfo(btr->get_table(), lower), scanner(btr, upper), xc(xc), btr(btr) {
-      threadinfo ti(xc->begin_epoch);
-      // After scan_to_initial, scanner will be ready to output tuples
-      btr->get_table()->scan_to_initial(lcdf::Str(lower.data(), lower.size()),
-                                   true, scanner, xc, ti, &sinfo);
-    }
+    using scan_helper_t =
+        typename std::conditional<IsReverse, Masstree::reverse_scan_helper,
+                                  Masstree::forward_scan_helper>::type;
+    scan_helper_t helper_;
 
-    bool NextValue(varstr &valptr) {
-      threadinfo ti(xc->begin_epoch);
-      // Caller responsible for the final vetting using transaction::DoTupleRead
-      return btr->get_table()->scan_next_value(scanner, xc, ti, &sinfo);
+    ermia::dbtuple *tuple_;
+
+   private:
+    mbtree<P> *btr_;
+
+    int scancount_;
+
+    OID value_;
+
+  public:
+   ScanIterator(TXN::xid_context *xc, mbtree<P> *btr, const key_type &lower,
+                const key_type *upper)
+       : sinfo_(btr->get_table(), lower),
+         scanner_(btr, upper),
+         xc_(xc),
+         tuple_(nullptr),
+         btr_(btr) {}
+
+   static PROMISE(ScanIterator<IsReverse>) factory(
+          mbtree<P> *mbtree,
+          ermia::TXN::xid_context *xc,
+          const ermia::varstr &start_key,
+          const ermia::varstr *end_key,
+          bool emit_firstkey=true) {
+     ScanIterator<IsReverse> scan_iterator(xc, mbtree, start_key, end_key);
+     threadinfo ti(xc->begin_epoch);
+
+     auto &si = scan_iterator.sinfo_;
+     auto &scanner = scan_iterator.scanner_;
+
+     while (1) {
+       si.state = AWAIT si.stack[si.stackpos].find_initial(scan_iterator.helper_, si.ka, emit_firstkey, si.entry, ti);
+       scanner.visit_leaf(si.stack[si.stackpos], si.ka, ti);
+       if (si.state != Masstree::scan_info<P>::mystack_type::scan_down)
+         break;
+       si.ka.shift();
+       ++si.stackpos;
+     }
+
+     RETURN scan_iterator;
+   }
+
+   PROMISE(bool) EmitAndAdvance() {
+       threadinfo ti(xc_->begin_epoch);
+      // See if the value is visible
+      bool has_value = AWAIT btr_->get_table()->scan_next_value(helper_, scanner_, xc_, ti, &sinfo_);
+      if (likely(has_value)) {
+        scancount_++;
+        ermia::OID oid = sinfo_.entry.value();
+        // Caller responsible for the final vetting using
+        // transaction::DoTupleRead
+        if (unlikely(ermia::config::is_backup_srv())) {
+          tuple_ = ermia::oidmgr->BackupGetVersion(btr_->tuple_array_, btr_->pdest_array_, oid, xc_);
+        } else {
+          tuple_ = AWAIT ermia::oidmgr->oid_get_version(btr_->tuple_array_, oid, xc_);
+        }
+      } else {
+        tuple_ = nullptr;
+      }
+      RETURN has_value;
     }
   };
 
