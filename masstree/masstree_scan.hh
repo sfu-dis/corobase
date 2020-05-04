@@ -307,18 +307,22 @@ changed:
 }
 
 template <typename P>
-template <typename H, typename F>
-PROMISE(bool) basic_table<P>::scan_next_value(H helper, F &scanner,
-                                              ermia::TXN::xid_context *xc, threadinfo &ti,
-                                              scan_info<P> *si) const {
+template <bool IsNext, typename H, typename F>
+PROMISE(bool) basic_table<P>::scan_init_or_next_value(H helper, F &scanner,
+                                                      ermia::TXN::xid_context *xc,
+                                                      threadinfo &ti,
+                                                      scan_info<P> *si) const {
+  if (IsNext) {
+    si->stack[si->stackpos].ki_ = helper.next(si->stack[si->stackpos].ki_);
+    si->state = si->stack[si->stackpos].find_next(helper, si->ka, si->entry);
+  }
+
   while (1) {
     switch (si->state) {
     case scan_info<P>::mystack_type::scan_emit: { 
       if (!scanner.visit_value_no_callback(si->ka)) {
         RETURN false;
       }
-      si->stack[si->stackpos].ki_ = helper.next(si->stack[si->stackpos].ki_);
-      si->state = si->stack[si->stackpos].find_next(helper, si->ka, si->entry);
       RETURN true;
     } break;
 

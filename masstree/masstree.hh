@@ -110,10 +110,11 @@ public:
   PROMISE(int) scan_oid(H helper, Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
-  template <typename H, typename F>
-  PROMISE(bool) scan_next_value(H helper, F &scanner,
-                                ermia::TXN::xid_context *xc, threadinfo &ti,
-                                scan_info<P> *si) const;
+  template <bool IsNext, typename H, typename F>
+  PROMISE(bool) scan_init_or_next_value(H helper, F &scanner,
+                                       ermia::TXN::xid_context *xc,
+                                       threadinfo &ti,
+                                       scan_info<P> *si) const;
 
   friend class unlocked_tcursor<P>;
   friend class tcursor<P>;
