@@ -152,7 +152,10 @@ void transaction::Abort() {
   oidmgr->PrimaryTupleUnlink(w.entry);
   obj->SetClsn(NULL_PTR);
   ASSERT(obj->GetAllocateEpoch() == xc->begin_epoch);
-  MM::deallocate(entry);
+  if (config::tls_alloc_pmem_data)
+    MM::deallocate_pmem(entry);
+  else
+    MM::deallocate(entry);
   }
 
   // Read-only tx on a safesnap won't have log

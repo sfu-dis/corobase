@@ -12,6 +12,8 @@ namespace config {
 uint32_t arena_size_mb = 4;
 bool threadpool = true;
 bool tls_alloc = true;
+bool tls_alloc_pmem_index = false;
+bool tls_alloc_pmem_data = false;
 bool verbose = true;
 bool coro_tx = false;
 uint32_t coro_batch_size = 1;

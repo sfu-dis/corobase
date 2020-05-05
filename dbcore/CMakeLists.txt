@@ -15,6 +15,7 @@ set(DBCORE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/rdma.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/serial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/size-encode.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/sm-pmem-alloc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-alloc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-chkpt.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sm-cmd-log.cpp

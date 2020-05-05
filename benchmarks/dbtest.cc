@@ -20,6 +20,8 @@
 DEFINE_bool(threadpool, true, "Whether to use ERMIA thread pool (no oversubscription)");
 DEFINE_uint64(arena_size_mb, 4, "Size of transaction arena (private workspace) in MB");
 DEFINE_bool(tls_alloc, true, "Whether to use the TLS allocator defined in sm-alloc.h");
+DEFINE_bool(tls_alloc_pmem_index, false, "Whether to use the TLS PMEM allocator defined in sm-alloc.h for index");
+DEFINE_bool(tls_alloc_pmem_data, false, "Whether to use the TLS PMEM allocator defined in sm-alloc.h for data");
 DEFINE_bool(htt, true, "Whether the HW has hyper-threading enabled."
   "Ignored if auto-detection of physical cores succeeded.");
 DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per physical core as transaction workers. Ignored under DIA.");
@@ -178,6 +180,8 @@ int main(int argc, char **argv) {
 
   ermia::config::threadpool = FLAGS_threadpool;
   ermia::config::tls_alloc = FLAGS_tls_alloc;
+  ermia::config::tls_alloc_pmem_index = FLAGS_tls_alloc_pmem_index;
+  ermia::config::tls_alloc_pmem_data = FLAGS_tls_alloc_pmem_data;
   ermia::config::benchmark = FLAGS_benchmark;
   ermia::config::state = ermia::config::kStateLoading;
   ermia::config::print_cpu_util = FLAGS_print_cpu_util;
@@ -418,7 +422,9 @@ int main(int argc, char **argv) {
   std::cerr << "  read_view_stat_file     : " << ermia::config::read_view_stat_file << std::endl;
   std::cerr << "  threadpool        : " << ermia::config::threadpool << std::endl;
   std::cerr << "  tmpfs-dir         : " << ermia::config::tmpfs_dir << std::endl;
-  std::cerr << "  tls-alloc         : " << FLAGS_tls_alloc << std::endl;
+  std::cerr << "  tls-alloc         : " << ermia::config::tls_alloc << std::endl;
+  std::cerr << "  tls-alloc-pmem-index    : " << ermia::config::tls_alloc_pmem_index << std::endl;
+  std::cerr << "  tls-alloc-pmem-data     : " << ermia::config::tls_alloc_pmem_data << std::endl;
   std::cerr << "  total-threads     : " << ermia::config::threads << std::endl;
 #ifdef USE_VARINT_ENCODING
   std::cerr << "  var-encode        : yes" << std::endl;
@@ -456,7 +462,11 @@ int main(int argc, char **argv) {
   }
 
   system("rm -rf /dev/shm/$(whoami)/ermia-log/*");
-  ermia::MM::prepare_node_memory();
+  if (!(ermia::config::tls_alloc_pmem_index && ermia::config::tls_alloc_pmem_data))
+    ermia::MM::prepare_node_memory();
+  system("rm -rf /mnt/pmem*/corobase/*");
+  if (ermia::config::tls_alloc_pmem_index || ermia::config::tls_alloc_pmem_data)
+    ermia::MM::prepare_node_pmem();
   std::vector<std::string> bench_toks = split_ws(FLAGS_benchmark_options);
   argc = 1 + bench_toks.size();
   char *new_argv[argc];
