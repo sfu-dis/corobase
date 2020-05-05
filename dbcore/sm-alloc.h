@@ -103,6 +103,11 @@ struct thread_data {
   uint64_t counts;
 };
 
+void prepare_node_pmem();
+void *allocate_pmem(size_t size);
+void deallocate_pmem(fat_ptr p);
+void *allocate_onnode_pmem(size_t size);
+
 void prepare_node_memory();
 void *allocate(size_t size);
 void deallocate(fat_ptr p);

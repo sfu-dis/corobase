@@ -7,9 +7,12 @@ project(ermia)
 cmake_minimum_required(VERSION 2.8)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -fcoroutines-ts -stdlib=libc++ -Woverloaded-virtual -Werror=reorder -Wno-address-of-packed-member")
-set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags")
+set(LINK_FLAGS "-lc++abi -libverbs -lnuma -lpthread -pthread -lrt -lglog -lgflags -lpmem")
 link_libraries(${LINK_FLAGS})
 
+# Hardcode dependencies path for dis3
+include_directories(/opt/dis/pmdk/include/)
+link_directories(/opt/dis/pmdk/lib)
 include_directories(/opt/dis/llvm-libc++/include/c++/v1)
 link_directories(/opt/dis/llvm-libc++/lib)
 

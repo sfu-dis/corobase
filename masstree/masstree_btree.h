@@ -88,13 +88,19 @@ public:
 
   // memory allocation
   void *allocate(size_t sz, memtag) {
-    Object *obj = (Object *)MM::allocate(sz + sizeof(Object));
+    Object *obj;
+    if (ermia::config::tls_alloc_pmem_index)
+      obj = (Object *)MM::allocate_pmem(sz + sizeof(Object));
+    else
+      obj = (Object *)MM::allocate(sz + sizeof(Object));
     new (obj) Object(NULL_PTR, NULL_PTR, epoch_, true);
     return obj->GetPayload();
   }
   void deallocate(void *p, size_t sz, memtag) {
-    MM::deallocate(
-        fat_ptr::make((char *)p - sizeof(Object), encode_size_aligned(sz)));
+    if (ermia::config::tls_alloc_pmem_index) 
+      MM::deallocate_pmem(fat_ptr::make((char *)p - sizeof(Object), encode_size_aligned(sz)));
+    else
+      MM::deallocate(fat_ptr::make((char *)p - sizeof(Object), encode_size_aligned(sz)));
   }
   void deallocate_rcu(void *p, size_t sz, memtag m) {
     deallocate(p, sz, m); // FIXME(tzwang): add rcu callback support

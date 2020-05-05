@@ -815,7 +815,10 @@ forward:
         prev_obj_ptr = head;
         goto check_prev;
       } else {
-        MM::deallocate(new_obj_ptr);
+	if (config::tls_alloc_pmem_data)
+          MM::deallocate_pmem(new_obj_ptr);
+	else
+          MM::deallocate(new_obj_ptr);
       }
     }
     prev_obj_ptr = NULL_PTR;

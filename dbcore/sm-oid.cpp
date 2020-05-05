@@ -790,7 +790,10 @@ install:
       }
       return head;
     } else {
-      MM::deallocate(*new_obj_ptr);
+      if (config::tls_alloc_pmem_data)
+        MM::deallocate_pmem(*new_obj_ptr);
+      else
+        MM::deallocate(*new_obj_ptr);
     }
   }
   return NULL_PTR;
@@ -853,7 +856,11 @@ retry:
       size_t sz = sizeof(Object) + sizeof(dbtuple) +
                   decode_size_aligned(ptr.size_code());
       sz = align_up(sz);
-      Object *obj = (Object *)MM::allocate(sz);
+      Object *obj;
+      if (config::tls_alloc_pmem_data)
+        obj = (Object *)MM::allocate_pmem(sz);
+      else
+        obj = (Object *)MM::allocate(sz);
       // FIXME(tzwang): figure out how GC/epoch works with this
       new (obj) Object(ptr, NULL_PTR, 0, false);  // Update next_ later
       // TODO(tzawng): allow pinning the header part only (ie the varstr
@@ -901,7 +908,10 @@ retry:
       while (to_free != active_head_ptr) {
         Object *to_free_obj = (Object *)to_free.offset();
         fat_ptr next = to_free_obj->GetNextVolatile();
-        MM::deallocate(to_free);
+        if (config::tls_alloc_pmem_data)
+          MM::deallocate_pmem(to_free);
+	else
+	  MM::deallocate(to_free);
         to_free = next;
       }
       goto retry;
@@ -934,7 +944,10 @@ void sm_oid_mgr::oid_get_version_backup(fat_ptr &ptr,
   if (ptr.asi_type() == fat_ptr::ASI_LOG) {
     ASSERT(ptr.size_code() != INVALID_SIZE_CODE);
     size_t alloc_sz = align_up(decode_size_aligned(ptr.size_code()) + sizeof(Object));
-    cur_obj = (Object *)MM::allocate(alloc_sz);
+    if (config::tls_alloc_pmem_data)
+      cur_obj = (Object *)MM::allocate_pmem(alloc_sz);
+    else
+      cur_obj = (Object *)MM::allocate(alloc_sz);
     new (cur_obj) Object(ptr, NULL_PTR, visitor_xc->begin_epoch, false);
     cur_obj->Pin();  // After this next_pdest_ is valid
     ASSERT(cur_obj->GetClsn().offset());
@@ -952,7 +965,10 @@ void sm_oid_mgr::oid_get_version_backup(fat_ptr &ptr,
       ASSERT(cur_obj);
       ASSERT(cur_obj->GetClsn().offset() == ptr.offset());
       ASSERT(cur_obj->GetPersistentAddress().offset() == ptr.offset());
-      MM::deallocate(newptr);
+      if (config::tls_alloc_pmem_data)
+        MM::deallocate_pmem(newptr);
+      else
+        MM::deallocate(newptr);
     }
   } else {
     ASSERT(ptr.asi_type() == 0);

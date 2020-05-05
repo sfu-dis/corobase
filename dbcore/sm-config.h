@@ -19,6 +19,8 @@ static const uint64_t GB = MB * 1024;
 
 // Common settings
 extern bool tls_alloc;
+extern bool tls_alloc_pmem_index;
+extern bool tls_alloc_pmem_data;
 extern bool threadpool;
 extern bool verbose;
 extern std::string benchmark;
