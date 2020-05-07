@@ -38,7 +38,7 @@ void prepare_node_pmem() {
       node_pmem[i] = (char *)pmem_map_file(pmem_paths[i], config::node_memory_gb * config::GB,
 		                             PMEM_FILE_CREATE | PMEM_FILE_SPARSE, (S_IWUSR | S_IRUSR),
 					     &mmaped_len, &is_pmem);
-      //memset(node_pmem[i], 0, config::node_memory_gb * config::GB);
+      memset(node_pmem[i], 0, config::node_memory_gb * config::GB);
       ALWAYS_ASSERT(is_pmem);
       ALWAYS_ASSERT(mmaped_len == config::node_memory_gb * config::GB);
       ALWAYS_ASSERT(node_pmem[i]);
