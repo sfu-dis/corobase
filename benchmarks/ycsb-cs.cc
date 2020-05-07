@@ -15,11 +15,6 @@ public:
       const std::map<std::string, ermia::OrderedIndex *> &open_tables,
       spin_barrier *barrier_a, spin_barrier *barrier_b)
       : ycsb_base_worker(worker_id, seed, db, open_tables, barrier_a, barrier_b) {
-    transactions = (ermia::transaction*)malloc(sizeof(ermia::transaction) * ermia::config::coro_batch_size);
-    arenas = (ermia::str_arena*)malloc(sizeof(ermia::str_arena) * ermia::config::coro_batch_size);
-    for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
-      new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
-    }
   }
 
   // Essentially a coroutine scheduler that switches between active transactions
@@ -29,47 +24,11 @@ public:
     workload = get_workload();
     txn_counts.resize(workload.size());
 
-    const size_t batch_size = ermia::config::coro_batch_size;
-    std::vector<CoroTxnHandle> handles(batch_size);
-    std::vector<uint32_t> workload_idxs(batch_size);
-
-    barrier_a->count_down();
-    barrier_b->wait_for();
-    util::timer t;
-    while (running) {
-      ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
-
-      for(uint32_t i = 0; i < batch_size; i++) {
-        uint32_t workload_idx = fetch_workload();
-        workload_idxs[i] = workload_idx;
-        handles[i] = workload[workload_idx].coro_fn(this, i, begin_epoch).get_handle();
-      }
-
-      uint32_t todo_size = batch_size;
-      while (todo_size) {
-        for(uint32_t i = 0; i < batch_size; i++) {
-          if (handles[i]) {
-            if (handles[i].done()) {
-              finish_workload(handles[i].promise().get_return_value(), workload_idxs[i], t);
-              handles[i].destroy();
-              handles[i] = nullptr;
-              todo_size--;
-            } else if (handles[i].promise().callee_coro.done()) {
-              handles[i].resume();
-            } else {
-              handles[i].promise().callee_coro.resume();
-            }
-          }
-        }
-      }
-
-      const unsigned long old_seed = r.get_seed();
-      r.set_seed(old_seed);
-      // TODO: epoch exit correctly
-      ermia::MM::epoch_exit(0, begin_epoch);
-
-      if (ermia::config::index_probe_only)
-        arena->reset(); // GenerateKey(nullptr) uses global arena
+    if (ermia::config::coro_batch_schedule) {
+      //PipelineScheduler();
+      BatchScheduler();
+    } else {
+      Scheduler();
     }
   }
 
@@ -159,9 +118,11 @@ public:
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), sizeof(ycsb_kv::value));
     }
 
+#ifndef CORO_BATCH_COMMIT
     if (!ermia::config::index_probe_only) {
         TryCatchCoro(db->Commit(txn));
     }
+#endif
     co_return {RC_TRUE};
   }
 
@@ -200,7 +161,9 @@ public:
       TryCatchCoro(rc);
     }
 
+#ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));
+#endif
     co_return {RC_TRUE};
   }
 
@@ -226,7 +189,9 @@ public:
       // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
+#ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));
+#endif
     co_return {RC_TRUE};
   }
 
@@ -264,13 +229,11 @@ public:
         }
       }
     }
+#ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));
+#endif
     co_return {RC_TRUE};
   }
-
-private:
-  ermia::transaction *transactions;
-  ermia::str_arena *arenas;
 };
 
 void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv) {

@@ -1331,19 +1331,12 @@ class tpcc_cs_worker : public bench_worker, public tpcc_worker_mixin {
   virtual workload_desc_vec get_workload() const override;
   virtual void MyWork(char *) override;
 
-  void Scheduler();
-  void PipelineScheduler();
-  void BatchScheduler();
-
  protected:
   ALWAYS_INLINE ermia::varstr &str(ermia::str_arena &a, uint64_t size) { return *a.next(size); }
 
  private:
   const uint home_warehouse_id;
   int32_t last_no_o_ids[10];  // XXX(stephentu): hack
-  // NOTE: inter-transaction interleaving
-  ermia::transaction *transactions;
-  ermia::str_arena *arenas;
 };
 
 #endif // ADV_COROUTINE
