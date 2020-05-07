@@ -108,7 +108,9 @@ class ycsb_bench_runner : public bench_runner {
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
     uint64_t requested = g_initial_table_size;
-    uint64_t records_per_thread = std::max<uint64_t>(1, g_initial_table_size / ermia::config::worker_threads);
+    uint32_t nloaders = 
+      std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+    uint64_t records_per_thread = std::max<uint64_t>(1, g_initial_table_size / nloaders);
     g_initial_table_size = records_per_thread * ermia::config::worker_threads;
 
     if (ermia::config::verbose) {
@@ -117,7 +119,7 @@ class ycsb_bench_runner : public bench_runner {
     }
 
     std::vector<bench_loader *> ret;
-    for (uint32_t i = 0; i < ermia::config::worker_threads; ++i) {
+    for (uint32_t i = 0; i < nloaders; ++i) {
       ret.push_back(new ycsb_usertable_loader(0, db, open_tables, i));
     }
     return ret;
@@ -134,7 +136,9 @@ class ycsb_bench_runner : public bench_runner {
     util::fast_random r(8544290);
     std::vector<bench_worker *> ret;
     for (size_t i = 0; i < ermia::config::worker_threads; i++) {
-      ret.push_back(new WorkerType(i, r.next(), db, open_tables, &barrier_a, &barrier_b));
+      auto seed = r.next();
+      LOG(INFO) << "RND SEED: " << seed;
+      ret.push_back(new WorkerType(i, seed, db, open_tables, &barrier_a, &barrier_b));
     }
     return ret;
   }
