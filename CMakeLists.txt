@@ -73,9 +73,11 @@ add_library(thread_pool SHARED ${THREAD_POOL_SRC})
 # SI
 add_library(ermia_si SHARED ${LIB_ERMIA_SRC})
 set_target_properties(ermia_si PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX")
+#set_target_properties(ermia_si PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 
 add_executable(ermia_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX")
+#set_target_properties(ermia_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 target_link_libraries(ermia_SI ermia_si thread_pool)
 
 # SI with coroutine
