@@ -672,3 +672,182 @@ const tx_stat_map bench_worker::get_cmdlog_txn_counts() const {
     m[workload[i].name] = txn_counts[i];
   return m;
 }
+
+void bench_worker::PipelineScheduler() {
+#ifdef BATCH_SAME_TRX
+  LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactoins";
+#endif
+  CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
+    sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
+
+  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(
+    sizeof(uint32_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
+  rc_t *rcs = (rc_t *)numa_alloc_onnode(
+    sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
+  barrier_a->count_down();
+  barrier_b->wait_for();
+  util::timer t;
+
+  for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
+    uint32_t workload_idx = fetch_workload();
+    workload_idxs[i] = workload_idx;
+    handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+  }
+
+  uint32_t i = 0;
+  ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+  while (running) {
+    if (handles[i].done()) {
+      rcs[i] = handles[i].promise().get_return_value();
+#ifdef CORO_BATCH_COMMIT
+      if (!rcs[i].IsAbort()) {
+        rcs[i] = db->Commit(&transactions[i]);
+      }
+#endif
+      finish_workload(rcs[i], workload_idxs[i], t);
+      handles[i].destroy();
+
+      uint32_t workload_idx = fetch_workload();
+      workload_idxs[i] = workload_idx;
+      handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+    } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
+      handles[i].resume();
+    } else {
+      handles[i].promise().callee_coro.resume();
+    }
+
+    i = (i + 1) & (ermia::config::coro_batch_size - 1);
+  }
+  ermia::MM::epoch_exit(0, begin_epoch);
+}
+
+
+void bench_worker::Scheduler() {
+  CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
+    sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
+
+  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(
+    sizeof(uint32_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
+  rc_t *rcs = (rc_t *)numa_alloc_onnode(
+    sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
+  barrier_a->count_down();
+  barrier_b->wait_for();
+  util::timer t;
+
+  while (running) {
+    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+    uint32_t todo = ermia::config::coro_batch_size;
+    for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
+      uint32_t workload_idx = fetch_workload();
+      workload_idxs[i] = workload_idx;
+      handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+    }
+
+    while (todo) {
+      for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
+        if (!handles[i]) {
+          continue;
+        }
+        if (handles[i].done()) {
+          rcs[i] = handles[i].promise().get_return_value();
+          finish_workload(rcs[i], workload_idxs[i], t);
+          handles[i].destroy();
+          handles[i] = nullptr;
+          --todo;
+        } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
+          handles[i].resume();
+        } else {
+          handles[i].promise().callee_coro.resume();
+        }
+      }
+    }
+
+    // TODO: epoch exit correctly
+    ermia::MM::epoch_exit(0, begin_epoch);
+  }
+}
+
+void bench_worker::BatchScheduler() {
+  CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
+    sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
+
+  rc_t *rcs = (rc_t *)numa_alloc_onnode(
+    sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
+#ifndef BATCH_SAME_TRX
+  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(
+    sizeof(uint32_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+#endif
+
+  barrier_a->count_down();
+  barrier_b->wait_for();
+  util::timer t;
+
+  while (running) {
+    ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
+    uint32_t todo = ermia::config::coro_batch_size;
+    uint32_t workload_idx = -1;
+#ifdef BATCH_SAME_TRX
+    workload_idx = fetch_workload();
+#endif
+
+    for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
+#ifndef BATCH_SAME_TRX
+      workload_idx = fetch_workload();
+      workload_idxs[i] = workload_idx;
+#endif
+      handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+    }
+
+    while (todo) {
+      for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
+        if (!handles[i]) {
+          continue;
+        }
+        if (handles[i].done()) {
+          rcs[i] = handles[i].promise().get_return_value();
+#ifndef CORO_BATCH_COMMIT
+#ifdef BATCH_SAME_TRX
+          finish_workload(rcs[i], workload_idx, t);
+#else
+          finish_workload(rcs[i], workload_idxs[i], t);
+#endif
+#endif
+          handles[i].destroy();
+          handles[i] = nullptr;
+          --todo;
+        } else if (!handles[i].promise().callee_coro || handles[i].promise().callee_coro.done()) {
+          handles[i].resume();
+        } else {
+          handles[i].promise().callee_coro.resume();
+        }
+      }
+    }
+
+#ifdef CORO_BATCH_COMMIT
+    for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
+      if (!rcs[i].IsAbort()) {
+        rcs[i] = db->Commit(&transactions[i]);
+      }
+      // No need to abort - TryCatchCond family of macros should have already
+#ifdef BATCH_SAME_TRX
+      finish_workload(rcs[i], workload_idx, t);
+#else
+      finish_workload(rcs[i], workload_idxs[i], t);
+#endif
+    }
+#endif
+
+    // TODO: epoch exit correctly
+    ermia::MM::epoch_exit(0, begin_epoch);
+  }
+}
+
+

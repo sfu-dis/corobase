@@ -104,6 +104,18 @@ class bench_worker : public ermia::thread::Runner {
     } else {
       TryImpersonate();
     }
+
+    if (ermia::config::coro_tx) {
+      transactions = (ermia::transaction*)numa_alloc_onnode(
+        sizeof(ermia::transaction) * ermia::config::coro_batch_size,
+        numa_node_of_cpu(sched_getcpu()));
+      arenas = (ermia::str_arena*)numa_alloc_onnode(
+        sizeof(ermia::str_arena) * ermia::config::coro_batch_size,
+        numa_node_of_cpu(sched_getcpu()));
+      for (auto i = 0; i < ermia::config::coro_batch_size; ++i) {
+        new (arenas + i) ermia::str_arena(ermia::config::arena_size_mb);
+      }
+    }
   }
   ~bench_worker() {}
 
@@ -188,6 +200,11 @@ class bench_worker : public ermia::thread::Runner {
   spin_barrier *const barrier_a;
   spin_barrier *const barrier_b;
 
+  // coroutine schedulers
+  void Scheduler();
+  void PipelineScheduler();
+  void BatchScheduler();
+
  private:
   uint64_t latency_numer_us;
   unsigned backoff_shifts;
@@ -208,6 +225,10 @@ class bench_worker : public ermia::thread::Runner {
 
   ermia::transaction *txn_obj_buf;
   ermia::str_arena *arena;
+
+  // NOTE: inter-transaction interleaving
+  ermia::transaction *transactions;
+  ermia::str_arena *arenas;
 };
 
 class bench_runner {
