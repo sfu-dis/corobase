@@ -107,8 +107,16 @@ public:
 
     if (ycsb_workload.scan_percent()) {
       if (g_read_txn_type == ReadTransactionType::AdvCoro) {
-        w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0,
-                    nullptr, nullptr,TxnScan));
+          if (ermia::config::scan_with_it) {
+              w.push_back(
+                  workload_desc("ScanWithIterator",
+                                double(ycsb_workload.scan_percent()) / 100.0,
+                                nullptr, nullptr, TxnScanWithIterator));
+          } else {
+              w.push_back(workload_desc(
+                  "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr,
+                  nullptr, TxnScan));
+          }
       } else {
         LOG(FATAL) << "Scan txn type must be adv-coro";
       }
@@ -127,6 +135,10 @@ public:
 
   static task<rc_t> TxnScan(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
       return static_cast<ycsb_cs_adv_worker *>(w)->txn_scan(idx, begin_epoch);
+  }
+
+  static task<rc_t> TxnScanWithIterator(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
+      return static_cast<ycsb_cs_adv_worker *>(w)->txn_scan_with_iterator(idx, begin_epoch);
   }
 
 private:
@@ -205,6 +217,50 @@ private:
 #else
         // TODO(lujc): sometimes return RC_FALSE, no value?
         // ALWAYS_ASSERT(rc._val == RC_TRUE);
+#endif
+    }
+
+    TryCatchCoro(db->Commit(txn));
+    co_return {RC_TRUE};
+  }
+
+  task<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
+    ermia::transaction *txn = nullptr;
+    txn = &transactions[idx];
+    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
+                                     ermia::transaction::TXN_FLAG_READ_ONLY,
+                                 *arena);
+    ermia::TXN::xid_context *xc = txn->GetXIDContext();
+    xc->begin_epoch = begin_epoch;
+
+    rc_t rc = rc_t{RC_INVALID};
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      ScanRange range = GenerateScanRange(txn);
+      ycsb_scan_callback callback;
+      ermia::varstr valptr;
+      auto iter = co_await ermia::ConcurrentMasstree::ScanIterator<
+          /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
+                                         txn->GetXIDContext(),
+                                         range.start_key, &range.end_key);
+      bool more = co_await iter.init_or_next</*IsNext=*/false>();
+      while (more) {
+          if (!ermia::config::index_probe_only) {
+              if (iter.tuple()) {
+                  rc = txn->DoTupleRead(iter.tuple(), &valptr);
+                  if (rc._val == RC_TRUE) {
+                      callback.Invoke(iter.key().data(), iter.key().length(),
+                                      valptr);
+                  }
+              }
+          }
+          more = co_await iter.init_or_next</*IsNext=*/true>();
+      }
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatchCoro(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+      // TODO(lujc): sometimes return RC_FALSE, no value?
+      // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
 
