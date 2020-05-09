@@ -1009,7 +1009,7 @@ retry:
 
 retry2:
   sense = false;
-  n[sense] = lp.root_;
+  n[sense] = root;
   while (1) {
     v[sense] = n[sense]->stable_annotated(ti.stable_fence());
     if (!v[sense].has_split()) break;
