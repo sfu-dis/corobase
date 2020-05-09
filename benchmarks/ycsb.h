@@ -107,13 +107,15 @@ class ycsb_bench_runner : public bench_runner {
 
  protected:
   virtual std::vector<bench_loader *> make_loaders() {
+    uint64_t requested = g_initial_table_size;
     uint32_t nloaders = 
 	    std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
     uint64_t records_per_thread = std::max<uint64_t>(1, g_initial_table_size / nloaders);
+    g_initial_table_size = records_per_thread * nloaders;
 
     if (ermia::config::verbose) {
-      std::cerr << "[INFO] requested for " << g_initial_table_size << " records, will load "
-           << records_per_thread * nloaders << std::endl;
+      std::cerr << "[INFO] requested for " << requested << " records, will load "
+           << g_initial_table_size << std::endl;
     }
 
     std::vector<bench_loader *> ret;
