@@ -53,7 +53,8 @@ void ycsb_create_db(ermia::Engine *db) {
 
 void ycsb_usertable_loader::load() {
   ermia::OrderedIndex *tbl = open_tables.at("USERTABLE");
-  int64_t to_insert = g_initial_table_size / ermia::config::worker_threads;
+  uint32_t nloaders = std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
+  int64_t to_insert = g_initial_table_size / nloaders;
   uint64_t start_key = loader_id * to_insert;
   uint64_t kBatchSize = 50;
 
@@ -150,6 +151,7 @@ void ycsb_parse_options(int argc, char **argv) {
         } else {
           LOG(FATAL) << "Wrong read transaction type " << std::string(optarg);
         }
+        break;
 
       case 'z':
         g_zipfian_theta = strtod(optarg, NULL);

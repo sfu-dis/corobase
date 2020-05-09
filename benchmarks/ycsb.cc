@@ -174,8 +174,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));
       // TODO(tzwang): add read/write_all_fields knobs
       rc_t rc = rc_t{RC_INVALID};
-      ermia::OID oid = ermia::INVALID_OID;
-      table_index->GetRecord(txn, rc, k, v, &oid);  // Read
+      table_index->GetRecord(txn, rc, k, v);  // Read
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC

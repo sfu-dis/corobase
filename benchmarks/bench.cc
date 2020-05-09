@@ -170,8 +170,8 @@ void bench_runner::run() {
       uint32_t done = 0;
       uint32_t n_running = 0;
     process:
-      // Use all the physical threads in the same socket to load (assuming 2HT
-      // per core)
+      // force bench_loader to use physical thread and use all the physical threads 
+      // in the same socket to load (assuming 2HT per core).
       uint32_t n_loader_threads =
         std::thread::hardware_concurrency() / (numa_max_node() + 1) / 2 * ermia::config::numa_nodes;
 
@@ -186,10 +186,6 @@ void bench_runner::run() {
         // run 10 threads on the first socket, we won't want the loader to be run
         // on a thread from socket 2. So limit the number of concurrently running
         // loaders to the number of workers.
-
-        // TODO(yongjunh): assgin loaders in tpcc workloads to hyperthreads in a
-        // correct manner. For now, limit the number of concurrently running
-        // loaders to the number of physical threads
         if (loader && !loader->IsImpersonated() &&
             n_running < n_loader_threads &&
             loader->TryImpersonate()) {
@@ -726,6 +722,12 @@ void bench_worker::PipelineScheduler() {
 
 
 void bench_worker::Scheduler() {
+#ifdef BATCH_SAME_TRX
+  LOG(FATAL) << "General scheduler doesn't work with batching same-type transactoins";
+#endif
+#ifdef CORO_BATCH_COMMIT
+  LOG(FATAL) << "General scheduler doesn't work with batching commits";
+#endif
   CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
     sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
   memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);

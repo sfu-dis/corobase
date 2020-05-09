@@ -36,7 +36,7 @@ else
   echo "logbuf_mb is set to $logbuf_mb";
 fi
 
-options="$exe $1 -verbose=0 -benchmark $bench -threads $threads -scale_factor $sf -seconds $runtime \
+options="$exe $1 -verbose=1 -benchmark $bench -threads $threads -scale_factor $sf -seconds $runtime \
   -log_data_dir $LOGDIR -log_buffer_mb=$logbuf_mb -log_segment_mb=16384 -parallel_loading"
 echo $options
 if [ "$bench" == "tpcc" ]; then
