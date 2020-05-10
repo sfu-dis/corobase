@@ -334,7 +334,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::UpdateRecord(transaction *t, const varstr
   // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
-  GetOID(key, rc, t->xc, oid);
+  AWAIT GetOID(key, rc, t->xc, oid);
 
   if (rc._val == RC_TRUE) {
     rc_t rc = t->Update(table_descriptor, oid, &key, &value);
@@ -351,7 +351,7 @@ PROMISE(rc_t) ConcurrentMasstreeIndex::RemoveRecord(transaction *t, const varstr
   // Search for OID
   OID oid = 0;
   rc_t rc = {RC_INVALID};
-  GetOID(key, rc, t->xc, oid);
+  AWAIT GetOID(key, rc, t->xc, oid);
 
   if (rc._val == RC_TRUE) {
 		RETURN t->Update(table_descriptor, oid, &key, nullptr);

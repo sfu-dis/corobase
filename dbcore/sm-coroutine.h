@@ -94,7 +94,7 @@ class tcalloc {
 
 extern thread_local tcalloc coroutine_allocator;
 
-template <typename T> struct generator {
+template <typename T> struct [[nodiscard]] generator {
   struct promise_type;
   using handle = std::experimental::coroutine_handle<promise_type>;
 
@@ -289,7 +289,7 @@ protected:
 
 } // namespace coro_task_private
 
-template <typename T> class task {
+template <typename T> class [[nodiscard]] task {
 public:
   struct promise_type;
   struct awaiter;
