@@ -238,6 +238,7 @@ private:
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
       ermia::varstr valptr;
+      ermia::dbtuple* tuple = nullptr;
       auto iter = co_await ermia::ConcurrentMasstree::ScanIterator<
           /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
                                          txn->GetXIDContext(),
@@ -245,8 +246,16 @@ private:
       bool more = co_await iter.init_or_next</*IsNext=*/false>();
       while (more) {
           if (!ermia::config::index_probe_only) {
-              if (iter.tuple()) {
-                  rc = txn->DoTupleRead(iter.tuple(), &valptr);
+              if (unlikely(ermia::config::is_backup_srv())) {
+                  tuple = ermia::oidmgr->BackupGetVersion(
+                      iter.tuple_array(), iter.pdest_array(), iter.value(),
+                      txn->GetXIDContext());
+              } else {
+                  tuple = co_await ermia::oidmgr->oid_get_version(
+                      iter.tuple_array(), iter.value(), txn->GetXIDContext());
+              }
+              if (tuple) {
+                  rc = txn->DoTupleRead(tuple, &valptr);
                   if (rc._val == RC_TRUE) {
                       callback.Invoke(iter.key().data(), iter.key().length(),
                                       valptr);

@@ -489,12 +489,14 @@ public:
        : sinfo_(btr->get_table(), lower),
          scanner_(btr, upper),
          xc_(xc),
-         tuple_(nullptr),
          btr_(btr) {}
    int count() const { return scancount_; }
 
-   ermia::dbtuple *tuple() const { return tuple_; }
+   OID value() const { return sinfo_.entry.value(); }
    Masstree::Str key() { return sinfo_.ka.full_string(); }
+
+   oid_array *tuple_array() const { return btr_->tuple_array_; }
+   oid_array *pdest_array() const { return btr_->pdest_array_; }
 
    static PROMISE(ScanIterator<IsReverse>) factory(
           mbtree<P> *mbtree,
@@ -523,24 +525,8 @@ public:
    template <bool IsNext>
    PROMISE(bool) init_or_next() {
        threadinfo ti(xc_->begin_epoch);
-      // See if the value is visible
-      bool more = AWAIT btr_->get_table()->template scan_init_or_next_value<IsNext>(
-              helper_, scanner_, xc_, ti, &sinfo_);
-      if (more) {
-        scancount_++;
-        // scan_next_value advance the ka, but does not advance sinfo_.entry
-        ermia::OID oid = sinfo_.entry.value();
-        // Caller responsible for the final vetting using
-        // transaction::DoTupleRead
-        if (unlikely(ermia::config::is_backup_srv())) {
-          tuple_ = ermia::oidmgr->BackupGetVersion(btr_->tuple_array_, btr_->pdest_array_, oid, xc_);
-        } else {
-          tuple_ = AWAIT ermia::oidmgr->oid_get_version(btr_->tuple_array_, oid, xc_);
-        }
-      } else {
-        tuple_ = nullptr;
-      }
-      RETURN more;
+       return btr_->get_table()->template scan_init_or_next_value<IsNext>(
+           helper_, scanner_, xc_, ti, &sinfo_);
     }
   };
 

@@ -289,14 +289,22 @@ rc_t tpcc_worker::txn_payment() {
               &tbl_customer_name_idx(customerWarehouseID)->GetMasstree(),
               txn->GetXIDContext(), Encode(str(Size(k_c_idx_0)), k_c_idx_0),
               &Encode(str(Size(k_c_idx_1)), k_c_idx_1));
+      ermia::dbtuple* tuple = nullptr;
       bool more = iter.init_or_next</*IsNext=*/false>();
       while (more) {
-        if (iter.tuple()) {
-          rc = txn->DoTupleRead(iter.tuple(), &valptr);
-          if (rc._val == RC_TRUE) {
-              c.Invoke(iter.key().data(),
-                       iter.key().length(), valptr);
-          }
+        if (unlikely(ermia::config::is_backup_srv())) {
+            tuple = ermia::oidmgr->BackupGetVersion(
+                iter.tuple_array(), iter.pdest_array(), iter.value(),
+                txn->GetXIDContext());
+        } else {
+            tuple = ermia::oidmgr->oid_get_version(
+                iter.tuple_array(), iter.value(), txn->GetXIDContext());
+        }
+        if (tuple) {
+            rc = txn->DoTupleRead(tuple, &valptr);
+            if (rc._val == RC_TRUE) {
+                c.Invoke(iter.key().data(), iter.key().length(), valptr);
+            }
         }
         more = iter.init_or_next</*IsNext=*/true>();
       }

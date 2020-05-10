@@ -246,22 +246,31 @@ class ycsb_sequential_worker : public ycsb_base_worker {
           ScanRange range = GenerateScanRange(txn);
           ycsb_scan_callback callback;
           ermia::varstr valptr;
+          ermia::dbtuple* tuple = nullptr;
           auto iter = ermia::ConcurrentMasstree::ScanIterator<
               /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
                                              txn->GetXIDContext(),
                                              range.start_key, &range.end_key);
           bool more = iter.init_or_next</*IsNext=*/false>();
           while (more) {
-              if (!ermia::config::index_probe_only) {
-                  if (iter.tuple()) {
-                      rc = txn->DoTupleRead(iter.tuple(), &valptr);
-                      if (rc._val == RC_TRUE) {
-                          callback.Invoke(iter.key().data(), iter.key().length(),
-                                          valptr);
-                      }
+            if (!ermia::config::index_probe_only) {
+              if (unlikely(ermia::config::is_backup_srv())) {
+                  tuple = ermia::oidmgr->BackupGetVersion(
+                      iter.tuple_array(), iter.pdest_array(), iter.value(),
+                      txn->GetXIDContext());
+              } else {
+                  tuple = ermia::oidmgr->oid_get_version(
+                      iter.tuple_array(), iter.value(), txn->GetXIDContext());
+              }
+              if (tuple) {
+                  rc = txn->DoTupleRead(tuple, &valptr);
+                  if (rc._val == RC_TRUE) {
+                      callback.Invoke(iter.key().data(), iter.key().length(),
+                                      valptr);
                   }
               }
-              more = iter.init_or_next</*IsNext=*/true>();
+            }
+            more = iter.init_or_next</*IsNext=*/true>();
           }
 
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
