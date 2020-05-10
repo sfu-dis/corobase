@@ -220,6 +220,7 @@ public:
     rc_t rc = rc_t{RC_INVALID};
     for (int i = 0; i < g_reps_per_tx; ++i) {
       ScanRange range = GenerateScanRange(txn);
+      ycsb_scan_callback callback;
       ermia::varstr tuple_value;
       ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
           co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
@@ -229,9 +230,13 @@ public:
           ermia::OID oid = scan_it.value();
           ALWAYS_ASSERT(oid != ermia::INVALID_OID);
           // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), oid, xc);
-          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), oid, xc));
-          ASSERT(tuple);
-          rc_t rc = txn->DoTupleRead(tuple, &tuple_value);
+          ermia::dbtuple *tuple = sync_wait_coro(
+              ermia::oidmgr->oid_get_version(scan_it.tuple_array(), oid, xc));
+          if (tuple) {
+              rc_t rc = txn->DoTupleRead(tuple, &tuple_value);
+              callback.Invoke(scan_it.key().data(), scan_it.key().length(),
+                              tuple_value);
+          }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
           TryCatchCoro(rc);
 #else
