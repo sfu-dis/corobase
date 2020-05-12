@@ -3,7 +3,6 @@
 #include "bench.h"
 #include "ycsb.h"
 
-uint64_t global_key_counter = 0;
 uint g_reps_per_tx = 1;
 uint g_rmw_additional_reads = 0;
 char g_workload = 'C';
@@ -60,7 +59,7 @@ void ycsb_usertable_loader::load() {
 
   ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
   for (uint64_t i = 0; i < to_insert; ++i) {
-    ermia::varstr &k = str(sizeof(uint64_t));
+    ermia::varstr &k = str(sizeof(ycsb_kv::key));
     BuildKey(start_key + i, k);
 
     ermia::varstr &v = str(sizeof(ycsb_kv::value));
@@ -85,14 +84,13 @@ void ycsb_usertable_loader::load() {
   txn = db->NewTransaction(0, *arena, txn_buf());
   for (uint64_t i = 0; i < to_insert; ++i) {
     rc_t rc = rc_t{RC_INVALID};
-    ermia::OID oid = 0;
-    ermia::varstr &k = str(sizeof(uint64_t));
+    ermia::varstr &k = str(sizeof(ycsb_kv::key));
     BuildKey(start_key + i, k);
     ermia::varstr &v = str(0);
 #ifdef ADV_COROUTINE
-    sync_wait_coro(tbl->GetRecord(txn, rc, k, v, &oid));
+    sync_wait_coro(tbl->GetRecord(txn, rc, k, v));
 #else
-    tbl->GetRecord(txn, rc, k, v, &oid);
+    tbl->GetRecord(txn, rc, k, v);
 #endif
     ALWAYS_ASSERT(*(char*)v.data() == 'a');
     TryVerifyStrict(rc);

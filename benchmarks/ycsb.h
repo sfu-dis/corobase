@@ -28,9 +28,17 @@ enum class ReadTransactionType {
 };
 
 // TODO(tzwang); support other value length specified by user
-#define YCSB_KEY_FIELDS(x, y) x(uint64_t, y_key)
+#define YCSB_KEY_FIELDS(x, y) x(inline_str_fixed<8>, y_key)
 #define YCSB_VALUE_FIELDS(x, y) x(inline_str_fixed<8>, y_value)
 DO_STRUCT(ycsb_kv, YCSB_KEY_FIELDS, YCSB_VALUE_FIELDS);
+
+inline void BuildKey(uint64_t key, ermia::varstr &k) {
+  ASSERT (sizeof(ycsb_kv::key) % sizeof(uint64_t) == 0);
+  ycsb_kv::key extended_key;
+  for (uint offset = 0; offset < sizeof(ycsb_kv::key); offset = offset + sizeof(uint64_t))
+    *(uint64_t *)(extended_key.y_key.data() + offset) = key;
+  Encode(k, extended_key);
+}
 
 struct YcsbWorkload {
   YcsbWorkload(char desc, int16_t insert_percent, int16_t read_percent,
@@ -73,10 +81,6 @@ struct YcsbWorkload {
   int32_t reps_per_tx_;
   bool distinct_keys_;
 };
-
-inline void BuildKey(uint64_t key, ermia::varstr &k) {
-  Encode(k, ycsb_kv::key(key));
-}
 
 class ycsb_usertable_loader : public bench_loader {
  public:
@@ -204,8 +208,8 @@ class ycsb_base_worker : public bench_worker {
   }
 
   ermia::varstr &GenerateKey(ermia::transaction *t) {
-    ermia::varstr &k = t ? *t->string_allocator().next(sizeof(uint64_t)) : str(sizeof(uint64_t));
-    new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(uint64_t));
+    ermia::varstr &k = t ? *t->string_allocator().next(sizeof(ycsb_kv::key)) : str(sizeof(ycsb_kv::key));
+    new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
     ::BuildKey(rng_gen_key(), k);
     return k;
   }
