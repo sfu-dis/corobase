@@ -859,6 +859,8 @@ template <typename P>
 inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epoch) const {
   threadinfo ti(epoch);
   uint32_t todo = states.size();
+  for (auto &s : states)                                                                                                                                                                         s.lp = Masstree::unlocked_tcursor<P>(table_, s.key->data(), s.key->size());
+
   int match, kp;
   Masstree::internode<P>* in = nullptr;
   key_indexed_position kx;
@@ -958,7 +960,6 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
         break;
       case 0:
       stage0:
-        new (&s.lp) Masstree::unlocked_tcursor<P>(table_, s.key->data(), s.key->size());
         s.sense = false;
         s.n[s.sense] = s.lp.root_;
         while (1) {
