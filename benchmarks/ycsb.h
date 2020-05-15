@@ -34,9 +34,14 @@ DO_STRUCT(ycsb_kv, YCSB_KEY_FIELDS, YCSB_VALUE_FIELDS);
 
 inline void BuildKey(uint64_t key, ermia::varstr &k) {
   ASSERT (sizeof(ycsb_kv::key) % sizeof(uint64_t) == 0);
+  static const char *prefix = "corobase";
   ycsb_kv::key extended_key;
-  for (uint offset = 0; offset < sizeof(ycsb_kv::key); offset = offset + sizeof(uint64_t))
-    *(uint64_t *)(extended_key.y_key.data() + offset) = key;
+  for (uint offset = 0; offset < sizeof(ycsb_kv::key); offset = offset + sizeof(uint64_t)) {
+    if (offset + sizeof(uint64_t) < sizeof(ycsb_kv::key))
+      memcpy((void *)(extended_key.y_key.data() + offset), (void *)prefix, sizeof(uint64_t));
+    else
+      *(uint64_t *)(extended_key.y_key.data() + offset) = key;
+  }
   Encode(k, extended_key);
 }
 
