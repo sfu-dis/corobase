@@ -223,7 +223,7 @@ private:
     thread_local std::vector<ermia::varstr *> keys;
     thread_local std::vector<ermia::varstr *> values;
     thread_local std::vector<ermia::dia::task<bool>> index_probe_tasks(g_reps_per_tx);
-    thread_local std::vector<ermia::dia::task<ermia::dbtuple*>> value_fetch_tasks(g_reps_per_tx);
+    thread_local std::vector<ermia::dia::task<void>> get_record_tasks(g_reps_per_tx);
     keys.clear();
 
     if (ermia::config::index_probe_only) {
@@ -245,7 +245,7 @@ private:
       keys.emplace_back(&k);
     }
 
-    table_index->adv_coro_MultiGet(txn, keys, values, index_probe_tasks, value_fetch_tasks);
+    table_index->adv_coro_MultiGet(txn, keys, values, index_probe_tasks, get_record_tasks);
 
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));

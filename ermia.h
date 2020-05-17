@@ -155,7 +155,7 @@ public:
   // A multi-get operation using nested coroutines
   void adv_coro_MultiGet(transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
                          std::vector<ermia::dia::task<bool>> &index_probe_tasks,
-                         std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks);
+                         std::vector<ermia::dia::task<void>> &get_record_tasks);
 #endif
 
   ermia::dia::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
