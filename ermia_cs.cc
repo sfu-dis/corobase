@@ -116,69 +116,51 @@ void ConcurrentMasstreeIndex::simple_coro_MultiGet(
 void ConcurrentMasstreeIndex::adv_coro_MultiGet(
     transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
     std::vector<ermia::dia::task<bool>> &index_probe_tasks,
-    std::vector<ermia::dia::task<ermia::dbtuple*>> &value_fetch_tasks) {
-  ermia::epoch_num e = t ? t->xc->begin_epoch : MM::epoch_enter();
-  ConcurrentMasstree::versioned_node_t sinfo;
-  thread_local std::vector<OID> oids;
-  oids.clear();
+    std::vector<ermia::dia::task<void>> &get_record_tasks) {
+  if (!t) {
+    ermia::epoch_num e = MM::epoch_enter();
+    ConcurrentMasstree::versioned_node_t sinfo;
+    OID oid = INVALID_OID;
 
-  for (int i = 0; i < keys.size(); ++i) {
-    oids.emplace_back(INVALID_OID);
-    index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
-    index_probe_tasks[i].start();
-  }
+    for (int i = 0; i < keys.size(); ++i) {
+      index_probe_tasks[i] = masstree_.search(*keys[i], oid, e, &sinfo);
+      index_probe_tasks[i].start();
+    }
 
-  int finished = 0;
-  while (finished < keys.size()) {
-    for (auto &t : index_probe_tasks) {
-      if (t.valid()) {
-        if (t.done()) {
-          ++finished;
-          t.destroy();
-        } else {
-          t.resume();
+    int finished = 0;
+    while (finished < keys.size()) {
+      for (auto &t : index_probe_tasks) {
+        if (t.valid()) {
+          if (t.done()) {
+            ++finished;
+            t.destroy();
+          } else {
+            t.resume();
+          }
         }
       }
     }
-  }
 
-  if (!t) {
     MM::epoch_exit(0, e);
   } else {
-    t->ensure_active();
-    if (config::is_backup_srv()) {
-      // TODO
-      assert(false && "Backup not supported in coroutine execution");
-    } else {
-      int finished = 0;
+    thread_local std::vector<rc_t> rcs;
+    rcs.clear();
+    for (int i = 0; i < keys.size(); ++i) {
+      rcs.emplace_back(RC_INVALID);
+      get_record_tasks[i] = GetRecord(t, rcs[i], *keys[i], *values[i]);
+      get_record_tasks[i].start();
+    }
 
-      for (uint32_t i = 0; i < keys.size(); ++i) {
-        if (oids[i] != INVALID_OID) {
-          value_fetch_tasks[i] = oidmgr->oid_get_version(table_descriptor->GetTupleArray(), oids[i], t->xc);
-          value_fetch_tasks[i].start();
-        } else {
-          ++finished;
-        }
-      }
-
-      while (finished < keys.size()) {
-        for (uint32_t i = 0; i < keys.size(); ++i) {
-          if (value_fetch_tasks[i].valid()) {
-            if (value_fetch_tasks[i].done()) {
-              if (oids[i] != INVALID_OID) {
-                auto *tuple = value_fetch_tasks[i].get_return_value();
-                if (tuple) {
-                  t->DoTupleRead(tuple, values[i]);
-                } else if (config::phantom_prot) {
-                  DoNodeRead(t, sinfo.first, sinfo.second);
-                }
-              }
-              ++finished;
-              value_fetch_tasks[i].destroy();
-            } else {
-              value_fetch_tasks[i].resume();
-            }
-          }
+    int finished = 0;
+    while (finished < keys.size()) {
+      for (auto &t : get_record_tasks) {
+        if (t.valid()) {
+          if (t.done()) {
+            ++finished;
+            t.destroy();
+	  } else {
+            t.resume();
+	  }
         }
       }
     }
