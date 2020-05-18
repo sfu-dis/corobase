@@ -538,18 +538,8 @@ inline void sync_wait_void_coro(ermia::dia::task<void> &&coro_task) {
   #define sync_wait_void_coro (void)
 
 template <typename T>
-inline const T &sync_wait_coro(const T &t) {
-    return t;
-}
-
-template <typename T>
-inline T &&sync_wait_coro(T &&t) {
-    return std::move(t);
-}
-
-template <typename T>
-inline T &sync_wait_coro(T &t) {
-    return std::move(t);
+inline auto sync_wait_coro(T &&t) {
+    return std::forward<T>(t);
 }
 
 #endif // ADV_COROUTINE
