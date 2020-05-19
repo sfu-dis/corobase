@@ -285,15 +285,16 @@ static LSN const INVALID_LSN = {0};
    local disorder.
 
    Although they occupy 64 bits, XIDs are actually the composition of
-   a 16-bit local identifier and a 32-bit epoch number (with 16 bits
-   unused). The combination is globally unique (overflow would take
-   roughly 7 years at 1Mtps), and any two transactions that coexist
-   are guaranteed to have different local identifiers.
+   the low 16 bits of a 32-bit epoch number (with high 16 bits unused),
+   a 32-bit local identifier and 16 bits for the size and flag. The
+   combination is globally unique (overflow would take roughly 7 years
+   at 1Mtps), and any two transactions that coexist are guaranteed to
+   have different local identifiers.
  */
 struct XID {
-  static XID make(uint32_t e, uint16_t i) {
+  static XID make(uint32_t e, uint32_t i) {
     uint64_t x = e;
-    x <<= 16;
+    x <<= 32;
     x |= i;
     x <<= 16;
     x |= fat_ptr::ASI_XID_FLAG;
@@ -310,8 +311,8 @@ struct XID {
   uint64_t _val;
 
   fat_ptr to_ptr() const { return fat_ptr{_val | INVALID_SIZE_CODE}; }
-  uint32_t epoch() const { return _val >> 32; }
-  uint16_t local() const { return _val >> 16; }
+  uint16_t epoch() const { return _val >> 48; }
+  uint32_t local() const { return _val >> 16; }
   uint16_t flags() const { return _val & fat_ptr::FLAG_MASK; }
 
   // true comparison operators

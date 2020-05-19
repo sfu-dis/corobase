@@ -52,7 +52,7 @@ struct xid_context {
   }
 };
 
-static uint16_t const NCONTEXTS = 32768;
+static uint32_t const NCONTEXTS = 128 * 32768;
 extern xid_context contexts[NCONTEXTS];
 
 /* Request a new XID and an associated context. The former is globally
@@ -114,7 +114,7 @@ inline xid_context *xid_get_context(XID x) {
 struct thread_data {
   epoch_mgr::epoch_num epoch;
   uint64_t bitmap;
-  uint16_t base_id;
+  uint32_t base_id;
   bool initialized;
 };
 
