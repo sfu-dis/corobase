@@ -5,6 +5,7 @@
 #include "ycsb.h"
 
 extern uint g_reps_per_tx;
+extern uint g_rmw_additional_reads;
 extern ReadTransactionType g_read_txn_type;
 extern YcsbWorkload ycsb_workload;
 
@@ -161,6 +162,24 @@ public:
       TryCatchCoro(rc);
     }
 
+    for (int i = 0; i < g_rmw_additional_reads; ++i) {
+      ermia::varstr &k = GenerateKey(txn);
+      ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
+      rc_t rc = rc_t{RC_INVALID};
+
+      rc = co_await table_index->coro_GetRecord(txn, k, v);
+
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+      TryCatchCoro(rc);
+#else
+      // Under SI this must succeed
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ASSERT(*(char*)v.data() == 'a');
+#endif
+
+      ASSERT(v.size() == sizeof(ycsb_kv::value));
+      memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)v.data(), v.size());
+    }
 #ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));
 #endif
