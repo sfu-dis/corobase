@@ -120,10 +120,11 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
   if (!t) {
     ermia::epoch_num e = MM::epoch_enter();
     ConcurrentMasstree::versioned_node_t sinfo;
-    OID oid = INVALID_OID;
+    std::vector<OID> oids(keys.size());
 
     for (int i = 0; i < keys.size(); ++i) {
-      index_probe_tasks[i] = masstree_.search(*keys[i], oid, e, &sinfo);
+      oids[i] = INVALID_OID;
+      index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
       index_probe_tasks[i].start();
     }
 
@@ -140,29 +141,34 @@ void ConcurrentMasstreeIndex::adv_coro_MultiGet(
         }
       }
     }
-
+    for (const OID & oid : oids) {
+      ALWAYS_ASSERT(oid != INVALID_OID);
+    }
     MM::epoch_exit(0, e);
   } else {
-    thread_local std::vector<rc_t> rcs;
-    rcs.clear();
+    std::vector<rc_t> rcs(keys.size());
     for (int i = 0; i < keys.size(); ++i) {
-      rcs.emplace_back(RC_INVALID);
+      rcs[i]._val = RC_INVALID;
       get_record_tasks[i] = GetRecord(t, rcs[i], *keys[i], *values[i]);
       get_record_tasks[i].start();
     }
 
     int finished = 0;
     while (finished < keys.size()) {
-      for (auto &t : get_record_tasks) {
-        if (t.valid()) {
-          if (t.done()) {
+      for (auto &task : get_record_tasks) {
+        if (task.valid()) {
+          if (task.done()) {
             ++finished;
-            t.destroy();
-	  } else {
-            t.resume();
-	  }
+            task.destroy();
+          } else {
+            task.resume();
+          }
         }
       }
+    }
+
+    for (const rc_t & rc : rcs) {
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
     }
   }
 }
