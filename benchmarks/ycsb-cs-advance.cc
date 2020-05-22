@@ -217,7 +217,6 @@ private:
   // only reason it's here is it requires ADV_COROUTINE which is mutually
   // exclusive with other non-adv-coroutine variants.
   rc_t txn_read_adv_coro_multi_get() {
-    arena->reset();
     ermia::transaction *txn = nullptr;
 
     thread_local std::vector<ermia::varstr *> keys;
@@ -230,14 +229,10 @@ private:
       arena->reset();
     } else {
       values.clear();
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-        if (ermia::config::index_probe_only) {
-          values.push_back(&str(0));
-        } else {
-          values.push_back(&str(sizeof(ycsb_kv::value)));
-        }
-      }
       txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+      for (uint i = 0; i < g_reps_per_tx; ++i) {
+        values.push_back(&str(sizeof(ycsb_kv::value)));
+      }
     }
 
     for (uint i = 0; i < g_reps_per_tx; ++i) {
@@ -250,12 +245,10 @@ private:
     if (!ermia::config::index_probe_only) {
       ermia::varstr &v = str(sizeof(ycsb_kv::value));
       for (uint i = 0; i < g_reps_per_tx; ++i) {
+        ALWAYS_ASSERT(*(char*)values[i]->data() == 'a');
         memcpy((char*)(&v) + sizeof(ermia::varstr), (char *)values[i]->data(), sizeof(ycsb_kv::value));
       }
-      ALWAYS_ASSERT(*(char*)v.data() == 'a');
-    }
 
-    if (!ermia::config::index_probe_only) {
       TryCatch(db->Commit(txn));
     }
 
