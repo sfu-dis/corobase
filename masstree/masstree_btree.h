@@ -466,24 +466,81 @@ public:
   template <bool Reverse> class low_level_iterator_scanner;
   template <typename F> class low_level_search_range_callback_wrapper;
 
-  struct ScanIterator {
-    Masstree::scan_info<masstree_params> sinfo;
-    low_level_iterator_scanner<false> scanner;
-    TXN::xid_context *xc;
-    mbtree<P> *btr;
+  template <bool IsReverse>
+  class ScanIterator {
+   public:
+    Masstree::scan_info<masstree_params> sinfo_;
+    low_level_iterator_scanner<IsReverse> scanner_;
+    TXN::xid_context *xc_;
 
-    ScanIterator(TXN::xid_context *xc, mbtree<P> *btr, const key_type &lower, const key_type *upper)
-    : sinfo(btr->get_table(), lower), scanner(btr, upper), xc(xc), btr(btr) {
-      threadinfo ti(xc->begin_epoch);
-      // After scan_to_initial, scanner will be ready to output tuples
-      btr->get_table()->scan_to_initial(lcdf::Str(lower.data(), lower.size()),
-                                   true, scanner, xc, ti, &sinfo);
-    }
+    using scan_helper_t =
+        typename std::conditional<IsReverse, Masstree::reverse_scan_helper,
+                                  Masstree::forward_scan_helper>::type;
+    scan_helper_t helper_;
 
-    bool NextValue(varstr &valptr) {
-      threadinfo ti(xc->begin_epoch);
-      // Caller responsible for the final vetting using transaction::DoTupleRead
-      return btr->get_table()->scan_next_value(scanner, xc, ti, &sinfo);
+   private:
+    ermia::dbtuple *tuple_;
+    mbtree<P> *btr_;
+    int scancount_;
+
+  public:
+   ScanIterator(TXN::xid_context *xc, mbtree<P> *btr, const key_type &lower,
+                const key_type *upper)
+       : sinfo_(btr->get_table(), lower),
+         scanner_(btr, upper),
+         xc_(xc),
+         tuple_(nullptr),
+         btr_(btr) {}
+   int count() const { return scancount_; }
+
+   ermia::dbtuple *tuple() const { return tuple_; }
+   Masstree::Str key() { return sinfo_.ka.full_string(); }
+
+   static PROMISE(ScanIterator<IsReverse>) factory(
+          mbtree<P> *mbtree,
+          ermia::TXN::xid_context *xc,
+          const ermia::varstr &start_key,
+          const ermia::varstr *end_key,
+          bool emit_firstkey=true) {
+     ScanIterator<IsReverse> scan_iterator(xc, mbtree, start_key, end_key);
+     threadinfo ti(xc->begin_epoch);
+
+     auto &si = scan_iterator.sinfo_;
+     auto &scanner = scan_iterator.scanner_;
+
+     while (1) {
+       si.state = AWAIT si.stack[si.stackpos].find_initial(scan_iterator.helper_, si.ka, emit_firstkey, si.entry, ti);
+       scanner.visit_leaf(si.stack[si.stackpos], si.ka, ti);
+       if (si.state != Masstree::scan_info<P>::mystack_type::scan_down)
+         break;
+       si.ka.shift();
+       ++si.stackpos;
+     }
+
+     RETURN scan_iterator;
+   }
+
+   template <bool IsNext>
+   PROMISE(bool) init_or_next() {
+       threadinfo ti(xc_->begin_epoch);
+      // See if the value is visible
+      bool more = AWAIT btr_->get_table()->template scan_init_or_next_value<IsNext>(
+              helper_, scanner_, xc_, ti, &sinfo_);
+      if (more) {
+        scancount_++;
+        // scan_next_value advance the ka, but does not advance sinfo_.entry
+        ermia::OID oid = sinfo_.entry.value();
+        // Caller responsible for the final vetting using
+        // transaction::DoTupleRead
+        if (unlikely(ermia::config::is_backup_srv())) {
+          tuple_ = ermia::oidmgr->BackupGetVersion(btr_->tuple_array_, btr_->pdest_array_, oid, xc_);
+        } else {
+          tuple_ = AWAIT ermia::oidmgr->oid_get_version(btr_->tuple_array_, oid, xc_);
+        }
+      } else {
+        tuple_ = nullptr;
+      }
+      RETURN more;
     }
   };
 
@@ -501,10 +558,7 @@ public:
 
     private:
       mbtree<P> *btr_;
-
       int scancount_;
-      
-      OID value_;
 
     public:
      coro_ScanIterator(TXN::xid_context *xc, mbtree<P> *btr,
@@ -513,36 +567,21 @@ public:
            scanner_(btr, upper),
            xc_(xc),
            btr_(btr),
-           scancount_(0),
-           value_(ermia::INVALID_OID) {}
+           scancount_(0) {}
 //     coro_ScanIterator(const coro_ScanIterator &) = delete;
 //     coro_ScanIterator& operator=(const coro_ScanIterator &) = delete;
- 
-     int count() const {
-       return scancount_;
-     }
 
-     OID value() const {
-       return value_;
-     }
+     int count() const { return scancount_; }
 
-     // TODO(lujc): key() {}
+     OID value() const { return sinfo_.entry.value(); }
+     Masstree::Str key() { return sinfo_.ka.full_string(); }
 
-     oid_array *tuple_array() const {
-       return btr_->tuple_array_;
-     }
-
-     oid_array *pdest_array() const {
-       return btr_->pdest_array_;
-     }
-
-     scan_helper_t & helper() {
-       return helper_;
-     }
+     oid_array *tuple_array() const { return btr_->tuple_array_; }
+     oid_array *pdest_array() const { return btr_->pdest_array_; }
 
      // Return false if there is no more entries and in thie case value is invalid.
-     template<bool IsInit >
-     ermia::dia::generator<bool> InitOrNext() {
+     template<bool IsNext>
+     ermia::dia::generator<bool> init_or_next() {
        typedef typename P::ikey_type ikey_type;
        typedef typename node_type::key_type key_type;
        typedef typename node_type::leaf_type::leafvalue_type leafvalue_type;
@@ -558,9 +597,9 @@ public:
 
        threadinfo ti(xc_->begin_epoch);
 
-       if (!IsInit) {
+       if (IsNext) {
          stack[stackpos].ki_ = helper_.next(stack[stackpos].ki_);
-         //  state = stack[stackpos].find_next(helper_, ka, entry);
+         // state = stack[stackpos].find_next(helper_, ka, entry);
          state = mystack_type::scan_find_next;
        }
 
@@ -568,10 +607,9 @@ public:
          switch (state) {
            case mystack_type::scan_emit: { // surpress cross init warning about v
              if (!scanner_.visit_value_no_callback(ka)) {
-               value_ = ermia::INVALID_OID;
+               // TODO(lujc): assign full key
                co_return false;
              }
-             value_ = entry.value();
              ++scancount_;
              co_return true;
            } break;
@@ -632,6 +670,8 @@ public:
                    goto find_next_return;
                  }
                  find_next_this->n_->prefetch();
+                 co_await std::experimental::suspend_always{};
+                 scanner_.visit_leaf(*find_next_this, ka, ti);
                }
              
              find_next_changed:
@@ -639,14 +679,10 @@ public:
                find_next_this->perm_ = find_next_this->n_->permutation();
                find_next_this->ki_ = helper_.lower(ka, find_next_this);
                state = mystack_type::scan_find_next;
-               goto find_next_return;
              find_next_return:
                ;
              }
              /* flattened function end: find_next */
-             if (state != mystack_type::scan_up) {
-               scanner_.visit_leaf(stack[stackpos], ka, ti);
-             }
              break;
 
            case mystack_type::scan_up:
@@ -1251,9 +1287,9 @@ public:
       : search_range_scanner_base<Reverse>(boundary), btr_ptr_(btr_ptr) {}
   inline void visit_leaf(const Masstree::scanstackelt<P> &iter,
                   const Masstree::key<uint64_t> &key, threadinfo &) {
-    this->n_ = iter.node();
-    this->v_ = iter.full_version_value();
-    //callback_.on_resp_node(this->n_, this->v_);
+    // this->n_ = iter.node();
+    // this->v_ = iter.full_version_value();
+    // callback_.on_resp_node(this->n_, this->v_);
     if (this->boundary_)
       this->check(iter, key);
   }
@@ -1270,8 +1306,8 @@ public:
   }
 
 private:
-  Masstree::leaf<P> *n_;
-  uint64_t v_;
+  // Masstree::leaf<P> *n_;
+  // uint64_t v_;
   const mbtree<P> *btr_ptr_;
 };
 
