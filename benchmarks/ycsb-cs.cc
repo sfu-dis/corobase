@@ -47,15 +47,16 @@ public:
     }
 
     if (ycsb_workload.rmw_percent()) {
+      LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
       w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
     }
 
     if (ycsb_workload.scan_percent()) {
       if (ermia::config::scan_with_it) {
-          w.push_back(workload_desc(
-              "ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0,
-              nullptr, TxnScanWithIterator));
+        w.push_back(workload_desc("ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0,
+                    nullptr, TxnScanWithIterator));
       } else {
+        LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
         w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
       }
     }
@@ -75,10 +76,7 @@ public:
   }
 
   static ermia::dia::generator<rc_t> TxnScanWithIterator(bench_worker *w, uint32_t idx, ermia::epoch_num begin_epoch) {
-    if(!ermia::config::index_probe_only) {
-      return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator<false>(idx, begin_epoch);
-    }
-    return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator<true>(idx, begin_epoch);
+    return static_cast<ycsb_cs_worker *>(w)->txn_scan_with_iterator(idx, begin_epoch);
   }
 
   // Read transaction with context-switch using simple coroutine
@@ -194,18 +192,14 @@ public:
     rc_t rc = rc_t{RC_INVALID};
     for (int i = 0; i < g_reps_per_tx; ++i) {
       ScanRange range = GenerateScanRange(txn);
-      if (ermia::config::index_probe_only) {
-        LOG(FATAL) << "Not implemented";
-      } else {
-        ycsb_scan_callback callback;
-        rc = co_await table_index->coro_Scan(txn, range.start_key,
-                                             &range.end_key, callback);
-      }
+      ycsb_scan_callback callback;
+      rc = co_await table_index->coro_Scan(txn, range.start_key, &range.end_key, callback);
+
+      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatchCoro(rc);
 #else
-      // TODO(lujc): sometimes return RC_FALSE, no value?
-      // ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
 #ifndef CORO_BATCH_COMMIT
@@ -214,7 +208,6 @@ public:
     co_return {RC_TRUE};
   }
 
-  template<bool IsIndexOnly>
   ermia::dia::generator<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
     auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
@@ -226,11 +219,13 @@ public:
       ermia::varstr tuple_value;
       ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
           co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
-      bool more = co_await scan_it.InitOrNext</*IsInit=*/true>();
-      if (!IsIndexOnly) {
+      bool more = co_await scan_it.init_or_next</*IsNext=*/false>();
+      if (!ermia::config::index_probe_only) {
         while (more) {
-          // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), scan_it.value(), xc);
-          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), scan_it.value(), xc));
+          ermia::OID oid = scan_it.value();
+          ALWAYS_ASSERT(oid != ermia::INVALID_OID);
+          // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), oid, xc);
+          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), oid, xc));
           ASSERT(tuple);
           rc_t rc = txn->DoTupleRead(tuple, &tuple_value);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -239,12 +234,12 @@ public:
           // TODO(lujc): sometimes return RC_FALSE, no value?
           // ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
-          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
+          more = co_await scan_it.init_or_next</*IsNext=*/true>();
         }
       } else {
         while (more) {
           MARK_REFERENCED(scan_it.value());
-          more = co_await scan_it.InitOrNext</*IsInit=*/false>();
+          more = co_await scan_it.init_or_next</*IsNext=*/true>();
         }
       }
     }
