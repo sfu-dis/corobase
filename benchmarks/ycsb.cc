@@ -38,25 +38,18 @@ class ycsb_sequential_worker : public ycsb_base_worker {
     }
 
     if (ycsb_workload.rmw_percent()) {
-      if (g_read_txn_type == ReadTransactionType::Sequential) {
-        w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
-      } else {
-        LOG(FATAL) << "RMW txn type must be sequential";
-      }
+      LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
+      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::Sequential) << "RMW txn type must be sequential";
+      w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, TxnRMW));
     }
 
     if (ycsb_workload.scan_percent()) {
-      if (g_read_txn_type == ReadTransactionType::Sequential) {
-        if (ermia::config::scan_with_it) {
-            w.push_back(workload_desc(
-                "Scan", double(ycsb_workload.scan_percent()) / 100.0, TxnScanWithIterator));
-        } else {
-            w.push_back(workload_desc(
-                "ScanWithIterator",
-                double(ycsb_workload.scan_percent()) / 100.0, TxnScan));
-        }
+      LOG_IF(FATAL, g_read_txn_type != ReadTransactionType::Sequential) << "Scan txn type must be sequential";
+      if (ermia::config::scan_with_it) {
+        w.push_back(workload_desc("ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0, TxnScanWithIterator));
       } else {
-        LOG(FATAL) << "Scan txn type must be sequential";
+        LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
+        w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, TxnScan));
       }
     }
 
@@ -228,27 +221,22 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   }
 
   rc_t txn_scan() {
-      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-      rc_t rc = rc_t{RC_INVALID};
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-          ScanRange range = GenerateScanRange(txn);
-          if (ermia::config::index_probe_only) {
-              ycsb_scan_oid_callback callback;
-              table_index->ScanOID(txn, range.start_key, &range.end_key, rc, callback);
-          } else {
-              ycsb_scan_callback callback;
-              rc = table_index->Scan(txn, range.start_key, &range.end_key, callback);
-          }
+    ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+    rc_t rc = rc_t{RC_INVALID};
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
+      ScanRange range = GenerateScanRange(txn);
+      ycsb_scan_callback callback;
+      rc = table_index->Scan(txn, range.start_key, &range.end_key, callback);
 
+      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-          TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+      TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
-          // TODO(lujc): sometimes return RC_FALSE, no value?
-          // ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
-      }
-      TryCatch(db->Commit(txn));
-      return {RC_TRUE};
+    }
+    TryCatch(db->Commit(txn));
+    return {RC_TRUE};
   }
 
   rc_t txn_scan_with_iterator() {
