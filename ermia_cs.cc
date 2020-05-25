@@ -1413,7 +1413,6 @@ ConcurrentMasstreeIndex::coro_IteratorScan(transaction *t,
             }
 
             state = mystack_type::scan_find_next;
-            goto find_initial_return;
     find_initial_return:
             ;
         }

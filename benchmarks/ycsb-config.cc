@@ -14,7 +14,7 @@ double g_zipfian_theta = 0.99;  // zipfian constant, [0, 1), more skewed as it a
 // TODO: support scan_min length, current zipfain rng does not support min bound.
 const int g_scan_min_length = 1;
 int g_scan_max_length = 1000;
-int g_scan_length_zipfain_rng = 1;
+int g_scan_length_zipfain_rng = 0;
 double g_scan_length_zipfain_theta = 0.99;
 
 ReadTransactionType g_read_txn_type = ReadTransactionType::Sequential;

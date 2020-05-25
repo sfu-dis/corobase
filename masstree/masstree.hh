@@ -81,14 +81,6 @@ public:
   template <typename F>
   PROMISE(int) rscan(Str firstkey, bool matchfirst, F &scanner,
             ermia::TXN::xid_context *xc, threadinfo &ti) const;
-  template <typename F>
-  PROMISE(bool) scan_to_initial(Str firstkey, bool matchfirst, F &scanner,
-           ermia::TXN::xid_context *xc, threadinfo &ti, scan_info<P> *si) const;
-
-  template <typename F>
-  PROMISE(bool) scan_next_value(F &scanner,
-                                ermia::TXN::xid_context *xc, threadinfo &ti,
-                                scan_info<P> *si) const;
 
   template <typename F>
   PROMISE(int) scan_oid(Str firstkey, bool matchfirst, F &scanner,
@@ -118,14 +110,11 @@ public:
   PROMISE(int) scan_oid(H helper, Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
-  template <typename H, typename F>
-  PROMISE(bool) scan_to_initial(H helper, Str firstkey, bool matchfirst, F &scanner,
-           ermia::TXN::xid_context *xc, threadinfo &ti, scan_info<P> *si) const;
-
-  template <typename H, typename F>
-  PROMISE(bool) scan_next_value(H helper, F &scanner,
-                                ermia::TXN::xid_context *xc, threadinfo &ti,
-                                scan_info<P> *si) const;
+  template <bool IsNext, typename H, typename F>
+  PROMISE(bool) scan_init_or_next_value(H helper, F &scanner,
+                                       ermia::TXN::xid_context *xc,
+                                       threadinfo &ti,
+                                       scan_info<P> *si) const;
 
   friend class unlocked_tcursor<P>;
   friend class tcursor<P>;
