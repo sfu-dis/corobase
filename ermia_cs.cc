@@ -1603,7 +1603,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
             ASSERT(ptr.asi_type() == 0);
             cur_obj = (Object *)ptr.offset();
             Object::PrefetchHeader(cur_obj);
-            co_await std::experimental::suspend_always{};
+            //co_await std::experimental::suspend_always{};
             tentative_next = cur_obj->GetNextVolatile();
             ASSERT(tentative_next.asi_type() == 0);
           }
@@ -1644,7 +1644,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
         fence();
         entry = s.n_->lv_[kp];
         entry.prefetch(keylenx);
-        co_await std::experimental::suspend_always{};
+        //co_await std::experimental::suspend_always{};
         if (s.n_->keylenx_has_ksuf(keylenx))
           keylen = ka.assign_store_suffix(s.n_->ksuf(kp));
 
@@ -1676,7 +1676,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
           goto __find_next_done;
         }
         s.n_->prefetch();
-        co_await std::experimental::suspend_always{};
+        //co_await std::experimental::suspend_always{};
       }
 
     __find_next_changed:
@@ -1735,7 +1735,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
       while (!v[sense].isleaf()) {
         const ConcurrentMasstree::internode_type* in = static_cast<const ConcurrentMasstree::internode_type*>(n[sense]);
         in->prefetch();
-        co_await std::experimental::suspend_always{};
+        //co_await std::experimental::suspend_always{};
         int kp = ConcurrentMasstree::internode_type::bound_type::upper(ka, *in);
         n[!sense] = in->child_[kp];
         if (!n[!sense]) goto __reach_leaf_retry2;
@@ -1763,7 +1763,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
       }
 
       s.n_->prefetch();
-      co_await std::experimental::suspend_always{};
+      //co_await std::experimental::suspend_always{};
       s.perm_ = s.n_->permutation();
       s.ki_ = helper.lower(ka, &s);
       state = mystack_type::scan_find_next;
