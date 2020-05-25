@@ -234,7 +234,7 @@ void ycsb_parse_options(int argc, char **argv) {
       std::cerr << "  zipfian theta:              " << g_zipfian_theta << std::endl;
     }
     if (ycsb_workload.scan_percent() > 0) {
-      if (g_scan_max_length <= g_scan_min_length || g_scan_min_length < 1) {
+      if (g_scan_max_length < g_scan_min_length || g_scan_min_length < 1) {
          std::cerr << "  invalid scan range:      " << std::endl;
          std::cerr << "  min :                    " << g_scan_min_length << std::endl;
          std::cerr << "  max :                    " << g_scan_max_length << std::endl;
