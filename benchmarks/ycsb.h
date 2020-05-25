@@ -40,7 +40,7 @@ inline void BuildKey(uint64_t key, ermia::varstr &k) {
     if (offset + sizeof(uint64_t) < sizeof(ycsb_kv::key))
       memcpy((void *)(extended_key.y_key.data() + offset), (void *)prefix, sizeof(uint64_t));
     else
-      *(uint64_t *)(extended_key.y_key.data() + offset) = key;
+      *(uint64_t *)(extended_key.y_key.data() + offset) = __builtin_bswap64(key);
   }
   Encode(k, extended_key);
 }
@@ -205,9 +205,10 @@ class ycsb_base_worker : public bench_worker {
   uint64_t rng_gen_scan_length() {
     uint64_t r = 0;
     if(g_scan_length_zipfain_rng) {
+      while (!r)
         r = scan_length_zipfian_rng.next();
     } else {
-        r = scan_length_uniform_rng.uniform_within(g_scan_min_length, g_scan_max_length);
+      r = scan_length_uniform_rng.uniform_within(g_scan_min_length, g_scan_max_length);
     }
     return r;
   }
@@ -225,11 +226,11 @@ class ycsb_base_worker : public bench_worker {
   };
 
   ScanRange GenerateScanRange(ermia::transaction *t) {
-    ermia::varstr &start_key = t ? *t->string_allocator().next(sizeof(uint64_t)) : str(sizeof(uint64_t));
-    ermia::varstr &end_key = t ? *t->string_allocator().next(sizeof(uint64_t)) : str(sizeof(uint64_t));
+    ermia::varstr &start_key = t ? *t->string_allocator().next(sizeof(ycsb_kv::key)) : str(sizeof(ycsb_kv::key));
+    ermia::varstr &end_key = t ? *t->string_allocator().next(sizeof(ycsb_kv::key)) : str(sizeof(ycsb_kv::key));
 
-    new (&start_key) ermia::varstr((char *)&start_key + sizeof(ermia::varstr), sizeof(uint64_t));
-    new (&end_key) ermia::varstr((char *)&end_key + sizeof(ermia::varstr), sizeof(uint64_t));
+    new (&start_key) ermia::varstr((char *)&start_key + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
+    new (&end_key) ermia::varstr((char *)&end_key + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
     uint64_t r_start_key = rng_gen_key();
     uint64_t r_end_key = r_start_key + rng_gen_scan_length();
     ::BuildKey(r_start_key, start_key);
@@ -246,20 +247,24 @@ class ycsb_base_worker : public bench_worker {
 };
 
 class ycsb_scan_callback : public ermia::OrderedIndex::ScanCallback {
-   public:
-    virtual ~ycsb_scan_callback() {}
+  public:
+    ycsb_scan_callback() : n(0){}
     bool Invoke(const char *keyp, size_t keylen, const ermia::varstr &value) override {
-        MARK_REFERENCED(keyp);
-        MARK_REFERENCED(keylen);
+      MARK_REFERENCED(keyp);
+      MARK_REFERENCED(keylen);
 #if defined(SI)
-        ASSERT(*(char *)value.data() == 'a');
+      ASSERT(*(char *)value.data() == 'a');
 #endif
-        memcpy(value_buf, value.data(), sizeof(ycsb_kv::value));
-        memcpy(key_buf, keyp, keylen);
-        return true;
+      memcpy(value_buf, value.data(), sizeof(ycsb_kv::value));
+      memcpy(key_buf, keyp, keylen);
+      n++;
+      return true;
     }
 
-   private:
+  inline size_t size() const { return n; }
+
+  private:
+    int32_t n;
     unsigned char key_buf[sizeof(ycsb_kv::key)];
     unsigned char value_buf[sizeof(ycsb_kv::value)];
 };

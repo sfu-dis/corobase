@@ -47,15 +47,16 @@ public:
     }
 
     if (ycsb_workload.rmw_percent()) {
+      LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
       w.push_back(workload_desc("RMW", double(ycsb_workload.rmw_percent()) / 100.0, nullptr, TxnRMW));
     }
 
     if (ycsb_workload.scan_percent()) {
       if (ermia::config::scan_with_it) {
-          w.push_back(workload_desc(
-              "ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0,
-              nullptr, TxnScanWithIterator));
+        w.push_back(workload_desc("ScanWithIterator", double(ycsb_workload.scan_percent()) / 100.0,
+                    nullptr, TxnScanWithIterator));
       } else {
+        LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
         w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr, TxnScan));
       }
     }
@@ -191,18 +192,14 @@ public:
     rc_t rc = rc_t{RC_INVALID};
     for (int i = 0; i < g_reps_per_tx; ++i) {
       ScanRange range = GenerateScanRange(txn);
-      if (ermia::config::index_probe_only) {
-        LOG(FATAL) << "Not implemented";
-      } else {
-        ycsb_scan_callback callback;
-        rc = co_await table_index->coro_Scan(txn, range.start_key,
-                                             &range.end_key, callback);
-      }
+      ycsb_scan_callback callback;
+      rc = co_await table_index->coro_Scan(txn, range.start_key, &range.end_key, callback);
+
+      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
       TryCatchCoro(rc);
 #else
-      // TODO(lujc): sometimes return RC_FALSE, no value?
-      // ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
 #ifndef CORO_BATCH_COMMIT
