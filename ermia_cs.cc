@@ -1676,7 +1676,7 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
           goto __find_next_done;
         }
         s.n_->prefetch();
-        //co_await std::experimental::suspend_always{};
+        co_await std::experimental::suspend_always{};
       }
 
     __find_next_changed:

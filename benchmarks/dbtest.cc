@@ -28,7 +28,7 @@ DEFINE_bool(physical_workers_only, true, "Whether to only use one thread per phy
 DEFINE_bool(amac_version_chain, false, "Whether to use AMAC for traversing version chain; applicable only for multi-get.");
 DEFINE_bool(coro_tx, false, "Whether to turn each transaction into a coroutine");
 DEFINE_uint64(coro_batch_size, 5, "Number of in-flight coroutines");
-DEFINE_bool(coro_batch_schedule, true, "Whether to run the same type of transactions per batch");
+DEFINE_bool(coro_batch_schedule, false, "Whether to run the same type of transactions per batch");
 DEFINE_bool(scan_with_iterator, false, "Whether to run scan with iterator version or callback version");
 DEFINE_bool(verbose, true, "Verbose mode.");
 DEFINE_string(benchmark, "tpcc", "Benchmark name: tpcc, tpce, or ycsb");

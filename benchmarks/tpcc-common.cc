@@ -15,7 +15,7 @@ int g_wh_temperature = 0;
 uint g_microbench_rows = 10;  // this many rows
 // can't have both ratio and rows at the same time
 int g_microbench_wr_rows = 0;  // this number of rows to write
-int g_nr_suppliers = 10000;
+int g_nr_suppliers = 100;
 
 // TPC-C workload mix
 // 0: NewOrder
@@ -33,7 +33,7 @@ unsigned g_txn_workload_mix[8] = {
 // 0 - always use home wh
 // 50 - 50% of time use random wh
 // 100 - always use a random wh
-double g_wh_spread = 0;
+double g_wh_spread = 100;
 
 util::aligned_padded_elem<std::atomic<uint64_t>> *g_district_ids = nullptr;
 

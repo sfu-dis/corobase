@@ -17,7 +17,7 @@ bool tls_alloc_pmem_data = false;
 bool verbose = true;
 bool coro_tx = false;
 uint32_t coro_batch_size = 1;
-bool coro_batch_schedule = true;
+bool coro_batch_schedule = false;
 bool scan_with_it = false;
 std::string benchmark("");
 uint32_t worker_threads = 0;
