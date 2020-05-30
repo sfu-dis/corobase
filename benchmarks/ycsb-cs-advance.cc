@@ -45,11 +45,11 @@ public:
 
     barrier_a->count_down();
     barrier_b->wait_for();
-    util::timer t;
 
     while (running) {
       ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
       arena->reset();
+      util::timer t;
 
       for(uint32_t i = 0; i < batch_size; i++) {
         task<rc_t> & coro_task = task_queue[i];

@@ -67,7 +67,7 @@ uint32_t bench_worker::fetch_workload() {
   return 0;
 }
 
-bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer &t) {
+bool bench_worker::finish_workload(rc_t ret, uint32_t workload_idx, util::timer t) {
   if (!ret.IsAbort()) {
     ++ntxn_commits;
     std::get<0>(txn_counts[workload_idx])++;
@@ -673,6 +673,8 @@ void bench_worker::PipelineScheduler() {
 #ifdef BATCH_SAME_TRX
   LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactoins";
 #endif
+  LOG(INFO) << "Epoch management and latency recorder in Pipeline scheduler are not logically correct";
+
   CoroTxnHandle *handles = (CoroTxnHandle *)numa_alloc_onnode(
     sizeof(CoroTxnHandle) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
   memset(handles, 0, sizeof(CoroTxnHandle) * ermia::config::coro_batch_size);
@@ -740,11 +742,12 @@ void bench_worker::Scheduler() {
 
   barrier_a->count_down();
   barrier_b->wait_for();
-  util::timer t;
 
   while (running) {
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     uint32_t todo = ermia::config::coro_batch_size;
+    util::timer t;
+
     for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
       uint32_t workload_idx = fetch_workload();
       workload_idxs[i] = workload_idx;
@@ -790,7 +793,6 @@ void bench_worker::BatchScheduler() {
 
   barrier_a->count_down();
   barrier_b->wait_for();
-  util::timer t;
 
   while (running) {
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
@@ -799,6 +801,7 @@ void bench_worker::BatchScheduler() {
 #ifdef BATCH_SAME_TRX
     workload_idx = fetch_workload();
 #endif
+    util::timer t;
 
     for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
 #ifndef BATCH_SAME_TRX

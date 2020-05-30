@@ -292,12 +292,12 @@ inline size_t first_pos_diff(const char *p0, size_t sz0, const char *p1,
 
 class timer {
  private:
-  timer(const timer &) = delete;
   timer &operator=(const timer &) = delete;
   timer(timer &&) = delete;
 
  public:
   timer() { lap(); }
+  timer(const timer &t) : start(t.start) {};
 
   inline uint64_t lap() {
     uint64_t t0 = start;
