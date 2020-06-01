@@ -1,8 +1,10 @@
-## ERMIA
+## CoroBase
 
-Fast and Robust OLTP using Epoch-based Resource Management and Indirection Array
+Coroutine-Oriented Main-Memory Database Engine
 
-See our SIGMOD'16 paper [1] for a description of the system, our VLDBJ paper [2] for details in concurrency control, and our VLDB paper for replication.
+CoroBase is a research database engine that adopts coroutine-to-transaction paradigm.
+
+CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [1] for a description of ERMIA, our VLDBJ paper [2] for details in concurrency control, and our VLDB paper [3] for replication.
 
 \[1\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://github.com/ermia-db/ermia/raw/master/ermia.pdf). SIGMOD 2016.
 
@@ -12,7 +14,7 @@ See our SIGMOD'16 paper [1] for a description of the system, our VLDBJ paper [2]
 
 #### Environment configurations
 
-* Software dependencies: `libnuma`. Install from your favorite package manager. ERMIA uses `mmap` with `MAP_HUGETLB` to allocate huge pages. `MAP_HUGETLB` is available after Linux 2.6.32.
+* Software dependencies: `libnuma`. Install from your favorite package manager. CoroBase uses `mmap` with `MAP_HUGETLB` to allocate huge pages. `MAP_HUGETLB` is available after Linux 2.6.32.
 * Make sure you have enough huge pages. Almost all memory allocations come from the space carved out here. Assuming 2MB pages, the command below will allocate 40GB of memory:
 ```
 sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
@@ -30,9 +32,8 @@ This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see b
 
 By default we support up to 256 cores. The limit can be adjusted by setting `MAX_THREADS` defined under `config` in `dbcore/sm-config.h.` `MAX_THREADS` must be a multiple of 64.
 
-#### Build it
 --------
-
+#### Build it
 We do not allow building in the source directory. Suppose we build in a separate directory:
 
 ```
@@ -42,17 +43,16 @@ $ cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
 $ make -jN
 ```
 
-Currently the code can compile under both GCC and Clang. E.g., to use Clang 3.9, issue the following `cmake` command instead:
+Currently the code can compile under Clang 8.0+. E.g., to use Clang 8.0, issue the following `cmake` command instead:
 ```
-$ CC=clang-3.9 CXX=clang++-3.9 cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
+$ CC=clang-8.0 CXX=clang++-8.0 cmake ../ -DCMAKE_BUILD_TYPE=[Debug/Release/RelWithDebInfo]
 ```
 
-After `make` there will be three executables under `build`: 
-`ermia_SI` that runs snapshot isolation (not serializable);
-`ermia_SI_SSN` that runs snapshot isolation + Serial Safety Net (serializable)
-`ermia_SSI` that runs serializable snapshot isolation *
+After `make` there will be two executables under `build`: 
 
-* Serializable Isolation for Snapshot Databases, M. Cahill, U. Rohm, A. Fekete, SIGMOD 2008.
+`ermia_SI` that runs CoroBase (optimized 2-level coroutine-to-transaction design) and ERMIA with snapshot isolation (not serializable);
+
+`ermia_adv_coro_SI` that runs CoroBase (fully-nested coroutine-to-transaction design) with snapshot isolation (not serializable);
 
 
 #### Run it
@@ -66,6 +66,32 @@ $run.sh \
        "[other system-wide runtime options]" \
        "[other benchmark-specific runtime options]"`
 ```
+#### Run example
+Sequential (baseline):
+```
+./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75" "-w C -r 10 -s 1000000000 -t sequential"
+```
+CoroBase (optimized 2-level coroutine-to-transaction design)
+```
+./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro_tx=1 -coro_batch_size=8" "-w C -r 10 -s 1000000000 -t simple-coro"
+```
+CoroBase (fully-nested coroutine-to-transaction design)
+```
+./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro-tx=1 -coro_batch_size=8" "-w C -r 10 -s 1000000000 -t adv-coro"
+```
+Coroutine-based multiget (flattened coroutines)
+```
+./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75" "-w C -r 10 -s 1000000000 -t multiget-simple-coro"
+```
+Coroutine-based multiget (fully-nested coroutines)
+```
+./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -coro_tx=1" "-w C -r 10 -s 1000000000 -t multiget-adv-coro
+```
+AMAC-based multiget
+```
+./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75" "-w C -r 10 -s 1000000000 -t multiget-amac"
+```
+
 
 #### System-wide runtime options
 
@@ -85,14 +111,3 @@ $run.sh \
 - `eager`: load all latest versions during recovery, so the database is fully in-memory when it starts to process new transactions;
 - `lazy`: start a thread to load versions in the background after recovery, so the database is partially in-memory when it starts to process new transactions.
 - `none`: load versions on-demand upon access.
-
-*SSI and SSN specific:*
-
-`--safesnap`: enable safe snapshot for read-only transactions.
-
-*SSN-specific:*
-
-`--ssn-read-opt-threshold`: versions that are read by a read-mostly transaction and older than this value are considered "old" and will not be tracked; setting it to 0 will skip all read tracking for read-mostly transactions (`TXN_FLAG_READ_MOSTLY`).
-
-*SSI-specific:*
-`--ssi-read-only-opt`: enable P&G style read-only optimization for SSI.
