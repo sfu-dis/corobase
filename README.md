@@ -1,7 +1,5 @@
 ## CoroBase
 
-Coroutine-Oriented Main-Memory Database Engine
-
 CoroBase is a research database engine that adopts coroutine-to-transaction paradigm.
 
 CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [1] for a description of ERMIA, our VLDBJ paper [2] for details in concurrency control, and our VLDB paper [3] for replication.
@@ -69,7 +67,7 @@ $run.sh \
 #### Run example
 Sequential (baseline):
 ```
-./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75" "-w C -r 10 -s 1000000000 -t sequential"
+./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" "-w C -r 10 -s 1000000000 -t sequential"
 ```
 CoroBase (optimized 2-level coroutine-to-transaction design)
 ```
@@ -81,15 +79,15 @@ CoroBase (fully-nested coroutine-to-transaction design)
 ```
 Coroutine-based multiget (flattened coroutines)
 ```
-./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75" "-w C -r 10 -s 1000000000 -t multiget-simple-coro"
+./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" "-w C -r 10 -s 1000000000 -t multiget-simple-coro"
 ```
 Coroutine-based multiget (fully-nested coroutines)
 ```
-./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -coro_tx=1" "-w C -r 10 -s 1000000000 -t multiget-adv-coro
+./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro_tx=1" "-w C -r 10 -s 1000000000 -t multiget-adv-coro
 ```
 AMAC-based multiget
 ```
-./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75" "-w C -r 10 -s 1000000000 -t multiget-amac"
+./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" "-w C -r 10 -s 1000000000 -t multiget-amac"
 ```
 
 
