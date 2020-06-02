@@ -94,16 +94,20 @@ public:
     }
 
     for (int i = 0; i < g_reps_per_tx; ++i) {
-      ermia::varstr &k = GenerateKey(txn);
       ermia::varstr &v = str(arenas[idx], sizeof(ycsb_kv::value));
       rc_t rc = rc_t{RC_INVALID};
 
       if (ermia::config::index_probe_only) {
+        ermia::varstr &k = str(arenas[idx], sizeof(ycsb_kv::key));
+        new (&k) ermia::varstr((char *)&k + sizeof(ermia::varstr), sizeof(ycsb_kv::key));
+        BuildKey(rng_gen_key(), k);
+
         ermia::ConcurrentMasstree::threadinfo ti(begin_epoch);
         ermia::ConcurrentMasstree::versioned_node_t sinfo;
         ermia::OID oid = ermia::INVALID_OID;
         rc._val = (co_await table_index->GetMasstree().search_coro(k, oid, ti, &sinfo)) ? RC_TRUE : RC_FALSE;
       } else {
+        ermia::varstr &k = GenerateKey(txn);
         rc = co_await table_index->coro_GetRecord(txn, k, v);
       }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
