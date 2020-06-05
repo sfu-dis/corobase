@@ -6,7 +6,7 @@ CoroBase inherits the shared-everything architecture, synchronization and concur
 
 \[1\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://github.com/ermia-db/ermia/raw/master/ermia.pdf). SIGMOD 2016.
 
-\[2\] Tianzheng Wang, Ryan Johnson, Alan Fekete and Ippokratis Pandis. [Efficiently making (almost) any concurrency control mechanism serializable](https://link.springer.com/article/10.1007/s00778-017-0463-8). The VLDB Journal, Volume 26, Issue 4. 2017. [preprint](https://arxiv.org/pdf/1605.04292.pdf).
+\[2\] Tianzheng Wang, Ryan Johnson, Alan Fekete and Ippokratis Pandis. [Efficiently making (almost) any concurrency control mechanism serializable](https://link.springer.com/article/10.1007/s00778-017-0463-8). The VLDB Journal, Volume 26, Issue 4. 2017.
 
 \[3\] Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [Query Fresh: Log Shipping on Steroids](http://www.vldb.org/pvldb/vol11/p406-wang.pdf). VLDB 2018.
 
@@ -64,32 +64,39 @@ $run.sh \
        "[other system-wide runtime options]" \
        "[other benchmark-specific runtime options]"`
 ```
-#### Run example
-Sequential (baseline):
-```
-./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" "-w C -r 10 -s 1000000000 -t sequential"
-```
-CoroBase (optimized 2-level coroutine-to-transaction design)
-```
-./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro_tx=1 -coro_batch_size=8" "-w C -r 10 -s 1000000000 -t simple-coro"
-```
-CoroBase (fully-nested coroutine-to-transaction design)
-```
-./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro-tx=1 -coro_batch_size=8" "-w C -r 10 -s 1000000000 -t adv-coro"
-```
-Coroutine-based multiget (flattened coroutines)
-```
-./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" "-w C -r 10 -s 1000000000 -t multiget-simple-coro"
-```
-Coroutine-based multiget (fully-nested coroutines)
-```
-./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro_tx=1" "-w C -r 10 -s 1000000000 -t multiget-adv-coro
-```
-AMAC-based multiget
-```
-./run.sh ./ermia_SI ycsb 10 48 20 "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" "-w C -r 10 -s 1000000000 -t multiget-amac"
-```
 
+#### Run example
+```
+Sequential (baseline):
+$./run.sh ./ermia_SI ycsb 10 48 20 \
+         "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" \
+         "-w C -r 10 -s 1000000000 -t sequential"
+
+CoroBase (optimized 2-level coroutine-to-transaction design)
+$./run.sh ./ermia_SI ycsb 10 48 20 \
+         "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro_tx=1 -coro_batch_size=8" \
+         "-w C -r 10 -s 1000000000 -t simple-coro"
+
+CoroBase (fully-nested coroutine-to-transaction design)
+$./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 \
+         "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro-tx=1 -coro_batch_size=8" \
+         "-w C -r 10 -s 1000000000 -t adv-coro"
+
+Coroutine-based multiget (flattened coroutines)
+$./run.sh ./ermia_SI ycsb 10 48 20 \
+         "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" \
+         "-w C -r 10 -s 1000000000 -t multiget-simple-coro"
+
+Coroutine-based multiget (fully-nested coroutines)
+$./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 \
+         "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro_tx=1" \
+         "-w C -r 10 -s 1000000000 -t multiget-adv-coro
+
+AMAC-based multiget
+$./run.sh ./ermia_SI ycsb 10 48 20 \
+         "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1" \
+         "-w C -r 10 -s 1000000000 -t multiget-amac"
+```
 
 #### System-wide runtime options
 
@@ -109,3 +116,13 @@ AMAC-based multiget
 - `eager`: load all latest versions during recovery, so the database is fully in-memory when it starts to process new transactions;
 - `lazy`: start a thread to load versions in the background after recovery, so the database is partially in-memory when it starts to process new transactions.
 - `none`: load versions on-demand upon access.
+
+#### Benchmark-specific runtime options
+
+`-w C`: YCSB-C read-only workload.
+
+`-s 1000000000`: number of records in the database table.
+
+`-r 10`: 10 querys per transaction.
+
+`-t sequential`: 'sequential' for ERMIA implementation, 'simple-coro' for the optimized 2-level coroutine-to-transaction implementation, and 'adv-coro' for the fully-nested coroutines implementation.
