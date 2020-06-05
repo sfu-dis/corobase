@@ -268,19 +268,3 @@ class ycsb_scan_callback : public ermia::OrderedIndex::ScanCallback {
     unsigned char key_buf[sizeof(ycsb_kv::key)];
     unsigned char value_buf[sizeof(ycsb_kv::value)];
 };
-
-class ycsb_scan_oid_callback : public ermia::OrderedIndex::DiaScanCallback {
-   public:
-    virtual ~ycsb_scan_oid_callback() {}
-    bool Invoke(const char *keyp, size_t keylen, ermia::OID oid) override {
-        MARK_REFERENCED(keyp);
-        MARK_REFERENCED(keylen);
-        oid_buf = oid;
-        return true;
-    }
-    bool Receive(ermia::transaction *t, ermia::TableDescriptor *td) override {
-        return true;
-    }
-   private:
-    ermia::OID oid_buf;
-};

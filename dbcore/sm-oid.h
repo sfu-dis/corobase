@@ -205,7 +205,6 @@ struct sm_oid_mgr {
 
   PROMISE(dbtuple *) oid_get_version(FID f, OID o, TXN::xid_context *visitor_xc);
   PROMISE(dbtuple *) oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
-  ermia::dia::generator<dbtuple *> coro_oid_get_version(oid_array *oa, OID o, TXN::xid_context *visitor_xc);
   dbtuple *oid_get_s2pl(oid_array *oa, OID o, TXN::xid_context *visitor_xc, bool for_write, rc_t &out_rc);
 
   void oid_get_version_backup(fat_ptr &ptr,

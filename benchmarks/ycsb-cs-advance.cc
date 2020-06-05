@@ -95,11 +95,9 @@ public:
 
     if (ycsb_workload.read_percent()) {
       if (g_read_txn_type == ReadTransactionType::AdvCoro) {
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, nullptr, nullptr, TxnRead));
       } else if (g_read_txn_type == ReadTransactionType::AdvCoroMultiGet) {
-        w.push_back(workload_desc(
-            "Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAdvCoroMultiGet));
+        w.push_back(workload_desc("Read", double(ycsb_workload.read_percent()) / 100.0, TxnReadAdvCoroMultiGet));
       } else {
         LOG(FATAL) << "Wrong read transaction type. Supported: adv-coro and multiget-adv-coro";
       }
@@ -107,16 +105,15 @@ public:
 
     if (ycsb_workload.scan_percent()) {
       if (g_read_txn_type == ReadTransactionType::AdvCoro) {
-          if (ermia::config::scan_with_it) {
-              w.push_back(
-                  workload_desc("ScanWithIterator",
-                                double(ycsb_workload.scan_percent()) / 100.0,
-                                nullptr, nullptr, TxnScanWithIterator));
-          } else {
-              w.push_back(workload_desc(
-                  "Scan", double(ycsb_workload.scan_percent()) / 100.0, nullptr,
-                  nullptr, TxnScan));
-          }
+        if (ermia::config::scan_with_it) {
+          w.push_back(workload_desc("ScanWithIterator",
+                                    double(ycsb_workload.scan_percent()) / 100.0,
+                                    nullptr, nullptr, TxnScanWithIterator));
+        } else {
+          LOG_IF(FATAL, ermia::config::index_probe_only) << "Not supported";
+          w.push_back(workload_desc("Scan", double(ycsb_workload.scan_percent()) / 100.0,
+                                    nullptr, nullptr, TxnScan));
+        }
       } else {
         LOG(FATAL) << "Scan txn type must be adv-coro";
       }
@@ -189,34 +186,25 @@ private:
   }
 
   task<rc_t> txn_scan(uint32_t idx, ermia::epoch_num begin_epoch) {
-    ermia::transaction *txn = nullptr;
-
-    txn = &transactions[idx];
+    ermia::transaction *txn = &transactions[idx];
     new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
-                                     ermia::transaction::TXN_FLAG_READ_ONLY,
+                                 ermia::transaction::TXN_FLAG_READ_ONLY,
                                  *arena);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
-        rc_t rc = rc_t{RC_INVALID};
-        ScanRange range = GenerateScanRange(txn);
+      rc_t rc = rc_t{RC_INVALID};
+      ScanRange range = GenerateScanRange(txn);
 
-        if (ermia::config::index_probe_only) {
-            ycsb_scan_oid_callback callback;
-            co_await table_index->ScanOID(txn, range.start_key, &range.end_key,
-                                          rc, callback);
-        } else {
-            ycsb_scan_callback callback;
-            rc = co_await table_index->Scan(txn, range.start_key,
-                                            &range.end_key, callback);
-        }
+      ycsb_scan_callback callback;
+      rc = co_await table_index->Scan(txn, range.start_key, &range.end_key, callback);
 
+      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-        TryCatchCoro(rc);
+      TryCatchCoro(rc);
 #else
-        // TODO(lujc): sometimes return RC_FALSE, no value?
-        // ALWAYS_ASSERT(rc._val == RC_TRUE);
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
     }
 
@@ -225,16 +213,15 @@ private:
   }
 
   task<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
-    ermia::transaction *txn = nullptr;
-    txn = &transactions[idx];
+    ermia::transaction *txn = &transactions[idx];
     new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
-                                     ermia::transaction::TXN_FLAG_READ_ONLY,
+                                 ermia::transaction::TXN_FLAG_READ_ONLY,
                                  *arena);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
-    rc_t rc = rc_t{RC_INVALID};
     for (uint i = 0; i < g_reps_per_tx; ++i) {
+      rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
       ermia::varstr valptr;
@@ -245,32 +232,31 @@ private:
                                          range.start_key, &range.end_key);
       bool more = co_await iter.init_or_next</*IsNext=*/false>();
       while (more) {
-          if (!ermia::config::index_probe_only) {
-              if (unlikely(ermia::config::is_backup_srv())) {
-                  tuple = ermia::oidmgr->BackupGetVersion(
-                      iter.tuple_array(), iter.pdest_array(), iter.value(),
-                      txn->GetXIDContext());
-              } else {
-                  tuple = co_await ermia::oidmgr->oid_get_version(
-                      iter.tuple_array(), iter.value(), txn->GetXIDContext());
-              }
-              if (tuple) {
-                  rc = txn->DoTupleRead(tuple, &valptr);
-                  if (rc._val == RC_TRUE) {
-                      callback.Invoke(iter.key().data(), iter.key().length(),
-                                      valptr);
-                  }
-              }
+        if (!ermia::config::index_probe_only) {
+          if (unlikely(ermia::config::is_backup_srv())) {
+            tuple = ermia::oidmgr->BackupGetVersion(
+                iter.tuple_array(), iter.pdest_array(), iter.value(),
+                txn->GetXIDContext());
+          } else {
+            tuple = co_await ermia::oidmgr->oid_get_version(
+                iter.tuple_array(), iter.value(), txn->GetXIDContext());
           }
-          more = co_await iter.init_or_next</*IsNext=*/true>();
+          if (tuple) {
+            rc = txn->DoTupleRead(tuple, &valptr);
+	    if (rc._val == RC_TRUE) {
+              callback.Invoke(iter.key().data(), iter.key().length(), valptr);
+            }
+          }
+#if defined(SSI) || defined(SSN) || defined(MVOCC)
+          TryCatchCoro(rc);  // Might abort if we use SSI/SSN/MVOCC
+#else
+          ALWAYS_ASSERT(rc._val == RC_TRUE);
+#endif
+        }
+        more = co_await iter.init_or_next</*IsNext=*/true>();
       }
 
-#if defined(SSI) || defined(SSN) || defined(MVOCC)
-      TryCatchCoro(rc);  // Might abort if we use SSI/SSN/MVOCC
-#else
-      // TODO(lujc): sometimes return RC_FALSE, no value?
-      // ALWAYS_ASSERT(rc._val == RC_TRUE);
-#endif
+      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
     }
 
     TryCatchCoro(db->Commit(txn));

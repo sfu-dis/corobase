@@ -309,24 +309,10 @@ rc_t tpcc_worker::txn_payment() {
         more = iter.init_or_next</*IsNext=*/true>();
       }
     } else {
-      // static_limit_callback<NMaxCustomerIdxScanElems> d(s_arena.get(), true);
       TryCatch(tbl_customer_name_idx(customerWarehouseID)
                     ->Scan(txn, Encode(str(Size(k_c_idx_0)), k_c_idx_0),
                            &Encode(str(Size(k_c_idx_1)), k_c_idx_1), c));
     }
-
-    /*
-    ALWAYS_ASSERT(c.size() == d.size());
-
-    for (uint32_t i = 0; i < c.size(); ++i) {
-      const ermia::varstr *centry = c.values[i].second;
-      const ermia::varstr *dentry = d.values[i].second;
-
-      ALWAYS_ASSERT(centry->l == dentry->l);
-      int n = memcmp(centry->p, dentry->p, dentry->l);
-      ALWAYS_ASSERT(n == 0);
-    }
-    */
 
     ALWAYS_ASSERT(c.size() > 0);
     ASSERT(c.size() < NMaxCustomerIdxScanElems);  // we should detect this

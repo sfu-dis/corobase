@@ -26,6 +26,8 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Use masstree for index
 add_definitions(-DMASSTREE)
+# Assume 64-byte cache line
+add_definitions(-DCACHELINE_SIZE=64)
 
 set(MASSTREE_CONFIG "--enable-max-key-len=1024 --with-malloc=malloc")
 
@@ -36,11 +38,6 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -include ${CMAKE_CURRENT_SOURCE_DIR}/masstree/config-release.h")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
 endif()
-
-# Assume 64-byte cache line
-add_definitions(-DCACHELINE_SIZE=64)
-
-enable_testing()
 
 include_directories(dbcore)
 include_directories(masstree)
@@ -112,6 +109,15 @@ target_link_libraries(ermia_adv_coro_SI ermia_adv_coro_si thread_pool)
 #set_target_properties(ermia_MVOCC PROPERTIES COMPILE_FLAGS "-DMVOCC")
 #target_link_libraries(ermia_MVOCC ermia_mvocc thread_pool)
 
+# Benchmark scripts
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run2.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-rdma-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
+file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-tcp-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
+
+enable_testing()
+
 if(BUILD_TESTS)
     set(BUILD_GMOCK OFF CACHE BOOL "Gmock Not Used")
     set(INSTALL_GTEST OFF CACHE BOOL "Static Link Gtest")
@@ -126,10 +132,3 @@ if(BUILD_TESTS)
 
     add_subdirectory(tests)
 endif()
-
-# Benchmark scripts
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run2.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-rdma-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/run-tcp-cluster.sh" DESTINATION ${CMAKE_BINARY_DIR})

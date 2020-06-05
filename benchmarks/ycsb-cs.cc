@@ -189,12 +189,13 @@ public:
   }
 
   ermia::dia::generator<rc_t> txn_scan(uint32_t idx, ermia::epoch_num begin_epoch) {
-    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
+    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
+                                   arenas[idx], &transactions[idx]);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
-    rc_t rc = rc_t{RC_INVALID};
     for (int i = 0; i < g_reps_per_tx; ++i) {
+      rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
       rc = co_await table_index->coro_Scan(txn, range.start_key, &range.end_key, callback);
@@ -213,44 +214,39 @@ public:
   }
 
   ermia::dia::generator<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
-    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
+    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
+                                   arenas[idx], &transactions[idx]);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
-    rc_t rc = rc_t{RC_INVALID};
     for (int i = 0; i < g_reps_per_tx; ++i) {
+      rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
       ermia::varstr tuple_value;
       ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
           co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
       bool more = co_await scan_it.init_or_next</*IsNext=*/false>();
-      if (!ermia::config::index_probe_only) {
-        while (more) {
+      while (more) {
+        if (!ermia::config::index_probe_only) {
           ermia::OID oid = scan_it.value();
           ALWAYS_ASSERT(oid != ermia::INVALID_OID);
-          // ermia::dbtuple *tuple = co_await ermia::oidmgr->coro_oid_get_version(scan_it.tuple_array(), oid, xc);
-          ermia::dbtuple *tuple = sync_wait_coro(
-              ermia::oidmgr->oid_get_version(scan_it.tuple_array(), oid, xc));
+          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), oid, xc));
           if (tuple) {
-              rc_t rc = txn->DoTupleRead(tuple, &tuple_value);
-              callback.Invoke(scan_it.key().data(), scan_it.key().length(),
-                              tuple_value);
+            rc = txn->DoTupleRead(tuple, &tuple_value);
+            if (rc._val == RC_TRUE) {
+              callback.Invoke(scan_it.key().data(), scan_it.key().length(), tuple_value);
+            }
           }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
           TryCatchCoro(rc);
 #else
-          // TODO(lujc): sometimes return RC_FALSE, no value?
-          // ALWAYS_ASSERT(rc._val == RC_TRUE);
+          ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
-          more = co_await scan_it.init_or_next</*IsNext=*/true>();
         }
-      } else {
-        while (more) {
-          MARK_REFERENCED(scan_it.value());
-          more = co_await scan_it.init_or_next</*IsNext=*/true>();
-        }
+        more = co_await scan_it.init_or_next</*IsNext=*/true>();
       }
+      //ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
     }
 #ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));

@@ -221,9 +221,9 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   }
 
   rc_t txn_scan() {
-    ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
-    rc_t rc = rc_t{RC_INVALID};
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
     for (uint i = 0; i < g_reps_per_tx; ++i) {
+      rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
       rc = table_index->Scan(txn, range.start_key, &range.end_key, callback);
@@ -240,48 +240,46 @@ class ycsb_sequential_worker : public ycsb_base_worker {
   }
 
   rc_t txn_scan_with_iterator() {
-      ermia::transaction *txn = db->NewTransaction(0, *arena, txn_buf());
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_ONLY, *arena, txn_buf());
+    for (uint i = 0; i < g_reps_per_tx; ++i) {
       rc_t rc = rc_t{RC_INVALID};
-      for (uint i = 0; i < g_reps_per_tx; ++i) {
-          ScanRange range = GenerateScanRange(txn);
-          ycsb_scan_callback callback;
-          ermia::varstr valptr;
-          ermia::dbtuple* tuple = nullptr;
-          auto iter = ermia::ConcurrentMasstree::ScanIterator<
-              /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
-                                             txn->GetXIDContext(),
-                                             range.start_key, &range.end_key);
-          bool more = iter.init_or_next</*IsNext=*/false>();
-          while (more) {
-            if (!ermia::config::index_probe_only) {
-              if (unlikely(ermia::config::is_backup_srv())) {
-                  tuple = ermia::oidmgr->BackupGetVersion(
-                      iter.tuple_array(), iter.pdest_array(), iter.value(),
-                      txn->GetXIDContext());
-              } else {
-                  tuple = ermia::oidmgr->oid_get_version(
-                      iter.tuple_array(), iter.value(), txn->GetXIDContext());
-              }
-              if (tuple) {
-                  rc = txn->DoTupleRead(tuple, &valptr);
-                  if (rc._val == RC_TRUE) {
-                      callback.Invoke(iter.key().data(), iter.key().length(),
-                                      valptr);
-                  }
-              }
-            }
-            more = iter.init_or_next</*IsNext=*/true>();
+      ScanRange range = GenerateScanRange(txn);
+      ycsb_scan_callback callback;
+      ermia::varstr valptr;
+      ermia::dbtuple* tuple = nullptr;
+      auto iter = ermia::ConcurrentMasstree::ScanIterator<
+          /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
+                                         txn->GetXIDContext(),
+                                         range.start_key, &range.end_key);
+      bool more = iter.init_or_next</*IsNext=*/false>();
+      while (more) {
+        if (!ermia::config::index_probe_only) {
+          if (unlikely(ermia::config::is_backup_srv())) {
+            tuple = ermia::oidmgr->BackupGetVersion(
+                iter.tuple_array(), iter.pdest_array(), iter.value(),
+                txn->GetXIDContext());
+          } else {
+            tuple = ermia::oidmgr->oid_get_version(
+                iter.tuple_array(), iter.value(), txn->GetXIDContext());
           }
-
+          if (tuple) {
+            rc = txn->DoTupleRead(tuple, &valptr);
+            if (rc._val == RC_TRUE) {
+              callback.Invoke(iter.key().data(), iter.key().length(), valptr);
+            }
+          }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
-          TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
+        TryCatch(rc);  // Might abort if we use SSI/SSN/MVOCC
 #else
-          // TODO(lujc): sometimes return RC_FALSE, no value?
-          // ALWAYS_ASSERT(rc._val == RC_TRUE);
+        ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
+        }
+        more = iter.init_or_next</*IsNext=*/true>();
       }
-      TryCatch(db->Commit(txn));
-      return {RC_TRUE};
+      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
+    }
+    TryCatch(db->Commit(txn));
+    return {RC_TRUE};
   }
 
  private:
