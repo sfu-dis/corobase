@@ -690,35 +690,6 @@ ermia::dia::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia:
              ->Scan(txn, Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
                     &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c);
     TryCatchCoro(rc);
-    /*
-    ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
-      co_await tbl_order_line(warehouse_id)->coro_IteratorScan(
-        txn,
-        Encode(str(arenas[idx], Size(k_ol_0)), k_ol_0),
-        &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1));
-
-    std::vector<ermia::OIDAMACState> reqs;
-    bool more = co_await scan_it.InitOrNext<true>();
-    while (more) {
-      reqs.push_back(scan_it.value());
-      more = co_await scan_it.InitOrNext<false>();
-    }
-    ermia::oidmgr->oid_get_version_amac(scan_it.tuple_array(), reqs, xc);
-
-    for (auto &r : reqs) {
-      if (r.tuple) {
-        rc = txn->DoTupleRead(r.tuple, &valptr);
-        TryCatchCoro(rc);
-
-        order_line::value v_ol_temp;
-        valptr.prefetch();
-        co_await std::experimental::suspend_always{};
-
-        const order_line::value *v_ol = Decode(valptr, v_ol_temp);
-        c.s_i_ids[v_ol->ol_i_id] = 1;
-      }
-    }
-    */
   }
   {
     std::unordered_map<uint, bool> s_i_ids_distinct;

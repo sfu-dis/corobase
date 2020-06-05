@@ -4,6 +4,8 @@
 #include "bench.h"
 #include "ycsb.h"
 
+#ifndef ADV_COROUTINE
+
 extern uint g_reps_per_tx;
 extern uint g_rmw_additional_reads;
 extern ReadTransactionType g_read_txn_type;
@@ -223,19 +225,21 @@ public:
       rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
-      ermia::varstr tuple_value;
-      ermia::ConcurrentMasstree::coro_ScanIteratorForward scan_it =
-          co_await table_index->coro_IteratorScan(txn, range.start_key, &range.end_key);
-      bool more = co_await scan_it.init_or_next</*IsNext=*/false>();
+      ermia::varstr valptr;
+      ermia::dbtuple* tuple = nullptr;
+      auto iter = co_await ermia::ConcurrentMasstree::coro_ScanIterator<
+          /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
+                                         txn->GetXIDContext(),
+                                         range.start_key, &range.end_key);
+      bool more = iter.init_or_next</*IsNext=*/false>();
       while (more) {
         if (!ermia::config::index_probe_only) {
-          ermia::OID oid = scan_it.value();
-          ALWAYS_ASSERT(oid != ermia::INVALID_OID);
-          ermia::dbtuple *tuple = sync_wait_coro(ermia::oidmgr->oid_get_version(scan_it.tuple_array(), oid, xc));
+          tuple = ermia::oidmgr->oid_get_version(
+              iter.tuple_array(), iter.value(), txn->GetXIDContext());
           if (tuple) {
-            rc = txn->DoTupleRead(tuple, &tuple_value);
+            rc = txn->DoTupleRead(tuple, &valptr);
             if (rc._val == RC_TRUE) {
-              callback.Invoke(scan_it.key().data(), scan_it.key().length(), tuple_value);
+              callback.Invoke(iter.key().data(), iter.key().length(), valptr);
             }
           }
 #if defined(SSI) || defined(SSN) || defined(MVOCC)
@@ -244,9 +248,9 @@ public:
           ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
         }
-        more = co_await scan_it.init_or_next</*IsNext=*/true>();
+        more = iter.init_or_next</*IsNext=*/true>();
       }
-      //ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
+      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
     }
 #ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));
@@ -260,3 +264,5 @@ void ycsb_cs_do_test(ermia::Engine *db, int argc, char **argv) {
   ycsb_bench_runner<ycsb_cs_worker> r(db);
   r.run();
 }
+
+#endif  // ADV_COROUTINE
