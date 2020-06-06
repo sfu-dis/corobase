@@ -94,7 +94,7 @@ class tcalloc {
 
 extern thread_local tcalloc coroutine_allocator;
 
-template <typename T> struct [[nodiscard]] generator {
+template <typename T = void> struct [[nodiscard]] generator {
   struct promise_type;
   using handle = std::experimental::coroutine_handle<promise_type>;
 
@@ -118,11 +118,11 @@ template <typename T> struct [[nodiscard]] generator {
     }
     void *operator new(size_t sz) { return coroutine_allocator.alloc(sz); }
     void operator delete(void *p, size_t sz) { coroutine_allocator.free(p, sz); }
-
-    std::experimental::coroutine_handle<> callee_coro = nullptr;
     struct alignas(alignof(T)) T_Buf {
       uint8_t buf[sizeof(T)];
     };
+
+    std::experimental::coroutine_handle<> callee_coro = nullptr;
     T_Buf ret_val_buf_;
   };
 
@@ -170,6 +170,20 @@ private:
   handle coro;
 };
 
+template<> struct generator<void>::promise_type {
+  promise_type() {}
+  ~promise_type() {}
+  auto get_return_object() { return generator{handle::from_promise(*this)}; }
+  auto initial_suspend() { return std::experimental::suspend_never{}; }
+  auto final_suspend() { return std::experimental::suspend_always{}; }
+  void unhandled_exception() { std::terminate(); }
+  void return_void() {};
+  void transfer_return_value() {};
+  void *operator new(size_t sz) { return coroutine_allocator.alloc(sz); }
+  void operator delete(void *p, size_t sz) { coroutine_allocator.free(p, sz); }
+
+  std::experimental::coroutine_handle<> callee_coro = nullptr;
+};
 /*
  *  task<T> is implementation of coroutine promise. It supports chained
  *  co_await, which enables writing coroutine as easy as writing normal
