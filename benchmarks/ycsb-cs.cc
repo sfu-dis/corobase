@@ -225,13 +225,12 @@ public:
       rc_t rc = rc_t{RC_INVALID};
       ScanRange range = GenerateScanRange(txn);
       ycsb_scan_callback callback;
+      ermia::ConcurrentMasstree::coro_ScanIterator</*IsRerverse=*/false>
+          iter(txn->GetXIDContext(), &table_index->GetMasstree(), range.start_key, &range.end_key);
+      bool more = co_await iter.init();
+
       ermia::varstr valptr;
       ermia::dbtuple* tuple = nullptr;
-      auto iter = co_await ermia::ConcurrentMasstree::coro_ScanIterator<
-          /*IsRerverse=*/false>::factory(&table_index->GetMasstree(),
-                                         txn->GetXIDContext(),
-                                         range.start_key, &range.end_key);
-      bool more = iter.init_or_next</*IsNext=*/false>();
       while (more) {
         if (!ermia::config::index_probe_only) {
           tuple = ermia::oidmgr->oid_get_version(
@@ -248,7 +247,7 @@ public:
           ALWAYS_ASSERT(rc._val == RC_TRUE);
 #endif
         }
-        more = iter.init_or_next</*IsNext=*/true>();
+        more = iter.next();
       }
       ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
     }

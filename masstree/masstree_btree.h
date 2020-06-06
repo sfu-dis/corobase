@@ -560,17 +560,11 @@ public:
     oid_array *tuple_array() const { return btr_->tuple_array_; }
     oid_array *pdest_array() const { return btr_->pdest_array_; }
 
-    static ermia::dia::generator<coro_ScanIterator<IsReverse>> factory(
-           mbtree<P> *mbtree,
-           ermia::TXN::xid_context *xc,
-           const ermia::varstr &start_key,
-           const ermia::varstr *end_key,
-           bool emit_firstkey=true) {
-      coro_ScanIterator<IsReverse> scan_iterator(xc, mbtree, start_key, end_key);
-      threadinfo ti(xc->begin_epoch);
+    ermia::dia::generator<bool> init(bool emit_firstkey=true) {
+      threadinfo ti(this->xc_->begin_epoch);
 
-      auto &si = scan_iterator.sinfo_;
-      auto &scanner = scan_iterator.scanner_;
+      auto &si = this->sinfo_;
+      auto &scanner = this->scanner_;
 
       while (1) {
         {
@@ -610,7 +604,7 @@ public:
             }
 
             typename Masstree::node_base<P>::nodeversion_type oldv = v[sense];
-	    v[sense] = in->stable_annotated(ti.stable_fence());
+            v[sense] = in->stable_annotated(ti.stable_fence());
             if (oldv.has_split(v[sense]) &&
               in->stable_last_key_compare(si.ka, v[sense], ti) > 0) {
               goto __reach_leaf_retry;
@@ -628,7 +622,7 @@ public:
 
         s.perm_ = s.n_->permutation();
 
-        s.ki_ = scan_iterator.helper_.lower_with_position(si.ka, &s, kp);
+        s.ki_ = this->helper_.lower_with_position(si.ka, &s, kp);
         if (kp >= 0) {
           keylenx = s.n_->keylenx_[kp];
           fence();
@@ -654,7 +648,7 @@ public:
             goto find_initial_done;
           } else if (s.n_->keylenx_has_ksuf(keylenx)) {
             int ksuf_compare = suffix.compare(si.ka.suffix());
-            if (scan_iterator.helper_.initial_ksuf_match(ksuf_compare, emit_firstkey)) {
+            if (this->helper_.initial_ksuf_match(ksuf_compare, emit_firstkey)) {
               int keylen = si.ka.assign_store_suffix(suffix);
               si.ka.assign_store_length(keylen);
               si.state = Masstree::scan_info<P>::mystack_type::scan_emit;
@@ -663,9 +657,9 @@ public:
           }  else if (emit_firstkey) {
             si.state = Masstree::scan_info<P>::mystack_type::scan_emit;
             goto find_initial_done;
-	  }
+          }
           // otherwise, this entry must be skipped
-          s.ki_ = scan_iterator.helper_.next(s.ki_);
+          s.ki_ = this->helper_.next(s.ki_);
         }
         si.state = Masstree::scan_info<P>::mystack_type::scan_find_next;
       }
@@ -678,13 +672,48 @@ public:
         ++si.stackpos;
       }
 
-      co_return scan_iterator;
+      while (1) {
+        switch (si.state) {
+        case Masstree::scan_info<P>::mystack_type::scan_emit: {
+          if (!scanner.visit_value_no_callback(si.ka)) {
+            co_return false;
+          }
+          co_return true;
+        } break;
+
+        case Masstree::scan_info<P>::mystack_type::scan_find_next:
+        find_next:
+          si.state = si.stack[si.stackpos].find_next(this->helper_, si.ka, si.entry);
+          if (si.state != Masstree::scan_info<P>::mystack_type::scan_up)
+            scanner.visit_leaf(si.stack[si.stackpos], si.ka, ti);
+          break;
+
+        case Masstree::scan_info<P>::mystack_type::scan_up:
+          do {
+            if (--si.stackpos < 0)
+              co_return false;
+            si.ka.unshift();
+            si.stack[si.stackpos].ki_ = this->helper_.next(si.stack[si.stackpos].ki_);
+          } while (unlikely(si.ka.empty()));
+          goto find_next;
+
+        case Masstree::scan_info<P>::mystack_type::scan_down:
+          this->helper_.shift_clear(si.ka);
+          ++si.stackpos;
+          goto retry;
+
+        case Masstree::scan_info<P>::mystack_type::scan_retry:
+        retry:
+          si.state = AWAIT si.stack[si.stackpos].find_retry(this->helper_, si.ka, ti);
+          break;
+        }
+      }
+      co_return true;
     }
 
-    template <bool IsNext>
-    PROMISE(bool) init_or_next() {
+    PROMISE(bool) next() {
       threadinfo ti(xc_->begin_epoch);
-      return btr_->get_table()->template scan_init_or_next_value<IsNext>(
+      return btr_->get_table()->template scan_init_or_next_value<true>(
           helper_, scanner_, xc_, ti, &sinfo_);
     }
   };
