@@ -9,7 +9,7 @@
 #include "sm-defs.h"
 
 namespace ermia {
-namespace dia {
+namespace coro {
 
 // Simple thread caching allocator.
 class tcalloc {
@@ -510,17 +510,17 @@ private:
 };
 
 
-} // namespace dia
+} // namespace coro
 } // namespace ermia
 
 #ifdef ADV_COROUTINE
-  #define PROMISE(t) ermia::dia::task<t>
+  #define PROMISE(t) ermia::coro::task<t>
   #define RETURN co_return
   #define AWAIT co_await
   #define SUSPEND co_await std::experimental::suspend_always{}
 
 template<typename T>
-inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
+inline T sync_wait_coro(ermia::coro::task<T> &&coro_task) {
     coro_task.start();
     while(!coro_task.done()) {
         coro_task.resume();
@@ -530,14 +530,14 @@ inline T sync_wait_coro(ermia::dia::task<T> &&coro_task) {
 }
 
 template<>
-inline void sync_wait_coro(ermia::dia::task<void> &&coro_task) {
+inline void sync_wait_coro(ermia::coro::task<void> &&coro_task) {
     coro_task.start();
     while(!coro_task.done()) {
         coro_task.resume();
     }
 }
 
-inline void sync_wait_void_coro(ermia::dia::task<void> &&coro_task) {
+inline void sync_wait_void_coro(ermia::coro::task<void> &&coro_task) {
     coro_task.start();
     while(!coro_task.done()) {
         coro_task.resume();

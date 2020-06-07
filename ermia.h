@@ -154,16 +154,16 @@ public:
 #ifdef ADV_COROUTINE
   // A multi-get operation using nested coroutines
   void adv_coro_MultiGet(transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-                         std::vector<ermia::dia::task<bool>> &index_probe_tasks,
-                         std::vector<ermia::dia::task<void>> &get_record_tasks);
+                         std::vector<ermia::coro::task<bool>> &index_probe_tasks,
+                         std::vector<ermia::coro::task<void>> &get_record_tasks);
 #endif
 
-  ermia::dia::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
-  ermia::dia::generator<rc_t> coro_GetRecordSV(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
-  ermia::dia::generator<rc_t> coro_UpdateRecord(transaction *t, const varstr &key, varstr &value);
-  ermia::dia::generator<rc_t> coro_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
-  ermia::dia::generator<bool> coro_InsertOID(transaction *t, const varstr &key, OID oid);
-  ermia::dia::generator<rc_t> coro_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
+  ermia::coro::generator<rc_t> coro_GetRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
+  ermia::coro::generator<rc_t> coro_GetRecordSV(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
+  ermia::coro::generator<rc_t> coro_UpdateRecord(transaction *t, const varstr &key, varstr &value);
+  ermia::coro::generator<rc_t> coro_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid = nullptr);
+  ermia::coro::generator<bool> coro_InsertOID(transaction *t, const varstr &key, OID oid);
+  ermia::coro::generator<rc_t> coro_Scan(transaction *t, const varstr &start_key, const varstr *end_key,
                               ScanCallback &callback, uint32_t max_keys = ~uint32_t{0});
 
   PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value, OID *out_oid = nullptr) override;

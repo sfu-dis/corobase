@@ -1,9 +1,9 @@
 #include "sm-coroutine.h"
 
 namespace ermia {
-namespace dia {
+namespace coro {
 
 thread_local tcalloc coroutine_allocator;
 
-} // namespace dia
+} // namespace coro
 } // namespace ermia

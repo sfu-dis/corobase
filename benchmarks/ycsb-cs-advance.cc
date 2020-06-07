@@ -18,7 +18,7 @@ extern ReadTransactionType g_read_txn_type;
 extern YcsbWorkload ycsb_workload;
 
 template<typename T>
-using task = ermia::dia::task<T>;
+using task = ermia::coro::task<T>;
 
 class ycsb_cs_adv_worker : public ycsb_base_worker {
 public:
@@ -272,8 +272,8 @@ private:
 
     thread_local std::vector<ermia::varstr *> keys;
     thread_local std::vector<ermia::varstr *> values;
-    thread_local std::vector<ermia::dia::task<bool>> index_probe_tasks(g_reps_per_tx);
-    thread_local std::vector<ermia::dia::task<void>> get_record_tasks(g_reps_per_tx);
+    thread_local std::vector<ermia::coro::task<bool>> index_probe_tasks(g_reps_per_tx);
+    thread_local std::vector<ermia::coro::task<void>> get_record_tasks(g_reps_per_tx);
     keys.clear();
 
     if (ermia::config::index_probe_only) {

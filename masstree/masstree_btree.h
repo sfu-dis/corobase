@@ -234,7 +234,7 @@ public:
 
   inline void search_amac(std::vector<AMACState> &states, epoch_num epoch) const;
 
-  inline ermia::dia::generator<bool>
+  inline ermia::coro::generator<bool>
   search_coro(const key_type &k, OID &o, threadinfo &ti,
               versioned_node_t *search_info = nullptr) const;
 
@@ -560,7 +560,7 @@ public:
     oid_array *tuple_array() const { return btr_->tuple_array_; }
     oid_array *pdest_array() const { return btr_->pdest_array_; }
 
-    ermia::dia::generator<bool> init(bool emit_firstkey=true) {
+    ermia::coro::generator<bool> init(bool emit_firstkey=true) {
       threadinfo ti(this->xc_->begin_epoch);
 
       auto &si = this->sinfo_;
@@ -955,7 +955,7 @@ inline void mbtree<P>::search_amac(std::vector<AMACState> &states, epoch_num epo
 
 // Multi-key search using Coroutines
 template <typename P>
-inline ermia::dia::generator<bool>
+inline ermia::coro::generator<bool>
 mbtree<P>::search_coro(const key_type &k, OID &o, threadinfo &ti,
                        versioned_node_t *search_info) const {
   Masstree::unlocked_tcursor<P> lp(table_, k.data(), k.size());

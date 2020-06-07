@@ -10,10 +10,71 @@
 
 namespace ermia {
 
+#ifdef ADV_COROUTINE
+void ConcurrentMasstreeIndex::adv_coro_MultiGet(
+    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
+    std::vector<ermia::coro::task<bool>> &index_probe_tasks,
+    std::vector<ermia::coro::task<void>> &get_record_tasks) {
+  if (!t) {
+    ermia::epoch_num e = MM::epoch_enter();
+    ConcurrentMasstree::versioned_node_t sinfo;
+    std::vector<OID> oids(keys.size());
+
+    for (int i = 0; i < keys.size(); ++i) {
+      oids[i] = INVALID_OID;
+      index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
+      index_probe_tasks[i].start();
+    }
+
+    int finished = 0;
+    while (finished < keys.size()) {
+      for (auto &t : index_probe_tasks) {
+        if (t.valid()) {
+          if (t.done()) {
+            ++finished;
+            t.destroy();
+          } else {
+            t.resume();
+          }
+        }
+      }
+    }
+    for (const OID & oid : oids) {
+      ALWAYS_ASSERT(oid != INVALID_OID);
+    }
+    MM::epoch_exit(0, e);
+  } else {
+    std::vector<rc_t> rcs(keys.size());
+    for (int i = 0; i < keys.size(); ++i) {
+      rcs[i]._val = RC_INVALID;
+      get_record_tasks[i] = GetRecord(t, rcs[i], *keys[i], *values[i]);
+      get_record_tasks[i].start();
+    }
+
+    int finished = 0;
+    while (finished < keys.size()) {
+      for (auto &task : get_record_tasks) {
+        if (task.valid()) {
+          if (task.done()) {
+            ++finished;
+            task.destroy();
+          } else {
+            task.resume();
+          }
+        }
+      }
+    }
+
+    for (const rc_t & rc : rcs) {
+      ALWAYS_ASSERT(rc._val == RC_TRUE);
+    }
+  }
+}
+
+#else
 void ConcurrentMasstreeIndex::amac_MultiGet(
     transaction *t, std::vector<ConcurrentMasstree::AMACState> &requests,
     std::vector<varstr *> &values) {
-#ifndef ADV_COROUTINE
   ConcurrentMasstree::versioned_node_t sinfo;
   if (!t) {
     auto e = MM::epoch_enter();
@@ -71,7 +132,6 @@ void ConcurrentMasstreeIndex::amac_MultiGet(
       }
     }
   }
-#endif
 }
 
 void ConcurrentMasstreeIndex::simple_coro_MultiGet(
@@ -112,68 +172,7 @@ void ConcurrentMasstreeIndex::simple_coro_MultiGet(
     MM::epoch_exit(0, e);
 }
 
-#ifdef ADV_COROUTINE
-void ConcurrentMasstreeIndex::adv_coro_MultiGet(
-    transaction *t, std::vector<varstr *> &keys, std::vector<varstr *> &values,
-    std::vector<ermia::dia::task<bool>> &index_probe_tasks,
-    std::vector<ermia::dia::task<void>> &get_record_tasks) {
-  if (!t) {
-    ermia::epoch_num e = MM::epoch_enter();
-    ConcurrentMasstree::versioned_node_t sinfo;
-    std::vector<OID> oids(keys.size());
-
-    for (int i = 0; i < keys.size(); ++i) {
-      oids[i] = INVALID_OID;
-      index_probe_tasks[i] = masstree_.search(*keys[i], oids[i], e, &sinfo);
-      index_probe_tasks[i].start();
-    }
-
-    int finished = 0;
-    while (finished < keys.size()) {
-      for (auto &t : index_probe_tasks) {
-        if (t.valid()) {
-          if (t.done()) {
-            ++finished;
-            t.destroy();
-          } else {
-            t.resume();
-          }
-        }
-      }
-    }
-    for (const OID & oid : oids) {
-      ALWAYS_ASSERT(oid != INVALID_OID);
-    }
-    MM::epoch_exit(0, e);
-  } else {
-    std::vector<rc_t> rcs(keys.size());
-    for (int i = 0; i < keys.size(); ++i) {
-      rcs[i]._val = RC_INVALID;
-      get_record_tasks[i] = GetRecord(t, rcs[i], *keys[i], *values[i]);
-      get_record_tasks[i].start();
-    }
-
-    int finished = 0;
-    while (finished < keys.size()) {
-      for (auto &task : get_record_tasks) {
-        if (task.valid()) {
-          if (task.done()) {
-            ++finished;
-            task.destroy();
-          } else {
-            task.resume();
-          }
-        }
-      }
-    }
-
-    for (const rc_t & rc : rcs) {
-      ALWAYS_ASSERT(rc._val == RC_TRUE);
-    }
-  }
-}
-#endif  // ADV_COROUTINE
-ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecordSV(transaction *t, const varstr &key,
+ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecordSV(transaction *t, const varstr &key,
                                                                     varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;
   rc_t rc = rc_t{RC_INVALID};
@@ -373,7 +372,8 @@ start_over:
   co_return {RC_FALSE};
 }
 
-ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, const varstr &key,
+
+ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, const varstr &key,
                                                                     varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;
   rc_t rc = rc_t{RC_INVALID};
@@ -577,7 +577,7 @@ start_over:
   co_return {RC_FALSE};
 }
 
-ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_UpdateRecord(transaction *t, const varstr &key,
+ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_UpdateRecord(transaction *t, const varstr &key,
                                                                        varstr &value) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
@@ -855,7 +855,7 @@ forward:
 
       ASSERT(not tuple->pvalue or tuple->pvalue->size() == tuple->size);
       ASSERT(tuple->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_XID);
-      ASSERT(sync_wait_coro(oidmgr->oid_get_version(tuple_fid, oid, xc)) == tuple);
+      ASSERT(oidmgr->oid_get_version(tuple_fid, oid, xc) == tuple);
       ASSERT(log);
 
       // FIXME(tzwang): mark deleted in all 2nd indexes as well?
@@ -894,7 +894,7 @@ forward:
   co_return rc;
 }
 
-ermia::dia::generator<bool> ConcurrentMasstreeIndex::coro_InsertOID(transaction *t, const varstr &key, OID oid) {
+ermia::coro::generator<bool> ConcurrentMasstreeIndex::coro_InsertOID(transaction *t, const varstr &key, OID oid) {
   ASSERT((char *)key.data() == (char *)&key + sizeof(varstr));
   t->ensure_active();
 
@@ -1070,7 +1070,7 @@ insert_new:
   co_return false;
 }
 
-ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid) {
+ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_InsertRecord(transaction *t, const varstr &key, varstr &value, OID *out_oid) {
   // For primary index only
   ALWAYS_ASSERT(IsPrimary());
 
@@ -1265,7 +1265,7 @@ insert_new:
   co_return rc_t{RC_TRUE};
 }
 
-ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
+ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
                             const varstr &start_key, const varstr *end_key,
                             ScanCallback &callback, uint32_t max_keys) {
   SearchRangeCallback c(callback);
@@ -1552,11 +1552,11 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
     case mystack_type::scan_retry:
     retry:
       {
-      //state = sync_wait_coro(stack[stackpos].find_retry(helper, ka, ti));
+      //state = stack[stackpos].find_retry(helper, ka, ti);
       auto &s = stack[stackpos];
     __find_retry_retry:
       {
-      //s.n_ = sync_wait_coro(s.root_->reach_leaf(ka, s.v_, ti));
+      //s.n_ = s.root_->reach_leaf(ka, s.v_, ti);
       const ConcurrentMasstree::node_base_type* n[2];
       ConcurrentMasstree::nodeversion_type v[2];
       bool sense;
@@ -1613,4 +1613,5 @@ ermia::dia::generator<rc_t> ConcurrentMasstreeIndex::coro_Scan(transaction *t,
 done:
   co_return c.return_code;
 }
+#endif
 } // namespace ermia
