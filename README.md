@@ -4,16 +4,25 @@ CoroBase is a research database engine that adopts coroutine-to-transaction para
 
 CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [1] for a description of ERMIA, our VLDBJ paper [2] for details in concurrency control, and our VLDB paper [3] for replication.
 
-\[1\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://github.com/ermia-db/ermia/raw/master/ermia.pdf). SIGMOD 2016.
+\[1\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://dl.acm.org/doi/10.1145/2882903.2882905). SIGMOD 2016.
 
 \[2\] Tianzheng Wang, Ryan Johnson, Alan Fekete and Ippokratis Pandis. [Efficiently making (almost) any concurrency control mechanism serializable](https://link.springer.com/article/10.1007/s00778-017-0463-8). The VLDB Journal, Volume 26, Issue 4. 2017.
 
 \[3\] Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [Query Fresh: Log Shipping on Steroids](http://www.vldb.org/pvldb/vol11/p406-wang.pdf). VLDB 2018.
 
-#### Environment configurations
+#### Software dependencies
+* cmake
+* [clang; libcxx; libcxxabi](https://github.com/llvm/llvm-project)
+* libnuma
+* libibverbs
+* libgflags
+* libgoogle-glog
+* [libpmem](https://github.com/pmem/pmdk/)
 
-* Software dependencies: `libnuma`. Install from your favorite package manager. CoroBase uses `mmap` with `MAP_HUGETLB` to allocate huge pages. `MAP_HUGETLB` is available after Linux 2.6.32.
-* Make sure you have enough huge pages. Almost all memory allocations come from the space carved out here. Assuming 2MB pages, the command below will allocate 40GB of memory:
+#### Environment configurations
+Make sure you have enough huge pages.
+
+* CoroBase uses `mmap` with `MAP_HUGETLB` (available after Linux 2.6.32) to allocate huge pages. Almost all memory allocations come from the space carved out here. Assuming the default huge page size is 2MB, the command below will allocate 2x MB of memory:
 ```
 sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
 ```
@@ -25,10 +34,6 @@ This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see b
 [user] hard memlock unlimited
 ```
 *Re-login to apply.*
-
-#### Adjust maximum concurrent workers
-
-By default we support up to 256 cores. The limit can be adjusted by setting `MAX_THREADS` defined under `config` in `dbcore/sm-config.h.` `MAX_THREADS` must be a multiple of 64.
 
 --------
 #### Build it
