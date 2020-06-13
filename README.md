@@ -17,7 +17,12 @@ CoroBase inherits the shared-everything architecture, synchronization and concur
 * libibverbs
 * libgflags
 * libgoogle-glog
-* [libpmem](https://github.com/pmem/pmdk/)
+
+Ubuntu
+```
+apt-get install -y cmake clang-8 libc++-8-dev libc++abi-8-dev
+apt-get install -y libnuma-dev libibverbs-dev libgflags-dev libgoogle-glog-dev
+```
 
 #### Environment configurations
 Make sure you have enough huge pages.
@@ -95,7 +100,7 @@ $./run.sh ./ermia_SI ycsb 10 48 20 \
 Coroutine-based multiget (fully-nested coroutines)
 $./run.sh ./ermia_adv_coro_SI ycsb 10 48 20 \
          "-physical_workers_only=1 -index_probe_only=1 -node_memory_gb=75 -null_log_device=1 -coro_tx=1" \
-         "-w C -r 10 -s 1000000000 -t multiget-adv-coro
+         "-w C -r 10 -s 1000000000 -t multiget-adv-coro"
 
 AMAC-based multiget
 $./run.sh ./ermia_SI ycsb 10 48 20 \
