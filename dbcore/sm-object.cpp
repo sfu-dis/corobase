@@ -115,11 +115,7 @@ fat_ptr Object::Create(const varstr *tuple_value, bool do_write,
   size_t alloc_sz = sizeof(dbtuple) + sizeof(Object) + data_sz;
 
   // Allocate a version
-  Object *obj;
-  if (config::tls_alloc_pmem_data)
-    obj = new (MM::allocate_pmem(alloc_sz)) Object();
-  else
-    obj = new (MM::allocate(alloc_sz)) Object();
+  Object *obj = new (MM::allocate(alloc_sz)) Object();
   // In case we got it from the tls reuse pool
   ASSERT(obj->GetAllocateEpoch() <= epoch - 4);
   obj->SetAllocateEpoch(epoch);
