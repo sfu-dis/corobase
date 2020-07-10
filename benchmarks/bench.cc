@@ -719,7 +719,8 @@ void bench_worker::PipelineScheduler() {
 
     i = (i + 1) & (ermia::config::coro_batch_size - 1);
   }
-  ermia::MM::epoch_exit(0, begin_epoch);
+
+  ermia::MM::epoch_exit(transactions[ermia::config::coro_batch_size-1].GetXIDContext()->end, begin_epoch);
 }
 
 
@@ -773,8 +774,7 @@ void bench_worker::Scheduler() {
       }
     }
 
-    // TODO: epoch exit correctly
-    ermia::MM::epoch_exit(0, begin_epoch);
+    ermia::MM::epoch_exit(transactions[ermia::config::coro_batch_size-1].GetXIDContext()->end, begin_epoch);
   }
 }
 
@@ -850,8 +850,7 @@ void bench_worker::BatchScheduler() {
     }
 #endif
 
-    // TODO: epoch exit correctly
-    ermia::MM::epoch_exit(0, begin_epoch);
+    ermia::MM::epoch_exit(transactions[ermia::config::coro_batch_size-1].GetXIDContext()->end, begin_epoch);
   }
 }
 
