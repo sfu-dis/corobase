@@ -30,6 +30,8 @@ volatile bool running = true;
 std::vector<bench_worker *> bench_runner::workers;
 std::vector<bench_worker *> bench_runner::cmdlog_redoers;
 
+thread_local ermia::epoch_num coroutine_batch_end_epoch = 0;
+
 void bench_worker::do_workload_function(uint32_t i) {
   ASSERT(workload.size() && cmdlog_redo_workload.size() == 0);
 retry:
@@ -696,6 +698,7 @@ void bench_worker::PipelineScheduler() {
   }
 
   uint32_t i = 0;
+  coroutine_batch_end_epoch = 0;
   ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
   while (running) {
     if (handles[i].done()) {
@@ -720,7 +723,7 @@ void bench_worker::PipelineScheduler() {
     i = (i + 1) & (ermia::config::coro_batch_size - 1);
   }
 
-  ermia::MM::epoch_exit(transactions[ermia::config::coro_batch_size-1].GetXIDContext()->end, begin_epoch);
+  ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
 }
 
 
@@ -745,6 +748,7 @@ void bench_worker::Scheduler() {
   barrier_b->wait_for();
 
   while (running) {
+    coroutine_batch_end_epoch = 0;
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     uint32_t todo = ermia::config::coro_batch_size;
     util::timer t;
@@ -774,7 +778,7 @@ void bench_worker::Scheduler() {
       }
     }
 
-    ermia::MM::epoch_exit(transactions[ermia::config::coro_batch_size-1].GetXIDContext()->end, begin_epoch);
+    ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
   }
 }
 
@@ -795,6 +799,7 @@ void bench_worker::BatchScheduler() {
   barrier_b->wait_for();
 
   while (running) {
+    coroutine_batch_end_epoch = 0;
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     uint32_t todo = ermia::config::coro_batch_size;
     uint32_t workload_idx = -1;
@@ -850,7 +855,7 @@ void bench_worker::BatchScheduler() {
     }
 #endif
 
-    ermia::MM::epoch_exit(transactions[ermia::config::coro_batch_size-1].GetXIDContext()->end, begin_epoch);
+    ermia::MM::epoch_exit(coroutine_batch_end_epoch, begin_epoch);
   }
 }
 

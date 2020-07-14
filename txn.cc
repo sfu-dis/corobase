@@ -5,6 +5,8 @@
 #include "dbcore/serial.h"
 #include "ermia.h"
 
+extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
+
 namespace ermia {
 
 transaction::transaction(uint64_t flags, str_arena &sa)
@@ -90,7 +92,10 @@ void transaction::initialize_read_write() {
 
 transaction::~transaction() {
   if (flags & TXN_FLAG_CSWITCH) {
-    TXN::xid_free(xid); // must do this after epoch_exit, which uses xc.end
+    if (xc->end > coroutine_batch_end_epoch) {
+      coroutine_batch_end_epoch = xc->end;
+    }
+    TXN::xid_free(xid);
     return;
   }
 
