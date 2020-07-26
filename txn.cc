@@ -91,14 +91,6 @@ void transaction::initialize_read_write() {
 }
 
 transaction::~transaction() {
-  if (flags & TXN_FLAG_CSWITCH) {
-    if (xc->end > coroutine_batch_end_epoch) {
-      coroutine_batch_end_epoch = xc->end;
-    }
-    TXN::xid_free(xid);
-    return;
-  }
-
   // "Normal" transactions
   if (config::is_backup_srv() && !(flags & TXN_FLAG_CMD_REDO)) {
     return;
@@ -113,7 +105,12 @@ transaction::~transaction() {
   }
 #endif
   if (config::tls_alloc) {
-    if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
+    if (flags & TXN_FLAG_CSWITCH) {
+      if (xc->end > coroutine_batch_end_epoch) {
+        coroutine_batch_end_epoch = xc->end;
+      }
+    }
+    else if (config::enable_safesnap && (flags & TXN_FLAG_READ_ONLY)) {
       MM::epoch_exit(0, xc->begin_epoch);
     } else {
       MM::epoch_exit(xc->end, xc->begin_epoch);
