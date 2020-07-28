@@ -50,7 +50,7 @@ add_subdirectory(masstree)
 
 set_property(GLOBAL APPEND PROPERTY ALL_ERMIA_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/ermia.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/ermia_cs.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/corobase.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tuple.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/txn.cc
 )
