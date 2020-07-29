@@ -82,13 +82,6 @@ public:
   PROMISE(int) rscan(Str firstkey, bool matchfirst, F &scanner,
             ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
-  template <typename F>
-  PROMISE(int) scan_oid(Str firstkey, bool matchfirst, F &scanner,
-           ermia::TXN::xid_context *xc, threadinfo &ti) const;
-  template <typename F>
-  PROMISE(int) rscan_oid(Str firstkey, bool matchfirst, F &scanner,
-            ermia::TXN::xid_context *xc, threadinfo &ti) const;
-
   template <typename F> inline int modify(Str key, F &f, threadinfo &ti);
   template <typename F> inline int modify_insert(Str key, F &f, threadinfo &ti);
 
@@ -104,10 +97,6 @@ public:
 public:
   template <typename H, typename F>
   PROMISE(int) scan(H helper, Str firstkey, bool matchfirst, F &scanner,
-           ermia::TXN::xid_context *xc, threadinfo &ti) const;
-
-  template <typename H, typename F>
-  PROMISE(int) scan_oid(H helper, Str firstkey, bool matchfirst, F &scanner,
            ermia::TXN::xid_context *xc, threadinfo &ti) const;
 
   template <bool IsNext, typename H, typename F>

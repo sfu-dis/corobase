@@ -78,11 +78,6 @@ std::string read_view_stat_file;
 bool command_log = false;
 uint32_t command_log_buffer_mb = 16;
 bool index_probe_only = false;
-std::string dia_req_handler = "serial";
-bool dia_req_coalesce = false;
-uint32_t dia_batch_size = 1;
-uint32_t dia_logical_index_threads = 0;
-uint32_t dia_physical_index_threads = 0;
 bool amac_version_chain = false;
 bool numa_spread = false;
 

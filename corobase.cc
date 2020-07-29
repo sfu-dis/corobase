@@ -372,7 +372,6 @@ start_over:
   co_return {RC_FALSE};
 }
 
-
 ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecord(transaction *t, const varstr &key,
                                                                     varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;

@@ -1,7 +1,6 @@
 #include "dbcore/rcu.h"
 #include "dbcore/sm-chkpt.h"
 #include "dbcore/sm-cmd-log.h"
-#include "dbcore/sm-dia.h"
 #include "dbcore/sm-rep.h"
 
 #include "ermia.h"
@@ -228,49 +227,6 @@ PROMISE(bool) ConcurrentMasstreeIndex::InsertIfAbsent(transaction *t, const vars
   RETURN true;
 }
 
-PROMISE(void) ConcurrentMasstreeIndex::ScanOID(transaction *t, const varstr &start_key,
-                                      const varstr *end_key, rc_t &rc,
-                                      OID *dia_callback) {
-  SearchRangeCallback c(*(DiaScanCallback *)dia_callback);
-  t->ensure_active();
-  if (end_key) {
-    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
-                      << ")::search_range_call [" << util::hexify(start_key)
-                      << ", " << util::hexify(*end_key) << ")" << std::endl);
-  } else {
-    VERBOSE(std::cerr << "txn_btree(0x" << util::hexify(intptr_t(this))
-                      << ")::search_range_call [" << util::hexify(start_key)
-                      << ", +inf)" << std::endl);
-  }
-
-  int scancount = 0;
-  if (!unlikely(end_key && *end_key <= start_key)) {
-    XctSearchRangeCallback cb(t, &c);
-    scancount = AWAIT masstree_.search_range_oid(
-        start_key, end_key ? end_key : nullptr, cb, t->xc);
-  }
-  volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
-}
-
-PROMISE(void) ConcurrentMasstreeIndex::ReverseScanOID(transaction *t,
-                                             const varstr &start_key,
-                                             const varstr *end_key, rc_t &rc,
-                                             OID *dia_callback) {
-  SearchRangeCallback c(*(DiaScanCallback *)dia_callback);
-  t->ensure_active();
-  int scancount = 0;
-  if (!unlikely(end_key && start_key <= *end_key)) {
-    XctSearchRangeCallback cb(t, &c);
-    varstr lowervk;
-    if (end_key) {
-      lowervk = *end_key;
-    }
-    scancount = AWAIT masstree_.rsearch_range_oid(
-        start_key, end_key ? &lowervk : nullptr, cb, t->xc);
-  }
-  volatile_write(rc._val, scancount ? RC_TRUE : RC_FALSE);
-}
-
 ////////////////// Index interfaces /////////////////
 
 PROMISE(bool) ConcurrentMasstreeIndex::InsertOID(transaction *t, const varstr &key, OID oid) {
@@ -417,17 +373,6 @@ bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
     return false; // don't continue the read if the tx should abort
   }
   return true;
-}
-
-bool ConcurrentMasstreeIndex::XctSearchRangeCallback::invoke(
-    const typename ConcurrentMasstree::string_type &k, OID oid,
-    uint64_t version) {
-  t->ensure_active();
-  VERBOSE(std::cerr << "search range k: " << util::hexify(k) << " from <node=0x"
-                    << util::hexify(n) << ", version=" << version << ">"
-                    << std::endl
-                    << " oid: " << oid << std::endl);
-  return caller_callback->Invoke(k, oid);
 }
 
 ////////////////// End of index interfaces //////////

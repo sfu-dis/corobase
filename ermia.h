@@ -1,10 +1,10 @@
 #pragma once
 
-#include "../dbcore/sm-dia.h"
-#include "../dbcore/sm-log-recover-impl.h"
 #include "txn.h"
-#include "../benchmarks/record/encoder.h"
+#include "varstr.h"
 #include "ermia_internal.h"
+#include "../dbcore/sm-log-recover-impl.h"
+#include "../benchmarks/record/encoder.h"
 #include <experimental/coroutine>
 
 namespace ermia {
@@ -22,7 +22,6 @@ public:
 
   // All supported index types
   static const uint16_t kIndexConcurrentMasstree = 0x1;
-  static const uint16_t kIndexDecoupledMasstree = 0x2;
 
   // Create a table without any index (at least yet)
   TableDescriptor *CreateTable(const char *name);
@@ -81,20 +80,14 @@ private:
   struct SearchRangeCallback {
     SearchRangeCallback(OrderedIndex::ScanCallback &upcall)
         : upcall(&upcall), return_code(rc_t{RC_FALSE}) {}
-    SearchRangeCallback(OrderedIndex::DiaScanCallback &dia_upcall)
-        : dia_upcall(&dia_upcall), return_code(rc_t{RC_FALSE}) {}
     ~SearchRangeCallback() {}
 
     inline bool Invoke(const ConcurrentMasstree::string_type &k,
                        const varstr &v) {
       return upcall->Invoke(k.data(), k.length(), v);
     }
-    inline bool Invoke(const ConcurrentMasstree::string_type &k, OID oid) {
-      return dia_upcall->Invoke(k.data(), k.length(), oid);
-    }
 
     OrderedIndex::ScanCallback *upcall;
-    OrderedIndex::DiaScanCallback *dia_upcall;
     rc_t return_code;
   };
 
@@ -111,8 +104,6 @@ private:
                         dbtuple *v,
                         const typename ConcurrentMasstree::node_opaque_t *n,
                         uint64_t version);
-    virtual bool invoke(const typename ConcurrentMasstree::string_type &k,
-                        OID oid, uint64_t version);
 
   private:
     transaction *const t;
@@ -188,28 +179,7 @@ public:
     volatile_write(rc._val, found ? RC_TRUE : RC_FALSE);
   }
 
-  inline PROMISE(void)
-      ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-              rc_t &rc, DiaScanCallback &dia_callback) override {
-      sync_wait_void_coro(ScanOID(t, start_key, end_key, rc,
-                                  reinterpret_cast<OID *>(&dia_callback)));
-      RETURN;
-  }
-  inline PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
-                                      const varstr *end_key, rc_t &rc,
-                                      DiaScanCallback &dia_callback) override {
-      sync_wait_void_coro(ReverseScanOID(
-          t, start_key, end_key, rc, reinterpret_cast<OID *>(&dia_callback)));
-      RETURN;
-  }
-
 private:
   PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) override;
-
-  PROMISE(void) ScanOID(transaction *t, const varstr &start_key, const varstr *end_key,
-                        rc_t &rc, OID *dia_callback) override;
-  PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
-                               const varstr *end_key, rc_t &rc,
-                               OID *dia_callback) override;
 };
 } // namespace ermia

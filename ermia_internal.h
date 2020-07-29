@@ -28,13 +28,6 @@ public:
                         const varstr &value) = 0;
   };
 
-  class DiaScanCallback {
-  public:
-    virtual ~DiaScanCallback() {}
-    virtual bool Invoke(const char *keyp, size_t keylen, OID oid) = 0;
-    virtual bool Receive(transaction *t, TableDescriptor *td) = 0;
-  };
-
   // Get a record with a key of length keylen. The underlying DB does not manage
   // the memory associated with key. [rc] stores TRUE if found, FALSE otherwise.
   virtual PROMISE(void) GetRecord(transaction *t, rc_t &rc, const varstr &key, varstr &value,
@@ -81,18 +74,6 @@ public:
    * Returns false if the record already exists or there is potential phantom.
    */
   virtual PROMISE(bool) InsertIfAbsent(transaction *t, const varstr &key, OID oid) = 0;
-
-  virtual PROMISE(void) ScanOID(transaction *t, const varstr &start_key,
-                                const varstr *end_key, rc_t &rc, OID *dia_callback) = 0;
-  virtual PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
-                                       const varstr *end_key, rc_t &rc,
-                                       OID *dia_callback) = 0;
-  virtual PROMISE(void) ScanOID(transaction *t, const varstr &start_key,
-                                const varstr *end_key, rc_t &rc,
-                                DiaScanCallback &dia_callback) = 0;
-  virtual PROMISE(void) ReverseScanOID(transaction *t, const varstr &start_key,
-                                       const varstr *end_key, rc_t &rc,
-                                       DiaScanCallback &dia_callback) = 0;
 };
 
 }  // namespace ermia
