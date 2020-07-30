@@ -791,8 +791,7 @@ void bench_worker::BatchScheduler() {
     sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
 
 #ifndef BATCH_SAME_TRX
-  uint32_t *workload_idxs = (uint32_t *)numa_alloc_onnode(
-    sizeof(uint32_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+  LOG(FATAL) << "Batch scheduler batches same-type transactoins";
 #endif
 
   barrier_a->count_down();
@@ -803,16 +802,10 @@ void bench_worker::BatchScheduler() {
     ermia::epoch_num begin_epoch = ermia::MM::epoch_enter();
     uint32_t todo = ermia::config::coro_batch_size;
     uint32_t workload_idx = -1;
-#ifdef BATCH_SAME_TRX
     workload_idx = fetch_workload();
-#endif
     util::timer t;
 
     for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
-#ifndef BATCH_SAME_TRX
-      workload_idx = fetch_workload();
-      workload_idxs[i] = workload_idx;
-#endif
       handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
     }
 
@@ -824,11 +817,7 @@ void bench_worker::BatchScheduler() {
         if (handles[i].done()) {
           rcs[i] = handles[i].promise().get_return_value();
 #ifndef CORO_BATCH_COMMIT
-#ifdef BATCH_SAME_TRX
           finish_workload(rcs[i], workload_idx, t);
-#else
-          finish_workload(rcs[i], workload_idxs[i], t);
-#endif
 #endif
           handles[i].destroy();
           handles[i] = nullptr;
@@ -847,11 +836,7 @@ void bench_worker::BatchScheduler() {
         rcs[i] = db->Commit(&transactions[i]);
       }
       // No need to abort - TryCatchCond family of macros should have already
-#ifdef BATCH_SAME_TRX
       finish_workload(rcs[i], workload_idx, t);
-#else
-      finish_workload(rcs[i], workload_idxs[i], t);
-#endif
     }
 #endif
 
