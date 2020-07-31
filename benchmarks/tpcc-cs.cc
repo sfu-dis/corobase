@@ -136,62 +136,134 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::
            ->coro_InsertOID(txn, Encode(str(arenas[idx], Size(k_oo_idx)), k_oo_idx), v_oo_oid);
   TryCatchCoro(rc);
 
-  for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
-    const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
-    const uint ol_i_id = itemIDs[ol_number - 1];
-    const uint ol_quantity = orderQuantities[ol_number - 1];
+  if (g_hybrid) {
+    std::vector<rc_t> rcs;
+    std::vector<ermia::varstr *> values;
+    std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+      const uint ol_i_id = itemIDs[ol_number - 1];
+      const uint ol_quantity = orderQuantities[ol_number - 1];
 
-    const item::key k_i(ol_i_id);
-    item::value v_i_temp;
+      const stock::key k_s(ol_supply_w_id, ol_i_id);
+      ermia::varstr &v = str(arenas[idx], 0);
+      values.emplace_back(&v);
 
-    tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
-    TryVerifyRelaxedCoro(rc);
+      rcs.emplace_back(RC_INVALID);
+      handles.emplace_back(tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), v).get_handle());
+    }
 
-    const item::value *v_i = Decode(valptr, v_i_temp);
+    ermia::ConcurrentMasstreeIndex::simple_coro_MultiOps(rcs, handles);
+
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+      const uint ol_i_id = itemIDs[ol_number - 1];
+      const uint ol_quantity = orderQuantities[ol_number - 1];
+
+      const item::key k_i(ol_i_id);
+      item::value v_i_temp;
+
+      tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
+      TryVerifyRelaxedCoro(rc);
+
+      const item::value *v_i = Decode(valptr, v_i_temp);
 #ifndef NDEBUG
-    checker::SanityCheckItem(&k_i, v_i);
+      checker::SanityCheckItem(&k_i, v_i);
 #endif
 
-    const stock::key k_s(ol_supply_w_id, ol_i_id);
-    stock::value v_s_temp;
-
-    rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
-    TryVerifyRelaxedCoro(rc);
-    const stock::value *v_s = Decode(valptr, v_s_temp);
+      const stock::key k_s(ol_supply_w_id, ol_i_id);
+      stock::value v_s_temp;
+      TryVerifyRelaxedCoro(rcs[ol_number - 1]);
+      const stock::value *v_s = Decode(*values[ol_number - 1], v_s_temp);
 
 #ifndef NDEBUG
-    checker::SanityCheckStock(&k_s);
+      checker::SanityCheckStock(&k_s);
 #endif
 
-    stock::value v_s_new(*v_s);
-    if (v_s_new.s_quantity - ol_quantity >= 10)
-      v_s_new.s_quantity -= ol_quantity;
-    else
-      v_s_new.s_quantity += -int32_t(ol_quantity) + 91;
-    v_s_new.s_ytd += ol_quantity;
-    v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
+      stock::value v_s_new(*v_s);
+      if (v_s_new.s_quantity - ol_quantity >= 10)
+        v_s_new.s_quantity -= ol_quantity;
+      else
+        v_s_new.s_quantity += -int32_t(ol_quantity) + 91;
+      v_s_new.s_ytd += ol_quantity;
+      v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
 
-    rc = tbl_stock(ol_supply_w_id)
-             ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
-                            Encode(str(arenas[idx], Size(v_s_new)), v_s_new));
-    TryCatchCoro(rc);
+      rc = tbl_stock(ol_supply_w_id)
+               ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
+                              Encode(str(arenas[idx], Size(v_s_new)), v_s_new));
+      TryCatchCoro(rc);
 
-    const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
+      const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id, ol_number);
+      order_line::value v_ol;
+      v_ol.ol_i_id = int32_t(ol_i_id);
+      v_ol.ol_delivery_d = 0;  // not delivered yet 
+      v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
+      v_ol.ol_supply_w_id = int32_t(ol_supply_w_id); 
+      v_ol.ol_quantity = int8_t(ol_quantity);
+
+      const size_t order_line_sz = Size(v_ol);
+      rc = tbl_order_line(warehouse_id)
+              ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_ol)), k_ol), 
+                             Encode(str(arenas[idx], order_line_sz), v_ol));
+      TryCatchCoro(rc);
+    }
+  } else {
+    for (uint ol_number = 1; ol_number <= numItems; ol_number++) {
+      const uint ol_supply_w_id = supplierWarehouseIDs[ol_number - 1];
+      const uint ol_i_id = itemIDs[ol_number - 1];
+      const uint ol_quantity = orderQuantities[ol_number - 1];
+
+      const item::key k_i(ol_i_id);
+      item::value v_i_temp;
+
+      tbl_item(1)->GetRecord(txn, rc, Encode(str(arenas[idx], Size(k_i)), k_i), valptr);
+      TryVerifyRelaxedCoro(rc);
+
+      const item::value *v_i = Decode(valptr, v_i_temp);
+#ifndef NDEBUG
+      checker::SanityCheckItem(&k_i, v_i);
+#endif
+
+      const stock::key k_s(ol_supply_w_id, ol_i_id);
+      stock::value v_s_temp;
+
+      rc = co_await tbl_stock(ol_supply_w_id)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
+      TryVerifyRelaxedCoro(rc);
+      const stock::value *v_s = Decode(valptr, v_s_temp);
+
+#ifndef NDEBUG
+      checker::SanityCheckStock(&k_s);
+#endif
+
+      stock::value v_s_new(*v_s);
+      if (v_s_new.s_quantity - ol_quantity >= 10)
+        v_s_new.s_quantity -= ol_quantity;
+      else
+        v_s_new.s_quantity += -int32_t(ol_quantity) + 91;
+      v_s_new.s_ytd += ol_quantity;
+      v_s_new.s_remote_cnt += (ol_supply_w_id == warehouse_id) ? 0 : 1;
+
+      rc = tbl_stock(ol_supply_w_id)
+               ->UpdateRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s),
+                              Encode(str(arenas[idx], Size(v_s_new)), v_s_new));
+      TryCatchCoro(rc);
+
+      const order_line::key k_ol(warehouse_id, districtID, k_no.no_o_id,
                                ol_number);
-    order_line::value v_ol;
-    v_ol.ol_i_id = int32_t(ol_i_id);
-    v_ol.ol_delivery_d = 0;  // not delivered yet
-    v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
-    v_ol.ol_supply_w_id = int32_t(ol_supply_w_id);
-    v_ol.ol_quantity = int8_t(ol_quantity);
+      order_line::value v_ol;
+      v_ol.ol_i_id = int32_t(ol_i_id);
+      v_ol.ol_delivery_d = 0;  // not delivered yet
+      v_ol.ol_amount = float(ol_quantity) * v_i->i_price;
+      v_ol.ol_supply_w_id = int32_t(ol_supply_w_id);
+      v_ol.ol_quantity = int8_t(ol_quantity);
 
-    const size_t order_line_sz = Size(v_ol);
-    rc = tbl_order_line(warehouse_id)
-             ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_ol)), k_ol),
-                            Encode(str(arenas[idx], order_line_sz), v_ol));
-    TryCatchCoro(rc);
+      const size_t order_line_sz = Size(v_ol);
+      rc = tbl_order_line(warehouse_id)
+               ->InsertRecord(txn, Encode(str(arenas[idx], Size(k_ol)), k_ol),
+                              Encode(str(arenas[idx], order_line_sz), v_ol));
+      TryCatchCoro(rc);
+    }
   }
-
 #ifndef CORO_BATCH_COMMIT
   TryCatchCoro(db->Commit(txn));
 #endif
@@ -696,7 +768,47 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia
                     &Encode(str(arenas[idx], Size(k_ol_1)), k_ol_1), c);
     TryCatchCoro(rc);
   }
-  {
+  if (g_hybrid) {
+    std::vector<rc_t> rcs;
+    std::vector<ermia::varstr *> keys;
+    std::vector<ermia::varstr *> values;
+    std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
+    uint total_count = c.s_i_ids.size();
+    uint count = 0;
+
+    std::unordered_map<uint, bool> s_i_ids_distinct;
+    for (auto &p : c.s_i_ids) {
+      stock::key k_s_tmp(warehouse_id, p.first);
+      ASSERT(p.first >= 1 && p.first <= NumItems());
+
+      ermia::varstr &k = Encode(str(arenas[idx], Size(k_s_tmp)), k_s_tmp);
+      keys.emplace_back(&k);
+      ermia::varstr &v = str(arenas[idx], 0);
+      values.emplace_back(&v);
+      rcs.emplace_back(RC_INVALID);
+      handles.emplace_back(tbl_stock(warehouse_id)->coro_GetRecord(txn, k, v).get_handle());
+
+      total_count--;
+      count++;
+      if (total_count == 0 || count == 20) {
+        ermia::ConcurrentMasstreeIndex::simple_coro_MultiOps(rcs, handles);
+
+        while (count--) {
+          TryVerifyRelaxedCoro(rcs[count]);
+          const stock::key *k_s = Decode(*keys[count], k_s_tmp);
+          const uint8_t *ptr = (const uint8_t *)(values[count]->data());
+          int16_t i16tmp;
+          ptr = serializer<int16_t, true>::read(ptr, &i16tmp);
+          if (i16tmp < int(threshold)) s_i_ids_distinct[k_s->s_i_id] = 1;
+        }
+        count = 0;
+        rcs.clear();
+        keys.clear();
+        values.clear();
+        handles.clear();
+      }
+    }
+  } else {
     std::unordered_map<uint, bool> s_i_ids_distinct;
     for (auto &p : c.s_i_ids) {
       const stock::key k_s(warehouse_id, p.first);
@@ -926,25 +1038,77 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epo
         stock::key min_k_s(0, 0);
         stock::value min_v_s(0, 0, 0, 0);
 
-        int16_t min_qty = std::numeric_limits<int16_t>::max();
-        for (auto &it : supp_stock_map[k_su.su_suppkey]) {
-          // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
-          const stock::key k_s(it.first, it.second);
-          stock::value v_s_tmp(0, 0, 0, 0);
-          rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
-          TryVerifyRelaxedCoro(rc);
+        if (g_hybrid) {
+          std::vector<rc_t> rcs;
+          std::vector<ermia::varstr *> keys;
+          std::vector<ermia::varstr *> values;
+          std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> handles;
+          uint total_count = supp_stock_map[k_su.su_suppkey].size();
+          uint count = 0;
 
-          arenas[idx].return_space(Size(k_s));
-          const stock::value *v_s = Decode(valptr, v_s_tmp);
+          int16_t min_qty = std::numeric_limits<int16_t>::max();
+          for (auto &it : supp_stock_map[k_su.su_suppkey]) {
+            // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
+            stock::key k_s_tmp(it.first, it.second);
+            stock::value v_s_tmp(0, 0, 0, 0);
 
-          ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
-          if (min_qty > v_s->s_quantity) {
-            min_k_s.s_w_id = k_s.s_w_id;
-            min_k_s.s_i_id = k_s.s_i_id;
-            min_v_s.s_quantity = v_s->s_quantity;
-            min_v_s.s_ytd = v_s->s_ytd;
-            min_v_s.s_order_cnt = v_s->s_order_cnt;
-            min_v_s.s_remote_cnt = v_s->s_remote_cnt;
+            ermia::varstr &k = Encode(str(arenas[idx], Size(k_s_tmp)), k_s_tmp);
+            keys.emplace_back(&k);
+            ermia::varstr &v = str(arenas[idx], 0);
+            values.emplace_back(&v);
+            rcs.emplace_back(RC_INVALID);
+            handles.emplace_back(tbl_stock(it.first)->coro_GetRecord(txn, k, v).get_handle());
+
+            total_count--;
+            count++;
+            if (total_count == 0 || count == 20) {
+              ermia::ConcurrentMasstreeIndex::simple_coro_MultiOps(rcs, handles);
+
+              while (count--) {
+                TryVerifyRelaxedCoro(rcs[count]);
+                const stock::key *k_s = Decode(*keys[count], k_s_tmp);
+                const stock::value *v_s = Decode(*values[count], v_s_tmp);
+
+                ASSERT(k_s->s_w_id * k_s->s_i_id % 10000 == k_su.su_suppkey);
+                if (min_qty > v_s->s_quantity) {
+                  min_k_s.s_w_id = k_s->s_w_id;
+                  min_k_s.s_i_id = k_s->s_i_id;
+                  min_v_s.s_quantity = v_s->s_quantity;
+                  min_v_s.s_ytd = v_s->s_ytd;
+                  min_v_s.s_order_cnt = v_s->s_order_cnt;
+                  min_v_s.s_remote_cnt = v_s->s_remote_cnt;
+                }
+                arenas[idx].return_space(0);
+                arenas[idx].return_space(Size(k_s_tmp));
+              }
+              count = 0;
+              rcs.clear();
+              keys.clear();
+              values.clear();
+              handles.clear();
+            }
+          }
+        } else {
+          int16_t min_qty = std::numeric_limits<int16_t>::max();
+          for (auto &it : supp_stock_map[k_su.su_suppkey]) {
+            // already know "mod((s_w_id*s_i_id),10000)=su_suppkey" items
+            const stock::key k_s(it.first, it.second);
+            stock::value v_s_tmp(0, 0, 0, 0);
+            rc = co_await tbl_stock(it.first)->coro_GetRecord(txn, Encode(str(arenas[idx], Size(k_s)), k_s), valptr);
+            TryVerifyRelaxedCoro(rc);
+
+            arenas[idx].return_space(Size(k_s));
+            const stock::value *v_s = Decode(valptr, v_s_tmp);
+
+            ASSERT(k_s.s_w_id * k_s.s_i_id % 10000 == k_su.su_suppkey);
+            if (min_qty > v_s->s_quantity) {
+              min_k_s.s_w_id = k_s.s_w_id;
+              min_k_s.s_i_id = k_s.s_i_id;
+              min_v_s.s_quantity = v_s->s_quantity;
+              min_v_s.s_ytd = v_s->s_ytd;
+              min_v_s.s_order_cnt = v_s->s_order_cnt;
+              min_v_s.s_remote_cnt = v_s->s_remote_cnt;
+            }
           }
         }
 

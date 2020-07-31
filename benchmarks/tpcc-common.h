@@ -21,6 +21,7 @@ extern uint g_microbench_rows;  // this many rows
 // can't have both ratio and rows at the same time
 extern int g_microbench_wr_rows;  // this number of rows to write
 extern int g_nr_suppliers;
+extern int g_hybrid;
 
 extern double g_wh_spread;
 

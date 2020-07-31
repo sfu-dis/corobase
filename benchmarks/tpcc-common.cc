@@ -16,6 +16,7 @@ uint g_microbench_rows = 10;  // this many rows
 // can't have both ratio and rows at the same time
 int g_microbench_wr_rows = 0;  // this number of rows to write
 int g_nr_suppliers = 100;
+int g_hybrid = 0;
 
 // TPC-C workload mix
 // 0: NewOrder
@@ -358,6 +359,7 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
         {"microbench-wr-ratio", required_argument, 0, 'p'},
         {"microbench-wr-rows", required_argument, 0, 'q'},
         {"suppliers", required_argument, 0, 'z'},
+        {"hybrid", no_argument, &g_hybrid, 1},
         {0, 0, 0, 0}};
     int option_index = 0;
     int c =
@@ -471,6 +473,7 @@ void tpcc_do_test(ermia::Engine *db, int argc, char **argv) {
          << g_microbench_wr_rows / g_microbench_rows << std::endl;
     std::cerr << "  microbench wr rows         : " << g_microbench_wr_rows << std::endl;
     std::cerr << "  number of suppliers : " << g_nr_suppliers << std::endl;
+    std::cerr << "  hybrid : " << g_hybrid << std::endl;
     std::cerr << "  workload_mix                 : "
          << util::format_list(g_txn_workload_mix,
                         g_txn_workload_mix + ARRAY_NELEMS(g_txn_workload_mix))

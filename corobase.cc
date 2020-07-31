@@ -172,8 +172,27 @@ void ConcurrentMasstreeIndex::simple_coro_MultiGet(
     MM::epoch_exit(0, e);
 }
 
+void ConcurrentMasstreeIndex::simple_coro_MultiOps(std::vector<rc_t> &rcs,
+                                                   std::vector<std::experimental::coroutine_handle<ermia::coro::generator<rc_t>::promise_type>> &handles) {
+  int finished = 0;
+  while (finished < handles.size()) {
+    for (int i = 0; i < handles.size(); ++i) {
+      if (handles[i]) {
+        if (handles[i].done()) {
+          ++finished;
+          rcs[i] = handles[i].promise().get_return_value();
+          handles[i].destroy();
+          handles[i] = nullptr;
+        } else {
+          handles[i].resume();
+        }
+      }
+    }
+  }
+}
+
 ermia::coro::generator<rc_t> ConcurrentMasstreeIndex::coro_GetRecordSV(transaction *t, const varstr &key,
-                                                                    varstr &value, OID *out_oid) {
+                                                                       varstr &value, OID *out_oid) {
   OID oid = INVALID_OID;
   rc_t rc = rc_t{RC_INVALID};
   t->ensure_active();
