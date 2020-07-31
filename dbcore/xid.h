@@ -13,6 +13,8 @@ namespace ermia {
 class transaction;
 namespace TXN {
 
+struct tls_bitmap_info;
+
 enum txn_state {
   TXN_ACTIVE,
   TXN_COMMITTING,
@@ -30,6 +32,7 @@ struct xid_context {
   uint64_t pstamp;               // youngest predecessor (\eta)
   std::atomic<uint64_t> sstamp;  // oldest successor (\pi)
   bool set_sstamp(uint64_t s);
+  tls_bitmap_info * reader_list_entry;
 #endif
 #ifdef SSI
   uint64_t ct3;  // smallest commit stamp of T3 in the dangerous structure

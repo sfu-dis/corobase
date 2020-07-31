@@ -179,7 +179,7 @@ PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const
     } else {
       volatile_write(rc._val, RC_FALSE);
     }
-    ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
+    //ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
   }
 
   if (out_oid) {
