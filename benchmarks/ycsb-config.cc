@@ -33,7 +33,6 @@ YcsbWorkload YcsbWorkloadF('F', 0, 0, 0, 0, 100U);  // Workload F - 100% RMW
 // Extra workloads (not in spec)
 YcsbWorkload YcsbWorkloadG('G', 0, 0, 5U, 100U, 0);  // Workload G - 5% update, 95% scan
 YcsbWorkload YcsbWorkloadH('H', 0, 0, 0, 100U, 0);  // Workload H - 100% scan
-YcsbWorkload YcsbWorkloadI('I', 0, 50U, 0, 0, 50U);  // Workload I - 5% update, 95% scan
 
 YcsbWorkload ycsb_workload = YcsbWorkloadC;
 
@@ -186,8 +185,6 @@ void ycsb_parse_options(int argc, char **argv) {
           ycsb_workload = YcsbWorkloadG;
         else if (g_workload == 'H')
           ycsb_workload = YcsbWorkloadH;
-        else if (g_workload == 'I')
-          ycsb_workload = YcsbWorkloadI;
         else {
           std::cerr << "Wrong workload type: " << g_workload << std::endl;
           abort();
