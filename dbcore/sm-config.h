@@ -14,7 +14,7 @@ struct sm_log_recover_impl;
 namespace config {
 
 static const uint32_t MAX_THREADS = 96;
-static const uint32_t MAX_COROS = 12;
+static const uint32_t MAX_COROS = 8;
 static const uint64_t MB = 1024 * 1024;
 static const uint64_t GB = MB * 1024;
 

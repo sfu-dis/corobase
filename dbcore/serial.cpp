@@ -222,7 +222,7 @@ void deassign_reader_bitmap_entry() {
 void serial_register_tx(xid_context & xc, XID xid) {
 //  ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
 //  volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, xid._val);
-  ASSERT(tls_bitmap_infos.free_entries_top > 0);
+  ASSERT(tls_bitmap_infos.free_entries_top >= 0);
   // ASSERT(!xc.reader_list_entry);
   xc.reader_list_entry = tls_bitmap_infos.free_entries[tls_bitmap_infos.free_entries_top--];
   volatile_write(rlist.xids[xc.reader_list_entry->xid_index()]._val, xid._val);
@@ -234,7 +234,7 @@ void serial_deregister_tx(xid_context & xc, XID xid) {
   // ASSERT(rlist.xids[tls_bitmap_info.xid_index()]._val == xid._val);
   // volatile_write(rlist.xids[tls_bitmap_info.xid_index()]._val, 0);
   // ASSERT(not rlist.xids[tls_bitmap_info.xid_index()]._val);
-  tls_bitmap_infos.free_entries[tls_bitmap_infos.free_entries_top++] = xc.reader_list_entry;
+  tls_bitmap_infos.free_entries[++tls_bitmap_infos.free_entries_top] = xc.reader_list_entry;
 }
 
 void serial_register_reader_tx(const xid_context & xc, readers_list::bitmap_t* tuple_readers_bitmap) {
