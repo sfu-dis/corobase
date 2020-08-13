@@ -1,6 +1,7 @@
 #pragma once
 #include "sm-rc.h"
 #include "xid.h"
+#include "../macros.h"
 
 namespace ermia {
 
@@ -41,6 +42,8 @@ inline bool ssn_check_exclusion(xid_context* xc) {
     int32_t free_entries_top;
     tls_bitmap_infos():free_entries_top(-1), inited(false) {}
     void init() {
+      ALWAYS_ASSERT(config::coro_batch_size <= config::MAX_COROS && "not enough bit maps for number of batches");      
+      ALWAYS_ASSERT(config::worker_threads <= config::MAX_THREADS && "not enough bit maps for threads");      
       for (uint32_t i = 0; i < config::MAX_COROS; i++) {
         free_entries[i] = &all_entries[i];
       }
