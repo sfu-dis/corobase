@@ -179,7 +179,9 @@ PROMISE(void) ConcurrentMasstreeIndex::GetRecord(transaction *t, rc_t &rc, const
     } else {
       volatile_write(rc._val, RC_FALSE);
     }
-    //ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
+#ifndef SSN
+    ASSERT(rc._val == RC_FALSE || rc._val == RC_TRUE);
+#endif
   }
 
   if (out_oid) {

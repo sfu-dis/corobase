@@ -77,7 +77,7 @@ set_target_properties(ermia_SI PROPERTIES COMPILE_FLAGS "")
 #set_target_properties(ermia_SI PROPERTIES COMPILE_FLAGS "-DCORO_BATCH_COMMIT -DBATCH_SAME_TRX -DCORO_UPDATE_VERSION_CHAIN")
 target_link_libraries(ermia_SI ermia_si thread_pool)
 
-# SI with coroutine
+# SI with fully nested coroutine
 add_library(ermia_adv_coro_si SHARED ${LIB_ERMIA_SRC})
 set_target_properties(ermia_adv_coro_si PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 
@@ -85,20 +85,22 @@ add_executable(ermia_adv_coro_SI ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.c
 set_target_properties(ermia_adv_coro_SI PROPERTIES COMPILE_FLAGS "-DADV_COROUTINE")
 target_link_libraries(ermia_adv_coro_SI ermia_adv_coro_si thread_pool)
 
-# thread pool with SSN enabled
+# Thread pool library with SSN enabled
 add_library(thread_pool_ssn SHARED ${THREAD_POOL_SRC})
 set_target_properties(thread_pool_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 
 # SI+SSN
 add_library(ermia_si_ssn SHARED ${LIB_ERMIA_SRC})
 set_target_properties(ermia_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
+
 add_executable(ermia_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK")
 target_link_libraries(ermia_SI_SSN ermia_si_ssn thread_pool_ssn)
 
-# SI+SSN with coroutine
+# SI+SSN with fully nested coroutine
 add_library(ermia_adv_coro_si_ssn SHARED ${LIB_ERMIA_SRC})
 set_target_properties(ermia_adv_coro_si_ssn PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
+
 add_executable(ermia_adv_coro_SI_SSN ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/dbtest.cc)
 set_target_properties(ermia_adv_coro_SI_SSN PROPERTIES COMPILE_FLAGS "-DSSN -DEARLY_SSN_CHECK -DADV_COROUTINE")
 target_link_libraries(ermia_adv_coro_SI_SSN ermia_adv_coro_si_ssn thread_pool_ssn)
