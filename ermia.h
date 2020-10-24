@@ -36,10 +36,10 @@ public:
     CreateIndex(table_name, index_name, false);
   }
 
-  inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena, transaction *buf) {
+  inline transaction *NewTransaction(uint64_t txn_flags, str_arena &arena, transaction *buf, uint32_t coro_batch_idx = 0) {
     // Reset the arena here - can't rely on the benchmark/user code to do it
     arena.reset();
-    new (buf) transaction(txn_flags, arena);
+    new (buf) transaction(txn_flags, arena, coro_batch_idx);
     return buf;
   }
 

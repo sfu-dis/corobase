@@ -9,8 +9,8 @@ extern thread_local ermia::epoch_num coroutine_batch_end_epoch;
 
 namespace ermia {
 
-transaction::transaction(uint64_t flags, str_arena &sa)
-    : flags(flags), sa(&sa) {
+transaction::transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx)
+    : flags(flags), sa(&sa), coro_batch_idx(coro_batch_idx) {
   if (!(flags & TXN_FLAG_CMD_REDO) && config::is_backup_srv()) {
     // Read-only transaction on backup - grab a begin timestamp and go.
     // A read-only 'transaction' on a backup basically is reading a
@@ -60,7 +60,7 @@ void transaction::initialize_read_write() {
     xc->begin = volatile_read(MM::safesnap_lsn);
     log = NULL;
   } else {
-    TXN::serial_register_tx(*xc, xid);
+    TXN::serial_register_tx(coro_batch_idx, xid);
     log = logmgr->new_tx_log((char*)string_allocator().next(sizeof(sm_tx_log_impl))->data());
     // Must +1: a tx T can only update a tuple if its latest version was
     // created before T's begin timestamp (i.e., version.clsn < T.begin,
@@ -101,7 +101,7 @@ transaction::~transaction() {
   ASSERT(state() != TXN::TXN_ACTIVE && state() != TXN::TXN_COMMITTING);
 #if defined(SSN) || defined(SSI)
   if (!config::enable_safesnap || (!(flags & TXN_FLAG_READ_ONLY))) {
-    TXN::serial_deregister_tx(*xc, xid);
+    TXN::serial_deregister_tx(coro_batch_idx, xid);
   }
 #endif
   if (config::tls_alloc) {
@@ -131,7 +131,7 @@ void transaction::Abort() {
     auto &r = read_set[i];
     ASSERT(r->GetObject()->GetClsn().asi_type() == fat_ptr::ASI_LOG);
     // remove myself from reader list
-    serial_deregister_reader_tx(*xc, &r->readers_bitmap);
+    serial_deregister_reader_tx(coro_batch_idx, &r->readers_bitmap);
   }
 #endif
 
@@ -361,7 +361,7 @@ rc_t transaction::parallel_ssn_commit() {
     // time - they will be handled by the orignal SSN machinery.
     TXN::readers_bitmap_iterator readers_iter(&overwritten_tuple->readers_bitmap);
     while (true) {
-      int32_t xid_idx = readers_iter.next(*xc, true);
+      int32_t xid_idx = readers_iter.next(coro_batch_idx, true);
       if (xid_idx == -1) break;
 
       XID rxid = volatile_read(TXN::rlist.xids[xid_idx]);
@@ -555,7 +555,7 @@ rc_t transaction::parallel_ssn_commit() {
   // XXX: one optimization might be setting this only when read some
   // old versions.
   if (config::ssn_read_opt_enabled() and is_read_mostly())
-    TXN::serial_stamp_last_committed_lsn(*xc, xc->end);
+    TXN::serial_stamp_last_committed_lsn(coro_batch_idx, xc->end);
 
   uint64_t my_sstamp = 0;
   if (config::ssn_read_opt_enabled() and is_read_mostly()) {
@@ -639,7 +639,7 @@ rc_t transaction::parallel_ssn_commit() {
     // the updater will be able to see the correct xstamp after noticed
     // a context change; otherwise it might miss it and read a too-old
     // xstamp that was set by some earlier reader.
-    serial_deregister_reader_tx(*xc, &r->readers_bitmap);
+    serial_deregister_reader_tx(coro_batch_idx, &r->readers_bitmap);
   }
   return rc_t{RC_TRUE};
 }
@@ -807,7 +807,7 @@ rc_t transaction::parallel_ssi_commit() {
 
       TXN::readers_bitmap_iterator readers_iter(&overwritten_tuple->readers_bitmap);
       while (true) {
-        int32_t xid_idx = readers_iter.next(xc, true);
+        int32_t xid_idx = readers_iter.next(coro_batch_idx, true);
         if (xid_idx == -1) break;
 
         XID rxid = volatile_read(TXN::rlist.xids[xid_idx]);
@@ -980,7 +980,7 @@ rc_t transaction::parallel_ssi_commit() {
     // now it's safe to release my seat!
     // Need to do this after setting xstamp, so that the updater can
     // see the xstamp if it didn't find the bit in the bitmap is set.
-    serial_deregister_reader_tx(*xc, &r->readers_bitmap);
+    serial_deregister_reader_tx(coro_batch_idx, &r->readers_bitmap);
   }
   return rc_t{RC_TRUE};
 }
@@ -1184,7 +1184,7 @@ rc_t transaction::Update(TableDescriptor *td, OID oid, const varstr *k, varstr *
       if (xc->ct3 <= xc->last_safesnap) return {RC_ABORT_SERIAL};
 
       if (volatile_read(prev->xstamp) >= xc->ct3 or
-          not prev->readers_bitmap.is_empty(xc, true)) {
+          not prev->readers_bitmap.is_empty(coro_batch_idx, true)) {
         // Read-only optimization: safe if T1 is read-only (so far) and T1's
         // begin ts
         // is before ct3.
@@ -1456,7 +1456,7 @@ rc_t transaction::ssn_read(dbtuple *tuple) {
       // already read a (then latest) version, then T2 comes to overwrite it).
       read_set.emplace_back(tuple);
     }
-    serial_register_reader_tx(*xc, &tuple->readers_bitmap);
+    serial_register_reader_tx(coro_batch_idx, &tuple->readers_bitmap);
   }
 
 #ifdef EARLY_SSN_CHECK
@@ -1500,7 +1500,7 @@ rc_t transaction::ssi_read(dbtuple *tuple) {
   } else {
     // survived, register as a reader
     // After this point, I'll be visible to the updater (if any)
-    serial_register_reader_tx(xc, &tuple->readers_bitmap);
+    serial_register_reader_tx(coro_batch_idx, &tuple->readers_bitmap);
     read_set.emplace_back(tuple);
   }
   return {RC_TRUE};

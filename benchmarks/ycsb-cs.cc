@@ -90,7 +90,8 @@ public:
       txn = db->NewTransaction(
           ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
           arenas[idx],
-          &transactions[idx]);
+          &transactions[idx],
+          idx);
       ermia::TXN::xid_context *xc = txn->GetXIDContext();
       xc->begin_epoch = begin_epoch;
     }
@@ -133,7 +134,7 @@ public:
 
   // Read-modify-write transaction with context-switch using simple coroutine
   ermia::coro::generator<rc_t> txn_rmw(uint32_t idx, ermia::epoch_num begin_epoch) {
-    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx]);
+    auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH, arenas[idx], &transactions[idx], idx);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
@@ -192,7 +193,7 @@ public:
 
   ermia::coro::generator<rc_t> txn_scan(uint32_t idx, ermia::epoch_num begin_epoch) {
     auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
-                                   arenas[idx], &transactions[idx]);
+                                   arenas[idx], &transactions[idx], idx);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
@@ -217,7 +218,7 @@ public:
 
   ermia::coro::generator<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
     auto *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
-                                   arenas[idx], &transactions[idx]);
+                                   arenas[idx], &transactions[idx], idx);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 

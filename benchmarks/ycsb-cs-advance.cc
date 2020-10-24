@@ -143,11 +143,10 @@ private:
     ermia::transaction *txn = nullptr;
 
     if (!ermia::config::index_probe_only) {
-        txn = &transactions[idx];
-        new (txn) ermia::transaction(
-          ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY, *arena);
-          ermia::TXN::xid_context * xc = txn->GetXIDContext();
-          xc->begin_epoch = begin_epoch;
+        txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
+                                 *arena, &transactions[idx], idx);
+        ermia::TXN::xid_context * xc = txn->GetXIDContext();
+        xc->begin_epoch = begin_epoch;
     }
 
     for (int j = 0; j < g_reps_per_tx; ++j) {
@@ -186,10 +185,8 @@ private:
   }
 
   task<rc_t> txn_scan(uint32_t idx, ermia::epoch_num begin_epoch) {
-    ermia::transaction *txn = &transactions[idx];
-    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
-                                 ermia::transaction::TXN_FLAG_READ_ONLY,
-                                 *arena);
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
+                                                 *arena, &transactions[idx], idx);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 
@@ -213,10 +210,8 @@ private:
   }
 
   task<rc_t> txn_scan_with_iterator(uint32_t idx, ermia::epoch_num begin_epoch) {
-    ermia::transaction *txn = &transactions[idx];
-    new (txn) ermia::transaction(ermia::transaction::TXN_FLAG_CSWITCH |
-                                 ermia::transaction::TXN_FLAG_READ_ONLY,
-                                 *arena);
+    ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
+                                                 *arena, &transactions[idx], idx);
     ermia::TXN::xid_context *xc = txn->GetXIDContext();
     xc->begin_epoch = begin_epoch;
 

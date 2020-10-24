@@ -54,7 +54,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_new_order(uint32_t idx, ermia::
   //   num_txn_contexts : 9
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   txn->GetXIDContext()->begin_epoch = begin_epoch;
 
   rc_t rc = rc_t{RC_INVALID};
@@ -224,7 +225,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::ep
   //   num_txn_contexts : 5
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   txn->GetXIDContext()->begin_epoch = begin_epoch;
  
   const warehouse::key k_w(warehouse_id);
@@ -367,7 +369,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_payment(uint32_t idx, ermia::ep
 ermia::coro::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::epoch_num begin_epoch) {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   ermia::TXN::xid_context *xc = txn->GetXIDContext();
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
@@ -506,7 +509,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermi
   // locking is un-necessary (since we can just read from some old snapshot)
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | read_only_mask,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   ermia::TXN::xid_context *xc = txn->GetXIDContext();
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
@@ -644,7 +648,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia
   // locking is un-necessary (since we can just read from some old snapshot)
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | read_only_mask,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   ermia::TXN::xid_context *xc = txn->GetXIDContext();
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
@@ -743,7 +748,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermi
   */
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   ermia::TXN::xid_context *xc = txn->GetXIDContext();
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
@@ -847,7 +853,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermi
 ermia::coro::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoch_num begin_epoch) {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_MOSTLY,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   ermia::TXN::xid_context *xc = txn->GetXIDContext();
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};
@@ -998,7 +1005,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epo
 ermia::coro::generator<rc_t> tpcc_cs_worker::txn_microbench_random(uint32_t idx, ermia::epoch_num begin_epoch) {
   ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
                                                arenas[idx],
-                                               &transactions[idx]);
+                                               &transactions[idx],
+                                               idx);
   ermia::TXN::xid_context *xc = txn->GetXIDContext();
   xc->begin_epoch = begin_epoch;
   rc_t rc = rc_t{RC_INVALID};

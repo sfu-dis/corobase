@@ -89,7 +89,7 @@ protected:
   MasstreeAbsentSet masstree_absent_set;
 
  public:
-  transaction(uint64_t flags, str_arena &sa);
+  transaction(uint64_t flags, str_arena &sa, uint32_t coro_batch_idx);
   ~transaction();
   void initialize_read_write();
 
@@ -154,6 +154,7 @@ protected:
   TXN::xid_context *xc;
   sm_tx_log *log;
   str_arena *sa;
+  uint32_t coro_batch_idx; // its index in the batch
   write_set_t write_set;
 #if defined(SSN) || defined(SSI) || defined(MVOCC)
   read_set_t read_set;
