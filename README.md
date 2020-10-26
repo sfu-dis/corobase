@@ -4,7 +4,7 @@ CoroBase is a research database engine that adopts coroutine-to-transaction para
 
 [1] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](). VLDB 2021.
 
-CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [1] for a description of ERMIA, our VLDBJ paper [2] for details in concurrency control, and our VLDB paper [3] for replication.
+CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [2] for a description of ERMIA, our VLDBJ paper [3] for details in concurrency control, and our VLDB paper [4] for replication.
 
 \[2\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://dl.acm.org/doi/10.1145/2882903.2882905). SIGMOD 2016.
 
