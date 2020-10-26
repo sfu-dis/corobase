@@ -1,14 +1,16 @@
 ## CoroBase
 
-CoroBase is a research database engine that adopts coroutine-to-transaction paradigm.
+CoroBase is a research database engine that adopts coroutine-to-transaction paradigm, as described in the our VLDB paper:
+
+[1] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](). VLDB 2021.
 
 CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [1] for a description of ERMIA, our VLDBJ paper [2] for details in concurrency control, and our VLDB paper [3] for replication.
 
-\[1\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://dl.acm.org/doi/10.1145/2882903.2882905). SIGMOD 2016.
+\[2\] Kangnyeon Kim, Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [ERMIA: Fast Memory-Optimized Database System for Heterogeneous Workloads](https://dl.acm.org/doi/10.1145/2882903.2882905). SIGMOD 2016.
 
-\[2\] Tianzheng Wang, Ryan Johnson, Alan Fekete and Ippokratis Pandis. [Efficiently making (almost) any concurrency control mechanism serializable](https://link.springer.com/article/10.1007/s00778-017-0463-8). The VLDB Journal, Volume 26, Issue 4. 2017.
+\[3\] Tianzheng Wang, Ryan Johnson, Alan Fekete and Ippokratis Pandis. [Efficiently making (almost) any concurrency control mechanism serializable](https://link.springer.com/article/10.1007/s00778-017-0463-8). The VLDB Journal, Volume 26, Issue 4. 2017.
 
-\[3\] Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [Query Fresh: Log Shipping on Steroids](http://www.vldb.org/pvldb/vol11/p406-wang.pdf). VLDB 2018.
+\[4\] Tianzheng Wang, Ryan Johnson and Ippokratis Pandis. [Query Fresh: Log Shipping on Steroids](http://www.vldb.org/pvldb/vol11/p406-wang.pdf). VLDB 2018.
 
 #### Software dependencies
 * cmake
