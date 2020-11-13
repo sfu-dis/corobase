@@ -1,6 +1,6 @@
-## CoroBase
+## CoroBase: Coroutine-Oriented Main-Memory Database Engine
 
-CoroBase is a research database engine that adopts coroutine-to-transaction paradigm, as described in the our VLDB paper:
+CoroBase is a research database engine that adopts coroutine-to-transaction paradigm to hide CPU cache misses. See details in our VLDB 2021 paper:
 
 [1] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](https://arxiv.org/pdf/2010.15981.pdf). VLDB 2021.
 
