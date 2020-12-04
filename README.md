@@ -2,7 +2,7 @@
 
 CoroBase is a research database engine that models transactions as C++20 stackless coroutine to hide CPU cache misses. See details in our VLDB 2021 paper:
 
-[1] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](https://arxiv.org/pdf/2010.15981.pdf). VLDB 2021.
+[1] Yongjun He, Jiacheng Lu and Tianzheng Wang. [CoroBase: Coroutine-Oriented Main-Memory Database Engine](http://www.vldb.org/pvldb/vol14/p431-he.pdf). VLDB 2021.
 
 CoroBase inherits the shared-everything architecture, synchronization and concurrency control protocol from ERMIA. See our SIGMOD'16 paper [2] for a description of ERMIA, our VLDBJ paper [3] for details in concurrency control, and our VLDB paper [4] for replication.
 
