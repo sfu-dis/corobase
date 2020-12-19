@@ -223,7 +223,7 @@ void serial_deregister_tx(uint32_t coro_batch_idx, XID xid) {
 
 void serial_register_reader_tx(uint32_t coro_batch_idx, readers_list::bitmap_t* tuple_readers_bitmap) {
   ASSERT(tls_bitmap_infos[coro_batch_idx].entry);
-  ASSERT(rlist.bitmap.array[tls_bitmap_infos[coro_batch_idx].index] & tls_bitmap_info[coro_batch_idx].entry);
+  ASSERT(rlist.bitmap.array[tls_bitmap_infos[coro_batch_idx].index] & tls_bitmap_infos[coro_batch_idx].entry);
   // With read optimization, a transaction might not clear the bit,
   // so no need to set it again if it's set already (by a previous reader).
   if (config::ssn_read_opt_enabled() &&
@@ -236,7 +236,7 @@ void serial_register_reader_tx(uint32_t coro_batch_idx, readers_list::bitmap_t* 
 }
 
 void serial_deregister_reader_tx(uint32_t coro_batch_idx, readers_list::bitmap_t* tuple_readers_bitmap) {
-  ASSERT(tls_bitmap_info.entry);
+  ASSERT(tls_bitmap_infos[coro_batch_idx].entry);
   // if a tx reads a tuple multiple times (e.g., 3 times),
   // then during post-commit it will call this function
   // multiple times, so we take a look to see if it's still set before the xor.
