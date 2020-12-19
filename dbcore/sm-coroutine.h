@@ -105,7 +105,7 @@ template <typename T = void> struct [[nodiscard]] generator {
     }
     auto get_return_object() { return generator{handle::from_promise(*this)}; }
     auto initial_suspend() { return std::experimental::suspend_never{}; }
-    auto final_suspend() { return std::experimental::suspend_always{}; }
+    auto final_suspend() noexcept { return std::experimental::suspend_always{}; }
     void unhandled_exception() { std::terminate(); }
     void return_value(const T value) {
         new (&ret_val_buf_) T(std::move(value));
@@ -244,7 +244,7 @@ struct promise_base {
   promise_base(promise_base &&) = delete;
 
   auto initial_suspend() { return std::experimental::suspend_always{}; }
-  auto final_suspend() {
+  auto final_suspend() noexcept {
     // For the first coroutine in the coroutine chain, it is started by
     // normal function through coroutine_handle.resume(). Therefore, it
     // does not be co_awaited on and has no awaiting_promise_.
