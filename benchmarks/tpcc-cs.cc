@@ -963,7 +963,8 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_credit_check(uint32_t idx, ermi
 }  // credit-check
 
 ermia::coro::generator<rc_t> tpcc_cs_worker::txn_query2(uint32_t idx, ermia::epoch_num begin_epoch) {
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_MOSTLY,
+  // TODO(yongjunh): use TXN_FLAG_READ_MOSTLY once SSN's and SSI's read optimization are available.
+  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH,
                                                arenas[idx],
                                                &transactions[idx],
                                                idx);

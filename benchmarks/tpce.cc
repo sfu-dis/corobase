@@ -3383,7 +3383,8 @@ rc_t tpce_worker::DoTradeUpdateFrame3(const TTradeUpdateFrame3Input *pIn,
 }
 
 rc_t tpce_worker::DoLongQueryFrame1() {
-  txn = db->NewTransaction(ermia::transaction::TXN_FLAG_READ_MOSTLY, arena, txn_buf());
+  // FIXME(yongjunh): use TXN_FLAG_READ_MOSTLY once SSN's and SSI's read optimization are available.
+  txn = db->NewTransaction(0, arena, txn_buf());
 
   auto total_range = max_ca_id - min_ca_id;
   auto scan_range_size = (max_ca_id - min_ca_id) / 100 * long_query_scan_range;
