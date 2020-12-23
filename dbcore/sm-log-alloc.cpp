@@ -500,11 +500,6 @@ segment_id *sm_log_alloc_mgr::PrimaryFlushLog(uint64_t new_dlsn_offset,
     }
     LOG_IF(FATAL, n < nbytes) << "Incomplete log write";
 
-    if (!config::command_log) {
-      // Dequeue transactions pending persistence (if pipelined group commit is on)
-      PrimaryCommitPersistedWork(new_offset);
-    }
-
     // After this the buffer space will become available for consumption
     _logbuf->advance_reader(new_byte);
 
@@ -830,6 +825,10 @@ void sm_log_alloc_mgr::_log_write_daemon() {
     segment_id *durable_sid = nullptr;
     if (new_dlsn_offset > _durable_flushed_lsn_offset) {
       durable_sid = PrimaryFlushLog(new_dlsn_offset);
+    }
+    if (!config::command_log) {
+      // Dequeue transactions pending persistence (if pipelined group commit is on)
+      PrimaryCommitPersistedWork(new_dlsn_offset);
     }
 
     /* Having completed a round of writes, notify waiting threads
