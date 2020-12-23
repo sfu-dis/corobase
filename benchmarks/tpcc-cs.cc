@@ -575,11 +575,9 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_delivery(uint32_t idx, ermia::e
 }  // delivery
 
 ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermia::epoch_num begin_epoch) {
-  const uint64_t read_only_mask =
-      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   // NB: since txn_order_status() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | read_only_mask,
+  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
                                                arenas[idx],
                                                &transactions[idx],
                                                idx);
@@ -714,11 +712,9 @@ ermia::coro::generator<rc_t> tpcc_cs_worker::txn_order_status(uint32_t idx, ermi
 }  // order-status
 
 ermia::coro::generator<rc_t> tpcc_cs_worker::txn_stock_level(uint32_t idx, ermia::epoch_num begin_epoch) {
-  const uint64_t read_only_mask =
-      ermia::config::enable_safesnap ? ermia::transaction::TXN_FLAG_READ_ONLY : 0;
   // NB: since txn_stock_level() is a RO txn, we assume that
   // locking is un-necessary (since we can just read from some old snapshot)
-  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | read_only_mask,
+  ermia::transaction *txn = db->NewTransaction(ermia::transaction::TXN_FLAG_CSWITCH | ermia::transaction::TXN_FLAG_READ_ONLY,
                                                arenas[idx],
                                                &transactions[idx],
                                                idx);
