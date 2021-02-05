@@ -687,14 +687,17 @@ void bench_worker::PipelineScheduler() {
   rc_t *rcs = (rc_t *)numa_alloc_onnode(
     sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
 
+  util::timer *ts = (util::timer *)numa_alloc_onnode(
+    sizeof(util::timer) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
+
   barrier_a->count_down();
   barrier_b->wait_for();
-  util::timer t;
 
   for (uint32_t i = 0; i < ermia::config::coro_batch_size; i++) {
     uint32_t workload_idx = fetch_workload();
     workload_idxs[i] = workload_idx;
     handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
+    new (&ts[i]) util::timer();
   }
 
   uint32_t i = 0;
@@ -708,9 +711,10 @@ void bench_worker::PipelineScheduler() {
         rcs[i] = db->Commit(&transactions[i]);
       }
 #endif
-      finish_workload(rcs[i], workload_idxs[i], t);
+      finish_workload(rcs[i], workload_idxs[i], ts[i]);
       handles[i].destroy();
 
+      ts[i].lap();
       uint32_t workload_idx = fetch_workload();
       workload_idxs[i] = workload_idx;
       handles[i] = workload[workload_idx].coro_fn(this, i, 0).get_handle();
