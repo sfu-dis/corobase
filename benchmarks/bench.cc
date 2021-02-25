@@ -10,7 +10,6 @@
 #include <unistd.h>
 #include <sys/sysinfo.h>
 #include <sys/times.h>
-#include <sys/vtimes.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <signal.h>
