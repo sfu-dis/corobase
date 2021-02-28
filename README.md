@@ -33,7 +33,10 @@ Make sure you have enough huge pages.
 ```
 sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages'
 ```
-This limits the maximum for --node-memory-gb to 10 for a 4-socket machine (see below).
+And this will allocate or free abs(x - nr_hugepages) to or from the specified nodes:
+```
+numactl -m <node-list> sudo sh -c 'echo [x pages] > /proc/sys/vm/nr_hugepages_mempolicy'
+```
 
 * `mlock` limits. Add the following to `/etc/security/limits.conf` (replace "[user]" with your login):
 ```
