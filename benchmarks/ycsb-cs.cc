@@ -250,7 +250,7 @@ public:
         }
         more = iter.next();
       }
-      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
+      ALWAYS_ASSERT(ermia::config::index_probe_only || callback.size() <= g_scan_max_length);
     }
 #ifndef CORO_BATCH_COMMIT
     TryCatchCoro(db->Commit(txn));

@@ -251,7 +251,7 @@ private:
         more = co_await iter.init_or_next</*IsNext=*/true>();
       }
 
-      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
+      ALWAYS_ASSERT(ermia::config::index_probe_only || callback.size() <= g_scan_max_length);
     }
 
     TryCatchCoro(db->Commit(txn));

@@ -276,7 +276,7 @@ class ycsb_sequential_worker : public ycsb_base_worker {
         }
         more = iter.init_or_next</*IsNext=*/true>();
       }
-      ALWAYS_ASSERT(callback.size() <= g_scan_max_length);
+      ALWAYS_ASSERT(ermia::config::index_probe_only || callback.size() <= g_scan_max_length);
     }
     TryCatch(db->Commit(txn));
     return {RC_TRUE};
