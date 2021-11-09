@@ -672,7 +672,7 @@ const tx_stat_map bench_worker::get_cmdlog_txn_counts() const {
 
 void bench_worker::PipelineScheduler() {
 #ifdef BATCH_SAME_TRX
-  LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactoins";
+  LOG(FATAL) << "Pipeline scheduler doesn't work with batching same-type transactions";
 #endif
   LOG(INFO) << "Epoch management and latency recorder in Pipeline scheduler are not logically correct";
 
@@ -732,7 +732,7 @@ void bench_worker::PipelineScheduler() {
 
 void bench_worker::Scheduler() {
 #ifdef BATCH_SAME_TRX
-  LOG(FATAL) << "General scheduler doesn't work with batching same-type transactoins";
+  LOG(FATAL) << "General scheduler doesn't work with batching same-type transactions";
 #endif
 #ifdef CORO_BATCH_COMMIT
   LOG(FATAL) << "General scheduler doesn't work with batching commits";
@@ -794,7 +794,7 @@ void bench_worker::BatchScheduler() {
     sizeof(rc_t) * ermia::config::coro_batch_size, numa_node_of_cpu(sched_getcpu()));
 
 #ifndef BATCH_SAME_TRX
-  LOG(FATAL) << "Batch scheduler batches same-type transactoins";
+  LOG(FATAL) << "Batch scheduler batches same-type transactions";
 #endif
 
   barrier_a->count_down();
